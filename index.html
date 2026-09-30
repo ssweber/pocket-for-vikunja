@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pocket</title>
-<meta name="description" content="A focused phone client for your Vikunja">
+<meta name="description" content="A single-file mobile web app for Vikunja. Drop it on any static host.">
 <meta name="theme-color" content="#EEF1EF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -228,7 +228,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-token" hidden>
       <label class="field"><span>API token</span><input id="in-token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
       <button class="btn block" type="submit">Connect</button>
-      <p class="note">Create one in Vikunja under Settings → API Tokens. Give it read and write on projects, tasks, labels and comments, plus "user".</p>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” under Other.</p>
     </form>
     <button id="btn-change-server" class="btn ghost block" type="button" style="margin-top:12px">Use a different address</button>
   </div>
@@ -507,7 +507,7 @@ $('#f-token').addEventListener('submit', e => { e.preventDefault(); busy(e.targe
     await boot();
   } catch (err) {
     S.token = ''; const box = $('#login-err'); box.hidden = false;
-    box.innerHTML = err instanceof NetError ? netHelp() : 'That token didn\'t work. Check it hasn\'t expired and has the "user" permission.';
+    box.innerHTML = err instanceof NetError ? netHelp() : 'That token didn\'t work. Check it hasn\'t expired and has “User” (under Other) ticked.';
   }
 }); });
 

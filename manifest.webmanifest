@@ -1,6 +1,7 @@
 {
   "name": "Pocket for Vikunja",
   "short_name": "Pocket",
+  "description": "A single-file mobile web app for Vikunja. Drop it on any static host.",
   "start_url": "./#/today",
   "scope": "./",
   "display": "standalone",

@@ -1,6 +1,8 @@
 # Pocket for Vikunja
 
-A focused phone client for [Vikunja](https://vikunja.io): today's tasks and fast capture, nothing else. It's one static `index.html` (no build step, no dependencies) that installs as a PWA on iOS and Android.
+A single-file mobile web app for [Vikunja](https://vikunja.io). Drop it on any static host.
+
+There's no backend, database or dependencies. Upload the files anywhere, allow that address in Vikunja's CORS settings, and add it to your home screen. It covers today's tasks and fast capture, and installs as an app on iOS and Android.
 
 ## What it does
 
@@ -26,13 +28,13 @@ A focused phone client for [Vikunja](https://vikunja.io): today's tasks and fast
 Enter the Vikunja address, then either:
 
 - **Password**: for servers with local or LDAP accounts. The session refreshes itself.
-- **API token**: for everything else, including OIDC-only servers. Create the token in Vikunja under *Settings → API Tokens* with read and write on projects, tasks, labels and comments, plus `user`.
+- **API token**: for everything else, including OIDC-only servers. Create the token in Vikunja under *Settings → API Tokens* : pick the **Task Management** preset and also tick **Other → User**. Without *User*, sign-in fails.
 
 You can pre-fill the address with `?server=https://tasks.example.com`. The server and token are stored in the browser's `localStorage` on that device only.
 
 ## Hosting
 
-Serve the files from any static host over HTTPS. The one requirement is **CORS**: the browser calls the Vikunja API directly, so Vikunja must allow the origin Pocket is served from.
+Run `python build.py` to collect the files the app needs into `dist/`, then upload the contents of `dist/` to the top-level folder of any static host served over HTTPS. The one requirement is **CORS**: the browser calls the Vikunja API directly, so Vikunja must allow the origin Pocket is served from.
 
 - **Separate origin** (for example a Cloudron *Surfer* app at `pocket.example.com`): add that origin to Vikunja's config and restart Vikunja:
 
@@ -59,7 +61,7 @@ python -m http.server 8000      # then open http://localhost:8000
 
 ### Smoke test
 
-`tests/smoke.mjs` drives the real app in a headless browser against a real server. It signs in with a token, then quick-adds a task with a date, priority and label, comments on it, edits it, completes it and deletes it. It also checks the Projects view and the `#/add` deep link. It cleans up the task and label it created.
+`tests/smoke.mjs` drives the real app in a headless browser against a real server. It signs in with a token, then quick-adds a task with a date, priority and label, comments on it, edits it, completes it and deletes it. It also checks the Projects view and the `#/add` deep link. It deletes the task afterwards. It tags the task with a `pocket-smoke` label, which it creates on the first run and reuses after that. Tokens made from the Task Management preset can't delete labels.
 
 ```sh
 npm install

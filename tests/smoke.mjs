@@ -4,7 +4,8 @@
 //
 // Serves the app on http://localhost:8000 (that origin must be in Vikunja's
 // cors.origins), signs in with the token, then creates, edits, completes and
-// deletes one throwaway task. The label it creates is removed at the end.
+// deletes one throwaway task. It tags the task with a "pocket-smoke" label,
+// which it creates on the first run and reuses after that.
 // Optional: BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium),
 // OUT=<dir> for screenshots.
 import { createServer } from 'node:http';
@@ -46,7 +47,7 @@ async function step(name, fn){
 
 const stamp = Date.now();
 const title = 'Pocket smoke test ' + stamp;
-const label = 'pocket-smoke-' + stamp;
+const label = 'pocket-smoke';
 
 try {
   await page.goto(APP);
@@ -109,12 +110,13 @@ try {
 } finally {
   await browser.close();
   http.close();
-  // Clean up whatever this run left behind on the server.
-  const labels = await (await api('/labels?s=' + encodeURIComponent(label))).json().catch(() => []);
-  for (const l of labels || []) if (l.title === label) await api('/labels/' + l.id, { method: 'DELETE' });
+  // Delete the task if a failed run left it behind.
   const tasks = await (await api('/tasks?s=' + encodeURIComponent(title))).json().catch(() => []);
-  for (const t of tasks || []) if (t.title === title) await api('/tasks/' + t.id, { method: 'DELETE' });
+  for (const t of tasks || []) if (t.title === title) {
+    const r = await api('/tasks/' + t.id, { method: 'DELETE' });
+    if (!r.ok) console.log(`Could not delete leftover task ${t.id} (HTTP ${r.status})`);
+  }
 }
 
 console.log(failed ? `${failed} failed` : 'All passed');
-process.exit(failed ? 1 : 0);
+process.exitCode = failed ? 1 : 0;

@@ -2,7 +2,7 @@
   "name": "pocket-for-vikunja",
   "version": "0.1.0",
   "private": true,
-  "description": "A focused phone client (PWA) for Vikunja: today's tasks and quick capture.",
+  "description": "A single-file mobile web app for Vikunja. Drop it on any static host.",
   "type": "module",
   "scripts": {
     "serve": "python -m http.server 8000",
