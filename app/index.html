@@ -153,7 +153,7 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .desc ul[data-type=taskList]{list-style:none;padding-left:4px}
 .desc li[data-checked]::before{content:"○ ";color:var(--muted)}
 .desc li[data-checked=true]::before{content:"● ";color:var(--accent)}
-.desc li[data-checked] p{display:inline}
+.desc li[data-checked] > div,.desc li[data-checked] p{display:inline}
 .desc .ph{color:var(--muted)}
 .desc-edit{padding:10px}
 .desc-edit textarea{width:100%;min-height:140px;border:1.5px solid var(--accent);border-radius:10px;padding:10px;background:var(--bg);font-size:16px;line-height:1.45;outline:0;resize:vertical}

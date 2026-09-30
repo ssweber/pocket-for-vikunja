@@ -6,7 +6,7 @@
   "description": "A single-file mobile web app for Vikunja. Drop it on any static host.",
   "type": "module",
   "scripts": {
-    "serve": "python -m http.server 8000 -b 127.0.0.1",
+    "serve": "python -m http.server 8000 -b 127.0.0.1 -d app",
     "test": "node tests/smoke.mjs"
   },
   "devDependencies": {

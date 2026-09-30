@@ -20,7 +20,7 @@ const PORT = +(process.env.PORT || 8000);
 const OUT = process.env.OUT || 'test-results';
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
 
-const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const ROOT = fileURLToPath(new URL('../app', import.meta.url));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 // Serves only files inside ROOT, and only to this machine.
 const http = createServer(async (req, res) => {
