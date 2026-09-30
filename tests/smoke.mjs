@@ -41,6 +41,7 @@ async function step(name, fn){
 const stamp = Date.now();
 const title = 'Pocket smoke test ' + stamp;
 const label = 'pocket-smoke';
+const createdProjects = [];
 
 try {
   await page.goto(APP);
@@ -151,6 +152,23 @@ try {
     await page.waitForSelector('#cap-chips .chip[data-kind=due]:not(.off)');
     await page.fill('#in-capture', '');
   });
+  await step('create-project-from-chip', async () => {
+    const name = `PocketSmoke${stamp}`, t = `Pocket smoke new project task ${stamp}`;
+    await page.fill('#in-capture', `${t} tomorrow +${name}`);
+    await page.click('#cap-chips .chip[data-kind=new-project]');
+    const made = await Promise.race([
+      page.waitForSelector(`#cap-chips .chip[data-kind=project]:has-text("${name}")`, { timeout: 15000 }).then(() => true),
+      page.waitForSelector('#toast-msg:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
+    ]);
+    if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
+    const project = (await (await api('/projects')).json()).find(p => p.title === name);
+    if (!project) throw new Error('project not found in Vikunja');
+    createdProjects.push(project.id);
+    await page.click('#f-capture .go');
+    await page.waitForSelector(`#toast-msg:has-text("Added to ${name}")`, { timeout: 15000 });
+    const task = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
+    if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
+  });
   await step('repeat-from-quick-add-and-sheet', async () => {
     const t = `Pocket smoke repeat ${stamp}`;
     await page.fill('#in-capture', `${t} every week`);
@@ -238,6 +256,7 @@ try {
   if (errors.length) { failed++; console.log('FAIL console errors:', errors); }
 } finally {
   await browser.close();
+  for (const id of createdProjects) await api('/projects/' + id, { method: 'DELETE' });   // with their tasks
   // Delete anything this run left behind (every title it creates ends with the run's stamp).
   const tasks = await (await api('/tasks?s=' + stamp)).json().catch(() => []);
   for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {

@@ -40,7 +40,7 @@ Pocket understands the prefixes and phrases from Vikunja's [Quick Add Magic](htt
 
 | Type | Sets |
 |---|---|
-| `+work` or `+"Side project"` | Project (its full name or the start of it) |
+| `+work` or `+"Side project"` | Project (its full name or the start of it). If there's no such project, tap **Create project** under the box to make it. |
 | `*calls` or `*"follow up"` | Label (created if it doesn't exist) |
 | `@sarah` | Assignee (their username; it stays in the title, as in Vikunja) |
 | `!1` to `!5` | Priority |
@@ -84,7 +84,7 @@ Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your
 3. **Open Pocket on your phone** at `https://<your Vikunja>/api/v1/plugins/pocket/` and sign in. Pocket offers whatever your Vikunja does:
    - **Sign in with …** for each single sign-on provider Vikunja is set up with, such as Cloudron's login.
    - **Password**, if your server has local or LDAP accounts.
-   - **API token**, as a fallback. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people by username for `@sarah`.
+   - **API token**, as a fallback. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people by username for `@sarah`. To create projects from quick add, also tick **Create** under *Projects*.
 
    Single sign-on and password sign-in are shared with Vikunja's own web app on that device: sign in to either and the other is signed in too, and the same goes for signing out. In a browser, single sign-on opens in a new tab that closes by itself when you're done. In the home-screen app it opens in the same window and ends on Vikunja's page; go back to Pocket and it's signed in.
 

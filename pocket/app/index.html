@@ -120,6 +120,7 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
 .chip:not(.tap){cursor:default}
 .chip.off{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--muted);text-decoration:line-through}
+.chip.create{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent);font-weight:600}
 .chip.toggle{background:var(--sunk);color:var(--muted);font-weight:600}
 .chip.toggle[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
 .chip .x{font-weight:700;opacity:.6;margin-left:2px}
@@ -324,8 +325,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <template x-if="capLines.length > 1"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(capNest)" @mousedown.prevent @click="capNest = !capNest">↳ Under first line</button></template>
       <template x-if="capFocus && !capture"><span class="hint" x-text="captureHint"></span></template>
       <template x-for="c in chips" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
-        :tabindex="c.kind ? 0 : -1" :title="c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null"
-        @mousedown.prevent @click="c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template>
+        :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+        @mousedown.prevent @click="c.action ? c.action() : c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template>
     </div>
   </div>
 
@@ -703,6 +704,7 @@ const DROP_LEAD = /(?:\b(?:in|by|on|before|until)\s+)?(?:\bthe\s+)?$/i;   // ...
 const END = '(?=\\s|$|[,.!?;:])';                          // a phrase has to end at a word boundary
 // Ambiguous numeric dates follow the phone's region: 10/12 is October 12 in the US and 10 December in most other places.
 const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(new Date(2000, 11, 31)).find(p => p.type !== 'literal')?.type === 'day'; } catch { return false; } })();
+const projectName = typed => typed.replace(/[_-]/g, ' ').trim();
 function tokenRe(prefix, flags = 'g'){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags); }
 // Set a date's time from "HH:MM" (Vikunja's "default due time" setting; noon unless the user changed it).
 function atTime(d, hhmm = '12:00'){ const [h, m] = String(hhmm).split(':').map(Number); d.setHours(h || 0, m || 0, 0, 0); return d; }
@@ -768,7 +770,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
 
   // project +name: only the first one counts
   if (!ignore.project) out.title = out.title.replace(tokenRe(P.project, ''), (m, sp, a, b, c) => {
-    const name = (a || b || c).replace(/[_-]/g, ' ').toLowerCase();
+    const name = projectName(a || b || c).toLowerCase();
     const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
     if (hit) out.project = hit; else out.projectMiss = a || b || c;
     return sp;
@@ -940,6 +942,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null},
   offline: false,                              // the last request couldn't reach Vikunja
+  creatingProject: false,
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   flushing: false,
 
@@ -1273,7 +1276,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const all = this.parsedAll, off = k => !!this.capIgnore[k];
     if (all.project) out.push({key: 'p', kind: 'project', color: colorOf(all.project.hex_color), text: all.project.title, off: off('project')});
     if (p && !parsed.project) out.push({key: 'dp', color: colorOf(p.hex_color), text: p.title});      // where it lands otherwise
-    if (all.projectMiss) out.push({key: 'miss', kind: 'project', cls: 'warn', text: `No project “${all.projectMiss}”`, off: off('project')});
+    // A +project that doesn't exist yet: tap to create it; the line then finds it by name.
+    if (all.projectMiss) out.push({key: 'miss', kind: 'new-project', cls: 'create', hint: 'Tap to create this project',
+      text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(all.projectMiss)}”`, action: () => this.createProject(all.projectMiss)});
     if (all.due && !all.dueFromRepeat) out.push({key: 'due', kind: 'due', cls: 'num', text: all.dueLabel, off: off('due')});
     if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
@@ -1438,6 +1443,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.notify(`A task added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
     }
     if (sent || failed.length) this.render();
+  },
+  async createProject(name){
+    if (this.creatingProject) return;
+    this.creatingProject = true;
+    try {
+      const p = await api('/projects', {method: 'PUT', body: {title: projectName(name)}});
+      this.setProjects([...this.projects, p]);
+      saved.set('projects', this.projects);
+    } catch (e) {
+      this.notify(e instanceof NetError ? 'Offline — you can create the project once you\'re back online' : 'Project not created: ' + e.message);
+    } finally { this.creatingProject = false; }
   },
   refreshPending(){ this.pending = this.user ? outbox.all().filter(e => e.user === this.user.id) : []; },
   // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
