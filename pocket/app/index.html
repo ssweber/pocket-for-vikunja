@@ -229,6 +229,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <template x-if="providers.length"><div id="sso">
       <template x-for="p in providers" :key="p.key"><button type="button" class="btn block sso-btn" @click="signInWith(p)" x-text="'Sign in with ' + p.name"></button></template>
       <template x-if="login.waiting"><p class="note">Finish signing in in the other tab. Pocket continues by itself.</p></template>
+      <!-- The home-screen app signs in in the same window, and the provider can only return to Vikunja's page. -->
+      <template x-if="INSTALLED"><p class="note">After signing in, Vikunja's page opens. Close it to come back to Pocket.</p></template>
       <p class="or">or</p>
     </div></template>
     <div class="seg" role="group" aria-label="Sign-in method" :hidden="!passwordAllowed">
