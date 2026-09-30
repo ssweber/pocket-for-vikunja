@@ -28,6 +28,7 @@ Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket i
 - **Paste a list:** paste lines from an email or a note and each one becomes a task. Bullets, numbering and checkboxes are removed, and one tap makes the rest subtasks of the first line.
 - **Task details:** due date, repeat, project, priority, who it's assigned to, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add subtasks one at a time or paste a list.
 - **Projects:** your project tree with favorites, and open or done tasks for each project.
+- **Works offline:** Pocket opens without a connection and shows your lists as they were last loaded. Tasks you add wait under *Waiting to send* and go to Vikunja when you're back online, without being added twice if a connection drops halfway.
 - **An app on your home screen:** installs on iOS and Android and follows the phone's light or dark mode.
 - **A shortcut link:** opening `…/#/add?text=Buy+milk` starts a task with the text filled in, handy from an iOS Shortcut or a bookmark.
 
@@ -106,6 +107,7 @@ Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your
 
 - Pocket has no server of its own. Vikunja serves its files, and it only talks to that same Vikunja.
 - The plugin only reads the files in its `app/` folder, and it runs inside Vikunja, so read `pocket/main.go` before installing it. It's about 100 lines.
+- For offline use, Pocket keeps a copy of the lists it last loaded, and any tasks waiting to be sent, in the browser on that device. Signing out removes them; if tasks are still waiting, Pocket asks first.
 - Pocket doesn't keep a sign-in of its own, apart from an API token if you use one. It uses Vikunja's, stored in the browser where Vikunja's web app keeps it, and renews it the way Vikunja does. Signing out removes it. To revoke an API token entirely, delete it in Vikunja.
 - Notes and comments are cleaned before they're shown. Attachments other than images, PDFs and plain text are downloaded instead of opened. Together, these stop content from people you share projects with from running code inside Pocket, which shares its web address with Vikunja.
 
@@ -114,7 +116,7 @@ Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your
 ```
 pocket/        copy this folder into Vikunja's plugins folder
   main.go      the plugin: serves app/ at /api/v1/plugins/pocket/
-  app/         the app itself
+  app/         the app itself (sw.js lets it open offline)
 tests/         phrase tests and the end-to-end test
 scripts/       dev.mjs: a local Vikunja with the plugin loaded
 docs/          screenshots
@@ -138,12 +140,12 @@ This starts a throwaway Vikunja 2.6.0 at `http://127.0.0.1:3456` with the plugin
 
 ### Tests
 
-`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds. `tests/smoke.mjs` drives Pocket in a headless browser against a Vikunja with the plugin installed. It signs in with a token, quick-adds, ticks off and undoes, edits, comments, completes and deletes tasks, pastes a list with subtasks, assigns someone, and checks the security measures. `tests/session.mjs` uses Pocket and Vikunja's web app side by side: signing in and out on either side, single sign-on, and renewing an expired sign-in from both at once.
+`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds. `tests/smoke.mjs` drives Pocket in a headless browser against a Vikunja with the plugin installed. It signs in with a token, quick-adds, ticks off and undoes, edits, comments, completes and deletes tasks, pastes a list with subtasks, assigns someone, and checks the security measures. `tests/session.mjs` uses Pocket and Vikunja's web app side by side: signing in and out on either side, single sign-on, and renewing an expired sign-in from both at once. `tests/offline.mjs` cuts the connection: Pocket must open with the last-loaded list, queue tasks and pasted lists, send them once back online, and not add a task twice when its reply is lost.
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
 npm run test:parse                 # phrases only
-npm run test:local                 # starts the local Vikunja (with a mock single sign-on provider) and runs all three
+npm run test:local                 # starts the local Vikunja (with a mock single sign-on provider) and runs all four
 
 # against a real server with the plugin installed (use a test account)
 VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test

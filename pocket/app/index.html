@@ -96,6 +96,9 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .empty{text-align:center;color:var(--muted);padding:48px 12px}
 .empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
 .loading{padding:40px 0;text-align:center;color:var(--muted)}
+.offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
+.row.pending .title{color:var(--muted)}
+.check.wait{border-style:dashed}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
 .tree .row .body{display:flex;align-items:center;gap:10px}
@@ -256,6 +259,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   </header>
 
   <main id="view" aria-live="polite">
+    <template x-if="offline"><p class="offline" role="status" x-text="'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks are sent when you\'re back online.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
 
     <template x-if="!view.loading && view.error"><div>
@@ -266,6 +270,18 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
     <!-- Today and a single project share the task-list markup -->
     <template x-if="!view.loading && !view.error && route.name !== 'projects'"><div>
+      <template x-if="pendingRows.length"><div id="pending">
+        <div class="sec">Waiting to send<span class="n num" x-text="pendingRows.length"></span></div>
+        <div class="list">
+          <template x-for="w in pendingRows" :key="w.id">
+            <div class="row pending">
+              <span class="check wait" aria-hidden="true"></span>
+              <div class="body"><div class="title" x-text="w.title"></div><div class="meta" x-show="w.meta || w.partly"><span x-text="[w.meta, w.partly ? 'partly sent' : ''].filter(Boolean).join(' · ')"></span></div></div>
+              <button class="icon-btn plain" :aria-label="'Cancel ' + w.title" @click="cancelPending(w.id)"><svg class="i"><use href="#i-close"/></svg></button>
+            </div>
+          </template>
+        </div>
+      </div></template>
       <template x-for="g in view.groups.filter(g => g.tasks.length)" :key="g.key"><div>
         <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span></div>
         <div class="list">
@@ -478,7 +494,8 @@ const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|text\/p
 const mimeOf = t => String(t || '').split(';')[0].trim().toLowerCase();
 const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
 const PRIOS = [{n:0,label:'None'},{n:1,label:'Low'},{n:2,label:'Med'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Now'}];
-const grow = ta => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+// Fit a text box to its text. A hidden box measures 0, so leave its height alone until it can be measured.
+const grow = ta => { ta.style.height = 'auto'; if (ta.scrollHeight) ta.style.height = ta.scrollHeight + 'px'; };
 const cache = new Map();                       // task id -> latest task from the server
 const userCache = new Map();                   // lowercased username -> user
 let app;                                       // the Alpine component, set in init()
@@ -535,7 +552,8 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
       method, headers, body: body === undefined ? undefined : JSON.stringify(body),
       credentials: app.mode === 'session' ? 'include' : 'omit',
     });
-  } catch (e) { throw new NetError(e.message) }
+  } catch (e) { if (app) app.offline = true; throw new NetError(e.message) }
+  if (app) app.offline = false;
   if (res.status === 401 && auth && retry && app.mode === 'session') {
     if (await refreshSession()) return api(path, {method, body, raw, auth, retry:false});
   }
@@ -875,6 +893,33 @@ async function collapse(el){
     {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
 }
 
+/* =============== offline =============== */
+/* Tasks added without a connection wait in an outbox on the device and are sent once Pocket is back online. Each entry
+   is one capture, a task or a pasted list: {id, user, at, nest, pid, items: [{raw, p, taskId, tried, linked}]}.
+   p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed. Progress is saved
+   after every step, so an interrupted list carries on where it stopped. */
+const outbox = {
+  all(){ try { return JSON.parse(store.get('outbox') || '[]'); } catch { return []; } },
+  save(list){ list.length ? store.set('outbox', JSON.stringify(list)) : store.del('outbox'); },
+  get(id){ return this.all().find(e => e.id === id) || null; },
+  put(entry){ const list = this.all(), i = list.findIndex(e => e.id === entry.id); if (i >= 0) list[i] = entry; else list.push(entry); this.save(list); },
+  remove(id){ this.save(this.all().filter(e => e.id !== id)); },
+};
+// One sender at a time, even with Pocket open in two tabs.
+const outboxLock = fn => navigator.locks ? navigator.locks.request('pocket-outbox', fn) : fn();
+const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
+  labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null});
+const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
+const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
+
+// The lists Pocket last loaded, shown when it opens without a connection. Cleared on sign-out.
+const saved = {
+  get(k){ try { return JSON.parse(store.get('saved.' + k)); } catch { return null; } },
+  set(k, v){ store.set('saved.' + k, JSON.stringify(v)); },
+  clear(){ try { for (const k of Object.keys(localStorage)) if (k.startsWith('pocket.saved.')) localStorage.removeItem(k); } catch {} },
+};
+const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name;
+
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
@@ -895,12 +940,15 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   labels: [], labelsLoaded: false,
   // view
   route: currentRoute(),
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null},
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null},
   refreshing: false,
   capture: '', capFocus: false, capBusy: false, capNest: false, capIgnore: {},
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null},
+  offline: false,                              // the last request couldn't reach Vikunja
+  pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
+  flushing: false,
 
   init(){
     app = this;
@@ -912,6 +960,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     });
     // Vikunja's web app (or a sign-in in another tab) changed the shared session.
     window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    window.addEventListener('online', () => this.flush());
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
+    setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
     this.$watch('capture', v => { if (!v.trim()) { this.capIgnore = {}; this.capNest = false; } });
     this.$nextTick(() => {
       this.initSwipe();
@@ -963,6 +1015,14 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, {tellServer = true} = {}){
+    // Signing out yourself drops the saved lists and anything still waiting to be sent (after asking).
+    if (!msg) {
+      const waiting = this.pending.length;
+      if (waiting && !confirm(`${waiting === 1 ? 'A task you added offline hasn\'t' : `${waiting} captures you added offline haven't`} been sent yet. Sign out anyway and drop ${waiting === 1 ? 'it' : 'them'}?`)) return;
+      outbox.save(outbox.all().filter(e => e.user !== this.user?.id));
+      this.pending = [];
+    }
+    saved.clear();
     if (this.mode === 'session') {
       const t = sharedToken.get();
       if (tellServer && t) fetch(this.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
@@ -1018,10 +1078,21 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
       this.user = user; this.info = info;
+      saved.set('user', user); if (info) saved.set('info', info);
       await this.loadProjects();
+      this.refreshPending();
       await this.render();
+      this.flush();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
+      // Offline: carry on with what was loaded last time, if anything was.
+      if (e instanceof NetError && saved.get('user')) {
+        this.user = saved.get('user'); this.info = this.info || saved.get('info');
+        this.setProjects(saved.get('projects') || []);
+        this.refreshPending();
+        await this.render();
+        return;
+      }
       Object.assign(this.view, {loading: false, error: errText(e), bootFailed: true});
     }
   },
@@ -1029,9 +1100,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   /* ---------- data ---------- */
   async loadProjects(){
     const list = await allPages('/projects?is_archived=false');
-    this.projects = list.filter(p => p.id > 0 && !p.is_archived).sort((a,b) => (a.position||0) - (b.position||0) || a.title.localeCompare(b.title));
-    this.projById = new Map(this.projects.map(p => [p.id, p]));
+    this.setProjects(list.filter(p => p.id > 0 && !p.is_archived).sort((a,b) => (a.position||0) - (b.position||0) || a.title.localeCompare(b.title)));
+    saved.set('projects', this.projects);
   },
+  setProjects(list){ this.projects = list; this.projById = new Map(list.map(p => [p.id, p])); },
   async loadLabels(force){
     if (this.labelsLoaded && !force) return this.labels;
     this.labels = await allPages('/labels'); this.labelsLoaded = true; return this.labels;
@@ -1097,16 +1169,25 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.route = r;
     const seq = ++renderSeq;
     const fresh = this.view.route !== location.hash;   // new screen: show Loading; same screen: refresh in place
-    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null});
+    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null, savedAt: null});
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
     try {
       if (r.name === 'today') await this.loadToday(seq);
       else if (r.name === 'projects') { if (!this.projects.length) await this.loadProjects(); }
       else if (r.name === 'project') await this.loadProject(seq, r);
-      if (seq === renderSeq) this.view.loading = false;
+      if (seq === renderSeq) { this.view.loading = false; this.view.savedAt = null; }   // fresh from Vikunja
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
-      if (!fresh && !this.view.loading) { this.notify(e instanceof NetError ? 'Offline — showing what was loaded' : 'Couldn\'t refresh: ' + e.message); return; }
+      if (e instanceof NetError) {
+        if (!fresh && !this.view.loading) return;                          // keep what's on screen; the banner says we're offline
+        const s = saved.get(viewKey(r));
+        if (s) {
+          for (const g of s.groups) for (const t of g.tasks) cache.set(t.id, t);
+          Object.assign(this.view, {loading: false, groups: s.groups, project: s.project || null, savedAt: s.at});
+          return;
+        }
+      }
+      if (!fresh && !this.view.loading) { this.notify('Couldn\'t refresh: ' + e.message); return; }
       Object.assign(this.view, {loading: false, error: errText(e)});
     }
   },
@@ -1125,6 +1206,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     }
     groups[0].tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
     this.view.groups = groups;
+    saved.set('today', {groups, at: new Date().toISOString()});
   },
   async loadProject(seq, r){
     if (!this.projById.has(r.id)) await this.loadProjects();
@@ -1141,6 +1223,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const undated = tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id);
     const list = r.showDone ? tasks.sort((a,b) => new Date(b.done_at) - new Date(a.done_at)) : [...dated, ...undated];
     this.view.groups = [{key: r.showDone ? 'done' : 'open', cls: '', title: r.showDone ? 'Done' : 'Open', tasks: list.map(t => ({...t}))}];
+    saved.set(viewKey(r), {groups: this.view.groups, project: p, at: new Date().toISOString()});
   },
   async refresh(){
     this.refreshing = true;
@@ -1262,40 +1345,114 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     for (const id of [...ids].reverse()) await api('/tasks/' + id, {method:'DELETE'}).catch(() => {});
     this.render();
   },
+  /* Every capture goes through the outbox: online it's sent straight away, offline it waits. */
   async submitCapture(){
     const lines = this.capLines, parsed = this.parsed;
     if (!parsed.title || this.capBusy) return;
-    const pid = parsed.project?.id || this.defaultProjectId();
-    if (!pid) { this.notify('Create a project in Vikunja first'); return; }
+    const first = parsed.project?.id || this.defaultProjectId();
+    if (!first) { this.notify('Create a project in Vikunja first'); return; }
     const nest = this.capNest && lines.length > 1;
+    // Parse every line now, so dates mean what they meant when typed.
+    const items = lines.map((raw, i) => ({raw, p: i === 0 ? parsed : parseCapture(raw, this.projects, this.parseOpts)}))
+      .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, tried: false, linked: false}));
+    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid: this.defaultProjectId(), items};
     this.capBusy = true; this.capture = ''; this.capNest = false;
+    outbox.put(entry);                           // saved first, but only shown as waiting if sending doesn't finish
     try {
-      if (lines.length === 1) {
-        const t = await this.createTask(parsed, pid);
-        const where = 'Added to ' + (this.projById.get(pid)?.title || 'project');
-        this.notify(t.problems.length ? `${where}, but ${t.problems.join('; ')}` : where, {label: 'Open', fn: () => this.openTask(t.id)});
-        return;
-      }
-      let parent = null, rest = lines, ids = [];
-      if (nest) { parent = await this.createTask(parsed, pid); ids.push(parent.id); rest = lines.slice(1); }
-      const r = await this.createLines(rest, {pid: this.defaultProjectId(), parent});
-      ids = ids.concat(r.ids);
-      const problems = [...(parent?.problems || []), ...r.problems], but = problems.length ? `, but ${problems.join('; ')}` : '';
-      const undo = {label: 'Undo', fn: () => this.deleteTasks(ids)};
-      if (r.error) {
-        this.capture = rest.slice(r.used).join('\n');           // keep what wasn't added
-        this.notify(`Added ${ids.length} of ${lines.length}${but}. Stopped: ${r.error.message}`, ids.length ? undo : null);
+      const r = await outboxLock(() => this.sendEntry(entry.id));
+      const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
+      if (r.status === 'offline') {
+        this.notify(`Offline — ${n === 1 ? 'saved' : `${n} tasks saved`}. Pocket adds ${n === 1 ? 'it' : 'them'} when you're back online.`);
+      } else if (r.status === 'error') {
+        this.capture = r.unsent.join('\n');                                // keep what wasn't added
+        const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
+        this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, undo);
+      } else if (n === 1) {
+        const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project');
+        this.notify(where + but, {label: 'Open', fn: () => this.openTask(r.ids[0])});
       } else {
-        this.notify((nest ? `Added 1 task with ${r.ids.length} subtask${r.ids.length === 1 ? '' : 's'}` : `Added ${ids.length} tasks`) + but, undo);
+        this.notify((nest ? `Added 1 task with ${n - 1} subtask${n === 2 ? '' : 's'}` : `Added ${n} tasks`) + but, {label: 'Undo', fn: () => this.deleteTasks(r.ids)});
       }
-    } catch (err) {
-      this.capture = lines.join('\n'); this.capNest = nest;
-      this.notify(err instanceof NetError ? 'Offline — kept in the box' : 'Not added: ' + err.message);
     } finally {
       this.capBusy = false;
+      this.refreshPending();
       this.render();
     }
   },
+  /* Send one outbox entry, carrying on where an earlier try stopped. Returns {status: sent|offline|error|gone, ...}. */
+  async sendEntry(id){
+    const entry = outbox.get(id);
+    if (!entry) return {status: 'gone', ids: []};                            // another tab sent it
+    const ids = [], problems = [];
+    let projectId = null;
+    try {
+      for (const [i, item] of entry.items.entries()) {
+        if (!item.taskId) {
+          const p = unpackParsed(item.p);
+          // A try that was cut off may still have reached Vikunja; don't add the task twice.
+          const found = item.tried ? await this.findSent(p.title, entry.at) : null;
+          let t = found;
+          if (!t) {
+            item.tried = true; outbox.put(entry);
+            t = await this.createTask(p, entry.nest && i > 0 ? entry.parentProject : entry.pid);
+            problems.push(...t.problems);
+          }
+          item.taskId = t.id;
+          if (i === 0) { entry.parentProject = t.project_id; projectId = t.project_id; }
+          outbox.put(entry);
+        }
+        if (entry.nest && i > 0 && !item.linked) {
+          await this.linkSubtask(entry.items[0].taskId, item.taskId);
+          item.linked = true; outbox.put(entry);
+        }
+        ids.push(item.taskId);
+      }
+      outbox.remove(entry.id);
+      return {status: 'sent', ids, problems, projectId: projectId || entry.parentProject};
+    } catch (error) {
+      // No connection, or signed out: keep it for later.
+      if (error instanceof NetError || (error instanceof ApiError && error.status === 401)) return {status: 'offline', ids, problems};
+      outbox.remove(entry.id);
+      return {status: 'error', ids, problems, error, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw)};
+    }
+  },
+  // A task with this title created since the capture, if one exists.
+  async findSent(title, at){
+    const since = new Date(at).getTime() - 2 * 60000;                        // allow for the phone's clock being a little off
+    const list = await api('/tasks?s=' + encodeURIComponent(title)) || [];
+    return list.find(t => t.title === title && new Date(t.created).getTime() >= since) || null;
+  },
+  // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
+  async flush(){
+    if (this.flushing || !this.signedIn || !this.user || !outbox.all().some(e => e.user === this.user.id)) return;
+    this.flushing = true;
+    let sent = 0; const failed = [];
+    try {
+      await outboxLock(async () => {
+        for (const e of outbox.all().filter(e => e.user === this.user?.id)) {
+          const r = await this.sendEntry(e.id);
+          if (r.status === 'offline') break;
+          if (r.status === 'sent') sent += r.ids.length;
+          if (r.status === 'error') failed.push(r);
+        }
+      });
+    } finally { this.flushing = false; this.refreshPending(); }
+    if (failed.length) {
+      this.capture = [this.capture, ...failed.flatMap(f => f.unsent)].filter(Boolean).join('\n');
+      this.notify(`A task added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
+    } else if (sent) this.notify(`Added ${sent} task${sent === 1 ? '' : 's'} saved while offline`);
+    if (sent || failed.length) this.render();
+  },
+  refreshPending(){ this.pending = this.user ? outbox.all().filter(e => e.user === this.user.id) : []; },
+  // One row per waiting capture: its first task, and how many more came with it.
+  get pendingRows(){
+    return this.pending.map(e => {
+      const left = e.items.filter(x => !x.taskId).length, more = e.items.length - 1, due = e.items[0].p.due;
+      const meta = [due ? dueInfo(due)?.label : '', more ? (e.nest ? `with ${more} subtask${more === 1 ? '' : 's'}` : `+ ${more} more`) : ''].filter(Boolean);
+      return {id: e.id, title: e.items[0].p.title, meta: meta.join(' · '), partly: left < e.items.length};
+    });
+  },
+  cancelPending(id){ outbox.remove(id); this.refreshPending(); },
 
   /* ---------- sheet ---------- */
   openSheet(kind){
