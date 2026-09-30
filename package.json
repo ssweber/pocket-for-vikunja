@@ -7,7 +7,9 @@
   "type": "module",
   "scripts": {
     "serve": "python -m http.server 8000 -b 127.0.0.1 -d app",
-    "test": "node tests/smoke.mjs"
+    "test": "node tests/parse.mjs && node tests/smoke.mjs",
+    "test:parse": "node tests/parse.mjs",
+    "test:smoke": "node tests/smoke.mjs"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

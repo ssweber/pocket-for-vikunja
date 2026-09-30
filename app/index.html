@@ -659,97 +659,173 @@ function currentRoute(){
 }
 
 /* =============== quick-add magic =============== */
+/* Follows Vikunja's Quick Add Magic (default mode, https://vikunja.io/help/quick-add-magic/) so the same text makes
+   the same task in both apps. tests/parse.mjs holds the phrases, adapted from Vikunja's own tests; where Pocket
+   deliberately differs, the test says so. */
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-function tokenRe(prefix){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, 'g'); }
-// Numeric dates follow the phone's region: 10/12 is October 12 in the US and 10 December in most other places.
-const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(new Date(2000, 11, 31)).find(p => p.type !== 'literal')?.type === 'day'; } catch { return false; } })();
 const WEEKDAY_RE = `${WEEKDAYS.join('|')}|${WEEKDAYS.map(w => w.slice(0,3)).join('|')}`;
 const weekdayIndex = w => WEEKDAYS.findIndex(d => d.startsWith(w.toLowerCase().slice(0,3)));
-const atNoon = d => { d.setHours(12, 0, 0, 0); return d; };
+const NUMBER_WORDS = {one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10};
 const LEAD_IN = /\b(in|by|on|before|until)\s+$/i;          // a word just before a date that goes with it
-// The next given weekday at noon; today counts if it's that day and noon hasn't passed.
-function nextWeekday(wd){
-  const d = atNoon(new Date());
-  d.setDate(d.getDate() + (wd - d.getDay() + 7) % 7);
-  return d < new Date() ? addDays(d, 7) : d;
+const DROP_LEAD = /(?:\b(?:in|by|on|before|until)\s+)?(?:\bthe\s+)?$/i;   // ...removed along with the date, with a "the"
+const END = '(?=\\s|$|[,.!?;:])';                          // a phrase has to end at a word boundary
+// Ambiguous numeric dates follow the phone's region: 10/12 is October 12 in the US and 10 December in most other places.
+const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(new Date(2000, 11, 31)).find(p => p.type !== 'literal')?.type === 'day'; } catch { return false; } })();
+function tokenRe(prefix, flags = 'g'){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags); }
+// Set a date's time from "HH:MM" (Vikunja's "default due time" setting; noon unless the user changed it).
+function atTime(d, hhmm = '12:00'){ const [h, m] = String(hhmm).split(':').map(Number); d.setHours(h || 0, m || 0, 0, 0); return d; }
+const dayFrom = (now, n) => { const d = new Date(now); d.setDate(d.getDate() + n); d.setHours(0, 0, 0, 0); return d; };
+const laterThisWeek = now => [5, 6, 0].includes(now.getDay()) ? 0 : 2;      // Friday to Sunday: today; otherwise in two days
+
+// Day words, with Vikunja's meanings. Longer phrases first ("later next week" before "next week").
+const DAY_WORDS = [
+  ['later\\s+next\\s+week', now => dayFrom(now, laterThisWeek(now) + 7)],
+  ['later\\s+this\\s+week', now => dayFrom(now, laterThisWeek(now))],
+  ['next\\s+week', now => dayFrom(now, 7)],
+  ['this\\s+weekend', now => dayFrom(now, (6 - now.getDay()) % 6)],
+  ['next\\s+month', now => new Date(now.getFullYear(), now.getMonth() + 1, 1)],
+  ['(?:the\\s+)?end\\s+of\\s+(?:the\\s+)?month', now => new Date(now.getFullYear(), now.getMonth() + 1, 0)],
+  ['tonight', now => dayFrom(now, 0), '21:00'],
+  ['today', now => dayFrom(now, 0)],
+  ['tomorrow', now => dayFrom(now, 1)],
+].map(([src, day, time]) => ({re: new RegExp(`(^|\\s)(?:${src})${END}`, 'i'), day, time}));
+
+// A time after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and bare "17th" only count
+// at the start or end, so "The 9/11 Report" and "13th floor" stay as they are.
+const TIME_TAIL = '(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?\\s*$';
+
+// "2021-07-06", "6/7/21", "27/1", "01.02": a date, or null. No year means the next time that date comes round.
+function numericDate(token, now){
+  let y, m, d, a, b, x;
+  if ((x = token.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/))) [y, m, d] = [+x[1], +x[2], +x[3]];
+  else if ((x = token.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/))) {
+    [a, b, y] = [+x[1], +x[2], x[3] && +x[3]];
+    [m, d] = a > 12 ? [b, a] : b > 12 ? [a, b] : DAY_FIRST ? [b, a] : [a, b];
+  } else if ((x = token.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2}|\d{4}))?$/))) [d, m, y] = [+x[1], +x[2], x[3] && +x[3]];
+  else return null;
+  if (y && y < 100) y += 2000;
+  const make = yr => { const t = new Date(yr, m - 1, d); return t.getMonth() === m - 1 && t.getDate() === d ? t : null; };
+  if (y) return make(y);
+  const t = make(now.getFullYear());
+  return t && t < dayFrom(now, 0) ? make(now.getFullYear() + 1) : t;
+}
+// "17th": this month if it hasn't passed, else the next month that has that day.
+function ordinalDate(day, now){
+  for (let i = 0; i < 13; i++) {
+    const t = new Date(now.getFullYear(), now.getMonth() + i, day);
+    if (t.getDate() === day && t >= dayFrom(now, 0)) return t;
+  }
+  return null;
 }
 
-/* Quick add. Prefixes and phrases follow Vikunja's Quick Add Magic (default mode):
-   +project *label @user !1-5, a due date, and "every ..." to repeat. `ignore` skips kinds the user tapped off,
-   leaving those words in the title. */
-function parseCapture(text, projects, ignore = {}){
+/* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat}.
+   opts: ignore (kinds the user tapped off; their words stay in the title), now, dueTime ("HH:MM"). */
+function parseCapture(text, projects, {ignore = {}, now = new Date(), dueTime = '12:00'} = {}){
   const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: '', dueFromRepeat: false, repeat: null};
-  const cut = (m) => { out.title = out.title.slice(0, m.index) + (m[1] || '') + out.title.slice(m.index + m[0].length); };
-  // project +name
-  if (!ignore.project) out.title = out.title.replace(tokenRe('+'), (m, sp, a, b, c) => {
+  // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
+  const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
+  if (quoted) { out.title = quoted[2].trim(); return out; }
+  const cut = (start, end) => { out.title = out.title.slice(0, start) + ' ' + out.title.slice(end); };
+  out.title = out.title.replace(/(^|\s)@\s+(?=\d)/g, '$1at ');                  // "@ 3pm" is a time, as in Vikunja
+
+  // project +name: only the first one counts
+  if (!ignore.project) out.title = out.title.replace(tokenRe('+', ''), (m, sp, a, b, c) => {
     const name = (a || b || c).replace(/[_-]/g, ' ').toLowerCase();
     const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
     if (hit) out.project = hit; else out.projectMiss = a || b || c;
     return sp;
   });
   // labels *name
-  if (!ignore.labels) out.title = out.title.replace(tokenRe('*'), (m, sp, a, b, c) => { out.labels.push(a || b || c); return sp; });
-  // assignees @username (needs a space before it, so email addresses in a title are left alone)
-  if (!ignore.assignees) out.title = out.title.replace(tokenRe('@'), (m, sp, a, b, c) => { out.assignees.push(a || b || c); return sp; });
-  // priority !1..!5
+  if (!ignore.labels) out.title = out.title.replace(tokenRe('*'), (m, sp, a, b, c) => { const l = a || b || c; if (!out.labels.includes(l)) out.labels.push(l); return sp; });
+  // assignees @username stay in the title, as in Vikunja. A space is needed before the @, so email addresses are left alone.
+  if (!ignore.assignees) for (const x of out.title.matchAll(tokenRe('@'))) { const u = x[2] || x[3] || x[4]; if (!out.assignees.includes(u)) out.assignees.push(u); }
+  // priority !1..!5: the first valid one
   if (!ignore.priority) out.title = out.title.replace(/(^|\s)!([1-5])(?=\s|$)/, (m, sp, n) => { out.priority = +n; return sp; });
 
-  // repeat: "every day", "every 3 days", "every 2 weeks", "every month", "every monday"
+  // repeat: "every day", "every 3 days", "each two weeks", "every monday", "daily", "biannually", ...
   let repeatDay = null;
   if (!ignore.repeat) {
-    let m = out.title.match(/(^|\s)every\s+(?:(\d{1,3})\s+)?(day|week|month)s?\b/i);
-    if (m) {
-      const n = +(m[2] || 1), unit = m[3].toLowerCase();
-      out.repeat = unit === 'month' && n === 1 ? {after: 0, mode: 1, label: 'Every month'}      // Vikunja's monthly mode keeps the day of month
-        : {after: n * {day: 86400, week: 604800, month: 30 * 86400}[unit], mode: 0, label: n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`};
-      cut(m);
-    } else if ((m = out.title.match(new RegExp(`(^|\\s)every\\s+(${WEEKDAY_RE})\\b`, 'i')))) {
-      repeatDay = weekdayIndex(m[2]);
+    let m = out.title.match(new RegExp(`(^|\\s)(?:every|each)\\s+(?:(\\d+|${Object.keys(NUMBER_WORDS).join('|')})\\s+)?(hour|day|week|month|year)s?${END}`, 'i'));
+    let n, unit;
+    if (m) { n = NUMBER_WORDS[(m[2] || '').toLowerCase()] || +(m[2] || 1); unit = m[3].toLowerCase(); }
+    else if ((m = out.title.match(new RegExp(`(^|\\s)(hourly|daily|weekly|monthly|yearly|annually|biannually|semiannually|biennially)${END}`, 'i')))) {
+      [n, unit] = {hourly: [1, 'hour'], daily: [1, 'day'], weekly: [1, 'week'], monthly: [1, 'month'], yearly: [1, 'year'], annually: [1, 'year'],
+        biannually: [6, 'month'], semiannually: [6, 'month'], biennially: [2, 'year']}[m[2].toLowerCase()];
+    }
+    if (unit) {
+      // "every month" repeats on the same day each month (Vikunja's monthly mode); Vikunja's own quick add uses 30 days.
+      out.repeat = unit === 'month' && n === 1 ? {after: 0, mode: 1, label: 'Every month'}
+        : {after: n * {hour: 3600, day: 86400, week: 604800, month: 30 * 86400, year: 365 * 86400}[unit], mode: 0, label: n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`};
+      cut(m.index + m[1].length, m.index + m[0].length);
+    } else if ((m = out.title.match(new RegExp(`(^|\\s)(?:every|each)\\s+(${WEEKDAY_RE})${END}`, 'i')))) {
+      repeatDay = weekdayIndex(m[2]);                                           // Pocket extra: "every monday"
       out.repeat = {after: 604800, mode: 0, label: 'Every ' + WEEKDAYS[repeatDay][0].toUpperCase() + WEEKDAYS[repeatDay].slice(1)};
-      cut(m);
+      cut(m.index + m[1].length, m.index + m[0].length);
     }
   }
 
   // due date. The date leaves the title along with a word that introduces it: "Call Bob in May" -> "Call Bob".
   if (!ignore.due) {
-    let m, dayCertain = true;
-    const dropDate = (start, end) => { out.title = out.title.slice(0, start).replace(LEAD_IN, '') + out.title.slice(end); };
-    if ((m = out.title.match(/(^|\s)(?:the\s+)?end\s+of\s+(?:the\s+)?month\b/i))) {
-      const d = new Date(); d.setMonth(d.getMonth() + 1, 0);           // day 0 of next month = last day of this one
-      out.due = atNoon(d); dropDate(m.index + m[1].length, m.index + m[0].length);
-    } else if ((m = out.title.match(/(^|\s)(?:the|on)\s+(\d{1,2})(?:st|nd|rd|th)\b/i)) && +m[2] >= 1 && +m[2] <= 31) {
-      const d = atNoon(new Date()); d.setDate(+m[2]);                  // "the 17th": this month, or next month if it has passed
-      if (d < startOfDay()) { d.setDate(1); d.setMonth(d.getMonth() + 1); d.setDate(+m[2]); }
-      out.due = d; dropDate(m.index + m[1].length, m.index + m[0].length);
-    } else if (typeof chrono !== 'undefined') {
-      // chrono-node understands "tomorrow at 5pm", "Oct 12", "12/10", "next monday", "this weekend", "in 3 days", ...
-      const r = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, new Date(), {forwardDate: true}).find(r =>
-        !/^for\b/i.test(r.text)                                        // "for 2 hours" is a duration, not a date
-        && !/^now$/i.test(r.text)                                      // "Now what" isn't due this minute
-        // A month with no day ("March madness") only counts after in/by/on/before/until: "call Bob in May".
-        && !(r.start.isCertain('month') && !r.start.isCertain('day') && !LEAD_IN.test(out.title.slice(0, r.index))));
-      if (r) {
-        const d = r.start.date(), st = r.start;
-        // "at 2" means 2 PM: a bare hour from 1 to 6 is taken as afternoon.
-        if (st.isCertain('hour') && !st.isCertain('meridiem') && d.getHours() >= 1 && d.getHours() <= 6) d.setHours(d.getHours() + 12);
-        // No time given: noon, as in Vikunja. Words like "tonight" or "morning" keep chrono's time.
-        if (!st.isCertain('hour') && !/night|morning|afternoon|evening|noon|midnight/i.test(r.text)) atNoon(d);
-        dayCertain = st.isCertain('day') || st.isCertain('weekday');
-        out.due = d;
-        dropDate(r.index, r.index + r.text.length);
+    const dropDate = (start, end) => { out.title = out.title.slice(0, start).replace(DROP_LEAD, '') + ' ' + out.title.slice(end); };
+    let day = null, time = null, m;                     // day: a date at midnight; time: "HH:MM" or a full date from chrono
+    for (const w of DAY_WORDS) if ((m = out.title.match(w.re))) { day = w.day(now); time = w.time || null; dropDate(m.index + m[1].length, m.index + m[0].length); break; }
+    if (!day && (m = out.title.match(new RegExp(`(^|\\s)(?:(?:next|this|on)\\s+)?(${WEEKDAY_RE})${END}`, 'i')))) {
+      day = dayFrom(now, (weekdayIndex(m[2]) - now.getDay() + 7) % 7);           // the coming one; today counts
+      dropDate(m.index + m[1].length, m.index + m[0].length);
+    }
+    if (!day) {                                                                 // numeric date, first or last word
+      for (const re of [/^(\S+)(?=\s|$)/, new RegExp(`(^|\\s)(\\S+)(?=${TIME_TAIL})`)]) {
+        if ((m = out.title.match(re))) {
+          const token = m[2] ?? m[1], start = m.index + (m[2] !== undefined ? m[1].length : 0);
+          const t = numericDate(token, now);
+          if (t) { day = t; dropDate(start, start + token.length); break; }
+        }
       }
     }
-    // "every monday at 10": a time with no day of its own goes on the repeat's weekday.
-    if (repeatDay !== null && (!out.due || !dayCertain)) {
-      const d = nextWeekday(repeatDay);
-      if (out.due) d.setHours(out.due.getHours(), out.due.getMinutes(), 0, 0);
+    // "17th" at the end, or "the 17th" anywhere; not "sep 17th", which is chrono's.
+    const afterMonth = m => /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+$/i.test(out.title.slice(0, m.index + m[1].length));
+    if (!day && ((m = out.title.match(new RegExp(`(^|\\s)(\\d{1,2})(?:st|nd|rd|th)(?=${TIME_TAIL})`, 'i'))) && !afterMonth(m)
+             || (m = out.title.match(new RegExp(`(^|\\s)(?:the|on the|on)\\s+(\\d{1,2})(?:st|nd|rd|th)${END}`, 'i'))) && !afterMonth(m))) {
+      const t = ordinalDate(+m[2], now);
+      if (t) { day = t; dropDate(m.index + m[1].length, m.index + m[0].length); }
+    }
+    if (!day && repeatDay !== null) day = dayFrom(now, (repeatDay - now.getDay() + 7) % 7);   // "every monday at 10"
+
+    if (typeof chrono !== 'undefined') {
+      // chrono-node reads the rest: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
+      const results = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, now, {forwardDate: true}).filter(r =>
+        out.title[r.index - 1] !== '@'                                          // part of an @username
+        && !/^for\b/i.test(r.text)                                              // "for 2 hours" is a duration, not a date
+        && !/^now$/i.test(r.text)                                               // "Now what" isn't due this minute
+        && !/^\d{1,4}[/.-]\d/.test(r.text)                                      // numeric dates are handled above, at the ends only
+        // A month name on its own ("March madness") only counts after in/by/on/before/until: "call Bob in May".
+        && !(/^[a-z]+\.?$/i.test(r.text) && r.start.isCertain('month') && !r.start.isCertain('day') && !LEAD_IN.test(out.title.slice(0, r.index))));
+      const timeOnly = r => r.start.isCertain('hour') && !r.start.isCertain('day') && !r.start.isCertain('weekday') && !r.start.isCertain('month');
+      const dated = !day && results.find(r => !timeOnly(r));
+      if (dated) {
+        day = dated.start.date();
+        if (dated.start.isCertain('hour')) time = day;
+        else day.setHours(0, 0, 0, 0);
+      }
+      const clock = !(time instanceof Date) && results.find(r => r !== dated && timeOnly(r));
+      if (clock) {
+        if (day) time = clock.start.date();
+        else { day = clock.start.date(); time = day; }                          // a time on its own: the next one
+      }
+      // Remove what was used, the later one first so the earlier position stays valid.
+      for (const r of [dated, clock].filter(Boolean).sort((a, b) => b.index - a.index)) dropDate(r.index, r.index + r.text.length);
+    }
+    if (day) {
+      const d = new Date(day);
+      if (time instanceof Date) d.setHours(time.getHours(), time.getMinutes(), 0, 0);
+      else atTime(d, time || dueTime);
       out.due = d;
     }
   }
-  // A repeating task needs a date to repeat from: the next noon.
+  // A repeating task needs a date to repeat from: the next default due time.
   if (out.repeat && !out.due && !ignore.due) {
-    const d = atNoon(new Date());
-    out.due = d < new Date() ? addDays(d, 1) : d; out.dueFromRepeat = true;
+    const d = atTime(dayFrom(now, 0), dueTime);
+    out.due = d < now ? atTime(dayFrom(now, 1), dueTime) : d; out.dueFromRepeat = true;
   }
   if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
   out.title = out.title.replace(/\s{2,}/g, ' ').trim();
@@ -773,7 +849,7 @@ async function collapse(el){
 }
 
 /* =============== component =============== */
-let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, closeTimer, toastTimer, lastFocus;
+let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
 
@@ -1031,8 +1107,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   /* ---------- quick add ---------- */
   get capLines(){ return captureLines(this.capture); },
-  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects, this.capIgnore); },   // the first (or only) line
-  get parsedAll(){ return parseCapture(this.capLines[0] || '', this.projects); },                // the same, ignoring nothing
+  get dueTime(){ return this.user?.settings?.frontend_settings?.default_due_time || '12:00'; },    // Vikunja's "default due time"
+  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects, {ignore: this.capIgnore, dueTime: this.dueTime}); },   // the first (or only) line
+  get parsedAll(){ return parseCapture(this.capLines[0] || '', this.projects, {dueTime: this.dueTime}); },                        // the same, ignoring nothing
   get chips(){
     if (!this.capture.trim()) return [];
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
@@ -1095,7 +1172,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const ids = [], problems = []; let used = 0;
     try {
       for (const line of lines) {
-        const parsed = parseCapture(line, this.projects);
+        const parsed = parseCapture(line, this.projects, {dueTime: this.dueTime});
         if (parsed.title) {
           const t = await this.createTask(parsed, parent ? parent.project_id : pid);
           ids.push(t.id); problems.push(...t.problems);
@@ -1176,12 +1253,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   async openTask(id){
     this.openSheet('task');
-    const mine = this.sheet, cached = cache.get(id);
+    const mine = this.sheet, cached = cache.get(id), edits = saveCount;
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
       const t = await api('/tasks/' + id);
       if (this.sheet !== mine) return;
-      cache.set(id, t); this.showTask(t);
+      // If something was changed while this loaded, the save already brought a newer copy; don't put the old one back.
+      if (saveCount === edits) { cache.set(id, t); this.showTask(t); }
       this.loadComments(id);
     } catch (e) { if (!cached && this.sheet === mine) this.sheet.error = errText(e); }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
@@ -1210,7 +1288,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const patch = v === 'month' ? {repeat_mode: 1, repeat_after: 0}
       : {repeat_mode: 0, repeat_after: {none: 0, day: 86400, week: 604800, '2weeks': 1209600}[v]};
     // A repeating task needs a due date to move forward from.
-    if (v !== 'none' && !isSet(this.sheet.task.due_date)) { const d = atNoon(new Date()); patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString(); }
+    if (v !== 'none' && !isSet(this.sheet.task.due_date)) { const d = atTime(new Date(), this.dueTime); patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString(); }
     this.save(patch);
   },
   get subtasks(){ return this.sheet.task?.related_tasks?.subtask || []; },
@@ -1256,7 +1334,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const id = this.sheet.task?.id; if (!id) return;
     Object.assign(this.sheet.task, patch);
     this.sheet.savedMsg = 'Saving…';
-    pendingSaves++;
+    pendingSaves++; saveCount++;
     saveChain = saveChain.then(async () => {
       try {
         const saved = await api('/tasks/' + id, {method:'POST', body: {...(cache.get(id) || this.sheet.task), ...patch}});

@@ -41,15 +41,24 @@ Pocket understands the prefixes and phrases from Vikunja's [Quick Add Magic](htt
 |---|---|
 | `+work` or `+"Side project"` | Project (its full name or the start of it) |
 | `*calls` or `*"follow up"` | Label (created if it doesn't exist) |
-| `@sarah` | Assignee (their username) |
+| `@sarah` | Assignee (their username; it stays in the title, as in Vikunja) |
 | `!1` to `!5` | Priority |
-| `today`, `tonight`, `tomorrow`, `this weekend`, `next week`, `next month` | Due date |
-| `friday` or `fri`, `next monday`, `in 3 days`, `in 2 weeks` | Due date |
-| `Oct 12`, `12 Oct`, `10/12`, `2026-10-12`, `the 17th`, `end of month` | Due date. `10/12` follows your phone's region. |
-| `at 5pm`, `at 17:30`, `at 2` | Due time. A bare 1 to 6 means afternoon. Without a time, the task is due at noon. |
-| `every day`, `every 3 days`, `every week`, `every 2 weeks`, `every month`, `every monday` | Repeats. Without a date, it starts at the next noon. |
+| `today`, `tonight`, `tomorrow`, `this weekend`, `later this week`, `next week`, `next month`, `end of month` | Due date |
+| `friday` or `fri`, `next monday`, `in 3 days`, `in 2 hours` | Due date |
+| `Oct 12`, `21st June`, `2026-10-12`, `10/12`, `01.02`, `17th` | Due date. Numbers-only dates and a bare `17th` count only at the start or end, so "The 9/11 Report" stays as it is. |
+| `at 5pm`, `at 17:30`, `@ 3pm` | Due time. Without one, the task is due at your default due time from Vikunja's settings (noon unless you changed it). |
+| `every day`, `every 3 days`, `every two weeks`, `every month`, `every year`, `daily`, `weekly`, `biannually` | Repeats. Without a date, it starts at the next due time. |
+
+Wrap the whole text in quotes to turn all of this off: `"Read 1984 by Friday"`.
 
 With more than one line in the box, each line is its own task with its own shortcuts. **↳ Under first line** turns the rest into subtasks of the first.
+
+The phrases and their meanings are taken from Vikunja's own tests, so the same text gives the same task in both apps. Pocket differs on purpose in a few places:
+
+- `every month` repeats on the same day each month. Vikunja's quick add uses every 30 days.
+- Dates always mean the next one: in June, `2nd March` is next March. Vikunja sometimes picks the date that has passed.
+- `10/12` follows your phone's region (12 October in most places); Vikunja always reads it US-style.
+- Pocket also understands `every monday`, `the 17th` anywhere in the text, and drops a word like "by" or "in" along with its date.
 
 Not supported: subtasks marked by indenting, and the Todoist-style shortcuts Vikunja offers as a setting.
 
@@ -116,12 +125,18 @@ npm run serve    # http://127.0.0.1:8000
 
 ### Tests
 
+`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds:
+
+```sh
+npm run test:parse
+```
+
 `tests/smoke.mjs` drives the app in a headless browser against a real Vikunja. It signs in with a token, quick-adds a task, ticks it off and undoes that, then opens it, comments, edits, completes and deletes it. It pastes a list with a parent, works with the subtasks, and undoes a pasted list. It also checks the security measures: attachment handling, note cleaning and color values.
 
 ```sh
 npm install
 npx playwright install chromium    # or set BROWSER_CHANNEL=msedge or chrome
-VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
+VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test   # both test files
 
 # also test @assignees: needs a token with Other → Users, and a project shared with that user
 ASSIGNEE=sarah ASSIGNEE_PROJECT="Team" VIKUNJA_URL=... VIKUNJA_TOKEN=... npm test
