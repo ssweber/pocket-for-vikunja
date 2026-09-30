@@ -2,6 +2,7 @@
   "name": "pocket-for-vikunja",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "A single-file mobile web app for Vikunja. Drop it on any static host.",
   "type": "module",
   "scripts": {

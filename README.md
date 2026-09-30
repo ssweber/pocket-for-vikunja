@@ -72,3 +72,7 @@ VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
 ```
 
 Use a test account or a token you don't mind writing to. Never commit tokens.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Alpine.js is also MIT licensed.
