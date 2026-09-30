@@ -2,76 +2,118 @@
 
 A single-file mobile web app for [Vikunja](https://vikunja.io). Drop it on any static host.
 
-There's no backend, database or build step. Upload the files anywhere, allow that address in Vikunja's CORS settings, and add it to your home screen. It covers today's tasks and fast capture, and installs as an app on iOS and Android.
+Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket is a small companion for what you usually need on the go: seeing what's due and adding a task quickly. Everything else stays in Vikunja.
 
-## What it does
+<table>
+  <tr>
+    <th>Vikunja's web app</th>
+    <th>Pocket</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/vikunja-home.png" width="260" alt="Vikunja's home screen on a phone"></td>
+    <td><img src="docs/screenshots/pocket-today.png" width="260" alt="Pocket's Today screen, grouped into Overdue, Today and Next 7 days"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/vikunja-task.png" width="260" alt="A task in Vikunja's web app on a phone"></td>
+    <td><img src="docs/screenshots/pocket-task.png" width="260" alt="The same task in Pocket's task sheet"></td>
+  </tr>
+</table>
 
-- **Today**: overdue, due today and the next 7 days, grouped and sorted.
-- **Projects**: the project tree with favorites; open or done tasks per project.
-- **Quick add** from the bar at the bottom, with inline syntax:
+<sub>Same account, same tasks, same phone-sized screen.</sub>
 
-  | Type | Meaning |
-  |---|---|
-  | `+project` or `+"Two words"` | project (exact or prefix match) |
-  | `*label` | label (created if missing) |
-  | `!1` … `!5` | priority |
-  | `today` `tonight` `tomorrow` `next week` `friday` `in 3 days` `in 2 weeks` | due date |
-  | `at 5pm` / `at 17:30` | due time (after a date) |
+## What you get
 
-  Example: `Call Ana tomorrow at 10am +Sales !3 *phone`
+- **Today:** tasks grouped into Overdue, Today and Next 7 days. Tick one off and it slides away, with an Undo.
+- **Quick add:** type a task in one line with a date, project, priority and labels. Chips under the box show what will be saved before you send it.
+- **Task details:** due date, project, priority, labels, notes, attachments and comments. Changes save as you make them.
+- **Projects:** your project tree with favorites, and open or done tasks for each project.
+- **An app on your home screen:** installs on iOS and Android and follows the phone's light or dark mode.
+- **A shortcut link:** opening `…/#/add?text=Buy+milk` starts a task with the text filled in, handy from an iOS Shortcut or a bookmark.
 
-- **Task sheet**: title, due date, project, priority, labels, notes, attachments and comments. Also mark done (repeating tasks roll forward) and delete.
-- **Deep link**: `…/#/add?text=Buy+milk+friday` opens with the capture box filled in. Useful from an iOS Shortcut or a bookmark.
+### Quick add
 
-## Signing in
+<img src="docs/screenshots/pocket-capture.png" width="260" alt="Typing 'Call Ana Friday at 10 +work !3' shows chips for Work, Friday 10:00 AM and Priority 3" align="right">
 
-Enter the Vikunja address, then either:
+Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/) (in its default mode) and a subset of its date formats:
 
-- **Password**: for servers with local or LDAP accounts. The session refreshes itself.
-- **API token**: for everything else, including OIDC-only servers. Create the token in Vikunja under *Settings → API Tokens* : pick the **Task Management** preset and also tick **Other → User**. Without *User*, sign-in fails.
+| Type | Sets |
+|---|---|
+| `+work` or `+"Side project"` | Project (its full name or the start of it) |
+| `*calls` or `*"follow up"` | Label (created if it doesn't exist) |
+| `!1` to `!5` | Priority |
+| `today`, `tonight`, `tomorrow`, `next week` | Due date |
+| `friday` or `fri`, `in 3 days`, `in 2 weeks` | Due date |
+| `at 5pm`, `at 17:30` | Due time, after a date. Without one, the task is due at noon. |
 
-You can pre-fill the address with `?server=https://tasks.example.com`. The server and token are stored in the browser's `localStorage` on that device only.
+Not supported yet: `@user` assignees, repeating tasks (`every week`), written-out dates like `Oct 12`, several tasks or subtasks at once, and the Todoist-style shortcuts Vikunja offers as a setting.
 
-## Hosting
+<br clear="right">
 
-Run `python build.py` to collect the files the app needs into `dist/`, then upload the contents of `dist/` to the top-level folder of any static host served over HTTPS. The one requirement is **CORS**: the browser calls the Vikunja API directly, so Vikunja must allow the origin Pocket is served from.
+## Setup
 
-- **Separate origin** (for example a Cloudron *Surfer* app at `pocket.example.com`): add that origin to Vikunja's config and restart Vikunja:
+Pocket runs entirely in the browser and talks straight to your Vikunja. Setup is: host the files, allow Pocket's address in Vikunja, and sign in. Tested with Vikunja 2.6.0.
 
-  ```yaml
-  cors:
-    enable: true
-    origins:
-      - https://pocket.example.com
-  ```
+1. **Host the files.** Upload the contents of `app/` to any static web host that serves HTTPS, for example a Cloudron Surfer app at `pocket.example.com`. Give Pocket its own subdomain rather than a folder on a site that hosts other things, because the browser stores your sign-in per site.
 
-  A different subdomain of the same domain is still a different origin, so it has to be listed.
+2. **Allow Pocket's address in Vikunja.** Pocket's requests come from a different address than Vikunja's, so Vikunja has to allow it. Add it to `cors.origins` in Vikunja's `config.yml`, then restart Vikunja:
 
-- **Same origin as Vikunja**: no CORS change is needed. The files must be served from under Vikunja's own host, though, so this depends on how Vikunja is deployed.
+   ```yaml
+   cors:
+     enable: true
+     origins:
+       - "https://pocket.example.com"
+       - "http://127.0.0.1:*"
+       - "http://localhost:*"
+   ```
 
-If the app says it "can't reach" the server but Vikunja opens fine in the browser, CORS is almost always the cause.
+   Setting `origins` replaces Vikunja's defaults, which are the last two lines, so keep them if you want to run Pocket locally. The address must match exactly: include `https://` and leave off any trailing `/`. If Vikunja is configured with environment variables, set `VIKUNJA_CORS_ORIGINS` instead.
+
+3. **Sign in on your phone.** Open Pocket, enter your Vikunja address, then use either:
+   - **Password**, if your server has local or LDAP accounts.
+   - **API token**, which works with every server, including ones that use single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** under *Other*.
+
+4. **Add it to your home screen** from the browser's Share or menu button.
+
+To save your team a step, share a link with the address filled in: `https://pocket.example.com/?server=https://tasks.example.com`.
+
+### Troubleshooting
+
+- **"Can't reach …", but Vikunja opens fine in the browser:** Vikunja isn't allowing Pocket's address. Check the `cors.origins` entry for typos, and check that Vikunja was restarted.
+- **"That token didn't work":** the token has expired, or **User** under *Other* isn't ticked.
+
+## Privacy and security
+
+- Pocket has no server of its own. It only talks to the Vikunja address you enter.
+- Your sign-in is stored in the browser on that device. Signing out removes it. To revoke an API token entirely, delete it in Vikunja.
+- Notes and comments are cleaned before they're shown. Attachments other than images, PDFs and plain text are downloaded instead of opened. Together, these stop content from people you share projects with from running code inside Pocket.
 
 ## Development
 
-All the app's code is in `index.html`: plain CSS, and JavaScript with [Alpine.js](https://alpinejs.dev) keeping the screen in sync with the data. Alpine is saved in the repo (`alpine-<version>.min.js`, MIT licensed) rather than loaded from a CDN, so the app depends only on wherever you host it. To upgrade, download the new `cdn.min.js` from npm, rename it and update the `<script>` tag. `build.py` picks up whatever `index.html` references.
-
-```sh
-python -m http.server 8000      # then open http://localhost:8000
+```
+app/     the app: upload this folder's contents
+tests/   end-to-end test
+docs/    screenshots
 ```
 
-`http://localhost:8000` must be in Vikunja's `cors.origins` for local testing.
+All of the app's code is in `app/index.html`: plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. There's no build step. Alpine is kept in the repo as `app/alpine-<version>.min.js` rather than loaded from a CDN, so the app depends only on your own hosting. To upgrade it, download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag.
 
-### Smoke test
+To run it locally:
 
-`tests/smoke.mjs` drives the real app in a headless browser against a real server. It signs in with a token, then quick-adds a task with a date, priority and label, comments on it, edits it, completes it and deletes it. It also checks the Projects view and the `#/add` deep link. It deletes the task afterwards. It tags the task with a `pocket-smoke` label, which it creates on the first run and reuses after that. Tokens made from the Task Management preset can't delete labels.
+```sh
+npm run serve    # http://127.0.0.1:8000
+```
+
+### Tests
+
+`tests/smoke.mjs` drives the app in a headless browser against a real Vikunja. It signs in with a token, quick-adds a task, ticks it off and undoes that, then opens it, comments, edits, completes and deletes it. It also checks the security measures: attachment handling, note cleaning and color values.
 
 ```sh
 npm install
-npx playwright install chromium   # or set BROWSER_CHANNEL=msedge / chrome
+npx playwright install chromium    # or set BROWSER_CHANNEL=msedge or chrome
 VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
 ```
 
-Use a test account or a token you don't mind writing to. Never commit tokens.
+Use a test account. The test deletes its task, but leaves behind a `pocket-smoke` label that it reuses on later runs, since Task Management tokens can't delete labels.
 
 ## License
 
