@@ -173,6 +173,9 @@ try {
       check('Now what', r => r.due && '"now" read as a date');
       check('Plan March madness pool', r => r.due && 'bare month read as a date');
       check('Call Bob in May', r => r.due?.getMonth() !== 4 ? 'due ' + r.due : r.title !== 'Call Bob' && 'title ' + r.title);
+      check('Pay rent before the 17th', r => r.due?.getDate() !== 17 ? 'due ' + r.due : r.title !== 'Pay rent' && 'title ' + r.title);
+      check('Submit report by end of month', r => !r.due ? 'no due date' : r.title !== 'Submit report' && 'title ' + r.title);
+      check('Finish slides by Friday', r => r.due?.getDay() !== 5 ? 'due ' + r.due : r.title !== 'Finish slides' && 'title ' + r.title);
       check('email bob@example.com tomorrow', r => r.assignees.length ? 'assignee ' + r.assignees : r.title !== 'email bob@example.com' && 'title ' + r.title);
       check('Standup every day at 9am', r => r.repeat?.after !== 86400 ? 'repeat ' + JSON.stringify(r.repeat) : r.due?.getHours() !== 9 && 'due ' + r.due);
       check('Water plants every 3 days', r => r.repeat?.after !== 3 * 86400 ? 'repeat ' + JSON.stringify(r.repeat) : !r.due && 'no due date');

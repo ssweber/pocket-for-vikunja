@@ -666,6 +666,7 @@ const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(
 const WEEKDAY_RE = `${WEEKDAYS.join('|')}|${WEEKDAYS.map(w => w.slice(0,3)).join('|')}`;
 const weekdayIndex = w => WEEKDAYS.findIndex(d => d.startsWith(w.toLowerCase().slice(0,3)));
 const atNoon = d => { d.setHours(12, 0, 0, 0); return d; };
+const LEAD_IN = /\b(in|by|on|before|until)\s+$/i;          // a word just before a date that goes with it
 // The next given weekday at noon; today counts if it's that day and noon hasn't passed.
 function nextWeekday(wd){
   const d = atNoon(new Date());
@@ -709,23 +710,24 @@ function parseCapture(text, projects, ignore = {}){
     }
   }
 
-  // due date
+  // due date. The date leaves the title along with a word that introduces it: "Call Bob in May" -> "Call Bob".
   if (!ignore.due) {
     let m, dayCertain = true;
-    if ((m = out.title.match(/(^|\s)(?:by\s+)?(?:the\s+)?end\s+of\s+(?:the\s+)?month\b/i))) {
+    const dropDate = (start, end) => { out.title = out.title.slice(0, start).replace(LEAD_IN, '') + out.title.slice(end); };
+    if ((m = out.title.match(/(^|\s)(?:the\s+)?end\s+of\s+(?:the\s+)?month\b/i))) {
       const d = new Date(); d.setMonth(d.getMonth() + 1, 0);           // day 0 of next month = last day of this one
-      out.due = atNoon(d); cut(m);
-    } else if ((m = out.title.match(/(^|\s)(?:on\s+the|the|on)\s+(\d{1,2})(?:st|nd|rd|th)\b/i)) && +m[2] >= 1 && +m[2] <= 31) {
+      out.due = atNoon(d); dropDate(m.index + m[1].length, m.index + m[0].length);
+    } else if ((m = out.title.match(/(^|\s)(?:the|on)\s+(\d{1,2})(?:st|nd|rd|th)\b/i)) && +m[2] >= 1 && +m[2] <= 31) {
       const d = atNoon(new Date()); d.setDate(+m[2]);                  // "the 17th": this month, or next month if it has passed
       if (d < startOfDay()) { d.setDate(1); d.setMonth(d.getMonth() + 1); d.setDate(+m[2]); }
-      out.due = d; cut(m);
+      out.due = d; dropDate(m.index + m[1].length, m.index + m[0].length);
     } else if (typeof chrono !== 'undefined') {
       // chrono-node understands "tomorrow at 5pm", "Oct 12", "12/10", "next monday", "this weekend", "in 3 days", ...
       const r = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, new Date(), {forwardDate: true}).find(r =>
         !/^for\b/i.test(r.text)                                        // "for 2 hours" is a duration, not a date
         && !/^now$/i.test(r.text)                                      // "Now what" isn't due this minute
         // A month with no day ("March madness") only counts after in/by/on/before/until: "call Bob in May".
-        && !(r.start.isCertain('month') && !r.start.isCertain('day') && !/\b(in|by|on|before|until)\s+$/i.test(out.title.slice(0, r.index))));
+        && !(r.start.isCertain('month') && !r.start.isCertain('day') && !LEAD_IN.test(out.title.slice(0, r.index))));
       if (r) {
         const d = r.start.date(), st = r.start;
         // "at 2" means 2 PM: a bare hour from 1 to 6 is taken as afternoon.
@@ -734,8 +736,7 @@ function parseCapture(text, projects, ignore = {}){
         if (!st.isCertain('hour') && !/night|morning|afternoon|evening|noon|midnight/i.test(r.text)) atNoon(d);
         dayCertain = st.isCertain('day') || st.isCertain('weekday');
         out.due = d;
-        // Drop the date, and a leftover "in/by/on/before/until" in front of it ("Call Bob in May" -> "Call Bob").
-        out.title = out.title.slice(0, r.index).replace(/\b(in|by|on|before|until)\s+$/i, '') + out.title.slice(r.index + r.text.length);
+        dropDate(r.index, r.index + r.text.length);
       }
     }
     // "every monday at 10": a time with no day of its own goes on the repeat's weekday.
