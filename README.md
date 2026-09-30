@@ -1,6 +1,6 @@
 # Pocket for Vikunja
 
-A single-file mobile web app for [Vikunja](https://vikunja.io). Drop it on any static host.
+A single-file mobile web app for [Vikunja](https://vikunja.io), served by Vikunja itself.
 
 Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket is a small companion for what you usually need on the go: seeing what's due and adding a task quickly. Everything else stays in Vikunja.
 
@@ -60,89 +60,93 @@ The phrases and their meanings are taken from Vikunja's own tests, so the same t
 - `10/12` follows your phone's region (12 October in most places); Vikunja always reads it US-style.
 - Pocket also understands `every monday`, `the 17th` anywhere in the text, and drops a word like "by" or "in" along with its date.
 
-Not supported: subtasks marked by indenting, and the Todoist-style shortcuts Vikunja offers as a setting.
+Pocket follows your Quick Add Magic setting in Vikunja: the default prefixes above, Todoist-style ones (`#project`, `@label`, `+person`), or none at all. Subtasks marked by indenting aren't supported.
 
 ## Setup
 
-Pocket runs entirely in the browser and talks straight to your Vikunja. Setup is: host the files, allow Pocket's address in Vikunja, and sign in. Tested with Vikunja 2.6.0.
+Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your Vikunja>/api/v1/plugins/pocket/`, so there's nothing else to host and nothing to set up besides turning plugins on. It needs Vikunja 2.3 or later, and is tested with 2.6.0.
 
-1. **Host the files.** Upload the contents of `app/` to any static web host that serves HTTPS, for example a Cloudron Surfer app at `pocket.example.com`. Give Pocket its own subdomain rather than a folder on a site that hosts other things, because the browser stores your sign-in per site.
+1. **Copy the `pocket` folder** from this repo into Vikunja's `plugins` folder, so that you have `plugins/pocket/main.go` and `plugins/pocket/app/index.html`.
+   - On Cloudron, open the Vikunja app's **File Manager** and put it at `/app/data/plugins/pocket/`. Create the `plugins` folder if it isn't there.
+   - Elsewhere, `plugins` goes in Vikunja's root path: `service.rootpath` in its config, or the folder Vikunja runs in.
 
-2. **Allow Pocket's address in Vikunja.** Pocket's requests come from a different address than Vikunja's, so Vikunja has to allow it. Add it to `cors.origins` in Vikunja's `config.yml`, then restart Vikunja:
+2. **Turn plugins on** in Vikunja's `config.yml` (`/app/data/config.yml` on Cloudron), then restart Vikunja:
 
    ```yaml
-   cors:
-     enable: true
-     origins:
-       - "https://pocket.example.com"
-       - "http://127.0.0.1:*"
-       - "http://localhost:*"
+   plugins:
+     enabled: true
+     loader: yaegi
    ```
 
-   Setting `origins` replaces Vikunja's defaults, which are the last two lines, so keep them if you want to run Pocket locally. The address must match exactly: include `https://` and leave off any trailing `/`. If Vikunja is configured with environment variables, set `VIKUNJA_CORS_ORIGINS` instead.
+   Vikunja's log should now include `pocket: serving … at /api/v1/plugins/pocket/`.
 
-3. **Sign in on your phone.** Open Pocket, enter your Vikunja address, then use either:
+3. **Open Pocket on your phone** at `https://<your Vikunja>/api/v1/plugins/pocket/` and sign in with either:
    - **Password**, if your server has local or LDAP accounts.
    - **API token**, which works with every server, including ones that use single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people by username for `@sarah`.
 
 4. **Add it to your home screen** from the browser's Share or menu button.
 
-To save your team a step, share a link with the address filled in: `https://pocket.example.com/?server=https://tasks.example.com`.
+**Updating:** replace the files in `plugins/pocket/app/` and reload Pocket. Only a changed `main.go` needs a Vikunja restart.
 
 ### Troubleshooting
 
-- **"Can't reach …", but Vikunja opens fine in the browser:** Vikunja isn't allowing Pocket's address. Check the `cors.origins` entry for typos, and check that Vikunja was restarted.
+- **Pocket's address shows "not found":** look for lines mentioning `pocket` or `plugin` in Vikunja's log.
+  - `couldn't find app/index.html`: the files aren't at `plugins/pocket/app/`.
+  - `Failed to load yaegi plugin pocket`: the plugin didn't load, for example because a Vikunja update changed how plugins work. Vikunja itself keeps running.
+  - Nothing at all: plugins aren't turned on, or Vikunja hasn't been restarted since.
 - **"That token didn't work":** the token has expired, or **User** under *Other* isn't ticked.
 - **"Your API token doesn't allow this":** the token is missing a permission, for example **Users** when you use `@name`. Vikunja can't add permissions to an existing token, so create a new one.
 - **"This user does not have access to the project":** you can only assign people the project is shared with.
 
 ## Privacy and security
 
-- Pocket has no server of its own. It only talks to the Vikunja address you enter.
+- Pocket has no server of its own. Vikunja serves its files, and it only talks to that same Vikunja.
+- The plugin only reads the files in its `app/` folder, and it runs inside Vikunja, so read `pocket/main.go` before installing it. It's about 100 lines.
 - Your sign-in is stored in the browser on that device. Signing out removes it. To revoke an API token entirely, delete it in Vikunja.
-- Notes and comments are cleaned before they're shown. Attachments other than images, PDFs and plain text are downloaded instead of opened. Together, these stop content from people you share projects with from running code inside Pocket.
+- Notes and comments are cleaned before they're shown. Attachments other than images, PDFs and plain text are downloaded instead of opened. Together, these stop content from people you share projects with from running code inside Pocket, which shares its web address with Vikunja.
 
 ## Development
 
 ```
-app/     the app: upload this folder's contents
-tests/   end-to-end test
-docs/    screenshots
+pocket/        copy this folder into Vikunja's plugins folder
+  main.go      the plugin: serves app/ at /api/v1/plugins/pocket/
+  app/         the app itself
+tests/         phrase tests and the end-to-end test
+scripts/       dev.mjs: a local Vikunja with the plugin loaded
+docs/          screenshots
 ```
 
-All of the app's code is in `app/index.html`: plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. There's no build step. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
+All of the app's code is in `pocket/app/index.html`: plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. There's no build step. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
 
-Both libraries are kept in the repo rather than loaded from a CDN, so the app depends only on your own hosting:
+Both libraries are kept in the repo rather than loaded from a CDN:
 
-- `app/alpine-<version>.min.js`: to upgrade, download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag.
-- `app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag.
+- `pocket/app/alpine-<version>.min.js`: to upgrade, download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag.
+- `pocket/app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag.
 
-To run it locally:
-
-```sh
-npm run serve    # http://127.0.0.1:8000
-```
-
-### Tests
-
-`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds:
-
-```sh
-npm run test:parse
-```
-
-`tests/smoke.mjs` drives the app in a headless browser against a real Vikunja. It signs in with a token, quick-adds a task, ticks it off and undoes that, then opens it, comments, edits, completes and deletes it. It pastes a list with a parent, works with the subtasks, and undoes a pasted list. It also checks the security measures: attachment handling, note cleaning and color values.
+To run it locally, with Docker installed:
 
 ```sh
 npm install
-npx playwright install chromium    # or set BROWSER_CHANNEL=msedge or chrome
-VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test   # both test files
-
-# also test @assignees: needs a token with Other → Users, and a project shared with that user
-ASSIGNEE=sarah ASSIGNEE_PROJECT="Team" VIKUNJA_URL=... VIKUNJA_TOKEN=... npm test
+npm run dev
 ```
 
-Use a test account. The test deletes the tasks it creates, but leaves behind a `pocket-smoke` label that it reuses on later runs, since Task Management tokens can't delete labels.
+This starts a throwaway Vikunja 2.6.0 at `http://127.0.0.1:3456` with the plugin loaded straight from `pocket/`, and prints Pocket's address. Sign in as `dev` / `dev-password`. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
+
+### Tests
+
+`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds. `tests/smoke.mjs` drives Pocket in a headless browser against a Vikunja with the plugin installed. It signs in with a token, quick-adds, ticks off and undoes, edits, comments, completes and deletes tasks, pastes a list with subtasks, assigns someone, and checks the security measures.
+
+```sh
+npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
+npm run test:parse                 # phrases only
+npm run test:local                 # starts the local Vikunja and runs both, including @assignee
+
+# against a real server with the plugin installed (use a test account)
+VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
+# add ASSIGNEE=sarah ASSIGNEE_PROJECT="Team" to test @assignee: a project shared with that user, and a token with Other → Users
+```
+
+The end-to-end test deletes the tasks it creates, but leaves behind a `pocket-smoke` label that it reuses on later runs, since Task Management tokens can't delete labels.
 
 ## License
 

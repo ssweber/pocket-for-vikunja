@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "A single-file mobile web app for Vikunja. Drop it on any static host.",
+  "description": "A single-file mobile web app for Vikunja, served by Vikunja itself.",
   "type": "module",
   "scripts": {
-    "serve": "python -m http.server 8000 -b 127.0.0.1 -d app",
+    "dev": "node scripts/dev.mjs",
     "test": "node tests/parse.mjs && node tests/smoke.mjs",
     "test:parse": "node tests/parse.mjs",
-    "test:smoke": "node tests/smoke.mjs"
+    "test:smoke": "node tests/smoke.mjs",
+    "test:local": "node scripts/dev.mjs --test"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

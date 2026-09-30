@@ -1,7 +1,7 @@
 // Serves Pocket for Vikunja from Vikunja itself, at <your Vikunja>/api/v1/plugins/pocket/.
 //
-// Install: put this file and Pocket's app/ folder in <Vikunja's rootpath>/plugins/pocket/, so there is
-// plugins/pocket/main.go and plugins/pocket/app/index.html, then turn plugins on in Vikunja's config.yml
+// Install: copy this pocket/ folder into <Vikunja's rootpath>/plugins/, so there is plugins/pocket/main.go and
+// plugins/pocket/app/index.html, then turn plugins on in Vikunja's config.yml
 //
 //	plugins:
 //	  enabled: true

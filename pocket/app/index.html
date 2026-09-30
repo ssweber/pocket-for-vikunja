@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pocket</title>
-<meta name="description" content="A single-file mobile web app for Vikunja. Drop it on any static host.">
+<meta name="description" content="A single-file mobile web app for Vikunja, served by Vikunja itself.">
 <meta name="theme-color" content="#EEF1EF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -58,8 +58,6 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-size:15px;color:var(--muted);font-weight:600}
 .seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .note{font-size:14px;color:var(--muted);margin:10px 0 0}
-.signin-to{margin:0 0 16px;color:var(--muted);overflow-wrap:anywhere}
-.signin-to b{color:var(--ink)}
 .err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);border-radius:12px;padding:12px 14px;font-size:15px;margin:0 0 16px;white-space:pre-line}
 .err code{font-size:13px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px;white-space:nowrap}
 
@@ -218,15 +216,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <p class="lead">Today's tasks and quick capture for your Vikunja.</p>
   <div id="login-err" class="err" :hidden="!login.err" x-html="login.err" hidden></div>
 
-  <form id="f-server" :hidden="login.step !== 'server'" @submit.prevent="submitServer()">
-    <label class="field"><span>Vikunja address</span>
-      <input id="in-server" x-ref="inServer" x-model="login.server" type="url" inputmode="url" autocomplete="url" placeholder="https://tasks.example.com" required autocapitalize="off" spellcheck="false"></label>
-    <button class="btn block" type="submit" :disabled="login.busy">Continue</button>
-  </form>
+  <template x-if="!info && !login.err"><p class="note">Connecting…</p></template>
+  <template x-if="!info && login.err"><button class="btn ghost block" type="button" @click="probe()">Try again</button></template>
 
-  <div id="auth-step" :hidden="login.step !== 'auth'" hidden>
-    <p class="signin-to">Signing in to <b x-text="serverHost"></b></p>
-    <p class="err" x-show="server.startsWith('http://')">This address isn't secure (http). Your password or token would be sent unencrypted.</p>
+  <div id="auth-step" :hidden="!info" hidden>
     <div class="seg" role="group" aria-label="Sign-in method" :hidden="!passwordAllowed">
       <button type="button" data-mode="session" :aria-pressed="String(login.method === 'session')" @click="login.method = 'session'">Password</button>
       <button type="button" data-mode="token" :aria-pressed="String(login.method === 'token')" @click="login.method = 'token'">API token</button>
@@ -242,7 +235,6 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
       <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other.</p>
     </form>
-    <button id="btn-change-server" class="btn ghost block" type="button" style="margin-top:12px" @click="changeServer()">Use a different address</button>
   </div>
 </section>
 
@@ -486,15 +478,6 @@ let app;                                       // the Alpine component, set in i
 class ApiError extends Error { constructor(status, msg, code){ super(msg); this.status=status; this.code=code; } }
 class NetError extends Error {}
 
-// True when Vikunja itself serves Pocket (the plugin in plugin/), so the server is this page's own address.
-const SERVED_BY_VIKUNJA = /\/api\/v1\/plugins\//.test(location.pathname);
-
-function normServer(u){
-  u = (u||'').trim();
-  if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u;
-  return u.replace(/\/+$/,'').replace(/\/api\/v1$/,'').replace(/\/+$/,'');
-}
-
 let refreshing = null;
 async function refreshSession(){
   if (!refreshing) refreshing = (async () => {
@@ -553,8 +536,7 @@ async function allPages(path){
 }
 
 function netHelp(){
-  const origin = location.origin === 'null' ? 'this page\'s address' : location.origin;
-  return `Can't reach ${esc(app.server) || 'that address'}.\n\nIf Vikunja opens fine in your browser, it isn't allowing requests from ${esc(origin)}. Add it to <code>cors.origins</code> in Vikunja's config and restart the app.`;
+  return `Can't reach Vikunja at ${esc(location.origin)}. Check your connection, then try again.`;
 }
 function errText(e){
   if (e instanceof NetError) return netHelp();
@@ -864,12 +846,12 @@ const blankSheet = kind => ({open: false, show: false, kind, loading: false, err
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
-  server: store.get('server') || '',
+  server: location.origin,                     // Pocket is served by Vikunja itself (the plugin), so this is the server
   token: store.get('token') || '',
   mode: store.get('mode') || 'token',          // 'session' (password, refreshable) | 'token' (API token)
   info: null, user: null,
   screen: '',                                  // 'login' | 'app'
-  login: {step: 'server', method: 'token', server: '', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false},
+  login: {method: 'token', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false},
   // data
   projects: [], projById: new Map(),
   labels: [], labelsLoaded: false,
@@ -894,45 +876,35 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
     });
-    const qServer = new URLSearchParams(location.search).get('server');
-    if (SERVED_BY_VIKUNJA && !this.token) this.server = location.origin;      // Vikunja is right here
-    else if (qServer && !this.token) this.server = normServer(qServer);
-    if (this.server && this.token) this.boot();
-    else {
-      this.showLogin('');
-      if (SERVED_BY_VIKUNJA) this.submitServer();                              // skip the address step
-    }
+    if (this.token) this.boot();
+    else { this.showLogin(''); this.probe(); }
   },
 
   /* ---------- auth ---------- */
-  get serverHost(){ try { return new URL(this.server).host; } catch { return this.server; } },
   get passwordAllowed(){ const a = this.info?.auth || {}; return !!(a.local?.enabled || a.ldap?.enabled); },
   showLogin(err){
     this.screen = 'login';
-    this.login.server = this.server;
     this.login.err = err || '';
   },
   signOut(msg){
     if (this.mode === 'session' && this.server) fetch(this.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: this.token ? {Authorization:'Bearer '+this.token} : {}}).catch(()=>{});
     this.token = ''; this.user = null; store.del('token'); this.closeSheet(true);
-    this.login.step = this.info ? 'auth' : 'server';
     this.showLogin(msg ? esc(msg) : '');
+    if (!this.info) this.probe();
   },
   async busy(fn){ this.login.busy = true; try { return await fn(); } finally { this.login.busy = false; } },
-  async submitServer(){ await this.busy(async () => {
-    this.server = normServer(this.login.server); this.login.server = this.server;
+  // Ask Vikunja which sign-in methods it offers.
+  async probe(){ await this.busy(async () => {
+    this.login.err = '';
     try {
       this.info = await api('/info', {auth:false});
-      store.set('server', this.server);
       this.login.showTotp = !!this.info.totp_enabled;
       this.login.method = this.passwordAllowed ? 'session' : 'token';
-      this.login.step = 'auth'; this.login.err = '';
-      this.$nextTick(() => (this.passwordAllowed ? this.$refs.inUser : this.$refs.inToken).focus());
+      this.$nextTick(() => (this.passwordAllowed ? this.$refs.inUser : this.$refs.inToken)?.focus());
     } catch (err) {
-      this.login.err = err instanceof NetError ? netHelp() : `That address answered, but not like Vikunja (${errText(err)}). Check the URL.`;
+      this.login.err = err instanceof NetError ? netHelp() : `Vikunja didn't answer as expected (${errText(err)}).`;
     }
   }); },
-  changeServer(){ this.info = null; this.login.step = 'server'; this.login.err = ''; this.$nextTick(() => this.$refs.inServer.focus()); },
   async submitPassword(){ await this.busy(async () => {
     this.mode = 'session';
     try {

@@ -1,43 +1,26 @@
-// End-to-end smoke test against a real Vikunja server.
+// End-to-end test of Pocket as served by the Vikunja plugin, against that Vikunja.
 //
-//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
+//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm run test:smoke
+//   npm run test:local        (starts a local Vikunja with the plugin and runs everything against it)
 //
-// Serves the app on http://127.0.0.1:8000 (that origin must be in Vikunja's
-// cors.origins), signs in with the token, then creates, edits, completes and
-// deletes throwaway tasks (including a pasted list with subtasks). It tags one with a "pocket-smoke" label,
-// which it creates on the first run and reuses after that.
-// With POCKET_URL=<vikunja>/api/v1/plugins/pocket/ it tests Pocket served by the Vikunja plugin instead.
-// Optional: ASSIGNEE=<username> to test @assignee (token needs Other -> Users), with
+// Opens <VIKUNJA_URL>/api/v1/plugins/pocket/, signs in with the token, then creates, edits, completes and deletes
+// throwaway tasks (including a pasted list with subtasks). It tags one with a "pocket-smoke" label, which it
+// creates on the first run and reuses after that.
+// Optional: POCKET_URL if Pocket lives somewhere else,
+// ASSIGNEE=<username> to test @assignee (token needs Other -> Users), with
 // ASSIGNEE_PROJECT=<name> of a project shared with that user,
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium),
 // OUT=<dir> for screenshots.
-import { createServer } from 'node:http';
-import { readFile, mkdir } from 'node:fs/promises';
-import { extname, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
 const ASSIGNEE_PROJECT = process.env.ASSIGNEE_PROJECT;   // a project shared with ASSIGNEE (default: your default project)
 const TOKEN = process.env.VIKUNJA_TOKEN;
-const PORT = +(process.env.PORT || 8000);
 const OUT = process.env.OUT || 'test-results';
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
-
-const ROOT = fileURLToPath(new URL('../app', import.meta.url));
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
-// Serves only files inside ROOT, and only to this machine.
-const http = createServer(async (req, res) => {
-  let file = '';
-  try { file = resolve(ROOT, '.' + decodeURIComponent(new URL(req.url, 'http://x').pathname)); } catch {}
-  if (file === resolve(ROOT)) file = resolve(ROOT, 'index.html');
-  if (!file.startsWith(resolve(ROOT) + sep)) { res.writeHead(404).end(); return; }
-  try { res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(await readFile(file)); }
-  catch { res.writeHead(404).end(); }
-});
-if (!process.env.POCKET_URL) http.listen(PORT, '127.0.0.1');
-const APP = process.env.POCKET_URL || `http://127.0.0.1:${PORT}/`;
+const APP = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 
 const api = (path, init = {}) => fetch(SERVER + '/api/v1' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, ...init.headers } });
 
@@ -61,15 +44,8 @@ const label = 'pocket-smoke';
 
 try {
   await page.goto(APP);
-  await step('login-server', async () => {
-    if (process.env.POCKET_URL) {                // served by Vikunja: the address step is skipped
-      await page.waitForSelector('#auth-step:not([hidden])', { timeout: 10000 });
-      if (await page.isVisible('#f-server')) throw new Error('address step shown');
-      return;
-    }
-    await page.fill('#in-server', SERVER);
-    await page.click('#f-server button[type=submit]');
-    await page.waitForSelector('#f-token:not([hidden])', { timeout: 10000 });
+  await step('sign-in-screen', async () => {
+    await page.waitForSelector('#auth-step:not([hidden])', { timeout: 10000 });   // no address to enter: it's this Vikunja
   });
   await step('login-token', async () => {
     if (await page.isVisible('.seg button[data-mode=token]')) await page.click('.seg button[data-mode=token]');
@@ -262,7 +238,6 @@ try {
   if (errors.length) { failed++; console.log('FAIL console errors:', errors); }
 } finally {
   await browser.close();
-  if (http.listening) http.close();
   // Delete anything this run left behind (every title it creates ends with the run's stamp).
   const tasks = await (await api('/tasks?s=' + stamp)).json().catch(() => []);
   for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {

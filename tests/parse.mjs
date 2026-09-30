@@ -2,7 +2,7 @@
 //
 //   npm run test:parse
 //
-// Loads app/index.html in a headless browser and runs parseCapture() on each phrase with a fixed "now".
+// Loads pocket/app/index.html in a headless browser and runs parseCapture() on each phrase with a fixed "now".
 // The phrases and expectations are adapted from Vikunja's own Quick Add Magic tests
 // (frontend/src/modules/quickAddMagic/quickAddMagic.test.ts), so Pocket reads text the way Vikunja does.
 // Cases marked `pocket` are where Pocket deliberately differs from Vikunja, or goes further; `why` says how.
@@ -13,15 +13,16 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-const ROOT = resolve(fileURLToPath(new URL('../app', import.meta.url)));
+const ROOT = resolve(fileURLToPath(new URL('../pocket/app', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const http = createServer(async (req, res) => {
   let file = '';
   try { file = resolve(ROOT, '.' + decodeURIComponent(new URL(req.url, 'http://x').pathname)); } catch {}
   if (file === ROOT) file = resolve(ROOT, 'index.html');
   if (!file.startsWith(ROOT + sep)) { res.writeHead(404).end(); return; }
-  try { res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(await readFile(file)); }
-  catch { res.writeHead(404).end(); }
+  let body;
+  try { body = await readFile(file); } catch { res.writeHead(404).end(); return; }
+  res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(body);
 }).listen(0, '127.0.0.1');
 await new Promise(r => http.once('listening', r));
 
