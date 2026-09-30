@@ -169,6 +169,26 @@ try {
     const task = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
     if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
   });
+  await step('pasted-list-goes-to-one-project', async () => {
+    // The first +project anywhere in a list applies to every line; a later, different one stays in its line's text.
+    const name = `PocketList${stamp}`, line = x => `Pocket smoke list line ${x} ${stamp}`;
+    await page.fill('#in-capture', `${line('A')} tomorrow\n${line('B')} tomorrow +${name}\nPocket smoke list line C +Other ${stamp}`);
+    await page.click('#cap-chips .chip[data-kind=new-project]');
+    const made = await Promise.race([
+      page.waitForSelector(`#cap-chips .chip:not([data-kind]):has-text("${name}")`, { timeout: 15000 }).then(() => true),
+      page.waitForSelector('#toast-msg:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
+    ]);
+    if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
+    const project = (await (await api('/projects')).json()).find(p => p.title === name);
+    createdProjects.push(project.id);
+    await page.click('#f-capture .go');
+    await page.waitForSelector('#toast-msg:has-text("Added 3 tasks")', { timeout: 20000 });
+    const find = async t => ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
+    for (const t of [line('A'), line('B'), `Pocket smoke list line C +Other ${stamp}`]) {
+      const task = await find(t);
+      if (task?.project_id !== project.id) throw new Error(`"${t}" is in project ${task?.project_id}`);
+    }
+  });
   await step('repeat-from-quick-add-and-sheet', async () => {
     const t = `Pocket smoke repeat ${stamp}`;
     await page.fill('#in-capture', `${t} every week`);

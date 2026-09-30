@@ -1259,6 +1259,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   get parseOpts(){ return {mode: this.quickAddMode, dueTime: this.dueTime}; },
   get parsed(){ return parseCapture(this.capLines[0] || '', this.projects, {...this.parseOpts, ignore: this.capIgnore}); },   // the first (or only) line
   get parsedAll(){ return parseCapture(this.capLines[0] || '', this.projects, this.parseOpts); },                            // the same, ignoring nothing
+  /* A pasted list goes to one project: the first +project in it, on whichever line. A different +project on a later line
+     stays in that line's text, as a second one does within a line. (Vikunja's own quick add reads each line on its own.)
+     Returns {parsed: [each line], project, miss}; `first` is the first line already parsed, if there is one. */
+  parseList(lines, first){
+    let owner = -1;
+    const parsed = lines.map((raw, i) => {
+      const p = i === 0 && first ? first : parseCapture(raw, this.projects, owner >= 0 ? {...this.parseOpts, ignore: {project: true}} : this.parseOpts);
+      if (owner < 0 && (p.project || p.projectMiss)) owner = i;
+      return p;
+    });
+    const project = owner >= 0 ? parsed[owner].project : null, miss = owner >= 0 ? parsed[owner].projectMiss : null;
+    return {parsed: lines.length > 1 ? parsed.map(p => ({...p, project})) : parsed, project, miss};
+  },
   get captureHint(){
     const p = this.prefixes;
     return p ? `${p.project}project  ${p.label}label  ${p.assignee}user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it`
@@ -1269,7 +1282,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
     if (n > 1) {
       out.push({key: 'n', text: this.capNest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
-      if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
+      const {project, miss} = this.parseList(this.capLines);
+      const to = this.projById.get(project?.id || this.defaultProjectId());
+      if (to) out.push({key: 'p', color: colorOf(to.hex_color), text: to.title});
+      if (miss) out.push({key: 'miss', kind: 'new-project', cls: 'create', hint: 'Tap to create this project',
+        text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(miss)}”`, action: () => this.createProject(miss)});
       return out;
     }
     // Chips come from the full parse; tapped-off ones stay visible (struck through) so they can be turned back on.
@@ -1351,7 +1368,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (!first) { this.notify('Create a project in Vikunja first'); return; }
     const nest = this.capNest && lines.length > 1;
     // Parse every line now, so dates mean what they meant when typed.
-    const items = lines.map((raw, i) => ({raw, p: i === 0 ? parsed : parseCapture(raw, this.projects, this.parseOpts)}))
+    const list = this.parseList(lines, parsed);
+    const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
       .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, tried: false, linked: false}));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid: this.defaultProjectId(), items};
     this.capBusy = true; this.capture = ''; this.capNest = false;

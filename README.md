@@ -55,7 +55,7 @@ If Pocket reads something you didn't mean, tap its chip and those words stay in 
 
 <img src="docs/screenshots/pocket-chip-undo.png" width="390" alt="'Watch Monday night football' with the Monday chip tapped off and struck through">
 
-**Pasting a list.** With more than one line in the box, each line becomes a task with its own shortcuts, and bullets, numbering and checkboxes are removed. **↳ Under first line** makes the rest subtasks of the first.
+**Pasting a list.** With more than one line in the box, each line becomes a task with its own dates and other shortcuts, and bullets, numbering and checkboxes are removed. The whole list goes to one project: add `+Kitchen` to any line, say the end of the last one. **↳ Under first line** makes the rest subtasks of the first.
 
 <img src="docs/screenshots/pocket-paste-list.png" width="390" alt="A pasted grocery list with 'Under first line' turned on, showing '1 task + 3 subtasks'">
 
@@ -68,6 +68,7 @@ The phrases and their meanings come from Vikunja's own tests, so the same text g
 - `every month` repeats on the same day each month. Vikunja's quick add uses every 30 days.
 - Dates always mean the next one: in June, `2nd March` is next March. Vikunja sometimes picks a date that has passed.
 - `10/12` follows your phone's region, which is 12 October in most places. Vikunja always reads it US-style.
+- A pasted list goes to one project, the first `+project` in it, since tagging a list once is what you'd expect on a phone. Vikunja reads each line on its own, so there `+Kitchen` only moves its own line.
 - Pocket also understands `every monday` and `the 17th` anywhere in the text, and drops a word like "by" or "in" along with its date.
 - Subtasks marked by indenting aren't supported; use **↳ Under first line**.
 
