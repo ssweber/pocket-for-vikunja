@@ -26,14 +26,14 @@ Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket i
 - **Today:** tasks grouped into Overdue, Today and Next 7 days. Tick one off and it slides away, with an Undo.
 - **Quick add:** type a task in one line with a date, project, priority, labels and people. Chips under the box show what will be saved before you send it.
 - **Paste a list:** paste lines from an email or a note and each one becomes a task. Bullets, numbering and checkboxes are removed, and one tap makes the rest subtasks of the first line.
-- **Task details:** due date, project, priority, who it's assigned to, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add subtasks one at a time or paste a list.
+- **Task details:** due date, repeat, project, priority, who it's assigned to, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add subtasks one at a time or paste a list.
 - **Projects:** your project tree with favorites, and open or done tasks for each project.
 - **An app on your home screen:** installs on iOS and Android and follows the phone's light or dark mode.
 - **A shortcut link:** opening `…/#/add?text=Buy+milk` starts a task with the text filled in, handy from an iOS Shortcut or a bookmark.
 
 ### Quick add
 
-Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/) (in its default mode) and a subset of its date formats. As you type, chips show what will be saved:
+Pocket understands the prefixes and phrases from Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/) (in its default mode). As you type, chips show what will be saved. If Pocket reads something you didn't mean, like `3/4 inch` as March 4, tap the chip and those words stay in the title.
 
 <img src="docs/screenshots/pocket-capture.png" width="390" alt="Typing 'Call Ana Friday at 10 +work !3' shows chips for Work, Friday 10:00 AM and Priority 3">
 
@@ -43,13 +43,15 @@ Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja
 | `*calls` or `*"follow up"` | Label (created if it doesn't exist) |
 | `@sarah` | Assignee (their username) |
 | `!1` to `!5` | Priority |
-| `today`, `tonight`, `tomorrow`, `next week` | Due date |
-| `friday` or `fri`, `in 3 days`, `in 2 weeks` | Due date |
-| `at 5pm`, `at 17:30` | Due time, after a date. Without one, the task is due at noon. |
+| `today`, `tonight`, `tomorrow`, `this weekend`, `next week`, `next month` | Due date |
+| `friday` or `fri`, `next monday`, `in 3 days`, `in 2 weeks` | Due date |
+| `Oct 12`, `12 Oct`, `10/12`, `2026-10-12`, `the 17th`, `end of month` | Due date. `10/12` follows your phone's region. |
+| `at 5pm`, `at 17:30`, `at 2` | Due time. A bare 1 to 6 means afternoon. Without a time, the task is due at noon. |
+| `every day`, `every 3 days`, `every week`, `every 2 weeks`, `every month`, `every monday` | Repeats. Without a date, it starts at the next noon. |
 
 With more than one line in the box, each line is its own task with its own shortcuts. **↳ Under first line** turns the rest into subtasks of the first.
 
-Not supported yet: repeating tasks (`every week`), written-out dates like `Oct 12`, subtasks marked by indenting, and the Todoist-style shortcuts Vikunja offers as a setting.
+Not supported: subtasks marked by indenting, and the Todoist-style shortcuts Vikunja offers as a setting.
 
 ## Setup
 
@@ -99,7 +101,12 @@ tests/   end-to-end test
 docs/    screenshots
 ```
 
-All of the app's code is in `app/index.html`: plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. There's no build step. Alpine is kept in the repo as `app/alpine-<version>.min.js` rather than loaded from a CDN, so the app depends only on your own hosting. To upgrade it, download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag.
+All of the app's code is in `app/index.html`: plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. There's no build step. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
+
+Both libraries are kept in the repo rather than loaded from a CDN, so the app depends only on your own hosting:
+
+- `app/alpine-<version>.min.js`: to upgrade, download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag.
+- `app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag.
 
 To run it locally:
 
@@ -124,4 +131,4 @@ Use a test account. The test deletes the tasks it creates, but leaves behind a `
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Alpine.js is also MIT licensed.
+MIT. See [LICENSE](LICENSE). Alpine.js and chrono-node are also MIT licensed.

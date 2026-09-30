@@ -112,6 +112,8 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
+.chip:not(.tap){cursor:default}
+.chip.off{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--muted);text-decoration:line-through}
 .chip.toggle{background:var(--sunk);color:var(--muted);font-weight:600}
 .chip.toggle[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
 .chip .x{font-weight:700;opacity:.6;margin-left:2px}
@@ -311,8 +313,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips.length && !(capFocus && !capture)">
       <template x-if="capLines.length > 1"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(capNest)" @mousedown.prevent @click="capNest = !capNest">↳ Under first line</button></template>
-      <template x-if="capFocus && !capture"><span class="hint">+project  *label  @user  !1–5  today · tomorrow · friday · in 3 days · at 5pm</span></template>
-      <template x-for="c in chips" :key="c.key"><span class="chip" :class="c.cls"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></span></template>
+      <template x-if="capFocus && !capture"><span class="hint">+project  *label  @user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it</span></template>
+      <template x-for="c in chips" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+        :tabindex="c.kind ? 0 : -1" :title="c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null"
+        @mousedown.prevent @click="c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template>
     </div>
   </div>
 
@@ -347,6 +351,11 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="prop"><span class="k">Due</span><span class="v">
           <input type="datetime-local" id="d-due" aria-label="Due date" :value="toLocalInput(sheet.task.due_date)" @change="save({due_date: fromLocalInput($event.target.value)})">
           <template x-if="isSet(sheet.task.due_date)"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="save({due_date: ZERO})"><svg class="i"><use href="#i-close"/></svg></button></template>
+        </span></div>
+        <div class="prop"><span class="k">Repeats</span><span class="v">
+          <select id="d-repeat" aria-label="Repeats" @change="setRepeat($event.target.value)">
+            <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
+          </select>
         </span></div>
         <div class="prop"><span class="k">Project</span><span class="v">
           <select id="d-proj" aria-label="Project" @change="save({project_id: +$event.target.value})">
@@ -652,43 +661,96 @@ function currentRoute(){
 /* =============== quick-add magic =============== */
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 function tokenRe(prefix){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, 'g'); }
-function parseCapture(text, projects){
-  const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: ''};
+// Numeric dates follow the phone's region: 10/12 is October 12 in the US and 10 December in most other places.
+const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(new Date(2000, 11, 31)).find(p => p.type !== 'literal')?.type === 'day'; } catch { return false; } })();
+const WEEKDAY_RE = `${WEEKDAYS.join('|')}|${WEEKDAYS.map(w => w.slice(0,3)).join('|')}`;
+const weekdayIndex = w => WEEKDAYS.findIndex(d => d.startsWith(w.toLowerCase().slice(0,3)));
+const atNoon = d => { d.setHours(12, 0, 0, 0); return d; };
+// The next given weekday at noon; today counts if it's that day and noon hasn't passed.
+function nextWeekday(wd){
+  const d = atNoon(new Date());
+  d.setDate(d.getDate() + (wd - d.getDay() + 7) % 7);
+  return d < new Date() ? addDays(d, 7) : d;
+}
+
+/* Quick add. Prefixes and phrases follow Vikunja's Quick Add Magic (default mode):
+   +project *label @user !1-5, a due date, and "every ..." to repeat. `ignore` skips kinds the user tapped off,
+   leaving those words in the title. */
+function parseCapture(text, projects, ignore = {}){
+  const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: '', dueFromRepeat: false, repeat: null};
+  const cut = (m) => { out.title = out.title.slice(0, m.index) + (m[1] || '') + out.title.slice(m.index + m[0].length); };
   // project +name
-  out.title = out.title.replace(tokenRe('+'), (m, sp, a, b, c) => {
+  if (!ignore.project) out.title = out.title.replace(tokenRe('+'), (m, sp, a, b, c) => {
     const name = (a || b || c).replace(/[_-]/g, ' ').toLowerCase();
     const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
     if (hit) out.project = hit; else out.projectMiss = a || b || c;
     return sp;
   });
   // labels *name
-  out.title = out.title.replace(tokenRe('*'), (m, sp, a, b, c) => { out.labels.push(a || b || c); return sp; });
+  if (!ignore.labels) out.title = out.title.replace(tokenRe('*'), (m, sp, a, b, c) => { out.labels.push(a || b || c); return sp; });
   // assignees @username (needs a space before it, so email addresses in a title are left alone)
-  out.title = out.title.replace(tokenRe('@'), (m, sp, a, b, c) => { out.assignees.push(a || b || c); return sp; });
+  if (!ignore.assignees) out.title = out.title.replace(tokenRe('@'), (m, sp, a, b, c) => { out.assignees.push(a || b || c); return sp; });
   // priority !1..!5
-  out.title = out.title.replace(/(^|\s)!([1-5])(?=\s|$)/, (m, sp, n) => { out.priority = +n; return sp; });
-  // dates
-  let date = null, label = '';
-  const take = (re, fn) => { if (date) return; const m = out.title.match(re); if (m) { const r = fn(m); if (r) { date = r[0]; label = r[1]; out.title = out.title.replace(m[0], m[1] || ''); } } };
-  take(/(^|\s)(today)\b/i, () => [startOfDay(), 'Today']);
-  take(/(^|\s)(tonight)\b/i, () => { const d = startOfDay(); d.setHours(21); return [d, 'Tonight']; });
-  take(/(^|\s)(tomorrow)\b/i, () => [addDays(startOfDay(), 1), 'Tomorrow']);
-  take(/(^|\s)(next week)\b/i, () => [addDays(startOfDay(), 7), 'Next week']);
-  take(/(^|\s)in (\d{1,3}) (days?|weeks?)\b/i, m => { const n = +m[2] * (/^w/i.test(m[3]) ? 7 : 1); return [addDays(startOfDay(), n), `In ${n} day${n === 1 ? '' : 's'}`]; });
-  take(new RegExp(`(^|\\s)(?:next |on )?(${WEEKDAYS.join('|')}|${WEEKDAYS.map(w => w.slice(0,3)).join('|')})\\b`, 'i'), m => {
-    const want = WEEKDAYS.findIndex(w => w.startsWith(m[2].toLowerCase().slice(0,3)));
-    let n = (want - new Date().getDay() + 7) % 7; if (n === 0) n = 7;
-    const d = addDays(startOfDay(), n); return [d, d.toLocaleDateString([], {weekday:'long'})];
-  });
-  if (date) {
-    const tm = out.title.match(/(^|\s)at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
-    if (tm) {
-      let h = +tm[2]; const min = +(tm[3] || 0); const ap = (tm[4] || '').toLowerCase();
-      if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
-      if (h < 24 && min < 60) { date.setHours(h, min, 0, 0); label += ' ' + fmtTime(date); out.title = out.title.replace(tm[0], tm[1]); }
-    } else if (date.getHours() === 0) date.setHours(12, 0, 0, 0);
-    out.due = date; out.dueLabel = label;
+  if (!ignore.priority) out.title = out.title.replace(/(^|\s)!([1-5])(?=\s|$)/, (m, sp, n) => { out.priority = +n; return sp; });
+
+  // repeat: "every day", "every 3 days", "every 2 weeks", "every month", "every monday"
+  let repeatDay = null;
+  if (!ignore.repeat) {
+    let m = out.title.match(/(^|\s)every\s+(?:(\d{1,3})\s+)?(day|week|month)s?\b/i);
+    if (m) {
+      const n = +(m[2] || 1), unit = m[3].toLowerCase();
+      out.repeat = unit === 'month' && n === 1 ? {after: 0, mode: 1, label: 'Every month'}      // Vikunja's monthly mode keeps the day of month
+        : {after: n * {day: 86400, week: 604800, month: 30 * 86400}[unit], mode: 0, label: n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`};
+      cut(m);
+    } else if ((m = out.title.match(new RegExp(`(^|\\s)every\\s+(${WEEKDAY_RE})\\b`, 'i')))) {
+      repeatDay = weekdayIndex(m[2]);
+      out.repeat = {after: 604800, mode: 0, label: 'Every ' + WEEKDAYS[repeatDay][0].toUpperCase() + WEEKDAYS[repeatDay].slice(1)};
+      cut(m);
+    }
   }
+
+  // due date
+  if (!ignore.due) {
+    let m, dayCertain = true;
+    if ((m = out.title.match(/(^|\s)(?:by\s+)?(?:the\s+)?end\s+of\s+(?:the\s+)?month\b/i))) {
+      const d = new Date(); d.setMonth(d.getMonth() + 1, 0);           // day 0 of next month = last day of this one
+      out.due = atNoon(d); cut(m);
+    } else if ((m = out.title.match(/(^|\s)(?:on\s+the|the|on)\s+(\d{1,2})(?:st|nd|rd|th)\b/i)) && +m[2] >= 1 && +m[2] <= 31) {
+      const d = atNoon(new Date()); d.setDate(+m[2]);                  // "the 17th": this month, or next month if it has passed
+      if (d < startOfDay()) { d.setDate(1); d.setMonth(d.getMonth() + 1); d.setDate(+m[2]); }
+      out.due = d; cut(m);
+    } else if (typeof chrono !== 'undefined') {
+      // chrono-node understands "tomorrow at 5pm", "Oct 12", "12/10", "next monday", "this weekend", "in 3 days", ...
+      const r = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, new Date(), {forwardDate: true}).find(r =>
+        !/^for\b/i.test(r.text)                                        // "for 2 hours" is a duration, not a date
+        && !/^now$/i.test(r.text)                                      // "Now what" isn't due this minute
+        // A month with no day ("March madness") only counts after in/by/on/before/until: "call Bob in May".
+        && !(r.start.isCertain('month') && !r.start.isCertain('day') && !/\b(in|by|on|before|until)\s+$/i.test(out.title.slice(0, r.index))));
+      if (r) {
+        const d = r.start.date(), st = r.start;
+        // "at 2" means 2 PM: a bare hour from 1 to 6 is taken as afternoon.
+        if (st.isCertain('hour') && !st.isCertain('meridiem') && d.getHours() >= 1 && d.getHours() <= 6) d.setHours(d.getHours() + 12);
+        // No time given: noon, as in Vikunja. Words like "tonight" or "morning" keep chrono's time.
+        if (!st.isCertain('hour') && !/night|morning|afternoon|evening|noon|midnight/i.test(r.text)) atNoon(d);
+        dayCertain = st.isCertain('day') || st.isCertain('weekday');
+        out.due = d;
+        // Drop the date, and a leftover "in/by/on/before/until" in front of it ("Call Bob in May" -> "Call Bob").
+        out.title = out.title.slice(0, r.index).replace(/\b(in|by|on|before|until)\s+$/i, '') + out.title.slice(r.index + r.text.length);
+      }
+    }
+    // "every monday at 10": a time with no day of its own goes on the repeat's weekday.
+    if (repeatDay !== null && (!out.due || !dayCertain)) {
+      const d = nextWeekday(repeatDay);
+      if (out.due) d.setHours(out.due.getHours(), out.due.getMinutes(), 0, 0);
+      out.due = d;
+    }
+  }
+  // A repeating task needs a date to repeat from: the next noon.
+  if (out.repeat && !out.due && !ignore.due) {
+    const d = atNoon(new Date());
+    out.due = d < new Date() ? addDays(d, 1) : d; out.dueFromRepeat = true;
+  }
+  if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
   out.title = out.title.replace(/\s{2,}/g, ' ').trim();
   return out;
 }
@@ -729,7 +791,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   route: currentRoute(),
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null},
   refreshing: false,
-  capture: '', capFocus: false, capBusy: false, capNest: false,
+  capture: '', capFocus: false, capBusy: false, capNest: false, capIgnore: {},
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null},
@@ -740,6 +802,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && this.token && this.screen === 'app' && !this.sheet.open) this.render();
     });
+    this.$watch('capture', v => { if (!v.trim()) { this.capIgnore = {}; this.capNest = false; } });
     this.$nextTick(() => {
       this.initSwipe();
       // Keep the list's bottom padding in step with the capture bar as it grows.
@@ -967,7 +1030,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   /* ---------- quick add ---------- */
   get capLines(){ return captureLines(this.capture); },
-  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects); },     // the first (or only) line
+  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects, this.capIgnore); },   // the first (or only) line
+  get parsedAll(){ return parseCapture(this.capLines[0] || '', this.projects); },                // the same, ignoring nothing
   get chips(){
     if (!this.capture.trim()) return [];
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
@@ -976,12 +1040,16 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
       return out;
     }
-    if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
-    if (parsed.projectMiss) out.push({key: 'miss', cls: 'warn', text: `No project “${parsed.projectMiss}”`});
-    if (parsed.due) out.push({key: 'due', cls: 'num', text: parsed.dueLabel});
-    if (parsed.priority) out.push({key: 'prio', text: 'Priority ' + parsed.priority});
-    parsed.labels.forEach((l, i) => out.push({key: 'l' + i, text: '*' + l}));
-    parsed.assignees.forEach((u, i) => out.push({key: 'a' + i, text: '@' + u}));
+    // Chips come from the full parse; tapped-off ones stay visible (struck through) so they can be turned back on.
+    const all = this.parsedAll, off = k => !!this.capIgnore[k];
+    if (all.project) out.push({key: 'p', kind: 'project', color: colorOf(all.project.hex_color), text: all.project.title, off: off('project')});
+    if (p && !parsed.project) out.push({key: 'dp', color: colorOf(p.hex_color), text: p.title});      // where it lands otherwise
+    if (all.projectMiss) out.push({key: 'miss', kind: 'project', cls: 'warn', text: `No project “${all.projectMiss}”`, off: off('project')});
+    if (all.due && !all.dueFromRepeat) out.push({key: 'due', kind: 'due', cls: 'num', text: all.dueLabel, off: off('due')});
+    if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});
+    if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
+    all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: '*' + l, off: off('labels')}));
+    all.assignees.forEach((u, i) => out.push({key: 'a' + i, kind: 'assignees', text: '@' + u, off: off('assignees')}));
     return out;
   },
   /* Create one task from a parsed line; labels are created when missing. */
@@ -989,6 +1057,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const body = {title: parsed.title};
     if (parsed.due) body.due_date = parsed.due.toISOString();
     if (parsed.priority) body.priority = parsed.priority;
+    if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
     const t = await api(`/projects/${parsed.project?.id || pid}/tasks`, {method:'PUT', body});
     if (parsed.labels.length) {
       const all = await this.loadLabels();
@@ -1119,6 +1188,29 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   showTask(t){
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
     if (document.activeElement?.id !== 'd-title') this.sheet.title = t.title;
+  },
+  /* Repeat settings as Vikunja stores them: repeat_mode 1 is monthly, otherwise repeat_after is an interval in seconds. */
+  get repeatValue(){
+    const t = this.sheet.task; if (!t) return 'none';
+    if (t.repeat_mode === 1) return 'month';
+    return {0: 'none', 86400: 'day', 604800: 'week', 1209600: '2weeks'}[t.repeat_after || 0] || 'custom';
+  },
+  get repeatOptions(){
+    const opts = [{value: 'none', label: 'Doesn’t repeat'}, {value: 'day', label: 'Every day'}, {value: 'week', label: 'Every week'},
+      {value: '2weeks', label: 'Every 2 weeks'}, {value: 'month', label: 'Every month'}];
+    if (this.repeatValue === 'custom') {
+      const days = this.sheet.task.repeat_after / 86400;
+      opts.push({value: 'custom', label: Number.isInteger(days) ? `Every ${days} days` : 'Custom (set in Vikunja)'});
+    }
+    return opts;
+  },
+  setRepeat(v){
+    if (v === 'custom') return;
+    const patch = v === 'month' ? {repeat_mode: 1, repeat_after: 0}
+      : {repeat_mode: 0, repeat_after: {none: 0, day: 86400, week: 604800, '2weeks': 1209600}[v]};
+    // A repeating task needs a due date to move forward from.
+    if (v !== 'none' && !isSet(this.sheet.task.due_date)) { const d = atNoon(new Date()); patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString(); }
+    this.save(patch);
   },
   get subtasks(){ return this.sheet.task?.related_tasks?.subtask || []; },
   get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
@@ -1309,6 +1401,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   runToastAction(){ const a = this.toast.action; this.toast.show = false; a?.fn(); },
 })));
 </script>
+<script type="module">import * as chrono from './chrono-2.10.1.en.min.js'; window.chrono = chrono;</script>
 <script defer src="alpine-3.17.4.min.js"></script>
 </body>
 </html>

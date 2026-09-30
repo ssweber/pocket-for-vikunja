@@ -159,6 +159,54 @@ try {
     await page.click('#d-delete');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 10000 });
   });
+  await step('date-and-repeat-parsing', async () => {
+    const problems = await page.evaluate(() => {
+      const bad = [], now = new Date(), day = n => { const d = new Date(now); d.setDate(d.getDate() + n); return d; };
+      const same = (a, b) => a && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      const check = (text, fn, ignore) => { const r = parseCapture(text, [], ignore); try { const why = fn(r); if (why) bad.push(`${text}: ${why}`); } catch (e) { bad.push(`${text}: ${e.message}`); } };
+      check('Pay rent Oct 12', r => r.title !== 'Pay rent' ? 'title ' + r.title : r.due?.getMonth() !== 9 || r.due.getDate() !== 12 ? 'due ' + r.due : r.due.getHours() !== 12 && 'not noon');
+      check('Call Ana tomorrow at 5pm', r => !same(r.due, day(1)) ? 'due ' + r.due : r.due.getHours() !== 17 && 'hour ' + r.due.getHours());
+      check('Meet fri at 2', r => r.due?.getDay() !== 5 ? 'due ' + r.due : r.due.getHours() !== 14 && 'hour ' + r.due.getHours());
+      check('Report due the 17th', r => r.due?.getDate() !== 17 ? 'due ' + r.due : r.title !== 'Report due' && 'title ' + r.title);
+      check('Invoice end of month', r => r.due?.getDate() !== new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() && 'due ' + r.due);
+      check('Team sync for 2 hours', r => r.due && 'duration read as a date');
+      check('Now what', r => r.due && '"now" read as a date');
+      check('Plan March madness pool', r => r.due && 'bare month read as a date');
+      check('Call Bob in May', r => r.due?.getMonth() !== 4 ? 'due ' + r.due : r.title !== 'Call Bob' && 'title ' + r.title);
+      check('email bob@example.com tomorrow', r => r.assignees.length ? 'assignee ' + r.assignees : r.title !== 'email bob@example.com' && 'title ' + r.title);
+      check('Standup every day at 9am', r => r.repeat?.after !== 86400 ? 'repeat ' + JSON.stringify(r.repeat) : r.due?.getHours() !== 9 && 'due ' + r.due);
+      check('Water plants every 3 days', r => r.repeat?.after !== 3 * 86400 ? 'repeat ' + JSON.stringify(r.repeat) : !r.due && 'no due date');
+      check('Rent every month', r => r.repeat?.mode !== 1 && 'repeat ' + JSON.stringify(r.repeat));
+      check('Team sync every monday at 10', r => r.repeat?.after !== 604800 ? 'repeat ' + JSON.stringify(r.repeat) : r.due?.getDay() !== 1 || r.due.getHours() !== 10 ? 'due ' + r.due : r.title !== 'Team sync' && 'title ' + r.title);
+      check('Order 3/4 inch screws', r => r.due || r.title !== 'Order 3/4 inch screws' ? 'ignore failed: ' + r.title : '', {due: true});
+      return bad;
+    });
+    if (problems.length) throw new Error(problems.join(' | '));
+  });
+  await step('tap-chip-to-ignore', async () => {
+    await page.fill('#in-capture', 'Order 3/4 inch screws');
+    await page.waitForSelector('#cap-chips .chip[data-kind=due]');
+    await page.click('#cap-chips .chip[data-kind=due]');
+    await page.waitForSelector('#cap-chips .chip[data-kind=due].off');
+    await page.click('#cap-chips .chip[data-kind=due]');
+    await page.waitForSelector('#cap-chips .chip[data-kind=due]:not(.off)');
+    await page.fill('#in-capture', '');
+  });
+  await step('repeat-from-quick-add-and-sheet', async () => {
+    const t = `Pocket smoke repeat ${stamp}`;
+    await page.fill('#in-capture', `${t} every week`);
+    if (!(await page.textContent('#cap-chips')).includes('Every week')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
+    await page.click('#f-capture .go');
+    await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 15000 });
+    await page.click(`.row .body:has-text("${t}")`);
+    await page.waitForFunction(() => document.querySelector('#d-repeat')?.value === 'week', null, { timeout: 10000 });
+    await page.selectOption('#d-repeat', 'month');
+    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
+    const saved = await (await api('/tasks?s=' + encodeURIComponent(t))).json();
+    if (saved[0]?.repeat_mode !== 1) throw new Error('server repeat_mode ' + saved[0]?.repeat_mode);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
   const parentTitle = `Pocket smoke list ${stamp}`;
   await step('paste-list-with-parent', async () => {
     // Pasted from an email or note: bullets and checkboxes are stripped, the first line becomes the parent.
