@@ -1,0 +1,14 @@
+{
+  "name": "pocket-for-vikunja",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A focused phone client (PWA) for Vikunja: today's tasks and quick capture.",
+  "type": "module",
+  "scripts": {
+    "serve": "python -m http.server 8000",
+    "test": "node tests/smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}
