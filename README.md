@@ -2,7 +2,7 @@
 
 A single-file mobile web app for [Vikunja](https://vikunja.io). Drop it on any static host.
 
-There's no backend, database or dependencies. Upload the files anywhere, allow that address in Vikunja's CORS settings, and add it to your home screen. It covers today's tasks and fast capture, and installs as an app on iOS and Android.
+There's no backend, database or build step. Upload the files anywhere, allow that address in Vikunja's CORS settings, and add it to your home screen. It covers today's tasks and fast capture, and installs as an app on iOS and Android.
 
 ## What it does
 
@@ -52,6 +52,8 @@ Run `python build.py` to collect the files the app needs into `dist/`, then uplo
 If the app says it "can't reach" the server but Vikunja opens fine in the browser, CORS is almost always the cause.
 
 ## Development
+
+All the app's code is in `index.html`: plain CSS, and JavaScript with [Alpine.js](https://alpinejs.dev) keeping the screen in sync with the data. Alpine is saved in the repo (`alpine-<version>.min.js`, MIT licensed) rather than loaded from a CDN, so the app depends only on wherever you host it. To upgrade, download the new `cdn.min.js` from npm, rename it and update the `<script>` tag. `build.py` picks up whatever `index.html` references.
 
 ```sh
 python -m http.server 8000      # then open http://localhost:8000

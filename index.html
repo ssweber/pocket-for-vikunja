@@ -76,7 +76,7 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .sec.overdue{color:var(--overdue)} .sec.today{color:var(--today)}
 .list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
 .row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
-.row:first-child{border-top:0}
+.row:first-of-type{border-top:0}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
 .row .title{font-size:16.5px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
@@ -108,7 +108,6 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 #capture .go{width:42px;height:42px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 #capture .go[disabled]{opacity:.35}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.chips:empty{display:none}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
 .chip .x{font-weight:700;opacity:.6;margin-left:2px}
@@ -133,7 +132,7 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .d-title .check{width:30px;height:30px;margin-top:0}
 .card{background:var(--surface);border-radius:var(--r-row);margin-bottom:14px}
 .prop{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line);min-height:52px}
-.prop:first-child{border-top:0}
+.prop:first-of-type{border-top:0}
 .prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:6px 0;outline:0}
@@ -160,21 +159,21 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .h3{font-size:15px;font-weight:700;margin:22px 2px 8px;display:flex;align-items:baseline;gap:8px}
 .h3 .n{color:var(--muted);font-weight:600}
 .comment{padding:12px 14px;border-top:1px solid var(--line)}
-.comment:first-child{border-top:0}
+.comment:first-of-type{border-top:0}
 .comment .who{font-size:13.5px;color:var(--muted);margin-bottom:3px}
 .comment .who b{color:var(--ink);font-weight:650}
 .comment-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
-.comment-form:first-child{border-top:0}
+.comment-form{border-top:0} .comment ~ .comment-form{border-top:1px solid var(--line)}
 .comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:16px;resize:none;min-height:42px;outline:0}
 .comment-form textarea:focus{border-color:var(--accent)}
 .att{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left}
-.att:first-child{border-top:0}
+.att:first-of-type{border-top:0}
 .att .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .att .sz{color:var(--muted);font-size:13px}
 .danger-zone{margin-top:28px}
 .picker{padding:6px 0}
 .picker button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:12px 14px;text-align:left;border-top:1px solid var(--line)}
-.picker button:first-child{border-top:0}
+#lp-list button:first-of-type{border-top:0}
 .picker input{margin:10px 14px;width:calc(100% - 28px);padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);outline:0}
 .saved{font-size:13px;color:var(--muted);text-align:right;min-height:18px;margin-top:-8px;margin-bottom:6px}
 
@@ -186,7 +185,8 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 </style>
 </head>
-<body>
+<body x-data="pocket" :class="{'sheet-open': sheet.open}" @keydown.escape.window="sheet.open && closeSheet()"
+      x-effect="if (screen === 'app') document.title = head.title + ' · Pocket'">
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></symbol>
@@ -203,95 +203,234 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 </svg>
 
 <!-- ============ LOGIN ============ -->
-<section id="login" hidden>
+<section id="login" :hidden="screen !== 'login'" hidden>
   <h1>Pocket</h1>
   <p class="lead">Today's tasks and quick capture for your Vikunja.</p>
-  <div id="login-err" class="err" hidden></div>
+  <div id="login-err" class="err" :hidden="!login.err" x-html="login.err" hidden></div>
 
-  <form id="f-server">
+  <form id="f-server" :hidden="login.step !== 'server'" @submit.prevent="submitServer()">
     <label class="field"><span>Vikunja address</span>
-      <input id="in-server" type="url" inputmode="url" autocomplete="url" placeholder="https://tasks.example.com" required autocapitalize="off" spellcheck="false"></label>
-    <button class="btn block" type="submit">Continue</button>
+      <input id="in-server" x-ref="inServer" x-model="login.server" type="url" inputmode="url" autocomplete="url" placeholder="https://tasks.example.com" required autocapitalize="off" spellcheck="false"></label>
+    <button class="btn block" type="submit" :disabled="login.busy">Continue</button>
   </form>
 
-  <div id="auth-step" hidden>
-    <div class="seg" role="group" aria-label="Sign-in method">
-      <button type="button" data-mode="session" aria-pressed="true">Password</button>
-      <button type="button" data-mode="token" aria-pressed="false">API token</button>
+  <div id="auth-step" :hidden="login.step !== 'auth'" hidden>
+    <div class="seg" role="group" aria-label="Sign-in method" :hidden="!passwordAllowed">
+      <button type="button" data-mode="session" :aria-pressed="String(login.method === 'session')" @click="login.method = 'session'">Password</button>
+      <button type="button" data-mode="token" :aria-pressed="String(login.method === 'token')" @click="login.method = 'token'">API token</button>
     </div>
-    <form id="f-pass">
-      <label class="field"><span>Username or email</span><input id="in-user" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
-      <label class="field"><span>Password</span><input id="in-pass" type="password" autocomplete="current-password" required></label>
-      <label class="field" id="totp-field" hidden><span>Two-factor code</span><input id="in-totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"></label>
-      <button class="btn block" type="submit">Sign in</button>
+    <form id="f-pass" :hidden="login.method !== 'session'" @submit.prevent="submitPassword()">
+      <label class="field"><span>Username or email</span><input id="in-user" x-ref="inUser" x-model="login.user" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label class="field"><span>Password</span><input id="in-pass" x-model="login.pass" type="password" autocomplete="current-password" required></label>
+      <label class="field" id="totp-field" :hidden="!login.showTotp" hidden><span>Two-factor code</span><input id="in-totp" x-ref="inTotp" x-model="login.totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"></label>
+      <button class="btn block" type="submit" :disabled="login.busy">Sign in</button>
     </form>
-    <form id="f-token" hidden>
-      <label class="field"><span>API token</span><input id="in-token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
-      <button class="btn block" type="submit">Connect</button>
+    <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
+      <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
+      <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
       <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” under Other.</p>
     </form>
-    <button id="btn-change-server" class="btn ghost block" type="button" style="margin-top:12px">Use a different address</button>
+    <button id="btn-change-server" class="btn ghost block" type="button" style="margin-top:12px" @click="changeServer()">Use a different address</button>
   </div>
 </section>
 
 <!-- ============ APP ============ -->
-<div id="app" hidden>
+<div id="app" :hidden="screen !== 'app'" hidden>
   <header class="top">
-    <button id="btn-back" class="icon-btn plain" aria-label="Back" hidden><svg class="i"><use href="#i-back"/></svg></button>
-    <div class="t"><div class="kicker" id="kicker"></div><h2 id="heading">Today</h2></div>
-    <button id="btn-refresh" class="icon-btn" aria-label="Refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
-    <button id="btn-account" class="icon-btn" aria-label="Account"><svg class="i"><use href="#i-user"/></svg></button>
+    <button id="btn-back" class="icon-btn plain" aria-label="Back" :hidden="route.name !== 'project'" @click="go('#/projects')" hidden><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="t"><div class="kicker" id="kicker" x-text="head.kicker"></div><h2 id="heading" x-text="head.title"></h2></div>
+    <button id="btn-refresh" class="icon-btn" aria-label="Refresh" :disabled="refreshing" @click="refresh()"><svg class="i"><use href="#i-refresh"/></svg></button>
+    <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
   </header>
-  <main id="view" aria-live="polite"></main>
 
-  <div id="capture">
-    <form id="f-capture" autocomplete="off">
-      <input id="in-capture" placeholder="Add a task" aria-label="New task" enterkeyhint="send">
-      <button class="go" type="submit" aria-label="Add task" disabled><svg class="i"><use href="#i-up"/></svg></button>
+  <main id="view" aria-live="polite">
+    <template x-if="view.loading"><div class="loading">Loading…</div></template>
+
+    <template x-if="!view.loading && view.error"><div>
+      <div class="err" style="margin-top:16px" x-html="view.error"></div>
+      <button class="btn ghost block" @click="view.bootFailed ? boot() : render()">Try again</button>
+      <template x-if="view.bootFailed"><button class="btn danger block" style="margin-top:8px" @click="signOut()">Sign out</button></template>
+    </div></template>
+
+    <!-- Today and a single project share the task-list markup -->
+    <template x-if="!view.loading && !view.error && route.name !== 'projects'"><div>
+      <template x-for="g in view.groups.filter(g => g.tasks.length)" :key="g.key"><div>
+        <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span></div>
+        <div class="list">
+          <template x-for="t in g.tasks" :key="t.id">
+            <div class="row" :class="{done: t.done}" :data-id="t.id">
+              <button class="check" :class="'p' + (t.priority || 0)" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
+              <button class="body" @click="openTask(t.id)">
+                <div class="title"><template x-if="t.priority >= 3"><span class="prio" :aria-label="'Priority ' + t.priority" x-text="'!'.repeat(Math.min(t.priority - 1, 3)) + ' '"></span></template><span x-text="t.title"></span></div>
+                <div class="meta" x-show="rowMeta(t).length">
+                  <template x-for="m in rowMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" :style="{background: m.color}"></i></template><span x-text="m.text"></span></span></template>
+                </div>
+              </button>
+            </div>
+          </template>
+        </div>
+      </div></template>
+      <template x-if="!view.groups.some(g => g.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
+      <template x-if="route.name === 'project' && view.project"><a class="btn ghost toggle-done" :href="'#/project/' + view.project.id + (route.showDone ? '' : '?done=1')" x-text="route.showDone ? 'Show open tasks' : 'Show done tasks'"></a></template>
+    </div></template>
+
+    <template x-if="!view.loading && !view.error && route.name === 'projects'"><div>
+      <template x-if="!projects.length"><div class="empty"><b>No projects yet.</b>Create one in Vikunja on the web.</div></template>
+      <template x-if="favorites.length"><div>
+        <div class="sec">Favorites</div>
+        <div class="list tree"><template x-for="p in favorites" :key="p.id">
+          <div class="row"><button class="body" @click="go('#/project/' + p.id)"><i class="dot" style="width:10px;height:10px;margin:0" :style="{background: colorOf(p.hex_color)}"></i><span style="flex:1" x-text="p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
+        </template></div>
+      </div></template>
+      <template x-if="projects.length"><div>
+        <div class="sec">All projects</div>
+        <div class="list tree"><template x-for="r in tree" :key="r.p.id">
+          <div class="row"><button class="body" :style="{paddingLeft: r.depth * 18 + 'px'}" @click="go('#/project/' + r.p.id)"><i class="dot" style="width:10px;height:10px;margin:0" :style="{background: colorOf(r.p.hex_color)}"></i><span style="flex:1" x-text="r.p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
+        </template></div>
+      </div></template>
+    </div></template>
+  </main>
+
+  <div id="capture" x-effect="document.documentElement.style.setProperty('--cap-h', (64 + (capture.trim() && chips.length ? 36 : 0)) + 'px')">
+    <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
+      <input id="in-capture" x-ref="capture" x-model="capture" placeholder="Add a task" aria-label="New task" enterkeyhint="send"
+             @focus="capFocus = true" @blur="setTimeout(() => capFocus = false, 150)">
+      <button class="go" type="submit" aria-label="Add task" :disabled="!parsed.title || capBusy"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
-    <div class="chips" id="cap-chips"></div>
+    <div class="chips" id="cap-chips" :hidden="!chips.length && !(capFocus && !capture)">
+      <template x-if="capFocus && !capture"><span class="hint">+project  *label  !1–5  today · tomorrow · friday · in 3 days · at 5pm</span></template>
+      <template x-for="c in chips" :key="c.key"><span class="chip" :class="c.cls"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></span></template>
+    </div>
   </div>
 
   <nav class="tabs">
-    <a href="#/today" data-tab="today"><svg class="i"><use href="#i-sun"/></svg>Today</a>
-    <a href="#/projects" data-tab="projects"><svg class="i"><use href="#i-folder"/></svg>Projects</a>
+    <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg>Today</a>
+    <a href="#/projects" data-tab="projects" :aria-current="route.name !== 'today' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg>Projects</a>
   </nav>
 </div>
 
-<div id="scrim" hidden></div>
-<section id="sheet" role="dialog" aria-modal="true" aria-label="Task" hidden>
+<!-- ============ SHEET ============ -->
+<div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
+<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="sheet.kind === 'account' ? 'Account' : 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <div class="bar">
     <span style="width:40px"></span>
     <div class="grab"><i></i></div>
-    <button class="icon-btn" id="btn-sheet-close" aria-label="Close"><svg class="i"><use href="#i-close"/></svg></button>
+    <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
   </div>
-  <div class="scroll" id="sheet-body"></div>
+  <div class="scroll" id="sheet-body">
+    <template x-if="sheet.kind === 'task' && sheet.loading"><div class="loading">Loading…</div></template>
+    <template x-if="sheet.kind === 'task' && sheet.error"><div class="err" x-html="sheet.error"></div></template>
+
+    <template x-if="sheet.kind === 'task' && sheet.task"><div>
+      <div class="d-title">
+        <button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="save({done: !sheet.task.done})"><svg class="i"><use href="#i-check"/></svg></button>
+        <textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
+                  x-effect="sheet.title; $nextTick(() => grow($el))"
+                  @keydown.enter.prevent="$el.blur()" @change="saveTitle()"></textarea>
+      </div>
+      <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
+
+      <div class="card">
+        <div class="prop"><span class="k">Due</span><span class="v">
+          <input type="datetime-local" id="d-due" aria-label="Due date" :value="toLocalInput(sheet.task.due_date)" @change="save({due_date: fromLocalInput($event.target.value)})">
+          <template x-if="isSet(sheet.task.due_date)"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="save({due_date: ZERO})"><svg class="i"><use href="#i-close"/></svg></button></template>
+        </span></div>
+        <div class="prop"><span class="k">Project</span><span class="v">
+          <select id="d-proj" aria-label="Project" @change="save({project_id: +$event.target.value})">
+            <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheet.task.project_id" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>
+          </select>
+        </span></div>
+        <div class="prop stack"><span class="k">Priority</span><span class="v"><div class="prios" role="group" aria-label="Priority">
+          <template x-for="p in PRIOS" :key="p.n"><button type="button" :data-prio="p.n" :class="p.n >= 3 ? 'hot' : ''" :aria-pressed="String((sheet.task.priority || 0) === p.n)" @click="save({priority: p.n})" x-text="p.label"></button></template>
+        </div></span></div>
+        <div class="prop"><span class="k">Labels</span><span class="v">
+          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button>
+        </span></div>
+        <template x-if="sheet.task.identifier"><div class="prop"><span class="k">ID</span><span class="v num" style="color:var(--muted)" x-text="sheet.task.identifier"></span></div></template>
+      </div>
+
+      <template x-if="picker.open"><div class="card picker">
+        <template x-if="picker.loading"><div class="loading" style="padding:16px">Loading labels…</div></template>
+        <template x-if="picker.error"><div class="err" x-html="picker.error"></div></template>
+        <template x-if="!picker.loading && !picker.error"><div>
+          <input id="lp-q" placeholder="Find or create a label" aria-label="Label" x-model="picker.q" x-init="$nextTick(() => $el.focus())">
+          <div id="lp-list">
+            <template x-for="l in pickerMatches" :key="l.id"><button @click="addLabel(l)"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span></button></template>
+            <template x-if="pickerCanCreate"><button @click="addLabel(null)" x-text="'Create “' + picker.q.trim() + '”'"></button></template>
+            <template x-if="!pickerMatches.length && !picker.q.trim()"><p class="note" style="padding:0 14px 10px">No other labels. Type to create one.</p></template>
+          </div>
+        </div></template>
+      </div></template>
+
+      <div class="h3">Notes</div>
+      <div class="card" id="d-desc-card">
+        <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || editDesc()" @keydown.enter="editDesc()"></div></template>
+        <template x-if="sheet.editingDesc"><div class="desc-edit">
+          <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())"></textarea>
+          <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>
+          <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="sheet.editingDesc = false">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
+        </div></template>
+      </div>
+
+      <template x-if="(sheet.task.attachments || []).length"><div>
+        <div class="h3">Attachments<span class="n num" x-text="sheet.task.attachments.length"></span></div>
+        <div class="card"><template x-for="a in sheet.task.attachments" :key="a.id">
+          <button class="att" @click="openAttachment(a.id)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+        </template></div>
+      </div></template>
+
+      <div class="h3">Comments<span class="n num" id="d-ccount" x-text="sheet.comments?.length || ''"></span></div>
+      <div class="card" id="d-comments">
+        <template x-if="sheet.commentsNote"><p class="note" style="padding:12px 14px;margin:0" x-html="sheet.commentsNote"></p></template>
+        <template x-if="!sheet.comments && !sheet.commentsNote"><div class="loading" style="padding:16px">Loading…</div></template>
+        <template x-for="c in sheet.comments || []" :key="c.id">
+          <div class="comment"><div class="who"><b x-text="c.author?.name || c.author?.username || 'Someone'"></b> · <span class="num" x-text="new Date(c.created).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+        </template>
+        <template x-if="sheet.comments"><form class="comment-form" id="d-cform" @submit.prevent="postComment()">
+          <textarea id="d-cin" rows="1" placeholder="Write a comment" aria-label="Comment" x-model="sheet.commentDraft"></textarea>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="sheet.commentBusy"><svg class="i"><use href="#i-send"/></svg></button>
+        </form></template>
+      </div>
+
+      <div class="danger-zone"><button class="btn danger block" id="d-delete" @click="deleteTask()">Delete task</button></div>
+    </div></template>
+
+    <template x-if="sheet.kind === 'account'"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="user?.name || user?.username || 'Account'"></h2></div>
+      <div class="card">
+        <div class="prop"><span class="k">User</span><span class="v" x-text="'@' + (user?.username || '')"></span></div>
+        <div class="prop"><span class="k">Server</span><span class="v" style="overflow-wrap:anywhere" x-text="server"></span></div>
+        <div class="prop"><span class="k">Version</span><span class="v num" x-text="info?.version || ''"></span></div>
+        <div class="prop"><span class="k">Signed in</span><span class="v" x-text="mode === 'session' ? 'With password' : 'With API token'"></span></div>
+      </div>
+      <div class="h3">Quick add from anywhere</div>
+      <div class="card"><div class="desc" style="font-size:15px">Open <code style="overflow-wrap:anywhere" x-text="location.origin + location.pathname + '#/add?text=…'"></code> to start a task with text filled in — handy from an iOS Shortcut or a bookmark.</div></div>
+      <a class="btn ghost block" :href="server" target="_blank" rel="noopener" style="text-decoration:none;margin-top:6px">Open Vikunja on the web</a>
+      <div class="danger-zone"><button class="btn danger block" id="btn-signout" @click="signOut()">Sign out</button></div>
+    </div></template>
+  </div>
 </section>
 
-<div id="toast" role="status"><span id="toast-msg"></span><button id="toast-act" hidden></button></div>
+<div id="toast" role="status" :class="{show: toast.show}"><span id="toast-msg" x-text="toast.msg"></span><button id="toast-act" :hidden="!toast.action" x-text="toast.action?.label" @click="runToastAction()" hidden></button></div>
 
 <script>
 'use strict';
-/* =============== storage & state =============== */
+/* =============== helpers =============== */
 const store = {
   get(k){ try{ return localStorage.getItem('pocket.'+k) }catch{ return null } },
   set(k,v){ try{ localStorage.setItem('pocket.'+k,v) }catch{} },
   del(k){ try{ localStorage.removeItem('pocket.'+k) }catch{} },
 };
-const S = {
-  server: store.get('server') || '',
-  token: store.get('token') || '',
-  mode: store.get('mode') || 'token',       // 'session' (password, refreshable) | 'token' (API token)
-  info: null, user: null,
-  projects: [], projById: new Map(),
-  labels: [], labelsLoaded: false,
-  cache: new Map(),                          // task id -> task
-};
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const ZERO = '0001-01-01T00:00:00Z';
-const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icon = (id, cls='i', style='') => `<svg class="${cls}"${style ? ` style="${style}"` : ''}><use href="#i-${id}"/></svg>`;
+const colorOf = hex => hex ? '#' + String(hex).replace('#','') : 'var(--muted)';
+const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
+const PRIOS = [{n:0,label:'None'},{n:1,label:'Low'},{n:2,label:'Med'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Now'}];
+const grow = ta => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+const cache = new Map();                       // task id -> latest task from the server
+let app;                                       // the Alpine component, set in init()
 
 /* =============== API =============== */
 class ApiError extends Error { constructor(status, msg, code){ super(msg); this.status=status; this.code=code; } }
@@ -307,9 +446,9 @@ let refreshing = null;
 async function refreshSession(){
   if (!refreshing) refreshing = (async () => {
     try {
-      const r = await fetch(S.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'});
+      const r = await fetch(app.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'});
       if (!r.ok) return false;
-      const j = await r.json(); S.token = j.token; store.set('token', j.token); return true;
+      const j = await r.json(); app.token = j.token; store.set('token', j.token); return true;
     } catch { return false } finally { setTimeout(() => refreshing = null, 0) }
   })();
   return refreshing;
@@ -317,19 +456,19 @@ async function refreshSession(){
 
 async function api(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
   const headers = {};
-  if (auth && S.token) headers.Authorization = 'Bearer ' + S.token;
+  if (auth && app.token) headers.Authorization = 'Bearer ' + app.token;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
   try {
-    res = await fetch(S.server + '/api/v1' + path, {
+    res = await fetch(app.server + '/api/v1' + path, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-      credentials: S.mode === 'session' ? 'include' : 'omit',
+      credentials: app.mode === 'session' ? 'include' : 'omit',
     });
   } catch (e) { throw new NetError(e.message) }
-  if (res.status === 401 && auth && retry && S.mode === 'session') {
+  if (res.status === 401 && auth && retry && app.mode === 'session') {
     if (await refreshSession()) return api(path, {method, body, raw, auth, retry:false});
   }
-  if (res.status === 401 && auth) { signOut('Your session ended. Sign in again.'); throw new ApiError(401, 'Signed out'); }
+  if (res.status === 401 && auth) { app.signOut('Your session ended. Sign in again.'); throw new ApiError(401, 'Signed out'); }
   if (!res.ok) {
     let j = {}; try { j = await res.json() } catch {}
     throw new ApiError(res.status, j.message || res.statusText || ('HTTP ' + res.status), j.code);
@@ -353,7 +492,7 @@ async function allPages(path){
 
 function netHelp(){
   const origin = location.origin === 'null' ? 'this page\'s address' : location.origin;
-  return `Can't reach ${S.server || 'that address'}.\n\nIf Vikunja opens fine in your browser, it isn't allowing requests from ${esc(origin)}. Add it to <code>cors.origins</code> in Vikunja's config and restart the app.`;
+  return `Can't reach ${esc(app.server) || 'that address'}.\n\nIf Vikunja opens fine in your browser, it isn't allowing requests from ${esc(origin)}. Add it to <code>cors.origins</code> in Vikunja's config and restart the app.`;
 }
 function errText(e){
   if (e instanceof NetError) return netHelp();
@@ -432,105 +571,6 @@ function textToHtml(text){
   return text.trim().split(/\n{2,}/).map(p => '<p>' + esc(p).replace(/\n/g,'<br>') + '</p>').join('');
 }
 
-/* =============== toast =============== */
-let toastTimer;
-function toast(msg, action){
-  const t = $('#toast'), b = $('#toast-act');
-  $('#toast-msg').textContent = msg;
-  b.hidden = !action;
-  if (action) { b.textContent = action.label; b.onclick = () => { hideToast(); action.fn(); }; }
-  t.classList.add('show'); clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, action ? 5000 : 2600);
-}
-function hideToast(){ $('#toast').classList.remove('show'); }
-
-/* =============== auth =============== */
-function showLogin(err){
-  $('#app').hidden = true; $('#login').hidden = false;
-  $('#in-server').value = S.server;
-  const box = $('#login-err'); box.hidden = !err; if (err) box.innerHTML = err;
-}
-function signOut(msg){
-  if (S.mode === 'session' && S.server) fetch(S.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: S.token ? {Authorization:'Bearer '+S.token} : {}}).catch(()=>{});
-  S.token = ''; S.user = null; store.del('token'); closeSheet(true);
-  $('#auth-step').hidden = !S.info; $('#f-server').hidden = !!S.info;
-  showLogin(msg ? esc(msg) : '');
-}
-function setAuthMode(mode){
-  for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
-  $('#f-pass').hidden = mode !== 'session'; $('#f-token').hidden = mode !== 'token';
-}
-async function probeServer(){
-  S.info = await api('/info', {auth:false});
-  const a = S.info.auth || {};
-  const pw = !!(a.local?.enabled || a.ldap?.enabled);
-  document.querySelector('.seg button[data-mode=session]').hidden = !pw;
-  $('#totp-field').hidden = !S.info.totp_enabled;
-  setAuthMode(pw ? 'session' : 'token');
-  $('#f-server').hidden = true; $('#auth-step').hidden = false;
-  $('#login-err').hidden = true;
-  (pw ? $('#in-user') : $('#in-token')).focus();
-}
-async function busy(btn, fn){
-  const f = btn.closest('form') || btn; const b = f.querySelector('button[type=submit]') || btn;
-  b.disabled = true; try { return await fn(); } finally { b.disabled = false; }
-}
-
-$('#f-server').addEventListener('submit', e => { e.preventDefault(); busy(e.target, async () => {
-  S.server = normServer($('#in-server').value); $('#in-server').value = S.server;
-  try { await probeServer(); store.set('server', S.server); }
-  catch (err) { showLogin(err instanceof NetError ? netHelp() : `That address answered, but not like Vikunja (${errText(err)}). Check the URL.`); }
-}); });
-$('#btn-change-server').onclick = () => { S.info = null; $('#auth-step').hidden = true; $('#f-server').hidden = false; $('#login-err').hidden = true; $('#in-server').focus(); };
-for (const b of document.querySelectorAll('.seg button')) b.onclick = () => setAuthMode(b.dataset.mode);
-
-$('#f-pass').addEventListener('submit', e => { e.preventDefault(); busy(e.target, async () => {
-  S.mode = 'session';
-  try {
-    const body = {username: $('#in-user').value.trim(), password: $('#in-pass').value, long_token: true};
-    const totp = $('#in-totp').value.trim(); if (totp) body.totp_passcode = totp;
-    const j = await api('/login', {method:'POST', body, auth:false});
-    S.token = j.token; store.set('token', j.token); store.set('mode', 'session');
-    $('#in-pass').value = ''; $('#in-totp').value = '';
-    await boot();
-  } catch (err) {
-    if (err.code === 1017) { $('#totp-field').hidden = false; $('#in-totp').focus(); }
-    const box = $('#login-err'); box.hidden = false;
-    box.innerHTML = err.code === 1017 ? 'Enter your two-factor code.' : errText(err);
-  }
-}); });
-$('#f-token').addEventListener('submit', e => { e.preventDefault(); busy(e.target, async () => {
-  S.mode = 'token'; S.token = $('#in-token').value.trim();
-  try {
-    await api('/user', {retry:false});
-    store.set('token', S.token); store.set('mode', 'token'); $('#in-token').value = '';
-    await boot();
-  } catch (err) {
-    S.token = ''; const box = $('#login-err'); box.hidden = false;
-    box.innerHTML = err instanceof NetError ? netHelp() : 'That token didn\'t work. Check it hasn\'t expired and has “User” (under Other) ticked.';
-  }
-}); });
-
-/* =============== data =============== */
-async function loadProjects(){
-  const list = await allPages('/projects?is_archived=false');
-  S.projects = list.filter(p => p.id > 0 && !p.is_archived).sort((a,b) => (a.position||0) - (b.position||0) || a.title.localeCompare(b.title));
-  S.projById = new Map(S.projects.map(p => [p.id, p]));
-}
-async function loadLabels(force){
-  if (S.labelsLoaded && !force) return S.labels;
-  S.labels = await allPages('/labels'); S.labelsLoaded = true; return S.labels;
-}
-const remember = tasks => { for (const t of tasks) S.cache.set(t.id, t); return tasks; };
-function defaultProjectId(){
-  const route = currentRoute();
-  if (route.name === 'project' && S.projById.has(route.id)) return route.id;
-  const d = S.user?.settings?.default_project_id;
-  if (d && S.projById.has(d)) return d;
-  return S.projects[0]?.id;
-}
-const colorOf = hex => hex ? '#' + String(hex).replace('#','') : 'var(--muted)';
-
 /* =============== routing =============== */
 function currentRoute(){
   const h = location.hash.replace(/^#\/?/, '');
@@ -542,156 +582,16 @@ function currentRoute(){
   if (parts[0] === 'add') return {name:'add', text: params.get('text') || params.get('title') || ''};
   return {name:'today'};
 }
-let renderSeq = 0;
-async function render(){
-  const r = currentRoute();
-  if (r.name === 'add') {                         // deep link: #/add?text=Buy+milk+tomorrow
-    history.replaceState(null, '', '#/today');
-    await render();
-    const inp = $('#in-capture'); inp.value = r.text; onCaptureInput(); inp.focus();
-    return;
-  }
-  for (const a of document.querySelectorAll('nav.tabs a')) {
-    const on = a.dataset.tab === r.name || (a.dataset.tab === 'projects' && r.name === 'project');
-    if (on) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
-  }
-  $('#btn-back').hidden = r.name !== 'project';
-  const seq = ++renderSeq;
-  const view = $('#view');
-  if (!view.children.length || view.dataset.route !== location.hash) view.innerHTML = '<div class="loading">Loading…</div>';
-  view.dataset.route = location.hash;
-  try {
-    if (r.name === 'today') await renderToday(seq);
-    else if (r.name === 'projects') await renderProjects(seq);
-    else if (r.name === 'project') await renderProject(seq, r);
-  } catch (e) {
-    if (seq !== renderSeq) return;
-    if (e instanceof ApiError && e.status === 401) return;
-    view.innerHTML = `<div class="err" style="margin-top:16px">${errText(e)}</div><button class="btn ghost block" onclick="render()">Try again</button>`;
-  }
-  onCaptureInput();
-}
-window.addEventListener('hashchange', () => { if (!S.token) return; closeSheet(true); render(); });
-$('#btn-back').onclick = () => { location.hash = '#/projects'; };
-$('#btn-refresh').onclick = async () => { const b = $('#btn-refresh'); b.disabled = true; try { await loadProjects(); await render(); } catch(e){ toast(e.message) } finally { b.disabled = false; } };
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S.token && !$('#app').hidden && !document.body.classList.contains('sheet-open')) render();
-});
-
-function setHeader(kicker, title){ $('#kicker').textContent = kicker; $('#heading').textContent = title; document.title = title + ' · Pocket'; }
-
-/* =============== task rows =============== */
-function taskRow(t, {showProject=true} = {}){
-  const due = dueInfo(t.due_date);
-  const p = S.projById.get(t.project_id);
-  const meta = [];
-  if (due) meta.push(`<span class="due num ${due.cls}">${esc(due.label)}</span>`);
-  if (showProject && p) meta.push(`<span><i class="dot" style="background:${colorOf(p.hex_color)}"></i>${esc(p.title)}</span>`);
-  for (const l of (t.labels || []).slice(0,3)) meta.push(`<span><i class="dot" style="background:${colorOf(l.hex_color)}"></i>${esc(l.title)}</span>`);
-  if (t.repeat_after || t.repeat_mode === 1) meta.push('<span aria-label="Repeats">↻</span>');
-  const prio = t.priority >= 3 ? `<span class="prio" aria-label="Priority ${t.priority}">${'!'.repeat(Math.min(t.priority-1,3))}</span> ` : '';
-  return `<div class="row${t.done ? ' done' : ''}" data-id="${t.id}">
-    <button class="check p${t.priority||0}" data-act="toggle" aria-label="${t.done ? 'Mark not done' : 'Mark done'}: ${esc(t.title)}">${icon('check')}</button>
-    <button class="body" data-act="open"><div class="title">${prio}${esc(t.title)}</div>${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}</button>
-  </div>`;
-}
-document.addEventListener('click', e => {
-  const btn = e.target.closest('[data-act]'); if (!btn) return;
-  const row = btn.closest('[data-id]'); const id = row && +row.dataset.id;
-  if (btn.dataset.act === 'toggle' && id) toggleDone(id, row);
-  if (btn.dataset.act === 'open' && id) openTask(id);
-  if (btn.dataset.act === 'project') location.hash = '#/project/' + btn.dataset.pid;
-});
-
-async function toggleDone(id, row){
-  const t = S.cache.get(id); if (!t) return;
-  const was = t.done;
-  row?.classList.toggle('done', !was);
-  try {
-    const saved = await api('/tasks/' + id, {method:'POST', body: {...t, done: !was}});
-    S.cache.set(id, saved);
-    if (!was && !saved.done) {                  // repeating task rolled forward
-      const d = dueInfo(saved.due_date);
-      toast(d ? 'Repeats · next ' + d.label : 'Done — repeats');
-      render(); return;
-    }
-    if (!was) toast('Done', {label:'Undo', fn: () => toggleDone(id, document.querySelector(`.row[data-id="${id}"]`))});
-    setTimeout(() => { if (!document.body.classList.contains('sheet-open')) render(); }, was ? 0 : 900);
-  } catch (e) {
-    row?.classList.toggle('done', was);
-    toast(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
-  }
-}
-
-/* =============== views =============== */
-async function renderToday(seq){
-  const now = new Date();
-  setHeader(now.toLocaleDateString([], {month:'long', day:'numeric'}), now.toLocaleDateString([], {weekday:'long'}));
-  const end = addDays(startOfDay(), 8);
-  const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc'});
-  const tasks = remember(await allPages('/tasks?' + q));
-  if (seq !== renderSeq) return;
-  const t0 = startOfDay(), t1 = addDays(t0, 1);
-  const groups = [['overdue','Overdue',[]],['today','Today',[]],['','Next 7 days',[]]];
-  for (const t of tasks) {
-    if (!isSet(t.due_date)) continue;
-    const d = new Date(t.due_date);
-    groups[d < t0 ? 0 : d < t1 ? 1 : 2][2].push(t);
-  }
-  groups[0][2].sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
-  const html = groups.filter(g => g[2].length).map(([cls,title,list]) =>
-    `<div class="sec ${cls}">${title}<span class="n num">${list.length}</span></div><div class="list">${list.map(t => taskRow(t)).join('')}</div>`).join('');
-  $('#view').innerHTML = html || `<div class="empty"><b>Nothing due this week.</b>Add a task below — try “Call Ana tomorrow !3”.</div>`;
-}
-
-function projectTree(){
-  const kids = new Map();
-  for (const p of S.projects) { const k = p.parent_project_id && S.projById.has(p.parent_project_id) ? p.parent_project_id : 0; if (!kids.has(k)) kids.set(k, []); kids.get(k).push(p); }
-  const out = [];
-  (function walk(pid, depth){ for (const p of kids.get(pid) || []) { out.push([p, depth]); walk(p.id, depth+1); } })(0, 0);
-  return out;
-}
-async function renderProjects(seq){
-  setHeader(S.user ? '@' + S.user.username : '', 'Projects');
-  if (!S.projects.length) await loadProjects();
-  if (seq !== renderSeq) return;
-  const rows = projectTree();
-  if (!rows.length) { $('#view').innerHTML = `<div class="empty"><b>No projects yet.</b>Create one in Vikunja on the web.</div>`; return; }
-  const favs = S.projects.filter(p => p.is_favorite);
-  const item = ([p, depth]) => `<div class="row"><button class="body" data-act="project" data-pid="${p.id}" style="padding-left:${depth*18}px"><i class="dot" style="background:${colorOf(p.hex_color)};width:10px;height:10px;margin:0"></i><span style="flex:1">${esc(p.title)}</span>${icon('chev','i chev')}</button></div>`;
-  $('#view').innerHTML =
-    (favs.length ? `<div class="sec">Favorites</div><div class="list tree">${favs.map(p => item([p,0])).join('')}</div>` : '') +
-    `<div class="sec">All projects</div><div class="list tree">${rows.map(item).join('')}</div>`;
-}
-async function renderProject(seq, r){
-  if (!S.projById.has(r.id)) await loadProjects();
-  const p = S.projById.get(r.id);
-  if (!p) { $('#view').innerHTML = '<div class="empty"><b>Project not found.</b>It may be archived or you lost access.</div>'; setHeader('', 'Project'); return; }
-  const parent = S.projById.get(p.parent_project_id);
-  setHeader(parent ? parent.title : 'Project', p.title);
-  const q = new URLSearchParams({sort_by: 'due_date', order_by: 'asc', filter_include_nulls: 'true', filter_timezone: TZ});
-  q.set('filter', r.showDone ? 'done = true' : 'done = false');
-  const tasks = remember(await allPages(`/projects/${p.id}/tasks?` + q));
-  if (seq !== renderSeq) return;
-  // dated first (soonest first), then undated newest first
-  const dated = tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
-  const undated = tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id);
-  const list = r.showDone ? tasks.sort((a,b) => new Date(b.done_at) - new Date(a.done_at)) : [...dated, ...undated];
-  const toggle = `<a class="btn ghost toggle-done" href="#/project/${p.id}${r.showDone ? '' : '?done=1'}">${r.showDone ? 'Show open tasks' : 'Show done tasks'}</a>`;
-  $('#view').innerHTML = (list.length
-    ? `<div class="sec">${r.showDone ? 'Done' : 'Open'}<span class="n num">${list.length}</span></div><div class="list">${list.map(t => taskRow(t, {showProject:false})).join('')}</div>`
-    : `<div class="empty"><b>${r.showDone ? 'Nothing done here yet.' : 'All clear.'}</b>${r.showDone ? '' : 'New tasks you add now land in this project.'}</div>`) + toggle;
-}
 
 /* =============== quick-add magic =============== */
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 function tokenRe(prefix){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, 'g'); }
-function parseCapture(text){
+function parseCapture(text, projects){
   const out = {title: text, project: null, projectMiss: null, labels: [], priority: 0, due: null, dueLabel: ''};
   // project +name
   out.title = out.title.replace(tokenRe('+'), (m, sp, a, b, c) => {
     const name = (a || b || c).replace(/[_-]/g, ' ').toLowerCase();
-    const hit = S.projects.find(p => p.title.toLowerCase() === name) || S.projects.find(p => p.title.toLowerCase().startsWith(name));
+    const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
     if (hit) out.project = hit; else out.projectMiss = a || b || c;
     return sp;
   });
@@ -724,316 +624,468 @@ function parseCapture(text){
   out.title = out.title.replace(/\s{2,}/g, ' ').trim();
   return out;
 }
-function onCaptureInput(){
-  const v = $('#in-capture').value;
-  const parsed = parseCapture(v);
-  $('#f-capture .go').disabled = !parsed.title;
-  const pid = parsed.project?.id || defaultProjectId();
-  const p = S.projById.get(pid);
-  const chips = [];
-  if (v.trim()) {
-    if (p) chips.push(`<span class="chip"><i class="dot" style="background:${colorOf(p.hex_color)}"></i>${esc(p.title)}</span>`);
-    if (parsed.projectMiss) chips.push(`<span class="chip warn">No project “${esc(parsed.projectMiss)}”</span>`);
-    if (parsed.due) chips.push(`<span class="chip num">${esc(parsed.dueLabel)}</span>`);
-    if (parsed.priority) chips.push(`<span class="chip">Priority ${parsed.priority}</span>`);
-    for (const l of parsed.labels) chips.push(`<span class="chip">*${esc(l)}</span>`);
-  }
-  $('#cap-chips').innerHTML = chips.join('');
-  const pad = v.trim() && chips.length ? 36 : 0;
-  document.documentElement.style.setProperty('--cap-h', (64 + pad) + 'px');
-}
-$('#in-capture').addEventListener('input', onCaptureInput);
-$('#in-capture').addEventListener('focus', () => { if (!$('#in-capture').value) $('#cap-chips').innerHTML = '<span class="hint">+project  *label  !1–5  today · tomorrow · friday · in 3 days · at 5pm</span>'; });
-$('#in-capture').addEventListener('blur', () => setTimeout(onCaptureInput, 150));
 
-$('#f-capture').addEventListener('submit', async e => {
-  e.preventDefault();
-  const inp = $('#in-capture'); const raw = inp.value; const parsed = parseCapture(raw);
-  if (!parsed.title) return;
-  const pid = parsed.project?.id || defaultProjectId();
-  if (!pid) { toast('Create a project in Vikunja first'); return; }
-  const btn = $('#f-capture .go'); btn.disabled = true;
-  inp.value = ''; onCaptureInput();
-  try {
-    const body = {title: parsed.title};
-    if (parsed.due) body.due_date = parsed.due.toISOString();
-    if (parsed.priority) body.priority = parsed.priority;
-    const t = await api(`/projects/${pid}/tasks`, {method:'PUT', body});
-    if (parsed.labels.length) {
-      const all = await loadLabels();
-      for (const name of parsed.labels) {
-        let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
-        if (!l) { l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
-        await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id:l.id}});
-      }
-    }
-    const p = S.projById.get(pid);
-    toast('Added to ' + (p ? p.title : 'project'), {label:'Open', fn: () => openTask(t.id)});
-    render();
-  } catch (err) {
-    inp.value = raw; onCaptureInput();
-    toast(err instanceof NetError ? 'Offline — task kept in the box' : 'Not added: ' + err.message);
-  } finally { btn.disabled = !$('#in-capture').value.trim(); }
-});
-
-/* =============== sheet: task detail =============== */
-let sheetTask = null, lastFocus = null;
-function openSheet(){
-  lastFocus = document.activeElement;
-  const sh = $('#sheet'), sc = $('#scrim');
-  sh.hidden = false; sc.hidden = false; document.body.classList.add('sheet-open');
-  requestAnimationFrame(() => { sh.classList.add('show'); sc.classList.add('show'); });
-}
-function closeSheet(instant){
-  const sh = $('#sheet'), sc = $('#scrim');
-  if (sh.hidden) return;
-  sh.classList.remove('show'); sc.classList.remove('show'); document.body.classList.remove('sheet-open');
-  const done = () => { sh.hidden = true; sc.hidden = true; $('#sheet-body').innerHTML = ''; };
-  if (instant) done(); else setTimeout(done, 260);
-  const changed = sheetTask?._dirty; sheetTask = null;
-  if (changed && !instant) render();
-  lastFocus?.focus?.();
-}
-$('#btn-sheet-close').onclick = () => closeSheet();
-$('#scrim').onclick = () => closeSheet();
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
-// swipe down to close
-(() => { let y0 = null; const sh = $('#sheet');
-  sh.addEventListener('touchstart', e => { const sc = $('#sheet .scroll'); y0 = (sc.scrollTop <= 0 || e.target.closest('.bar')) ? e.touches[0].clientY : null; }, {passive:true});
-  sh.addEventListener('touchmove', e => { if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
-  sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) closeSheet(); });
-})();
-
-async function openTask(id){
-  openSheet();
-  const body = $('#sheet-body');
-  const cached = S.cache.get(id);
-  body.innerHTML = cached ? '' : '<div class="loading">Loading…</div>';
-  if (cached) { sheetTask = {...cached}; drawTask(); }
-  try {
-    const t = await api('/tasks/' + id);
-    if ($('#sheet').hidden) return;
-    S.cache.set(id, t); sheetTask = {...t, _dirty: sheetTask?._dirty}; drawTask();
-    loadComments(id);
-  } catch (e) { if (!cached) body.innerHTML = `<div class="err">${errText(e)}</div>`; }
+/* Collapse a list row before it's removed, so ticked-off tasks slide away instead of vanishing. */
+async function collapse(el){
+  if (!el || !el.isConnected || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  el.style.overflow = 'hidden';
+  await el.animate([{height: el.offsetHeight + 'px', opacity: 1}, {height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px'}],
+    {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
 }
 
-const PRIOS = [[0,'None'],[1,'Low'],[2,'Med'],[3,'High'],[4,'Urgent'],[5,'Now']];
-function drawTask(){
-  const t = sheetTask; if (!t) return;
-  const body = $('#sheet-body');
-  const projOpts = projectTree().map(([p, d]) => `<option value="${p.id}"${p.id === t.project_id ? ' selected' : ''}>${' '.repeat(d)}${esc(p.title)}</option>`).join('');
-  const labels = (t.labels || []).map(l => `<span class="label-chip"><i class="dot" style="background:${colorOf(l.hex_color)};margin:0"></i>${esc(l.title)}<button class="x" data-rm-label="${l.id}" aria-label="Remove label ${esc(l.title)}">${icon('close','i','width:14px;height:14px')}</button></span>`).join('');
-  const desc = t.description && t.description.replace(/<p>\s*<\/p>/g,'').trim();
-  const atts = t.attachments || [];
-  body.innerHTML = `
-    <div class="d-title">
-      <button class="check p${t.priority||0}${t.done ? ' on' : ''}" id="d-done" aria-label="${t.done ? 'Mark not done' : 'Mark done'}">${icon('check')}</button>
-      <textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done">${esc(t.title)}</textarea>
-    </div>
-    <div class="saved" id="d-saved"></div>
-    <div class="card">
-      <div class="prop"><span class="k">Due</span><span class="v">
-        <input type="datetime-local" id="d-due" value="${toLocalInput(t.due_date)}" aria-label="Due date">
-        ${isSet(t.due_date) ? `<button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date">${icon('close')}</button>` : ''}
-      </span></div>
-      <div class="prop"><span class="k">Project</span><span class="v"><select id="d-proj" aria-label="Project">${projOpts}</select></span></div>
-      <div class="prop stack"><span class="k">Priority</span><span class="v"><div class="prios" role="group" aria-label="Priority">${PRIOS.map(([n,l]) => `<button type="button" data-prio="${n}" class="${n>=3?'hot':''}" aria-pressed="${(t.priority||0) === n}">${l}</button>`).join('')}</div></span></div>
-      <div class="prop"><span class="k">Labels</span><span class="v">${labels}<button class="add-label" id="d-add-label">Add</button></span></div>
-      ${t.identifier ? `<div class="prop"><span class="k">ID</span><span class="v num" style="color:var(--muted)">${esc(t.identifier)}</span></div>` : ''}
-    </div>
-    <div id="d-label-picker"></div>
+/* =============== component =============== */
+let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, closeTimer, toastTimer, lastFocus;
+const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
+  editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false});
 
-    <div class="h3">Notes</div>
-    <div class="card" id="d-desc-card">
-      <div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes">${desc ? sanitize(desc) : '<span class="ph">Add notes</span>'}</div>
-    </div>
+document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
+  // session
+  server: store.get('server') || '',
+  token: store.get('token') || '',
+  mode: store.get('mode') || 'token',          // 'session' (password, refreshable) | 'token' (API token)
+  info: null, user: null,
+  screen: '',                                  // 'login' | 'app'
+  login: {step: 'server', method: 'token', server: '', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false},
+  // data
+  projects: [], projById: new Map(),
+  labels: [], labelsLoaded: false,
+  // view
+  route: currentRoute(),
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null},
+  refreshing: false,
+  capture: '', capFocus: false, capBusy: false,
+  sheet: blankSheet(''),
+  picker: {open: false, loading: false, error: '', q: ''},
+  toast: {show: false, msg: '', action: null},
 
-    ${atts.length ? `<div class="h3">Attachments<span class="n num">${atts.length}</span></div><div class="card">${atts.map(a => `<button class="att" data-att="${a.id}">${icon('clip')}<span class="nm">${esc(a.file?.name || 'file')}</span><span class="sz num">${fmtSize(a.file?.size)}</span></button>`).join('')}</div>` : ''}
+  init(){
+    app = this;
+    window.addEventListener('hashchange', () => { if (!this.token) return; this.closeSheet(true); this.render(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.token && this.screen === 'app' && !this.sheet.open) this.render();
+    });
+    this.$nextTick(() => this.initSwipe());
+    const qServer = new URLSearchParams(location.search).get('server');
+    if (qServer && !this.token) this.server = normServer(qServer);
+    if (this.server && this.token) this.boot();
+    else this.showLogin('');
+  },
 
-    <div class="h3">Comments<span class="n num" id="d-ccount"></span></div>
-    <div class="card" id="d-comments"><div class="loading" style="padding:16px">Loading…</div></div>
-
-    <div class="danger-zone"><button class="btn danger block" id="d-delete">Delete task</button></div>
-  `;
-  const ta = $('#d-title'); const grow = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }; grow();
-  ta.addEventListener('input', grow);
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ta.blur(); } });
-  ta.addEventListener('change', () => { const v = ta.value.trim(); if (v && v !== t.title) save({title: v}); else ta.value = t.title; });
-  $('#d-done').onclick = async () => { await save({done: !t.done}); };
-  $('#d-due').addEventListener('change', e => save({due_date: fromLocalInput(e.target.value)}));
-  $('#d-due-clear')?.addEventListener('click', () => save({due_date: ZERO}));
-  $('#d-proj').addEventListener('change', e => save({project_id: +e.target.value}));
-  for (const b of body.querySelectorAll('[data-prio]')) b.onclick = () => save({priority: +b.dataset.prio});
-  for (const b of body.querySelectorAll('[data-rm-label]')) b.onclick = () => removeLabel(+b.dataset.rmLabel);
-  $('#d-add-label').onclick = showLabelPicker;
-  const d = $('#d-desc'); d.onclick = e => { if (e.target.closest('a')) return; editDesc(); }; d.onkeydown = e => { if (e.key === 'Enter') editDesc(); };
-  for (const b of body.querySelectorAll('[data-att]')) b.onclick = () => openAttachment(+b.dataset.att);
-  $('#d-delete').onclick = deleteTask;
-  drawComments(t.id);
-}
-const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
-
-let saveChain = Promise.resolve();
-function save(patch){
-  const id = sheetTask?.id; if (!id) return;
-  const flash = $('#d-saved'); if (flash) flash.textContent = 'Saving…';
-  saveChain = saveChain.then(async () => {
-    const base = S.cache.get(id) || sheetTask;
+  /* ---------- auth ---------- */
+  get passwordAllowed(){ const a = this.info?.auth || {}; return !!(a.local?.enabled || a.ldap?.enabled); },
+  showLogin(err){
+    this.screen = 'login';
+    this.login.server = this.server;
+    this.login.err = err || '';
+  },
+  signOut(msg){
+    if (this.mode === 'session' && this.server) fetch(this.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: this.token ? {Authorization:'Bearer '+this.token} : {}}).catch(()=>{});
+    this.token = ''; this.user = null; store.del('token'); this.closeSheet(true);
+    this.login.step = this.info ? 'auth' : 'server';
+    this.showLogin(msg ? esc(msg) : '');
+  },
+  async busy(fn){ this.login.busy = true; try { return await fn(); } finally { this.login.busy = false; } },
+  async submitServer(){ await this.busy(async () => {
+    this.server = normServer(this.login.server); this.login.server = this.server;
     try {
-      const saved = await api('/tasks/' + id, {method:'POST', body: {...base, ...patch}});
-      S.cache.set(id, saved);
-      if (sheetTask?.id === id) {
-        const repeated = patch.done === true && !saved.done;
-        sheetTask = {...saved, _dirty: true}; drawTask();
-        const f = $('#d-saved'); if (f) f.textContent = repeated ? 'Repeats — moved to next date' : 'Saved';
-        setTimeout(() => { const f2 = $('#d-saved'); if (f2 && f2.textContent === 'Saved') f2.textContent = ''; }, 1500);
-      }
+      this.info = await api('/info', {auth:false});
+      store.set('server', this.server);
+      this.login.showTotp = !!this.info.totp_enabled;
+      this.login.method = this.passwordAllowed ? 'session' : 'token';
+      this.login.step = 'auth'; this.login.err = '';
+      this.$nextTick(() => (this.passwordAllowed ? this.$refs.inUser : this.$refs.inToken).focus());
+    } catch (err) {
+      this.login.err = err instanceof NetError ? netHelp() : `That address answered, but not like Vikunja (${errText(err)}). Check the URL.`;
+    }
+  }); },
+  changeServer(){ this.info = null; this.login.step = 'server'; this.login.err = ''; this.$nextTick(() => this.$refs.inServer.focus()); },
+  async submitPassword(){ await this.busy(async () => {
+    this.mode = 'session';
+    try {
+      const body = {username: this.login.user.trim(), password: this.login.pass, long_token: true};
+      const totp = this.login.totp.trim(); if (totp) body.totp_passcode = totp;
+      const j = await api('/login', {method:'POST', body, auth:false});
+      this.token = j.token; store.set('token', j.token); store.set('mode', 'session');
+      this.login.pass = ''; this.login.totp = '';
+      await this.boot();
+    } catch (err) {
+      if (err.code === 1017) { this.login.showTotp = true; this.$nextTick(() => this.$refs.inTotp.focus()); }
+      this.login.err = err.code === 1017 ? 'Enter your two-factor code.' : errText(err);
+    }
+  }); },
+  async submitToken(){ await this.busy(async () => {
+    this.mode = 'token'; this.token = this.login.token.trim();
+    try {
+      await api('/user', {retry:false});
+      store.set('token', this.token); store.set('mode', 'token'); this.login.token = '';
+      await this.boot();
+    } catch (err) {
+      this.token = '';
+      this.login.err = err instanceof NetError ? netHelp() : 'That token didn\'t work. Check it hasn\'t expired and has “User” (under Other) ticked.';
+    }
+  }); },
+
+  async boot(){
+    this.screen = 'app';
+    Object.assign(this.view, {loading: true, error: '', bootFailed: false, route: null});
+    try {
+      const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
+      this.user = user; this.info = info;
+      await this.loadProjects();
+      await this.render();
     } catch (e) {
-      const f = $('#d-saved'); if (f) f.textContent = '';
-      toast(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
-      if (sheetTask?.id === id) drawTask();
+      if (e instanceof ApiError && e.status === 401) return;
+      Object.assign(this.view, {loading: false, error: errText(e), bootFailed: true});
     }
-  });
-  return saveChain;
-}
+  },
 
-function editDesc(){
-  const t = sheetTask; const card = $('#d-desc-card');
-  const rich = RICH.test(t.description || '');
-  card.innerHTML = `<div class="desc-edit"><textarea id="d-desc-in" aria-label="Notes">${esc(htmlToText(t.description))}</textarea>
-    ${rich ? '<p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p>' : ''}
-    <div class="row-actions"><button class="btn ghost" id="d-desc-cancel">Cancel</button><button class="btn" id="d-desc-save">Save notes</button></div></div>`;
-  const inp = $('#d-desc-in'); inp.focus();
-  $('#d-desc-cancel').onclick = drawTask;
-  $('#d-desc-save').onclick = () => save({description: inp.value.trim() ? textToHtml(inp.value) : ''});
-}
+  /* ---------- data ---------- */
+  async loadProjects(){
+    const list = await allPages('/projects?is_archived=false');
+    this.projects = list.filter(p => p.id > 0 && !p.is_archived).sort((a,b) => (a.position||0) - (b.position||0) || a.title.localeCompare(b.title));
+    this.projById = new Map(this.projects.map(p => [p.id, p]));
+  },
+  async loadLabels(force){
+    if (this.labelsLoaded && !force) return this.labels;
+    this.labels = await allPages('/labels'); this.labelsLoaded = true; return this.labels;
+  },
+  get tree(){
+    const kids = new Map();
+    for (const p of this.projects) { const k = p.parent_project_id && this.projById.has(p.parent_project_id) ? p.parent_project_id : 0; if (!kids.has(k)) kids.set(k, []); kids.get(k).push(p); }
+    const out = [];
+    (function walk(pid, depth){ for (const p of kids.get(pid) || []) { out.push({p, depth}); walk(p.id, depth+1); } })(0, 0);
+    return out;
+  },
+  get favorites(){ return this.projects.filter(p => p.is_favorite); },
+  defaultProjectId(){
+    if (this.route.name === 'project' && this.projById.has(this.route.id)) return this.route.id;
+    const d = this.user?.settings?.default_project_id;
+    if (d && this.projById.has(d)) return d;
+    return this.projects[0]?.id;
+  },
+  /* Push a saved task into every list row showing it. */
+  syncTask(saved){
+    for (const g of this.view.groups) for (const t of g.tasks) if (t.id === saved.id) Object.assign(t, saved);
+  },
+  removeRow(id){
+    for (const g of this.view.groups) { const i = g.tasks.findIndex(t => t.id === id); if (i >= 0) g.tasks.splice(i, 1); }
+  },
+  viewWantsDone(){ return this.route.name === 'project' && !!this.route.showDone; },
 
-async function showLabelPicker(){
-  const box = $('#d-label-picker');
-  if (box.innerHTML) { box.innerHTML = ''; return; }
-  box.innerHTML = '<div class="card"><div class="loading" style="padding:16px">Loading labels…</div></div>';
-  let all; try { all = await loadLabels(); } catch (e) { box.innerHTML = `<div class="err">${errText(e)}</div>`; return; }
-  const have = new Set((sheetTask.labels || []).map(l => l.id));
-  const draw = (q='') => {
-    const ql = q.trim().toLowerCase();
-    const list = all.filter(l => !have.has(l.id) && (!ql || l.title.toLowerCase().includes(ql))).slice(0, 30);
-    const exact = all.some(l => l.title.toLowerCase() === ql);
-    $('#lp-list').innerHTML = list.map(l => `<button data-pick="${l.id}"><i class="dot" style="background:${colorOf(l.hex_color)};margin:0"></i>${esc(l.title)}</button>`).join('')
-      + (ql && !exact ? `<button data-new="1">Create “${esc(q.trim())}”</button>` : '')
-      + (!list.length && !ql ? '<p class="note" style="padding:0 14px 10px">No other labels. Type to create one.</p>' : '');
-  };
-  box.innerHTML = `<div class="card picker"><input id="lp-q" placeholder="Find or create a label" aria-label="Label"><div id="lp-list"></div></div>`;
-  draw();
-  const q = $('#lp-q'); q.focus(); q.oninput = () => draw(q.value);
-  $('#lp-list').onclick = async e => {
-    const b = e.target.closest('button'); if (!b) return;
+  /* ---------- views ---------- */
+  go(hash){ location.hash = hash; },
+  get head(){
+    const r = this.route, now = new Date();
+    if (r.name === 'projects') return {kicker: this.user ? '@' + this.user.username : '', title: 'Projects'};
+    if (r.name === 'project') {
+      const p = this.view.project; if (!p) return {kicker: '', title: 'Project'};
+      return {kicker: this.projById.get(p.parent_project_id)?.title || 'Project', title: p.title};
+    }
+    return {kicker: now.toLocaleDateString([], {month:'long', day:'numeric'}), title: now.toLocaleDateString([], {weekday:'long'})};
+  },
+  get emptyText(){
+    if (this.route.name === 'today') return {title: 'Nothing due this week.', body: 'Add a task below — try “Call Ana tomorrow !3”.'};
+    if (!this.view.project) return {title: 'Project not found.', body: 'It may be archived or you lost access.'};
+    return this.route.showDone ? {title: 'Nothing done here yet.', body: ''} : {title: 'All clear.', body: 'New tasks you add now land in this project.'};
+  },
+  rowMeta(t){
+    const out = [], due = dueInfo(t.due_date);
+    if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
+    const p = this.route.name === 'today' && this.projById.get(t.project_id);
+    if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
+    for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
+    if (t.repeat_after || t.repeat_mode === 1) out.push({key: 'rep', text: '↻', label: 'Repeats'});
+    return out;
+  },
+
+  async render(){
+    const r = currentRoute();
+    if (r.name === 'add') {                      // deep link: #/add?text=Buy+milk+tomorrow
+      history.replaceState(null, '', '#/today');
+      await this.render();
+      this.capture = r.text; this.$nextTick(() => this.$refs.capture.focus());
+      return;
+    }
+    this.route = r;
+    const seq = ++renderSeq;
+    const fresh = this.view.route !== location.hash;   // new screen: show Loading; same screen: refresh in place
+    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null});
+    this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
     try {
-      let l;
-      if (b.dataset.new) { l = await api('/labels', {method:'PUT', body:{title: q.value.trim()}}); all.push(l); }
-      else l = all.find(x => x.id === +b.dataset.pick);
-      await api(`/tasks/${sheetTask.id}/labels`, {method:'PUT', body:{label_id: l.id}});
-      sheetTask.labels = [...(sheetTask.labels || []), l]; sheetTask._dirty = true;
-      const c = S.cache.get(sheetTask.id); if (c) c.labels = sheetTask.labels;
-      drawTask();
-    } catch (err) { toast('Label not added: ' + err.message); }
-  };
-}
-async function removeLabel(lid){
-  try {
-    await api(`/tasks/${sheetTask.id}/labels/${lid}`, {method:'DELETE'});
-    sheetTask.labels = (sheetTask.labels || []).filter(l => l.id !== lid); sheetTask._dirty = true;
-    const c = S.cache.get(sheetTask.id); if (c) c.labels = sheetTask.labels;
-    drawTask();
-  } catch (e) { toast('Label not removed: ' + e.message); }
-}
+      if (r.name === 'today') await this.loadToday(seq);
+      else if (r.name === 'projects') { if (!this.projects.length) await this.loadProjects(); }
+      else if (r.name === 'project') await this.loadProject(seq, r);
+      if (seq === renderSeq) this.view.loading = false;
+    } catch (e) {
+      if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
+      if (!fresh && !this.view.loading) { this.notify(e instanceof NetError ? 'Offline — showing what was loaded' : 'Couldn\'t refresh: ' + e.message); return; }
+      Object.assign(this.view, {loading: false, error: errText(e)});
+    }
+  },
+  async loadToday(seq){
+    const end = addDays(startOfDay(), 8);
+    const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc'});
+    const tasks = await allPages('/tasks?' + q);
+    if (seq !== renderSeq) return;
+    for (const t of tasks) cache.set(t.id, t);
+    const t0 = startOfDay(), t1 = addDays(t0, 1);
+    const groups = [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+    for (const t of tasks) {
+      if (!isSet(t.due_date)) continue;
+      const d = new Date(t.due_date);
+      groups[d < t0 ? 0 : d < t1 ? 1 : 2].tasks.push({...t});
+    }
+    groups[0].tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
+    this.view.groups = groups;
+  },
+  async loadProject(seq, r){
+    if (!this.projById.has(r.id)) await this.loadProjects();
+    const p = this.projById.get(r.id);
+    this.view.project = p || null;
+    if (!p) { this.view.groups = []; return; }
+    const q = new URLSearchParams({sort_by: 'due_date', order_by: 'asc', filter_include_nulls: 'true', filter_timezone: TZ});
+    q.set('filter', r.showDone ? 'done = true' : 'done = false');
+    const tasks = await allPages(`/projects/${p.id}/tasks?` + q);
+    if (seq !== renderSeq) return;
+    for (const t of tasks) cache.set(t.id, t);
+    // dated first (soonest first), then undated newest first
+    const dated = tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+    const undated = tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id);
+    const list = r.showDone ? tasks.sort((a,b) => new Date(b.done_at) - new Date(a.done_at)) : [...dated, ...undated];
+    this.view.groups = [{key: r.showDone ? 'done' : 'open', cls: '', title: r.showDone ? 'Done' : 'Open', tasks: list.map(t => ({...t}))}];
+  },
+  async refresh(){
+    this.refreshing = true;
+    try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }
+  },
 
-const commentCache = new Map();
-async function loadComments(id){
-  const box = $('#d-comments'); if (!box) return;
-  if (S.info && S.info.task_comments_enabled === false) { box.innerHTML = '<p class="note" style="padding:12px 14px;margin:0">Comments are turned off on this server.</p>'; return; }
-  let list;
-  try { list = await api(`/tasks/${id}/comments`) || []; } catch (e) { box.innerHTML = `<p class="note" style="padding:12px 14px;margin:0">${errText(e)}</p>`; return; }
-  commentCache.set(id, list);
-  drawComments(id);
-}
-function drawComments(id){
-  const list = commentCache.get(id);
-  if (!list || sheetTask?.id !== id || !$('#d-comments')) return;
-  const draft = $('#d-cin')?.value || '';
-  $('#d-ccount').textContent = list.length || '';
-  $('#d-comments').innerHTML = list.map(c => `<div class="comment"><div class="who"><b>${esc(c.author?.name || c.author?.username || 'Someone')}</b> · <span class="num">${new Date(c.created).toLocaleString([], {dateStyle:'medium', timeStyle:'short'})}</span></div><div class="desc" style="padding:0">${sanitize(c.comment)}</div></div>`).join('')
-    + `<form class="comment-form" id="d-cform"><textarea id="d-cin" rows="1" placeholder="Write a comment" aria-label="Comment"></textarea><button class="go btn" style="width:44px;padding:0" aria-label="Post comment">${icon('send')}</button></form>`;
-  $('#d-cform').onsubmit = async e => {
-    e.preventDefault(); const v = $('#d-cin').value.trim(); if (!v) return;
-    const b = e.target.querySelector('button'); b.disabled = true;
-    try { await api(`/tasks/${id}/comments`, {method:'PUT', body:{comment: textToHtml(v)}}); $('#d-cin').value = ''; await loadComments(id); }
-    catch (err) { toast('Comment not posted: ' + err.message); b.disabled = false; }
-  };
-  if (draft) $('#d-cin').value = draft;
-}
+  async toggleDone(t, rowEl){
+    const was = t.done;
+    t.done = !was;
+    try {
+      const saved = await api('/tasks/' + t.id, {method:'POST', body: {...(cache.get(t.id) || t), done: !was}});
+      cache.set(t.id, saved);
+      Object.assign(t, saved);
+      if (!was && !saved.done) {                 // repeating task rolled forward
+        const d = dueInfo(saved.due_date);
+        this.notify(d ? 'Repeats · next ' + d.label : 'Done — repeats');
+        this.render(); return;
+      }
+      if (!was) this.notify('Done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null); this.render(); }});
+      setTimeout(async () => {                   // let the tick register, then slide the row away
+        if (t.done === this.viewWantsDone()) return;
+        await collapse(rowEl);
+        if (t.done !== this.viewWantsDone()) this.removeRow(t.id);
+      }, was ? 0 : 700);
+    } catch (e) {
+      t.done = was;
+      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+    }
+  },
 
-async function openAttachment(aid){
-  const w = window.open('', '_blank');           // open synchronously so iOS doesn't block it
-  try {
-    const res = await api(`/tasks/${sheetTask.id}/attachments/${aid}`, {raw:true});
-    const url = URL.createObjectURL(await res.blob());
-    if (w) w.location = url; else location.href = url;
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  } catch (e) { w?.close(); toast('Couldn\'t open: ' + e.message); }
-}
+  /* ---------- quick add ---------- */
+  get parsed(){ return parseCapture(this.capture, this.projects); },
+  get chips(){
+    if (!this.capture.trim()) return [];
+    const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [];
+    if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
+    if (parsed.projectMiss) out.push({key: 'miss', cls: 'warn', text: `No project “${parsed.projectMiss}”`});
+    if (parsed.due) out.push({key: 'due', cls: 'num', text: parsed.dueLabel});
+    if (parsed.priority) out.push({key: 'prio', text: 'Priority ' + parsed.priority});
+    parsed.labels.forEach((l, i) => out.push({key: 'l' + i, text: '*' + l}));
+    return out;
+  },
+  async submitCapture(){
+    const raw = this.capture, parsed = this.parsed;
+    if (!parsed.title) return;
+    const pid = parsed.project?.id || this.defaultProjectId();
+    if (!pid) { this.notify('Create a project in Vikunja first'); return; }
+    this.capBusy = true; this.capture = '';
+    try {
+      const body = {title: parsed.title};
+      if (parsed.due) body.due_date = parsed.due.toISOString();
+      if (parsed.priority) body.priority = parsed.priority;
+      const t = await api(`/projects/${pid}/tasks`, {method:'PUT', body});
+      if (parsed.labels.length) {
+        const all = await this.loadLabels();
+        for (const name of parsed.labels) {
+          let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
+          if (!l) { l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
+          await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id:l.id}});
+        }
+      }
+      this.notify('Added to ' + (this.projById.get(pid)?.title || 'project'), {label: 'Open', fn: () => this.openTask(t.id)});
+      this.render();
+    } catch (err) {
+      this.capture = raw;
+      this.notify(err instanceof NetError ? 'Offline — task kept in the box' : 'Not added: ' + err.message);
+    } finally { this.capBusy = false; }
+  },
 
-async function deleteTask(){
-  const t = sheetTask;
-  if (!confirm(`Delete “${t.title}”? This can't be undone here.`)) return;
-  try { await api('/tasks/' + t.id, {method:'DELETE'}); S.cache.delete(t.id); sheetTask._dirty = true; closeSheet(); toast('Deleted'); }
-  catch (e) { toast('Not deleted: ' + e.message); }
-}
+  /* ---------- sheet ---------- */
+  openSheet(kind){
+    clearTimeout(closeTimer);
+    lastFocus = document.activeElement;
+    this.sheet = {...blankSheet(kind), open: true};
+    this.picker = {open: false, loading: false, error: '', q: ''};
+    this.$nextTick(() => { void this.$refs.sheet.offsetHeight; this.sheet.show = true; });   // reflow so the slide-in animates
+  },
+  closeSheet(instant){
+    if (!this.sheet.open) return;
+    const dirty = this.sheet.dirty;
+    this.sheet.show = false;
+    const done = () => { this.sheet = blankSheet(''); this.picker.open = false; };
+    clearTimeout(closeTimer);
+    if (instant) done(); else closeTimer = setTimeout(done, 260);
+    if (dirty && !instant) this.render();
+    lastFocus?.focus?.();
+  },
+  initSwipe(){                                   // swipe down to close
+    let y0 = null; const sh = this.$refs.sheet;
+    sh.addEventListener('touchstart', e => { const sc = sh.querySelector('.scroll'); y0 = (sc.scrollTop <= 0 || e.target.closest('.bar')) ? e.touches[0].clientY : null; }, {passive:true});
+    sh.addEventListener('touchmove', e => { if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
+    sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) this.closeSheet(); });
+  },
+  openAccount(){ this.openSheet('account'); },
 
-/* =============== account sheet =============== */
-$('#btn-account').onclick = () => {
-  openSheet(); sheetTask = null;
-  const u = S.user || {};
-  $('#sheet-body').innerHTML = `
-    <div class="d-title"><h2 style="margin:0;font-size:24px">${esc(u.name || u.username || 'Account')}</h2></div>
-    <div class="card">
-      <div class="prop"><span class="k">User</span><span class="v">@${esc(u.username || '')}</span></div>
-      <div class="prop"><span class="k">Server</span><span class="v" style="overflow-wrap:anywhere">${esc(S.server)}</span></div>
-      <div class="prop"><span class="k">Version</span><span class="v num">${esc(S.info?.version || '')}</span></div>
-      <div class="prop"><span class="k">Signed in</span><span class="v">${S.mode === 'session' ? 'With password' : 'With API token'}</span></div>
-    </div>
-    <div class="h3">Quick add from anywhere</div>
-    <div class="card"><div class="desc" style="font-size:15px">Open <code style="overflow-wrap:anywhere">${esc(location.origin + location.pathname)}#/add?text=…</code> to start a task with text filled in — handy from an iOS Shortcut or a bookmark.</div></div>
-    <a class="btn ghost block" href="${esc(S.server)}" target="_blank" rel="noopener" style="text-decoration:none;margin-top:6px">Open Vikunja on the web</a>
-    <div class="danger-zone"><button class="btn danger block" id="btn-signout">Sign out</button></div>`;
-  $('#btn-signout').onclick = () => signOut();
-};
+  async openTask(id){
+    this.openSheet('task');
+    const mine = this.sheet, cached = cache.get(id);
+    if (cached) this.showTask(cached); else this.sheet.loading = true;
+    try {
+      const t = await api('/tasks/' + id);
+      if (this.sheet !== mine) return;
+      cache.set(id, t); this.showTask(t);
+      this.loadComments(id);
+    } catch (e) { if (!cached && this.sheet === mine) this.sheet.error = errText(e); }
+    finally { if (this.sheet === mine) this.sheet.loading = false; }
+  },
+  showTask(t){
+    if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
+    if (document.activeElement?.id !== 'd-title') this.sheet.title = t.title;
+  },
+  get descHtml(){
+    const d = (this.sheet.task?.description || '').replace(/<p>\s*<\/p>/g,'').trim();
+    return d ? sanitize(d) : '<span class="ph">Add notes</span>';
+  },
 
-/* =============== boot =============== */
-async function boot(){
-  $('#login').hidden = true; $('#app').hidden = false;
-  $('#view').innerHTML = '<div class="loading">Loading…</div>';
-  try {
-    const [user, info] = await Promise.all([api('/user'), S.info ? Promise.resolve(S.info) : api('/info', {auth:false}).catch(() => null)]);
-    S.user = user; S.info = info;
-    await loadProjects();
-    render();
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 401) return;
-    $('#view').innerHTML = `<div class="err" style="margin-top:16px">${errText(e)}</div><button class="btn ghost block" onclick="boot()">Try again</button><button class="btn danger block" style="margin-top:8px" onclick="signOut()">Sign out</button>`;
-  }
-}
+  /* Save a change to the open task. The sheet updates right away; the server's copy is applied once no other saves are queued. */
+  save(patch){
+    const id = this.sheet.task?.id; if (!id) return;
+    Object.assign(this.sheet.task, patch);
+    this.sheet.savedMsg = 'Saving…';
+    pendingSaves++;
+    saveChain = saveChain.then(async () => {
+      try {
+        const saved = await api('/tasks/' + id, {method:'POST', body: {...(cache.get(id) || this.sheet.task), ...patch}});
+        cache.set(id, saved); this.syncTask(saved);
+        if (--pendingSaves || this.sheet.task?.id !== id) return;
+        const repeated = patch.done === true && !saved.done;
+        this.showTask(saved); this.sheet.dirty = true;
+        this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
+        setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
+      } catch (e) {
+        pendingSaves--;
+        if (this.sheet.task?.id === id) { this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id)); }
+        this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+      }
+    });
+    return saveChain;
+  },
+  saveTitle(){
+    const v = this.sheet.title.trim();
+    if (v && v !== this.sheet.task.title) this.save({title: v}); else this.sheet.title = this.sheet.task.title;
+  },
+  editDesc(){
+    this.sheet.descDraft = htmlToText(this.sheet.task.description);
+    this.sheet.editingDesc = true;
+  },
+  async saveDesc(){
+    const v = this.sheet.descDraft;
+    this.sheet.editingDesc = false;
+    await this.save({description: v.trim() ? textToHtml(v) : ''});
+  },
 
-(function init(){
-  const qs = new URLSearchParams(location.search);
-  const qServer = qs.get('server');
-  if (qServer && !S.token) S.server = normServer(qServer);
-  if (S.server && S.token) boot();
-  else {
-    showLogin('');
-    if (S.server) { $('#in-server').value = S.server; }
-  }
-})();
+  /* ---------- labels ---------- */
+  async toggleLabelPicker(){
+    if (this.picker.open) { this.picker.open = false; return; }
+    this.picker = {open: true, loading: true, error: '', q: ''};
+    try { await this.loadLabels(); } catch (e) { this.picker.error = errText(e); }
+    this.picker.loading = false;
+  },
+  get pickerMatches(){
+    const have = new Set((this.sheet.task?.labels || []).map(l => l.id)), ql = this.picker.q.trim().toLowerCase();
+    return this.labels.filter(l => !have.has(l.id) && (!ql || l.title.toLowerCase().includes(ql))).slice(0, 30);
+  },
+  get pickerCanCreate(){
+    const ql = this.picker.q.trim().toLowerCase();
+    return !!ql && !this.labels.some(l => l.title.toLowerCase() === ql);
+  },
+  setLabels(labels){
+    const id = this.sheet.task.id;
+    this.sheet.task.labels = labels; this.sheet.dirty = true;
+    const c = cache.get(id); if (c) c.labels = labels;
+    this.syncTask({id, labels});
+  },
+  async addLabel(l){
+    try {
+      if (!l) { l = await api('/labels', {method:'PUT', body:{title: this.picker.q.trim()}}); this.labels.push(l); }
+      await api(`/tasks/${this.sheet.task.id}/labels`, {method:'PUT', body:{label_id: l.id}});
+      this.setLabels([...(this.sheet.task.labels || []), l]);
+      this.picker.q = '';
+    } catch (err) { this.notify('Label not added: ' + err.message); }
+  },
+  async removeLabel(lid){
+    try {
+      await api(`/tasks/${this.sheet.task.id}/labels/${lid}`, {method:'DELETE'});
+      this.setLabels((this.sheet.task.labels || []).filter(l => l.id !== lid));
+    } catch (e) { this.notify('Label not removed: ' + e.message); }
+  },
+
+  /* ---------- comments, attachments, delete ---------- */
+  async loadComments(id){
+    if (this.info && this.info.task_comments_enabled === false) { this.sheet.commentsNote = 'Comments are turned off on this server.'; return; }
+    try {
+      const list = await api(`/tasks/${id}/comments`) || [];
+      if (this.sheet.task?.id === id) this.sheet.comments = list;
+    } catch (e) { if (this.sheet.task?.id === id) this.sheet.commentsNote = errText(e); }
+  },
+  async postComment(){
+    const id = this.sheet.task.id, v = this.sheet.commentDraft.trim(); if (!v) return;
+    this.sheet.commentBusy = true;
+    try { await api(`/tasks/${id}/comments`, {method:'PUT', body:{comment: textToHtml(v)}}); this.sheet.commentDraft = ''; await this.loadComments(id); }
+    catch (err) { this.notify('Comment not posted: ' + err.message); }
+    finally { this.sheet.commentBusy = false; }
+  },
+  async openAttachment(aid){
+    const w = window.open('', '_blank');         // open synchronously so iOS doesn't block it
+    try {
+      const res = await api(`/tasks/${this.sheet.task.id}/attachments/${aid}`, {raw:true});
+      const url = URL.createObjectURL(await res.blob());
+      if (w) w.location = url; else location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { w?.close(); this.notify('Couldn\'t open: ' + e.message); }
+  },
+  async deleteTask(){
+    const t = this.sheet.task;
+    if (!confirm(`Delete “${t.title}”? This can't be undone here.`)) return;
+    await saveChain;
+    try {
+      await api('/tasks/' + t.id, {method:'DELETE'});
+      cache.delete(t.id); this.removeRow(t.id);
+      this.sheet.dirty = false; this.closeSheet(); this.notify('Deleted');
+    } catch (e) { this.notify('Not deleted: ' + e.message); }
+  },
+
+  /* ---------- toast ---------- */
+  notify(msg, action){
+    this.toast = {show: true, msg, action: action || null};
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => this.toast.show = false, action ? 5000 : 2600);
+  },
+  runToastAction(){ const a = this.toast.action; this.toast.show = false; a?.fn(); },
+})));
 </script>
+<script defer src="alpine-3.17.4.min.js"></script>
 </body>
 </html>

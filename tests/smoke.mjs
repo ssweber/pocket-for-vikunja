@@ -57,7 +57,7 @@ try {
     await page.waitForSelector('#f-token:not([hidden])', { timeout: 10000 });
   });
   await step('login-token', async () => {
-    await page.click('.seg button[data-mode=token]').catch(() => {});
+    if (await page.isVisible('.seg button[data-mode=token]')) await page.click('.seg button[data-mode=token]');
     await page.fill('#in-token', TOKEN);
     await page.click('#f-token button[type=submit]');
     await page.waitForSelector('#app:not([hidden])');
@@ -72,6 +72,20 @@ try {
     await page.click('#f-capture .go');
     await page.waitForSelector(`.row .title:has-text("${title}")`, { timeout: 15000 });
   });
+  const row = `.row:has(.title:has-text("${title}"))`;
+  await step('refresh-keeps-rows', async () => {
+    const before = await page.$(row);
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    if (!await before.evaluate(el => el.isConnected)) throw new Error('refresh rebuilt the list');
+  });
+  await step('tick-in-list-and-undo', async () => {
+    await page.click(`${row} .check`);
+    await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
+    await page.click('#toast-act:has-text("Undo")');
+    await page.waitForSelector(row, { timeout: 15000 });
+    if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after undo');
+  });
   await step('open-task', async () => {
     await page.click(`.row .body:has-text("${title}")`);
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
@@ -84,8 +98,11 @@ try {
     await page.waitForSelector('.comment:has-text("smoke comment")', { timeout: 10000 });
   });
   await step('set-priority', async () => {
+    const titleBox = await page.$('#d-title');
     await page.click('[data-prio="1"]');
     await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
+    if (!await titleBox.evaluate(el => el.isConnected)) throw new Error('saving rebuilt the sheet');
+    if (await page.getAttribute('[data-prio="1"]', 'aria-pressed') !== 'true') throw new Error('priority not shown as selected');
   });
   await page.screenshot({ path: `${OUT}/sheet.png` });
   await step('mark-done', async () => {
