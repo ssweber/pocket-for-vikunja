@@ -32,9 +32,9 @@ Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket i
 
 ### Quick add
 
-<img src="docs/screenshots/pocket-capture.png" width="260" alt="Typing 'Call Ana Friday at 10 +work !3' shows chips for Work, Friday 10:00 AM and Priority 3" align="right">
+Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/) (in its default mode) and a subset of its date formats. As you type, chips show what will be saved:
 
-Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/) (in its default mode) and a subset of its date formats:
+<img src="docs/screenshots/pocket-capture.png" width="390" alt="Typing 'Call Ana Friday at 10 +work !3' shows chips for Work, Friday 10:00 AM and Priority 3">
 
 | Type | Sets |
 |---|---|
@@ -46,8 +46,6 @@ Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja
 | `at 5pm`, `at 17:30` | Due time, after a date. Without one, the task is due at noon. |
 
 Not supported yet: `@user` assignees, repeating tasks (`every week`), written-out dates like `Oct 12`, several tasks or subtasks at once, and the Todoist-style shortcuts Vikunja offers as a setting.
-
-<br clear="right">
 
 ## Setup
 
