@@ -104,14 +104,16 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 /* ---------- capture bar ---------- */
 #capture{position:fixed;left:0;right:0;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));z-index:6;padding:10px var(--pad) 8px;background:var(--bg)}
 #capture::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
-#capture form{display:flex;gap:8px;align-items:center;background:var(--surface);border:2px solid var(--accent);border-radius:16px;padding:4px 4px 4px 14px}
-#capture input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;padding:10px 0}
-#capture input::placeholder{color:var(--muted)}
+#capture form{display:flex;gap:8px;align-items:flex-end;background:var(--surface);border:2px solid var(--accent);border-radius:16px;padding:4px 4px 4px 14px}
+#capture textarea{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;line-height:1.35;padding:10px 0;resize:none;max-height:35vh;overflow-y:auto}
+#capture textarea::placeholder{color:var(--muted)}
 #capture .go{width:42px;height:42px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 #capture .go[disabled]{opacity:.35}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
+.chip.toggle{background:var(--sunk);color:var(--muted);font-weight:600}
+.chip.toggle[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
 .chip .x{font-weight:700;opacity:.6;margin-left:2px}
 .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
 
@@ -144,6 +146,9 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .prios button{flex:1;border:0;border-radius:8px;background:var(--sunk);padding:9px 0;font-size:14px;font-weight:650;color:var(--muted)}
 .prios button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
 .prios button.hot[aria-pressed=true]{background:var(--overdue);color:#fff}
+.assign-form{flex:1;min-width:120px;display:flex}
+.assign-form input{flex:1;min-width:0;padding:6px 10px;border-radius:var(--r-chip);border:1.5px solid var(--line);background:var(--bg);font-size:15px;outline:0}
+.assign-form input:focus{border-color:var(--accent)}
 .label-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-radius:var(--r-chip);background:var(--sunk);font-size:14px;border:0}
 .label-chip .x{width:24px;height:24px;border-radius:12px;display:grid;place-items:center;color:var(--muted);border:0;background:transparent;padding:0}
 .add-label{border:1.5px dashed var(--line);background:transparent;color:var(--muted);border-radius:var(--r-chip);padding:4px 12px;font-size:14px}
@@ -165,7 +170,8 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .comment .who{font-size:13.5px;color:var(--muted);margin-bottom:3px}
 .comment .who b{color:var(--ink);font-weight:650}
 .comment-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
-.comment-form{border-top:0} .comment ~ .comment-form{border-top:1px solid var(--line)}
+.comment-form{border-top:0} .comment ~ .comment-form,.row ~ .comment-form{border-top:1px solid var(--line)}
+.linkish{border:0;background:transparent;padding:0;color:var(--accent);font-size:16px;text-align:left}
 .comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:16px;resize:none;min-height:42px;outline:0}
 .comment-form textarea:focus{border-color:var(--accent)}
 .att{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left}
@@ -232,7 +238,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
       <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
       <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
-      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” under Other.</p>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other.</p>
     </form>
     <button id="btn-change-server" class="btn ghost block" type="button" style="margin-top:12px" @click="changeServer()">Use a different address</button>
   </div>
@@ -295,14 +301,17 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
   </main>
 
-  <div id="capture" x-effect="document.documentElement.style.setProperty('--cap-h', (64 + (capture.trim() && chips.length ? 36 : 0)) + 'px')">
+  <div id="capture" x-ref="captureBar">
     <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
-      <input id="in-capture" x-ref="capture" x-model="capture" placeholder="Add a task" aria-label="New task" enterkeyhint="send"
-             @focus="capFocus = true" @blur="setTimeout(() => capFocus = false, 150)">
+      <textarea id="in-capture" x-ref="capture" x-model="capture" rows="1" placeholder="Add a task" aria-label="New task" enterkeyhint="send"
+                x-effect="capture; $nextTick(() => grow($el))"
+                @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); submitCapture(); }"
+                @focus="capFocus = true" @blur="setTimeout(() => capFocus = false, 150)"></textarea>
       <button class="go" type="submit" aria-label="Add task" :disabled="!parsed.title || capBusy"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips.length && !(capFocus && !capture)">
-      <template x-if="capFocus && !capture"><span class="hint">+project  *label  !1–5  today · tomorrow · friday · in 3 days · at 5pm</span></template>
+      <template x-if="capLines.length > 1"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(capNest)" @mousedown.prevent @click="capNest = !capNest">↳ Under first line</button></template>
+      <template x-if="capFocus && !capture"><span class="hint">+project  *label  @user  !1–5  today · tomorrow · friday · in 3 days · at 5pm</span></template>
       <template x-for="c in chips" :key="c.key"><span class="chip" :class="c.cls"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></span></template>
     </div>
   </div>
@@ -347,10 +356,19 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="prop stack"><span class="k">Priority</span><span class="v"><div class="prios" role="group" aria-label="Priority">
           <template x-for="p in PRIOS" :key="p.n"><button type="button" :data-prio="p.n" :class="p.n >= 3 ? 'hot' : ''" :aria-pressed="String((sheet.task.priority || 0) === p.n)" @click="save({priority: p.n})" x-text="p.label"></button></template>
         </div></span></div>
+        <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
+          <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <template x-if="!sheet.assigning"><button class="add-label" id="d-add-assignee" @click="sheet.assigning = true">Add</button></template>
+          <template x-if="sheet.assigning"><form class="assign-form" @submit.prevent="assign()">
+            <input id="d-assign-in" placeholder="Username" aria-label="Username to assign" autocapitalize="off" autocomplete="off" spellcheck="false"
+                   x-model="sheet.assignName" x-init="$nextTick(() => $el.focus())" @keydown.escape.stop="sheet.assigning = false">
+          </form></template>
+        </span></div>
         <div class="prop"><span class="k">Labels</span><span class="v">
           <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
           <button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button>
         </span></div>
+        <template x-if="parentTask"><div class="prop"><span class="k">Part of</span><span class="v"><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTask.title"></button></span></div></template>
         <template x-if="sheet.task.identifier"><div class="prop"><span class="k">ID</span><span class="v num" style="color:var(--muted)" x-text="sheet.task.identifier"></span></div></template>
       </div>
 
@@ -375,6 +393,22 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>
           <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="sheet.editingDesc = false">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
         </div></template>
+      </div>
+
+      <div class="h3">Subtasks<span class="n num" id="d-subcount" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
+      <div class="card" id="d-subtasks">
+        <template x-for="st in subtasks" :key="st.id">
+          <div class="row" :class="{done: st.done}" :data-id="st.id">
+            <button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button>
+            <button class="body" @click="openTask(st.id)"><div class="title" x-text="st.title"></div><template x-if="dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template></button>
+          </div>
+        </template>
+        <form class="comment-form" id="d-subform" @submit.prevent="addSubtasks()">
+          <textarea id="d-subin" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" x-model="sheet.subDraft"
+                    x-effect="sheet.subDraft; $nextTick(() => grow($el))"
+                    @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); addSubtasks(); }"></textarea>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Add subtasks" :disabled="sheet.subBusy || !captureLines(sheet.subDraft).length"><svg class="i"><use href="#i-up"/></svg></button>
+        </form>
       </div>
 
       <template x-if="(sheet.task.attachments || []).length"><div>
@@ -436,6 +470,7 @@ const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFi
 const PRIOS = [{n:0,label:'None'},{n:1,label:'Low'},{n:2,label:'Med'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Now'}];
 const grow = ta => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
 const cache = new Map();                       // task id -> latest task from the server
+const userCache = new Map();                   // lowercased username -> user
 let app;                                       // the Alpine component, set in init()
 
 /* =============== API =============== */
@@ -474,7 +509,11 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   if (res.status === 401 && auth && retry && app.mode === 'session') {
     if (await refreshSession()) return api(path, {method, body, raw, auth, retry:false});
   }
-  if (res.status === 401 && auth) { app.signOut('Your session ended. Sign in again.'); throw new ApiError(401, 'Signed out'); }
+  if (res.status === 401 && auth) {
+    // Vikunja also answers 401 when an API token lacks a permission, so check the token before signing out.
+    if (path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.');
+    app.signOut('Your session ended. Sign in again.'); throw new ApiError(401, 'Signed out');
+  }
   if (!res.ok) {
     let j = {}; try { j = await res.json() } catch {}
     throw new ApiError(res.status, j.message || res.statusText || ('HTTP ' + res.status), j.code);
@@ -482,6 +521,11 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   if (raw) return res;
   if (res.status === 204) return null;
   const t = await res.text(); return t ? JSON.parse(t) : null;
+}
+
+async function tokenWorks(){
+  try { return (await fetch(app.server + '/api/v1/user', {headers: {Authorization: 'Bearer ' + app.token}, credentials: app.mode === 'session' ? 'include' : 'omit'})).ok; }
+  catch { return false; }
 }
 
 async function allPages(path){
@@ -609,7 +653,7 @@ function currentRoute(){
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 function tokenRe(prefix){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, 'g'); }
 function parseCapture(text, projects){
-  const out = {title: text, project: null, projectMiss: null, labels: [], priority: 0, due: null, dueLabel: ''};
+  const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: ''};
   // project +name
   out.title = out.title.replace(tokenRe('+'), (m, sp, a, b, c) => {
     const name = (a || b || c).replace(/[_-]/g, ' ').toLowerCase();
@@ -619,6 +663,8 @@ function parseCapture(text, projects){
   });
   // labels *name
   out.title = out.title.replace(tokenRe('*'), (m, sp, a, b, c) => { out.labels.push(a || b || c); return sp; });
+  // assignees @username (needs a space before it, so email addresses in a title are left alone)
+  out.title = out.title.replace(tokenRe('@'), (m, sp, a, b, c) => { out.assignees.push(a || b || c); return sp; });
   // priority !1..!5
   out.title = out.title.replace(/(^|\s)!([1-5])(?=\s|$)/, (m, sp, n) => { out.priority = +n; return sp; });
   // dates
@@ -647,6 +693,14 @@ function parseCapture(text, projects){
   return out;
 }
 
+/* Pasted lists: one task per line. Strips what email and notes apps put in front of items:
+   "> " quote marks, bullets, "1." / "1)" numbering and checkboxes. A marker needs a space after it,
+   so "*label" and "+project" at the start of a line still work. */
+const LIST_MARKER = /^(?:>\s*)*(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}\)\s+)?(?:\[[ xX✓]?\]\s*|[☐☑☒✓✔]\s*)?/;
+function captureLines(text){
+  return String(text || '').split(/\r?\n/).map(l => l.trim().replace(LIST_MARKER, '').trim()).filter(Boolean);
+}
+
 /* Collapse a list row before it's removed, so ticked-off tasks slide away instead of vanishing. */
 async function collapse(el){
   if (!el || !el.isConnected || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -658,7 +712,7 @@ async function collapse(el){
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, closeTimer, toastTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false});
+  editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -675,7 +729,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   route: currentRoute(),
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null},
   refreshing: false,
-  capture: '', capFocus: false, capBusy: false,
+  capture: '', capFocus: false, capBusy: false, capNest: false,
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null},
@@ -686,7 +740,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && this.token && this.screen === 'app' && !this.sheet.open) this.render();
     });
-    this.$nextTick(() => this.initSwipe());
+    this.$nextTick(() => {
+      this.initSwipe();
+      // Keep the list's bottom padding in step with the capture bar as it grows.
+      new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
+    });
     const qServer = new URLSearchParams(location.search).get('server');
     if (qServer && !this.token) this.server = normServer(qServer);
     if (this.server && this.token) this.boot();
@@ -817,6 +875,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const p = this.route.name === 'today' && this.projById.get(t.project_id);
     if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
+    for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
     if (t.repeat_after || t.repeat_mode === 1) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     return out;
   },
@@ -907,51 +966,125 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
 
   /* ---------- quick add ---------- */
-  get parsed(){ return parseCapture(this.capture, this.projects); },
+  get capLines(){ return captureLines(this.capture); },
+  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects); },     // the first (or only) line
   get chips(){
     if (!this.capture.trim()) return [];
-    const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [];
+    const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
+    if (n > 1) {
+      out.push({key: 'n', text: this.capNest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
+      if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
+      return out;
+    }
     if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     if (parsed.projectMiss) out.push({key: 'miss', cls: 'warn', text: `No project “${parsed.projectMiss}”`});
     if (parsed.due) out.push({key: 'due', cls: 'num', text: parsed.dueLabel});
     if (parsed.priority) out.push({key: 'prio', text: 'Priority ' + parsed.priority});
     parsed.labels.forEach((l, i) => out.push({key: 'l' + i, text: '*' + l}));
+    parsed.assignees.forEach((u, i) => out.push({key: 'a' + i, text: '@' + u}));
     return out;
   },
+  /* Create one task from a parsed line; labels are created when missing. */
+  async createTask(parsed, pid){
+    const body = {title: parsed.title};
+    if (parsed.due) body.due_date = parsed.due.toISOString();
+    if (parsed.priority) body.priority = parsed.priority;
+    const t = await api(`/projects/${parsed.project?.id || pid}/tasks`, {method:'PUT', body});
+    if (parsed.labels.length) {
+      const all = await this.loadLabels();
+      for (const name of parsed.labels) {
+        let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
+        if (!l) { l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
+        await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id:l.id}});
+      }
+    }
+    // An assignment that fails (unknown user, no access to the project) doesn't undo the task; it's reported instead.
+    t.problems = [];
+    for (const name of parsed.assignees) {
+      try {
+        const u = await this.findUser(name);
+        if (!u) { t.problems.push(`no user @${name}`); continue; }
+        await api(`/tasks/${t.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
+      } catch (e) { t.problems.push(`@${name}: ${e.message}`); }
+    }
+    return t;
+  },
+  async findUser(name){
+    const key = name.toLowerCase();
+    if (userCache.has(key)) return userCache.get(key);
+    const u = (await api('/users?s=' + encodeURIComponent(name)) || []).find(x => x.username.toLowerCase() === key) || null;
+    if (u) userCache.set(key, u);
+    return u;
+  },
+  linkSubtask(parentId, childId){
+    return api(`/tasks/${parentId}/relations`, {method:'PUT', body:{other_task_id: childId, relation_kind: 'subtask'}});
+  },
+  /* Create a task per line, in order. With parent, each becomes its subtask and lands in the parent's project
+     unless the line names one. Returns the ids created and how many lines were used; stops at the first error. */
+  async createLines(lines, {pid, parent} = {}){
+    const ids = [], problems = []; let used = 0;
+    try {
+      for (const line of lines) {
+        const parsed = parseCapture(line, this.projects);
+        if (parsed.title) {
+          const t = await this.createTask(parsed, parent ? parent.project_id : pid);
+          ids.push(t.id); problems.push(...t.problems);
+          if (parent) await this.linkSubtask(parent.id, t.id);
+        }
+        used++;
+      }
+      return {ids, used, problems, error: null};
+    } catch (error) { return {ids, used, problems, error}; }
+  },
+  async deleteTasks(ids){
+    for (const id of [...ids].reverse()) await api('/tasks/' + id, {method:'DELETE'}).catch(() => {});
+    this.render();
+  },
   async submitCapture(){
-    const raw = this.capture, parsed = this.parsed;
-    if (!parsed.title) return;
+    const lines = this.capLines, parsed = this.parsed;
+    if (!parsed.title || this.capBusy) return;
     const pid = parsed.project?.id || this.defaultProjectId();
     if (!pid) { this.notify('Create a project in Vikunja first'); return; }
-    this.capBusy = true; this.capture = '';
+    const nest = this.capNest && lines.length > 1;
+    this.capBusy = true; this.capture = ''; this.capNest = false;
     try {
-      const body = {title: parsed.title};
-      if (parsed.due) body.due_date = parsed.due.toISOString();
-      if (parsed.priority) body.priority = parsed.priority;
-      const t = await api(`/projects/${pid}/tasks`, {method:'PUT', body});
-      if (parsed.labels.length) {
-        const all = await this.loadLabels();
-        for (const name of parsed.labels) {
-          let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
-          if (!l) { l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
-          await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id:l.id}});
-        }
+      if (lines.length === 1) {
+        const t = await this.createTask(parsed, pid);
+        const where = 'Added to ' + (this.projById.get(pid)?.title || 'project');
+        this.notify(t.problems.length ? `${where}, but ${t.problems.join('; ')}` : where, {label: 'Open', fn: () => this.openTask(t.id)});
+        return;
       }
-      this.notify('Added to ' + (this.projById.get(pid)?.title || 'project'), {label: 'Open', fn: () => this.openTask(t.id)});
-      this.render();
+      let parent = null, rest = lines, ids = [];
+      if (nest) { parent = await this.createTask(parsed, pid); ids.push(parent.id); rest = lines.slice(1); }
+      const r = await this.createLines(rest, {pid: this.defaultProjectId(), parent});
+      ids = ids.concat(r.ids);
+      const problems = [...(parent?.problems || []), ...r.problems], but = problems.length ? `, but ${problems.join('; ')}` : '';
+      const undo = {label: 'Undo', fn: () => this.deleteTasks(ids)};
+      if (r.error) {
+        this.capture = rest.slice(r.used).join('\n');           // keep what wasn't added
+        this.notify(`Added ${ids.length} of ${lines.length}${but}. Stopped: ${r.error.message}`, ids.length ? undo : null);
+      } else {
+        this.notify((nest ? `Added 1 task with ${r.ids.length} subtask${r.ids.length === 1 ? '' : 's'}` : `Added ${ids.length} tasks`) + but, undo);
+      }
     } catch (err) {
-      this.capture = raw;
-      this.notify(err instanceof NetError ? 'Offline — task kept in the box' : 'Not added: ' + err.message);
-    } finally { this.capBusy = false; }
+      this.capture = lines.join('\n'); this.capNest = nest;
+      this.notify(err instanceof NetError ? 'Offline — kept in the box' : 'Not added: ' + err.message);
+    } finally {
+      this.capBusy = false;
+      this.render();
+    }
   },
 
   /* ---------- sheet ---------- */
   openSheet(kind){
     clearTimeout(closeTimer);
-    lastFocus = document.activeElement;
-    this.sheet = {...blankSheet(kind), open: true};
+    const already = this.sheet.open && this.sheet.show, dirty = already && this.sheet.dirty;   // e.g. parent -> subtask
+    if (!already) lastFocus = document.activeElement;
+    this.sheet = {...blankSheet(kind), open: true, show: already, dirty};
     this.picker = {open: false, loading: false, error: '', q: ''};
-    this.$nextTick(() => { void this.$refs.sheet.offsetHeight; this.sheet.show = true; });   // reflow so the slide-in animates
+    const sh = document.getElementById('sheet');
+    if (already) this.$nextTick(() => { sh.querySelector('.scroll').scrollTop = 0; });
+    else this.$nextTick(() => { void sh.offsetHeight; this.sheet.show = true; });   // reflow so the slide-in animates
   },
   closeSheet(instant){
     if (!this.sheet.open) return;
@@ -986,6 +1119,39 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   showTask(t){
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
     if (document.activeElement?.id !== 'd-title') this.sheet.title = t.title;
+  },
+  get subtasks(){ return this.sheet.task?.related_tasks?.subtask || []; },
+  get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
+  async toggleSubtask(st){
+    const was = st.done;
+    st.done = !was;
+    try {
+      const full = await api('/tasks/' + st.id);          // related tasks come without labels etc.; save the full task
+      const saved = await api('/tasks/' + st.id, {method:'POST', body: {...full, done: !was}});
+      cache.set(st.id, saved);
+      Object.assign(st, {done: saved.done, due_date: saved.due_date});
+      this.sheet.dirty = true;
+    } catch (e) {
+      st.done = was;
+      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+    }
+  },
+  async addSubtasks(){
+    const parent = this.sheet.task, lines = captureLines(this.sheet.subDraft);
+    if (!parent || !lines.length || this.sheet.subBusy) return;
+    this.sheet.subBusy = true;
+    const r = await this.createLines(lines, {parent});
+    if (this.sheet.task?.id === parent.id) {
+      this.sheet.subBusy = false;
+      this.sheet.subDraft = r.error ? lines.slice(r.used).join('\n') : '';
+      if (r.ids.length) {
+        this.sheet.dirty = true;
+        try { const t = await api('/tasks/' + parent.id); cache.set(t.id, t); if (this.sheet.task?.id === t.id) this.showTask(t); } catch {}
+      }
+    }
+    const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
+    if (r.error) this.notify(`Added ${r.ids.length} of ${lines.length}${but}. Stopped: ${r.error.message}`);
+    else if (but) this.notify(`Added ${r.ids.length}${but}`);
   },
   get descHtml(){
     const d = (this.sheet.task?.description || '').replace(/<p>\s*<\/p>/g,'').trim();
@@ -1043,6 +1209,29 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   get pickerCanCreate(){
     const ql = this.picker.q.trim().toLowerCase();
     return !!ql && !this.labels.some(l => l.title.toLowerCase() === ql);
+  },
+  setAssignees(assignees){
+    const id = this.sheet.task.id;
+    this.sheet.task.assignees = assignees; this.sheet.dirty = true;
+    const c = cache.get(id); if (c) c.assignees = assignees;
+    this.syncTask({id, assignees});
+  },
+  async assign(){
+    const name = this.sheet.assignName.trim().replace(/^@/, '');
+    if (!name) { this.sheet.assigning = false; return; }
+    try {
+      const u = await this.findUser(name);
+      if (!u) { this.notify(`No user @${name}`); return; }
+      await api(`/tasks/${this.sheet.task.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
+      this.setAssignees([...(this.sheet.task.assignees || []).filter(x => x.id !== u.id), u]);
+      this.sheet.assignName = ''; this.sheet.assigning = false;
+    } catch (e) { this.notify('Not assigned: ' + e.message); }
+  },
+  async unassign(uid){
+    try {
+      await api(`/tasks/${this.sheet.task.id}/assignees/${uid}`, {method:'DELETE'});
+      this.setAssignees((this.sheet.task.assignees || []).filter(u => u.id !== uid));
+    } catch (e) { this.notify('Not unassigned: ' + e.message); }
   },
   setLabels(labels){
     const id = this.sheet.task.id;

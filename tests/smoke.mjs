@@ -4,9 +4,11 @@
 //
 // Serves the app on http://127.0.0.1:8000 (that origin must be in Vikunja's
 // cors.origins), signs in with the token, then creates, edits, completes and
-// deletes one throwaway task. It tags the task with a "pocket-smoke" label,
+// deletes throwaway tasks (including a pasted list with subtasks). It tags one with a "pocket-smoke" label,
 // which it creates on the first run and reuses after that.
-// Optional: BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium),
+// Optional: ASSIGNEE=<username> to test @assignee (token needs Other -> Users), with
+// ASSIGNEE_PROJECT=<name> of a project shared with that user,
+// BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium),
 // OUT=<dir> for screenshots.
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -15,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
+const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
+const ASSIGNEE_PROJECT = process.env.ASSIGNEE_PROJECT;   // a project shared with ASSIGNEE (default: your default project)
 const TOKEN = process.env.VIKUNJA_TOKEN;
 const PORT = +(process.env.PORT || 8000);
 const OUT = process.env.OUT || 'test-results';
@@ -155,6 +159,64 @@ try {
     await page.click('#d-delete');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 10000 });
   });
+  const parentTitle = `Pocket smoke list ${stamp}`;
+  await step('paste-list-with-parent', async () => {
+    // Pasted from an email or note: bullets and checkboxes are stripped, the first line becomes the parent.
+    await page.fill('#in-capture', `${parentTitle} tomorrow\n- Pocket smoke sub A ${stamp}\n• [ ] Pocket smoke sub B ${stamp}`);
+    if (!(await page.textContent('#cap-chips')).includes('3 tasks')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
+    await page.click('#cap-nest');
+    if (!(await page.textContent('#cap-chips')).includes('1 task + 2 subtasks')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
+    await page.click('#f-capture .go');
+    await page.waitForSelector('#toast-msg:has-text("Added 1 task with 2 subtasks")', { timeout: 20000 });
+    await page.waitForSelector(`.row .title:has-text("${parentTitle}")`, { timeout: 15000 });
+  });
+  await step('subtasks-in-sheet', async () => {
+    await page.click(`.row .body:has-text("${parentTitle}")`);
+    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row').length === 2, null, { timeout: 10000 });
+    const names = await page.$$eval('#d-subtasks .row .title', els => els.map(e => e.textContent));
+    if (!names.some(n => n === `Pocket smoke sub B ${stamp}`)) throw new Error('markers not stripped: ' + names.join(' | '));
+    await page.fill('#d-subin', `Pocket smoke sub C ${stamp}`);
+    await page.press('#d-subin', 'Enter');
+    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row').length === 3, null, { timeout: 15000 });
+    await page.click('#d-subtasks .row:first-of-type .check');
+    await page.waitForSelector('#d-subcount:text("1/3")', { timeout: 10000 });
+  });
+  await step('subtask-links-to-parent', async () => {
+    await page.click('#d-subtasks .row:first-of-type .body');
+    await page.waitForSelector(`#d-parent:has-text("${parentTitle}")`, { timeout: 10000 });
+    await page.click('#d-parent');
+    await page.waitForFunction(t => document.querySelector('#d-title')?.value === t, parentTitle, { timeout: 10000 });
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+  await step('paste-list-undo', async () => {
+    const a = `Pocket smoke undo 1 ${stamp}`, b = `Pocket smoke undo 2 ${stamp}`;
+    await page.fill('#in-capture', `1. ${a} tomorrow\n2. ${b} tomorrow`);
+    await page.click('#f-capture .go');
+    await page.waitForSelector('#toast-msg:has-text("Added 2 tasks")', { timeout: 20000 });
+    await page.waitForSelector(`.row .title:has-text("${b}")`, { timeout: 15000 });
+    await page.click('#toast-act:has-text("Undo")');
+    await page.waitForSelector(`.row .title:has-text("${a}")`, { state: 'detached', timeout: 15000 });
+    await page.waitForSelector(`.row .title:has-text("${b}")`, { state: 'detached', timeout: 15000 });
+  });
+  if (ASSIGNEE) await step('assign-from-quick-add', async () => {
+    const t = `Pocket smoke assign ${stamp}`;
+    await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE} @nobody-${stamp}` + (ASSIGNEE_PROJECT ? ` +"${ASSIGNEE_PROJECT}"` : ''));
+    const chips = await page.textContent('#cap-chips');
+    if (!chips.includes('@' + ASSIGNEE)) throw new Error('chips: ' + chips);
+    await page.click('#f-capture .go');
+    await page.waitForSelector(`#toast-msg:has-text("no user @nobody-${stamp}")`, { timeout: 20000 });
+    await page.click(`.row .body:has-text("${t}")`);
+    await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
+    await page.click(`#d-assignees .label-chip:has-text("${ASSIGNEE}") .x`);
+    await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { state: 'detached', timeout: 10000 });
+    await page.click('#d-add-assignee');
+    await page.fill('#d-assign-in', ASSIGNEE);
+    await page.press('#d-assign-in', 'Enter');
+    await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
   await step('projects', async () => {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.click('.tree .row .body');
@@ -169,9 +231,9 @@ try {
 } finally {
   await browser.close();
   http.close();
-  // Delete the task if a failed run left it behind.
-  const tasks = await (await api('/tasks?s=' + encodeURIComponent(title))).json().catch(() => []);
-  for (const t of tasks || []) if (t.title === title) {
+  // Delete anything this run left behind (every title it creates ends with the run's stamp).
+  const tasks = await (await api('/tasks?s=' + stamp)).json().catch(() => []);
+  for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {
     const r = await api('/tasks/' + t.id, { method: 'DELETE' });
     if (!r.ok) console.log(`Could not delete leftover task ${t.id} (HTTP ${r.status})`);
   }

@@ -24,8 +24,9 @@ Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket i
 ## What you get
 
 - **Today:** tasks grouped into Overdue, Today and Next 7 days. Tick one off and it slides away, with an Undo.
-- **Quick add:** type a task in one line with a date, project, priority and labels. Chips under the box show what will be saved before you send it.
-- **Task details:** due date, project, priority, labels, notes, attachments and comments. Changes save as you make them.
+- **Quick add:** type a task in one line with a date, project, priority, labels and people. Chips under the box show what will be saved before you send it.
+- **Paste a list:** paste lines from an email or a note and each one becomes a task. Bullets, numbering and checkboxes are removed, and one tap makes the rest subtasks of the first line.
+- **Task details:** due date, project, priority, who it's assigned to, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add subtasks one at a time or paste a list.
 - **Projects:** your project tree with favorites, and open or done tasks for each project.
 - **An app on your home screen:** installs on iOS and Android and follows the phone's light or dark mode.
 - **A shortcut link:** opening `…/#/add?text=Buy+milk` starts a task with the text filled in, handy from an iOS Shortcut or a bookmark.
@@ -40,12 +41,15 @@ Pocket understands the prefixes from Vikunja's [Quick Add Magic](https://vikunja
 |---|---|
 | `+work` or `+"Side project"` | Project (its full name or the start of it) |
 | `*calls` or `*"follow up"` | Label (created if it doesn't exist) |
+| `@sarah` | Assignee (their username) |
 | `!1` to `!5` | Priority |
 | `today`, `tonight`, `tomorrow`, `next week` | Due date |
 | `friday` or `fri`, `in 3 days`, `in 2 weeks` | Due date |
 | `at 5pm`, `at 17:30` | Due time, after a date. Without one, the task is due at noon. |
 
-Not supported yet: `@user` assignees, repeating tasks (`every week`), written-out dates like `Oct 12`, several tasks or subtasks at once, and the Todoist-style shortcuts Vikunja offers as a setting.
+With more than one line in the box, each line is its own task with its own shortcuts. **↳ Under first line** turns the rest into subtasks of the first.
+
+Not supported yet: repeating tasks (`every week`), written-out dates like `Oct 12`, subtasks marked by indenting, and the Todoist-style shortcuts Vikunja offers as a setting.
 
 ## Setup
 
@@ -68,7 +72,7 @@ Pocket runs entirely in the browser and talks straight to your Vikunja. Setup is
 
 3. **Sign in on your phone.** Open Pocket, enter your Vikunja address, then use either:
    - **Password**, if your server has local or LDAP accounts.
-   - **API token**, which works with every server, including ones that use single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** under *Other*.
+   - **API token**, which works with every server, including ones that use single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people by username for `@sarah`.
 
 4. **Add it to your home screen** from the browser's Share or menu button.
 
@@ -78,6 +82,8 @@ To save your team a step, share a link with the address filled in: `https://pock
 
 - **"Can't reach …", but Vikunja opens fine in the browser:** Vikunja isn't allowing Pocket's address. Check the `cors.origins` entry for typos, and check that Vikunja was restarted.
 - **"That token didn't work":** the token has expired, or **User** under *Other* isn't ticked.
+- **"Your API token doesn't allow this":** the token is missing a permission, for example **Users** when you use `@name`. Vikunja can't add permissions to an existing token, so create a new one.
+- **"This user does not have access to the project":** you can only assign people the project is shared with.
 
 ## Privacy and security
 
@@ -103,15 +109,18 @@ npm run serve    # http://127.0.0.1:8000
 
 ### Tests
 
-`tests/smoke.mjs` drives the app in a headless browser against a real Vikunja. It signs in with a token, quick-adds a task, ticks it off and undoes that, then opens it, comments, edits, completes and deletes it. It also checks the security measures: attachment handling, note cleaning and color values.
+`tests/smoke.mjs` drives the app in a headless browser against a real Vikunja. It signs in with a token, quick-adds a task, ticks it off and undoes that, then opens it, comments, edits, completes and deletes it. It pastes a list with a parent, works with the subtasks, and undoes a pasted list. It also checks the security measures: attachment handling, note cleaning and color values.
 
 ```sh
 npm install
 npx playwright install chromium    # or set BROWSER_CHANNEL=msedge or chrome
 VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
+
+# also test @assignees: needs a token with Other → Users, and a project shared with that user
+ASSIGNEE=sarah ASSIGNEE_PROJECT="Team" VIKUNJA_URL=... VIKUNJA_TOKEN=... npm test
 ```
 
-Use a test account. The test deletes its task, but leaves behind a `pocket-smoke` label that it reuses on later runs, since Task Management tokens can't delete labels.
+Use a test account. The test deletes the tasks it creates, but leaves behind a `pocket-smoke` label that it reuses on later runs, since Task Management tokens can't delete labels.
 
 ## License
 
