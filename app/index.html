@@ -313,7 +313,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips.length && !(capFocus && !capture)">
       <template x-if="capLines.length > 1"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(capNest)" @mousedown.prevent @click="capNest = !capNest">↳ Under first line</button></template>
-      <template x-if="capFocus && !capture"><span class="hint">+project  *label  @user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it</span></template>
+      <template x-if="capFocus && !capture"><span class="hint" x-text="captureHint"></span></template>
       <template x-for="c in chips" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
         :tabindex="c.kind ? 0 : -1" :title="c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null"
         @mousedown.prevent @click="c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template>
@@ -485,6 +485,9 @@ let app;                                       // the Alpine component, set in i
 /* =============== API =============== */
 class ApiError extends Error { constructor(status, msg, code){ super(msg); this.status=status; this.code=code; } }
 class NetError extends Error {}
+
+// True when Vikunja itself serves Pocket (the plugin in plugin/), so the server is this page's own address.
+const SERVED_BY_VIKUNJA = /\/api\/v1\/plugins\//.test(location.pathname);
 
 function normServer(u){
   u = (u||'').trim();
@@ -718,10 +721,16 @@ function ordinalDate(day, now){
   return null;
 }
 
+// Prefixes for each of Vikunja's Quick Add Magic modes (the user's setting); "disabled" turns parsing off.
+const QUICK_ADD_PREFIXES = {vikunja: {project: '+', label: '*', assignee: '@'}, todoist: {project: '#', label: '@', assignee: '+'}};
+
 /* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat}.
-   opts: ignore (kinds the user tapped off; their words stay in the title), now, dueTime ("HH:MM"). */
-function parseCapture(text, projects, {ignore = {}, now = new Date(), dueTime = '12:00'} = {}){
+   opts: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off; their words stay in the title),
+   now, dueTime ("HH:MM"). */
+function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new Date(), dueTime = '12:00'} = {}){
   const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: '', dueFromRepeat: false, repeat: null};
+  const P = QUICK_ADD_PREFIXES[mode];
+  if (!P) return out;
   // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
   const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
   if (quoted) { out.title = quoted[2].trim(); return out; }
@@ -729,16 +738,16 @@ function parseCapture(text, projects, {ignore = {}, now = new Date(), dueTime = 
   out.title = out.title.replace(/(^|\s)@\s+(?=\d)/g, '$1at ');                  // "@ 3pm" is a time, as in Vikunja
 
   // project +name: only the first one counts
-  if (!ignore.project) out.title = out.title.replace(tokenRe('+', ''), (m, sp, a, b, c) => {
+  if (!ignore.project) out.title = out.title.replace(tokenRe(P.project, ''), (m, sp, a, b, c) => {
     const name = (a || b || c).replace(/[_-]/g, ' ').toLowerCase();
     const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
     if (hit) out.project = hit; else out.projectMiss = a || b || c;
     return sp;
   });
   // labels *name
-  if (!ignore.labels) out.title = out.title.replace(tokenRe('*'), (m, sp, a, b, c) => { const l = a || b || c; if (!out.labels.includes(l)) out.labels.push(l); return sp; });
+  if (!ignore.labels) out.title = out.title.replace(tokenRe(P.label), (m, sp, a, b, c) => { const l = a || b || c; if (!out.labels.includes(l)) out.labels.push(l); return sp; });
   // assignees @username stay in the title, as in Vikunja. A space is needed before the @, so email addresses are left alone.
-  if (!ignore.assignees) for (const x of out.title.matchAll(tokenRe('@'))) { const u = x[2] || x[3] || x[4]; if (!out.assignees.includes(u)) out.assignees.push(u); }
+  if (!ignore.assignees) for (const x of out.title.matchAll(tokenRe(P.assignee))) { const u = x[2] || x[3] || x[4]; if (!out.assignees.includes(u)) out.assignees.push(u); }
   // priority !1..!5: the first valid one
   if (!ignore.priority) out.title = out.title.replace(/(^|\s)!([1-5])(?=\s|$)/, (m, sp, n) => { out.priority = +n; return sp; });
 
@@ -794,7 +803,7 @@ function parseCapture(text, projects, {ignore = {}, now = new Date(), dueTime = 
     if (typeof chrono !== 'undefined') {
       // chrono-node reads the rest: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
       const results = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, now, {forwardDate: true}).filter(r =>
-        out.title[r.index - 1] !== '@'                                          // part of an @username
+        out.title[r.index - 1] !== P.assignee                                   // part of an @username
         && !/^for\b/i.test(r.text)                                              // "for 2 hours" is a duration, not a date
         && !/^now$/i.test(r.text)                                               // "Now what" isn't due this minute
         && !/^\d{1,4}[/.-]\d/.test(r.text)                                      // numeric dates are handled above, at the ends only
@@ -886,9 +895,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
     });
     const qServer = new URLSearchParams(location.search).get('server');
-    if (qServer && !this.token) this.server = normServer(qServer);
+    if (SERVED_BY_VIKUNJA && !this.token) this.server = location.origin;      // Vikunja is right here
+    else if (qServer && !this.token) this.server = normServer(qServer);
     if (this.server && this.token) this.boot();
-    else this.showLogin('');
+    else {
+      this.showLogin('');
+      if (SERVED_BY_VIKUNJA) this.submitServer();                              // skip the address step
+    }
   },
 
   /* ---------- auth ---------- */
@@ -1107,9 +1120,18 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   /* ---------- quick add ---------- */
   get capLines(){ return captureLines(this.capture); },
-  get dueTime(){ return this.user?.settings?.frontend_settings?.default_due_time || '12:00'; },    // Vikunja's "default due time"
-  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects, {ignore: this.capIgnore, dueTime: this.dueTime}); },   // the first (or only) line
-  get parsedAll(){ return parseCapture(this.capLines[0] || '', this.projects, {dueTime: this.dueTime}); },                        // the same, ignoring nothing
+  // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
+  get dueTime(){ return this.user?.settings?.frontend_settings?.default_due_time || '12:00'; },
+  get quickAddMode(){ return this.user?.settings?.frontend_settings?.quick_add_magic_mode || 'vikunja'; },
+  get prefixes(){ return QUICK_ADD_PREFIXES[this.quickAddMode] || null; },
+  get parseOpts(){ return {mode: this.quickAddMode, dueTime: this.dueTime}; },
+  get parsed(){ return parseCapture(this.capLines[0] || '', this.projects, {...this.parseOpts, ignore: this.capIgnore}); },   // the first (or only) line
+  get parsedAll(){ return parseCapture(this.capLines[0] || '', this.projects, this.parseOpts); },                            // the same, ignoring nothing
+  get captureHint(){
+    const p = this.prefixes;
+    return p ? `${p.project}project  ${p.label}label  ${p.assignee}user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it`
+      : 'Quick add shortcuts are turned off in your Vikunja settings';
+  },
   get chips(){
     if (!this.capture.trim()) return [];
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
@@ -1126,8 +1148,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (all.due && !all.dueFromRepeat) out.push({key: 'due', kind: 'due', cls: 'num', text: all.dueLabel, off: off('due')});
     if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
-    all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: '*' + l, off: off('labels')}));
-    all.assignees.forEach((u, i) => out.push({key: 'a' + i, kind: 'assignees', text: '@' + u, off: off('assignees')}));
+    all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: this.prefixes.label + l, off: off('labels')}));
+    all.assignees.forEach((u, i) => out.push({key: 'a' + i, kind: 'assignees', text: this.prefixes.assignee + u, off: off('assignees')}));
     return out;
   },
   /* Create one task from a parsed line; labels are created when missing. */
@@ -1172,7 +1194,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const ids = [], problems = []; let used = 0;
     try {
       for (const line of lines) {
-        const parsed = parseCapture(line, this.projects, {dueTime: this.dueTime});
+        const parsed = parseCapture(line, this.projects, this.parseOpts);
         if (parsed.title) {
           const t = await this.createTask(parsed, parent ? parent.project_id : pid);
           ids.push(t.id); problems.push(...t.problems);

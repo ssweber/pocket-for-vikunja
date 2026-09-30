@@ -38,6 +38,12 @@ const add = c => cases.push(c);
 add({ text: 'Lorem Ipsum', title: 'Lorem Ipsum', date: null });
 add({ text: 'Lorem Ipsum email@example.com', title: 'Lorem Ipsum email@example.com', date: null, assignees: [] });
 
+// ---------- the user's Quick Add Magic mode ----------
+add({ text: 'Lorem Ipsum today *label +project !2 @user', mode: 'disabled', title: 'Lorem Ipsum today *label +project !2 @user', date: null, labels: [], project: null, priority: 0, assignees: [] });
+add({ text: 'Lorem Ipsum today @label #project !2 +user', mode: 'todoist', title: 'Lorem Ipsum +user', date: ymd(REF), labels: ['label'], project: 'project', priority: 2, assignees: ['user'] });
+add({ text: '"task today @label #project"', mode: 'todoist', title: 'task today @label #project', date: null, labels: [], project: null });
+add({ text: 'Mail bob@example.com tomorrow', mode: 'todoist', title: 'Mail bob@example.com', date: plus(1), labels: [], pocket: true, why: 'an email address is not a label' });
+
 // ---------- quote-escaped text ----------
 add({ text: '"delete mails up to january 30th"', title: 'delete mails up to january 30th', date: null, labels: [], project: null, priority: 0, assignees: [], repeat: null });
 add({ text: "'buy mass tomorrow *label !2 @user'", title: 'buy mass tomorrow *label !2 @user', date: null, labels: [], priority: 0, assignees: [], repeat: null });
@@ -208,7 +214,7 @@ await page.goto(`http://127.0.0.1:${http.address().port}/`);
 await page.waitForFunction(() => typeof parseCapture === 'function' && typeof chrono !== 'undefined');
 const PROJECTS = ['project', 'project with long name', 'today', 'project1'].map((title, i) => ({ id: i + 1, title }));
 const results = await page.evaluate(([cases, projects]) => cases.map(c => {
-  const r = parseCapture(c.text, projects, { now: new Date(c.now), dueTime: c.dueTime, ignore: c.ignore });
+  const r = parseCapture(c.text, projects, { now: new Date(c.now), dueTime: c.dueTime, ignore: c.ignore, mode: c.mode });
   return { title: r.title, date: r.due && `${r.due.getFullYear()}-${r.due.getMonth() + 1}-${r.due.getDate()}`, time: r.due && `${r.due.getHours()}:${r.due.getMinutes()}`,
     repeat: r.repeat && { after: r.repeat.after, mode: r.repeat.mode }, labels: r.labels, assignees: r.assignees, project: r.project?.title ?? r.projectMiss, priority: r.priority };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);

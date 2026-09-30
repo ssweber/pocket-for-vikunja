@@ -6,6 +6,7 @@
 // cors.origins), signs in with the token, then creates, edits, completes and
 // deletes throwaway tasks (including a pasted list with subtasks). It tags one with a "pocket-smoke" label,
 // which it creates on the first run and reuses after that.
+// With POCKET_URL=<vikunja>/api/v1/plugins/pocket/ it tests Pocket served by the Vikunja plugin instead.
 // Optional: ASSIGNEE=<username> to test @assignee (token needs Other -> Users), with
 // ASSIGNEE_PROJECT=<name> of a project shared with that user,
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium),
@@ -34,8 +35,9 @@ const http = createServer(async (req, res) => {
   if (!file.startsWith(resolve(ROOT) + sep)) { res.writeHead(404).end(); return; }
   try { res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(await readFile(file)); }
   catch { res.writeHead(404).end(); }
-}).listen(PORT, '127.0.0.1');
-const APP = `http://127.0.0.1:${PORT}/`;
+});
+if (!process.env.POCKET_URL) http.listen(PORT, '127.0.0.1');
+const APP = process.env.POCKET_URL || `http://127.0.0.1:${PORT}/`;
 
 const api = (path, init = {}) => fetch(SERVER + '/api/v1' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, ...init.headers } });
 
@@ -60,6 +62,11 @@ const label = 'pocket-smoke';
 try {
   await page.goto(APP);
   await step('login-server', async () => {
+    if (process.env.POCKET_URL) {                // served by Vikunja: the address step is skipped
+      await page.waitForSelector('#auth-step:not([hidden])', { timeout: 10000 });
+      if (await page.isVisible('#f-server')) throw new Error('address step shown');
+      return;
+    }
     await page.fill('#in-server', SERVER);
     await page.click('#f-server button[type=submit]');
     await page.waitForSelector('#f-token:not([hidden])', { timeout: 10000 });
@@ -255,7 +262,7 @@ try {
   if (errors.length) { failed++; console.log('FAIL console errors:', errors); }
 } finally {
   await browser.close();
-  http.close();
+  if (http.listening) http.close();
   // Delete anything this run left behind (every title it creates ends with the run's stamp).
   const tasks = await (await api('/tasks?s=' + stamp)).json().catch(() => []);
   for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {
