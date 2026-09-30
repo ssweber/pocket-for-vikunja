@@ -97,8 +97,10 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
 .loading{padding:40px 0;text-align:center;color:var(--muted)}
 .offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
-.row.pending .title{color:var(--muted)}
-.check.wait{border-style:dashed}
+/* a task added offline, not sent yet */
+.row.pending{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
+.check.wait{border-style:dashed;opacity:.8}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
 .tree .row .body{display:flex;align-items:center;gap:10px}
@@ -272,35 +274,24 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
     <!-- Today and a single project share the task-list markup -->
     <template x-if="!view.loading && !view.error && route.name !== 'projects'"><div>
-      <template x-if="pendingRows.length"><div id="pending">
-        <div class="sec">Waiting to send<span class="n num" x-text="pendingRows.length"></span></div>
-        <div class="list">
-          <template x-for="w in pendingRows" :key="w.id">
-            <div class="row pending">
-              <span class="check wait" aria-hidden="true"></span>
-              <div class="body"><div class="title" x-text="w.title"></div><div class="meta" x-show="w.meta || w.partly"><span x-text="[w.meta, w.partly ? 'partly sent' : ''].filter(Boolean).join(' · ')"></span></div></div>
-              <button class="icon-btn plain" :aria-label="'Cancel ' + w.title" @click="cancelPending(w.id)"><svg class="i"><use href="#i-close"/></svg></button>
-            </div>
-          </template>
-        </div>
-      </div></template>
-      <template x-for="g in view.groups.filter(g => g.tasks.length)" :key="g.key"><div>
+      <template x-for="g in listGroups.filter(g => g.tasks.length)" :key="g.key"><div>
         <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span></div>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
-            <div class="row" :class="{done: t.done}" :data-id="t.id">
-              <button class="check" :class="'p' + (t.priority || 0)" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
-              <button class="body" @click="openTask(t.id)">
-                <div class="title"><template x-if="t.priority >= 3"><span class="prio" :aria-label="'Priority ' + t.priority" x-text="'!'.repeat(Math.min(t.priority - 1, 3)) + ' '"></span></template><span x-text="t.title"></span></div>
+            <div class="row" :class="{done: t.done, pending: t.pending}" :data-id="t.id">
+              <button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
+              <button class="body" @click="t.pending || openTask(t.id)">
+                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="t.priority >= 3"><span class="prio" :aria-label="'Priority ' + t.priority" x-text="'!'.repeat(Math.min(t.priority - 1, 3)) + ' '"></span></template><span x-text="t.title"></span></div>
                 <div class="meta" x-show="rowMeta(t).length">
                   <template x-for="m in rowMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" :style="{background: m.color}"></i></template><span x-text="m.text"></span></span></template>
                 </div>
               </button>
+              <template x-if="t.pending"><button class="icon-btn plain" :aria-label="'Cancel ' + t.title" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
             </div>
           </template>
         </div>
       </div></template>
-      <template x-if="!view.groups.some(g => g.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
+      <template x-if="!listGroups.some(g => g.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
       <template x-if="route.name === 'project' && view.project"><a class="btn ghost toggle-done" :href="'#/project/' + view.project.id + (route.showDone ? '' : '?done=1')" x-text="route.showDone ? 'Show open tasks' : 'Show done tasks'"></a></template>
     </div></template>
 
@@ -1364,7 +1355,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       const r = await outboxLock(() => this.sendEntry(entry.id));
       const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.status === 'offline') {
-        this.notify(`Offline — ${n === 1 ? 'saved' : `${n} tasks saved`}. Pocket adds ${n === 1 ? 'it' : 'them'} when you're back online.`);
+        // It shows up in the list, tinted, unless this list wouldn't include it (say, a task without a date on Today).
+        this.refreshPending();
+        if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
+          this.notify(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`);
       } else if (r.status === 'error') {
         this.capture = r.unsent.join('\n');                                // keep what wasn't added
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
@@ -1442,19 +1436,52 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (failed.length) {
       this.capture = [this.capture, ...failed.flatMap(f => f.unsent)].filter(Boolean).join('\n');
       this.notify(`A task added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
-    } else if (sent) this.notify(`Added ${sent} task${sent === 1 ? '' : 's'} saved while offline`);
+    }
     if (sent || failed.length) this.render();
   },
   refreshPending(){ this.pending = this.user ? outbox.all().filter(e => e.user === this.user.id) : []; },
-  // One row per waiting capture: its first task, and how many more came with it.
-  get pendingRows(){
-    return this.pending.map(e => {
-      const left = e.items.filter(x => !x.taskId).length, more = e.items.length - 1, due = e.items[0].p.due;
-      const meta = [due ? dueInfo(due)?.label : '', more ? (e.nest ? `with ${more} subtask${more === 1 ? '' : 's'}` : `+ ${more} more`) : ''].filter(Boolean);
-      return {id: e.id, title: e.items[0].p.title, meta: meta.join(' · '), partly: left < e.items.length};
-    });
+  // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
+  get pendingTasks(){
+    const out = [];
+    for (const e of this.pending) {
+      const parentProject = e.items[0]?.p.project?.id || e.pid;
+      e.items.forEach((x, i) => {
+        if (x.taskId) return;
+        const p = x.p;
+        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, title: p.title, done: false, priority: p.priority || 0,
+          due_date: p.due || ZERO, project_id: p.project?.id || (e.nest && i > 0 ? parentProject : e.pid),
+          labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0});
+      });
+    }
+    return out;
   },
-  cancelPending(id){ outbox.remove(id); this.refreshPending(); },
+  // Which group of the current list a waiting task belongs in, by the same rules as the lists from Vikunja; null if none.
+  pendingPlace(t){
+    const r = this.route;
+    if (r.name === 'project') return !r.showDone && t.project_id === r.id ? 'open' : null;
+    if (r.name !== 'today' || !isSet(t.due_date)) return null;
+    const d = new Date(t.due_date), t0 = startOfDay();
+    return d >= addDays(t0, 8) ? null : d < t0 ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
+  },
+  // The current list, with waiting tasks added where they belong.
+  get listGroups(){
+    const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
+    if (!extra.length) return this.view.groups;
+    let base = this.view.groups;
+    if (!base.length && this.route.name === 'today') base = [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+    if (!base.length && this.route.name === 'project' && this.view.project) base = [{key:'open', cls:'', title:'Open', tasks:[]}];
+    return base.map(g => ({...g, tasks: [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)]}));
+  },
+  // Cancel one waiting task. Cancelling the first line of a pasted list with a parent leaves the rest as plain tasks.
+  async cancelPending(entryId, index){
+    await outboxLock(async () => {
+      const e = outbox.get(entryId); if (!e) return;
+      e.items.splice(index, 1);
+      if (index === 0) e.nest = false;
+      if (e.items.some(x => !x.taskId || (e.nest && !x.linked))) outbox.put(e); else outbox.remove(e.id);
+    });
+    this.refreshPending();
+  },
 
   /* ---------- sheet ---------- */
   openSheet(kind){

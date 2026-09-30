@@ -28,7 +28,7 @@ Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket i
 - **Paste a list:** paste lines from an email or a note and each one becomes a task. Bullets, numbering and checkboxes are removed, and one tap makes the rest subtasks of the first line.
 - **Task details:** due date, repeat, project, priority, who it's assigned to, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add subtasks one at a time or paste a list.
 - **Projects:** your project tree with favorites, and open or done tasks for each project.
-- **Works offline:** Pocket opens without a connection and shows your lists as they were last loaded. Tasks you add wait under *Waiting to send* and go to Vikunja when you're back online, without being added twice if a connection drops halfway.
+- **Works offline:** Pocket opens without a connection and shows your lists as they were last loaded. Tasks you add appear in your list, lightly tinted with a dashed circle, until they reach Vikunja once you're back online. A connection that drops halfway doesn't add them twice.
 - **An app on your home screen:** installs on iOS and Android and follows the phone's light or dark mode.
 - **A shortcut link:** opening `…/#/add?text=Buy+milk` starts a task with the text filled in, handy from an iOS Shortcut or a bookmark.
 

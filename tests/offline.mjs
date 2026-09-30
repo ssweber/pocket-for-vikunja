@@ -8,7 +8,7 @@
 // Also checks the case that's easy to get wrong: a task that reaches Vikunja but whose reply is lost must not be added
 // twice. Every task it creates has the run's stamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';   // BROWSER=webkit runs it on Safari's engine, as on an iPhone
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -21,7 +21,7 @@ const byTitle = async title => ((await (await api('/tasks?s=' + encodeURICompone
 await mkdir(OUT, { recursive: true });
 const stamp = Date.now();
 const T = name => `Pocket offline ${name} ${stamp}`;
-const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
+const browser = process.env.BROWSER === 'webkit' ? await webkit.launch() : await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await context.newPage();
 page.on('dialog', d => d.accept());
@@ -33,7 +33,8 @@ async function step(name, fn){
   catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {}); }
 }
 const capture = async text => { await page.fill('#in-capture', text); await page.click('#f-capture .go'); };
-const pendingRow = title => `#pending .row:has(.title:text-is("${title}"))`;
+// A task added offline sits in the normal list, tinted, until it's sent.
+const pendingRow = title => `.row.pending:has(.title:has-text("${title}"))`;
 
 try {
   // A task due tomorrow, so the Today list has something to remember.
@@ -65,22 +66,28 @@ try {
 
   await step('task-added-offline-waits', async () => {
     await capture(`${T('A')} tomorrow`);
-    await page.waitForSelector('#toast-msg:has-text("Offline")');
-    await page.waitForSelector(pendingRow(T('A')));
+    await page.waitForSelector(pendingRow(T('A')));                           // in Next 7 days, where it belongs
+    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
   });
 
   await step('pasted-list-offline-waits', async () => {
     await page.fill('#in-capture', `${T('P')} tomorrow\n- ${T('P1')}\n- ${T('P2')}`);
     await page.click('#cap-nest');
     await page.click('#f-capture .go');
-    await page.waitForSelector(`${pendingRow(T('P'))} .meta:has-text("with 2 subtasks")`);
+    await page.waitForSelector(pendingRow(T('P')));                           // the subtasks have no date, so they aren't in Today
   });
 
   await step('cancel-a-waiting-task', async () => {
-    await capture(T('X'));
+    await capture(`${T('X')} tomorrow`);
     await page.waitForSelector(pendingRow(T('X')));
-    await page.click(`${pendingRow(T('X'))} button`);
+    await page.click(`${pendingRow(T('X'))} button[aria-label^="Cancel"]`);
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
+  });
+
+  await step('undated-task-offline-says-so', async () => {
+    await capture(T('U'));                                                   // Today doesn't list tasks without a date
+    await page.waitForSelector('#toast-msg:has-text("Saved offline")');
+    if (await page.isVisible(pendingRow(T('U')))) throw new Error('shown in Today');
   });
 
   await step('still-waiting-after-reopening', async () => {
@@ -91,8 +98,9 @@ try {
 
   await step('back-online-sends-everything', async () => {
     await context.setOffline(false);                                         // fires the browser's "online" event
-    await page.waitForSelector('#pending', { state: 'detached', timeout: 20000 });
-    for (const n of ['A', 'P', 'P1', 'P2']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
+    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('A')}"))`);   // now a normal task
+    for (const n of ['A', 'P', 'P1', 'P2', 'U']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
     if ((await byTitle(T('X'))).length) throw new Error('the cancelled task was added');
     const parent = (await byTitle(T('P')))[0];
     const full = await (await api('/tasks/' + parent.id)).json();
@@ -118,7 +126,7 @@ try {
 
   await step('sign-out-clears-saved-data', async () => {
     await context.setOffline(true);
-    await capture(T('Y'));                                                   // waiting when signing out: Pocket asks first
+    await capture(`${T('Y')} tomorrow`);                                    // waiting when signing out: Pocket asks first
     await page.waitForSelector(pendingRow(T('Y')));
     // Back online for the sign-out itself, but keep this task from being sent in the meantime.
     await page.route('**/api/v1/projects/*/tasks', r => r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.fallback());
