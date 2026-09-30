@@ -58,6 +58,8 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-size:15px;color:var(--muted);font-weight:600}
 .seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .note{font-size:14px;color:var(--muted);margin:10px 0 0}
+.signin-to{margin:0 0 16px;color:var(--muted);overflow-wrap:anywhere}
+.signin-to b{color:var(--ink)}
 .err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);border-radius:12px;padding:12px 14px;font-size:15px;margin:0 0 16px;white-space:pre-line}
 .err code{font-size:13px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px;white-space:nowrap}
 
@@ -215,6 +217,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   </form>
 
   <div id="auth-step" :hidden="login.step !== 'auth'" hidden>
+    <p class="signin-to">Signing in to <b x-text="serverHost"></b></p>
+    <p class="err" x-show="server.startsWith('http://')">This address isn't secure (http). Your password or token would be sent unencrypted.</p>
     <div class="seg" role="group" aria-label="Sign-in method" :hidden="!passwordAllowed">
       <button type="button" data-mode="session" :aria-pressed="String(login.method === 'session')" @click="login.method = 'session'">Password</button>
       <button type="button" data-mode="token" :aria-pressed="String(login.method === 'token')" @click="login.method = 'token'">API token</button>
@@ -376,7 +380,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <template x-if="(sheet.task.attachments || []).length"><div>
         <div class="h3">Attachments<span class="n num" x-text="sheet.task.attachments.length"></span></div>
         <div class="card"><template x-for="a in sheet.task.attachments" :key="a.id">
-          <button class="att" @click="openAttachment(a.id)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+          <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
         </template></div>
       </div></template>
 
@@ -425,7 +429,9 @@ const store = {
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const ZERO = '0001-01-01T00:00:00Z';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const colorOf = hex => hex ? '#' + String(hex).replace('#','') : 'var(--muted)';
+const colorOf = hex => /^#?([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex || '') ? '#' + hex.replace('#','') : 'var(--muted)';
+const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|text\/plain)$/;
+const mimeOf = t => String(t || '').split(';')[0].trim().toLowerCase();
 const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
 const PRIOS = [{n:0,label:'None'},{n:1,label:'Low'},{n:2,label:'Med'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Now'}];
 const grow = ta => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
@@ -523,35 +529,51 @@ const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso
 const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
 
 /* =============== HTML description helpers =============== */
-const ALLOWED = new Set(['P','BR','B','STRONG','I','EM','U','S','DEL','UL','OL','LI','A','CODE','PRE','BLOCKQUOTE','H1','H2','H3','H4','H5','H6','SPAN','DIV','MARK','HR','TABLE','THEAD','TBODY','TR','TD','TH']);
+// Task notes and comments are HTML written by anyone who shares the project, so only a small set of
+// formatting tags survives. Alpine runs directives found in x-html content, so attributes are stripped too.
+const XHTML = 'http://www.w3.org/1999/xhtml';
+const ALLOWED = new Set(['p','br','b','strong','i','em','u','s','del','ul','ol','li','a','code','pre','blockquote','h1','h2','h3','h4','h5','h6','span','div','mark','hr','table','thead','tbody','tr','td','th']);
+const DROPPED = new Set(['script','style','iframe','frame','frameset','object','embed','template','form','input','label','textarea','select','button','noscript','link','meta','base','title']);
+// Parse in an inert document: nothing loads or runs, and <frameset> can't replace the body.
+function parseFragment(html){
+  const root = document.implementation.createHTMLDocument('').createElement('div');
+  root.innerHTML = html || '';
+  return root;
+}
+// Only absolute http(s) and mailto links, written back in normalized form.
+function safeHref(v){
+  try { const u = new URL((v || '').trim()); return /^(https?|mailto):$/.test(u.protocol) ? u.href : ''; } catch { return ''; }
+}
 function sanitize(html){
-  const doc = new DOMParser().parseFromString('<div>' + (html || '') + '</div>', 'text/html');
-  const root = doc.body.firstChild;
-  (function walk(el){
-    for (const n of [...el.childNodes]) {
-      if (n.nodeType === 8) { n.remove(); continue; }
-      if (n.nodeType !== 1) continue;
-      if (!ALLOWED.has(n.tagName)) {
-        if (['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','SVG','MATH','TEMPLATE','FORM'].includes(n.tagName)) { n.remove(); continue; }
-        if (n.tagName === 'IMG') { n.replaceWith(doc.createTextNode('[image]')); continue; }
-        if (n.tagName === 'INPUT' || n.tagName === 'LABEL') { n.remove(); continue; }
-        const frag = doc.createDocumentFragment(); while (n.firstChild) frag.appendChild(n.firstChild);
-        n.replaceWith(frag); walk(el); return;
+  const root = parseFragment(html);
+  (function clean(el){
+    let n = el.firstChild;
+    while (n) {
+      if (n.nodeType === 3) { n = n.nextSibling; continue; }
+      const tag = n.nodeType === 1 && n.namespaceURI === XHTML ? n.localName : '';   // SVG/MathML count as unknown
+      if (!ALLOWED.has(tag)) {
+        if (tag === 'img') { const t = n.ownerDocument.createTextNode('[image]'); n.replaceWith(t); n = t.nextSibling; continue; }
+        if (!tag || DROPPED.has(tag)) { const next = n.nextSibling; n.remove(); n = next; continue; }
+        // Unknown HTML tag: keep its contents in place and carry on from the first of them.
+        const next = n.firstChild || n.nextSibling; n.replaceWith(...n.childNodes); n = next; continue;
       }
       for (const a of [...n.attributes]) {
-        const keep = (n.tagName === 'A' && a.name === 'href' && /^(https?:|mailto:)/i.test(a.value.trim()))
-          || (a.name === 'data-type' && a.value === 'taskList') || a.name === 'data-checked';
+        const keep = (tag === 'a' && a.name === 'href' && safeHref(a.value))
+          || (a.name === 'data-type' && a.value === 'taskList') || (a.name === 'data-checked' && /^(true|false)$/.test(a.value));
         if (!keep) n.removeAttribute(a.name);
       }
-      if (n.tagName === 'A') { n.setAttribute('target','_blank'); n.setAttribute('rel','noopener noreferrer'); }
-      walk(n);
+      if (tag === 'a') {
+        if (n.hasAttribute('href')) n.setAttribute('href', safeHref(n.getAttribute('href')));
+        n.setAttribute('target','_blank'); n.setAttribute('rel','noopener noreferrer');
+      }
+      clean(n);
+      n = n.nextSibling;
     }
   })(root);
   return root.innerHTML;
 }
 function htmlToText(html){
-  const doc = new DOMParser().parseFromString('<div>' + (html||'') + '</div>', 'text/html');
-  const root = doc.body.firstChild; let out = '';
+  const root = parseFragment(html); let out = '';
   (function walk(el, depth){
     for (const n of el.childNodes) {
       if (n.nodeType === 3) { out += n.nodeValue; continue; }
@@ -672,6 +694,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
 
   /* ---------- auth ---------- */
+  get serverHost(){ try { return new URL(this.server).host; } catch { return this.server; } },
   get passwordAllowed(){ const a = this.info?.auth || {}; return !!(a.local?.enabled || a.ldap?.enabled); },
   showLogin(err){
     this.screen = 'login';
@@ -1057,12 +1080,23 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     catch (err) { this.notify('Comment not posted: ' + err.message); }
     finally { this.sheet.commentBusy = false; }
   },
-  async openAttachment(aid){
-    const w = window.open('', '_blank');         // open synchronously so iOS doesn't block it
+  // A blob: URL runs with this app's origin, so an HTML or SVG attachment opened that way could read the
+  // saved token. Only types that can't run script open in a tab; everything else is downloaded.
+  async openAttachment(a){
+    const inline = INLINE_TYPES.test(mimeOf(a.file?.mime));
+    const w = inline ? window.open('', '_blank') : null;   // open synchronously so iOS doesn't block it
     try {
-      const res = await api(`/tasks/${this.sheet.task.id}/attachments/${aid}`, {raw:true});
-      const url = URL.createObjectURL(await res.blob());
-      if (w) w.location = url; else location.href = url;
+      const res = await api(`/tasks/${this.sheet.task.id}/attachments/${a.id}`, {raw:true});
+      const blob = await res.blob(), type = mimeOf(blob.type);
+      if (inline && INLINE_TYPES.test(type)) {
+        const url = URL.createObjectURL(new Blob([blob], {type}));
+        if (w) w.location = url; else location.href = url;
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
+      }
+      w?.close();
+      const url = URL.createObjectURL(new Blob([blob], {type: 'application/octet-stream'}));
+      Object.assign(document.createElement('a'), {href: url, download: a.file?.name || 'attachment'}).click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { w?.close(); this.notify('Couldn\'t open: ' + e.message); }
   },
