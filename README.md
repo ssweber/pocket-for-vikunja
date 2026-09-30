@@ -80,9 +80,12 @@ Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your
 
    Vikunja's log should now include `pocket: serving … at /api/v1/plugins/pocket/`.
 
-3. **Open Pocket on your phone** at `https://<your Vikunja>/api/v1/plugins/pocket/` and sign in with either:
+3. **Open Pocket on your phone** at `https://<your Vikunja>/api/v1/plugins/pocket/` and sign in. Pocket offers whatever your Vikunja does:
+   - **Sign in with …** for each single sign-on provider Vikunja is set up with, such as Cloudron's login.
    - **Password**, if your server has local or LDAP accounts.
-   - **API token**, which works with every server, including ones that use single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people by username for `@sarah`.
+   - **API token**, as a fallback. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people by username for `@sarah`.
+
+   Single sign-on and password sign-in are shared with Vikunja's own web app on that device: sign in to either and the other is signed in too, and the same goes for signing out. In a browser, single sign-on opens in a new tab that closes by itself when you're done. In the home-screen app it opens in the same window and ends on Vikunja's page; go back to Pocket and it's signed in.
 
 4. **Add it to your home screen** from the browser's Share or menu button.
 
@@ -94,6 +97,7 @@ Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your
   - `couldn't find app/index.html`: the files aren't at `plugins/pocket/app/`.
   - `Failed to load yaegi plugin pocket`: the plugin didn't load, for example because a Vikunja update changed how plugins work. Vikunja itself keeps running.
   - Nothing at all: plugins aren't turned on, or Vikunja hasn't been restarted since.
+- **"Too many attempts from here":** Vikunja allows 10 sign-in attempts a minute from one address. Wait a minute.
 - **"That token didn't work":** the token has expired, or **User** under *Other* isn't ticked.
 - **"Your API token doesn't allow this":** the token is missing a permission, for example **Users** when you use `@name`. Vikunja can't add permissions to an existing token, so create a new one.
 - **"This user does not have access to the project":** you can only assign people the project is shared with.
@@ -102,7 +106,7 @@ Pocket runs as a plugin inside your Vikunja. Vikunja serves it at `https://<your
 
 - Pocket has no server of its own. Vikunja serves its files, and it only talks to that same Vikunja.
 - The plugin only reads the files in its `app/` folder, and it runs inside Vikunja, so read `pocket/main.go` before installing it. It's about 100 lines.
-- Your sign-in is stored in the browser on that device. Signing out removes it. To revoke an API token entirely, delete it in Vikunja.
+- Pocket doesn't keep a sign-in of its own, apart from an API token if you use one. It uses Vikunja's, stored in the browser where Vikunja's web app keeps it, and renews it the way Vikunja does. Signing out removes it. To revoke an API token entirely, delete it in Vikunja.
 - Notes and comments are cleaned before they're shown. Attachments other than images, PDFs and plain text are downloaded instead of opened. Together, these stop content from people you share projects with from running code inside Pocket, which shares its web address with Vikunja.
 
 ## Development
@@ -130,16 +134,16 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.6.0 at `http://127.0.0.1:3456` with the plugin loaded straight from `pocket/`, and prints Pocket's address. Sign in as `dev` / `dev-password`. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
+This starts a throwaway Vikunja 2.6.0 at `http://127.0.0.1:3456` with the plugin loaded straight from `pocket/`, plus a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
 
 ### Tests
 
-`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds. `tests/smoke.mjs` drives Pocket in a headless browser against a Vikunja with the plugin installed. It signs in with a token, quick-adds, ticks off and undoes, edits, comments, completes and deletes tasks, pastes a list with subtasks, assigns someone, and checks the security measures.
+`tests/parse.mjs` checks how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests. It needs no server and runs in a few seconds. `tests/smoke.mjs` drives Pocket in a headless browser against a Vikunja with the plugin installed. It signs in with a token, quick-adds, ticks off and undoes, edits, comments, completes and deletes tasks, pastes a list with subtasks, assigns someone, and checks the security measures. `tests/session.mjs` uses Pocket and Vikunja's web app side by side: signing in and out on either side, single sign-on, and renewing an expired sign-in from both at once.
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
 npm run test:parse                 # phrases only
-npm run test:local                 # starts the local Vikunja and runs both, including @assignee
+npm run test:local                 # starts the local Vikunja (with a mock single sign-on provider) and runs all three
 
 # against a real server with the plugin installed (use a test account)
 VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test

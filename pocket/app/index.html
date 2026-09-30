@@ -58,6 +58,9 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-size:15px;color:var(--muted);font-weight:600}
 .seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .note{font-size:14px;color:var(--muted);margin:10px 0 0}
+.sso-btn + .sso-btn{margin-top:10px}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;margin:20px 0 16px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);border-radius:12px;padding:12px 14px;font-size:15px;margin:0 0 16px;white-space:pre-line}
 .err code{font-size:13px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px;white-space:nowrap}
 
@@ -220,6 +223,11 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <template x-if="!info && login.err"><button class="btn ghost block" type="button" @click="probe()">Try again</button></template>
 
   <div id="auth-step" :hidden="!info" hidden>
+    <template x-if="providers.length"><div id="sso">
+      <template x-for="p in providers" :key="p.key"><button type="button" class="btn block sso-btn" @click="signInWith(p)" x-text="'Sign in with ' + p.name"></button></template>
+      <template x-if="login.waiting"><p class="note">Finish signing in in the other tab. Pocket continues by itself.</p></template>
+      <p class="or">or</p>
+    </div></template>
     <div class="seg" role="group" aria-label="Sign-in method" :hidden="!passwordAllowed">
       <button type="button" data-mode="session" :aria-pressed="String(login.method === 'session')" @click="login.method = 'session'">Password</button>
       <button type="button" data-mode="token" :aria-pressed="String(login.method === 'token')" @click="login.method = 'token'">API token</button>
@@ -441,12 +449,13 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="prop"><span class="k">User</span><span class="v" x-text="'@' + (user?.username || '')"></span></div>
         <div class="prop"><span class="k">Server</span><span class="v" style="overflow-wrap:anywhere" x-text="server"></span></div>
         <div class="prop"><span class="k">Version</span><span class="v num" x-text="info?.version || ''"></span></div>
-        <div class="prop"><span class="k">Signed in</span><span class="v" x-text="mode === 'session' ? 'With password' : 'With API token'"></span></div>
+        <div class="prop"><span class="k">Signed in</span><span class="v" x-text="mode === 'session' ? 'Same as Vikunja on this device' : 'With an API token'"></span></div>
       </div>
       <div class="h3">Quick add from anywhere</div>
       <div class="card"><div class="desc" style="font-size:15px">Open <code style="overflow-wrap:anywhere" x-text="location.origin + location.pathname + '#/add?text=…'"></code> to start a task with text filled in — handy from an iOS Shortcut or a bookmark.</div></div>
       <a class="btn ghost block" :href="server" target="_blank" rel="noopener" style="text-decoration:none;margin-top:6px">Open Vikunja on the web</a>
-      <div class="danger-zone"><button class="btn danger block" id="btn-signout" @click="signOut()">Sign out</button></div>
+      <div class="danger-zone"><button class="btn danger block" id="btn-signout" @click="signOut()">Sign out</button>
+        <template x-if="mode === 'session'"><p class="note">This also signs you out of Vikunja on this device.</p></template></div>
     </div></template>
   </div>
 </section>
@@ -478,21 +487,47 @@ let app;                                       // the Alpine component, set in i
 class ApiError extends Error { constructor(status, msg, code){ super(msg); this.status=status; this.code=code; } }
 class NetError extends Error {}
 
+/* Two ways to be signed in:
+   - 'session': Vikunja's own web sign-in (password or single sign-on), shared with Vikunja's web app on this device.
+     The token lives where Vikunja keeps it (localStorage "token") and is renewed with Vikunja's refresh cookie.
+   - 'token': an API token, kept by Pocket alone. */
+const sharedToken = {
+  get(){ try { return localStorage.getItem('token') || ''; } catch { return ''; } },
+  set(t){ try { localStorage.setItem('token', t); } catch {} },
+  del(){ try { localStorage.removeItem('token'); } catch {} },
+};
+// Home-screen app, as opposed to a browser tab.
+const INSTALLED = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+// Renew the shared session the way Vikunja's own tabs do. The refresh cookie works once and is replaced on every
+// renewal, so renewals take Vikunja's "vikunja-token-refresh" lock, and if someone else renewed while we waited,
+// their new token is used instead of spending the cookie again.
 let refreshing = null;
-async function refreshSession(){
-  if (!refreshing) refreshing = (async () => {
-    try {
-      const r = await fetch(app.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'});
-      if (!r.ok) return false;
-      const j = await r.json(); app.token = j.token; store.set('token', j.token); return true;
-    } catch { return false } finally { setTimeout(() => refreshing = null, 0) }
+function refreshSession(){
+  if (refreshing) return refreshing;
+  const before = sharedToken.get();
+  const renew = async () => {
+    const now = sharedToken.get();
+    if (now && now !== before) return true;
+    const r = await fetch(app.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'});
+    if (!r.ok) return false;
+    const j = await r.json();
+    if (!j.token) return false;
+    sharedToken.set(j.token);
+    return true;
+  };
+  refreshing = (async () => {
+    try { return navigator.locks ? await navigator.locks.request('vikunja-token-refresh', renew) : await renew(); }
+    catch { return false; }
+    finally { refreshing = null; }
   })();
   return refreshing;
 }
 
 async function api(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
   const headers = {};
-  if (auth && app.token) headers.Authorization = 'Bearer ' + app.token;
+  const token = app.mode === 'session' ? sharedToken.get() : app.token;
+  if (auth && token) headers.Authorization = 'Bearer ' + token;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
   try {
@@ -506,8 +541,8 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   }
   if (res.status === 401 && auth) {
     // Vikunja also answers 401 when an API token lacks a permission, so check the token before signing out.
-    if (path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.');
-    app.signOut('Your session ended. Sign in again.'); throw new ApiError(401, 'Signed out');
+    if (app.mode === 'token' && path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.');
+    app.signOut('Your session ended. Sign in again.', {tellServer: false}); throw new ApiError(401, 'Signed out');
   }
   if (!res.ok) {
     let j = {}; try { j = await res.json() } catch {}
@@ -519,7 +554,7 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
 }
 
 async function tokenWorks(){
-  try { return (await fetch(app.server + '/api/v1/user', {headers: {Authorization: 'Bearer ' + app.token}, credentials: app.mode === 'session' ? 'include' : 'omit'})).ok; }
+  try { return (await fetch(app.server + '/api/v1/user', {headers: {Authorization: 'Bearer ' + app.token}})).ok; }
   catch { return false; }
 }
 
@@ -540,6 +575,7 @@ function netHelp(){
 }
 function errText(e){
   if (e instanceof NetError) return netHelp();
+  if (e instanceof ApiError && e.status === 429) return 'Too many attempts from here. Wait a minute, then try again.';
   return esc(e.message || String(e));
 }
 
@@ -847,11 +883,13 @@ const blankSheet = kind => ({open: false, show: false, kind, loading: false, err
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
   server: location.origin,                     // Pocket is served by Vikunja itself (the plugin), so this is the server
-  token: store.get('token') || '',
-  mode: store.get('mode') || 'token',          // 'session' (password, refreshable) | 'token' (API token)
+  mode: 'session',                             // 'session' (shared with Vikunja's web app) | 'token' (API token)
+  token: '',                                   // the API token, in 'token' mode
+  signedIn: false,
+  ssoWindow: null,                             // the tab a single sign-on is happening in
   info: null, user: null,
   screen: '',                                  // 'login' | 'app'
-  login: {method: 'token', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false},
+  login: {method: 'token', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false, waiting: false},
   // data
   projects: [], projById: new Map(),
   labels: [], labelsLoaded: false,
@@ -866,29 +904,72 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   init(){
     app = this;
-    window.addEventListener('hashchange', () => { if (!this.token) return; this.closeSheet(true); this.render(); });
+    window.addEventListener('hashchange', () => { if (!this.signedIn) return; this.closeSheet(true); this.render(); });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.token && this.screen === 'app' && !this.sheet.open) this.render();
+      if (document.visibilityState !== 'visible') return;
+      this.sessionChanged();                                                  // e.g. back from signing in
+      if (this.signedIn && this.screen === 'app' && !this.sheet.open) this.render();
     });
+    // Vikunja's web app (or a sign-in in another tab) changed the shared session.
+    window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
     this.$watch('capture', v => { if (!v.trim()) { this.capIgnore = {}; this.capNest = false; } });
     this.$nextTick(() => {
       this.initSwipe();
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
     });
-    if (this.token) this.boot();
+    if (store.get('mode') === 'token' && store.get('token')) { this.mode = 'token'; this.token = store.get('token'); }
+    if (this.mode === 'token' || sharedToken.get()) this.boot();
     else { this.showLogin(''); this.probe(); }
   },
 
   /* ---------- auth ---------- */
   get passwordAllowed(){ const a = this.info?.auth || {}; return !!(a.local?.enabled || a.ldap?.enabled); },
+  // Single sign-on providers Vikunja offers (Cloudron's login shows up here), from /info.
+  get providers(){ const o = this.info?.auth?.openid_connect; return o?.enabled ? o.providers || [] : []; },
+  // Follow the shared session: adopt one that appeared (a sign-in finished) and sign out when Vikunja did.
+  sessionChanged(){
+    if (this.mode === 'token' && this.signedIn) return;                     // an API token doesn't follow Vikunja's sign-in
+    const t = sharedToken.get();
+    if (t && !this.signedIn) {
+      this.mode = 'session'; store.set('mode', 'session');
+      try { this.ssoWindow?.close(); } catch {}
+      this.ssoWindow = null; this.login.waiting = false;
+      this.boot();
+    } else if (!t && this.signedIn && this.mode === 'session') {
+      // Vikunja can clear the token for a moment while it renews it, so only a sign-out that lasts counts.
+      clearTimeout(this.signOutCheck);
+      this.signOutCheck = setTimeout(() => {
+        if (!sharedToken.get() && this.signedIn && this.mode === 'session') this.signOut('You signed out in Vikunja.', {tellServer: false});
+      }, 2000);
+    }
+  },
+  /* Single sign-on goes through Vikunja: the provider only returns to Vikunja's /auth/openid/<key> page, which finishes
+     signing in and saves the session where Pocket reads it. This is the same request Vikunja's login page makes. */
+  signInWith(p){
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+    try { localStorage.setItem('state', state); } catch {}
+    const url = `${p.auth_url}?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${encodeURIComponent(`${location.origin}/auth/openid/${p.key}`)}`
+      + `&response_type=code&scope=${encodeURIComponent(p.scope)}&state=${state}`;
+    // A browser tab signs in in a new tab and picks the session up by itself; a home-screen app stays in one window
+    // and picks it up when you come back to it.
+    const w = !INSTALLED && window.open(url, '_blank');
+    if (w) { this.ssoWindow = w; this.login.waiting = true; this.login.err = ''; }
+    else location.href = url;
+  },
   showLogin(err){
     this.screen = 'login';
     this.login.err = err || '';
   },
-  signOut(msg){
-    if (this.mode === 'session' && this.server) fetch(this.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: this.token ? {Authorization:'Bearer '+this.token} : {}}).catch(()=>{});
-    this.token = ''; this.user = null; store.del('token'); this.closeSheet(true);
+  // Signing out of a shared session signs this device out of Vikunja's web app too.
+  signOut(msg, {tellServer = true} = {}){
+    if (this.mode === 'session') {
+      const t = sharedToken.get();
+      if (tellServer && t) fetch(this.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
+      sharedToken.del();
+    }
+    this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
+    store.del('token'); store.del('mode'); this.closeSheet(true);
     this.showLogin(msg ? esc(msg) : '');
     if (!this.info) this.probe();
   },
@@ -910,8 +991,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try {
       const body = {username: this.login.user.trim(), password: this.login.pass, long_token: true};
       const totp = this.login.totp.trim(); if (totp) body.totp_passcode = totp;
-      const j = await api('/login', {method:'POST', body, auth:false});
-      this.token = j.token; store.set('token', j.token); store.set('mode', 'session');
+      const j = await api('/login', {method:'POST', body, auth:false});           // also sets Vikunja's refresh cookie
+      sharedToken.set(j.token); store.set('mode', 'session'); store.del('token');
       this.login.pass = ''; this.login.totp = '';
       await this.boot();
     } catch (err) {
@@ -926,13 +1007,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       store.set('token', this.token); store.set('mode', 'token'); this.login.token = '';
       await this.boot();
     } catch (err) {
-      this.token = '';
+      this.token = ''; this.mode = 'session';
       this.login.err = err instanceof NetError ? netHelp() : 'That token didn\'t work. Check it hasn\'t expired and has “User” (under Other) ticked.';
     }
   }); },
 
   async boot(){
-    this.screen = 'app';
+    this.screen = 'app'; this.signedIn = true;
     Object.assign(this.view, {loading: true, error: '', bootFailed: false, route: null});
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
