@@ -2,7 +2,8 @@
 //
 //   npm run test:parse
 //
-// Loads pocket/app/index.html in a headless browser and runs parseCapture() on each phrase with a fixed "now".
+// Loads pocket/app/index.html in a headless browser and runs parseCapture() on each phrase with a fixed "now",
+// and captureLines() on a few pasted lists.
 // The phrases and expectations are adapted from Vikunja's own Quick Add Magic tests
 // (frontend/src/modules/quickAddMagic/quickAddMagic.test.ts), so Pocket reads text the way Vikunja does.
 // Cases marked `pocket` are where Pocket deliberately differs from Vikunja, or goes further; `why` says how.
@@ -208,6 +209,15 @@ add({ text: 'Order 3/4 inch screws', title: 'Order 3/4 inch screws', date: null,
 add({ text: 'Pay rent tomorrow', ignore: { due: true }, title: 'Pay rent tomorrow', date: null, ...extra('a tapped-off chip keeps its words') });
 add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem Ipsum @ann', date: '2021-12-21', time: '15:0', labels: ['calls'], assignees: ['ann'], project: 'project', priority: 2, ...extra('everything at once') });
 
+// ---------- pasted lists: list markers removed, one task per line ----------
+const lists = [];
+const addList = (text, lines, why) => lists.push({ text, lines, why });
+addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk', 'Eggs'], 'iOS Notes checklist');
+addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols');
+addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
+addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
+addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
+
 // ---------- run ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const page = await browser.newPage();
@@ -219,6 +229,7 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
   return { title: r.title, date: r.due && `${r.due.getFullYear()}-${r.due.getMonth() + 1}-${r.due.getDate()}`, time: r.due && `${r.due.getHours()}:${r.due.getMinutes()}`,
     repeat: r.repeat && { after: r.repeat.after, mode: r.repeat.mode }, labels: r.labels, assignees: r.assignees, project: r.project?.title ?? r.projectMiss, priority: r.priority };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
+const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
 await browser.close();
 http.close();
 
@@ -233,5 +244,8 @@ cases.forEach((c, i) => {
   for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority']) if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
   if (bad.length) { failed++; console.log(`FAIL ${JSON.stringify(c.text)}${c.pocket ? ` [Pocket: ${c.why}]` : ''}: ${bad.join(', ')}`); }
 });
-console.log(`${cases.length - failed} of ${cases.length} passed (${cases.filter(c => c.pocket).length} are Pocket-specific)`);
+lists.forEach((l, i) => {
+  if (!same(listResults[i], l.lines)) { failed++; console.log(`FAIL pasted list [${l.why}]: ${JSON.stringify(listResults[i])}`); }
+});
+console.log(`${cases.length + lists.length - failed} of ${cases.length + lists.length} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists)`);
 process.exitCode = failed ? 1 : 0;
