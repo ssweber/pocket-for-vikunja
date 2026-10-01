@@ -66,7 +66,7 @@ Since the plugin runs inside Vikunja, read [`pocket/main.go`](pocket/main.go) be
 <details>
 <summary>Signing in with an API token instead</summary>
 
-If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Projectusers** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Projectusers**, `@sarah` still works but stays in the title and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*.
+If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Projectusers** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Projectusers**, `@sarah` still works, but people aren't suggested as you type, the name stays in the title, and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*.
 
 A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn't affect it.
 
@@ -90,6 +90,7 @@ Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://v
 | `at 5pm`, `at 17:30`, `@ 3pm` | Due time. Without one, the task is due at your default due time from Vikunja's settings, noon unless you changed it. |
 | `every day`, `every 3 days`, `every two weeks`, `every month`, `every year`, `daily`, `weekly`, `biannually` | Repeat. Without a date, it starts at the next due time. |
 
+- **Suggestions:** as you type a label or a person, chips offer your existing labels and the people you share projects with, those who can see the task's project first. Tap one to finish the word.
 - **Read something you didn't mean?** Tap its chip and those words stay in the title. Tap again to undo. To turn it all off for one task, wrap the whole text in quotes: `"Read 1984 by Friday"`.
 - **Pasting a list:** with more than one line in the box, each line becomes a task with its own dates and other shortcuts, and bullets, numbering and checkboxes are removed. The whole list goes to one project: add `+Kitchen` to any line, say the end of the last one. **↳ Under first line** makes the rest subtasks of the first.
 - **New projects:** if a `+project` doesn't exist yet, tap **Create project** to make it. The task goes there when you send it.

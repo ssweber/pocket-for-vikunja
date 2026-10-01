@@ -318,7 +318,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <textarea id="in-capture" x-ref="capture" x-model="capture" rows="1" placeholder="Add a task" aria-label="New task" enterkeyhint="send"
                 x-effect="capture; $nextTick(() => grow($el))"
                 @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); submitCapture(); }"
-                @focus="capFocus = true" @blur="setTimeout(() => capFocus = false, 150)"></textarea>
+                @input="capCaret = $el.selectionStart" @click="capCaret = $el.selectionStart" @keyup="capCaret = $el.selectionStart"
+                @focus="capFocus = true" @blur="setTimeout(() => capFocus = document.activeElement === $el, 150)"></textarea>
       <button class="go" type="submit" aria-label="Add task" :disabled="!parsed.title || capBusy"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips.length && !(capFocus && !capture)">
@@ -492,6 +493,7 @@ const PRIOS = [{n:0,label:'None'},{n:1,label:'Low'},{n:2,label:'Med'},{n:3,label
 const grow = ta => { ta.style.height = 'auto'; if (ta.scrollHeight) ta.style.height = ta.scrollHeight + 'px'; };
 const cache = new Map();                       // task id -> latest task from the server
 const userCache = new Map();                   // lowercased username -> user
+let peopleLoading = null;                      // loadPeople() while it runs
 let app;                                       // the Alpine component, set in init()
 
 /* =============== API =============== */
@@ -950,6 +952,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → projectusers.
   access: {}, userKnown: {}, accessBlocked: false,
+  capCaret: 0,                                 // the cursor in the quick add box, for suggestions
+  people: null,                                // everyone you share a project with: [{user, pids}], loaded on the first @
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null},
@@ -976,6 +980,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     // Once typing pauses, find out whether each @username can see the task's project.
     let accessTimer;
     this.$watch('accessQuery', q => { clearTimeout(accessTimer); if (q) accessTimer = setTimeout(() => this.checkAccess(), 500); });
+    // Starting an @username or *label: load what to suggest.
+    this.$watch('capToken', tk => {
+      if (tk?.kind === 'label') this.loadLabels().catch(() => {});
+      if (tk?.kind === 'assignee') this.loadPeople().catch(() => {});
+    });
     this.$nextTick(() => {
       this.initSwipe();
       // Keep the list's bottom padding in step with the capture bar as it grows.
@@ -1041,7 +1050,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     }
     this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
     store.del('token'); store.del('mode'); this.closeSheet(true);
-    userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false;
+    userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null; this.labels = []; this.labelsLoaded = false;
     this.showLogin(msg ? esc(msg) : '');
     if (!this.info) this.probe();
   },
@@ -1242,6 +1251,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   async refresh(){
     this.refreshing = true;
+    this.people = null; this.access = {}; this.userKnown = {}; this.labelsLoaded = false;   // sharing and labels may have changed too
     try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }
   },
 
@@ -1365,8 +1375,76 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     return this.parsed.project?.id || (auto && !this.capIgnore.autoProject ? auto.id : this.defaultProjectId());
   },
 
+  /* ---------- suggestions for the @username or *label at the cursor ---------- */
+  // {kind: 'assignee' | 'label', prefix, q, start, end}: the word being typed, from its prefix to the end of the word.
+  get capToken(){
+    const P = this.prefixes;
+    if (!P || !this.capFocus) return null;
+    const text = this.capture, at = Math.min(this.capCaret, text.length), tail = text.slice(at).match(/^\S*/)[0];
+    for (const kind of ['assignee', 'label']) {
+      const m = text.slice(0, at).match(new RegExp(`(^|\\s)\\${P[kind]}(?:"([^"]*)|([^\\s"]*))$`));
+      if (m) return {kind, prefix: P[kind], q: m[2] ?? m[3] ?? '', start: m.index + m[1].length, end: at + tail.length};
+    }
+    return null;
+  },
+  /* Chips to tap instead of typing the rest: people who can see the task's project first, then others you share with.
+     None once the word already names one exactly, so the usual chips show what will be saved. */
+  get suggestions(){
+    const tk = this.capToken;
+    if (!tk) return null;
+    const q = tk.q.toLowerCase();
+    if (q && (tk.kind === 'label' ? this.labels.some(l => l.title.toLowerCase() === q) : (this.people || []).some(x => x.user.username.toLowerCase() === q))) return null;
+    const score = (...names) => Math.min(...names.map(n => (n || '').toLowerCase()).map(n => n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9));
+    let out;
+    if (tk.kind === 'label') {
+      out = this.labels.map(l => ({l, s: score(l.title)})).filter(x => x.s < 9).sort((a, b) => a.s - b.s || a.l.title.localeCompare(b.l.title))
+        .map(({l}) => ({key: 's' + l.id, kind: 'suggest', color: colorOf(l.hex_color), text: tk.prefix + l.title, hint: 'Use this label', action: () => this.useSuggestion(tk, l.title)}));
+    } else {
+      const pid = this.parsed.project?.id || this.defaultProjectId();
+      out = (this.people || []).map(x => ({x, s: score(x.user.username, x.user.name), away: !x.pids.has(pid)})).filter(y => y.s < 9)
+        .sort((a, b) => a.away - b.away || a.s - b.s || (a.x.user.name || a.x.user.username).localeCompare(b.x.user.name || b.x.user.username))
+        .map(({x: {user: u}}) => ({key: 's' + u.id, kind: 'suggest', text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username, hint: 'Assign ' + (u.name || u.username), action: () => this.useSuggestion(tk, u.username)}));
+    }
+    return out.length ? out.slice(0, 6) : null;
+  },
+  useSuggestion(tk, name){
+    const word = tk.prefix + (/\s/.test(name) ? `"${name}"` : name) + ' ', el = this.$refs.capture;
+    const text = this.capture = el.value = this.capture.slice(0, tk.start) + word + this.capture.slice(tk.end).replace(/^ /, '');
+    // Set the text and cursor now, not on Alpine's next tick: a fast typist's next letters would otherwise land before the word.
+    const at = this.capCaret = Math.min(tk.start + word.length, text.length);
+    el.focus(); el.setSelectionRange(at, at);
+  },
+  /* Everyone with access to each of your projects, from Vikunja's list per project (which counts teams). Loaded once; it also
+     tells checkAccess who can see what, without asking again. Skipped for an API token without Projects → projectusers. */
+  async loadPeople(){
+    if (this.people || this.accessBlocked) return;
+    if (peopleLoading) return peopleLoading;
+    peopleLoading = (async () => {
+      const projs = this.projects.filter(p => p.id > 0), get = p => api(`/projects/${p.id}/projectusers`).then(r => r || []).catch(e => {
+        if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;
+        return null;
+      });
+      const first = projs.length ? await get(projs[0]) : [];                    // one first, so a token that can't stops here
+      if (this.accessBlocked) return;
+      const lists = [first, ...await Promise.all(projs.slice(1).map(get))], byName = new Map();
+      projs.forEach((p, i) => { for (const u of lists[i] || []) {
+        const k = u.username.toLowerCase();
+        if (!byName.has(k)) byName.set(k, {user: u, pids: new Set()});
+        byName.get(k).pids.add(p.id);
+      } });
+      for (const [k, x] of byName) {
+        userCache.set(k, x.user); this.userKnown[k] = true;
+        projs.forEach((p, i) => { if (lists[i]) this.access[p.id + ':' + k] = x.pids.has(p.id); });
+      }
+      this.people = [...byName.values()];
+    })().finally(() => { peopleLoading = null; });
+    return peopleLoading;
+  },
+
   get chips(){
     if (!this.capture.trim()) return [];
+    const sg = this.suggestions;
+    if (sg) return sg;
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
     if (n > 1) {
       out.push({key: 'n', text: this.capNest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});

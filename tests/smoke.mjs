@@ -311,6 +311,18 @@ try {
     if (task?.project_id !== to.id) throw new Error('project ' + task?.project_id);
     if (!task.assignees?.some(u => u.username === ASSIGNEE)) throw new Error('not assigned');
   });
+  await step('suggest-label-and-person', async () => {
+    // Typing *pocket-sm offers the existing label; tapping it finishes the word. The same for @ and a person you share with.
+    await page.fill('#in-capture', `Pocket smoke suggest ${stamp} *${label.slice(0, 9)}`);
+    await page.click(`#cap-chips .chip[data-kind=suggest]:has-text("*${label}")`, { timeout: 15000 });
+    if (await page.inputValue('#in-capture') !== `Pocket smoke suggest ${stamp} *${label} `) throw new Error('text: ' + await page.inputValue('#in-capture'));
+    if (ASSIGNEE && (await api('/projects/1/projectusers?s=x')).status !== 401) {
+      await page.type('#in-capture', '@' + ASSIGNEE.slice(0, 2));
+      await page.click(`#cap-chips .chip[data-kind=suggest]:has-text("@${ASSIGNEE}")`, { timeout: 15000 });
+      if (!(await page.inputValue('#in-capture')).endsWith(`*${label} @${ASSIGNEE} `)) throw new Error('text: ' + await page.inputValue('#in-capture'));
+    }
+    await page.fill('#in-capture', '');
+  });
   await step('projects', async () => {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.click('.tree .row .body');
