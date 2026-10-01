@@ -35,6 +35,7 @@ async function step(name, fn){
 const capture = async text => { await page.fill('#in-capture', text); await page.click('#f-capture .go'); };
 // A task added offline sits in the normal list, tinted, until it's sent.
 const pendingRow = title => `.row.pending:has(.title:has-text("${title}"))`;
+const NO_DATE = 'div:has(> .sec:has-text("Added today, no date"))';
 
 try {
   // A task due tomorrow, so the Today list has something to remember.
@@ -74,7 +75,8 @@ try {
     await page.fill('#in-capture', `${T('P')} tomorrow\n- ${T('P1')}\n- ${T('P2')}`);
     await page.click('#cap-nest');
     await page.click('#f-capture .go');
-    await page.waitForSelector(pendingRow(T('P')));                           // the subtasks have no date, so they aren't in Today
+    await page.waitForSelector(pendingRow(T('P')));
+    if (await page.isVisible(pendingRow(T('P1')))) throw new Error('a subtask is shown in Today');     // only the parent is
   });
 
   await step('cancel-a-waiting-task', async () => {
@@ -84,22 +86,24 @@ try {
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
   });
 
-  await step('undated-task-offline-says-so', async () => {
-    await capture(T('U'));                                                   // Today doesn't list tasks without a date
-    await page.waitForSelector('#toast-msg:has-text("Saved offline")');
-    if (await page.isVisible(pendingRow(T('U')))) throw new Error('shown in Today');
+  await step('undated-task-offline-shows-in-added-today', async () => {
+    await capture(T('U'));
+    await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
+    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
   });
 
   await step('still-waiting-after-reopening', async () => {
     await page.reload();                                                     // e.g. the phone closed the app
     await page.waitForSelector(pendingRow(T('A')), { timeout: 15000 });
     await page.waitForSelector(pendingRow(T('P')));
+    await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
   });
 
   await step('back-online-sends-everything', async () => {
     await context.setOffline(false);                                         // fires the browser's "online" event
     await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('A')}"))`);   // now a normal task
+    await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('U')}"))`);   // added today, no date
     for (const n of ['A', 'P', 'P1', 'P2', 'U']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
     if ((await byTitle(T('X'))).length) throw new Error('the cancelled task was added');
     const parent = (await byTitle(T('P')))[0];

@@ -914,6 +914,9 @@ const saved = {
   clear(){ try { for (const k of Object.keys(localStorage)) if (k.startsWith('pocket.saved.')) localStorage.removeItem(k); } catch {} },
 };
 const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name;
+// Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
+const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
+  {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
 
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, lastFocus;
@@ -1189,18 +1192,21 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   async loadToday(seq){
     const end = addDays(startOfDay(), 8);
-    const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc'});
-    const tasks = await allPages('/tasks?' + q);
-    if (seq !== renderSeq) return;
-    for (const t of tasks) cache.set(t.id, t);
     const t0 = startOfDay(), t1 = addDays(t0, 1);
-    const groups = [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+    const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc'});
+    const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc'});
+    const [tasks, added] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew)]);
+    if (seq !== renderSeq) return;
+    for (const t of [...tasks, ...added]) cache.set(t.id, t);
+    const groups = todayGroups(), [overdue, today, nodate, week] = groups;
     for (const t of tasks) {
       if (!isSet(t.due_date)) continue;
       const d = new Date(t.due_date);
-      groups[d < t0 ? 0 : d < t1 ? 1 : 2].tasks.push({...t});
+      (d < t0 ? overdue : d < t1 ? today : week).tasks.push({...t});
     }
-    groups[0].tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
+    // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
+    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length) nodate.tasks.push({...t});
+    overdue.tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
     this.view.groups = groups;
     saved.set('today', {groups, at: new Date().toISOString()});
   },
@@ -1378,7 +1384,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       const r = await outboxLock(() => this.sendEntry(entry.id));
       const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.status === 'offline') {
-        // It shows up in the list, tinted, unless this list wouldn't include it (say, a task without a date on Today).
+        // It shows up in the list, tinted, unless this list wouldn't include it (say, a task due next month on Today).
         this.refreshPending();
         if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
           this.notify(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`);
@@ -1387,8 +1393,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
         this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, undo);
       } else if (n === 1) {
-        const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project');
-        this.notify(where + but, {label: 'Open', fn: () => this.openTask(r.ids[0])});
+        // A date past next week keeps it off Today, so say which, in case quick add read it wrong.
+        const due = items[0].p.due, later = due && new Date(due) >= addDays(startOfDay(), 8) ? ', due ' + dueInfo(due).label : '';
+        const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project') + later;
+        this.notify(where + but,{label: 'Open', fn: () => this.openTask(r.ids[0])});
       } else {
         this.notify((nest ? `Added 1 task with ${n - 1} subtask${n === 2 ? '' : 's'}` : `Added ${n} tasks`) + but, {label: 'Undo', fn: () => this.deleteTasks(r.ids)});
       }
@@ -1482,7 +1490,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       e.items.forEach((x, i) => {
         if (x.taskId) return;
         const p = x.p;
-        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, title: p.title, done: false, priority: p.priority || 0,
+        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child: e.nest && i > 0, title: p.title, done: false, priority: p.priority || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (e.nest && i > 0 ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0});
       });
@@ -1493,16 +1501,23 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   pendingPlace(t){
     const r = this.route;
     if (r.name === 'project') return !r.showDone && t.project_id === r.id ? 'open' : null;
-    if (r.name !== 'today' || !isSet(t.due_date)) return null;
+    if (r.name !== 'today') return null;
+    if (!isSet(t.due_date)) return t.child ? null : 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
     return d >= addDays(t0, 8) ? null : d < t0 ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
   // The current list, with waiting tasks added where they belong.
   get listGroups(){
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
-    if (!extra.length) return this.view.groups;
     let base = this.view.groups;
-    if (!base.length && this.route.name === 'today') base = [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+    if (this.route.name === 'today') {
+      // Every group, even in a list saved offline before "Added today, no date" existed, and in one saved yesterday only today's additions.
+      const t0 = startOfDay();
+      base = todayGroups().map(g => {
+        const b = base.find(x => x.key === g.key) || g;
+        return g.key === 'nodate' ? {...b, tasks: b.tasks.filter(t => new Date(t.created) >= t0)} : b;
+      });
+    } else if (!extra.length) return base;
     if (!base.length && this.route.name === 'project' && this.view.project) base = [{key:'open', cls:'', title:'Open', tasks:[]}];
     return base.map(g => ({...g, tasks: [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)]}));
   },

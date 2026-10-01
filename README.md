@@ -27,7 +27,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 
 ## What you get
 
-- **Today:** tasks grouped into Overdue, Today and Next 7 days. Tick one off and it slides away, with an Undo.
+- **Today:** tasks grouped into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task you add without a date stays in view until tonight instead of vanishing into a project. Tick one off and it slides away, with an Undo.
 - **Quick add:** a task in one line, with its date, repeat, project, priority, labels and people.
 - **Paste a list:** each line of a list from an email or a note becomes a task, optionally as subtasks of the first.
 - **Task details:** due date, repeat, project, priority, people, labels, notes, subtasks, attachments and comments. Changes save as you make them.

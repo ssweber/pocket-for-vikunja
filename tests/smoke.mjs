@@ -205,6 +205,24 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
+  await step('added-today-no-date', async () => {
+    // A task added today without a date stays on Today until it gets one; of a pasted list, only the parent shows.
+    const t = `Pocket smoke undated ${stamp}`, sub = `Pocket smoke undated sub ${stamp}`;
+    const noDate = 'div:has(> .sec:has-text("Added today, no date"))';
+    await page.fill('#in-capture', `${t}\n- ${sub}`);
+    await page.click('#cap-nest');
+    await page.click('#f-capture .go');
+    await page.waitForSelector(`${noDate} .row .title:has-text("${t}")`, { timeout: 15000 });
+    if (await page.isVisible(`.row .title:has-text("${sub}")`)) throw new Error('the subtask is shown in Today');
+    await page.click(`.row .body:has-text("${t}")`);
+    await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
+    const d = new Date(Date.now() + 86400000), p = n => String(n).padStart(2, '0');
+    await page.fill('#d-due', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T10:00`);
+    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector(`div:has(> .sec:has-text("Next 7 days")) .row .title:has-text("${t}")`, { timeout: 15000 });
+    if (await page.isVisible(`${noDate} .row .title:has-text("${t}")`)) throw new Error('still under Added today, no date');
+  });
   const parentTitle = `Pocket smoke list ${stamp}`;
   await step('paste-list-with-parent', async () => {
     // Pasted from an email or note: bullets and checkboxes are stripped, the first line becomes the parent.
