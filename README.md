@@ -66,7 +66,7 @@ Since the plugin runs inside Vikunja, read [`pocket/main.go`](pocket/main.go) be
 <details>
 <summary>Signing in with an API token instead</summary>
 
-If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*. *Users* lets Pocket find people for `@sarah`. To create projects from quick add, also tick **Create** under *Projects*.
+If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Projectusers** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Projectusers**, `@sarah` still works but stays in the title and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*.
 
 A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn't affect it.
 
@@ -82,7 +82,7 @@ Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://v
 |---|---|
 | `+work` or `+"Side project"` | Project: its full name or the start of it |
 | `*calls` or `*"follow up"` | Label, created if it doesn't exist |
-| `@sarah` | Person to assign, by username. It stays in the title, as in Vikunja. |
+| `@sarah` | Person to assign, by username. Once she's assigned, it leaves the title, as in Vikunja. |
 | `!1` to `!5` | Priority |
 | `today`, `tonight`, `tomorrow`, `this weekend`, `later this week`, `next week`, `next month`, `end of month` | Due date |
 | `friday` or `fri`, `next monday`, `in 3 days`, `in 2 hours` | Due date |
@@ -93,6 +93,7 @@ Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://v
 - **Read something you didn't mean?** Tap its chip and those words stay in the title. Tap again to undo. To turn it all off for one task, wrap the whole text in quotes: `"Read 1984 by Friday"`.
 - **Pasting a list:** with more than one line in the box, each line becomes a task with its own dates and other shortcuts, and bullets, numbering and checkboxes are removed. The whole list goes to one project: add `+Kitchen` to any line, say the end of the last one. **↳ Under first line** makes the rest subtasks of the first.
 - **New projects:** if a `+project` doesn't exist yet, tap **Create project** to make it. The task goes there when you send it.
+- **Assigning someone:** the task has to be in a project they can see. Without a `+project`, if your default project isn't shared with `@sarah` but exactly one of your projects is, Pocket picks that one and shows it as a chip; tap it to undo. Otherwise a chip says she can't see the project, before you send.
 
 <table>
   <tr>
@@ -139,7 +140,7 @@ Only new tasks work offline. Ticking off or editing a task needs a connection. O
 - **"Too many attempts from here":** Vikunja allows 10 sign-in attempts a minute from one address. Wait a minute.
 - **"That token didn't work":** the token has expired, or **User** under *Other* isn't ticked.
 - **"Your API token doesn't allow this":** the token is missing a permission, such as **Users** for `@name` or **Projects → Create** for new projects. Vikunja can't add permissions to an existing token, so create a new one.
-- **"This user does not have access to the project":** you can only assign people the project is shared with.
+- **"@sarah can't see Inbox":** you can only assign people the project is shared with. Add a `+project` she can see, or share the project with her in Vikunja.
 
 ## Privacy and security
 

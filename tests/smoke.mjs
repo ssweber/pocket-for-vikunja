@@ -28,7 +28,8 @@ await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const page = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
 const errors = [];
-page.on('console', m => m.type() === 'error' && errors.push(m.text()));
+// A token without some permission gets 401s, which Pocket handles; the browser still logs them, so they're left out here.
+page.on('console', m => m.type() === 'error' && !/status of 401/.test(m.text()) && errors.push(m.text()));
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
@@ -265,11 +266,18 @@ try {
   });
   if (ASSIGNEE) await step('assign-from-quick-add', async () => {
     const t = `Pocket smoke assign ${stamp}`;
+    // A token without Projects → projectusers can't check who sees a project: Pocket then assigns as best it can.
+    const canLook = (await api('/projects/1/projectusers?s=x')).status !== 401;
     await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE} @nobody-${stamp}` + (ASSIGNEE_PROJECT ? ` +"${ASSIGNEE_PROJECT}"` : ''));
     const chips = await page.textContent('#cap-chips');
     if (!chips.includes('@' + ASSIGNEE)) throw new Error('chips: ' + chips);
+    if (canLook) await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody-${stamp}")`, { timeout: 15000 });   // said before sending
     await page.click('#f-capture .go');
     await page.waitForSelector(`#toast-msg:has-text("no user @nobody-${stamp}")`, { timeout: 20000 });
+    // The assigned person leaves the title, as in Vikunja, when Pocket could check; the unknown one stays.
+    const saved = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title.startsWith(t));
+    const want = canLook ? `${t} @nobody-${stamp}` : `${t} @${ASSIGNEE} @nobody-${stamp}`;
+    if (saved?.title !== want) throw new Error('title: ' + saved?.title);
     await page.click(`.row .body:has-text("${t}")`);
     await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
     await page.click(`#d-assignees .label-chip:has-text("${ASSIGNEE}") .x`);
@@ -280,6 +288,28 @@ try {
     await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+  if (ASSIGNEE) await step('assign-picks-the-shared-project', async () => {
+    // Only when the default project isn't shared with ASSIGNEE and exactly one other project is, as in the local setup.
+    const me = await (await api('/user')).json(), projects = (await (await api('/projects')).json()).filter(p => p.id > 0);
+    const home = me.settings?.default_project_id || projects[0]?.id;
+    const sees = async id => { const r = await api(`/projects/${id}/projectusers?s=${encodeURIComponent(ASSIGNEE)}`); return r.ok ? ((await r.json()) || []).some(u => u.username === ASSIGNEE) : null; };
+    const shared = [];
+    for (const p of projects) { const v = await sees(p.id); if (v === null) { console.log('  (this token may not use Projects → projectusers: step skipped)'); return; } if (v) shared.push(p); }
+    if (shared.some(p => p.id === home) || shared.length !== 1) { console.log('  (needs exactly one project shared with ' + ASSIGNEE + ', not the default: step skipped)'); return; }
+    const to = shared[0], homeTitle = projects.find(p => p.id === home)?.title, t = `Pocket smoke auto project ${stamp}`;
+    await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE}`);
+    const auto = `#cap-chips .chip[data-kind=autoProject]:has-text("${to.title}")`;
+    await page.waitForSelector(auto, { timeout: 15000 });
+    await page.click(auto);                                                        // undo: back to the default, with a warning
+    await page.waitForSelector(`#cap-chips .chip.warn:has-text("@${ASSIGNEE} can't see ${homeTitle}")`);
+    await page.click(auto);
+    await page.waitForSelector(`#cap-chips .chip.warn`, { state: 'detached' });
+    await page.click('#f-capture .go');
+    await page.waitForSelector(`#toast-msg:text-is("Added to ${to.title}")`, { timeout: 20000 });   // not the last step's toast
+    const task = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
+    if (task?.project_id !== to.id) throw new Error('project ' + task?.project_id);
+    if (!task.assignees?.some(u => u.username === ASSIGNEE)) throw new Error('not assigned');
   });
   await step('projects', async () => {
     await page.click('nav.tabs a[data-tab=projects]');

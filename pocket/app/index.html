@@ -249,7 +249,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
       <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
       <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
-      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other.</p>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Projectusers” under Projects.</p>
     </form>
   </div>
 </section>
@@ -706,6 +706,11 @@ const END = '(?=\\s|$|[,.!?;:])';                          // a phrase has to en
 const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(new Date(2000, 11, 31)).find(p => p.type !== 'literal')?.type === 'day'; } catch { return false; } })();
 const projectName = typed => typed.replace(/[_-]/g, ' ').trim();
 function tokenRe(prefix, flags = 'g'){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags); }
+/* Take one @username out of a title, quoted or not, once that person is assigned. Vikunja's quick add does the same. */
+function removeAssignee(title, prefix, name){
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return title.replace(new RegExp(`(^|\\s)\\${prefix}(?:"${n}"|'${n}'|${n})(?=\\s|$)`, 'gi'), '$1').replace(/\s{2,}/g, ' ').trim();
+}
 // Set a date's time from "HH:MM" (Vikunja's "default due time" setting; noon unless the user changed it).
 function atTime(d, hhmm = '12:00'){ const [h, m] = String(hhmm).split(':').map(Number); d.setHours(h || 0, m || 0, 0, 0); return d; }
 const dayFrom = (now, n) => { const d = new Date(now); d.setDate(d.getDate() + n); d.setHours(0, 0, 0, 0); return d; };
@@ -777,7 +782,8 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
   });
   // labels *name
   if (!ignore.labels) out.title = out.title.replace(tokenRe(P.label), (m, sp, a, b, c) => { const l = a || b || c; if (!out.labels.includes(l)) out.labels.push(l); return sp; });
-  // assignees @username stay in the title, as in Vikunja. A space is needed before the @, so email addresses are left alone.
+  // assignees @username stay in the title for now: createTask takes out each one that gets assigned, as Vikunja does.
+  // A space is needed before the @, so email addresses are left alone.
   if (!ignore.assignees) for (const x of out.title.matchAll(tokenRe(P.assignee))) { const u = x[2] || x[3] || x[4]; if (!out.assignees.includes(u)) out.assignees.push(u); }
   // priority !1..!5: the first valid one
   if (!ignore.priority) out.title = out.title.replace(/(^|\s)!([1-5])(?=\s|$)/, (m, sp, n) => { out.priority = +n; return sp; });
@@ -941,6 +947,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null},
   refreshing: false,
   capture: '', capFocus: false, capBusy: false, capNest: false, capIgnore: {},
+  // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
+  // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → projectusers.
+  access: {}, userKnown: {}, accessBlocked: false,
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null},
@@ -964,6 +973,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
     setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
     this.$watch('capture', v => { if (!v.trim()) { this.capIgnore = {}; this.capNest = false; } });
+    // Once typing pauses, find out whether each @username can see the task's project.
+    let accessTimer;
+    this.$watch('accessQuery', q => { clearTimeout(accessTimer); if (q) accessTimer = setTimeout(() => this.checkAccess(), 500); });
     this.$nextTick(() => {
       this.initSwipe();
       // Keep the list's bottom padding in step with the capture bar as it grows.
@@ -1029,6 +1041,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     }
     this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
     store.del('token'); store.del('mode'); this.closeSheet(true);
+    userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false;
     this.showLogin(msg ? esc(msg) : '');
     if (!this.info) this.probe();
   },
@@ -1283,6 +1296,75 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     return p ? `${p.project}project  ${p.label}label  ${p.assignee}user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it`
       : 'Quick add shortcuts are turned off in your Vikunja settings';
   },
+  /* ---------- @username: who can see the task's project ---------- */
+  // What checkAccess looks up: a single task's project and its @usernames. Empty when there's nothing to check.
+  get accessQuery(){
+    if (this.capLines.length !== 1 || this.accessBlocked || !this.prefixes) return '';
+    const p = this.parsed;
+    return p.assignees.length ? [p.project?.id || this.defaultProjectId(), ...p.assignees.map(n => n.toLowerCase())].join('|') : '';
+  },
+  /* From what checkAccess has found so far: {auto, warn}. auto is the one project everyone mentioned can see, when they
+     can't all see the default project and no +project was typed; warn lists the chips for people the task can't reach. */
+  get accessHints(){
+    const out = {auto: null, warn: []};
+    if (!this.accessQuery) return out;
+    const p = this.parsed, target = p.project?.id || this.defaultProjectId(), at = this.prefixes.assignee;
+    const sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
+    const known = p.assignees.filter(n => this.userKnown[n.toLowerCase()] !== false);
+    p.assignees.filter(n => this.userKnown[n.toLowerCase()] === false).forEach(n => out.warn.push(`No user ${at}${n}`));
+    const blocked = known.filter(n => sees(target, n) === false);
+    if (!blocked.length) return out;
+    if (!p.project) {
+      const fits = [];
+      for (const proj of this.projects) if (proj.id > 0 && proj.id !== target) {
+        const v = known.map(n => sees(proj.id, n));
+        if (v.includes(undefined)) return out;                                  // still looking
+        if (v.every(Boolean)) fits.push(proj);
+      }
+      if (fits.length === 1) out.auto = fits[0];
+    }
+    if (!out.auto || this.capIgnore.autoProject) blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
+    return out;
+  },
+  async checkAccess(){
+    if (!this.accessQuery) return;
+    const p = this.parsed, target = p.project?.id || this.defaultProjectId();
+    try {
+      let blocked = false;
+      for (const n of p.assignees) if (await this.canSee(target, n) === false && await this.userExists(n)) blocked = true;
+      // Someone can't see it: look through the other projects, so one everyone can see can be picked.
+      if (blocked && !p.project) {
+        const known = p.assignees.filter(n => this.userKnown[n.toLowerCase()] !== false);
+        await Promise.all(this.projects.filter(x => x.id > 0 && x.id !== target).flatMap(x => known.map(n => this.canSee(x.id, n))));
+      }
+    } catch {}                                                                  // offline, say: no hints, and sending works as before
+  },
+  // Whether @name can see a project: true or false, or null when Pocket isn't allowed to look. Remembered until sign-out.
+  async canSee(pid, name){
+    const k = name.toLowerCase(), key = pid + ':' + k;
+    if (key in this.access) return this.access[key];
+    if (this.accessBlocked) return null;
+    try {
+      const u = (await api(`/projects/${pid}/projectusers?s=` + encodeURIComponent(name)) || []).find(x => x.username.toLowerCase() === k);
+      if (u) { userCache.set(k, u); this.userKnown[k] = true; }
+      return this.access[key] = !!u;
+    } catch (e) {
+      if (e instanceof NetError) throw e;
+      if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;  // an API token without Projects → projectusers
+      return null;
+    }
+  },
+  async userExists(name){
+    const k = name.toLowerCase();
+    if (!(k in this.userKnown)) this.userKnown[k] = !!(await this.findUser(name));
+    return this.userKnown[k];
+  },
+  // The project a single task goes to: its +project, or the one picked for its @usernames, or the default.
+  get capProjectId(){
+    const auto = this.accessHints.auto;
+    return this.parsed.project?.id || (auto && !this.capIgnore.autoProject ? auto.id : this.defaultProjectId());
+  },
+
   get chips(){
     if (!this.capture.trim()) return [];
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
@@ -1297,8 +1379,12 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     }
     // Chips come from the full parse; tapped-off ones stay visible (struck through) so they can be turned back on.
     const all = this.parsedAll, off = k => !!this.capIgnore[k];
+    const {auto, warn} = this.accessHints;
     if (all.project) out.push({key: 'p', kind: 'project', color: colorOf(all.project.hex_color), text: all.project.title, off: off('project')});
-    if (p && !parsed.project) out.push({key: 'dp', color: colorOf(p.hex_color), text: p.title});      // where it lands otherwise
+    // A project picked because the @usernames can see it; tap to send it to the default project after all.
+    if (auto) out.push({key: 'ap', kind: 'autoProject', color: colorOf(auto.hex_color), text: auto.title, off: off('autoProject'),
+      hint: off('autoProject') ? 'Tap to use this project' : `Picked because ${parsed.assignees.map(n => this.prefixes.assignee + n).join(', ')} can see it. Tap to undo`});
+    if (p && !parsed.project && !(auto && !off('autoProject'))) out.push({key: 'dp', color: colorOf(p.hex_color), text: p.title});      // where it lands otherwise
     // A +project that doesn't exist yet: tap to create it; the line then finds it by name.
     if (all.projectMiss) out.push({key: 'miss', kind: 'new-project', cls: 'create', hint: 'Tap to create this project',
       text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(all.projectMiss)}”`, action: () => this.createProject(all.projectMiss)});
@@ -1307,15 +1393,25 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
     all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: this.prefixes.label + l, off: off('labels')}));
     all.assignees.forEach((u, i) => out.push({key: 'a' + i, kind: 'assignees', text: this.prefixes.assignee + u, off: off('assignees')}));
+    warn.forEach((text, i) => out.push({key: 'w' + i, cls: 'warn', text}));
     return out;
   },
   /* Create one task from a parsed line; labels are created when missing. */
   async createTask(parsed, pid){
-    const body = {title: parsed.title};
+    const to = parsed.project?.id || pid, body = {title: parsed.title};
+    // Someone who can see the project is assigned, and their @username leaves the title, as in Vikunja. Someone who can't
+    // stays in the title and is reported. If Pocket can't check (an API token without Projects → projectusers), it just tries.
+    const assign = [], problems = [];
+    for (const name of parsed.assignees) {
+      const seen = await this.canSee(to, name);
+      if (seen === true) { assign.push(userCache.get(name.toLowerCase())); body.title = removeAssignee(body.title, this.prefixes.assignee, name); }
+      else if (seen === false) problems.push(await this.userExists(name).catch(() => true) ? `@${name} can't see ${this.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
+      else assign.push(name);
+    }
     if (parsed.due) body.due_date = parsed.due.toISOString();
     if (parsed.priority) body.priority = parsed.priority;
     if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
-    const t = await api(`/projects/${parsed.project?.id || pid}/tasks`, {method:'PUT', body});
+    const t = await api(`/projects/${to}/tasks`, {method:'PUT', body});
     if (parsed.labels.length) {
       const all = await this.loadLabels();
       for (const name of parsed.labels) {
@@ -1325,10 +1421,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       }
     }
     // An assignment that fails (unknown user, no access to the project) doesn't undo the task; it's reported instead.
-    t.problems = [];
-    for (const name of parsed.assignees) {
+    t.problems = problems;
+    for (const a of assign) {
+      const name = typeof a === 'string' ? a : a.username;
       try {
-        const u = await this.findUser(name);
+        const u = typeof a === 'string' ? await this.findUser(a) : a;
         if (!u) { t.problems.push(`no user @${name}`); continue; }
         await api(`/tasks/${t.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
       } catch (e) { t.problems.push(`@${name}: ${e.message}`); }
@@ -1370,14 +1467,16 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async submitCapture(){
     const lines = this.capLines, parsed = this.parsed;
     if (!parsed.title || this.capBusy) return;
-    const first = parsed.project?.id || this.defaultProjectId();
+    // A single task can go to the project picked for its @usernames; a pasted list goes where it always does.
+    const pid = lines.length === 1 ? this.capProjectId : this.defaultProjectId();
+    const first = parsed.project?.id || pid;
     if (!first) { this.notify('Create a project in Vikunja first'); return; }
     const nest = this.capNest && lines.length > 1;
     // Parse every line now, so dates mean what they meant when typed.
     const list = this.parseList(lines, parsed);
     const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
       .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, tried: false, linked: false}));
-    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid: this.defaultProjectId(), items};
+    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items};
     this.capBusy = true; this.capture = ''; this.capNest = false;
     outbox.put(entry);                           // saved first, but only shown as waiting if sending doesn't finish
     try {
