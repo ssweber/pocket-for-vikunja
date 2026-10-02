@@ -2,6 +2,7 @@
 //
 //   npm run test:local        (runs this against a local Vikunja with the plugin)
 //   VIKUNJA_URL=... VIKUNJA_TOKEN=tk_... node tests/offline.mjs
+//   (ASSIGNEE=<username> ASSIGNEE_PROJECT=<project shared with them> adds a lost reply for a task with @username)
 //
 // Opens Pocket online once (so it's saved on the "phone"), then cuts the connection with the browser's offline switch:
 // Pocket must open with the last-loaded list, queue new tasks and pasted lists, and add them all once back online.
@@ -22,6 +23,7 @@ const byTitle = async title => ((await (await api('/tasks?s=' + encodeURICompone
 await mkdir(OUT, { recursive: true });
 const stamp = Date.now();
 const T = name => `Pocket offline ${name} ${stamp}`;
+const LABEL = 'pocket-smoke';                    // the label the end-to-end test uses too, so no new one is left behind
 const browser = process.env.BROWSER === 'webkit' ? await webkit.launch() : await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await context.newPage();
@@ -185,8 +187,21 @@ try {
     await page.unroute('**/api/v1/tasks/*/attachments', lose);
   });
 
-  await step('sheet-photos-wait-offline-and-can-be-cancelled', async () => {
+  await step('busy-server-keeps-the-photo', async () => {
+    // Vikunja (or a proxy in front of it) answers 503 once: the photo waits and goes up on the next try.
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // the add's toast, from before
+    let busy = true;
+    const answer = r => { if (!busy) return r.fallback(); busy = false; return r.fulfill({ status: 503, body: '' }); };
+    await page.route('**/api/v1/tasks/*/attachments', answer);
+    await page.setInputFiles('#d-file', photo('busy.png'));
+    await page.waitForSelector('#d-attachments .att.uploading:has-text("busy.png")');
+    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    await online();
+    await page.waitForSelector('#d-attachments button.att:has-text("busy.png")');
+    await page.unroute('**/api/v1/tasks/*/attachments', answer);
+  });
+
+  await step('sheet-photos-wait-offline-and-can-be-cancelled', async () => {
     await context.setOffline(true);
     await page.setInputFiles('#d-file', [photo('keep.png'), photo('drop.png')]);
     await page.waitForSelector('#d-attachments .att.uploading:has-text("keep.png"):has-text("Waiting for a connection")');
@@ -198,6 +213,49 @@ try {
     const names = await attached('G');
     if (!names.includes('keep.png') || names.includes('drop.png')) throw new Error('attachments: ' + names.join());
     await page.click('#btn-sheet-close');
+  });
+
+  await step('cut-off-label-is-still-added', async () => {
+    // The task reaches Vikunja, then the connection drops before its label is on it.
+    let cut = true;
+    const drop = r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; return r.abort('internetdisconnected'); };
+    await page.route('**/api/v1/tasks/*/labels', drop);
+    await capture(`${T('L')} tomorrow *${LABEL}`);
+    await page.waitForSelector(`.row:has(.title:has-text("${T('L')}"))`);     // shown straight away, as it's in Vikunja
+    await online();
+    await until('the label never reached the task', async () => { const [t] = await byTitle(T('L')); return t?.labels?.some(l => l.title === LABEL); });
+    if ((await byTitle(T('L'))).length !== 1) throw new Error((await byTitle(T('L'))).length + ' copies');
+    await page.unroute('**/api/v1/tasks/*/labels', drop);
+  });
+
+  if (process.env.ASSIGNEE) await step('assigned-task-whose-reply-is-lost-is-added-once', async () => {
+    // The @username leaves the title, so the retry must look for the title as it was sent.
+    const who = process.env.ASSIGNEE, where = process.env.ASSIGNEE_PROJECT ? ` +"${process.env.ASSIGNEE_PROJECT}"` : '';
+    let cut = true;
+    const lose = async r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/api/v1/projects/*/tasks', lose);
+    await capture(`${T('B')} tomorrow @${who}${where}`);
+    await online();
+    await until('the task was never assigned', async () => { const [t] = await byTitle(T('B')); return t?.assignees?.some(u => u.username === who); });
+    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    if ((await byTitle(T('B'))).length !== 1) throw new Error((await byTitle(T('B'))).length + ' copies');
+    await page.unroute('**/api/v1/projects/*/tasks', lose);
+  });
+
+  await step('no-room-on-the-phone-keeps-it-in-the-box', async () => {
+    // Pocket's storage is full: without a connection, the task can't wait on the phone, so it stays in the add box.
+    await page.evaluate(() => {
+      const set = window.realSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(k, v){ if (k === 'pocket.outbox') throw new DOMException('full', 'QuotaExceededError'); return set.call(this, k, v); };
+    });
+    await context.setOffline(true);
+    await capture(T('S'));
+    await page.waitForSelector('#toast-msg:has-text("no room left on this phone")');
+    if (await page.inputValue('#in-capture') !== T('S')) throw new Error('the box has ' + JSON.stringify(await page.inputValue('#in-capture')));
+    if (await page.isVisible(pendingRow(T('S')))) throw new Error('shown as waiting, but it isn\'t saved');
+    await page.evaluate(() => { Storage.prototype.setItem = window.realSetItem; });
+    await page.fill('#in-capture', '');
+    await context.setOffline(false);
   });
 
   await step('sign-out-clears-saved-data', async () => {

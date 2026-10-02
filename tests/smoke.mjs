@@ -228,6 +228,17 @@ try {
     if (await page.inputValue('#d-prio') !== '1' || !shown.includes('Low')) throw new Error('priority shows ' + shown.trim());
   });
   await page.screenshot({ path: `${OUT}/sheet.png` });
+  await step('save-keeps-changes-made-elsewhere', async () => {
+    // Notes edited on the web while the sheet is open, then the priority changed in Pocket: both must stick.
+    const t = await apiTask();
+    const r = await api('/tasks/' + t.id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, description: '<p>edited on the web</p>' }) });
+    if (!r.ok) throw new Error('could not edit the notes: HTTP ' + r.status);
+    await page.waitForSelector('#d-saved:not(:text("Saved"))', { timeout: 5000 });
+    await page.selectOption('#d-prio', '2');
+    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
+    const after = await apiTask();
+    if (!after.description.includes('edited on the web') || after.priority !== 2) throw new Error(`notes ${JSON.stringify(after.description)}, priority ${after.priority}`);
+  });
   await step('progress-in-sheet', async () => {
     const savedPct = async want => {
       for (let i = 0; i < 40 && Math.round((await apiTask()).percent_done * 100) !== want; i++) await page.waitForTimeout(250);

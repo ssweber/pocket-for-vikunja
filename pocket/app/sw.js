@@ -18,7 +18,8 @@ self.addEventListener('install', event => event.waitUntil((async () => {
 })()));
 
 self.addEventListener('activate', event => event.waitUntil((async () => {
-  for (const key of await caches.keys()) if (key !== CACHE) await caches.delete(key);
+  // Only Pocket's own old copies: Vikunja's web app keeps its caches at this address too.
+  for (const key of await caches.keys()) if (key.startsWith('pocket-') && key !== CACHE) await caches.delete(key);
   await self.clients.claim();
 })()));
 

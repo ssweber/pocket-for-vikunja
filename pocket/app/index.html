@@ -631,6 +631,10 @@ let app;                                       // the Alpine component, set in i
 /* =============== API =============== */
 class ApiError extends Error { constructor(status, msg, code){ super(msg); this.status=status; this.code=code; } }
 class NetError extends Error {}
+// Worth trying again later: no connection, or Vikunja (or a proxy in front of it) busy or timing out. Any other
+// answer is final, a 500 included, so a request Vikunja can't handle doesn't sit in the outbox for ever.
+const TRANSIENT = new Set([408, 429, 502, 503, 504]);
+const passing = e => e instanceof NetError || (e instanceof ApiError && TRANSIENT.has(e.status));
 
 /* Two ways to be signed in:
    - 'session': Vikunja's own web sign-in (password or single sign-on), shared with Vikunja's web app on this device.
@@ -651,22 +655,27 @@ const LOADED = (m => m && new Date(m[3], m[1] - 1, m[2], m[4], m[5], m[6]))(docu
 // renewal, so renewals take Vikunja's "vikunja-token-refresh" lock, and if someone else renewed while we waited,
 // their new token is used instead of spending the cookie again.
 let refreshing = null;
+let seenToken = '';                              // the shared session's token when Pocket last checked whose it is
 function refreshSession(){
   if (refreshing) return refreshing;
   const before = sharedToken.get();
   const renew = async () => {
     const now = sharedToken.get();
     if (now && now !== before) return true;
-    const r = await fetch(app.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'});
+    let r, j;
+    try { r = await fetch(app.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'}); }
+    catch (e) { throw new NetError(e.message); }
+    // Only Vikunja turning the renewal down ends the session; a busy server or a dropped connection doesn't.
+    if (TRANSIENT.has(r.status)) throw new NetError('HTTP ' + r.status);
     if (!r.ok) return false;
-    const j = await r.json();
+    try { j = await r.json(); } catch (e) { throw new NetError(e.message); }
     if (!j.token) return false;
     sharedToken.set(j.token);
     return true;
   };
   refreshing = (async () => {
     try { return navigator.locks ? await navigator.locks.request('vikunja-token-refresh', renew) : await renew(); }
-    catch { return false; }
+    catch (e) { if (e instanceof NetError) throw e; return false; }
     finally { refreshing = null; }
   })();
   return refreshing;
@@ -688,7 +697,9 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   // Reaching Vikunja again sends what's waiting. A brief drop never fires the browser's "online" event.
   if (app?.offline) { app.offline = false; setTimeout(() => app.flush()); }
   if (res.status === 401 && auth && retry && app.mode === 'session') {
-    if (await refreshSession()) return api(path, {method, body, raw, auth, retry:false});
+    let renewed;
+    try { renewed = await refreshSession(); } catch (e) { app.offline = true; throw e; }
+    if (renewed) return api(path, {method, body, raw, auth, retry:false});
   }
   if (res.status === 401 && auth) {
     // Vikunja also answers 401 when an API token lacks a permission, so check the token before signing out.
@@ -701,7 +712,9 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   }
   if (raw) return res;
   if (res.status === 204) return null;
-  const t = await res.text(); return t ? JSON.parse(t) : null;
+  // A reply cut off half way is a lost connection too, not an error from Vikunja.
+  let t; try { t = await res.text(); } catch (e) { app.offline = true; throw new NetError(e.message); }
+  return t ? JSON.parse(t) : null;
 }
 
 async function tokenWorks(){
@@ -713,7 +726,7 @@ async function allPages(path){
   const out = [];
   for (let page = 1; page <= 40; page++) {
     const res = await api(path + (path.includes('?') ? '&' : '?') + 'page=' + page + '&per_page=50', {raw:true});
-    const data = await res.json();
+    let data; try { data = await res.json(); } catch (e) { throw new NetError(e.message); }
     if (Array.isArray(data)) out.push(...data);
     const total = parseInt(res.headers.get('x-pagination-total-pages') || '1', 10);
     if (!Array.isArray(data) || data.length === 0 || page >= total) break;
@@ -1074,16 +1087,23 @@ async function collapse(el){
 
 /* =============== offline =============== */
 /* Tasks added without a connection wait in an outbox on the device and are sent once Pocket is back online. Each entry
-   is one capture, a task or a pasted list: {id, user, at, nest, pid, items: [{raw, p, taskId, tried, linked}], files}.
+   is one capture, a task or a pasted list: {id, user, at, nest, pid, items: [{raw, p, taskId, done, linked, ...}], files}.
    p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed. Progress is saved
-   after every step, so an interrupted list carries on where it stopped.
+   after every step (each item also keeps createTask's own steps), so an interrupted list carries on where it stopped.
    Photos and files go through the outbox too, one upload at a time: files: [{key, name, size, type, tried, sent}], for
    the capture's first task, or for an existing task when the entry has a taskId (added from its sheet). */
 const outbox = {
   all(){ try { return JSON.parse(store.get('outbox') || '[]'); } catch { return []; } },
-  save(list){ list.length ? store.set('outbox', JSON.stringify(list)) : store.del('outbox'); },
+  // Returns whether it was saved. When Pocket's storage on the phone is full, the saved lists (only a copy, for
+  // opening offline) are dropped to make room.
+  save(list){
+    const write = () => list.length ? localStorage.setItem('pocket.outbox', JSON.stringify(list)) : localStorage.removeItem('pocket.outbox');
+    try { write(); return true; } catch {}
+    saved.clear();
+    try { write(); return true; } catch { return false; }
+  },
   get(id){ return this.all().find(e => e.id === id) || null; },
-  put(entry){ const list = this.all(), i = list.findIndex(e => e.id === entry.id); if (i >= 0) list[i] = entry; else list.push(entry); this.save(list); },
+  put(entry){ const list = this.all(), i = list.findIndex(e => e.id === entry.id); if (i >= 0) list[i] = entry; else list.push(entry); return this.save(list); },
   remove(id){ this.save(this.all().filter(e => e.id !== id)); },
 };
 // One sender at a time, even with Pocket open in two tabs.
@@ -1093,7 +1113,9 @@ const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : nul
 const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
 // Nothing left to send: every line is a task in Vikunja (and under its parent), and every file is uploaded.
-const entryDone = e => !e.items.some((x, i) => !x.taskId || (e.nest && i > 0 && !x.linked)) && !(e.files || []).some(f => !f.sent);
+// An item saved before createTask kept its own steps has no `done`: having a task was all there was to it then.
+const itemDone = x => x.done ?? !!x.taskId;
+const entryDone = e => !e.items.some((x, i) => !itemDone(x) || (e.nest && i > 0 && !x.linked)) && !(e.files || []).some(f => !f.sent);
 const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
 
 /* The photos and files themselves wait in the browser's database (IndexedDB), since localStorage only holds text, and
@@ -1116,9 +1138,11 @@ const waitingFiles = {
     });
   },
   // Stored as bytes rather than as the File, which older Safari can't store.
+  // Returns whether it's on the phone, rather than only in memory until Pocket is closed.
   async put(key, file){
     this.mem.set(key, file);
-    try { const data = await file.arrayBuffer(); await this.run('readwrite', s => s.put({name: file.name, type: file.type, data}, key)); } catch {}
+    try { const data = await file.arrayBuffer(); await this.run('readwrite', s => s.put({name: file.name, type: file.type, data}, key)); return true; }
+    catch { return false; }
   },
   async get(key){
     if (this.mem.has(key)) return this.mem.get(key);
@@ -1246,7 +1270,27 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.signOutCheck = setTimeout(() => {
         if (!sharedToken.get() && this.signedIn && this.mode === 'session') this.signOut('You signed out in Vikunja.', {tellServer: false});
       }, 2000);
+    } else if (t && t !== seenToken && this.signedIn && this.mode === 'session' && this.user) {
+      // A new token is usually Vikunja renewing the session, but it can be someone else signing in on Vikunja's web
+      // app before Pocket saw the sign-out. Then Pocket starts over as them.
+      seenToken = t;
+      clearTimeout(this.whoCheck);
+      this.whoCheck = setTimeout(async () => {
+        const was = this.user?.id, u = await api('/user').catch(() => null);
+        if (u && was && u.id !== was && this.user?.id === was) this.switchAccount();
+      }, 300);
     }
+  },
+  // Forget the last person's lists, caches and open task, and load the new person's. What they left waiting stays in
+  // the outbox, under their name, to be sent when they're back.
+  switchAccount(){
+    saved.clear(); this.forgetPeople(); this.closeSheet(true);
+    this.user = null; this.pending = []; this.capture = ''; this.capPhotos = [];
+    this.boot();
+  },
+  forgetPeople(){
+    cache.clear(); userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null;
+    this.labels = []; this.labelsLoaded = false;
   },
   /* Single sign-on goes through Vikunja: the provider only returns to Vikunja's /auth/openid/<key> page, which finishes
      signing in and saves the session where Pocket reads it. This is the same request Vikunja's login page makes. */
@@ -1286,7 +1330,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     }
     this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
     store.del('token'); store.del('mode'); this.closeSheet(true);
-    userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null; this.labels = []; this.labelsLoaded = false;
+    this.forgetPeople();
     this.showLogin(msg ? esc(msg) : '');
     if (!this.info) this.probe();
   },
@@ -1335,6 +1379,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
       this.user = user; this.info = info;
+      if (this.mode === 'session') seenToken = sharedToken.get();             // whose session this is, checked
       saved.set('user', user); if (info) saved.set('info', info);
       await this.loadProjects();
       this.refreshPending();
@@ -1523,7 +1568,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const was = t.done;
     t.done = !was;
     try {
-      const saved = await this.saveTask(t.id, {done: !was, ...extra}, t);
+      const saved = await this.saveTask(t.id, {done: !was, ...extra});
       Object.assign(t, saved);
       if (!was && !saved.done) {                 // repeating task rolled forward
         const d = dueInfo(saved.due_date);
@@ -1554,7 +1599,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (patch.done) return this.toggleDone(t, rowEl, patch, {percent_done: was / 100});
     t.percent_done = patch.percent_done;
     try {
-      await this.saveTask(t.id, patch, t);
+      await this.saveTask(t.id, patch);
       if (!undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.setProgress(t, was, null, true)});
     } catch (e) {
       t.percent_done = was / 100;
@@ -1681,7 +1726,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   // Saves [task, patch] pairs one after another; resolves to the tasks that saved.
   async saveEach(pairs){
-    const results = await Promise.allSettled(pairs.map(([t, patch]) => this.saveTask(t.id, patch, t)));
+    const results = await Promise.allSettled(pairs.map(([t, patch]) => this.saveTask(t.id, patch)));
     return pairs.filter((p, i) => results[i].status === 'fulfilled').map(([t]) => t);
   },
 
@@ -1918,40 +1963,64 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
 
   /* Create one task from a parsed line; labels are created when missing. */
-  async createTask(parsed, pid){
-    const to = parsed.project?.id || pid, body = {title: parsed.title};
-    // Someone who can see the project is assigned, and their @username leaves the title, as in Vikunja. Someone who can't
-    // stays in the title and is reported. If Pocket can't check (an API token without Projects → projectusers), it just tries.
-    const assign = [], problems = [];
-    for (const name of parsed.assignees) {
-      const seen = await this.canSee(to, name);
-      if (seen === true) { assign.push(userCache.get(name.toLowerCase())); body.title = removeAssignee(body.title, this.prefixes.assignee, name); }
-      else if (seen === false) problems.push(await this.userExists(name).catch(() => true) ? `@${name} can't see ${this.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
-      else assign.push(name);
+  /* Create a task from a parsed line: the task, then its labels, then its assignees. `job` keeps track of each step and
+     `keep` saves it after every one. For a task in the outbox, job is its item, so a try that was cut off carries on
+     where it stopped, without adding the task twice or skipping a label. `made` hears of the task as soon as it exists.
+     Returns the task (just {id, project_id} if an earlier try made it), with `problems`: what couldn't be done, like
+     an @username who can't see the project. A lost connection or a busy Vikunja is thrown, to try again later. */
+  async createTask(parsed, pid, {job = {}, keep = () => {}, made = () => {}, at, skip} = {}){
+    const problems = job.problems ||= [];
+    if (!job.body) {
+      const to = parsed.project?.id || pid, body = {title: parsed.title}, assign = [];
+      // Someone who can see the project is assigned, and their @username leaves the title, as in Vikunja. Someone who
+      // can't stays in the title and is reported. If Pocket can't check (an API token without Projects → projectusers), it just tries.
+      for (const name of parsed.assignees) {
+        const seen = await this.canSee(to, name);
+        if (seen === false) problems.push(await this.userExists(name).catch(() => true) ? `@${name} can't see ${this.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
+        else assign.push(name);
+        if (seen === true) body.title = removeAssignee(body.title, this.prefixes.assignee, name);
+      }
+      if (parsed.due) body.due_date = parsed.due.toISOString();
+      if (parsed.priority) body.priority = parsed.priority;
+      if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
+      // The title as sent, without the @usernames, is what a later try looks for.
+      Object.assign(job, {to, body, assign, labels: [...parsed.labels]});
+      keep();
     }
-    if (parsed.due) body.due_date = parsed.due.toISOString();
-    if (parsed.priority) body.priority = parsed.priority;
-    if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
-    const t = await api(`/projects/${to}/tasks`, {method:'PUT', body});
-    if (parsed.labels.length) {
-      const all = await this.loadLabels();
-      for (const name of parsed.labels) {
-        let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
-        if (!l) { l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
-        await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id:l.id}});
+    let t = null;
+    if (!job.taskId) {
+      // A try that was cut off may have reached Vikunja anyway: look for it before adding it again.
+      t = job.tried ? await this.findSent(job.body.title, job.to, at, skip) : null;
+      if (!t) { job.tried = true; keep(); t = await api(`/projects/${job.to}/tasks`, {method:'PUT', body: job.body}); }
+      job.taskId = t.id; job.projectId = t.project_id;
+      made(t); keep();
+    }
+    // Vikunja's "already on the task" (8001) and "already assigned" (4021) mean a cut-off try got that far.
+    const final = (e, code) => { if (passing(e) || e.status === 401) throw e; return e.code !== code; };
+    if (job.labels.length) {
+      const all = await this.loadLabels(job.newLabel);                       // a cut-off try may have created one
+      while (job.labels.length) {
+        const name = job.labels[0];
+        try {
+          let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
+          if (!l) { job.newLabel = true; keep(); l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
+          await api(`/tasks/${job.taskId}/labels`, {method:'PUT', body:{label_id:l.id}});
+        } catch (e) { if (final(e, 8001)) problems.push(`label ${name}: ${e.message}`); }
+        job.labels.shift(); keep();
       }
     }
     // An assignment that fails (unknown user, no access to the project) doesn't undo the task; it's reported instead.
-    t.problems = problems;
-    for (const a of assign) {
-      const name = typeof a === 'string' ? a : a.username;
+    while (job.assign.length) {
+      const name = job.assign[0];
       try {
-        const u = typeof a === 'string' ? await this.findUser(a) : a;
-        if (!u) { t.problems.push(`no user @${name}`); continue; }
-        await api(`/tasks/${t.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
-      } catch (e) { t.problems.push(`@${name}: ${e.message}`); }
+        const u = await this.findUser(name);
+        if (!u) problems.push(`no user @${name}`);
+        else await api(`/tasks/${job.taskId}/assignees`, {method:'PUT', body:{user_id: u.id}});
+      } catch (e) { if (final(e, 4021)) problems.push(`@${name}: ${e.message}`); }
+      job.assign.shift(); keep();
     }
-    return t;
+    job.done = true; keep();
+    return Object.assign(t || {id: job.taskId, project_id: job.projectId}, {problems});
   },
   async findUser(name){
     const key = name.toLowerCase();
@@ -1996,24 +2065,31 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     // Parse every line now, so dates mean what they meant when typed.
     const list = this.parseList(lines, parsed);
     const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
-      .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, tried: false, linked: false}));
+      .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, done: false, linked: false}));
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
     this.capBusy = true; this.capture = ''; this.capNest = false; this.capPhotos = [];
     try {
       // The photos are stored before the entry, so it never lists one that isn't there.
-      await Promise.all(photos.map((f, i) => waitingFiles.put(entry.files[i].key, f)));
-      outbox.put(entry);                         // saved first, but only shown as waiting if sending doesn't finish
-      const r = await outboxLock(() => this.sendEntry(entry.id));
+      const onPhone = (await Promise.all(photos.map((f, i) => waitingFiles.put(entry.files[i].key, f)))).every(Boolean);
+      const kept = outbox.put(entry);            // saved first, but only shown as waiting if sending doesn't finish
+      const r = await outboxLock(() => this.sendEntry(entry.id, kept ? null : entry));
       if (r.ids?.length) { this.fresh = r.ids; clearTimeout(freshTimer); freshTimer = setTimeout(() => this.fresh = [], 2000); }
       this.placeSent(r.tasks || []);
       const n = items.length, np = photos.length;
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
-      if (r.status === 'offline') {
+      if (r.status === 'offline' && !kept) {
+        // No connection, and no room on the phone to keep it until there is: back in the box rather than lost.
+        this.capture = entry.items.filter(x => !x.taskId).map(x => x.raw).join('\n');
+        if (!entry.items[0].taskId) this.capPhotos = photos;
+        waitingFiles.del(entry.files.map(f => f.key));
+        this.notify(`Not ${r.ids.length ? 'all ' : ''}added: there's no connection, and no room left on this phone to keep ${n === 1 ? 'it' : 'them'} until there is. What wasn't added is back in the box.`);
+      } else if (r.status === 'offline') {
         // It shows up in the list, tinted, unless this list wouldn't include it (say, a task due next month on Today).
         this.refreshPending();
         if (np) waitingFiles.keep();
-        if (np && r.ids.length === n)            // the task got there; its photos are still to go
+        if (np && !onPhone) this.notify(np === 1 ? 'This photo couldn\'t be saved on the phone. Keep Pocket open until it uploads.' : 'These photos couldn\'t be saved on the phone. Keep Pocket open until they upload.');
+        else if (np && r.ids.length === n)            // the task got there; its photos are still to go
           this.notify(`Added to ${this.projById.get(r.projectId)?.title || 'project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`, {label: 'Open', fn: () => this.openTask(r.ids[0])});
         else if (np) this.notify(`Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`);
         else if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
@@ -2023,6 +2099,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         this.capPhotos = r.photos;
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
         this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, undo);
+      } else if (r.status === 'gone') {
+        this.notify('Added');                                              // another tab sent it first
       } else if (n === 1) {
         // A date past next week keeps it off Today, so say which, in case quick add read it wrong.
         const due = items[0].p.due, later = due && new Date(due) >= addDays(startOfDay(), 8) ? ', due ' + dueInfo(due).label : '';
@@ -2040,26 +2118,20 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   /* Send one outbox entry, carrying on where an earlier try stopped. Returns {status: sent|offline|error|gone, ...},
      with the ids of its tasks, the tasks created this time, and how many files were uploaded. */
-  async sendEntry(id){
-    const entry = outbox.get(id);
+  async sendEntry(id, unsaved){
+    const entry = outbox.get(id) || unsaved;     // unsaved: one there was no room to keep, sent from memory
     if (!entry) return {status: 'gone', ids: [], tasks: []};                // another tab sent it
-    const ids = [], tasks = [], problems = [];
-    let projectId = null, uploaded = 0;
+    const ids = [], tasks = [], problems = entry.problems ||= [];
+    const all = () => [...entry.items.flatMap(x => x.problems || []), ...problems];
+    const taken = new Set(entry.items.map(x => x.taskId).filter(Boolean));  // a pasted list can have a line twice
+    let uploaded = 0;
     try {
       for (const [i, item] of entry.items.entries()) {
-        if (!item.taskId) {
-          const p = unpackParsed(item.p);
-          // A try that was cut off may still have reached Vikunja; don't add the task twice.
-          const found = item.tried ? await this.findSent(p.title, entry.at) : null;
-          let t = found;
-          if (!t) {
-            item.tried = true; outbox.put(entry);
-            t = await this.createTask(p, entry.nest && i > 0 ? entry.parentProject : entry.pid);
-            problems.push(...t.problems);
-          }
-          item.taskId = t.id; tasks.push({...t, child: entry.nest && i > 0});
-          if (i === 0) { entry.parentProject = t.project_id; projectId = t.project_id; }
-          outbox.put(entry);
+        if (!itemDone(item)) {
+          const child = entry.nest && i > 0;
+          await this.createTask(unpackParsed(item.p), child ? entry.parentProject : entry.pid, {
+            job: item, keep: () => outbox.put(entry), at: entry.at, skip: taken,
+            made: t => { taken.add(t.id); tasks.push({...t, child}); if (i === 0) entry.parentProject = t.project_id; }});
         }
         if (entry.nest && i > 0 && !item.linked) {
           await this.linkSubtask(entry.items[0].taskId, item.taskId);
@@ -2070,7 +2142,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
       if (files.length) { this.placeSent(tasks); this.refreshPending(); }    // the task shows while its photos upload
-      for (const f of files) if (await this.sendFile(entry, target, f, problems)) uploaded++;
+      for (const f of files) if (await this.sendFile(entry, target, f)) uploaded++;
       outbox.remove(entry.id);
       if (files.length) {
         this.refreshPending();
@@ -2082,21 +2154,22 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
           if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
         }
       }
-      return {status: 'sent', ids, tasks, problems, uploaded, projectId: projectId || entry.parentProject};
+      return {status: 'sent', ids, tasks, problems: all(), uploaded, projectId: entry.parentProject};
     } catch (error) {
-      // No connection, or signed out: keep it for later.
-      if (error instanceof NetError || (error instanceof ApiError && error.status === 401)) return {status: 'offline', ids, tasks, problems, uploaded, projectId: projectId || entry.parentProject};
+      // No connection, Vikunja busy, or signed out: keep it for later.
+      if (passing(error) || (error instanceof ApiError && error.status === 401)) return {status: 'offline', ids, tasks, problems: all(), uploaded, projectId: entry.parentProject};
       outbox.remove(entry.id);
       // Photos added with a task that couldn't be added go back to the add box with it.
       const keys = (entry.files || []).filter(f => !f.sent).map(f => f.key);
       const photos = (await Promise.all(keys.map(k => waitingFiles.get(k)))).filter(Boolean);
       waitingFiles.del(keys);
-      return {status: 'error', ids, tasks, problems, error, photos, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw)};
+      return {status: 'error', ids, tasks, problems: all(), error, photos, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw)};
     }
   },
   // Upload one waiting file, unless an earlier try that was cut off got it there already. A file Vikunja turns down
   // (too big, say, or the task is gone) is reported and dropped. `sent` marks it as dealt with. Returns whether it's on the task.
-  async sendFile(entry, taskId, f, problems){
+  async sendFile(entry, taskId, f){
+    const problems = entry.problems ||= [];
     let ok = false;
     try {
       if (f.tried && await this.hasAttachment(taskId, f, entry.at)) ok = true;
@@ -2112,7 +2185,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         }
       }
     } catch (e) {
-      if (e instanceof NetError || e.status === 401) throw e;
+      if (passing(e) || e.status === 401) throw e;
       problems.push(`${f.name} didn't upload: ${e.message}`);
     }
     f.sent = true; outbox.put(entry);
@@ -2142,11 +2215,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const k = viewKey(this.route), s = saved.get(k);
     if (placed && s) saved.set(k, {...s, groups: this.view.groups});
   },
-  // A task with this title created since the capture, if one exists.
-  async findSent(title, at){
+  // The task a cut-off try added, if it got there: this title, in this project, added by you since the capture, and not
+  // one of the capture's other tasks.
+  async findSent(title, project, at, skip = new Set()){
     const since = new Date(at).getTime() - 2 * 60000;                        // allow for the phone's clock being a little off
     const list = await api('/tasks?s=' + encodeURIComponent(title)) || [];
-    return list.find(t => t.title === title && new Date(t.created).getTime() >= since) || null;
+    return list.find(t => t.title === title && t.project_id === project && t.created_by?.id === this.user?.id && !skip.has(t.id)
+      && new Date(t.created).getTime() >= since) || null;
   },
   // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
   async flush(){
@@ -2383,7 +2458,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     Object.assign(this.sheet.task, patch);
     this.sheet.savedMsg = 'Saving…';
     pendingSaves++;
-    return this.saveTask(id, patch, this.sheet.task).then(saved => {
+    return this.saveTask(id, patch).then(saved => {
       if (--pendingSaves || this.sheet.task?.id !== id) return;
       const repeated = patch.done === true && !saved.done;
       this.showTask(saved); this.sheet.dirty = true;
@@ -2396,11 +2471,14 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     });
   },
   // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
-  // `t` is the task as shown, used when there's no full copy in the cache. Resolves to Vikunja's copy; rejects if not saved.
-  saveTask(id, patch, t){
+  // Resolves to Vikunja's copy; rejects if not saved.
+  saveTask(id, patch){
     saveCount++;
     const run = saveChain.then(async () => {
-      const saved = await api('/tasks/' + id, {method:'POST', body: {...(cache.get(id) || t), ...patch}});
+      // Vikunja replaces the whole task with what's sent, so the change goes onto its latest copy: anything changed
+      // elsewhere since Pocket loaded the task (notes edited on the web, say) isn't put back the way it was.
+      const latest = await api('/tasks/' + id);
+      const saved = await api('/tasks/' + id, {method:'POST', body: {...latest, ...patch}});
       cache.set(id, saved); this.syncTask(saved);
       return saved;
     });
@@ -2440,21 +2518,20 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const ql = this.picker.q.trim().toLowerCase();
     return !!ql && !this.labels.some(l => l.title.toLowerCase() === ql);
   },
-  setAssignees(assignees){
-    const id = this.sheet.task.id;
-    this.sheet.task.assignees = assignees; this.sheet.dirty = true;
+  setAssignees(assignees, id = this.sheet.task.id){
+    if (this.sheet.task?.id === id) { this.sheet.task.assignees = assignees; this.sheet.dirty = true; }
     const c = cache.get(id); if (c) c.assignees = assignees;
     this.syncTask({id, assignees});
   },
   async assign(){
-    const name = this.sheet.assignName.trim().replace(/^@/, '');
+    const name = this.sheet.assignName.trim().replace(/^@/, ''), t = this.sheet.task;   // the task it started on
     if (!name) { this.sheet.assigning = false; return; }
     try {
       const u = await this.findUser(name);
       if (!u) { this.notify(`No user @${name}`); return; }
-      await api(`/tasks/${this.sheet.task.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
-      this.setAssignees([...(this.sheet.task.assignees || []).filter(x => x.id !== u.id), u]);
-      this.sheet.assignName = ''; this.sheet.assigning = false;
+      await api(`/tasks/${t.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
+      this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id);
+      if (this.sheet.task?.id === t.id) { this.sheet.assignName = ''; this.sheet.assigning = false; }
     } catch (e) { this.notify('Not assigned: ' + e.message); }
   },
   async unassign(uid){
@@ -2463,18 +2540,18 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.setAssignees((this.sheet.task.assignees || []).filter(u => u.id !== uid));
     } catch (e) { this.notify('Not unassigned: ' + e.message); }
   },
-  setLabels(labels){
-    const id = this.sheet.task.id;
-    this.sheet.task.labels = labels; this.sheet.dirty = true;
+  setLabels(labels, id = this.sheet.task.id){
+    if (this.sheet.task?.id === id) { this.sheet.task.labels = labels; this.sheet.dirty = true; }
     const c = cache.get(id); if (c) c.labels = labels;
     this.syncTask({id, labels});
   },
   async addLabel(l){
+    const t = this.sheet.task;                                                // the task it started on
     try {
       if (!l) { l = await api('/labels', {method:'PUT', body:{title: this.picker.q.trim()}}); this.labels.push(l); }
-      await api(`/tasks/${this.sheet.task.id}/labels`, {method:'PUT', body:{label_id: l.id}});
-      this.setLabels([...(this.sheet.task.labels || []), l]);
-      this.picker.q = '';
+      await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id: l.id}});
+      this.setLabels([...(t.labels || []), l], t.id);
+      if (this.sheet.task?.id === t.id) this.picker.q = '';
     } catch (err) { this.notify('Label not added: ' + err.message); }
   },
   async removeLabel(lid){
@@ -2515,11 +2592,15 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (!files.length || !t) return;
     const big = this.tooBig(files); if (big) { this.notify(big); return; }
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
-    await Promise.all(files.map((f, i) => waitingFiles.put(entry.files[i].key, f)));
-    outbox.put(entry); this.refreshPending();
-    const r = await outboxLock(() => this.sendEntry(entry.id));
+    const onPhone = (await Promise.all(files.map((f, i) => waitingFiles.put(entry.files[i].key, f)))).every(Boolean);
+    const kept = outbox.put(entry); this.refreshPending();
+    const r = await outboxLock(() => this.sendEntry(entry.id, kept ? null : entry));
     this.refreshPending();
-    if (r.status === 'offline') waitingFiles.keep();
+    if (r.status === 'offline') {
+      if (!kept) { waitingFiles.del(entry.files.map(f => f.key)); this.notify('Not uploaded: there\'s no connection, and no room left on this phone to keep it until there is.'); return; }
+      waitingFiles.keep();
+      if (!onPhone) this.notify(files.length === 1 ? 'This file couldn\'t be saved on the phone. Keep Pocket open until it uploads.' : 'These files couldn\'t be saved on the phone. Keep Pocket open until they upload.');
+    }
     if (r.problems?.length) this.notify(r.problems.join('; '));
   },
   // From the add box's camera button.
