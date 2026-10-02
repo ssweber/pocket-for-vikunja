@@ -247,8 +247,8 @@ try {
     // with a message saying so, and goes up once the connection's back.
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
     await page.evaluate(() => {
-      const set = window.realSetItem = Storage.prototype.setItem;
-      Storage.prototype.setItem = function(k, v){ if (k === 'pocket.outbox') throw new DOMException('full', 'QuotaExceededError'); return set.call(this, k, v); };
+      const put = window.realPut = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function(...a){ if (this.name === 'outbox') throw new DOMException('full', 'QuotaExceededError'); return put.apply(this, a); };
     });
     let cut = true;
     const cutOff = r => cut ? r.abort('internetdisconnected') : r.fallback();
@@ -262,7 +262,7 @@ try {
     await until('the photo never reached the task', async () => (await attached('S')).join() === 'full.png');
     if ((await byTitle(T('S'))).length !== 1) throw new Error((await byTitle(T('S'))).length + ' copies');
     await page.unroute('**/api/v1/tasks/*/attachments', cutOff);
-    await page.evaluate(() => { Storage.prototype.setItem = window.realSetItem; });
+    await page.evaluate(() => { IDBObjectStore.prototype.put = window.realPut; });
   });
 
   await step('same-title-twice-stays-two-tasks', async () => {
@@ -312,6 +312,40 @@ try {
     await page.unroute('**/api/v1/tasks/*/relations', lose);
   });
 
+  await step('waiting-work-from-an-older-pocket-moves-over', async () => {
+    // An older Pocket kept its outbox in localStorage. Opening this one moves it to the database, and sends it.
+    await context.setOffline(true);
+    await page.evaluate(([title, pid]) => {
+      const user = JSON.parse(localStorage.getItem('pocket.saved.user')).id;
+      const p = { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null };
+      localStorage.setItem('pocket.outbox', JSON.stringify([{ id: 'old1', user, at: new Date().toISOString(), nest: false, pid,
+        items: [{ raw: title, p, taskId: null, tried: false, linked: false }], files: [] }]));
+    }, [T('O'), home]);
+    await page.reload();
+    await page.waitForSelector(pendingRow(T('O')), { timeout: 15000 });
+    if (await page.evaluate(() => localStorage.getItem('pocket.outbox'))) throw new Error('still in localStorage');
+    await context.setOffline(false);
+    await page.waitForSelector(pendingRow(T('O')), { state: 'detached', timeout: 20000 });
+    if ((await byTitle(T('O'))).length !== 1) throw new Error((await byTitle(T('O'))).length + ' copies');
+  });
+
+  await step('two-tabs-send-it-once', async () => {
+    // Added offline in one tab, the task shows as waiting in the other too; back online, both try, and it's added once.
+    const other = await context.newPage();
+    other.on('pageerror', e => errors.push(String(e)));
+    await other.goto(POCKET);
+    await other.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+    await context.setOffline(true);
+    await capture(`${T('W')} tomorrow`);
+    await page.waitForSelector(pendingRow(T('W')));
+    await other.waitForSelector(pendingRow(T('W')), { timeout: 10000 });
+    await context.setOffline(false);
+    await page.waitForSelector(pendingRow(T('W')), { state: 'detached', timeout: 20000 });
+    await other.waitForSelector(pendingRow(T('W')), { state: 'detached', timeout: 20000 });
+    if ((await byTitle(T('W'))).length !== 1) throw new Error((await byTitle(T('W'))).length + ' copies');
+    await other.close();
+  });
+
   await step('sign-out-clears-saved-data', async () => {
     await context.setOffline(true);
     await page.setInputFiles('#in-photo', photo('dropped.png'));
@@ -325,8 +359,9 @@ try {
     await page.waitForSelector('#login:not([hidden])');
     const left = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('pocket.saved.') || k === 'pocket.outbox'));
     if (left.length) throw new Error('still stored: ' + left.join(', '));
-    const files = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction('files').objectStore('files').count(); q.onsuccess = () => ok(q.result); }; }));
-    if (files) throw new Error(`${files} waiting photos still stored`);
+    const count = name => page.evaluate(n => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction(n).objectStore(n).count(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }), name);
+    if (await count('files')) throw new Error(`${await count('files')} waiting photos still stored`);
+    if (await count('outbox')) throw new Error(`${await count('outbox')} waiting tasks still stored`);
     await page.unroute('**/api/v1/projects/*/tasks');
     if ((await byTitle(T('Y'))).length) throw new Error('the dropped task was added');
   });

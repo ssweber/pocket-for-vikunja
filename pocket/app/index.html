@@ -1102,103 +1102,221 @@ async function collapse(el){
     {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
 }
 
-/* =============== offline =============== */
-/* Tasks added without a connection wait in an outbox on the device and are sent once Pocket is back online. Each entry
-   is one capture, a task or a pasted list: {id, user, at, nest, pid, items: [{raw, p, taskId, done, linked, ...}], files}.
-   p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed. Progress is saved
-   after every step (each item also keeps createTask's own steps), so an interrupted list carries on where it stopped.
-   Photos and files go through the outbox too, one upload at a time: files: [{key, name, size, type, tried, sent}], for
-   the capture's first task, or for an existing task when the entry has a taskId (added from its sheet). */
-const outbox = {
-  mem: new Map(),                                // entries there was no room to store: they wait while Pocket is open
-  stored(){ try { return JSON.parse(store.get('outbox') || '[]'); } catch { return []; } },
-  all(){ const list = this.stored(); return [...list.map(e => this.mem.get(e.id) || e), ...[...this.mem.values()].filter(e => !list.some(x => x.id === e.id))]; },
-  // Returns whether it was saved. When Pocket's storage on the phone is full, the saved lists (only a copy, for
-  // opening offline) are dropped to make room.
-  save(list){
-    const write = () => list.length ? localStorage.setItem('pocket.outbox', JSON.stringify(list)) : localStorage.removeItem('pocket.outbox');
-    try { write(); return true; } catch {}
-    saved.clear();
-    try { write(); return true; } catch { return false; }
+/* =============== sync =============== */
+/* Everything waiting to go to Vikunja: tasks added without a connection (or whose sending was cut off), and photos and
+   files. Each entry is one capture, a task or a pasted list, or the files added to a task from its sheet (taskId):
+   {id, user, at, nest, pid, items: [{raw, p, ...its steps}], files: [{key, name, size, type, ...}], taskId}.
+   p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed.
+
+   It all lives in the browser's database (IndexedDB): the entries, the files' bytes, and the tasks Pocket has added.
+   An entry and its files are saved together or not at all. The screen reads a copy kept in memory (`entries`), and
+   sending always starts from the database's copy, so two tabs never work from an old one. If the database can't be
+   used, or the phone has no room, an entry waits in memory only, and Pocket says to keep it open. */
+const sync = {
+  entries: new Map(),                            // id -> entry, as the screen shows them
+  volatile: new Set(),                           // ids of entries kept in memory only
+  bytes: new Map(),                              // key -> File, for files kept in memory only
+  claimed: new Map(),                            // task id -> {key, at}: see claim()
+  db: null, asked: false,
+  channel: 'BroadcastChannel' in self ? new BroadcastChannel('pocket-sync') : null,
+
+  open(){
+    return this.db ||= new Promise((ok, no) => {
+      const r = indexedDB.open('pocket', 2);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
+        if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', {keyPath: 'id'});
+        if (!db.objectStoreNames.contains('claims')) db.createObjectStore('claims', {keyPath: 'id'});
+      };
+      // A newer Pocket in another tab may need to upgrade it: let go, so that tab isn't kept waiting.
+      r.onsuccess = () => { r.result.onversionchange = () => r.result.close(); ok(r.result); };
+      r.onerror = () => no(r.error);
+    });
   },
-  get(id){ return this.mem.get(id) || this.stored().find(e => e.id === id) || null; },
-  // Returns whether it's stored on the phone; if there's no room, it's kept in memory instead.
-  put(entry){
-    const list = this.stored(), i = list.findIndex(e => e.id === entry.id);
-    if (i >= 0) list[i] = entry; else list.push(entry);
-    if (this.save(list)) { this.mem.delete(entry.id); return true; }
-    this.mem.set(entry.id, entry); return false;
+  // One transaction over `stores`: resolves with what `fn` returns once it's committed, rejects if it isn't.
+  async tx(stores, mode, fn){
+    const db = await this.open();
+    return new Promise((ok, no) => {
+      const t = db.transaction(stores, mode), get = n => t.objectStore(n);
+      let out;
+      t.oncomplete = () => ok(out instanceof IDBRequest ? out.result : out);
+      t.onerror = t.onabort = () => no(t.error || new DOMException('aborted', 'AbortError'));
+      try { out = fn(get); } catch (e) { try { t.abort(); } catch {} no(e); }
+    });
   },
-  drop(fn){
-    for (const [id, e] of this.mem) if (fn(e)) this.mem.delete(id);
-    const list = this.stored();
-    if (list.some(fn)) this.save(list.filter(e => !fn(e)));
+  // Load what's waiting, moving over anything an older Pocket kept in localStorage.
+  async start(){
+    const old = (() => { try { return JSON.parse(localStorage.getItem('pocket.outbox') || '[]'); } catch { return []; } })();
+    const oldClaims = (() => { try { return JSON.parse(localStorage.getItem('pocket.claims') || '[]'); } catch { return []; } })();
+    try {
+      if (old.length || oldClaims.length) {
+        await this.tx(['outbox', 'claims'], 'readwrite', s => {
+          for (const e of old) s('outbox').put(e);
+          for (const [id, c] of oldClaims) s('claims').put({id, ...c});
+        });
+      }
+      localStorage.removeItem('pocket.outbox'); localStorage.removeItem('pocket.claims');
+      await this.reload();
+      const day = Date.now() - 86400000;
+      const claims = await this.tx(['claims'], 'readonly', s => s('claims').getAll());
+      for (const c of claims) if (c.at > day) this.claimed.set(c.id, c);
+      this.tx(['claims'], 'readwrite', s => { for (const c of claims) if (c.at <= day) s('claims').delete(c.id); }).catch(() => {});
+    } catch {
+      for (const e of old) { this.entries.set(e.id, e); this.volatile.add(e.id); }   // no database: they wait in memory
+    }
+    this.channel?.addEventListener('message', async () => { await this.reload().catch(() => {}); app?.refreshPending(); });
   },
-  remove(id){ this.drop(e => e.id === id); },
+  // The database's entries, plus those kept in memory only.
+  async reload(){
+    const list = await this.tx(['outbox'], 'readonly', s => s('outbox').getAll());
+    const keep = [...this.volatile].map(id => this.entries.get(id)).filter(Boolean);
+    this.entries = new Map([...list, ...keep].map(e => [e.id, e]));
+  },
+  changed(){ this.channel?.postMessage('changed'); },
+  all(user){ return [...this.entries.values()].filter(e => e.user === user); },
+
+  // A new entry, with its files: saved together. Returns {kept, full}: whether it's in the database, and if not,
+  // whether that's because the phone has no room.
+  async add(entry, files){
+    this.entries.set(entry.id, entry);
+    try {
+      const data = await Promise.all(files.map(async f => ({name: f.name, type: f.type, data: await f.arrayBuffer()})));
+      await this.tx(['files', 'outbox'], 'readwrite', s => {
+        data.forEach((d, i) => s('files').put(d, entry.files[i].key));
+        s('outbox').put(plain(entry));
+      });
+      this.changed();
+      return {kept: true};
+    } catch (e) {
+      this.volatile.add(entry.id);
+      files.forEach((f, i) => this.bytes.set(entry.files[i].key, f));
+      return {kept: false, full: e?.name === 'QuotaExceededError'};
+    }
+  },
+  // Progress on an entry, and the bytes of any of its files that are done with (`drop`), in one go.
+  async save(entry, drop = []){
+    this.entries.set(entry.id, entry);
+    for (const k of drop) this.bytes.delete(k);
+    if (this.volatile.has(entry.id)) return;
+    try {
+      await this.tx(['files', 'outbox'], 'readwrite', s => { for (const k of drop) s('files').delete(k); s('outbox').put(plain(entry)); });
+      this.changed();
+    } catch { this.volatile.add(entry.id); }                                 // no room for it now: keep it in memory
+  },
+  async remove(id){
+    const e = this.entries.get(id), keys = (e?.files || []).map(f => f.key);
+    this.entries.delete(id); this.volatile.delete(id);
+    for (const k of keys) this.bytes.delete(k);
+    try { await this.tx(['files', 'outbox'], 'readwrite', s => { for (const k of keys) s('files').delete(k); s('outbox').delete(id); }); this.changed(); }
+    catch {}
+  },
+  async drop(fn){ for (const e of [...this.entries.values()]) if (fn(e)) await this.remove(e.id); },
+  // The entry to send from: the database's copy, which another tab may have moved on (or sent: then null).
+  async fresh(id){
+    if (this.volatile.has(id)) return this.entries.get(id) || null;
+    try {
+      const e = await this.tx(['outbox'], 'readonly', s => s('outbox').get(id));
+      if (e) this.entries.set(id, e); else this.entries.delete(id);
+      return e || null;
+    } catch { return this.entries.get(id) || null; }
+  },
+  async file(key){
+    if (this.bytes.has(key)) return this.bytes.get(key);
+    try { const v = await this.tx(['files'], 'readonly', s => s('files').get(key)); return v ? new File([v.data], v.name, {type: v.type}) : null; }
+    catch { return null; }
+  },
+  /* The tasks Pocket has added in the last day, and the line each was added for, so a retry never takes one of them
+     for its own: two "Buy milk"s added a minute apart stay two tasks. */
+  claim(id, key){
+    const c = {id, key, at: Date.now()};
+    this.claimed.set(id, c);
+    this.tx(['claims'], 'readwrite', s => s('claims').put(c)).catch(() => {});
+  },
+  claimedByOther(id, key){ const c = this.claimed.get(id); return !!c && c.key !== key; },
+  // Once something has to wait, ask the browser not to clear the database when the phone runs low on space.
+  keep(){ if (!this.asked) { this.asked = true; navigator.storage?.persist?.().catch(() => {}); } },
+  // One sender at a time, even with Pocket open in two tabs.
+  lock(fn){ return navigator.locks ? navigator.locks.request('pocket-outbox', fn) : fn(); },
 };
-/* The tasks Pocket has added in the last day, and the line each was added for, so a retry never takes one of them
-   for its own: two "Buy milk"s added a minute apart stay two tasks. */
-const claims = {
-  mem: new Map(),
-  all(){ try { return new Map([...JSON.parse(store.get('claims') || '[]'), ...this.mem]); } catch { return new Map(this.mem); } },
-  add(id, key){
-    const day = Date.now() - 86400000, m = new Map([...this.all()].filter(([, c]) => c.at > day));
-    m.set(id, {key, at: Date.now()}); this.mem.set(id, {key, at: Date.now()});
-    store.set('claims', JSON.stringify([...m]));
-  },
-  // Taken by some other line than this one.
-  other(id, key){ const c = this.all().get(id); return !!c && c.key !== key; },
-};
-// One sender at a time, even with Pocket open in two tabs.
-const outboxLock = fn => navigator.locks ? navigator.locks.request('pocket-outbox', fn) : fn();
+sync.ready = sync.start();
+
+// A copy the database can store: parts of an entry can be Alpine's reactive proxies, which it can't.
+const plain = o => JSON.parse(JSON.stringify(o));
+const NO_ROOM = 'There\'s no room left on this phone to keep this until there\'s a connection. Keep Pocket open until it\'s sent.';
+const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
 const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
   labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null});
 const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
-// Nothing left to send: every line is a task in Vikunja (and under its parent), and every file is uploaded.
-// An item saved before createTask kept its own steps has no `done`: having a task was all there was to it then.
-const itemDone = x => x.done ?? !!x.taskId;
-const NO_ROOM = 'There\'s no room left on this phone to keep this until there\'s a connection. Keep Pocket open until it\'s sent.';
-const entryDone = e => !e.items.some((x, i) => !itemDone(x) || (e.nest && i > 0 && !x.linked)) && !(e.files || []).some(f => !f.sent);
 const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
+// A line is done when all its steps are. One saved by a Pocket from before the steps has no `done`: having a task
+// (and, as a subtask, its link) was all there was to it then.
+const itemDone = (x, child) => x.done ?? (!!x.taskId && (!child || !!x.linked));
+const entryDone = e => e.items.every((x, i) => itemDone(x, e.nest && i > 0)) && !(e.files || []).some(f => !f.sent);
 
-/* The photos and files themselves wait in the browser's database (IndexedDB), since localStorage only holds text, and
-   are deleted once uploaded. They're also kept in memory, so they still upload during this visit if the database can't
-   be used (a private window, say). */
-const waitingFiles = {
-  mem: new Map(), db: null, asked: false,
-  open(){
-    return this.db ||= new Promise((ok, no) => {
-      const r = indexedDB.open('pocket', 1);
-      r.onupgradeneeded = () => r.result.createObjectStore('files');
-      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
-    });
-  },
-  async run(mode, fn){
-    const db = await this.open();
-    return new Promise((ok, no) => {
-      const tx = db.transaction('files', mode), req = fn(tx.objectStore('files'));
-      tx.oncomplete = () => ok(req?.result); tx.onerror = tx.onabort = () => no(tx.error);
-    });
-  },
-  // Stored as bytes rather than as the File, which older Safari can't store.
-  // Returns whether it's on the phone, rather than only in memory until Pocket is closed.
-  async put(key, file){
-    this.mem.set(key, file);
-    try { const data = await file.arrayBuffer(); await this.run('readwrite', s => s.put({name: file.name, type: file.type, data}, key)); return true; }
-    catch { return false; }
-  },
-  async get(key){
-    if (this.mem.has(key)) return this.mem.get(key);
-    try { const v = await this.run('readonly', s => s.get(key)); return v ? new File([v.data], v.name, {type: v.type}) : null; } catch { return null; }
-  },
-  async del(keys){
-    for (const k of keys) this.mem.delete(k);
-    if (keys.length) try { await this.run('readwrite', s => { for (const k of keys) s.delete(k); }); } catch {}
-  },
-  // Once something has to wait, ask the browser not to clear the database when the phone runs low on space.
-  keep(){ if (!this.asked) { this.asked = true; navigator.storage?.persist?.().catch(() => {}); } },
+/* How a captured line becomes a task in Vikunja, step by step. `done` says whether a step is finished for the line
+   (`job`); `run` does it, or the next part of it (one label, one person). Progress is saved after every run, so a try
+   that's cut off carries on at the step it stopped at: nothing is added twice and nothing is skipped. An answer from
+   Vikunja meaning "that's there already" (a cut-off try got that far) counts as done; any other refusal is reported
+   as a problem and the step moves on. A lost connection, or Vikunja busy, stops the run, to try again later. */
+const ALREADY = {label: 8001, assignee: 4021, link: 4008};
+const settle = (e, step, problem) => {
+  if (passing(e) || e.status === 401) throw e;
+  if (e.code !== ALREADY[step]) problem(e.message);
 };
+const LINE_STEPS = [
+  {name: 'prepare', done: j => !!j.body, async run(j, {parsed, pid}){
+    const to = parsed.project?.id || pid, body = {title: parsed.title}, assign = [];
+    // Someone who can see the project is assigned, and their @username leaves the title, as in Vikunja. Someone who
+    // can't stays in the title and is reported. If Pocket can't check (an API token without Projects → projectusers), it just tries.
+    for (const name of parsed.assignees) {
+      const seen = await app.canSee(to, name);
+      if (seen === false) j.problems.push(await app.userExists(name).catch(() => true) ? `@${name} can't see ${app.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
+      else assign.push(name);
+      if (seen === true) body.title = removeAssignee(body.title, app.prefixes.assignee, name);
+    }
+    if (parsed.due) body.due_date = parsed.due.toISOString();
+    if (parsed.priority) body.priority = parsed.priority;
+    if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
+    // Kept, so a later try sends the same, and looks for the title as sent (without the @usernames).
+    Object.assign(j, {to, body, assign, labels: [...parsed.labels]});
+  }},
+  {name: 'task', done: j => !!j.taskId, async run(j, c){
+    // A try that was cut off may have reached Vikunja anyway: look for it before adding it again.
+    let t = j.tried ? await app.findSent(j.body.title, j.to, j.triedAt, c.at, c.skip, j.key) : null;
+    if (!t) { j.tried = true; j.triedAt = Date.now(); await c.save(); t = await api(`/projects/${j.to}/tasks`, {method:'PUT', body: j.body}); }
+    sync.claim(t.id, j.key);
+    Object.assign(j, {taskId: t.id, projectId: t.project_id});
+    c.task = t; c.made?.(t);
+  }},
+  {name: 'label', done: j => !j.labels.length, async run(j){
+    const name = j.labels[0];
+    try {
+      const all = await app.loadLabels(j.newLabel);                         // a cut-off try may have created it
+      let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
+      if (!l) { j.newLabel = true; l = await api('/labels', {method:'PUT', body:{title: name}}); all.push(l); }
+      await api(`/tasks/${j.taskId}/labels`, {method:'PUT', body:{label_id: l.id}});
+    } catch (e) { settle(e, 'label', m => j.problems.push(`label ${name}: ${m}`)); }
+    j.labels.shift();
+  }},
+  // An assignment that fails (unknown user, no access to the project) doesn't undo the task; it's reported instead.
+  {name: 'assignee', done: j => !j.assign.length, async run(j){
+    const name = j.assign[0];
+    try {
+      const u = await app.findUser(name);
+      if (!u) j.problems.push(`no user @${name}`);
+      else await api(`/tasks/${j.taskId}/assignees`, {method:'PUT', body:{user_id: u.id}});
+    } catch (e) { settle(e, 'assignee', m => j.problems.push(`@${name}: ${m}`)); }
+    j.assign.shift();
+  }},
+  // Under the first line of a pasted list, or under the task its sheet is for.
+  // Here a refusal stops the line, as the list can't be put together without it.
+  {name: 'link', done: (j, c) => !c.parent || !!j.linked, async run(j, c){
+    try { await app.linkSubtask(c.parent, j.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
+    j.linked = true;
+  }},
+];
 
 // The lists Pocket last loaded, shown when it opens without a connection. Cleared on sign-out.
 const saved = {
@@ -1371,13 +1489,12 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   signOut(msg, {tellServer = true} = {}){
     // Signing out yourself drops the saved lists and anything still waiting to be sent (after asking).
     if (!msg) {
-      const mine = outbox.all().filter(e => e.user === this.user?.id);
+      const me = this.user?.id, mine = sync.all(me);
       const tasks = mine.flatMap(e => e.items.filter(x => !x.taskId)), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
       const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`, n = tasks.length + files.length;
       const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file')].filter(Boolean).join(' and ');
       if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and drop ${n === 1 ? 'it' : 'them'}?`)) return;
-      outbox.drop(e => e.user === this.user?.id);
-      waitingFiles.del(mine.flatMap(e => (e.files || []).map(f => f.key)));
+      sync.drop(e => e.user === me);
       this.pending = [];
     }
     saved.clear();
@@ -1434,6 +1551,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async boot(){
     this.screen = 'app'; this.signedIn = true;
     Object.assign(this.view, {loading: true, error: '', bootFailed: false, route: null});
+    // What's waiting, from the phone's database. Not for long, though: another tab with an older Pocket can hold it up.
+    await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
+    sync.ready.then(() => this.refreshPending());
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
       this.user = user; this.info = info;
@@ -2021,66 +2141,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
 
   /* Create one task from a parsed line; labels are created when missing. */
-  /* Create a task from a parsed line: the task, then its labels, then its assignees. `job` keeps track of each step and
-     `keep` saves it after every one. For a task in the outbox, job is its item, so a try that was cut off carries on
-     where it stopped, without adding the task twice or skipping a label. `made` hears of the task as soon as it exists.
-     Returns the task (just {id, project_id} if an earlier try made it), with `problems`: what couldn't be done, like
-     an @username who can't see the project. A lost connection or a busy Vikunja is thrown, to try again later. */
-  async createTask(parsed, pid, {job = {}, keep = () => {}, made = () => {}, at, skip} = {}){
-    const problems = job.problems ||= [];
+  /* Create a task from a parsed line, by LINE_STEPS. `job` keeps each step's progress and `save` keeps the job: for a
+     line in the outbox, job is its item. `made` hears of the task as soon as it exists, and `parent` makes it a
+     subtask of that task. Returns the task (just {id, project_id} if an earlier try made it), with `problems`: what
+     couldn't be done, like an @username who can't see the project. A lost connection or a busy Vikunja is thrown. */
+  async createTask(parsed, pid, {job = {}, save = async () => {}, made, at, skip, parent} = {}){
+    job.problems ||= [];
     job.key ||= randomId();                      // this line, for the record of which task was added for it
-    if (!job.body) {
-      const to = parsed.project?.id || pid, body = {title: parsed.title}, assign = [];
-      // Someone who can see the project is assigned, and their @username leaves the title, as in Vikunja. Someone who
-      // can't stays in the title and is reported. If Pocket can't check (an API token without Projects → projectusers), it just tries.
-      for (const name of parsed.assignees) {
-        const seen = await this.canSee(to, name);
-        if (seen === false) problems.push(await this.userExists(name).catch(() => true) ? `@${name} can't see ${this.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
-        else assign.push(name);
-        if (seen === true) body.title = removeAssignee(body.title, this.prefixes.assignee, name);
-      }
-      if (parsed.due) body.due_date = parsed.due.toISOString();
-      if (parsed.priority) body.priority = parsed.priority;
-      if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
-      // The title as sent, without the @usernames, is what a later try looks for.
-      Object.assign(job, {to, body, assign, labels: [...parsed.labels]});
-      keep();
+    const c = {parsed, pid, save, made, at, skip, parent};
+    if (!itemDone(job, !!parent)) {
+      for (const step of LINE_STEPS) while (!step.done(job, c)) { await step.run(job, c); await save(); }
+      job.done = true; await save();
     }
-    let t = null;
-    if (!job.taskId) {
-      // A try that was cut off may have reached Vikunja anyway: look for it before adding it again.
-      t = job.tried ? await this.findSent(job.body.title, job.to, job.triedAt, at, skip, job.key) : null;
-      if (!t) { job.tried = true; job.triedAt = Date.now(); keep(); t = await api(`/projects/${job.to}/tasks`, {method:'PUT', body: job.body}); }
-      claims.add(t.id, job.key);
-      job.taskId = t.id; job.projectId = t.project_id;
-      made(t); keep();
-    }
-    // Vikunja's "already on the task" (8001) and "already assigned" (4021) mean a cut-off try got that far.
-    const final = (e, code) => { if (passing(e) || e.status === 401) throw e; return e.code !== code; };
-    if (job.labels.length) {
-      const all = await this.loadLabels(job.newLabel);                       // a cut-off try may have created one
-      while (job.labels.length) {
-        const name = job.labels[0];
-        try {
-          let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
-          if (!l) { job.newLabel = true; keep(); l = await api('/labels', {method:'PUT', body:{title:name}}); all.push(l); }
-          await api(`/tasks/${job.taskId}/labels`, {method:'PUT', body:{label_id:l.id}});
-        } catch (e) { if (final(e, 8001)) problems.push(`label ${name}: ${e.message}`); }
-        job.labels.shift(); keep();
-      }
-    }
-    // An assignment that fails (unknown user, no access to the project) doesn't undo the task; it's reported instead.
-    while (job.assign.length) {
-      const name = job.assign[0];
-      try {
-        const u = await this.findUser(name);
-        if (!u) problems.push(`no user @${name}`);
-        else await api(`/tasks/${job.taskId}/assignees`, {method:'PUT', body:{user_id: u.id}});
-      } catch (e) { if (final(e, 4021)) problems.push(`@${name}: ${e.message}`); }
-      job.assign.shift(); keep();
-    }
-    job.done = true; keep();
-    return Object.assign(t || {id: job.taskId, project_id: job.projectId}, {problems});
+    return Object.assign(c.task || {id: job.taskId, project_id: job.projectId}, {problems: job.problems});
   },
   async findUser(name){
     const key = name.toLowerCase();
@@ -2100,9 +2173,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       for (const line of lines) {
         const parsed = parseCapture(line, this.projects, this.parseOpts);
         if (parsed.title) {
-          const t = await this.createTask(parsed, parent ? parent.project_id : pid);
+          const t = await this.createTask(parsed, parent ? parent.project_id : pid, {parent: parent?.id});
           ids.push(t.id); problems.push(...t.problems);
-          if (parent) await this.linkSubtask(parent.id, t.id);
         }
         used++;
       }
@@ -2130,10 +2202,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
     this.capBusy = true; this.capture = ''; this.capNest = false; this.capPhotos = [];
     try {
-      // The photos are stored before the entry, so it never lists one that isn't there.
-      const onPhone = (await Promise.all(photos.map((f, i) => waitingFiles.put(entry.files[i].key, f)))).every(Boolean);
-      const kept = outbox.put(entry);            // saved first, but only shown as waiting if sending doesn't finish
-      const r = await outboxLock(() => this.sendEntry(entry.id));
+      // Saved first, with its photos, but only shown as waiting if sending doesn't finish.
+      const {kept, full} = await sync.add(entry, photos);
+      const r = await sync.lock(() => this.sendEntry(entry.id));
       if (r.ids?.length) { this.fresh = r.ids; clearTimeout(freshTimer); freshTimer = setTimeout(() => this.fresh = [], 2000); }
       this.placeSent(r.tasks || []);
       const n = items.length, np = photos.length;
@@ -2141,9 +2212,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       if (r.status === 'offline') {
         // It shows up in the list, tinted, unless this list wouldn't include it (say, a task due next month on Today).
         this.refreshPending();
-        if (np) waitingFiles.keep();
-        if (!kept) this.notify(NO_ROOM);
-        else if (np && !onPhone) this.notify(np === 1 ? 'This photo couldn\'t be saved on the phone. Keep Pocket open until it uploads.' : 'These photos couldn\'t be saved on the phone. Keep Pocket open until they upload.');
+        sync.keep();
+        if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT);
         else if (np && r.ids.length === n)            // the task got there; its photos are still to go
           this.notify(`Added to ${this.projById.get(r.projectId)?.title || 'project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`, {label: 'Open', fn: () => this.openTask(r.ids[0])});
         else if (np) this.notify(`Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`);
@@ -2175,32 +2245,25 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
      with the ids of its tasks, the tasks created this time, and how many files were uploaded. `offline` means it's
      kept to try again; `reached` that Vikunja answered, only not usefully yet (busy, or a server error on a file). */
   async sendEntry(id){
-    const entry = outbox.get(id);
+    const entry = await sync.fresh(id);
     if (!entry) return {status: 'gone', ids: [], tasks: []};                // another tab sent it
-    const ids = [], tasks = [], problems = entry.problems ||= [];
+    const ids = [], tasks = [], problems = entry.problems ||= [], save = () => sync.save(entry);
     const all = () => [...entry.items.flatMap(x => x.problems || []), ...problems];
     const taken = new Set(entry.items.map(x => x.taskId).filter(Boolean));  // a pasted list can have a line twice
     let uploaded = 0;
     try {
       for (const [i, item] of entry.items.entries()) {
-        if (!itemDone(item)) {
-          const child = entry.nest && i > 0;
-          await this.createTask(unpackParsed(item.p), child ? entry.parentProject : entry.pid, {
-            job: item, keep: () => outbox.put(entry), at: entry.at, skip: taken,
-            made: t => { taken.add(t.id); tasks.push({...t, child}); if (i === 0) entry.parentProject = t.project_id; }});
-        }
-        if (entry.nest && i > 0 && !item.linked) {
-          // 4008: linked already, by a try whose reply was lost.
-          await this.linkSubtask(entry.items[0].taskId, item.taskId).catch(e => { if (e.code !== 4008) throw e; });
-          item.linked = true; outbox.put(entry);
-        }
+        const child = entry.nest && i > 0;
+        await this.createTask(unpackParsed(item.p), child ? entry.parentProject : entry.pid, {
+          job: item, save, at: entry.at, skip: taken, parent: child ? entry.items[0].taskId : null,
+          made: t => { taken.add(t.id); tasks.push({...t, child}); if (i === 0) entry.parentProject = t.project_id; }});
         ids.push(item.taskId);
       }
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
       if (files.length) { this.placeSent(tasks); this.refreshPending(); }    // the task shows while its photos upload
       for (const f of files) if (await this.sendFile(entry, target, f)) uploaded++;
-      outbox.remove(entry.id);
+      await sync.remove(entry.id);
       if (files.length) {
         this.refreshPending();
         // The task with its new attachments, for its row and its sheet.
@@ -2216,11 +2279,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       // No connection, Vikunja busy, or signed out: keep it for later.
       if (passing(error) || error.again || (error instanceof ApiError && error.status === 401))
         return {status: 'offline', reached: error instanceof ApiError && error.status !== 401, ids, tasks, problems: all(), uploaded, projectId: entry.parentProject};
-      outbox.remove(entry.id);
       // Photos added with a task that couldn't be added go back to the add box with it.
-      const keys = (entry.files || []).filter(f => !f.sent).map(f => f.key);
-      const photos = (await Promise.all(keys.map(k => waitingFiles.get(k)))).filter(Boolean);
-      waitingFiles.del(keys);
+      const photos = (await Promise.all((entry.files || []).filter(f => !f.sent).map(f => sync.file(f.key)))).filter(Boolean);
+      await sync.remove(entry.id);
       return {status: 'error', ids, tasks, problems: all(), error, photos, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw)};
     }
   },
@@ -2233,10 +2294,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try {
       if (f.tried && await this.hasAttachment(taskId, f, entry.at)) ok = true;
       else {
-        const file = await waitingFiles.get(f.key);
+        const file = await sync.file(f.key);
         if (!file) problems.push(`${f.name} was lost on this device before it uploaded`);
         else {
-          f.tried = true; f.triedAt = Date.now(); outbox.put(entry);
+          f.tried = true; f.triedAt = Date.now(); await sync.save(entry);
           const form = new FormData(); form.append('files', file, f.name);
           const r = await api(`/tasks/${taskId}/attachments`, {method: 'PUT', body: form});
           // Vikunja answers OK even when it turns a file down, with the reasons in `errors`.
@@ -2244,12 +2305,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         }
       }
     } catch (e) {
-      if (e instanceof ApiError && (e.status >= 500 || TRANSIENT.has(e.status))) { f.trouble = true; outbox.put(entry); e.again = true; }
+      if (e instanceof ApiError && (e.status >= 500 || TRANSIENT.has(e.status))) { f.trouble = true; await sync.save(entry); e.again = true; }
       if (passing(e) || e.again || e.status === 401) throw e;
       problems.push(`${f.name} didn't upload: ${e.message}`);
     }
-    f.sent = true; outbox.put(entry);
-    waitingFiles.del([f.key]);
+    f.sent = true; await sync.save(entry, [f.key]);
     return ok;
   },
   // Whether this file is on the task already, uploaded since it was added.
@@ -2279,19 +2339,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async findSent(title, project, triedAt, at, skip = new Set(), key){
     const list = await api('/tasks?s=' + encodeURIComponent(title)) || [];
     const since = triedSince(triedAt, at);
-    return list.find(t => t.title === title && t.project_id === project && t.created_by?.id === this.user?.id && !skip.has(t.id) && !claims.other(t.id, key)
+    return list.find(t => t.title === title && t.project_id === project && t.created_by?.id === this.user?.id && !skip.has(t.id) && !sync.claimedByOther(t.id, key)
       && new Date(t.created).getTime() >= since) || null;
   },
   // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
   async flush(){
     // In a shared session, nothing is sent until Pocket knows the session is still this person's.
     if (this.signedIn && this.user && this.mode === 'session' && sharedToken.get() !== seenToken) { this.sessionChanged(); return; }
-    if (this.flushing || !this.signedIn || !this.user || !outbox.all().some(e => e.user === this.user.id)) return;
+    if (this.flushing || !this.signedIn || !this.user || !sync.all(this.user.id).length) return;
     this.flushing = true;
     let sent = 0; const failed = [], tasks = [], problems = [];
     try {
-      await outboxLock(async () => {
-        for (const e of outbox.all().filter(e => e.user === this.user?.id)) {
+      await sync.lock(async () => {
+        for (const e of sync.all(this.user?.id)) {
           const r = await this.sendEntry(e.id);
           tasks.push(...(r.tasks || [])); problems.push(...(r.problems || []));
           if (r.status === 'offline' && !r.reached) break;                    // no connection: the rest can wait too
@@ -2319,7 +2379,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.notify(e instanceof NetError ? 'Offline — you can create the project once you\'re back online' : 'Project not created: ' + e.message);
     } finally { this.creatingProject = false; }
   },
-  refreshPending(){ this.pending = this.user ? outbox.all().filter(e => e.user === this.user.id) : []; },
+  refreshPending(){ this.pending = this.user ? sync.all(this.user.id) : []; },
   // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
   get pendingTasks(){
     const out = [];
@@ -2372,25 +2432,27 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // Cancel one waiting task. Cancelling the first line of a pasted list with a parent leaves the rest as plain tasks.
   // The photos added with it go too.
   async cancelPending(entryId, index){
-    let drop = [];
-    await outboxLock(async () => {
-      const e = outbox.get(entryId); if (!e) return;
+    await sync.lock(async () => {
+      const e = await sync.fresh(entryId); if (!e) return;
       e.items.splice(index, 1);
+      let drop = [];
       if (index === 0) { e.nest = false; drop = (e.files || []).map(f => f.key); e.files = []; }
-      if (entryDone(e)) outbox.remove(e.id); else outbox.put(e);
+      await sync.save(e, drop);
+      if (entryDone(e)) await sync.remove(e.id);
     });
-    waitingFiles.del(drop);
     this.refreshPending();
   },
   // Don't upload a waiting photo or file after all. Its row goes at once; one already uploading finishes first.
   async cancelFile(entryId, key){
     this.dropping.push(key);
-    await outboxLock(async () => {
-      const e = outbox.get(entryId); if (!e) return;
+    await sync.lock(async () => {
+      const e = await sync.fresh(entryId); if (!e) return;
+      const was = e.files.length;
       e.files = e.files.filter(f => f.key !== key || f.sent);
-      if (entryDone(e)) outbox.remove(e.id); else outbox.put(e);
+      if (e.files.length === was) return;                                    // uploaded meanwhile
+      await sync.save(e, [key]);
+      if (entryDone(e)) await sync.remove(e.id);
     });
-    await waitingFiles.del([key]);
     this.refreshPending();
     this.dropping = this.dropping.filter(k => k !== key);
   },
@@ -2655,15 +2717,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (!files.length || !t) return;
     const big = this.tooBig(files); if (big) { this.notify(big); return; }
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
-    const onPhone = (await Promise.all(files.map((f, i) => waitingFiles.put(entry.files[i].key, f)))).every(Boolean);
-    const kept = outbox.put(entry); this.refreshPending();
-    const r = await outboxLock(() => this.sendEntry(entry.id));
+    const {kept, full} = await sync.add(entry, files); this.refreshPending();
+    const r = await sync.lock(() => this.sendEntry(entry.id));
     this.refreshPending();
-    if (r.status === 'offline') {
-      waitingFiles.keep();
-      if (!kept) this.notify(NO_ROOM);
-      else if (!onPhone) this.notify(files.length === 1 ? 'This file couldn\'t be saved on the phone. Keep Pocket open until it uploads.' : 'These files couldn\'t be saved on the phone. Keep Pocket open until they upload.');
-    }
+    if (r.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
     if (r.problems?.length) this.notify(r.problems.join('; '));
   },
   // From the add box's camera button.
