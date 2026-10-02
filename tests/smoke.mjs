@@ -79,6 +79,36 @@ try {
     await page.waitForSelector(row, { timeout: 15000 });
     if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after undo');
   });
+  // Hold a row, then slide it sideways by `steps` tens of percent, as with a finger.
+  async function slideProgress(sel, steps, check){
+    const box = await page.locator(sel).boundingBox();
+    const x = box.x + box.width * .2, y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForSelector(`${sel}.setting`, { timeout: 2000 });
+    await page.mouse.move(x + box.width * .8 * steps / 10, y, { steps: 10 });
+    await check?.();
+    await page.mouse.up();
+  }
+  const apiTask = async () => (await (await api('/tasks?s=' + encodeURIComponent(title))).json()).find(t => t.title === title);
+  await step('progress-hold-and-slide', async () => {
+    await slideProgress(row, 4, async () => {
+      const shown = await page.getAttribute(row, 'data-pct');
+      if (shown !== '40%') throw new Error('showed ' + shown + ' while sliding');
+    });
+    await page.waitForSelector('#toast-msg:text("Progress set to 40%")', { timeout: 10000 });
+    if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+    const t = await apiTask();
+    if (Math.round(t.percent_done * 100) !== 40) throw new Error('saved percent_done ' + t.percent_done);
+  });
+  await step('progress-100-marks-done-and-undo', async () => {
+    await slideProgress(row, 6);
+    await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
+    await page.click('#toast-act:has-text("Undo")');
+    await page.waitForSelector(row, { timeout: 15000 });
+    const t = await apiTask();
+    if (t.done || Math.round(t.percent_done * 100) !== 40) throw new Error(`after undo: done ${t.done}, percent_done ${t.percent_done}`);
+  });
   await step('upload-html-attachment', async () => {
     const found = await (await api('/tasks?s=' + encodeURIComponent(title))).json();
     const id = found.find(t => t.title === title)?.id;
@@ -136,6 +166,13 @@ try {
     if (await page.getAttribute('[data-prio="1"]', 'aria-pressed') !== 'true') throw new Error('priority not shown as selected');
   });
   await page.screenshot({ path: `${OUT}/sheet.png` });
+  await step('progress-in-sheet', async () => {
+    if (await page.inputValue('#d-progress') !== '40') throw new Error('sheet shows ' + await page.inputValue('#d-progress'));
+    await page.$eval('#d-progress', el => { el.value = '60'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
+    const t = await apiTask();
+    if (Math.round(t.percent_done * 100) !== 60) throw new Error('saved percent_done ' + t.percent_done);
+  });
   await step('mark-done', async () => {
     await page.click('#d-done');
     await page.waitForSelector('#d-done.on', { timeout: 10000 });

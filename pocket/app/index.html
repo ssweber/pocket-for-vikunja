@@ -100,6 +100,11 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 /* a task added offline, not sent yet */
 .row.pending{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 .check.wait{border-style:dashed;opacity:.8}
+/* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
+.list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.row::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:calc(var(--pct,0) * 100%);background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
+.row.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--pct) * 100%),var(--surface) 0)}
+.row.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
@@ -155,6 +160,9 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .prios button{flex:1;border:0;border-radius:8px;background:var(--sunk);padding:9px 0;font-size:14px;font-weight:650;color:var(--muted)}
 .prios button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
 .prios button.hot[aria-pressed=true]{background:var(--overdue);color:#fff}
+.pct-range{flex:1;min-width:0;accent-color:var(--accent);margin:6px 0}
+.pct-out{width:44px;text-align:right;font-weight:650}
+.pct-note{flex-basis:100%;margin:0;font-size:13px}
 .assign-form{flex:1;min-width:120px;display:flex}
 .assign-form input{flex:1;min-width:0;padding:6px 10px;border-radius:var(--r-chip);border:1.5px solid var(--line);background:var(--bg);font-size:15px;outline:0}
 .assign-form input:focus{border-color:var(--accent)}
@@ -279,10 +287,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span></div>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
-            <div class="row" :class="{done: t.done, pending: t.pending}" :data-id="t.id">
+            <div class="row" :class="{done: t.done, pending: t.pending}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0}">
               <button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
               <button class="body" @click="t.pending || openTask(t.id)">
-                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="t.priority >= 3"><span class="prio" :aria-label="'Priority ' + t.priority" x-text="'!'.repeat(Math.min(t.priority - 1, 3)) + ' '"></span></template><span x-text="t.title"></span></div>
+                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="t.priority >= 3"><span class="prio" :aria-label="'Priority ' + t.priority" x-text="'!'.repeat(Math.min(t.priority - 1, 3)) + ' '"></span></template><span x-text="t.title"></span><template x-if="!t.done && pctOf(t)"><span class="sr" x-text="', progress ' + pctOf(t) + '%'"></span></template></div>
                 <div class="meta" x-show="rowMeta(t).length">
                   <template x-for="m in rowMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" :style="{background: m.color}"></i></template><span x-text="m.text"></span></span></template>
                 </div>
@@ -376,6 +384,12 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="prop stack"><span class="k">Priority</span><span class="v"><div class="prios" role="group" aria-label="Priority">
           <template x-for="p in PRIOS" :key="p.n"><button type="button" :data-prio="p.n" :class="p.n >= 3 ? 'hot' : ''" :aria-pressed="String((sheet.task.priority || 0) === p.n)" @click="save({priority: p.n})" x-text="p.label"></button></template>
         </div></span></div>
+        <div class="prop stack"><span class="k">Progress</span><span class="v">
+          <input type="range" id="d-progress" class="pct-range" min="0" max="100" step="10" aria-label="Progress" :value="pctOf(sheet.task)"
+                 @input="sheet.pct = +$event.target.value" @change="save(progressPatch(sheet.task, +$event.target.value)); sheet.pct = null">
+          <span class="num pct-out" x-text="(sheet.pct ?? pctOf(sheet.task)) + '%'"></span>
+          <span class="note pct-note">100% marks the task done. In the list, hold a task, then slide sideways.</span>
+        </span></div>
         <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
           <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
           <template x-if="!sheet.assigning"><button class="add-label" id="d-add-assignee" @click="sheet.assigning = true">Add</button></template>
@@ -615,6 +629,14 @@ function dueInfo(due){
 }
 const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
+const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
+
+/* =============== progress =============== */
+/* Vikunja keeps a task's progress in percent_done, from 0 to 1. Pocket sets it in steps of 10%, and 100% marks the
+   task done. A repeating task then starts its next time at 0%. */
+const pctOf = t => Math.round((t?.percent_done || 0) * 100);
+const progressPatch = (t, pct) => pct >= 100 ? {done: true, percent_done: repeats(t) ? 0 : 1} : {percent_done: pct / 100};
+const HOLD_MS = 450;                             // hold a row this long to start setting its progress
 
 /* =============== HTML description helpers =============== */
 // Task notes and comments are HTML written by anyone who shares the project, so only a small set of
@@ -929,7 +951,7 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
+  pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -987,6 +1009,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     });
     this.$nextTick(() => {
       this.initSwipe();
+      this.initProgressDrag();
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
     });
@@ -1175,7 +1198,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
     for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
-    if (t.repeat_after || t.repeat_mode === 1) out.push({key: 'rep', text: '↻', label: 'Repeats'});
+    if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     return out;
   },
 
@@ -1255,19 +1278,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }
   },
 
-  async toggleDone(t, rowEl){
+  // `extra` is saved along with it, and `undoExtra` with the Undo: progress uses these to mark a task done at 100%.
+  async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const was = t.done;
     t.done = !was;
     try {
-      const saved = await api('/tasks/' + t.id, {method:'POST', body: {...(cache.get(t.id) || t), done: !was}});
-      cache.set(t.id, saved);
+      const saved = await this.saveTask(t.id, {done: !was, ...extra}, t);
       Object.assign(t, saved);
       if (!was && !saved.done) {                 // repeating task rolled forward
         const d = dueInfo(saved.due_date);
         this.notify(d ? 'Repeats · next ' + d.label : 'Done — repeats');
         this.render(); return;
       }
-      if (!was) this.notify('Done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null); this.render(); }});
+      if (!was) this.notify('Done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null, undoExtra); this.render(); }});
       setTimeout(async () => {                   // let the tick register, then slide the row away
         if (t.done === this.viewWantsDone()) return;
         await collapse(rowEl);
@@ -1277,6 +1300,73 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       t.done = was;
       this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
     }
+  },
+
+  /* ---------- progress ---------- */
+  rowTask(id){
+    for (const g of this.view.groups) for (const t of g.tasks) if (t.id === id) return t;
+    return null;
+  },
+  // Progress set in the list. At 100% the task is done and slides away, as when it's ticked off.
+  // `undoing`: putting back what it was, exactly, without marking it done.
+  async setProgress(t, pct, rowEl, undoing = false){
+    const was = pctOf(t), patch = undoing ? {percent_done: pct / 100} : progressPatch(t, pct);
+    if (patch.done) return this.toggleDone(t, rowEl, patch, {percent_done: was / 100});
+    t.percent_done = patch.percent_done;
+    try {
+      await this.saveTask(t.id, patch, t);
+      if (!undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.setProgress(t, was, null, true)});
+    } catch (e) {
+      t.percent_done = was / 100;
+      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+    }
+  },
+  /* Hold a task in the list, then slide sideways to set its progress, like a volume bar. It moves from where it was, in
+     steps of 10%; sliding across most of the row goes from 0% to 100%. Moving before the hold ends is a scroll or a tap. */
+  initProgressDrag(){
+    const view = document.getElementById('view');
+    let g = null, swallowClick = false;
+    const show = pct => { g.pct = pct; g.row.style.setProperty('--pct', pct / 100); g.row.dataset.pct = pct + '%'; };
+    const end = () => {
+      if (!g) return;
+      clearTimeout(g.timer);
+      g.row.classList.remove('setting');
+      g.row.style.setProperty('--pct', g.t.done ? 0 : g.t.percent_done || 0);
+      g = null;
+    };
+    view.addEventListener('pointerdown', e => {
+      const row = e.target.closest('.list:not(.tree) > .row');
+      if (g || !row || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const t = this.rowTask(+row.dataset.id);
+      if (!t || t.pending || t.done) return;
+      g = {row, t, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, on: false};
+      g.timer = setTimeout(() => {
+        g.on = true; g.start = Math.round(pctOf(t) / 10) * 10;
+        row.classList.add('setting'); show(g.start);
+        navigator.vibrate?.(10);
+      }, HOLD_MS);
+    });
+    view.addEventListener('pointermove', e => {
+      if (!g || e.pointerId !== g.id) return;
+      if (!g.on) { if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 8) end(); else g.x = e.clientX; return; }
+      const steps = Math.round((e.clientX - g.x) / (g.row.clientWidth * .8) * 10);
+      const pct = Math.max(0, Math.min(100, g.start + steps * 10));
+      if (pct !== g.pct) { show(pct); navigator.vibrate?.(5); }
+    });
+    view.addEventListener('pointerup', e => {
+      if (!g || e.pointerId !== g.id) return;
+      const {on, t, row, start, pct} = g;
+      if (on) {
+        swallowClick = true; setTimeout(() => swallowClick = false, 400);   // the release isn't a tap on the task
+        if (pct !== start) this.setProgress(t, pct, row);
+      }
+      end();
+    });
+    view.addEventListener('pointercancel', end);
+    // While sliding, the list mustn't scroll, and a long press mustn't open the browser's menu.
+    view.addEventListener('touchmove', e => { if (g?.on) e.preventDefault(); }, {passive: false});
+    view.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
+    view.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
   },
 
   /* ---------- quick add ---------- */
@@ -1821,23 +1911,30 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const id = this.sheet.task?.id; if (!id) return;
     Object.assign(this.sheet.task, patch);
     this.sheet.savedMsg = 'Saving…';
-    pendingSaves++; saveCount++;
-    saveChain = saveChain.then(async () => {
-      try {
-        const saved = await api('/tasks/' + id, {method:'POST', body: {...(cache.get(id) || this.sheet.task), ...patch}});
-        cache.set(id, saved); this.syncTask(saved);
-        if (--pendingSaves || this.sheet.task?.id !== id) return;
-        const repeated = patch.done === true && !saved.done;
-        this.showTask(saved); this.sheet.dirty = true;
-        this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
-        setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
-      } catch (e) {
-        pendingSaves--;
-        if (this.sheet.task?.id === id) { this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id)); }
-        this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
-      }
+    pendingSaves++;
+    return this.saveTask(id, patch, this.sheet.task).then(saved => {
+      if (--pendingSaves || this.sheet.task?.id !== id) return;
+      const repeated = patch.done === true && !saved.done;
+      this.showTask(saved); this.sheet.dirty = true;
+      this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
+      setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
+    }, e => {
+      pendingSaves--;
+      if (this.sheet.task?.id === id) { this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id)); }
+      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
     });
-    return saveChain;
+  },
+  // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
+  // `t` is the task as shown, used when there's no full copy in the cache. Resolves to Vikunja's copy; rejects if not saved.
+  saveTask(id, patch, t){
+    saveCount++;
+    const run = saveChain.then(async () => {
+      const saved = await api('/tasks/' + id, {method:'POST', body: {...(cache.get(id) || t), ...patch}});
+      cache.set(id, saved); this.syncTask(saved);
+      return saved;
+    });
+    saveChain = run.catch(() => {});
+    return run;
   },
   saveTitle(){
     const v = this.sheet.title.trim();
