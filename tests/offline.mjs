@@ -6,7 +6,8 @@
 // Opens Pocket online once (so it's saved on the "phone"), then cuts the connection with the browser's offline switch:
 // Pocket must open with the last-loaded list, queue new tasks and pasted lists, and add them all once back online.
 // Also checks the case that's easy to get wrong: a task that reaches Vikunja but whose reply is lost must not be added
-// twice. Every task it creates has the run's stamp in its title and is deleted at the end.
+// twice. Photos go the same way: added offline, or cut off mid-upload, they wait on the phone and upload later, once.
+// Every task it creates has the run's stamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright';   // BROWSER=webkit runs it on Safari's engine, as on an iPhone
 
@@ -36,6 +37,14 @@ const capture = async text => { await page.fill('#in-capture', text); await page
 // A task added offline sits in the normal list, tinted, until it's sent.
 const pendingRow = title => `.row.pending:has(.title:has-text("${title}"))`;
 const NO_DATE = 'div:has(> .sec:has-text("Added today, no date"))';
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+const photo = name => ({ name, mimeType: 'image/png', buffer: PNG });
+// The names of the files on a task in Vikunja.
+const attached = async n => { const [t] = await byTitle(T(n)); return t ? ((await (await api('/tasks/' + t.id)).json()).attachments || []).map(a => a.file.name) : []; };
+async function until(what, fn, ms = 20000){
+  for (const end = Date.now() + ms; ; await new Promise(r => setTimeout(r, 300))) { if (await fn()) return; if (Date.now() > end) throw new Error(what); }
+}
+const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));   // try again now
 
 try {
   // A task due tomorrow, so the Today list has something to remember.
@@ -92,11 +101,19 @@ try {
     if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
   });
 
+  await step('photo-added-offline-waits', async () => {
+    await page.setInputFiles('#in-photo', photo('offline.png'));
+    await capture(T('F'));
+    await page.waitForSelector(`${NO_DATE} ${pendingRow(T('F'))} [aria-label="Attachments, 1 waiting to upload"]`);
+    await page.waitForSelector('#toast-msg:has-text("Saved offline, with the photo. Both go to Vikunja")');
+  });
+
   await step('still-waiting-after-reopening', async () => {
     await page.reload();                                                     // e.g. the phone closed the app
     await page.waitForSelector(pendingRow(T('A')), { timeout: 15000 });
     await page.waitForSelector(pendingRow(T('P')));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
+    await page.waitForSelector(`${pendingRow(T('F'))} [aria-label^="Attachments"]`);
   });
 
   await step('back-online-sends-everything', async () => {
@@ -104,12 +121,14 @@ try {
     await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('A')}"))`);   // now a normal task
     await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('U')}"))`);   // added today, no date
-    for (const n of ['A', 'P', 'P1', 'P2', 'U']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
+    for (const n of ['A', 'P', 'P1', 'P2', 'U', 'F']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
     if ((await byTitle(T('X'))).length) throw new Error('the cancelled task was added');
     const parent = (await byTitle(T('P')))[0];
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
     if (await page.isVisible('.offline')) throw new Error('still says offline');
+    // Kept on the phone across the reload, then uploaded.
+    await until('the photo added offline never reached the task', async () => (await attached('F')).join() === 'offline.png');
   });
 
   await step('lost-reply-is-not-added-twice', async () => {
@@ -120,16 +139,70 @@ try {
       return route.fallback();
     });
     await capture(`${T('D')} tomorrow`);
-    await page.waitForSelector(pendingRow(T('D')));
-    await page.evaluate(() => window.dispatchEvent(new Event('online')));   // try again
-    await page.waitForSelector(pendingRow(T('D')), { state: 'detached', timeout: 20000 });
+    // Pocket tries again as soon as a request gets through (here, the list reloading), so the waiting row may come
+    // and go before it can be seen.
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('D')}"))`, { timeout: 20000 });
+    if (await page.isVisible(pendingRow(T('D')))) throw new Error('still shown as waiting');
     const copies = (await byTitle(T('D'))).length;
     if (copies !== 1) throw new Error(`${copies} copies`);
     await page.unroute('**/api/v1/projects/*/tasks');
   });
 
+  await step('photo-upload-cut-off-keeps-the-task', async () => {
+    // Online, but the connection drops as the photo uploads, and the list can't reload either.
+    let cut = true;
+    const cutOff = r => cut ? r.abort('internetdisconnected') : r.fallback();
+    const lists = url => url.pathname.endsWith('/api/v1/tasks');
+    await page.route('**/api/v1/tasks/*/attachments', cutOff);
+    await page.route(lists, cutOff);
+    await page.setInputFiles('#in-photo', photo('glitch.png'));
+    await capture(T('G'));
+    await page.waitForSelector('#toast-msg:has-text("The photo uploads when the connection")');
+    // The task is in Vikunja, so it's a normal row, with its photo counted.
+    await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) [aria-label="Attachments, 1 waiting to upload"]`);
+    await page.click(`.row .body:has-text("${T('G')}")`);
+    await page.waitForSelector('#d-attachments .att.uploading:has-text("glitch.png"):has-text("Waiting for a connection")');
+    cut = false;
+    await online();
+    await page.waitForSelector('#d-attachments button.att:has-text("glitch.png")');
+    if ((await attached('G')).join() !== 'glitch.png') throw new Error('attachments: ' + (await attached('G')).join());
+    await page.unroute('**/api/v1/tasks/*/attachments', cutOff);
+    await page.unroute(lists, cutOff);
+  });
+
+  await step('photo-whose-reply-is-lost-is-not-attached-twice', async () => {
+    // From the task's sheet, still open. The upload reaches Vikunja, but the reply never arrives.
+    let cut = true;
+    const lose = async r => { if (!cut) return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/api/v1/tasks/*/attachments', lose);
+    await page.setInputFiles('#d-file', photo('once.png'));
+    await page.waitForSelector('#d-attachments .att.uploading:has-text("once.png")');
+    await online();
+    await page.waitForSelector('#d-attachments button.att:has-text("once.png")');
+    const names = await attached('G');
+    if (names.filter(n => n === 'once.png').length !== 1) throw new Error('attachments: ' + names.join());
+    await page.unroute('**/api/v1/tasks/*/attachments', lose);
+  });
+
+  await step('sheet-photos-wait-offline-and-can-be-cancelled', async () => {
+    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // the add's toast, from before
+    await context.setOffline(true);
+    await page.setInputFiles('#d-file', [photo('keep.png'), photo('drop.png')]);
+    await page.waitForSelector('#d-attachments .att.uploading:has-text("keep.png"):has-text("Waiting for a connection")');
+    await page.click('#d-attachments .att.uploading:has-text("drop.png") button[aria-label^="Don"]');
+    await page.waitForSelector('#d-attachments .att:has-text("drop.png")', { state: 'detached' });
+    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    await context.setOffline(false);
+    await page.waitForSelector('#d-attachments button.att:has-text("keep.png")');
+    const names = await attached('G');
+    if (!names.includes('keep.png') || names.includes('drop.png')) throw new Error('attachments: ' + names.join());
+    await page.click('#btn-sheet-close');
+  });
+
   await step('sign-out-clears-saved-data', async () => {
     await context.setOffline(true);
+    await page.setInputFiles('#in-photo', photo('dropped.png'));
     await capture(`${T('Y')} tomorrow`);                                    // waiting when signing out: Pocket asks first
     await page.waitForSelector(pendingRow(T('Y')));
     // Back online for the sign-out itself, but keep this task from being sent in the meantime.
@@ -140,6 +213,8 @@ try {
     await page.waitForSelector('#login:not([hidden])');
     const left = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('pocket.saved.') || k === 'pocket.outbox'));
     if (left.length) throw new Error('still stored: ' + left.join(', '));
+    const files = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction('files').objectStore('files').count(); q.onsuccess = () => ok(q.result); }; }));
+    if (files) throw new Error(`${files} waiting photos still stored`);
     await page.unroute('**/api/v1/projects/*/tasks');
     if ((await byTitle(T('Y'))).length) throw new Error('the dropped task was added');
   });

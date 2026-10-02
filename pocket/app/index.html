@@ -250,6 +250,7 @@ body.sheet-open{overflow:hidden}
 .att .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .att .sz{color:var(--muted);font-size:13px}
 .att.uploading{color:var(--muted)}
+.att .icon-btn{margin:-10px -10px -10px -4px}
 .att.add-att{color:var(--accent);font-weight:600;cursor:pointer}
 .att.add-att:focus-within{outline:2.5px solid var(--accent);outline-offset:-2px}
 .danger-zone{margin-top:28px}
@@ -351,7 +352,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <button id="btn-back" class="icon-btn plain" aria-label="Back to projects" @click="go('#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div>
     </div></template>
-    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks are sent when you\'re back online.'"></p></template>
+    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks and photos are sent when you\'re back online.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
 
     <template x-if="!view.loading && view.error"><div>
@@ -492,13 +493,15 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       </div>
 
       <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div>
-        <div class="h3">Attachments<span class="n num" x-text="(sheet.task.attachments || []).length || ''"></span></div>
+        <div class="h3">Attachments<span class="n num" x-text="(sheet.task.attachments || []).length + (waitingByTask.get(sheet.task.id) || []).length || ''"></span></div>
         <div class="card" id="d-attachments">
           <template x-for="a in sheet.task.attachments || []" :key="a.id">
             <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
           </template>
-          <template x-for="u in sheet.uploads" :key="u.key">
-            <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="u.name"></span><span class="sz">Uploading…</span></div>
+          <!-- Added here or with the task, not in Vikunja yet: they wait on the phone while there's no connection -->
+          <template x-for="f in waitingByTask.get(sheet.task.id) || []" :key="f.key">
+            <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : 'Uploading…'"></span>
+              <button class="icon-btn plain" :aria-label="'Don\'t upload ' + f.name" @click="cancelFile(f.entry, f.key)"><svg class="i"><use href="#i-close"/></svg></button></div>
           </template>
           <!-- The phone offers its own choices here: a photo from the library, a new one, or a file -->
           <template x-if="attachmentsOn"><label class="att add-att">
@@ -679,7 +682,8 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
       credentials: app.mode === 'session' ? 'include' : 'omit',
     });
   } catch (e) { if (app) app.offline = true; throw new NetError(e.message) }
-  if (app) app.offline = false;
+  // Reaching Vikunja again sends what's waiting. A brief drop never fires the browser's "online" event.
+  if (app?.offline) { app.offline = false; setTimeout(() => app.flush()); }
   if (res.status === 401 && auth && retry && app.mode === 'session') {
     if (await refreshSession()) return api(path, {method, body, raw, auth, retry:false});
   }
@@ -1067,9 +1071,11 @@ async function collapse(el){
 
 /* =============== offline =============== */
 /* Tasks added without a connection wait in an outbox on the device and are sent once Pocket is back online. Each entry
-   is one capture, a task or a pasted list: {id, user, at, nest, pid, items: [{raw, p, taskId, tried, linked}]}.
+   is one capture, a task or a pasted list: {id, user, at, nest, pid, items: [{raw, p, taskId, tried, linked}], files}.
    p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed. Progress is saved
-   after every step, so an interrupted list carries on where it stopped. */
+   after every step, so an interrupted list carries on where it stopped.
+   Photos and files go through the outbox too, one upload at a time: files: [{key, name, size, type, tried, sent}], for
+   the capture's first task, or for an existing task when the entry has a taskId (added from its sheet). */
 const outbox = {
   all(){ try { return JSON.parse(store.get('outbox') || '[]'); } catch { return []; } },
   save(list){ list.length ? store.set('outbox', JSON.stringify(list)) : store.del('outbox'); },
@@ -1083,6 +1089,45 @@ const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : nul
   labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null});
 const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
+// Nothing left to send: every line is a task in Vikunja (and under its parent), and every file is uploaded.
+const entryDone = e => !e.items.some((x, i) => !x.taskId || (e.nest && i > 0 && !x.linked)) && !(e.files || []).some(f => !f.sent);
+const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
+
+/* The photos and files themselves wait in the browser's database (IndexedDB), since localStorage only holds text, and
+   are deleted once uploaded. They're also kept in memory, so they still upload during this visit if the database can't
+   be used (a private window, say). */
+const waitingFiles = {
+  mem: new Map(), db: null, asked: false,
+  open(){
+    return this.db ||= new Promise((ok, no) => {
+      const r = indexedDB.open('pocket', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('files');
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    });
+  },
+  async run(mode, fn){
+    const db = await this.open();
+    return new Promise((ok, no) => {
+      const tx = db.transaction('files', mode), req = fn(tx.objectStore('files'));
+      tx.oncomplete = () => ok(req?.result); tx.onerror = tx.onabort = () => no(tx.error);
+    });
+  },
+  // Stored as bytes rather than as the File, which older Safari can't store.
+  async put(key, file){
+    this.mem.set(key, file);
+    try { const data = await file.arrayBuffer(); await this.run('readwrite', s => s.put({name: file.name, type: file.type, data}, key)); } catch {}
+  },
+  async get(key){
+    if (this.mem.has(key)) return this.mem.get(key);
+    try { const v = await this.run('readonly', s => s.get(key)); return v ? new File([v.data], v.name, {type: v.type}) : null; } catch { return null; }
+  },
+  async del(keys){
+    for (const k of keys) this.mem.delete(k);
+    if (keys.length) try { await this.run('readwrite', s => { for (const k of keys) s.delete(k); }); } catch {}
+  },
+  // Once something has to wait, ask the browser not to clear the database when the phone runs low on space.
+  keep(){ if (!this.asked) { this.asked = true; navigator.storage?.persist?.().catch(() => {}); } },
+};
 
 // The lists Pocket last loaded, shown when it opens without a connection. Cleared on sign-out.
 const saved = {
@@ -1101,7 +1146,7 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  pct: null, uploads: [], editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
+  pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -1137,6 +1182,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   fresh: [],                                   // tasks just added: their rows light up briefly, to show where they went
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
+  dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
 
   init(){
@@ -1220,9 +1266,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   signOut(msg, {tellServer = true} = {}){
     // Signing out yourself drops the saved lists and anything still waiting to be sent (after asking).
     if (!msg) {
-      const waiting = this.pending.length;
-      if (waiting && !confirm(`${waiting === 1 ? 'A task you added offline hasn\'t' : `${waiting} captures you added offline haven't`} been sent yet. Sign out anyway and drop ${waiting === 1 ? 'it' : 'them'}?`)) return;
+      const mine = outbox.all().filter(e => e.user === this.user?.id);
+      const tasks = mine.flatMap(e => e.items.filter(x => !x.taskId)), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
+      const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`, n = tasks.length + files.length;
+      const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file')].filter(Boolean).join(' and ');
+      if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and drop ${n === 1 ? 'it' : 'them'}?`)) return;
       outbox.save(outbox.all().filter(e => e.user !== this.user?.id));
+      waitingFiles.del(mine.flatMap(e => (e.files || []).map(f => f.key)));
       this.pending = [];
     }
     saved.clear();
@@ -1370,7 +1420,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const subs = t.related_tasks?.subtask || [];
     if (subs.length) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments'});
-    if (t.attachments?.length) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(t.attachments.length), label: 'Attachments'});
+    // Photos and files still uploading count too, so a photo added with a task shows on its row straight away.
+    const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waitingByTask.get(t.id)?.length || 0;
+    if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : '')});
     if ((t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});
     return out;
   },
@@ -1928,35 +1980,36 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const list = this.parseList(lines, parsed);
     const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
       .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, tried: false, linked: false}));
-    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items};
-    const photos = this.capPhotos;
+    const photos = this.capPhotos.map(f => Alpine.raw(f));
+    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
     this.capBusy = true; this.capture = ''; this.capNest = false; this.capPhotos = [];
-    outbox.put(entry);                           // saved first, but only shown as waiting if sending doesn't finish
     try {
+      // The photos are stored before the entry, so it never lists one that isn't there.
+      await Promise.all(photos.map((f, i) => waitingFiles.put(entry.files[i].key, f)));
+      outbox.put(entry);                         // saved first, but only shown as waiting if sending doesn't finish
       const r = await outboxLock(() => this.sendEntry(entry.id));
       if (r.ids?.length) { this.fresh = r.ids; clearTimeout(freshTimer); freshTimer = setTimeout(() => this.fresh = [], 2000); }
-      const n = items.length;
-      // Photos need a connection, so they only go with a task that reached Vikunja.
-      let photoErr = null;
-      if (photos.length && r.ids?.length) {
-        photoErr = await this.uploadFiles(r.ids[0], photos).then(() => null, e => e);
-        if (photoErr) (r.problems ||= []).push(`the photo${photos.length === 1 ? '' : 's'} didn't upload: ${photoErr.message}`);
-      }
+      this.placeSent(r.tasks || []);
+      const n = items.length, np = photos.length;
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.status === 'offline') {
         // It shows up in the list, tinted, unless this list wouldn't include it (say, a task due next month on Today).
         this.refreshPending();
-        if (photos.length) this.notify(`Saved offline, without the photo${photos.length === 1 ? '' : 's'}: photos need a connection. Add ${photos.length === 1 ? 'it' : 'them'} from the task once you're online.`);
+        if (np) waitingFiles.keep();
+        if (np && r.ids.length === n)            // the task got there; its photos are still to go
+          this.notify(`Added to ${this.projById.get(r.projectId)?.title || 'project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`, {label: 'Open', fn: () => this.openTask(r.ids[0])});
+        else if (np) this.notify(`Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`);
         else if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
           this.notify(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`);
       } else if (r.status === 'error') {
         this.capture = r.unsent.join('\n');                                // keep what wasn't added
+        this.capPhotos = r.photos;
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
         this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, undo);
       } else if (n === 1) {
         // A date past next week keeps it off Today, so say which, in case quick add read it wrong.
         const due = items[0].p.due, later = due && new Date(due) >= addDays(startOfDay(), 8) ? ', due ' + dueInfo(due).label : '';
-        const withPhotos = photos.length && !photoErr ? (photos.length === 1 ? ', with the photo' : `, with ${photos.length} photos`) : '';
+        const withPhotos = r.uploaded ? (r.uploaded === 1 ? ', with the photo' : `, with ${r.uploaded} photos`) : '';
         const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project') + later + withPhotos;
         this.notify(where + but,{label: 'Open', fn: () => this.openTask(r.ids[0])});
       } else {
@@ -1968,12 +2021,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.render();
     }
   },
-  /* Send one outbox entry, carrying on where an earlier try stopped. Returns {status: sent|offline|error|gone, ...}. */
+  /* Send one outbox entry, carrying on where an earlier try stopped. Returns {status: sent|offline|error|gone, ...},
+     with the ids of its tasks, the tasks created this time, and how many files were uploaded. */
   async sendEntry(id){
     const entry = outbox.get(id);
-    if (!entry) return {status: 'gone', ids: []};                            // another tab sent it
-    const ids = [], problems = [];
-    let projectId = null;
+    if (!entry) return {status: 'gone', ids: [], tasks: []};                // another tab sent it
+    const ids = [], tasks = [], problems = [];
+    let projectId = null, uploaded = 0;
     try {
       for (const [i, item] of entry.items.entries()) {
         if (!item.taskId) {
@@ -1986,7 +2040,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
             t = await this.createTask(p, entry.nest && i > 0 ? entry.parentProject : entry.pid);
             problems.push(...t.problems);
           }
-          item.taskId = t.id;
+          item.taskId = t.id; tasks.push({...t, child: entry.nest && i > 0});
           if (i === 0) { entry.parentProject = t.project_id; projectId = t.project_id; }
           outbox.put(entry);
         }
@@ -1996,14 +2050,80 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         }
         ids.push(item.taskId);
       }
+      // Then the photos and files, to the task they were added to.
+      const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
+      if (files.length) { this.placeSent(tasks); this.refreshPending(); }    // the task shows while its photos upload
+      for (const f of files) if (await this.sendFile(entry, target, f, problems)) uploaded++;
       outbox.remove(entry.id);
-      return {status: 'sent', ids, problems, projectId: projectId || entry.parentProject};
+      if (files.length) {
+        this.refreshPending();
+        // The task with its new attachments, for its row and its sheet.
+        const t = await api('/tasks/' + target).catch(() => null);
+        if (t) {
+          cache.set(t.id, t); this.syncTask(t);
+          for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
+          if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
+        }
+      }
+      return {status: 'sent', ids, tasks, problems, uploaded, projectId: projectId || entry.parentProject};
     } catch (error) {
       // No connection, or signed out: keep it for later.
-      if (error instanceof NetError || (error instanceof ApiError && error.status === 401)) return {status: 'offline', ids, problems};
+      if (error instanceof NetError || (error instanceof ApiError && error.status === 401)) return {status: 'offline', ids, tasks, problems, uploaded, projectId: projectId || entry.parentProject};
       outbox.remove(entry.id);
-      return {status: 'error', ids, problems, error, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw)};
+      // Photos added with a task that couldn't be added go back to the add box with it.
+      const keys = (entry.files || []).filter(f => !f.sent).map(f => f.key);
+      const photos = (await Promise.all(keys.map(k => waitingFiles.get(k)))).filter(Boolean);
+      waitingFiles.del(keys);
+      return {status: 'error', ids, tasks, problems, error, photos, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw)};
     }
+  },
+  // Upload one waiting file, unless an earlier try that was cut off got it there already. A file Vikunja turns down
+  // (too big, say, or the task is gone) is reported and dropped. `sent` marks it as dealt with. Returns whether it's on the task.
+  async sendFile(entry, taskId, f, problems){
+    let ok = false;
+    try {
+      if (f.tried && await this.hasAttachment(taskId, f, entry.at)) ok = true;
+      else {
+        const file = await waitingFiles.get(f.key);
+        if (!file) problems.push(`${f.name} was lost on this device before it uploaded`);
+        else {
+          f.tried = true; outbox.put(entry);
+          const form = new FormData(); form.append('files', file, f.name);
+          const r = await api(`/tasks/${taskId}/attachments`, {method: 'PUT', body: form});
+          // Vikunja answers OK even when it turns a file down, with the reasons in `errors`.
+          if (r?.errors?.length) problems.push(`${f.name} didn't upload: ${r.errors.map(e => e.message).join('; ')}`); else ok = true;
+        }
+      }
+    } catch (e) {
+      if (e instanceof NetError || e.status === 401) throw e;
+      problems.push(`${f.name} didn't upload: ${e.message}`);
+    }
+    f.sent = true; outbox.put(entry);
+    waitingFiles.del([f.key]);
+    return ok;
+  },
+  // Whether this file is on the task already, uploaded since it was added.
+  async hasAttachment(taskId, f, at){
+    const since = new Date(at).getTime() - 2 * 60000;                        // allow for the phone's clock being a little off
+    const t = await api('/tasks/' + taskId);
+    return (t?.attachments || []).some(a => a.file?.name === f.name && a.file?.size === f.size && new Date(a.created).getTime() >= since);
+  },
+  // Put tasks that just reached Vikunja in the list on screen, where they belong, without waiting for it to reload. On
+  // a patchy connection the reload can fail, and the list on screen is then kept as it was: without them.
+  placeSent(tasks){
+    if (this.view.loading || this.view.route !== location.hash) return;
+    let placed = false;
+    for (const {child, problems, ...t} of tasks) {
+      const key = this.pendingPlace({...t, child});
+      if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
+      const g = this.view.groups.find(g => g.key === key);
+      if (g) g.tasks.push(t);
+      else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [t]});
+      placed = true;
+    }
+    // And in the copy kept for opening offline.
+    const k = viewKey(this.route), s = saved.get(k);
+    if (placed && s) saved.set(k, {...s, groups: this.view.groups});
   },
   // A task with this title created since the capture, if one exists.
   async findSent(title, at){
@@ -2015,21 +2135,24 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async flush(){
     if (this.flushing || !this.signedIn || !this.user || !outbox.all().some(e => e.user === this.user.id)) return;
     this.flushing = true;
-    let sent = 0; const failed = [];
+    let sent = 0; const failed = [], tasks = [], problems = [];
     try {
       await outboxLock(async () => {
         for (const e of outbox.all().filter(e => e.user === this.user?.id)) {
           const r = await this.sendEntry(e.id);
+          tasks.push(...(r.tasks || [])); problems.push(...(r.problems || []));
           if (r.status === 'offline') break;
-          if (r.status === 'sent') sent += r.ids.length;
+          if (r.status === 'sent') sent += r.ids.length + r.uploaded;
           if (r.status === 'error') failed.push(r);
         }
       });
     } finally { this.flushing = false; this.refreshPending(); }
+    this.placeSent(tasks);
     if (failed.length) {
       this.capture = [this.capture, ...failed.flatMap(f => f.unsent)].filter(Boolean).join('\n');
+      this.capPhotos = [...this.capPhotos, ...failed.flatMap(f => f.photos)];
       this.notify(`A task added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
-    }
+    } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length) this.render();
   },
   async createProject(name){
@@ -2054,10 +2177,20 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         const p = x.p;
         out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child: e.nest && i > 0, title: p.title, done: false, priority: p.priority || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (e.nest && i > 0 ? parentProject : e.pid),
-          labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0});
+          labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
+          waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});
       });
     }
     return out;
+  },
+  // Photos and files on their way to tasks already in Vikunja: task id -> [{entry, key, name, ...}].
+  get waitingByTask(){
+    const m = new Map();
+    for (const e of this.pending) {
+      const id = e.taskId || e.items[0]?.taskId;
+      if (id) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) m.set(id, [...(m.get(id) || []), {...f, entry: e.id}]);
+    }
+    return m;
   },
   // Which group of the current list a waiting task belongs in, by the same rules as the lists from Vikunja; null if none.
   pendingPlace(t){
@@ -2084,14 +2217,29 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     return base.map(g => ({...g, tasks: [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)]}));
   },
   // Cancel one waiting task. Cancelling the first line of a pasted list with a parent leaves the rest as plain tasks.
+  // The photos added with it go too.
   async cancelPending(entryId, index){
+    let drop = [];
     await outboxLock(async () => {
       const e = outbox.get(entryId); if (!e) return;
       e.items.splice(index, 1);
-      if (index === 0) e.nest = false;
-      if (e.items.some(x => !x.taskId || (e.nest && !x.linked))) outbox.put(e); else outbox.remove(e.id);
+      if (index === 0) { e.nest = false; drop = (e.files || []).map(f => f.key); e.files = []; }
+      if (entryDone(e)) outbox.remove(e.id); else outbox.put(e);
     });
+    waitingFiles.del(drop);
     this.refreshPending();
+  },
+  // Don't upload a waiting photo or file after all. Its row goes at once; one already uploading finishes first.
+  async cancelFile(entryId, key){
+    this.dropping.push(key);
+    await outboxLock(async () => {
+      const e = outbox.get(entryId); if (!e) return;
+      e.files = e.files.filter(f => f.key !== key || f.sent);
+      if (entryDone(e)) outbox.remove(e.id); else outbox.put(e);
+    });
+    await waitingFiles.del([key]);
+    this.refreshPending();
+    this.dropping = this.dropping.filter(k => k !== key);
   },
 
   /* ---------- sheet ---------- */
@@ -2343,31 +2491,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const max = sizeLimit(this.info?.max_file_size), big = max ? files.filter(f => f.size > max) : [];
     return big.length ? `${big.map(f => `${f.name} (${fmtSize(f.size)})`).join(', ')} ${big.length === 1 ? 'is' : 'are'} too big: your Vikunja takes files up to ${this.info.max_file_size}.` : '';
   },
-  // Upload files to a task in one go. Vikunja answers OK even when it turns a file down, with the reasons in `errors`.
-  async uploadFiles(taskId, files){
-    const form = new FormData();
-    for (const f of files) form.append('files', Alpine.raw(f), f.name);
-    const r = await api(`/tasks/${taskId}/attachments`, {method: 'PUT', body: form});
-    if (r?.errors?.length) throw new ApiError(400, r.errors.map(e => e.message).join('; '));
-    const t = await api('/tasks/' + taskId);
-    cache.set(taskId, t); this.syncTask(t);
-    return t;
-  },
-  // From the sheet's "Add a photo or file".
+  // From the sheet's "Add a photo or file". They go through the outbox, so without a connection they wait on the
+  // phone, shown in the sheet, and upload once Pocket reaches Vikunja again.
   async addFiles(list){
     const files = [...list], t = this.sheet.task;
     if (!files.length || !t) return;
     const big = this.tooBig(files); if (big) { this.notify(big); return; }
-    const keys = files.map(() => randomId());
-    this.sheet.uploads.push(...files.map((f, i) => ({key: keys[i], name: f.name})));
-    try {
-      const saved = await this.uploadFiles(t.id, files);
-      if (this.sheet.task?.id === t.id) { this.showTask(saved); this.sheet.dirty = true; }
-    } catch (e) {
-      this.notify(e instanceof NetError ? 'Offline — not uploaded. Files need a connection.' : 'Not uploaded: ' + e.message);
-    } finally {
-      this.sheet.uploads = this.sheet.uploads.filter(u => !keys.includes(u.key));
-    }
+    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
+    await Promise.all(files.map((f, i) => waitingFiles.put(entry.files[i].key, f)));
+    outbox.put(entry); this.refreshPending();
+    const r = await outboxLock(() => this.sendEntry(entry.id));
+    this.refreshPending();
+    if (r.status === 'offline') waitingFiles.keep();
+    if (r.problems?.length) this.notify(r.problems.join('; '));
   },
   // From the add box's camera button.
   addCapPhotos(list){

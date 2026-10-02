@@ -36,7 +36,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 - **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add photos and files.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by number.
 - **Projects:** your project tree with favorites, and the open or done tasks in each.
-- **Offline:** Pocket opens without a connection, and tasks you add are sent once you're back online.
+- **Offline:** Pocket opens without a connection, and tasks and photos you add are sent once you're back online. A photo that a patchy connection cuts off mid-upload waits on the phone and goes up by itself.
 - **Your Vikunja sign-in:** sign in once, with your usual login, and Pocket and Vikunja's web app are both signed in on that device.
 - **A home-screen app** for iOS and Android that follows the phone's light or dark mode.
 - **A shortcut link:** `…/#/add?text=Buy+milk` opens Pocket with the text filled in, handy from an iOS Shortcut or a bookmark.

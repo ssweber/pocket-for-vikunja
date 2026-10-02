@@ -27,7 +27,7 @@ This starts a throwaway Vikunja 2.6.0 at `http://127.0.0.1:3456`, with the plugi
 - `tests/parse.mjs`: how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests, and how pasted lists lose their bullets and checkboxes. It needs no server and runs in a few seconds.
 - `tests/smoke.mjs`: Pocket in a headless browser against a Vikunja with the plugin. It signs in with a token, then adds, ticks off, sets the progress of, searches for, edits, comments on and deletes tasks, pastes a list with subtasks, attaches a file and a photo, creates a project, assigns someone, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side, single sign-on, and renewing an expired sign-in from both at once.
-- `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks, then send them once back online without adding any twice. `BROWSER=webkit` runs it on Safari's engine.
+- `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload. `BROWSER=webkit` runs it on Safari's engine.
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
