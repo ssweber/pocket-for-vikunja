@@ -10,9 +10,12 @@
     "test": "node tests/parse.mjs && node tests/smoke.mjs",
     "test:parse": "node tests/parse.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "test:local": "node scripts/dev.mjs --test"
+    "test:local": "node scripts/dev.mjs --test",
+    "demo": "node scripts/demo.mjs"
   },
   "devDependencies": {
-    "playwright": "^1.63.0"
+    "gifenc": "^1.0.3",
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0"
   }
 }

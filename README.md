@@ -4,6 +4,8 @@ A single-file mobile web app for [Vikunja](https://vikunja.io), served by Vikunj
 
 Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket is a small companion for what you need on the go: seeing what's due and adding tasks quickly. Projects, boards, sharing and settings stay in Vikunja.
 
+<p align="center"><img src="docs/screenshots/pocket-demo.gif" width="300" alt="Pocket on a phone. Typing 'Call Ana at 4pm +work !3' highlights the words it reads, chips show Work, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds a task and slides it to 60% progress, and ticks off another, which slides away with an Undo."></p>
+
 It isn't an app from an app store or a service you sign up for. Pocket is one readable HTML file and a plugin of about 100 lines. Your own Vikunja serves both, and you can read every line before you install it.
 
 <sub>Pocket is an unofficial companion, not made by the Vikunja team. Please report problems with it here, not to Vikunja.</sub>
@@ -78,7 +80,7 @@ A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn
 
 Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/), and follows your setting for it in Vikunja: the prefixes below, Todoist-style ones (`#project`, `@label`, `+person`), or none. As you type, the words it reads are highlighted in the box, and chips under the box show what will be saved.
 
-<img src="docs/screenshots/pocket-capture.png" width="320" alt="Typing 'Call Ana Friday at 10 +work !3' shows chips for Work, Friday 10:00 AM and Priority 3">
+<img src="docs/screenshots/pocket-capture.png" width="320" alt="Typing 'Call Ana Friday at 10 +work !3' highlights 'Friday at 10', '+work' and '!3', and chips show Work, Friday 10:00 AM and Priority 3">
 
 | Type | Sets |
 |---|---|
@@ -129,7 +131,7 @@ The phrases and their meanings come from Vikunja's own tests, so the same text g
 
 Pocket opens without a connection and shows your lists as they were last loaded. A task you add appears with a light tint and a dashed circle until it reaches Vikunja; tap × to cancel it. Waiting tasks are sent when Pocket is opened, when it comes back to the front and when the connection returns, and a connection that drops halfway doesn't add a task twice.
 
-<img src="docs/screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying when the list was loaded, and 'Call the plumber' tinted in Next 7 days">
+<img src="docs/screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying new tasks are sent once back online, and 'Call the plumber' tinted under Today, waiting to be sent">
 
 Only new tasks work offline. Ticking off or editing a task needs a connection. On an iPhone, waiting tasks are sent the next time Pocket is opened, since iPhones don't let web apps send in the background.
 

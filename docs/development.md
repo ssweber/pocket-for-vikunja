@@ -5,7 +5,7 @@ pocket/        copy this folder into Vikunja's plugins folder
   main.go      the plugin: serves app/ at /api/v1/plugins/pocket/
   app/         the app itself; sw.js lets it open offline
 tests/         the four test files described below
-scripts/       dev.mjs: a local Vikunja with the plugin loaded
+scripts/       dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIF and screenshots
 docs/          this file and the README's screenshots
 ```
 
@@ -40,6 +40,10 @@ VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
 ```
 
 The tests delete what they create, except a `pocket-smoke` label that the end-to-end test reuses on later runs, since Task Management tokens can't delete labels. With a token that can't create projects, the project step is skipped.
+
+## The README's GIF and screenshots
+
+With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo.gif` and the screenshots of Pocket and of Vikunja's web app. It drives the real app in a phone-sized browser, with made-up tasks for two users of its own, `alex` and `priya`, and the page's clock fixed at Wednesday 30 September 2026, 10:05, so the dates in the pictures always match the README. Run it after changing how Pocket looks. `FRAMES=<folder>` also saves the GIF's frames as images, to check them one by one.
 
 ## Upgrading the libraries
 
