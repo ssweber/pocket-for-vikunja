@@ -20,15 +20,13 @@
   --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
-  --pad:16px; --tab-h:58px; --cap-h:64px;
-  --shadow:0 -1px 0 var(--line), 0 -12px 30px rgba(23,32,28,.06);
+  --pad:16px; --cap-h:64px;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
   --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F;
   --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B;
-  --shadow:0 -1px 0 var(--line), 0 -12px 30px rgba(0,0,0,.35);
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
@@ -66,17 +64,28 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 
 /* ---------- shell ---------- */
 #app{min-height:100%}
-header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);padding:calc(env(safe-area-inset-top) + 10px) var(--pad) 10px;display:flex;align-items:flex-end;gap:10px}
-header.top .t{flex:1;min-width:0}
-header.top .kicker{color:var(--muted);font-size:15px;font-weight:600}
-header.top h2{margin:0;font-size:32px;line-height:1.1;letter-spacing:-.02em;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The header is one row: the views on the left, refresh and account on the right. It slides up out of the way while the
+   list scrolls down, and back when it scrolls up. The strip under the status bar stays, so the list never shows under it. */
+header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);padding:calc(env(safe-area-inset-top) + 8px) var(--pad) 8px;display:flex;align-items:center;gap:8px;transition:transform .22s ease}
+header.top.tucked{transform:translateY(-100%)}
+#app::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:6}
+nav.tabs{flex:1;min-width:0;display:flex;gap:4px}
+nav.tabs a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 11px;border-radius:var(--r-chip);color:var(--muted);text-decoration:none;font-size:15px;font-weight:650}
+nav.tabs a svg{width:20px;height:20px}
+nav.tabs a[aria-current=page]{background:var(--surface);color:var(--accent)}
+/* a project's name, under the header, scrolling with its list */
+.page-title{display:flex;align-items:center;gap:6px;margin:6px 0 0 -8px}
+.page-title .t{flex:1;min-width:0}
+.page-title .kicker{color:var(--muted);font-size:14px;font-weight:600}
+.page-title h2{margin:0;font-size:28px;line-height:1.15;letter-spacing:-.02em;font-weight:800;overflow-wrap:anywhere}
 .icon-btn{width:40px;height:40px;border-radius:20px;border:0;background:var(--surface);display:grid;place-items:center;color:var(--ink);flex:none}
 .icon-btn.plain{background:transparent}
-main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-inset-bottom) + 28px)}
+main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 
 .sec{margin:18px 0 6px;display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:15px}
 .sec .n{color:var(--muted);font-weight:600}
 .sec.overdue{color:var(--overdue)} .sec.today{color:var(--today)}
+.sec-date{margin-left:auto;color:var(--muted);font-weight:600;font-size:14px}
 .sec-act{margin-left:auto;border:0;background:transparent;color:var(--accent);font-size:14px;font-weight:650;padding:6px 2px}
 .sec-act[disabled]{opacity:.55}
 .list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
@@ -115,7 +124,7 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .toggle-done{margin:14px 0 0;width:100%}
 
 /* ---------- capture bar ---------- */
-#capture{position:fixed;left:0;right:0;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));z-index:6;padding:10px var(--pad) 8px;background:var(--bg)}
+#capture{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);background:var(--bg)}
 #capture::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
 #capture form{display:flex;gap:8px;align-items:flex-end;background:var(--surface);border:2px solid var(--accent);border-radius:16px;padding:4px 4px 4px 14px}
 #capture .cap-field{flex:1;min-width:0;position:relative}
@@ -137,16 +146,13 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .chip .x{font-weight:700;opacity:.6;margin-left:2px}
 .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
 
-nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:7;height:calc(var(--tab-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--surface);box-shadow:var(--shadow);display:flex}
-nav.tabs a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);text-decoration:none;font-size:12px;font-weight:600}
-nav.tabs a[aria-current=page]{color:var(--accent)}
 
 /* ---------- sheet ---------- */
 #scrim{position:fixed;inset:0;background:rgba(10,16,13,.42);z-index:20;opacity:0;transition:opacity .2s}
 #scrim.show{opacity:1}
 #sheet{position:fixed;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 28px);z-index:21;background:var(--bg);border-radius:var(--r-sheet) var(--r-sheet) 0 0;display:flex;flex-direction:column;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:720px;margin:0 auto}
 #sheet.show{transform:none}
-@media (prefers-reduced-motion:reduce){#sheet,#scrim{transition:none}}
+@media (prefers-reduced-motion:reduce){#sheet,#scrim,header.top{transition:none}}
 #sheet .bar{display:flex;align-items:center;gap:8px;padding:12px 12px 6px}
 #sheet .bar .grab{flex:1;display:flex;justify-content:center}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
@@ -209,7 +215,7 @@ nav.tabs a[aria-current=page]{color:var(--accent)}
 .saved{font-size:13px;color:var(--muted);text-align:right;min-height:18px;margin-top:-8px;margin-bottom:6px}
 
 /* ---------- toast ---------- */
-#toast{position:fixed;left:50%;bottom:calc(var(--tab-h) + var(--cap-h) + env(safe-area-inset-bottom) + 22px);transform:translate(-50%,20px);z-index:30;background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:calc(100% - 32px);box-shadow:0 8px 28px rgba(0,0,0,.25)}
+#toast{position:fixed;left:50%;bottom:calc(var(--cap-h) + 14px);transform:translate(-50%,20px);z-index:30;background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:calc(100% - 32px);box-shadow:0 8px 28px rgba(0,0,0,.25)}
 #toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 #toast button{border:0;background:transparent;color:var(--accent-soft);font-weight:700;padding:6px 8px}
 @media (prefers-color-scheme:dark){#toast button{color:var(--accent)}}
@@ -270,14 +276,21 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
 <!-- ============ APP ============ -->
 <div id="app" :hidden="screen !== 'app'" hidden>
-  <header class="top">
-    <button id="btn-back" class="icon-btn plain" aria-label="Back" :hidden="route.name !== 'project'" @click="go('#/projects')" hidden><svg class="i"><use href="#i-back"/></svg></button>
-    <div class="t"><div class="kicker" id="kicker" x-text="head.kicker"></div><h2 id="heading" x-text="head.title"></h2></div>
+  <!-- Slides away as the list scrolls down, and back as soon as it scrolls up (initHeader) -->
+  <header class="top" x-ref="header" :class="{tucked: headerTucked}">
+    <nav class="tabs" aria-label="Views">
+      <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg>Today</a>
+      <a href="#/projects" data-tab="projects" :aria-current="route.name !== 'today' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg>Projects</a>
+    </nav>
     <button id="btn-refresh" class="icon-btn" aria-label="Refresh" :disabled="refreshing" @click="refresh()"><svg class="i"><use href="#i-refresh"/></svg></button>
     <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
   </header>
 
   <main id="view" aria-live="polite">
+    <template x-if="route.name === 'project'"><div class="page-title">
+      <button id="btn-back" class="icon-btn plain" aria-label="Back to projects" @click="go('#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
+      <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div>
+    </div></template>
     <template x-if="offline"><p class="offline" role="status" x-text="'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks are sent when you\'re back online.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
 
@@ -291,6 +304,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <template x-if="!view.loading && !view.error && route.name !== 'projects'"><div>
       <template x-for="g in listGroups.filter(g => g.tasks.length)" :key="g.key"><div>
         <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span>
+          <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
           <template x-if="g.key === 'overdue'"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
@@ -349,11 +363,6 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         @mousedown.prevent @click="c.action ? c.action() : c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template>
     </div>
   </div>
-
-  <nav class="tabs">
-    <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg>Today</a>
-    <a href="#/projects" data-tab="projects" :aria-current="route.name !== 'today' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg>Projects</a>
-  </nav>
 </div>
 
 <!-- ============ SHEET ============ -->
@@ -1010,6 +1019,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   route: currentRoute(),
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null},
   refreshing: false,
+  headerTucked: false,                         // the header has slid away while scrolling down
   capture: '', capFocus: false, capBusy: false, capNest: false, capIgnore: {},
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → projectusers.
@@ -1027,7 +1037,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   init(){
     app = this;
-    window.addEventListener('hashchange', () => { if (!this.signedIn) return; this.closeSheet(true); this.render(); });
+    window.addEventListener('hashchange', () => { this.headerTucked = false; if (!this.signedIn) return; this.closeSheet(true); this.render(); });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       this.sessionChanged();                                                  // e.g. back from signing in
@@ -1051,6 +1061,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.$nextTick(() => {
       this.initSwipe();
       this.initProgressDrag();
+      this.initHeader();
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
     });
@@ -1218,17 +1229,20 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   /* ---------- views ---------- */
   go(hash){ location.hash = hash; },
+  // The page's name: the tab says Today or Projects; a project shows its name, and its parent's, above its list.
   get head(){
-    const r = this.route, now = new Date();
-    if (r.name === 'projects') return {kicker: this.user ? '@' + this.user.username : '', title: 'Projects'};
+    const r = this.route;
+    if (r.name === 'projects') return {kicker: '', title: 'Projects'};
     if (r.name === 'project') {
       const p = this.view.project; if (!p) return {kicker: '', title: 'Project'};
-      return {kicker: this.projById.get(p.parent_project_id)?.title || 'Project', title: p.title};
+      return {kicker: this.projById.get(p.parent_project_id)?.title || '', title: p.title};
     }
-    return {kicker: now.toLocaleDateString([], {month:'long', day:'numeric'}), title: now.toLocaleDateString([], {weekday:'long'})};
+    return {kicker: '', title: 'Today'};
   },
+  // Shown on the Today heading, so "Friday" on a task can be read against today.
+  get todayDate(){ return new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}); },
   get emptyText(){
-    if (this.route.name === 'today') return {title: 'Nothing due this week.', body: 'Add a task below — try “Call Ana tomorrow !3”.'};
+    if (this.route.name === 'today') return {title: 'Nothing due this week.', body: `Today is ${this.todayDate}. Add a task below — try “Call Ana tomorrow !3”.`};
     if (!this.view.project) return {title: 'Project not found.', body: 'It may be archived or you lost access.'};
     return this.route.showDone ? {title: 'Nothing done here yet.', body: ''} : {title: 'All clear.', body: 'New tasks you add now land in this project.'};
   },
@@ -1930,6 +1944,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     sh.addEventListener('touchstart', e => { const sc = sh.querySelector('.scroll'); y0 = (sc.scrollTop <= 0 || e.target.closest('.bar')) ? e.touches[0].clientY : null; }, {passive:true});
     sh.addEventListener('touchmove', e => { if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
     sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) this.closeSheet(); });
+  },
+  // The header slides away once the list has scrolled down past it, and comes back as soon as it scrolls up a little.
+  initHeader(){
+    let anchor = scrollY;                        // where the current run of scrolling, down or up, turned around
+    addEventListener('scroll', () => {
+      const y = scrollY;
+      if (y <= this.$refs.header.offsetHeight) { this.headerTucked = false; anchor = y; return; }
+      const tucked = this.headerTucked;
+      if (tucked ? y < anchor - 12 : y > anchor + 12) { this.headerTucked = !tucked; anchor = y; }
+      else if (tucked ? y > anchor : y < anchor) anchor = y;
+    }, {passive: true});
   },
   openAccount(){ this.openSheet('account'); },
 
