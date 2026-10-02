@@ -170,6 +170,16 @@ try {
     if (download.suggestedFilename() !== 'evil.html') throw new Error('downloaded ' + download.suggestedFilename());
     if (popups.length) throw new Error('attachment opened in a new tab');
   });
+  await step('row-details', async () => {
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    const meta = await page.$$eval(`${row} .meta > span[aria-label]`, els => els.map(e => e.getAttribute('aria-label') + '=' + e.textContent.trim()));
+    for (const want of ['Priority: High=', 'Comments=1', 'Attachments=1']) if (!meta.includes(want)) throw new Error('row shows ' + JSON.stringify(meta));
+    await page.click(`.row .body:has-text("${title}")`);                 // back into the task, for the steps below
+    await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
+  });
   await step('sanitizer', async () => {
     const r = await page.evaluate(() => {
       const t0 = performance.now();
@@ -205,6 +215,7 @@ try {
       if (got !== want) throw new Error(`saved ${got}%, not ${want}%`);
     };
     if (await page.getAttribute('#d-progress', 'aria-valuenow') !== '40') throw new Error('sheet shows ' + await page.getAttribute('#d-progress', 'aria-valuenow'));
+    await page.locator('#d-progress').scrollIntoViewIfNeeded();
     const bar = await page.locator('#d-progress .track').boundingBox(), head = await page.locator('.d-head').boundingBox();
     await page.mouse.move(bar.x + 20, bar.y + bar.height / 2);              // hold the bar, then slide two steps
     await page.mouse.down();
@@ -295,9 +306,13 @@ try {
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });     // the sheet has finished loading
     await page.waitForFunction(() => document.querySelector('#d-repeat')?.value === 'week', null, { timeout: 10000 });
     await page.selectOption('#d-repeat', 'month');
-    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
-    const saved = await (await api('/tasks?s=' + encodeURIComponent(t))).json();
-    if (saved[0]?.repeat_mode !== 1) throw new Error('server repeat_mode ' + saved[0]?.repeat_mode);
+    let saved;                                                  // "Saved" shows only briefly, so ask Vikunja instead
+    for (let i = 0; i < 40; i++) {
+      saved = (await (await api('/tasks?s=' + encodeURIComponent(t))).json())[0];
+      if (saved?.repeat_mode === 1) break;
+      await page.waitForTimeout(250);
+    }
+    if (saved?.repeat_mode !== 1) throw new Error('server repeat_mode ' + saved?.repeat_mode);
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });

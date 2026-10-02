@@ -106,7 +106,6 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .meta .due.overdue{color:var(--overdue);font-weight:600}
 .meta .due.today{color:var(--today);font-weight:600}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
-.prio{font-weight:800;color:var(--overdue);letter-spacing:-.05em}
 .check{width:26px;height:26px;border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:1px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
 .check.p3,.check.p4,.check.p5{border-color:var(--overdue)}
@@ -170,14 +169,17 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .prio-pick{position:relative;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px 0 10px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted);font-size:14px;font-weight:650}
 .prio-pick:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
 .prio-pick select{position:absolute;inset:0;width:100%;opacity:0;font-size:16px;cursor:pointer}
-.prio-pick .bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px}
-.prio-pick .bars i{width:3px;border-radius:1px;background:var(--line)}
-.prio-pick .bars i:nth-child(1){height:5px} .prio-pick .bars i:nth-child(2){height:7px} .prio-pick .bars i:nth-child(3){height:9px}
-.prio-pick .bars i:nth-child(4){height:12px} .prio-pick .bars i:nth-child(5){height:14px}
 .prio-pick.p1,.prio-pick.p2{color:var(--ink)}
-.prio-pick.p1 i:nth-child(-n+1),.prio-pick.p2 i:nth-child(-n+2){background:var(--ink)}
 .prio-pick.p3,.prio-pick.p4,.prio-pick.p5{color:var(--overdue)}
-.prio-pick.p3 i:nth-child(-n+3),.prio-pick.p4 i:nth-child(-n+4),.prio-pick.p5 i{background:var(--overdue)}
+/* Priority as a level: five rising bars, filled up to it; red from High up. On the sheet and in list rows. */
+.bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px}
+.bars i{width:3px;border-radius:1px;background:var(--line)}
+.bars i:nth-child(1){height:5px} .bars i:nth-child(2){height:7px} .bars i:nth-child(3){height:9px} .bars i:nth-child(4){height:12px} .bars i:nth-child(5){height:14px}
+.bars.p1 i:nth-child(-n+1),.bars.p2 i:nth-child(-n+2){background:var(--ink)}
+.bars.p3 i:nth-child(-n+3),.bars.p4 i:nth-child(-n+4),.bars.p5 i{background:var(--overdue)}
+.meta .bars{height:12px;vertical-align:-1px}
+.meta .bars.p1 i:nth-child(-n+1),.meta .bars.p2 i:nth-child(-n+2){background:var(--muted)}
+.meta svg.i{width:14px;height:14px;stroke-width:2.2;vertical-align:-2px;margin-right:3px}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
 /* While a sheet is open, the page behind it stays put: the sheet keeps its scrolling to itself, even at its ends */
 body.sheet-open{overflow:hidden}
@@ -268,6 +270,9 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-subtasks" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-comment" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/></symbol>
 </svg>
 
@@ -352,9 +357,9 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
             <div class="row" :class="{done: t.done, pending: t.pending}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0}">
               <button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
               <button class="body" @click="t.pending || openTask(t.id)">
-                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="t.priority >= 3"><span class="prio" :aria-label="'Priority ' + t.priority" x-text="'!'.repeat(Math.min(t.priority - 1, 3)) + ' '"></span></template><span x-text="t.title"></span><template x-if="!t.done && pctOf(t)"><span class="sr" x-text="', progress ' + pctOf(t) + '%'"></span></template></div>
+                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><span x-text="t.title"></span><template x-if="!t.done && pctOf(t)"><span class="sr" x-text="', progress ' + pctOf(t) + '%'"></span></template></div>
                 <div class="meta" x-show="rowMeta(t).length">
-                  <template x-for="m in rowMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" :style="{background: m.color}"></i></template><span x-text="m.text"></span></span></template>
+                  <template x-for="m in rowMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" :style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
                 </div>
               </button>
               <template x-if="t.pending"><button class="icon-btn plain" :aria-label="'Cancel ' + t.title" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
@@ -413,7 +418,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
       <label class="prio-pick" :class="'p' + (sheet.task.priority || 0)">
-        <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
         <span x-text="sheet.task.priority ? PRIOS[sheet.task.priority].label : 'Priority'"></span>
         <select id="d-prio" aria-label="Priority" @change="save({priority: +$event.target.value})">
           <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
@@ -1320,11 +1325,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   rowMeta(t){
     const out = [], due = dueInfo(t.due_date);
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
+    if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     const p = (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
     if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
     for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
+    const subs = t.related_tasks?.subtask || [];
+    if (subs.length) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
+    if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments'});
+    if (t.attachments?.length) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(t.attachments.length), label: 'Attachments'});
+    if ((t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});
     return out;
   },
 
@@ -1365,8 +1376,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async loadToday(seq){
     const end = addDays(startOfDay(), 8);
     const t0 = startOfDay(), t1 = addDays(t0, 1);
-    const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc'});
-    const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc'});
+    const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
+    const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
     const [tasks, added] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew)]);
     if (seq !== renderSeq) return;
     for (const t of [...tasks, ...added]) cache.set(t.id, t);
@@ -1387,7 +1398,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const p = this.projById.get(r.id);
     this.view.project = p || null;
     if (!p) { this.view.groups = []; return; }
-    const q = new URLSearchParams({sort_by: 'due_date', order_by: 'asc', filter_include_nulls: 'true', filter_timezone: TZ});
+    const q = new URLSearchParams({sort_by: 'due_date', order_by: 'asc', filter_include_nulls: 'true', filter_timezone: TZ, expand: 'comment_count'});
     q.set('filter', r.showDone ? 'done = true' : 'done = false');
     const tasks = await allPages(`/projects/${p.id}/tasks?` + q);
     if (seq !== renderSeq) return;
@@ -1463,18 +1474,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, on: false, pct: s.start};
       g.timer = setTimeout(() => { g.on = true; sliding = true; s.show(g.pct); navigator.vibrate?.(10); }, HOLD_MS);
     });
-    area.addEventListener('pointermove', e => {
+    // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
+    addEventListener('pointermove', e => {
       if (!g || e.pointerId !== g.id) return;
       if (!g.on) { if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 8) stop(false); else g.x = e.clientX; return; }
       const pct = Math.max(0, Math.min(100, g.s.start + Math.round((e.clientX - g.x) / (g.s.width * .8) * 10) * 10));
       if (pct !== g.pct) { g.pct = pct; g.s.show(pct); navigator.vibrate?.(5); }
     });
-    area.addEventListener('pointerup', e => {
+    addEventListener('pointerup', e => {
       if (!g || e.pointerId !== g.id) return;
       if (g.on) { swallowClick = true; setTimeout(() => swallowClick = false, 400); }   // the release isn't a tap
       stop(true);
     });
-    area.addEventListener('pointercancel', () => stop(false));
+    addEventListener('pointercancel', e => { if (g && e.pointerId === g.id) stop(false); });
     // While sliding, nothing scrolls, and a long press doesn't open the browser's menu.
     area.addEventListener('touchmove', e => { if (g?.on) e.preventDefault(); }, {passive: false});
     area.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
@@ -1526,8 +1538,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async loadSearch(seq){
     const s = this.searchQ.trim();
     if (!s) { this.view.groups = []; return; }
-    const open = new URLSearchParams({s, filter: 'done = false', filter_timezone: TZ});
-    const done = new URLSearchParams({s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50});
+    const open = new URLSearchParams({s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'});
+    const done = new URLSearchParams({s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50, expand: 'comment_count'});
     const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(r => r || [])]);
     if (seq !== renderSeq) return;
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
