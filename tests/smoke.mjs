@@ -205,10 +205,12 @@ try {
       if (got !== want) throw new Error(`saved ${got}%, not ${want}%`);
     };
     if (await page.getAttribute('#d-progress', 'aria-valuenow') !== '40') throw new Error('sheet shows ' + await page.getAttribute('#d-progress', 'aria-valuenow'));
-    const box = await page.locator('#d-progress .track').boundingBox();     // slide two steps along the bar
-    await page.mouse.move(box.x + 20, box.y + box.height / 2);
+    const bar = await page.locator('#d-progress .track').boundingBox(), head = await page.locator('.d-head').boundingBox();
+    await page.mouse.move(bar.x + 20, bar.y + bar.height / 2);              // hold the bar, then slide two steps
     await page.mouse.down();
-    await page.mouse.move(box.x + 20 + box.width * .2, box.y + box.height / 2, { steps: 6 });
+    await page.waitForSelector('.d-head.setting', { timeout: 2000 });
+    await page.mouse.move(bar.x + 20 + head.width * .8 * .2, bar.y + bar.height / 2, { steps: 6 });
+    if (await page.getAttribute('.d-head', 'data-pct') !== '60%') throw new Error('showed ' + await page.getAttribute('.d-head', 'data-pct') + ' while sliding');
     await page.mouse.up();
     await savedPct(60);
     await page.focus('#d-progress');                                          // and one more with the arrow key

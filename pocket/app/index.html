@@ -123,7 +123,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .row::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:calc(var(--pct,0) * 100%);background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
 .row.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--pct) * 100%),var(--surface) 0)}
-.row.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none}
+.row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
@@ -189,7 +189,10 @@ body.sheet-open{overflow:hidden}
 .d-parent .linkish{font-size:14px;font-weight:600}
 .d-title{display:flex;gap:12px;align-items:flex-start;margin:0 0 6px}
 /* progress under the title: a bar to slide along, which thickens while it's being set */
-.d-progress{display:flex;align-items:center;gap:10px;height:32px;margin:0 0 6px 42px;touch-action:pan-y;cursor:ew-resize;-webkit-user-select:none;user-select:none}
+.d-head{position:relative;margin:0 -8px;padding:4px 8px 2px;border-radius:var(--r-row)}
+.d-head.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--pct) * 100%),transparent 0)}
+.d-path,.d-progress{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.d-progress{display:flex;align-items:center;gap:10px;height:40px;margin:0 0 2px 42px}
 .d-progress .track{flex:1;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;transition:height .12s}
 .d-progress .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent)}
 .d-progress .num{width:44px;text-align:right;color:var(--muted);font-size:13px;font-weight:650}
@@ -426,23 +429,25 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <template x-if="sheet.kind === 'task' && sheet.error"><div class="err" x-html="sheet.error"></div></template>
 
     <template x-if="sheet.kind === 'task' && sheet.task"><div>
-      <!-- Where the task lives: its project, and the task it's part of -->
-      <div class="d-path" id="d-path">
-        <i class="dot" :style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><span x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></span>
-        <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTask.title"></button></span></template>
-      </div>
-      <div class="d-title">
-        <button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="save({done: !sheet.task.done})"><svg class="i"><use href="#i-check"/></svg></button>
-        <textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
-                  x-effect="sheet.title; $nextTick(() => grow($el))"
-                  @keydown.enter.prevent="$el.blur()" @change="saveTitle()"></textarea>
-      </div>
-      <!-- Progress, as in the list: slide along the bar, from where it is, in steps of 10% -->
-      <div class="d-progress" id="d-progress" role="slider" tabindex="0" aria-label="Progress" aria-valuemin="0" aria-valuemax="100"
-           :aria-valuenow="sheet.pct ?? pctOf(sheet.task)" :aria-valuetext="(sheet.pct ?? pctOf(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
-           :style="{'--pct': (sheet.pct ?? pctOf(sheet.task)) / 100}"
-           @pointerdown="dragProgress($event)" @keydown.right.prevent="nudgeProgress(10)" @keydown.left.prevent="nudgeProgress(-10)">
-        <span class="track"><i></i></span><span class="num" x-text="(sheet.pct ?? pctOf(sheet.task)) + '%'"></span>
+      <div class="d-head">
+        <!-- Where the task lives: its project, and the task it's part of -->
+        <div class="d-path" id="d-path">
+          <i class="dot" :style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><span x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></span>
+          <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTask.title"></button></span></template>
+        </div>
+        <div class="d-title">
+          <button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="save({done: !sheet.task.done})"><svg class="i"><use href="#i-check"/></svg></button>
+          <textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
+                    x-effect="sheet.title; $nextTick(() => grow($el))"
+                    @keydown.enter.prevent="$el.blur()" @change="saveTitle()"></textarea>
+        </div>
+        <!-- Progress, as in the list: hold the bar, or around the title, then slide (initSheetProgress) -->
+        <div class="d-progress" id="d-progress" role="slider" tabindex="0" aria-label="Progress" aria-valuemin="0" aria-valuemax="100"
+             :aria-valuenow="sheet.pct ?? pctOf(sheet.task)" :aria-valuetext="(sheet.pct ?? pctOf(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
+             :style="{'--pct': (sheet.pct ?? pctOf(sheet.task)) / 100}"
+             @keydown.right.prevent="nudgeProgress(10)" @keydown.left.prevent="nudgeProgress(-10)">
+          <span class="track"><i></i></span><span class="num" x-text="(sheet.pct ?? pctOf(sheet.task)) + '%'"></span>
+        </div>
       </div>
       <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
 
@@ -708,7 +713,8 @@ const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
    task done. A repeating task then starts its next time at 0%. */
 const pctOf = t => Math.round((t?.percent_done || 0) * 100);
 const progressPatch = (t, pct) => pct >= 100 ? {done: true, percent_done: repeats(t) ? 0 : 1} : {percent_done: pct / 100};
-const HOLD_MS = 450;                             // hold a row this long to start setting its progress
+const HOLD_MS = 450;                             // hold this long to start setting progress
+let sliding = false;                             // progress is being set: the sheet doesn't swipe away meanwhile
 
 /* =============== HTML description helpers =============== */
 // Task notes and comments are HTML written by anyone who shares the project, so only a small set of
@@ -1121,6 +1127,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.$nextTick(() => {
       this.initSwipe();
       this.initProgressDrag();
+      this.initSheetProgress();
       this.initHeader();
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
@@ -1438,52 +1445,68 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
     }
   },
-  /* Hold a task in the list, then slide sideways to set its progress, like a volume bar. It moves from where it was, in
-     steps of 10%; sliding across most of the row goes from 0% to 100%. Moving before the hold ends is a scroll or a tap. */
-  initProgressDrag(){
-    const view = document.getElementById('view');
+  /* Hold, then slide sideways: how progress is set, on a list row and on a task's sheet. It moves from where it was, in
+     steps of 10%, like a volume bar; sliding across most of the width goes from 0% to 100%. Moving before the hold ends
+     is a scroll, a swipe or a tap as usual; once it has ended, nothing scrolls or swipes until the finger lifts.
+     find(target) says what was held: {start, width, show(pct), finish(pct, or null if nothing changed)}, or null. */
+  holdToSlide(area, find){
     let g = null, swallowClick = false;
-    const show = pct => { g.pct = pct; g.row.style.setProperty('--pct', pct / 100); g.row.dataset.pct = pct + '%'; };
-    const end = () => {
+    const stop = commit => {
       if (!g) return;
-      clearTimeout(g.timer);
-      g.row.classList.remove('setting');
-      g.row.style.setProperty('--pct', g.t.done ? 0 : g.t.percent_done || 0);
-      g = null;
+      clearTimeout(g.timer); sliding = false;
+      const {s, on, pct} = g; g = null;
+      s.finish(on && commit && pct !== s.start ? pct : null);
     };
-    view.addEventListener('pointerdown', e => {
-      const row = e.target.closest('.list:not(.tree) > .row');
-      if (g || !row || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      const t = this.rowTask(+row.dataset.id);
-      if (!t || t.pending || t.done) return;
-      g = {row, t, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, on: false};
-      g.timer = setTimeout(() => {
-        g.on = true; g.start = Math.round(pctOf(t) / 10) * 10;
-        row.classList.add('setting'); show(g.start);
-        navigator.vibrate?.(10);
-      }, HOLD_MS);
+    area.addEventListener('pointerdown', e => {
+      if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const s = find(e.target); if (!s) return;
+      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, on: false, pct: s.start};
+      g.timer = setTimeout(() => { g.on = true; sliding = true; s.show(g.pct); navigator.vibrate?.(10); }, HOLD_MS);
     });
-    view.addEventListener('pointermove', e => {
+    area.addEventListener('pointermove', e => {
       if (!g || e.pointerId !== g.id) return;
-      if (!g.on) { if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 8) end(); else g.x = e.clientX; return; }
-      const steps = Math.round((e.clientX - g.x) / (g.row.clientWidth * .8) * 10);
-      const pct = Math.max(0, Math.min(100, g.start + steps * 10));
-      if (pct !== g.pct) { show(pct); navigator.vibrate?.(5); }
+      if (!g.on) { if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 8) stop(false); else g.x = e.clientX; return; }
+      const pct = Math.max(0, Math.min(100, g.s.start + Math.round((e.clientX - g.x) / (g.s.width * .8) * 10) * 10));
+      if (pct !== g.pct) { g.pct = pct; g.s.show(pct); navigator.vibrate?.(5); }
     });
-    view.addEventListener('pointerup', e => {
+    area.addEventListener('pointerup', e => {
       if (!g || e.pointerId !== g.id) return;
-      const {on, t, row, start, pct} = g;
-      if (on) {
-        swallowClick = true; setTimeout(() => swallowClick = false, 400);   // the release isn't a tap on the task
-        if (pct !== start) this.setProgress(t, pct, row);
-      }
-      end();
+      if (g.on) { swallowClick = true; setTimeout(() => swallowClick = false, 400); }   // the release isn't a tap
+      stop(true);
     });
-    view.addEventListener('pointercancel', end);
-    // While sliding, the list mustn't scroll, and a long press mustn't open the browser's menu.
-    view.addEventListener('touchmove', e => { if (g?.on) e.preventDefault(); }, {passive: false});
-    view.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
-    view.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+    area.addEventListener('pointercancel', () => stop(false));
+    // While sliding, nothing scrolls, and a long press doesn't open the browser's menu.
+    area.addEventListener('touchmove', e => { if (g?.on) e.preventDefault(); }, {passive: false});
+    area.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
+    area.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  },
+  // In the list: the row fills, and at 100% the task is done and slides away.
+  initProgressDrag(){
+    this.holdToSlide(document.getElementById('view'), target => {
+      const row = target.closest('.list:not(.tree) > .row');
+      const t = row && this.rowTask(+row.dataset.id);
+      if (!t || t.pending || t.done) return null;
+      return {start: Math.round(pctOf(t) / 10) * 10, width: row.clientWidth,
+        show: pct => { row.classList.add('setting'); row.style.setProperty('--pct', pct / 100); row.dataset.pct = pct + '%'; },
+        finish: pct => {
+          if (pct !== null) this.setProgress(t, pct, row);
+          row.classList.remove('setting');
+          row.style.setProperty('--pct', t.done ? 0 : t.percent_done || 0);
+        }};
+    });
+  },
+  // In a task's sheet: hold the progress bar, or around the title (not its text, where a long press selects).
+  initSheetProgress(){
+    this.holdToSlide(this.$refs.sheet, target => {
+      const head = target.closest('.d-head'), t = this.sheet.task;
+      if (!head || !t || target.closest('textarea, button, a, select')) return null;
+      return {start: Math.round(pctOf(t) / 10) * 10, width: head.clientWidth,
+        show: pct => { this.sheet.pct = pct; head.classList.add('setting'); head.style.setProperty('--pct', pct / 100); head.dataset.pct = pct + '%'; },
+        finish: pct => {
+          head.classList.remove('setting'); this.sheet.pct = null;
+          if (pct !== null && this.sheet.task === t) this.save(progressPatch(t, pct));
+        }};
+    });
   },
 
   /* ---------- search ---------- */
@@ -2032,7 +2055,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   initSwipe(){                                   // swipe down to close
     let y0 = null; const sh = this.$refs.sheet;
     sh.addEventListener('touchstart', e => { const sc = sh.querySelector('.scroll'); y0 = (sc.scrollTop <= 0 || e.target.closest('.bar')) ? e.touches[0].clientY : null; }, {passive:true});
-    sh.addEventListener('touchmove', e => { if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
+    sh.addEventListener('touchmove', e => { if (y0 !== null && sliding) { y0 = null; sh.style.transform = ''; } if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
     sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) this.closeSheet(); });
   },
   // The header slides away once the list has scrolled down past it, and comes back as soon as it scrolls up a little.
@@ -2155,21 +2178,6 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     });
     saveChain = run.catch(() => {});
     return run;
-  },
-  // The progress bar under the title. Like a list row: slide sideways, from where it is, in steps of 10%; the bar's
-  // width is 0% to 100%, and 100% marks the task done. A move that's mostly up or down scrolls instead (touch-action).
-  dragProgress(e){
-    const el = e.currentTarget, w = el.querySelector('.track').clientWidth, x0 = e.clientX;
-    const t = this.sheet.task, was = pctOf(t), start = Math.round(was / 10) * 10;
-    el.setPointerCapture(e.pointerId);
-    const move = ev => { this.sheet.pct = Math.max(0, Math.min(100, start + Math.round((ev.clientX - x0) / w * 10) * 10)); };
-    const end = ev => {
-      for (const [type, fn] of handlers) el.removeEventListener(type, fn);
-      const pct = this.sheet.pct; this.sheet.pct = null;
-      if (ev.type === 'pointerup' && pct !== null && pct !== was && this.sheet.task === t) this.save(progressPatch(t, pct));
-    };
-    const handlers = [['pointermove', move], ['pointerup', end], ['pointercancel', end]];
-    for (const [type, fn] of handlers) el.addEventListener(type, fn);
   },
   nudgeProgress(step){                           // the arrow keys, on the focused bar
     const t = this.sheet.task, was = pctOf(t), pct = Math.max(0, Math.min(100, Math.round(was / 10) * 10 + step));
