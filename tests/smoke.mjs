@@ -228,6 +228,13 @@ try {
     await page.keyboard.press('ArrowRight');
     await savedPct(70);
   });
+  await step('attach-from-sheet', async () => {
+    const before = (await apiTask()).attachments?.length || 0;
+    await page.setInputFiles('#d-file', { name: 'smoke-note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+    await page.waitForSelector('#d-attachments .att:has-text("smoke-note.txt")', { timeout: 10000 });
+    const after = (await apiTask()).attachments?.length || 0;
+    if (after !== before + 1) throw new Error(`Vikunja has ${after} attachments, not ${before + 1}`);
+  });
   await step('mark-done', async () => {
     await page.click('#d-done');
     await page.waitForSelector('#d-done.on', { timeout: 10000 });
@@ -258,6 +265,18 @@ try {
     await page.fill('#in-capture', 'Groceries\n  - [ ] milk tomorrow\n\n- eggs !2');
     if ((got = await marks(2)) !== '["due:tomorrow","priority:!2"]') throw new Error('in a list: ' + got);
     await page.fill('#in-capture', '');
+  });
+  await step('photo-with-new-task', async () => {
+    const t = 'Pocket smoke photo ' + stamp;
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    await page.setInputFiles('#in-photo', { name: 'receipt.png', mimeType: 'image/png', buffer: png });
+    await page.waitForSelector('#cap-chips .chip.photo:has-text("receipt.png")');
+    if (await page.getAttribute('#in-capture', 'placeholder') !== 'What\'s this photo for?') throw new Error('placeholder: ' + await page.getAttribute('#in-capture', 'placeholder'));
+    await page.fill('#in-capture', t);
+    await page.click('#f-capture .go');
+    await page.waitForSelector('#toast-msg:has-text("with the photo")', { timeout: 15000 });
+    const made = (await (await api('/tasks?s=' + encodeURIComponent(t))).json())[0];
+    if (made?.attachments?.[0]?.file?.name !== 'receipt.png') throw new Error('attachments: ' + JSON.stringify(made?.attachments));
   });
   await step('create-project-from-chip', async () => {
     const name = `PocketSmoke${stamp}`, t = `Pocket smoke new project task ${stamp}`;

@@ -142,6 +142,11 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 #capture textarea::placeholder{color:var(--muted)}
 #capture .go{width:42px;height:42px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 #capture .go[disabled]{opacity:.35}
+#capture .cam{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;color:var(--muted);cursor:pointer}
+#capture .cam.on{color:var(--accent);background:var(--accent-soft)}
+#capture .cam:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
+.chip.photo{cursor:pointer}
+.chip svg.i{width:15px;height:15px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
@@ -240,6 +245,9 @@ body.sheet-open{overflow:hidden}
 .att:first-of-type{border-top:0}
 .att .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .att .sz{color:var(--muted);font-size:13px}
+.att.uploading{color:var(--muted)}
+.att.add-att{color:var(--accent);font-weight:600;cursor:pointer}
+.att.add-att:focus-within{outline:2.5px solid var(--accent);outline-offset:-2px}
 .danger-zone{margin-top:28px}
 .picker{padding:6px 0}
 .picker button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:12px 14px;text-align:left;border-top:1px solid var(--line)}
@@ -273,6 +281,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <symbol id="i-subtasks" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol>
   <symbol id="i-comment" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5h3.2L9 6h6l1.8 2.5H20V19H4z"/><circle cx="12" cy="13.5" r="3.3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/></symbol>
 </svg>
 
@@ -392,13 +402,17 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" x-ref="capMarks" aria-hidden="true" x-html="capMarksHtml"></div>
-        <textarea id="in-capture" x-ref="capture" x-model="capture" rows="1" placeholder="Add a task" aria-label="New task" enterkeyhint="send"
+        <textarea id="in-capture" x-ref="capture" x-model="capture" rows="1" :placeholder="capPhotos.length ? 'What\'s this photo for?' : 'Add a task'" aria-label="New task" enterkeyhint="send"
                   x-effect="capture; $nextTick(() => grow($el))"
                   @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); submitCapture(); }"
                   @input="capCaret = $el.selectionStart" @click="capCaret = $el.selectionStart" @keyup="capCaret = $el.selectionStart"
                   @scroll="$refs.capMarks.scrollTop = $el.scrollTop"
                   @focus="capFocus = true" @blur="setTimeout(() => capFocus = document.activeElement === $el, 150)"></textarea>
       </div>
+      <template x-if="attachmentsOn"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
+        <svg class="i"><use href="#i-camera"/></svg>
+        <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
+      </label></template>
       <button class="go" type="submit" aria-label="Add task" :disabled="!parsed.title || capBusy"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips.length && !(capFocus && !capture)">
@@ -406,7 +420,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <template x-if="capFocus && !capture"><span class="hint" x-text="captureHint"></span></template>
       <template x-for="c in chips" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
         :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-        @mousedown.prevent @click="c.action ? c.action() : c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template>
+        @mousedown.prevent @click="c.action ? c.action() : c.kind && (capIgnore = {...capIgnore, [c.kind]: !capIgnore[c.kind]})"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
     </div>
   </div>
 </div>
@@ -473,11 +487,21 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         </div></template>
       </div>
 
-      <template x-if="(sheet.task.attachments || []).length"><div>
-        <div class="h3">Attachments<span class="n num" x-text="sheet.task.attachments.length"></span></div>
-        <div class="card"><template x-for="a in sheet.task.attachments" :key="a.id">
-          <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
-        </template></div>
+      <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div>
+        <div class="h3">Attachments<span class="n num" x-text="(sheet.task.attachments || []).length || ''"></span></div>
+        <div class="card" id="d-attachments">
+          <template x-for="a in sheet.task.attachments || []" :key="a.id">
+            <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+          </template>
+          <template x-for="u in sheet.uploads" :key="u.key">
+            <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="u.name"></span><span class="sz">Uploading…</span></div>
+          </template>
+          <!-- The phone offers its own choices here: a photo from the library, a new one, or a file -->
+          <template x-if="attachmentsOn"><label class="att add-att">
+            <svg class="i"><use href="#i-plus"/></svg><span class="nm">Add a photo or file</span>
+            <input type="file" id="d-file" class="sr" multiple aria-label="Add a photo or file" @change="addFiles($event.target.files); $event.target.value = ''">
+          </label></template>
+        </div>
       </div></template>
 
       <div class="h3">Subtasks<span class="n num" id="d-subcount" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
@@ -583,6 +607,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const colorOf = hex => /^#?([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex || '') ? '#' + hex.replace('#','') : 'var(--muted)';
 const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|text\/plain)$/;
 const mimeOf = t => String(t || '').split(';')[0].trim().toLowerCase();
+// Vikunja's upload limit as it states it in /info ("20MB"), in bytes; null if it doesn't say.
+function sizeLimit(text){
+  const m = String(text || '').trim().match(/^(\d+(?:\.\d+)?)\s*([KMG]?)B?$/i);
+  return m ? +m[1] * {'': 1, K: 1024, M: 1048576, G: 1073741824}[m[2].toUpperCase()] : null;
+}
 const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
 const PRIOS = [{n:0,label:'No priority'},{n:1,label:'Low'},{n:2,label:'Medium'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Do now'}];
 // Fit a text box to its text. A hidden box measures 0, so leave its height alone until it can be measured.
@@ -637,11 +666,12 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   const headers = {};
   const token = app.mode === 'session' ? sharedToken.get() : app.token;
   if (auth && token) headers.Authorization = 'Bearer ' + token;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const form = body instanceof FormData;                                       // files: the browser sets the type
+  if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
   let res;
   try {
     res = await fetch(app.server + '/api/v1' + path, {
-      method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+      method, headers, body: body === undefined || form ? body : JSON.stringify(body),
       credentials: app.mode === 'session' ? 'include' : 'omit',
     });
   } catch (e) { if (app) app.offline = true; throw new NetError(e.message) }
@@ -1067,7 +1097,7 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
+  pct: null, uploads: [], editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -1099,6 +1129,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   toast: {show: false, msg: '', action: null},
   offline: false,                              // the last request couldn't reach Vikunja
   creatingProject: false,
+  capPhotos: [],                               // photos to attach to the task in the add box (File objects)
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   flushing: false,
@@ -1743,10 +1774,14 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
 
   get chips(){
-    if (!this.capture.trim()) return [];
+    // Photos for the new task, each with a tap to take it off again. A pasted list puts them on its first task.
+    const photos = this.capPhotos.map((f, i) => ({key: 'ph' + i, cls: 'photo', icon: 'clip', hint: 'Tap to remove this photo',
+      text: f.name + (this.capLines.length > 1 ? ' · on the first task' : '') + '  ✕', action: () => this.capPhotos.splice(i, 1)}));
+    if (!this.capture.trim()) return photos;
     const sg = this.suggestions;
     if (sg) return sg;
     const parsed = this.parsed, p = this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.capLines.length;
+    out.push(...photos);
     if (n > 1) {
       out.push({key: 'n', text: this.capNest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
       const {project, miss} = this.parseList(this.capLines);
@@ -1889,15 +1924,24 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
       .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, tried: false, linked: false}));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items};
-    this.capBusy = true; this.capture = ''; this.capNest = false;
+    const photos = this.capPhotos;
+    this.capBusy = true; this.capture = ''; this.capNest = false; this.capPhotos = [];
     outbox.put(entry);                           // saved first, but only shown as waiting if sending doesn't finish
     try {
       const r = await outboxLock(() => this.sendEntry(entry.id));
-      const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
+      const n = items.length;
+      // Photos need a connection, so they only go with a task that reached Vikunja.
+      let photoErr = null;
+      if (photos.length && r.ids?.length) {
+        photoErr = await this.uploadFiles(r.ids[0], photos).then(() => null, e => e);
+        if (photoErr) (r.problems ||= []).push(`the photo${photos.length === 1 ? '' : 's'} didn't upload: ${photoErr.message}`);
+      }
+      const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.status === 'offline') {
         // It shows up in the list, tinted, unless this list wouldn't include it (say, a task due next month on Today).
         this.refreshPending();
-        if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
+        if (photos.length) this.notify(`Saved offline, without the photo${photos.length === 1 ? '' : 's'}: photos need a connection. Add ${photos.length === 1 ? 'it' : 'them'} from the task once you're online.`);
+        else if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
           this.notify(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`);
       } else if (r.status === 'error') {
         this.capture = r.unsent.join('\n');                                // keep what wasn't added
@@ -1906,7 +1950,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       } else if (n === 1) {
         // A date past next week keeps it off Today, so say which, in case quick add read it wrong.
         const due = items[0].p.due, later = due && new Date(due) >= addDays(startOfDay(), 8) ? ', due ' + dueInfo(due).label : '';
-        const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project') + later;
+        const withPhotos = photos.length && !photoErr ? (photos.length === 1 ? ', with the photo' : `, with ${photos.length} photos`) : '';
+        const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project') + later + withPhotos;
         this.notify(where + but,{label: 'Open', fn: () => this.openTask(r.ids[0])});
       } else {
         this.notify((nest ? `Added 1 task with ${n - 1} subtask${n === 2 ? '' : 's'}` : `Added ${n} tasks`) + but, {label: 'Undo', fn: () => this.deleteTasks(r.ids)});
@@ -2285,6 +2330,47 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   // A blob: URL runs with this app's origin, so an HTML or SVG attachment opened that way could read the
   // saved token. Only types that can't run script open in a tab; everything else is downloaded.
+  get attachmentsOn(){ return this.info?.task_attachments_enabled !== false; },
+  // The files of these that this Vikunja won't take, said plainly; '' when they all fit. (Vikunja's own message about
+  // it gives the wrong limit.)
+  tooBig(files){
+    const max = sizeLimit(this.info?.max_file_size), big = max ? files.filter(f => f.size > max) : [];
+    return big.length ? `${big.map(f => `${f.name} (${fmtSize(f.size)})`).join(', ')} ${big.length === 1 ? 'is' : 'are'} too big: your Vikunja takes files up to ${this.info.max_file_size}.` : '';
+  },
+  // Upload files to a task in one go. Vikunja answers OK even when it turns a file down, with the reasons in `errors`.
+  async uploadFiles(taskId, files){
+    const form = new FormData();
+    for (const f of files) form.append('files', Alpine.raw(f), f.name);
+    const r = await api(`/tasks/${taskId}/attachments`, {method: 'PUT', body: form});
+    if (r?.errors?.length) throw new ApiError(400, r.errors.map(e => e.message).join('; '));
+    const t = await api('/tasks/' + taskId);
+    cache.set(taskId, t); this.syncTask(t);
+    return t;
+  },
+  // From the sheet's "Add a photo or file".
+  async addFiles(list){
+    const files = [...list], t = this.sheet.task;
+    if (!files.length || !t) return;
+    const big = this.tooBig(files); if (big) { this.notify(big); return; }
+    const keys = files.map(() => randomId());
+    this.sheet.uploads.push(...files.map((f, i) => ({key: keys[i], name: f.name})));
+    try {
+      const saved = await this.uploadFiles(t.id, files);
+      if (this.sheet.task?.id === t.id) { this.showTask(saved); this.sheet.dirty = true; }
+    } catch (e) {
+      this.notify(e instanceof NetError ? 'Offline — not uploaded. Files need a connection.' : 'Not uploaded: ' + e.message);
+    } finally {
+      this.sheet.uploads = this.sheet.uploads.filter(u => !keys.includes(u.key));
+    }
+  },
+  // From the add box's camera button.
+  addCapPhotos(list){
+    const files = [...list], big = this.tooBig(files);
+    if (big) this.notify(big);
+    const max = sizeLimit(this.info?.max_file_size);
+    this.capPhotos.push(...files.filter(f => !max || f.size <= max));
+    this.$refs.capture.focus();
+  },
   async openAttachment(a){
     const inline = INLINE_TYPES.test(mimeOf(a.file?.mime));
     const w = inline ? window.open('', '_blank') : null;   // open synchronously so iOS doesn't block it

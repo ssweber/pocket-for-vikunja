@@ -29,9 +29,9 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 
 - **Today:** tasks grouped into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task you add without a date stays in view until tonight instead of vanishing into a project. Tick one off and it slides away, with an Undo. **Move all to today** brings every overdue task to today, each at the time of day it had.
 - **Progress:** hold a task in the list, then slide sideways to set how far along it is, in steps of 10%, like a volume bar. Sliding to 100% marks it done. A thin bar under the task shows its progress, which is the same progress as in Vikunja.
-- **Quick add:** a task in one line, with its date, repeat, project, priority, labels and people.
+- **Quick add:** a task in one line, with its date, repeat, project, priority, labels and people. The camera button attaches a photo to it.
 - **Paste a list:** each line of a list from an email or a note becomes a task, optionally as subtasks of the first.
-- **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them.
+- **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add photos and files.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by number.
 - **Projects:** your project tree with favorites, and the open or done tasks in each.
 - **Offline:** Pocket opens without a connection, and tasks you add are sent once you're back online.
