@@ -262,7 +262,7 @@ try {
   await step('attach-from-sheet', async () => {
     const before = (await apiTask()).attachments?.length || 0;
     await page.setInputFiles('#d-file', { name: 'smoke-note.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
-    await page.waitForSelector('#d-attachments .att:has-text("smoke-note.txt")', { timeout: 10000 });
+    await page.waitForSelector('#d-attachments button.att:has-text("smoke-note.txt")', { timeout: 10000 });   // uploaded, not "Uploading…"
     const after = (await apiTask()).attachments?.length || 0;
     if (after !== before + 1) throw new Error(`Vikunja has ${after} attachments, not ${before + 1}`);
   });
@@ -500,7 +500,9 @@ try {
   // Delete anything this run left behind (every title it creates ends with the run's stamp).
   const tasks = await (await api('/tasks?s=' + stamp)).json().catch(() => []);
   for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {
-    const r = await api('/tasks/' + t.id, { method: 'DELETE' });
+    // A few tries: a Vikunja on SQLite (like the local one) can answer 500 "database is locked" while busy.
+    let r;
+    for (let i = 0; i < 5 && !(r = await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++) await new Promise(ok => setTimeout(ok, 500));
     if (!r.ok) console.log(`Could not delete leftover task ${t.id} (HTTP ${r.status})`);
   }
 }

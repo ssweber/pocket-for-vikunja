@@ -5,7 +5,8 @@
 //
 // Checks that signing in or out on either side carries over, and that renewing the session from both sides at
 // once, which spends Vikunja's single-use refresh cookie, never signs either of them out.
-// Optional: SSO_USER / SSO_PASSWORD to also sign in through the first single sign-on provider (see scripts/dev.mjs --sso).
+// Optional: SSO_USER / SSO_PASSWORD to also sign in through the first single sign-on provider (see scripts/dev.mjs --sso),
+// OTHER_USER / OTHER_PASSWORD (a second account) to check that Pocket follows a switch to another account.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
@@ -52,6 +53,46 @@ try {
     await pocket.goto(POCKET);
     await pocketInApp();
     if (await pocket.isVisible('#login')) throw new Error('Pocket asked to sign in');
+  });
+
+  if (process.env.OTHER_USER) await step('another-account-signing-in-is-followed', async () => {
+    // Someone else's session replaces this one without a sign-out Pocket saw, and the first check of whose it is fails.
+    const login = await fetch(SERVER + '/api/v1/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: process.env.OTHER_USER, password: process.env.OTHER_PASSWORD }) });
+    const other = (await login.json()).token, mine = await pocket.evaluate(() => localStorage.getItem('token'));
+    const whoami = url => url.pathname.endsWith('/api/v1/user');
+    let cut = true;
+    await pocket.route(whoami, r => cut ? r.abort('internetdisconnected') : r.fallback());
+    // Who the account sheet names. Switching closes the sheet, so it may already be gone when it's closed here.
+    const who = async () => {
+      await pocket.click('#btn-account');
+      const name = await pocket.textContent('#sheet .prop:has(.k:text-is("User")) .v');
+      await pocket.click('#btn-sheet-close', { timeout: 2000 }).catch(() => {});
+      await pocket.waitForSelector('#sheet', { state: 'hidden' });
+      return name.trim();
+    };
+    await vikunja.evaluate(t => localStorage.setItem('token', t), other);     // from the other tab, as a sign-in there would
+    await pocket.waitForTimeout(1500);
+    if (await who() !== '@' + USER) throw new Error('switched before it knew');
+    // A task added now mustn't be added as the other person: it waits until Pocket knows, and goes as its own person.
+    const title = `Pocket session capture ${Date.now()}`;
+    const find = async t => ((await (await fetch(SERVER + '/api/v1/tasks?s=' + encodeURIComponent(title), { headers: { Authorization: 'Bearer ' + t } })).json()) || []).filter(x => x.title === title);
+    await pocket.fill('#in-capture', title);
+    await pocket.click('#f-capture .go');
+    await pocket.waitForSelector(`.row.pending:has(.title:has-text("${title}"))`);
+    if ((await find(other)).length || (await find(mine)).length) throw new Error('added before Pocket knew whose session it was');
+    cut = false;
+    await pocket.evaluate(() => window.dispatchEvent(new Event('online')));   // the next try to send asks again
+    for (let i = 0; i < 30 && await who() !== '@' + process.env.OTHER_USER; i++) await pocket.waitForTimeout(500);
+    if (await who() !== '@' + process.env.OTHER_USER) throw new Error('still shows ' + await who());
+    await pocket.unroute(whoami);
+    await vikunja.evaluate(t => localStorage.setItem('token', t), mine);      // and back, for the steps below
+    for (let i = 0; i < 30 && await who() !== '@' + USER; i++) await pocket.waitForTimeout(500);
+    if (await who() !== '@' + USER) throw new Error('didn\'t switch back: ' + await who());
+    for (let i = 0; i < 30 && !(await find(mine)).length; i++) await pocket.waitForTimeout(500);
+    const added = await find(mine);
+    if (added.length !== 1 || added[0].created_by?.username !== USER) throw new Error('added: ' + JSON.stringify(added.map(t => t.created_by?.username)));
+    await fetch(SERVER + '/api/v1/tasks/' + added[0].id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + mine } });
   });
 
   await step('expired-token-renews-and-vikunja-stays-signed-in', async () => {

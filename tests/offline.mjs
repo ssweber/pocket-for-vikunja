@@ -187,14 +187,14 @@ try {
     await page.unroute('**/api/v1/tasks/*/attachments', lose);
   });
 
-  await step('busy-server-keeps-the-photo', async () => {
-    // Vikunja (or a proxy in front of it) answers 503 once: the photo waits and goes up on the next try.
+  await step('server-error-keeps-the-photo', async () => {
+    // Vikunja answers 500 once: the photo waits, says so, and goes up on the next try.
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // the add's toast, from before
     let busy = true;
-    const answer = r => { if (!busy) return r.fallback(); busy = false; return r.fulfill({ status: 503, body: '' }); };
+    const answer = r => { if (!busy) return r.fallback(); busy = false; return r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"Internal Server Error"}' }); };
     await page.route('**/api/v1/tasks/*/attachments', answer);
     await page.setInputFiles('#d-file', photo('busy.png'));
-    await page.waitForSelector('#d-attachments .att.uploading:has-text("busy.png")');
+    await page.waitForSelector('#d-attachments .att.uploading:has-text("busy.png"):has-text("Vikunja had a problem with it. Trying again.")');
     if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("busy.png")');
@@ -242,20 +242,74 @@ try {
     await page.unroute('**/api/v1/projects/*/tasks', lose);
   });
 
-  await step('no-room-on-the-phone-keeps-it-in-the-box', async () => {
-    // Pocket's storage is full: without a connection, the task can't wait on the phone, so it stays in the add box.
+  await step('no-room-on-the-phone-waits-while-open', async () => {
+    // Pocket's storage is full, and the connection drops as the photo of a new task uploads: the photo waits in memory,
+    // with a message saying so, and goes up once the connection's back.
+    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
     await page.evaluate(() => {
       const set = window.realSetItem = Storage.prototype.setItem;
       Storage.prototype.setItem = function(k, v){ if (k === 'pocket.outbox') throw new DOMException('full', 'QuotaExceededError'); return set.call(this, k, v); };
     });
-    await context.setOffline(true);
+    let cut = true;
+    const cutOff = r => cut ? r.abort('internetdisconnected') : r.fallback();
+    await page.route('**/api/v1/tasks/*/attachments', cutOff);
+    await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
-    await page.waitForSelector('#toast-msg:has-text("no room left on this phone")');
-    if (await page.inputValue('#in-capture') !== T('S')) throw new Error('the box has ' + JSON.stringify(await page.inputValue('#in-capture')));
-    if (await page.isVisible(pendingRow(T('S')))) throw new Error('shown as waiting, but it isn\'t saved');
+    await page.waitForSelector('#toast-msg:has-text("no room left on this phone to keep this until there\'s a connection. Keep Pocket open")');
+    await page.waitForSelector(`.row:has(.title:has-text("${T('S')}")) [aria-label="Attachments, 1 waiting to upload"]`);
+    cut = false;
+    await online();
+    await until('the photo never reached the task', async () => (await attached('S')).join() === 'full.png');
+    if ((await byTitle(T('S'))).length !== 1) throw new Error((await byTitle(T('S'))).length + ' copies');
+    await page.unroute('**/api/v1/tasks/*/attachments', cutOff);
     await page.evaluate(() => { Storage.prototype.setItem = window.realSetItem; });
-    await page.fill('#in-capture', '');
-    await context.setOffline(false);
+  });
+
+  await step('same-title-twice-stays-two-tasks', async () => {
+    // The second "Buy milk" never reaches Vikunja on its first try; the retry mustn't take the first one for it.
+    await capture(T('M'));
+    await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('M')}"))`);
+    const drop = r => r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.fallback();
+    await page.route('**/api/v1/projects/*/tasks', drop);
+    await capture(T('M'));
+    await page.waitForSelector(pendingRow(T('M')));
+    await page.unroute('**/api/v1/projects/*/tasks', drop);
+    await online();
+    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    if ((await byTitle(T('M'))).length !== 2) throw new Error((await byTitle(T('M'))).length + ' copies');
+  });
+
+  await step('same-title-made-elsewhere-is-not-taken', async () => {
+    // A task made on the web, then one with the same title in Pocket that never reaches Vikunja on its first try.
+    const [me] = await byTitle(T('M'));                                      // a project to put it in
+    await api(`/projects/${me.project_id}/tasks`, { method: 'PUT', body: JSON.stringify({ title: T('E') }) });
+    await page.waitForTimeout(4000);                                         // a little later, as a person would
+    const drop = r => r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.fallback();
+    await page.route('**/api/v1/projects/*/tasks', drop);
+    await capture(T('E'));
+    await page.waitForSelector(pendingRow(T('E')));
+    await page.unroute('**/api/v1/projects/*/tasks', drop);
+    await online();
+    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    if ((await byTitle(T('E'))).length !== 2) throw new Error((await byTitle(T('E'))).length + ' copies');
+  });
+
+  await step('subtask-link-whose-reply-is-lost', async () => {
+    // A pasted list under its first line: the link reaches Vikunja but its reply doesn't. The retry finds it made.
+    let cut = true;
+    const lose = async r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/api/v1/tasks/*/relations', lose);
+    await page.fill('#in-capture', `${T('K')} tomorrow\n- ${T('K1')}\n- ${T('K2')}`);
+    await page.click('#cap-nest');
+    await page.click('#f-capture .go');
+    await online();
+    await until('the list was never finished', async () => (await byTitle(T('K2'))).length === 1);
+    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    const [parent] = await byTitle(T('K'));
+    const full = await (await api('/tasks/' + parent.id)).json();
+    if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
+    if ((await page.textContent('#toast-msg')).includes("couldn't")) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    await page.unroute('**/api/v1/tasks/*/relations', lose);
   });
 
   await step('sign-out-clears-saved-data', async () => {
@@ -280,7 +334,8 @@ try {
 } finally {
   await browser.close();
   const left = ((await (await api('/tasks?s=' + stamp)).json()) || []).filter(t => t.title.endsWith(String(stamp)));
-  for (const t of left) await api('/tasks/' + t.id, { method: 'DELETE' });
+  // A few tries: a Vikunja on SQLite (like the local one) can answer 500 "database is locked" while busy.
+  for (const t of left) for (let i = 0; i < 5 && !(await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++) await new Promise(ok => setTimeout(ok, 500));
 }
 console.log(failed ? `${failed} failed` : 'All passed');
 process.exitCode = failed ? 1 : 0;
