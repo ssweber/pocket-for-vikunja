@@ -109,6 +109,27 @@ try {
     const t = await apiTask();
     if (t.done || Math.round(t.percent_done * 100) !== 40) throw new Error(`after undo: done ${t.done}, percent_done ${t.percent_done}`);
   });
+  // This moves every overdue task of the test account to today, then puts them back with Undo.
+  await step('move-overdue-to-today-and-undo', async () => {
+    const me = await (await api('/user')).json();
+    const due = new Date(); due.setDate(due.getDate() - 2); due.setHours(9, 0, 0, 0);
+    const late = 'Pocket smoke overdue ' + stamp;
+    const made = await (await api(`/projects/${me.settings.default_project_id}/tasks`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: late, due_date: due.toISOString() }) })).json();
+    const lateRow = `.row:has(.title:has-text("${late}"))`;
+    await page.click('#btn-refresh');
+    await page.waitForSelector(`.sec.overdue + .list ${lateRow}`, { timeout: 15000 });
+    await page.click('#btn-overdue-today');
+    await page.waitForSelector(`.sec.today + .list ${lateRow}`, { timeout: 15000 });
+    const msg = await page.textContent('#toast-msg');
+    if (!/^Moved \d+ tasks? to today$/.test(msg)) throw new Error('toast: ' + msg);
+    const want = new Date(); want.setHours(9, 0, 0, 0);
+    const moved = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
+    if (moved.getTime() !== want.getTime()) throw new Error('moved to ' + moved);
+    await page.click('#toast-act:has-text("Undo")');
+    await page.waitForSelector(`.sec.overdue + .list ${lateRow}`, { timeout: 15000 });
+    const back = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
+    if (back.getTime() !== due.getTime()) throw new Error('undo put it at ' + back);
+  });
   await step('upload-html-attachment', async () => {
     const found = await (await api('/tasks?s=' + encodeURIComponent(title))).json();
     const id = found.find(t => t.title === title)?.id;

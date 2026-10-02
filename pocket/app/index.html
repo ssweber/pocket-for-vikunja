@@ -77,6 +77,8 @@ main{padding:4px var(--pad) calc(var(--tab-h) + var(--cap-h) + env(safe-area-ins
 .sec{margin:18px 0 6px;display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:15px}
 .sec .n{color:var(--muted);font-weight:600}
 .sec.overdue{color:var(--overdue)} .sec.today{color:var(--today)}
+.sec-act{margin-left:auto;border:0;background:transparent;color:var(--accent);font-size:14px;font-weight:650;padding:6px 2px}
+.sec-act[disabled]{opacity:.55}
 .list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
 .row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
 .row:first-of-type{border-top:0}
@@ -284,7 +286,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <!-- Today and a single project share the task-list markup -->
     <template x-if="!view.loading && !view.error && route.name !== 'projects'"><div>
       <template x-for="g in listGroups.filter(g => g.tasks.length)" :key="g.key"><div>
-        <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span></div>
+        <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span>
+          <template x-if="g.key === 'overdue'"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
             <div class="row" :class="{done: t.done, pending: t.pending}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0}">
@@ -981,6 +984,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   toast: {show: false, msg: '', action: null},
   offline: false,                              // the last request couldn't reach Vikunja
   creatingProject: false,
+  movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   flushing: false,
 
@@ -1367,6 +1371,37 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     view.addEventListener('touchmove', e => { if (g?.on) e.preventDefault(); }, {passive: false});
     view.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
     view.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  },
+
+  /* ---------- overdue ---------- */
+  // "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back.
+  async moveOverdueToToday(){
+    const tasks = this.view.groups.find(g => g.key === 'overdue')?.tasks || [];
+    if (!tasks.length || this.movingOverdue) return;
+    this.movingOverdue = true;
+    const now = new Date();
+    const moves = tasks.map(t => {
+      const d = new Date(t.due_date);
+      d.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
+      return {t, was: t.due_date, due: d.toISOString()};
+    });
+    const moved = await this.saveEach(moves.map(m => [m.t, {due_date: m.due}]));
+    this.movingOverdue = false;
+    const left = moves.length - moved.length, n = moved.length;
+    const undo = {label: 'Undo', fn: async () => {
+      const back = await this.saveEach(moves.filter(m => moved.includes(m.t)).map(m => [m.t, {due_date: m.was}]));
+      const k = n - back.length;
+      if (k) this.notify(`${k === 1 ? '1 task' : k + ' tasks'} couldn't be moved back and ${k === 1 ? 'is' : 'are'} still due today.`);
+      this.render();
+    }};
+    if (!n) return this.notify(this.offline ? 'Offline — not moved' : 'Not moved: Vikunja didn\'t save the changes');
+    this.notify(`Moved ${n === 1 ? '1 task' : n + ' tasks'} to today` + (left ? `. ${left === 1 ? '1 wasn\'t' : left + ' weren\'t'} saved and ${left === 1 ? 'is' : 'are'} still overdue.` : ''), undo);
+    this.render();
+  },
+  // Saves [task, patch] pairs one after another; resolves to the tasks that saved.
+  async saveEach(pairs){
+    const results = await Promise.allSettled(pairs.map(([t, patch]) => this.saveTask(t.id, patch, t)));
+    return pairs.filter((p, i) => results[i].status === 'fulfilled').map(([t]) => t);
   },
 
   /* ---------- quick add ---------- */
