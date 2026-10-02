@@ -211,6 +211,20 @@ try {
     await page.waitForSelector('#cap-chips .chip[data-kind=due]:not(.off)');
     await page.fill('#in-capture', '');
   });
+  await step('mark-read-words', async () => {
+    const marks = async n => {
+      await page.waitForFunction(n => document.querySelectorAll('#cap-marks mark').length === n, n);
+      return JSON.stringify(await page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent)));
+    };
+    await page.fill('#in-capture', 'Pay rent tomorrow at 5pm *bills');
+    let got = await marks(2);
+    if (got !== '["due:tomorrow at 5pm","labels:*bills"]') throw new Error('marked ' + got);
+    await page.click('#cap-chips .chip[data-kind=due]');                 // tapped off: those words stay, unmarked
+    if ((got = await marks(1)) !== '["labels:*bills"]') throw new Error('after tapping the chip: ' + got);
+    await page.fill('#in-capture', 'Groceries\n  - [ ] milk tomorrow\n\n- eggs !2');
+    if ((got = await marks(2)) !== '["due:tomorrow","priority:!2"]') throw new Error('in a list: ' + got);
+    await page.fill('#in-capture', '');
+  });
   await step('create-project-from-chip', async () => {
     const name = `PocketSmoke${stamp}`, t = `Pocket smoke new project task ${stamp}`;
     await page.fill('#in-capture', `${t} tomorrow +${name}`);

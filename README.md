@@ -75,7 +75,7 @@ A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn
 
 ## Quick add
 
-Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/), and follows your setting for it in Vikunja: the prefixes below, Todoist-style ones (`#project`, `@label`, `+person`), or none. As you type, chips under the box show what will be saved.
+Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/), and follows your setting for it in Vikunja: the prefixes below, Todoist-style ones (`#project`, `@label`, `+person`), or none. As you type, the words it reads are highlighted in the box, and chips under the box show what will be saved.
 
 <img src="docs/screenshots/pocket-capture.png" width="320" alt="Typing 'Call Ana Friday at 10 +work !3' shows chips for Work, Friday 10:00 AM and Priority 3">
 
@@ -92,7 +92,7 @@ Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://v
 | `every day`, `every 3 days`, `every two weeks`, `every month`, `every year`, `daily`, `weekly`, `biannually` | Repeat. Without a date, it starts at the next due time. |
 
 - **Suggestions:** as you type a label or a person, chips offer your existing labels and the people you share projects with, those who can see the task's project first. Tap one to finish the word.
-- **Read something you didn't mean?** Tap its chip and those words stay in the title. Tap again to undo. To turn it all off for one task, wrap the whole text in quotes: `"Read 1984 by Friday"`.
+- **Read something you didn't mean?** Tap its chip and those words stay in the title, no longer highlighted. Tap again to undo. To turn it all off for one task, wrap the whole text in quotes: `"Read 1984 by Friday"`.
 - **Pasting a list:** with more than one line in the box, each line becomes a task with its own dates and other shortcuts, and bullets, numbering and checkboxes are removed. The whole list goes to one project: add `+Kitchen` to any line, say the end of the last one. **↳ Under first line** makes the rest subtasks of the first.
 - **New projects:** if a `+project` doesn't exist yet, tap **Create project** to make it. The task goes there when you send it.
 - **Assigning someone:** the task has to be in a project they can see. Without a `+project`, if your default project isn't shared with `@sarah` but exactly one of your projects is, Pocket picks that one and shows it as a chip; tap it to undo. Otherwise a chip says she can't see the project, before you send.

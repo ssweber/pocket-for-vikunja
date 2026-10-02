@@ -198,16 +198,19 @@ for (const w of ['annually', 'biannually', 'semiannually', 'biennially', 'daily'
 const extra = why => ({ pocket: true, why });
 add({ text: 'Team sync every monday at 10', title: 'Team sync', repeat: { after: W, mode: 0 }, date: plus(4), time: '10:0', ...extra('"every monday"') });
 add({ text: 'Water plants every 3 days', title: 'Water plants', repeat: { after: 3 * D, mode: 0 }, date: ymd(REF), ...extra('a repeat without a date starts at the next due time') });
-add({ text: 'Pay rent before the 17th', title: 'Pay rent', date: '2021-7-17', ...extra('"the 17th" anywhere; the word before a date goes with it') });
+add({ text: 'Pay rent before the 17th', title: 'Pay rent', date: '2021-7-17', marked: ['due:before the 17th'], ...extra('"the 17th" anywhere; the word before a date goes with it') });
 add({ text: 'Report due the 17th', title: 'Report due', date: '2021-7-17', ...extra('"the 17th" anywhere') });
-add({ text: 'Call Bob in May', title: 'Call Bob', date: '2022-5-1', ...extra('a bare month after "in"') });
+add({ text: 'Call Bob in May', title: 'Call Bob', date: '2022-5-1', marked: ['due:in May'], ...extra('a bare month after "in"') });
 add({ text: 'Finish slides by Friday', title: 'Finish slides', date: plus(1), ...extra('the word before a date goes with it') });
 add({ text: 'Plan March madness pool', title: 'Plan March madness pool', date: null, ...extra('a bare month needs in/by/on/before/until') });
 add({ text: 'Now what', title: 'Now what', date: null, ...extra('"now" alone is not a date') });
 add({ text: 'Team sync for 2 hours', title: 'Team sync for 2 hours', date: null, ...extra('"for ..." is a duration') });
 add({ text: 'Order 3/4 inch screws', title: 'Order 3/4 inch screws', date: null, ...extra('numeric dates only at the ends') });
-add({ text: 'Pay rent tomorrow', ignore: { due: true }, title: 'Pay rent tomorrow', date: null, ...extra('a tapped-off chip keeps its words') });
-add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem Ipsum @ann', date: '2021-12-21', time: '15:0', labels: ['calls'], assignees: ['ann'], project: 'project', priority: 2, ...extra('everything at once') });
+add({ text: 'Pay rent tomorrow', ignore: { due: true }, title: 'Pay rent tomorrow', date: null, marked: [], ...extra('a tapped-off chip keeps its words') });
+add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem Ipsum @ann', date: '2021-12-21', time: '15:0', labels: ['calls'], assignees: ['ann'], project: 'project', priority: 2,
+  marked: ['due:dec 21 at 3pm', 'assignees:@ann', 'labels:*calls', 'project:+project', 'priority:!2'], ...extra('everything at once') });
+add({ text: 'Team sync every monday @ 10', title: 'Team sync', repeat: { after: W, mode: 0 }, time: '10:0', marked: ['repeat:every monday', 'due:@ 10'],
+  ...extra('each phrase is marked where it was typed, even "@ 10"') });
 
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
@@ -227,7 +230,8 @@ const PROJECTS = ['project', 'project with long name', 'today', 'project1'].map(
 const results = await page.evaluate(([cases, projects]) => cases.map(c => {
   const r = parseCapture(c.text, projects, { now: new Date(c.now), dueTime: c.dueTime, ignore: c.ignore, mode: c.mode });
   return { title: r.title, date: r.due && `${r.due.getFullYear()}-${r.due.getMonth() + 1}-${r.due.getDate()}`, time: r.due && `${r.due.getHours()}:${r.due.getMinutes()}`,
-    repeat: r.repeat && { after: r.repeat.after, mode: r.repeat.mode }, labels: r.labels, assignees: r.assignees, project: r.project?.title ?? r.projectMiss, priority: r.priority };
+    repeat: r.repeat && { after: r.repeat.after, mode: r.repeat.mode }, labels: r.labels, assignees: r.assignees, project: r.project?.title ?? r.projectMiss, priority: r.priority,
+    marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
 await browser.close();
@@ -242,6 +246,14 @@ cases.forEach((c, i) => {
   else if ('date' in c && r.date !== c.date) bad.push(`date ${r.date}`);
   if ('time' in c && r.time !== c.time) bad.push(`time ${r.time}`);
   for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority']) if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
+  const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
+  if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
+  // The marks are what was read: taking them out of the text leaves the title, give or take spaces. (@username stays.)
+  if (c.mode !== 'disabled' && !/^\s*(["'])[\s\S]*\1\s*$/.test(c.text)) {
+    let rest = c.text;
+    for (const m of [...r.marks].reverse()) if (m.kind !== 'assignees') rest = rest.slice(0, m.start) + ' ' + rest.slice(m.end);
+    if (rest.replace(/\s+/g, '') !== r.title.replace(/\s+/g, '')) bad.push(`marks leave "${rest.replace(/\s+/g, ' ').trim()}"`);
+  }
   if (bad.length) { failed++; console.log(`FAIL ${JSON.stringify(c.text)}${c.pocket ? ` [Pocket: ${c.why}]` : ''}: ${bad.join(', ')}`); }
 });
 lists.forEach((l, i) => {
