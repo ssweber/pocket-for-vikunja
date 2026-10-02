@@ -164,7 +164,9 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 #sheet .bar{display:flex;align-items:center;gap:8px;padding:12px 12px 6px}
 #sheet .bar .grab{flex:1;display:flex;justify-content:center}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
-#sheet .scroll{flex:1;overflow:auto;padding:4px var(--pad) calc(env(safe-area-inset-bottom) + 32px);-webkit-overflow-scrolling:touch}
+/* While a sheet is open, the page behind it stays put: the sheet keeps its scrolling to itself, even at its ends */
+body.sheet-open{overflow:hidden}
+#sheet .scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:4px var(--pad) calc(env(safe-area-inset-bottom) + 32px);-webkit-overflow-scrolling:touch}
 .d-title{display:flex;gap:12px;align-items:flex-start;margin:4px 0 18px}
 .d-title textarea{flex:1;border:0;background:transparent;font-size:24px;font-weight:750;line-height:1.2;letter-spacing:-.01em;resize:none;outline:0;padding:0;min-height:30px}
 .d-title .check{width:30px;height:30px;margin-top:0}
@@ -182,7 +184,6 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .prios button.hot[aria-pressed=true]{background:var(--overdue);color:#fff}
 .pct-range{flex:1;min-width:0;accent-color:var(--accent);margin:6px 0}
 .pct-out{width:44px;text-align:right;font-weight:650}
-.pct-note{flex-basis:100%;margin:0;font-size:13px}
 .assign-form{flex:1;min-width:120px;display:flex}
 .assign-form input{flex:1;min-width:0;padding:6px 10px;border-radius:var(--r-chip);border:1.5px solid var(--line);background:var(--bg);font-size:15px;outline:0}
 .assign-form input:focus{border-color:var(--accent)}
@@ -426,7 +427,6 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <input type="range" id="d-progress" class="pct-range" min="0" max="100" step="10" aria-label="Progress" :value="pctOf(sheet.task)"
                  @input="sheet.pct = +$event.target.value" @change="save(progressPatch(sheet.task, +$event.target.value)); sheet.pct = null">
           <span class="num pct-out" x-text="(sheet.pct ?? pctOf(sheet.task)) + '%'"></span>
-          <span class="note pct-note">100% marks the task done. In the list, hold a task, then slide sideways.</span>
         </span></div>
         <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
           <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
