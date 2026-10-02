@@ -643,6 +643,9 @@ const sharedToken = {
 };
 // Home-screen app, as opposed to a browser tab.
 const INSTALLED = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// When this copy of Pocket was put on the server: the page's Last-Modified, which the browser gives in local time as
+// "MM/DD/YYYY hh:mm:ss" (or the time now, if the server didn't say).
+const LOADED = (m => m && new Date(m[3], m[1] - 1, m[2], m[4], m[5], m[6]))(document.lastModified.match(/(\d+)\/(\d+)\/(\d+) (\d+):(\d+):(\d+)/));
 
 // Renew the shared session the way Vikunja's own tabs do. The refresh cookie works once and is replaced on every
 // renewal, so renewals take Vikunja's "vikunja-token-refresh" lock, and if someone else renewed while we waited,
@@ -1191,7 +1194,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       this.sessionChanged();                                                  // e.g. back from signing in
-      if (this.signedIn && this.screen === 'app' && !this.sheet.open) this.render();
+      if (this.signedIn && this.screen === 'app' && !this.sheet.open) { this.render(); this.updateIfNew(); }
     });
     // Vikunja's web app (or a sign-in in another tab) changed the shared session.
     window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
@@ -1495,7 +1498,21 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.view.groups = [{key: r.showDone ? 'done' : 'open', cls: '', title: r.showDone ? 'Done' : 'Open', tasks: list.map(t => ({...t}))}];
     saved.set(viewKey(r), {groups: this.view.groups, project: p, at: new Date().toISOString()});
   },
+  /* Load a newer Pocket if the server has one, when nothing would be lost by reloading; otherwise the next refresh or
+     return to Pocket tries again. It only asks whether the page changed since this copy was loaded, which the server
+     answers in a few bytes, and runs alongside the list refresh, not before it. */
+  async updateIfNew(){
+    if (!LOADED || !this.signedIn || this.screen !== 'app') return;
+    let res;
+    try { res = await fetch(new URL('.', location.href), {cache: 'no-store', headers: {'If-Modified-Since': LOADED.toUTCString()}}); }
+    catch { return; }                                                          // offline: no news
+    if (res.status !== 200) return;
+    const busy = this.sheet.open || this.capture.trim() || this.capPhotos.length || this.capBusy || this.searchQ || this.movingOverdue
+      || this.pending.length || pendingSaves;
+    if (!busy) location.reload();
+  },
   async refresh(){
+    this.updateIfNew();
     this.refreshing = true;
     this.people = null; this.access = {}; this.userKnown = {}; this.labelsLoaded = false;   // sharing and labels may have changed too
     try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }

@@ -73,6 +73,25 @@ try {
     await page.waitForSelector('#btn-refresh:not([disabled])');
     if (!await before.evaluate(el => el.isConnected)) throw new Error('refresh rebuilt the list');
   });
+  await step('refresh-loads-a-new-version', async () => {
+    // A second tab whose copy of Pocket looks older than the server's.
+    const old = await page.context().newPage();
+    await old.addInitScript(() => Object.defineProperty(document, 'lastModified', { get: () => '01/01/2000 00:00:00' }));
+    await old.goto(APP);
+    await old.waitForSelector(row, { timeout: 15000 });
+    await old.evaluate(() => window.marker = 1);
+    // Something typed holds the reload off: the list refreshes in place.
+    await old.fill('#in-capture', 'half-typed');
+    await old.click('#btn-refresh');
+    await old.waitForSelector('#btn-refresh:not([disabled])');
+    await old.waitForTimeout(500);
+    if (!await old.evaluate(() => window.marker) || await old.inputValue('#in-capture') !== 'half-typed') throw new Error('reloaded over typed text');
+    await old.fill('#in-capture', '');
+    await old.click('#btn-refresh');
+    await old.waitForFunction(() => !window.marker, null, { timeout: 10000 });
+    await old.waitForSelector(row, { timeout: 15000 });
+    await old.close();
+  });
   await step('tick-in-list-and-undo', async () => {
     await page.click(`${row} .check`);
     await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
