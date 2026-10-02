@@ -161,13 +161,40 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 #sheet{position:fixed;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 28px);z-index:21;background:var(--bg);border-radius:var(--r-sheet) var(--r-sheet) 0 0;display:flex;flex-direction:column;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:720px;margin:0 auto}
 #sheet.show{transform:none}
 @media (prefers-reduced-motion:reduce){#sheet,#scrim,header.top{transition:none}}
-#sheet .bar{display:flex;align-items:center;gap:8px;padding:12px 12px 6px}
-#sheet .bar .grab{flex:1;display:flex;justify-content:center}
+#sheet .bar{position:relative;display:flex;align-items:center;gap:8px;padding:12px 12px 6px}
+#sheet .bar .bar-meta{flex:1;min-width:0}
+#sheet .bar .grab{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex}
+/* the task's number and priority, top left */
+.bar-meta-in{display:flex;align-items:center;gap:10px;padding-left:4px}
+.task-id{color:var(--muted);font-size:14px;font-weight:650}
+.prio-pick{position:relative;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px 0 10px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted);font-size:14px;font-weight:650}
+.prio-pick:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
+.prio-pick select{position:absolute;inset:0;width:100%;opacity:0;font-size:16px;cursor:pointer}
+.prio-pick .bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px}
+.prio-pick .bars i{width:3px;border-radius:1px;background:var(--line)}
+.prio-pick .bars i:nth-child(1){height:5px} .prio-pick .bars i:nth-child(2){height:7px} .prio-pick .bars i:nth-child(3){height:9px}
+.prio-pick .bars i:nth-child(4){height:12px} .prio-pick .bars i:nth-child(5){height:14px}
+.prio-pick.p1,.prio-pick.p2{color:var(--ink)}
+.prio-pick.p1 i:nth-child(-n+1),.prio-pick.p2 i:nth-child(-n+2){background:var(--ink)}
+.prio-pick.p3,.prio-pick.p4,.prio-pick.p5{color:var(--overdue)}
+.prio-pick.p3 i:nth-child(-n+3),.prio-pick.p4 i:nth-child(-n+4),.prio-pick.p5 i{background:var(--overdue)}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
 /* While a sheet is open, the page behind it stays put: the sheet keeps its scrolling to itself, even at its ends */
 body.sheet-open{overflow:hidden}
 #sheet .scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:4px var(--pad) calc(env(safe-area-inset-bottom) + 32px);-webkit-overflow-scrolling:touch}
-.d-title{display:flex;gap:12px;align-items:flex-start;margin:4px 0 18px}
+/* where the task lives, above its title */
+.d-path{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;margin:2px 0 8px 2px;color:var(--muted);font-size:14px;font-weight:600}
+.d-path .dot{margin:0}
+.d-parent{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.d-parent .linkish{font-size:14px;font-weight:600}
+.d-title{display:flex;gap:12px;align-items:flex-start;margin:0 0 6px}
+/* progress under the title: a bar to slide along, which thickens while it's being set */
+.d-progress{display:flex;align-items:center;gap:10px;height:32px;margin:0 0 6px 42px;touch-action:pan-y;cursor:ew-resize;-webkit-user-select:none;user-select:none}
+.d-progress .track{flex:1;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;transition:height .12s}
+.d-progress .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent)}
+.d-progress .num{width:44px;text-align:right;color:var(--muted);font-size:13px;font-weight:650}
+.d-progress.setting .track{height:12px}
+.d-progress.setting .num{color:var(--accent);font-size:16px}
 .d-title textarea{flex:1;border:0;background:transparent;font-size:24px;font-weight:750;line-height:1.2;letter-spacing:-.01em;resize:none;outline:0;padding:0;min-height:30px}
 .d-title .check{width:30px;height:30px;margin-top:0}
 .card{background:var(--surface);border-radius:var(--r-row);margin-bottom:14px}
@@ -176,14 +203,6 @@ body.sheet-open{overflow:hidden}
 .prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:6px 0;outline:0}
-.prop.stack{flex-direction:column;align-items:stretch;gap:8px;padding-top:12px;padding-bottom:12px}
-.prop.stack .k{width:auto}
-.prios{display:flex;gap:4px;flex:1}
-.prios button{flex:1;border:0;border-radius:8px;background:var(--sunk);padding:9px 0;font-size:14px;font-weight:650;color:var(--muted)}
-.prios button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
-.prios button.hot[aria-pressed=true]{background:var(--overdue);color:#fff}
-.pct-range{flex:1;min-width:0;accent-color:var(--accent);margin:6px 0}
-.pct-out{width:44px;text-align:right;font-weight:650}
 .assign-form{flex:1;min-width:120px;display:flex}
 .assign-form input{flex:1;min-width:0;padding:6px 10px;border-radius:var(--r-chip);border:1.5px solid var(--line);background:var(--bg);font-size:15px;outline:0}
 .assign-form input:focus{border-color:var(--accent)}
@@ -388,8 +407,18 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
 <section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="sheet.kind === 'account' ? 'Account' : 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <div class="bar">
-    <span style="width:40px"></span>
+    <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
+      <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
+      <label class="prio-pick" :class="'p' + (sheet.task.priority || 0)">
+        <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span x-text="sheet.task.priority ? PRIOS[sheet.task.priority].label : 'Priority'"></span>
+        <select id="d-prio" aria-label="Priority" @change="save({priority: +$event.target.value})">
+          <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
+        </select>
+      </label>
+    </div></template></div>
     <div class="grab"><i></i></div>
+    <template x-if="sheet.kind === 'task' && sheet.task?.identifier"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
   </div>
   <div class="scroll" id="sheet-body">
@@ -397,11 +426,23 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <template x-if="sheet.kind === 'task' && sheet.error"><div class="err" x-html="sheet.error"></div></template>
 
     <template x-if="sheet.kind === 'task' && sheet.task"><div>
+      <!-- Where the task lives: its project, and the task it's part of -->
+      <div class="d-path" id="d-path">
+        <i class="dot" :style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><span x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></span>
+        <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTask.title"></button></span></template>
+      </div>
       <div class="d-title">
         <button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="save({done: !sheet.task.done})"><svg class="i"><use href="#i-check"/></svg></button>
         <textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
                   x-effect="sheet.title; $nextTick(() => grow($el))"
                   @keydown.enter.prevent="$el.blur()" @change="saveTitle()"></textarea>
+      </div>
+      <!-- Progress, as in the list: slide along the bar, from where it is, in steps of 10% -->
+      <div class="d-progress" id="d-progress" role="slider" tabindex="0" aria-label="Progress" aria-valuemin="0" aria-valuemax="100"
+           :aria-valuenow="sheet.pct ?? pctOf(sheet.task)" :aria-valuetext="(sheet.pct ?? pctOf(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
+           :style="{'--pct': (sheet.pct ?? pctOf(sheet.task)) / 100}"
+           @pointerdown="dragProgress($event)" @keydown.right.prevent="nudgeProgress(10)" @keydown.left.prevent="nudgeProgress(-10)">
+        <span class="track"><i></i></span><span class="num" x-text="(sheet.pct ?? pctOf(sheet.task)) + '%'"></span>
       </div>
       <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
 
@@ -410,52 +451,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <input type="datetime-local" id="d-due" aria-label="Due date" :value="toLocalInput(sheet.task.due_date)" @change="save({due_date: fromLocalInput($event.target.value)})">
           <template x-if="isSet(sheet.task.due_date)"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="save({due_date: ZERO})"><svg class="i"><use href="#i-close"/></svg></button></template>
         </span></div>
-        <div class="prop"><span class="k">Repeats</span><span class="v">
-          <select id="d-repeat" aria-label="Repeats" @change="setRepeat($event.target.value)">
-            <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
-          </select>
-        </span></div>
-        <div class="prop"><span class="k">Project</span><span class="v">
-          <select id="d-proj" aria-label="Project" @change="save({project_id: +$event.target.value})">
-            <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheet.task.project_id" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>
-          </select>
-        </span></div>
-        <div class="prop stack"><span class="k">Priority</span><span class="v"><div class="prios" role="group" aria-label="Priority">
-          <template x-for="p in PRIOS" :key="p.n"><button type="button" :data-prio="p.n" :class="p.n >= 3 ? 'hot' : ''" :aria-pressed="String((sheet.task.priority || 0) === p.n)" @click="save({priority: p.n})" x-text="p.label"></button></template>
-        </div></span></div>
-        <div class="prop stack"><span class="k">Progress</span><span class="v">
-          <input type="range" id="d-progress" class="pct-range" min="0" max="100" step="10" aria-label="Progress" :value="pctOf(sheet.task)"
-                 @input="sheet.pct = +$event.target.value" @change="save(progressPatch(sheet.task, +$event.target.value)); sheet.pct = null">
-          <span class="num pct-out" x-text="(sheet.pct ?? pctOf(sheet.task)) + '%'"></span>
-        </span></div>
-        <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
-          <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
-          <template x-if="!sheet.assigning"><button class="add-label" id="d-add-assignee" @click="sheet.assigning = true">Add</button></template>
-          <template x-if="sheet.assigning"><form class="assign-form" @submit.prevent="assign()">
-            <input id="d-assign-in" placeholder="Username" aria-label="Username to assign" autocapitalize="off" autocomplete="off" spellcheck="false"
-                   x-model="sheet.assignName" x-init="$nextTick(() => $el.focus())" @keydown.escape.stop="sheet.assigning = false">
-          </form></template>
-        </span></div>
-        <div class="prop"><span class="k">Labels</span><span class="v">
-          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
-          <button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button>
-        </span></div>
-        <template x-if="parentTask"><div class="prop"><span class="k">Part of</span><span class="v"><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTask.title"></button></span></div></template>
-        <template x-if="sheet.task.identifier"><div class="prop"><span class="k">ID</span><span class="v num" style="color:var(--muted)" x-text="sheet.task.identifier"></span></div></template>
       </div>
-
-      <template x-if="picker.open"><div class="card picker">
-        <template x-if="picker.loading"><div class="loading" style="padding:16px">Loading labels…</div></template>
-        <template x-if="picker.error"><div class="err" x-html="picker.error"></div></template>
-        <template x-if="!picker.loading && !picker.error"><div>
-          <input id="lp-q" placeholder="Find or create a label" aria-label="Label" x-model="picker.q" x-init="$nextTick(() => $el.focus())">
-          <div id="lp-list">
-            <template x-for="l in pickerMatches" :key="l.id"><button @click="addLabel(l)"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span></button></template>
-            <template x-if="pickerCanCreate"><button @click="addLabel(null)" x-text="'Create “' + picker.q.trim() + '”'"></button></template>
-            <template x-if="!pickerMatches.length && !picker.q.trim()"><p class="note" style="padding:0 14px 10px">No other labels. Type to create one.</p></template>
-          </div>
-        </div></template>
-      </div></template>
 
       <div class="h3">Notes</div>
       <div class="card" id="d-desc-card">
@@ -466,6 +462,13 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="sheet.editingDesc = false">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
         </div></template>
       </div>
+
+      <template x-if="(sheet.task.attachments || []).length"><div>
+        <div class="h3">Attachments<span class="n num" x-text="sheet.task.attachments.length"></span></div>
+        <div class="card"><template x-for="a in sheet.task.attachments" :key="a.id">
+          <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+        </template></div>
+      </div></template>
 
       <div class="h3">Subtasks<span class="n num" id="d-subcount" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
       <div class="card" id="d-subtasks">
@@ -483,13 +486,6 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         </form>
       </div>
 
-      <template x-if="(sheet.task.attachments || []).length"><div>
-        <div class="h3">Attachments<span class="n num" x-text="sheet.task.attachments.length"></span></div>
-        <div class="card"><template x-for="a in sheet.task.attachments" :key="a.id">
-          <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
-        </template></div>
-      </div></template>
-
       <div class="h3">Comments<span class="n num" id="d-ccount" x-text="sheet.comments?.length || ''"></span></div>
       <div class="card" id="d-comments">
         <template x-if="sheet.commentsNote"><p class="note" style="padding:12px 14px;margin:0" x-html="sheet.commentsNote"></p></template>
@@ -502,6 +498,44 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="sheet.commentBusy"><svg class="i"><use href="#i-send"/></svg></button>
         </form></template>
       </div>
+
+      <div class="h3">Details</div>
+      <div class="card">
+        <div class="prop"><span class="k">Project</span><span class="v">
+          <select id="d-proj" aria-label="Project" @change="save({project_id: +$event.target.value})">
+            <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheet.task.project_id" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>
+          </select>
+        </span></div>
+        <div class="prop"><span class="k">Labels</span><span class="v">
+          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button>
+        </span></div>
+        <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
+          <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <template x-if="!sheet.assigning"><button class="add-label" id="d-add-assignee" @click="sheet.assigning = true">Add</button></template>
+          <template x-if="sheet.assigning"><form class="assign-form" @submit.prevent="assign()">
+            <input id="d-assign-in" placeholder="Username" aria-label="Username to assign" autocapitalize="off" autocomplete="off" spellcheck="false"
+                   x-model="sheet.assignName" x-init="$nextTick(() => $el.focus())" @keydown.escape.stop="sheet.assigning = false">
+          </form></template>
+        </span></div>
+        <div class="prop"><span class="k">Repeats</span><span class="v">
+          <select id="d-repeat" aria-label="Repeats" @change="setRepeat($event.target.value)">
+            <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
+          </select>
+        </span></div>
+      </div>
+      <template x-if="picker.open"><div class="card picker">
+        <template x-if="picker.loading"><div class="loading" style="padding:16px">Loading labels…</div></template>
+        <template x-if="picker.error"><div class="err" x-html="picker.error"></div></template>
+        <template x-if="!picker.loading && !picker.error"><div>
+          <input id="lp-q" placeholder="Find or create a label" aria-label="Label" x-model="picker.q" x-init="$nextTick(() => $el.focus())">
+          <div id="lp-list">
+            <template x-for="l in pickerMatches" :key="l.id"><button @click="addLabel(l)"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span></button></template>
+            <template x-if="pickerCanCreate"><button @click="addLabel(null)" x-text="'Create “' + picker.q.trim() + '”'"></button></template>
+            <template x-if="!pickerMatches.length && !picker.q.trim()"><p class="note" style="padding:0 14px 10px">No other labels. Type to create one.</p></template>
+          </div>
+        </div></template>
+      </div></template>
 
       <div class="danger-zone"><button class="btn danger block" id="d-delete" @click="deleteTask()">Delete task</button></div>
     </div></template>
@@ -540,7 +574,7 @@ const colorOf = hex => /^#?([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex |
 const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|text\/plain)$/;
 const mimeOf = t => String(t || '').split(';')[0].trim().toLowerCase();
 const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
-const PRIOS = [{n:0,label:'None'},{n:1,label:'Low'},{n:2,label:'Med'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Now'}];
+const PRIOS = [{n:0,label:'No priority'},{n:1,label:'Low'},{n:2,label:'Medium'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Do now'}];
 // Fit a text box to its text. A hidden box measures 0, so leave its height alone until it can be measured.
 const grow = ta => { ta.style.height = 'auto'; if (ta.scrollHeight) ta.style.height = ta.scrollHeight + 'px'; };
 const cache = new Map();                       // task id -> latest task from the server
@@ -2121,6 +2155,25 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     });
     saveChain = run.catch(() => {});
     return run;
+  },
+  // The progress bar under the title. Like a list row: slide sideways, from where it is, in steps of 10%; the bar's
+  // width is 0% to 100%, and 100% marks the task done. A move that's mostly up or down scrolls instead (touch-action).
+  dragProgress(e){
+    const el = e.currentTarget, w = el.querySelector('.track').clientWidth, x0 = e.clientX;
+    const t = this.sheet.task, was = pctOf(t), start = Math.round(was / 10) * 10;
+    el.setPointerCapture(e.pointerId);
+    const move = ev => { this.sheet.pct = Math.max(0, Math.min(100, start + Math.round((ev.clientX - x0) / w * 10) * 10)); };
+    const end = ev => {
+      for (const [type, fn] of handlers) el.removeEventListener(type, fn);
+      const pct = this.sheet.pct; this.sheet.pct = null;
+      if (ev.type === 'pointerup' && pct !== null && pct !== was && this.sheet.task === t) this.save(progressPatch(t, pct));
+    };
+    const handlers = [['pointermove', move], ['pointerup', end], ['pointercancel', end]];
+    for (const [type, fn] of handlers) el.addEventListener(type, fn);
+  },
+  nudgeProgress(step){                           // the arrow keys, on the focused bar
+    const t = this.sheet.task, was = pctOf(t), pct = Math.max(0, Math.min(100, Math.round(was / 10) * 10 + step));
+    if (pct !== was) this.save(progressPatch(t, pct));
   },
   saveTitle(){
     const v = this.sheet.title.trim();

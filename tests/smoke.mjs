@@ -133,7 +133,7 @@ try {
   await step('search', async () => {
     await page.click('#btn-search');
     if (!await page.evaluate(() => document.activeElement?.id === 'in-search')) throw new Error('the search box isn\'t focused');
-    if (await page.isVisible('#capture')) throw new Error('the add box still shows');
+    await page.waitForSelector('#capture', { state: 'hidden', timeout: 5000 }).catch(() => { throw new Error('the add box still shows'); });
     await page.fill('#in-search', String(stamp));
     await page.waitForSelector(`#view .sec:has-text("Open") + .list ${row}`, { timeout: 10000 });
     await page.click('#btn-search-cancel');
@@ -191,18 +191,29 @@ try {
   });
   await step('set-priority', async () => {
     const titleBox = await page.$('#d-title');
-    await page.click('[data-prio="1"]');
+    await page.selectOption('#d-prio', '1');
     await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
     if (!await titleBox.evaluate(el => el.isConnected)) throw new Error('saving rebuilt the sheet');
-    if (await page.getAttribute('[data-prio="1"]', 'aria-pressed') !== 'true') throw new Error('priority not shown as selected');
+    const shown = await page.textContent('.prio-pick');
+    if (await page.inputValue('#d-prio') !== '1' || !shown.includes('Low')) throw new Error('priority shows ' + shown.trim());
   });
   await page.screenshot({ path: `${OUT}/sheet.png` });
   await step('progress-in-sheet', async () => {
-    if (await page.inputValue('#d-progress') !== '40') throw new Error('sheet shows ' + await page.inputValue('#d-progress'));
-    await page.$eval('#d-progress', el => { el.value = '60'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
-    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
-    const t = await apiTask();
-    if (Math.round(t.percent_done * 100) !== 60) throw new Error('saved percent_done ' + t.percent_done);
+    const savedPct = async want => {
+      for (let i = 0; i < 40 && Math.round((await apiTask()).percent_done * 100) !== want; i++) await page.waitForTimeout(250);
+      const got = Math.round((await apiTask()).percent_done * 100);
+      if (got !== want) throw new Error(`saved ${got}%, not ${want}%`);
+    };
+    if (await page.getAttribute('#d-progress', 'aria-valuenow') !== '40') throw new Error('sheet shows ' + await page.getAttribute('#d-progress', 'aria-valuenow'));
+    const box = await page.locator('#d-progress .track').boundingBox();     // slide two steps along the bar
+    await page.mouse.move(box.x + 20, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 20 + box.width * .2, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await savedPct(60);
+    await page.focus('#d-progress');                                          // and one more with the arrow key
+    await page.keyboard.press('ArrowRight');
+    await savedPct(70);
   });
   await step('mark-done', async () => {
     await page.click('#d-done');
