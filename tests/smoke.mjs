@@ -130,6 +130,16 @@ try {
     const back = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (back.getTime() !== due.getTime()) throw new Error('undo put it at ' + back);
   });
+  await step('search', async () => {
+    await page.click('#btn-search');
+    if (!await page.evaluate(() => document.activeElement?.id === 'in-search')) throw new Error('the search box isn\'t focused');
+    if (await page.isVisible('#capture')) throw new Error('the add box still shows');
+    await page.fill('#in-search', String(stamp));
+    await page.waitForSelector(`#view .sec:has-text("Open") + .list ${row}`, { timeout: 10000 });
+    await page.click('#btn-search-cancel');
+    await page.waitForSelector('#capture:not([hidden])');
+    if (await page.getAttribute('nav.tabs a[data-tab=today]', 'aria-current') !== 'page') throw new Error('Cancel didn\'t go back to Today');
+  });
   await step('upload-html-attachment', async () => {
     const found = await (await api('/tasks?s=' + encodeURIComponent(title))).json();
     const id = found.find(t => t.title === title)?.id;

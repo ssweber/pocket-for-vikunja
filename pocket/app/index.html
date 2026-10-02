@@ -66,10 +66,18 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 #app{min-height:100%}
 /* The header is one row: the views on the left, refresh and account on the right. It slides up out of the way while the
    list scrolls down, and back when it scrolls up. The strip under the status bar stays, so the list never shows under it. */
-header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);padding:calc(env(safe-area-inset-top) + 8px) var(--pad) 8px;display:flex;align-items:center;gap:8px;transition:transform .22s ease}
+header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);padding:calc(env(safe-area-inset-top) + 8px) var(--pad) 8px;display:flex;align-items:center;gap:6px;transition:transform .22s ease}
 header.top.tucked{transform:translateY(-100%)}
 #app::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:6}
+header.top > .icon-btn{width:38px;height:38px}
 nav.tabs{flex:1;min-width:0;display:flex;gap:4px}
+/* searching: the search box takes the whole row */
+header.top .search{display:none;flex:1;min-width:0;align-items:center;gap:8px;height:40px;padding:0 4px 0 12px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted)}
+header.top.searching .search{display:flex}
+header.top.searching > nav.tabs,header.top.searching > .icon-btn{display:none}
+header.top .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;color:var(--ink);padding:0}
+header.top .search input::-webkit-search-cancel-button{-webkit-appearance:none}
+header.top .search .linkish{font-weight:600;padding:8px 10px}
 nav.tabs a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 11px;border-radius:var(--r-chip);color:var(--muted);text-decoration:none;font-size:15px;font-weight:650}
 nav.tabs a svg{width:20px;height:20px}
 nav.tabs a[aria-current=page]{background:var(--surface);color:var(--accent)}
@@ -237,6 +245,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/></symbol>
 </svg>
 
 <!-- ============ LOGIN ============ -->
@@ -276,12 +285,21 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
 <!-- ============ APP ============ -->
 <div id="app" :hidden="screen !== 'app'" hidden>
-  <!-- Slides away as the list scrolls down, and back as soon as it scrolls up (initHeader) -->
-  <header class="top" x-ref="header" :class="{tucked: headerTucked}">
+  <!-- Slides away as the list scrolls down, and back as soon as it scrolls up (initHeader). While searching, it holds the
+       search box instead; that's always here, hidden, so the magnifier can focus it during the tap and the phone's
+       keyboard opens (see openSearch). -->
+  <header class="top" x-ref="header" :class="{tucked: headerTucked, searching: route.name === 'search'}">
+    <form class="search" role="search" @submit.prevent="$refs.searchIn.blur()">
+      <svg class="i"><use href="#i-search"/></svg>
+      <input type="search" id="in-search" x-ref="searchIn" x-model="searchQ" placeholder="Search tasks" aria-label="Search tasks"
+             enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" id="btn-search-cancel" class="linkish" @click="closeSearch()">Cancel</button>
+    </form>
     <nav class="tabs" aria-label="Views">
       <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg>Today</a>
       <a href="#/projects" data-tab="projects" :aria-current="route.name !== 'today' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg>Projects</a>
     </nav>
+    <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
     <button id="btn-refresh" class="icon-btn" aria-label="Refresh" :disabled="refreshing" @click="refresh()"><svg class="i"><use href="#i-refresh"/></svg></button>
     <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
   </header>
@@ -291,7 +309,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <button id="btn-back" class="icon-btn plain" aria-label="Back to projects" @click="go('#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div>
     </div></template>
-    <template x-if="offline"><p class="offline" role="status" x-text="'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks are sent when you\'re back online.'"></p></template>
+    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks are sent when you\'re back online.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
 
     <template x-if="!view.loading && view.error"><div>
@@ -342,7 +360,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
   </main>
 
-  <div id="capture" x-ref="captureBar">
+  <div id="capture" x-ref="captureBar" :hidden="route.name === 'search'">
     <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" x-ref="capMarks" aria-hidden="true" x-html="capMarksHtml"></div>
@@ -730,6 +748,7 @@ function currentRoute(){
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(q || '');
   if (parts[0] === 'projects') return {name:'projects'};
+  if (parts[0] === 'search') return {name:'search'};
   if (parts[0] === 'project' && parts[1]) return {name:'project', id: +parts[1], showDone: params.get('done') === '1'};
   if (parts[0] === 'add') return {name:'add', text: params.get('text') || params.get('title') || ''};
   return {name:'today'};
@@ -992,6 +1011,9 @@ const saved = {
   set(k, v){ store.set('saved.' + k, JSON.stringify(v)); },
   clear(){ try { for (const k of Object.keys(localStorage)) if (k.startsWith('pocket.saved.')) localStorage.removeItem(k); } catch {} },
 };
+// Open tasks in a list: dated first, soonest first, then undated, by priority and then newest first.
+const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date)),
+  ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
 const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
@@ -1020,6 +1042,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null},
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
+  searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
   capture: '', capFocus: false, capBusy: false, capNest: false, capIgnore: {},
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → projectusers.
@@ -1050,6 +1073,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
     setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
     this.$watch('capture', v => { if (!v.trim()) { this.capIgnore = {}; this.capNest = false; } });
+    // Search once typing pauses.
+    let searchTimer;
+    this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });
     // Once typing pauses, find out whether each @username can see the task's project.
     let accessTimer;
     this.$watch('accessQuery', q => { clearTimeout(accessTimer); if (q) accessTimer = setTimeout(() => this.checkAccess(), 500); });
@@ -1233,6 +1259,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   get head(){
     const r = this.route;
     if (r.name === 'projects') return {kicker: '', title: 'Projects'};
+    if (r.name === 'search') return {kicker: '', title: 'Search'};
     if (r.name === 'project') {
       const p = this.view.project; if (!p) return {kicker: '', title: 'Project'};
       return {kicker: this.projById.get(p.parent_project_id)?.title || '', title: p.title};
@@ -1243,13 +1270,16 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   get todayDate(){ return new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}); },
   get emptyText(){
     if (this.route.name === 'today') return {title: 'Nothing due this week.', body: `Today is ${this.todayDate}. Add a task below — try “Call Ana tomorrow !3”.`};
+    if (this.route.name === 'search') return this.searchQ.trim()
+      ? {title: `No tasks match “${this.searchQ.trim()}”.`, body: 'Searching looks at titles and notes, in open and done tasks.'}
+      : {title: 'Search your tasks.', body: 'Finds open and done tasks in all your projects by words in their title or notes, or by number, like #12.'};
     if (!this.view.project) return {title: 'Project not found.', body: 'It may be archived or you lost access.'};
     return this.route.showDone ? {title: 'Nothing done here yet.', body: ''} : {title: 'All clear.', body: 'New tasks you add now land in this project.'};
   },
   rowMeta(t){
     const out = [], due = dueInfo(t.due_date);
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
-    const p = this.route.name === 'today' && this.projById.get(t.project_id);
+    const p = (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
     if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
     for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
@@ -1274,6 +1304,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       if (r.name === 'today') await this.loadToday(seq);
       else if (r.name === 'projects') { if (!this.projects.length) await this.loadProjects(); }
       else if (r.name === 'project') await this.loadProject(seq, r);
+      else if (r.name === 'search') await this.loadSearch(seq);
       if (seq === renderSeq) { this.view.loading = false; this.view.savedAt = null; }   // fresh from Vikunja
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
@@ -1286,7 +1317,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
           return;
         }
       }
-      if (!fresh && !this.view.loading) { this.notify('Couldn\'t refresh: ' + e.message); return; }
+      if (!fresh && !this.view.loading) { this.notify((r.name === 'search' ? 'Couldn\'t search: ' : 'Couldn\'t refresh: ') + e.message); return; }
       Object.assign(this.view, {loading: false, error: errText(e)});
     }
   },
@@ -1320,10 +1351,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const tasks = await allPages(`/projects/${p.id}/tasks?` + q);
     if (seq !== renderSeq) return;
     for (const t of tasks) cache.set(t.id, t);
-    // dated first (soonest first), then undated newest first
-    const dated = tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
-    const undated = tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id);
-    const list = r.showDone ? tasks.sort((a,b) => new Date(b.done_at) - new Date(a.done_at)) : [...dated, ...undated];
+    const list = r.showDone ? tasks.sort((a,b) => new Date(b.done_at) - new Date(a.done_at)) : soonestFirst(tasks);
     this.view.groups = [{key: r.showDone ? 'done' : 'open', cls: '', title: r.showDone ? 'Done' : 'Open', tasks: list.map(t => ({...t}))}];
     saved.set(viewKey(r), {groups: this.view.groups, project: p, at: new Date().toISOString()});
   },
@@ -1422,6 +1450,34 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     view.addEventListener('touchmove', e => { if (g?.on) e.preventDefault(); }, {passive: false});
     view.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
     view.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  },
+
+  /* ---------- search ---------- */
+  // The magnifier. The box is focused here, during the tap, since that's the only way a phone opens its keyboard for it.
+  openSearch(){
+    this.$refs.header.classList.add('searching');
+    this.$refs.searchIn.focus();
+    if (this.route.name !== 'search') { this.searchFrom = location.hash || '#/today'; this.searchQ = ''; }
+    this.go('#/search');
+  },
+  closeSearch(){
+    this.searchQ = '';
+    this.go(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
+  },
+  // Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the 50 most
+  // recently done.
+  async loadSearch(seq){
+    const s = this.searchQ.trim();
+    if (!s) { this.view.groups = []; return; }
+    const open = new URLSearchParams({s, filter: 'done = false', filter_timezone: TZ});
+    const done = new URLSearchParams({s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50});
+    const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(r => r || [])]);
+    if (seq !== renderSeq) return;
+    for (const t of [...opened, ...finished]) cache.set(t.id, t);
+    this.view.groups = [
+      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(opened).map(t => ({...t}))},
+      {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: finished.map(t => ({...t}))},
+    ];
   },
 
   /* ---------- overdue ---------- */
@@ -1950,7 +2006,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     let anchor = scrollY;                        // where the current run of scrolling, down or up, turned around
     addEventListener('scroll', () => {
       const y = scrollY;
-      if (y <= this.$refs.header.offsetHeight) { this.headerTucked = false; anchor = y; return; }
+      if (y <= this.$refs.header.offsetHeight || this.route.name === 'search') { this.headerTucked = false; anchor = y; return; }
       const tucked = this.headerTucked;
       if (tucked ? y < anchor - 12 : y > anchor + 12) { this.headerTucked = !tucked; anchor = y; }
       else if (tucked ? y > anchor : y < anchor) anchor = y;

@@ -32,6 +32,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 - **Quick add:** a task in one line, with its date, repeat, project, priority, labels and people.
 - **Paste a list:** each line of a list from an email or a note becomes a task, optionally as subtasks of the first.
 - **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them.
+- **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by number.
 - **Projects:** your project tree with favorites, and the open or done tasks in each.
 - **Offline:** Pocket opens without a connection, and tasks you add are sent once you're back online.
 - **Your Vikunja sign-in:** sign in once, with your usual login, and Pocket and Vikunja's web app are both signed in on that device.
