@@ -117,6 +117,10 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* a task added offline, not sent yet */
 .row.pending{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
+/* a task just added lights up, then fades, to show where it went */
+.row.fresh{animation:fresh 1.6s ease-out}
+@keyframes fresh{0%,35%{background:var(--accent-soft)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
 .check.wait{border-style:dashed;opacity:.8}
 /* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
 .list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
@@ -364,7 +368,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <template x-if="g.key === 'overdue'"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
-            <div class="row" :class="{done: t.done, pending: t.pending}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0}">
+            <div class="row" :class="{done: t.done, pending: t.pending, fresh: fresh.includes(t.id)}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0}">
               <button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
               <button class="body" @click="t.pending || openTask(t.id)">
                 <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><span x-text="t.title"></span><template x-if="!t.done && pctOf(t)"><span class="sr" x-text="', progress ' + pctOf(t) + '%'"></span></template></div>
@@ -1095,7 +1099,7 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
   {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
 
 /* =============== component =============== */
-let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, lastFocus;
+let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, uploads: [], editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
 
@@ -1130,6 +1134,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   offline: false,                              // the last request couldn't reach Vikunja
   creatingProject: false,
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
+  fresh: [],                                   // tasks just added: their rows light up briefly, to show where they went
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   flushing: false,
@@ -1929,6 +1934,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     outbox.put(entry);                           // saved first, but only shown as waiting if sending doesn't finish
     try {
       const r = await outboxLock(() => this.sendEntry(entry.id));
+      if (r.ids?.length) { this.fresh = r.ids; clearTimeout(freshTimer); freshTimer = setTimeout(() => this.fresh = [], 2000); }
       const n = items.length;
       // Photos need a connection, so they only go with a task that reached Vikunja.
       let photoErr = null;

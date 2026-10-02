@@ -64,6 +64,7 @@ try {
     if (!/Tomorrow/.test(chips) || !/Priority 3/.test(chips)) throw new Error('chips: ' + chips);
     await page.click('#f-capture .go');
     await page.waitForSelector(`.row .title:has-text("${title}")`, { timeout: 15000 });
+    if (!await page.$(`.row.fresh:has(.title:has-text("${title}"))`)) throw new Error('the new row isn\'t highlighted');
   });
   const row = `.row:has(.title:has-text("${title}"))`;
   await step('refresh-keeps-rows', async () => {
