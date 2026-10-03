@@ -180,13 +180,13 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .prio-pick select{position:absolute;inset:0;width:100%;opacity:0;font-size:16px;cursor:pointer}
 .prio-pick.p1,.prio-pick.p2{color:var(--ink)}
 .prio-pick.p3,.prio-pick.p4,.prio-pick.p5{color:var(--overdue)}
-/* Priority as a level: five rising bars, filled up to it; red from High up. On the sheet and in list rows. */
-.bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px}
-.bars i{width:3px;border-radius:1px;background:var(--line)}
-.bars i:nth-child(1){height:5px} .bars i:nth-child(2){height:7px} .bars i:nth-child(3){height:9px} .bars i:nth-child(4){height:12px} .bars i:nth-child(5){height:14px}
+/* Priority as a level: five equal bars, filled up to it; red from High up. On the sheet and in list rows.
+   Equal, not rising, so it doesn't read as phone signal; shorter than the text, so it doesn't read as |||||. */
+.bars{display:inline-flex;gap:2px;height:11px}
+.bars i{width:4px;border-radius:1px;background:var(--line)}
 .bars.p1 i:nth-child(-n+1),.bars.p2 i:nth-child(-n+2){background:var(--ink)}
 .bars.p3 i:nth-child(-n+3),.bars.p4 i:nth-child(-n+4),.bars.p5 i{background:var(--overdue)}
-.meta .bars{height:12px;vertical-align:-1px}
+.meta .bars{height:10px;vertical-align:-1px}
 .meta .bars.p1 i:nth-child(-n+1),.meta .bars.p2 i:nth-child(-n+2){background:var(--muted)}
 .meta svg.i{width:14px;height:14px;stroke-width:2.2;vertical-align:-2px;margin-right:3px}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
