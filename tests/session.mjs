@@ -40,7 +40,7 @@ async function vikunjaSignIn(){
   await vikunja.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }
 const pocketInApp = () => pocket.waitForSelector('#app:not([hidden]) #view .row, #app:not([hidden]) #view .empty', { timeout: 15000 });
-const tokenValid = async t => (await fetch(SERVER + '/api/v1/user', { headers: { Authorization: 'Bearer ' + t } })).ok;
+const tokenValid = async t => (await fetch(SERVER + '/api/v2/user', { headers: { Authorization: 'Bearer ' + t } })).ok;
 // What a phone left overnight has: a well-formed sign-in token that expired an hour ago.
 const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
 const EXPIRED = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ type: 1, id: 1, exp: Math.floor(Date.now() / 1000) - 3600 })}.expired-signature`;
@@ -57,10 +57,10 @@ try {
 
   if (process.env.OTHER_USER) await step('another-account-signing-in-is-followed', async () => {
     // Someone else's session replaces this one without a sign-out Pocket saw, and the first check of whose it is fails.
-    const login = await fetch(SERVER + '/api/v1/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const login = await fetch(SERVER + '/api/v2/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: process.env.OTHER_USER, password: process.env.OTHER_PASSWORD }) });
     const other = (await login.json()).token, mine = await pocket.evaluate(() => localStorage.getItem('token'));
-    const whoami = url => url.pathname.endsWith('/api/v1/user');
+    const whoami = url => url.pathname.endsWith('/api/v2/user');
     let cut = true;
     await pocket.route(whoami, r => cut ? r.abort('internetdisconnected') : r.fallback());
     // Who the account sheet names. Switching closes the sheet, so it may already be gone when it's closed here.
@@ -76,7 +76,7 @@ try {
     if (await who() !== '@' + USER) throw new Error('switched before it knew');
     // A task added now mustn't be added as the other person: it waits until Pocket knows, and goes as its own person.
     const title = `Pocket session capture ${Date.now()}`;
-    const find = async t => ((await (await fetch(SERVER + '/api/v1/tasks?s=' + encodeURIComponent(title), { headers: { Authorization: 'Bearer ' + t } })).json()) || []).filter(x => x.title === title);
+    const find = async t => ((await (await fetch(SERVER + '/api/v2/tasks?q=' + encodeURIComponent(title), { headers: { Authorization: 'Bearer ' + t } })).json()).items || []).filter(x => x.title === title);
     await pocket.fill('#in-capture', title);
     await pocket.click('#f-capture .go');
     await pocket.waitForSelector(`.row.pending:has(.title:has-text("${title}"))`);
@@ -92,7 +92,7 @@ try {
     for (let i = 0; i < 30 && !(await find(mine)).length; i++) await pocket.waitForTimeout(500);
     const added = await find(mine);
     if (added.length !== 1 || added[0].created_by?.username !== USER) throw new Error('added: ' + JSON.stringify(added.map(t => t.created_by?.username)));
-    await fetch(SERVER + '/api/v1/tasks/' + added[0].id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + mine } });
+    await fetch(SERVER + '/api/v2/tasks/' + added[0].id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + mine } });
   });
 
   await step('expired-token-renews-and-vikunja-stays-signed-in', async () => {

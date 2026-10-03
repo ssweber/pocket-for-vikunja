@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.6.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/` and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
+This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/` and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
 
 ## Tests
 

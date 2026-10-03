@@ -43,7 +43,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 
 ## Install
 
-Pocket runs as a plugin inside your Vikunja, which serves it at `https://<your Vikunja>/api/v1/plugins/pocket/`. There's nothing else to host. It needs Vikunja 2.3 or later, and is tested with 2.6.0.
+Pocket runs as a plugin inside your Vikunja, which serves it at `https://<your Vikunja>/api/v1/plugins/pocket/`. There's nothing else to host. It needs Vikunja 2.7 or later, and is tested with 2.7.0.
 
 Since the plugin runs inside Vikunja, read [`pocket/main.go`](pocket/main.go) before installing it. It only serves the files in its `app/` folder. The app itself is [`pocket/app/index.html`](pocket/app/index.html) and a 40-line [`sw.js`](pocket/app/sw.js) for offline use, all plain, unminified code. The only outside code is the two libraries bundled with it, Alpine.js and chrono-node.
 
@@ -70,7 +70,7 @@ Since the plugin runs inside Vikunja, read [`pocket/main.go`](pocket/main.go) be
 <details>
 <summary>Signing in with an API token instead</summary>
 
-If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Projectusers** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Projectusers**, `@sarah` still works, but people aren't suggested as you type, the name stays in the title, and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*.
+If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Users search** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Users search**, `@sarah` still works, but people aren't suggested as you type, the name stays in the title, and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*.
 
 A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn't affect it.
 

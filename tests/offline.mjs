@@ -17,8 +17,8 @@ const TOKEN = process.env.VIKUNJA_TOKEN;
 const OUT = process.env.OUT || 'test-results';
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
 const POCKET = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
-const api = (path, init = {}) => fetch(SERVER + '/api/v1' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...init.headers } });
-const byTitle = async title => ((await (await api('/tasks?s=' + encodeURIComponent(title))).json()) || []).filter(t => t.title === title);
+const api = (path, init = {}) => fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...init.headers } });
+const byTitle = async title => ((await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items || []).filter(t => t.title === title);
 
 await mkdir(OUT, { recursive: true });
 const stamp = Date.now();
@@ -50,9 +50,9 @@ const online = () => page.evaluate(() => window.dispatchEvent(new Event('online'
 
 try {
   // A task due tomorrow, so the Today list has something to remember.
-  const me = await (await api('/user')).json(), projects = await (await api('/projects')).json();
+  const me = await (await api('/user')).json(), projects = (await (await api('/projects')).json()).items;
   const home = me.settings?.default_project_id || projects.find(p => p.id > 0)?.id;
-  const seeded = await api(`/projects/${home}/tasks`, { method: 'PUT', body: JSON.stringify({ title: T('seed'), due_date: new Date(Date.now() + 86400000).toISOString() }) });
+  const seeded = await api(`/projects/${home}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('seed'), due_date: new Date(Date.now() + 86400000).toISOString() }) });
   if (!seeded.ok) throw new Error('could not create the seed task: HTTP ' + seeded.status);
 
   await step('online-first-visit', async () => {
@@ -136,8 +136,8 @@ try {
   await step('lost-reply-is-not-added-twice', async () => {
     // The first try reaches Vikunja, but the reply never arrives.
     let cut = true;
-    await page.route('**/api/v1/projects/*/tasks', async route => {
-      if (cut && route.request().method() === 'PUT') { cut = false; await route.fetch(); return route.abort('internetdisconnected'); }
+    await page.route('**/api/v2/projects/*/tasks', async route => {
+      if (cut && route.request().method() === 'POST') { cut = false; await route.fetch(); return route.abort('internetdisconnected'); }
       return route.fallback();
     });
     await capture(`${T('D')} tomorrow`);
@@ -148,15 +148,15 @@ try {
     if (await page.isVisible(pendingRow(T('D')))) throw new Error('still shown as waiting');
     const copies = (await byTitle(T('D'))).length;
     if (copies !== 1) throw new Error(`${copies} copies`);
-    await page.unroute('**/api/v1/projects/*/tasks');
+    await page.unroute('**/api/v2/projects/*/tasks');
   });
 
   await step('photo-upload-cut-off-keeps-the-task', async () => {
     // Online, but the connection drops as the photo uploads, and the list can't reload either.
     let cut = true;
     const cutOff = r => cut ? r.abort('internetdisconnected') : r.fallback();
-    const lists = url => url.pathname.endsWith('/api/v1/tasks');
-    await page.route('**/api/v1/tasks/*/attachments', cutOff);
+    const lists = url => url.pathname.endsWith('/api/v2/tasks');
+    await page.route('**/api/v2/tasks/*/attachments', cutOff);
     await page.route(lists, cutOff);
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
@@ -169,7 +169,7 @@ try {
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("glitch.png")');
     if ((await attached('G')).join() !== 'glitch.png') throw new Error('attachments: ' + (await attached('G')).join());
-    await page.unroute('**/api/v1/tasks/*/attachments', cutOff);
+    await page.unroute('**/api/v2/tasks/*/attachments', cutOff);
     await page.unroute(lists, cutOff);
   });
 
@@ -177,28 +177,28 @@ try {
     // From the task's sheet, still open. The upload reaches Vikunja, but the reply never arrives.
     let cut = true;
     const lose = async r => { if (!cut) return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v1/tasks/*/attachments', lose);
+    await page.route('**/api/v2/tasks/*/attachments', lose);
     await page.setInputFiles('#d-file', photo('once.png'));
     await page.waitForSelector('#d-attachments .att.uploading:has-text("once.png")');
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("once.png")');
     const names = await attached('G');
     if (names.filter(n => n === 'once.png').length !== 1) throw new Error('attachments: ' + names.join());
-    await page.unroute('**/api/v1/tasks/*/attachments', lose);
+    await page.unroute('**/api/v2/tasks/*/attachments', lose);
   });
 
   await step('server-error-keeps-the-photo', async () => {
     // Vikunja answers 500 once: the photo waits, says so, and goes up on the next try.
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // the add's toast, from before
     let busy = true;
-    const answer = r => { if (!busy) return r.fallback(); busy = false; return r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"Internal Server Error"}' }); };
-    await page.route('**/api/v1/tasks/*/attachments', answer);
+    const answer = r => { if (!busy) return r.fallback(); busy = false; return r.fulfill({ status: 500, contentType: 'application/problem+json', body: '{"title":"Internal Server Error","status":500,"detail":"Internal Server Error"}' }); };
+    await page.route('**/api/v2/tasks/*/attachments', answer);
     await page.setInputFiles('#d-file', photo('busy.png'));
     await page.waitForSelector('#d-attachments .att.uploading:has-text("busy.png"):has-text("Vikunja had a problem with it. Trying again.")');
     if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("busy.png")');
-    await page.unroute('**/api/v1/tasks/*/attachments', answer);
+    await page.unroute('**/api/v2/tasks/*/attachments', answer);
   });
 
   await step('sheet-photos-wait-offline-and-can-be-cancelled', async () => {
@@ -218,28 +218,28 @@ try {
   await step('cut-off-label-is-still-added', async () => {
     // The task reaches Vikunja, then the connection drops before its label is on it.
     let cut = true;
-    const drop = r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; return r.abort('internetdisconnected'); };
-    await page.route('**/api/v1/tasks/*/labels', drop);
+    const drop = r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; return r.abort('internetdisconnected'); };
+    await page.route('**/api/v2/tasks/*/labels', drop);
     await capture(`${T('L')} tomorrow *${LABEL}`);
     await page.waitForSelector(`.row:has(.title:has-text("${T('L')}"))`);     // shown straight away, as it's in Vikunja
     await online();
     await until('the label never reached the task', async () => { const [t] = await byTitle(T('L')); return t?.labels?.some(l => l.title === LABEL); });
     if ((await byTitle(T('L'))).length !== 1) throw new Error((await byTitle(T('L'))).length + ' copies');
-    await page.unroute('**/api/v1/tasks/*/labels', drop);
+    await page.unroute('**/api/v2/tasks/*/labels', drop);
   });
 
   if (process.env.ASSIGNEE) await step('assigned-task-whose-reply-is-lost-is-added-once', async () => {
     // The @username leaves the title, so the retry must look for the title as it was sent.
     const who = process.env.ASSIGNEE, where = process.env.ASSIGNEE_PROJECT ? ` +"${process.env.ASSIGNEE_PROJECT}"` : '';
     let cut = true;
-    const lose = async r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v1/projects/*/tasks', lose);
+    const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/api/v2/projects/*/tasks', lose);
     await capture(`${T('B')} tomorrow @${who}${where}`);
     await online();
     await until('the task was never assigned', async () => { const [t] = await byTitle(T('B')); return t?.assignees?.some(u => u.username === who); });
     await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
     if ((await byTitle(T('B'))).length !== 1) throw new Error((await byTitle(T('B'))).length + ' copies');
-    await page.unroute('**/api/v1/projects/*/tasks', lose);
+    await page.unroute('**/api/v2/projects/*/tasks', lose);
   });
 
   await step('no-room-on-the-phone-waits-while-open', async () => {
@@ -252,7 +252,7 @@ try {
     });
     let cut = true;
     const cutOff = r => cut ? r.abort('internetdisconnected') : r.fallback();
-    await page.route('**/api/v1/tasks/*/attachments', cutOff);
+    await page.route('**/api/v2/tasks/*/attachments', cutOff);
     await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
     await page.waitForSelector('#toast-msg:has-text("no room left on this phone to keep this until there\'s a connection. Keep Pocket open")');
@@ -261,7 +261,7 @@ try {
     await online();
     await until('the photo never reached the task', async () => (await attached('S')).join() === 'full.png');
     if ((await byTitle(T('S'))).length !== 1) throw new Error((await byTitle(T('S'))).length + ' copies');
-    await page.unroute('**/api/v1/tasks/*/attachments', cutOff);
+    await page.unroute('**/api/v2/tasks/*/attachments', cutOff);
     await page.evaluate(() => { IDBObjectStore.prototype.put = window.realPut; });
   });
 
@@ -269,11 +269,11 @@ try {
     // The second "Buy milk" never reaches Vikunja on its first try; the retry mustn't take the first one for it.
     await capture(T('M'));
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('M')}"))`);
-    const drop = r => r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.fallback();
-    await page.route('**/api/v1/projects/*/tasks', drop);
+    const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
+    await page.route('**/api/v2/projects/*/tasks', drop);
     await capture(T('M'));
     await page.waitForSelector(pendingRow(T('M')));
-    await page.unroute('**/api/v1/projects/*/tasks', drop);
+    await page.unroute('**/api/v2/projects/*/tasks', drop);
     await online();
     await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
     if ((await byTitle(T('M'))).length !== 2) throw new Error((await byTitle(T('M'))).length + ' copies');
@@ -282,13 +282,13 @@ try {
   await step('same-title-made-elsewhere-is-not-taken', async () => {
     // A task made on the web, then one with the same title in Pocket that never reaches Vikunja on its first try.
     const [me] = await byTitle(T('M'));                                      // a project to put it in
-    await api(`/projects/${me.project_id}/tasks`, { method: 'PUT', body: JSON.stringify({ title: T('E') }) });
+    await api(`/projects/${me.project_id}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('E') }) });
     await page.waitForTimeout(4000);                                         // a little later, as a person would
-    const drop = r => r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.fallback();
-    await page.route('**/api/v1/projects/*/tasks', drop);
+    const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
+    await page.route('**/api/v2/projects/*/tasks', drop);
     await capture(T('E'));
     await page.waitForSelector(pendingRow(T('E')));
-    await page.unroute('**/api/v1/projects/*/tasks', drop);
+    await page.unroute('**/api/v2/projects/*/tasks', drop);
     await online();
     await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
     if ((await byTitle(T('E'))).length !== 2) throw new Error((await byTitle(T('E'))).length + ' copies');
@@ -297,8 +297,8 @@ try {
   await step('subtask-link-whose-reply-is-lost', async () => {
     // A pasted list under its first line: the link reaches Vikunja but its reply doesn't. The retry finds it made.
     let cut = true;
-    const lose = async r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v1/tasks/*/relations', lose);
+    const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/api/v2/tasks/*/relations', lose);
     await page.fill('#in-capture', `${T('K')} tomorrow\n- ${T('K1')}\n- ${T('K2')}`);
     await page.click('#cap-nest');
     await page.click('#f-capture .go');
@@ -309,7 +309,7 @@ try {
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
     if ((await page.textContent('#toast-msg')).includes("couldn't")) throw new Error('toast: ' + await page.textContent('#toast-msg'));
-    await page.unroute('**/api/v1/tasks/*/relations', lose);
+    await page.unroute('**/api/v2/tasks/*/relations', lose);
   });
 
   await step('waiting-work-from-an-older-pocket-moves-over', async () => {
@@ -352,7 +352,7 @@ try {
     await capture(`${T('Y')} tomorrow`);                                    // waiting when signing out: Pocket asks first
     await page.waitForSelector(pendingRow(T('Y')));
     // Back online for the sign-out itself, but keep this task from being sent in the meantime.
-    await page.route('**/api/v1/projects/*/tasks', r => r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.fallback());
+    await page.route('**/api/v2/projects/*/tasks', r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback());
     await context.setOffline(false);
     await page.click('#btn-account');
     await page.click('#btn-signout');
@@ -362,13 +362,13 @@ try {
     const count = name => page.evaluate(n => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction(n).objectStore(n).count(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }), name);
     if (await count('files')) throw new Error(`${await count('files')} waiting photos still stored`);
     if (await count('outbox')) throw new Error(`${await count('outbox')} waiting tasks still stored`);
-    await page.unroute('**/api/v1/projects/*/tasks');
+    await page.unroute('**/api/v2/projects/*/tasks');
     if ((await byTitle(T('Y'))).length) throw new Error('the dropped task was added');
   });
   if (errors.length) { failed++; console.log('FAIL page errors:', errors); }
 } finally {
   await browser.close();
-  const left = ((await (await api('/tasks?s=' + stamp)).json()) || []).filter(t => t.title.endsWith(String(stamp)));
+  const left = ((await (await api('/tasks?q=' + stamp)).json()).items || []).filter(t => t.title.endsWith(String(stamp)));
   // A few tries: a Vikunja on SQLite (like the local one) can answer 500 "database is locked" while busy.
   for (const t of left) for (let i = 0; i < 5 && !(await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++) await new Promise(ok => setTimeout(ok, 500));
 }

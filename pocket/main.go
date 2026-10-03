@@ -7,7 +7,7 @@
 //	  enabled: true
 //	  loader: yaegi
 //
-// and restart Vikunja. Needs Vikunja 2.3 or later, which runs plugins from source with Yaegi (nothing to compile).
+// and restart Vikunja. Needs Vikunja 2.7 or later; Vikunja runs plugins from source with Yaegi (nothing to compile).
 // The plugin only reads the files in app/; it doesn't touch Vikunja's data. If it fails to load, Vikunja logs it
 // and keeps running.
 

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const VERSION = process.env.VIKUNJA_VERSION || '2.6.0';
+const VERSION = process.env.VIKUNJA_VERSION || '2.7.0';
 const PORT = process.env.PORT || '3456', SSO_PORT = process.env.SSO_PORT || '8080';
 const NAME = 'pocket-dev', SSO = 'pocket-dev-sso';
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -24,7 +24,7 @@ function run(cmd, args, opts = {}){
   return r;
 }
 async function call(method, path, body, token){
-  const r = await fetch(BASE + '/api/v1' + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body && JSON.stringify(body) });
+  const r = await fetch(BASE + '/api/v2' + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body && JSON.stringify(body) });
   return r.ok ? r.json() : null;
 }
 async function waitFor(url, what){
@@ -66,18 +66,18 @@ run('docker', ['run', '-d', '--name', NAME, '--network', `container:${SSO}`,
   '-e', 'VIKUNJA_DATABASE_PATH=/tmp/vikunja.db', '-e', 'VIKUNJA_FILES_BASEPATH=/tmp/files',
   '-e', 'VIKUNJA_PLUGINS_ENABLED=true', '-e', 'VIKUNJA_PLUGINS_LOADER=yaegi',
   `vikunja/vikunja:${VERSION}`]);
-await waitFor(BASE + '/api/v1/info', 'Vikunja');
+await waitFor(BASE + '/api/v2/info', 'Vikunja');
 
 const logs = run('docker', ['logs', NAME]);
 if (!/pocket: serving/.test(logs.stdout + logs.stderr)) throw new Error('The plugin did not load:\n' + (logs.stdout + logs.stderr).split('\n').filter(l => /plugin|pocket/i.test(l)).join('\n'));
-const info = await (await fetch(BASE + '/api/v1/info')).json();
+const info = await (await fetch(BASE + '/api/v2/info')).json();
 if (!info.auth?.openid_connect?.providers?.length) throw new Error('Vikunja does not offer the mock sign-on provider; see: docker logs ' + NAME);
 
 // Two users and a project they share, so @assignee can be tried.
 for (const u of ['dev', 'bob']) await call('POST', '/register', { username: u, email: `${u}@example.com`, password: `${u}-password` });
 const { token } = await call('POST', '/login', { username: 'dev', password: 'dev-password' });
-const team = await call('PUT', '/projects', { title: 'Team' }, token);
-await call('PUT', `/projects/${team.id}/users`, { username: 'bob', permission: 1 }, token);
+const team = await call('POST', '/projects', { title: 'Team' }, token);
+await call('POST', `/projects/${team.id}/users`, { username: 'bob', permission: 1 }, token);
 
 console.log(`Vikunja ${VERSION}: ${BASE}  (sign in as dev / dev-password, or with Mock SSO)`);
 console.log(`Pocket:        ${BASE}/api/v1/plugins/pocket/`);

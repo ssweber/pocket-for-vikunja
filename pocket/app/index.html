@@ -321,7 +321,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
       <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
       <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
-      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Projectusers” under Projects.</p>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects.</p>
     </form>
   </div>
 </section>
@@ -673,7 +673,7 @@ function refreshSession(){
     const now = sharedToken.get();
     if (now && now !== before) return true;
     let r, j;
-    try { r = await fetch(app.server + '/api/v1/user/token/refresh', {method:'POST', credentials:'include'}); }
+    try { r = await fetch(app.server + '/api/v2/user/token/refresh', {method:'POST', credentials:'include'}); }
     catch (e) { throw new NetError(e.message); }
     // Only Vikunja turning the renewal down ends the session; a busy server or a dropped connection doesn't.
     if (TRANSIENT.has(r.status)) throw new NetError('HTTP ' + r.status);
@@ -704,7 +704,7 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
   let res;
   try {
-    res = await fetch(app.server + '/api/v1' + path, {
+    res = await fetch(app.server + '/api/v2' + path, {
       method, headers, body: body === undefined || form ? body : JSON.stringify(body),
       credentials: app.mode === 'session' ? 'include' : 'omit',
     });
@@ -723,33 +723,40 @@ async function api(path, {method='GET', body, raw=false, auth=true, retry=true} 
     if (app.mode === 'token' && path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.');
     app.signOut('Your session ended. Sign in again.', {tellServer: false}); throw new ApiError(401, 'Signed out');
   }
-  if (!res.ok) {
+  if (!res.ok && res.status !== 304) {
     let j = {}; try { j = await res.json() } catch {}
-    throw new ApiError(res.status, j.message || res.statusText || ('HTTP ' + res.status), j.code);
+    throw new ApiError(res.status, j.detail || res.statusText || ('HTTP ' + res.status), j.code);
   }
   if (raw) return res;
-  if (res.status === 204) return null;
+  if (res.status === 204 || res.status === 304) return null;              // 304: a change to what's there already
   // A reply cut off half way is a lost connection too, not an error from Vikunja.
   let t; try { t = await res.text(); } catch (e) { app.offline = true; throw new NetError(e.message); }
   return t ? JSON.parse(t) : null;
 }
 
+// Changes some of a task's fields; resolves to Vikunja's copy. When they're set that way already, Vikunja sends nothing
+// back, so its copy is read instead.
+async function patchTask(id, fields){
+  return await api('/tasks/' + id, {method:'PATCH', body: fields}) || await api('/tasks/' + id);
+}
+
 async function tokenWorks(){
-  try { return (await fetch(app.server + '/api/v1/user', {headers: {Authorization: 'Bearer ' + app.token}})).ok; }
+  try { return (await fetch(app.server + '/api/v2/user', {headers: {Authorization: 'Bearer ' + app.token}})).ok; }
   catch { return false; }
 }
 
 async function allPages(path){
   const out = [];
   for (let page = 1; page <= 40; page++) {
-    const res = await api(path + (path.includes('?') ? '&' : '?') + 'page=' + page + '&per_page=50', {raw:true});
-    let data; try { data = await res.json(); } catch (e) { throw new NetError(e.message); }
-    if (Array.isArray(data)) out.push(...data);
-    const total = parseInt(res.headers.get('x-pagination-total-pages') || '1', 10);
-    if (!Array.isArray(data) || data.length === 0 || page >= total) break;
+    const data = await api(path + (path.includes('?') ? '&' : '?') + 'page=' + page + '&per_page=50');
+    const items = data?.items || [];
+    out.push(...items);
+    if (!items.length || page >= (data.total_pages || 1)) break;
   }
   return out;
 }
+// The items of one page of a list.
+const items = data => data?.items || [];
 
 function netHelp(){
   return `Can't reach Vikunja at ${esc(location.origin)}. Check your connection, then try again.`;
@@ -1269,7 +1276,7 @@ const LINE_STEPS = [
   {name: 'prepare', done: j => !!j.body, async run(j, {parsed, pid}){
     const to = parsed.project?.id || pid, body = {title: parsed.title}, assign = [];
     // Someone who can see the project is assigned, and their @username leaves the title, as in Vikunja. Someone who
-    // can't stays in the title and is reported. If Pocket can't check (an API token without Projects → projectusers), it just tries.
+    // can't stays in the title and is reported. If Pocket can't check (an API token without Projects → Users search), it just tries.
     for (const name of parsed.assignees) {
       const seen = await app.canSee(to, name);
       if (seen === false) j.problems.push(await app.userExists(name).catch(() => true) ? `@${name} can't see ${app.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
@@ -1285,7 +1292,7 @@ const LINE_STEPS = [
   {name: 'task', done: j => !!j.taskId, async run(j, c){
     // A try that was cut off may have reached Vikunja anyway: look for it before adding it again.
     let t = j.tried ? await app.findSent(j.body.title, j.to, j.triedAt, c.at, c.skip, j.key) : null;
-    if (!t) { j.tried = true; j.triedAt = Date.now(); await c.save(); t = await api(`/projects/${j.to}/tasks`, {method:'PUT', body: j.body}); }
+    if (!t) { j.tried = true; j.triedAt = Date.now(); await c.save(); t = await api(`/projects/${j.to}/tasks`, {method:'POST', body: j.body}); }
     sync.claim(t.id, j.key);
     Object.assign(j, {taskId: t.id, projectId: t.project_id});
     c.task = t; c.made?.(t);
@@ -1295,8 +1302,8 @@ const LINE_STEPS = [
     try {
       const all = await app.loadLabels(j.newLabel);                         // a cut-off try may have created it
       let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
-      if (!l) { j.newLabel = true; l = await api('/labels', {method:'PUT', body:{title: name}}); all.push(l); }
-      await api(`/tasks/${j.taskId}/labels`, {method:'PUT', body:{label_id: l.id}});
+      if (!l) { j.newLabel = true; l = await api('/labels', {method:'POST', body:{title: name}}); all.push(l); }
+      await api(`/tasks/${j.taskId}/labels`, {method:'POST', body:{label_id: l.id}});
     } catch (e) { settle(e, 'label', m => j.problems.push(`label ${name}: ${m}`)); }
     j.labels.shift();
   }},
@@ -1306,7 +1313,7 @@ const LINE_STEPS = [
     try {
       const u = await app.findUser(name);
       if (!u) j.problems.push(`no user @${name}`);
-      else await api(`/tasks/${j.taskId}/assignees`, {method:'PUT', body:{user_id: u.id}});
+      else await api(`/tasks/${j.taskId}/assignees`, {method:'POST', body:{user_id: u.id}});
     } catch (e) { settle(e, 'assignee', m => j.problems.push(`@${name}: ${m}`)); }
     j.assign.shift();
   }},
@@ -1358,7 +1365,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
   capture: '', capFocus: false, capBusy: false, capNest: false, capIgnore: {},
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
-  // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → projectusers.
+  // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → Users search.
   access: {}, userKnown: {}, accessBlocked: false,
   capCaret: 0,                                 // the cursor in the quick add box, for suggestions
   people: null,                                // everyone you share a project with: [{user, pids}], loaded on the first @
@@ -1500,7 +1507,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     saved.clear();
     if (this.mode === 'session') {
       const t = sharedToken.get();
-      if (tellServer && t) fetch(this.server + '/api/v1/user/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
+      if (tellServer && t) fetch(this.server + '/api/v2/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
       sharedToken.del();
     }
     this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
@@ -1866,9 +1873,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async loadSearch(seq){
     const s = this.searchQ.trim();
     if (!s) { this.view.groups = []; return; }
-    const open = new URLSearchParams({s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'});
-    const done = new URLSearchParams({s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50, expand: 'comment_count'});
-    const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(r => r || [])]);
+    const open = new URLSearchParams({q: s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'});
+    const done = new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50, expand: 'comment_count'});
+    const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(items)]);
     if (seq !== renderSeq) return;
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
     this.view.groups = [
@@ -1984,12 +1991,12 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (key in this.access) return this.access[key];
     if (this.accessBlocked) return null;
     try {
-      const u = (await api(`/projects/${pid}/projectusers?s=` + encodeURIComponent(name)) || []).find(x => x.username.toLowerCase() === k);
+      const u = items(await api(`/projects/${pid}/users/search?q=` + encodeURIComponent(name))).find(x => x.username.toLowerCase() === k);
       if (u) { userCache.set(k, u); this.userKnown[k] = true; }
       return this.access[key] = !!u;
     } catch (e) {
       if (e instanceof NetError) throw e;
-      if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;  // an API token without Projects → projectusers
+      if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;  // an API token without Projects → Users search
       return null;
     }
   },
@@ -2044,12 +2051,12 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     el.focus(); el.setSelectionRange(at, at);
   },
   /* Everyone with access to each of your projects, from Vikunja's list per project (which counts teams). Loaded once; it also
-     tells checkAccess who can see what, without asking again. Skipped for an API token without Projects → projectusers. */
+     tells checkAccess who can see what, without asking again. Skipped for an API token without Projects → Users search. */
   async loadPeople(){
     if (this.people || this.accessBlocked) return;
     if (peopleLoading) return peopleLoading;
     peopleLoading = (async () => {
-      const projs = this.projects.filter(p => p.id > 0), get = p => api(`/projects/${p.id}/projectusers`).then(r => r || []).catch(e => {
+      const projs = this.projects.filter(p => p.id > 0), get = p => api(`/projects/${p.id}/users/search`).then(items).catch(e => {
         if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;
         return null;
       });
@@ -2158,12 +2165,12 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async findUser(name){
     const key = name.toLowerCase();
     if (userCache.has(key)) return userCache.get(key);
-    const u = (await api('/users?s=' + encodeURIComponent(name)) || []).find(x => x.username.toLowerCase() === key) || null;
+    const u = items(await api('/users?q=' + encodeURIComponent(name))).find(x => x.username.toLowerCase() === key) || null;
     if (u) userCache.set(key, u);
     return u;
   },
   linkSubtask(parentId, childId){
-    return api(`/tasks/${parentId}/relations`, {method:'PUT', body:{other_task_id: childId, relation_kind: 'subtask'}});
+    return api(`/tasks/${parentId}/relations`, {method:'POST', body:{other_task_id: childId, relation_kind: 'subtask'}});
   },
   /* Create a task per line, in order. With parent, each becomes its subtask and lands in the parent's project
      unless the line names one. Returns the ids created and how many lines were used; stops at the first error. */
@@ -2299,7 +2306,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         else {
           f.tried = true; f.triedAt = Date.now(); await sync.save(entry);
           const form = new FormData(); form.append('files', file, f.name);
-          const r = await api(`/tasks/${taskId}/attachments`, {method: 'PUT', body: form});
+          const r = await api(`/tasks/${taskId}/attachments`, {method: 'POST', body: form});
           // Vikunja answers OK even when it turns a file down, with the reasons in `errors`.
           if (r?.errors?.length) problems.push(`${f.name} didn't upload: ${r.errors.map(e => e.message).join('; ')}`); else ok = true;
         }
@@ -2337,7 +2344,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // The task a cut-off try added, if it got there: this title, in this project, added by you since that try, and not
   // one of the capture's other tasks or one Pocket added for another line.
   async findSent(title, project, triedAt, at, skip = new Set(), key){
-    const list = await api('/tasks?s=' + encodeURIComponent(title)) || [];
+    const list = items(await api('/tasks?q=' + encodeURIComponent(title)));
     const since = triedSince(triedAt, at);
     return list.find(t => t.title === title && t.project_id === project && t.created_by?.id === this.user?.id && !skip.has(t.id) && !sync.claimedByOther(t.id, key)
       && new Date(t.created).getTime() >= since) || null;
@@ -2372,7 +2379,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (this.creatingProject) return;
     this.creatingProject = true;
     try {
-      const p = await api('/projects', {method: 'PUT', body: {title: projectName(name)}});
+      const p = await api('/projects', {method: 'POST', body: {title: projectName(name)}});
       this.setProjects([...this.projects, p]);
       saved.set('projects', this.projects);
     } catch (e) {
@@ -2543,8 +2550,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const was = st.done;
     st.done = !was;
     try {
-      const full = await api('/tasks/' + st.id);          // related tasks come without labels etc.; save the full task
-      const saved = await api('/tasks/' + st.id, {method:'POST', body: {...full, done: !was}});
+      const saved = await patchTask(st.id, {done: !was});
       cache.set(st.id, saved);
       Object.assign(st, {done: saved.done, due_date: saved.due_date});
       this.sheet.dirty = true;
@@ -2598,10 +2604,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   saveTask(id, patch){
     saveCount++;
     const run = saveChain.then(async () => {
-      // Vikunja replaces the whole task with what's sent, so the change goes onto its latest copy: anything changed
-      // elsewhere since Pocket loaded the task (notes edited on the web, say) isn't put back the way it was.
-      const latest = await api('/tasks/' + id);
-      const saved = await api('/tasks/' + id, {method:'POST', body: {...latest, ...patch}});
+      // Only the change is sent, so anything changed elsewhere since Pocket loaded the task (notes edited on the web,
+      // say) stays as it is.
+      const saved = await patchTask(id, patch);
       cache.set(id, saved); this.syncTask(saved);
       return saved;
     });
@@ -2652,7 +2657,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try {
       const u = await this.findUser(name);
       if (!u) { this.notify(`No user @${name}`); return; }
-      await api(`/tasks/${t.id}/assignees`, {method:'PUT', body:{user_id: u.id}});
+      await api(`/tasks/${t.id}/assignees`, {method:'POST', body:{user_id: u.id}});
       this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id);
       if (this.sheet.task?.id === t.id) { this.sheet.assignName = ''; this.sheet.assigning = false; }
     } catch (e) { this.notify('Not assigned: ' + e.message); }
@@ -2672,8 +2677,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async addLabel(l){
     const t = this.sheet.task;                                                // the task it started on
     try {
-      if (!l) { l = await api('/labels', {method:'PUT', body:{title: this.picker.q.trim()}}); this.labels.push(l); }
-      await api(`/tasks/${t.id}/labels`, {method:'PUT', body:{label_id: l.id}});
+      if (!l) { l = await api('/labels', {method:'POST', body:{title: this.picker.q.trim()}}); this.labels.push(l); }
+      await api(`/tasks/${t.id}/labels`, {method:'POST', body:{label_id: l.id}});
       this.setLabels([...(t.labels || []), l], t.id);
       if (this.sheet.task?.id === t.id) this.picker.q = '';
     } catch (err) { this.notify('Label not added: ' + err.message); }
@@ -2690,14 +2695,14 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async loadComments(id){
     if (this.info && this.info.task_comments_enabled === false) { this.sheet.commentsNote = 'Comments are turned off on this server.'; return; }
     try {
-      const list = await api(`/tasks/${id}/comments`) || [];
+      const list = items(await api(`/tasks/${id}/comments`));
       if (this.sheet.task?.id === id) this.sheet.comments = list;
     } catch (e) { if (this.sheet.task?.id === id) this.sheet.commentsNote = errText(e); }
   },
   async postComment(){
     const id = this.sheet.task.id, v = this.sheet.commentDraft.trim(); if (!v) return;
     this.sheet.commentBusy = true;
-    try { await api(`/tasks/${id}/comments`, {method:'PUT', body:{comment: textToHtml(v)}}); this.sheet.commentDraft = ''; await this.loadComments(id); }
+    try { await api(`/tasks/${id}/comments`, {method:'POST', body:{comment: textToHtml(v)}}); this.sheet.commentDraft = ''; await this.loadComments(id); }
     catch (err) { this.notify('Comment not posted: ' + err.message); }
     finally { this.sheet.commentBusy = false; }
   },

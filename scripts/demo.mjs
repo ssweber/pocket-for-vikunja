@@ -23,44 +23,44 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function call(method, path, body, token){
   const form = body instanceof FormData;
-  const r = await fetch(BASE + '/api/v1' + path, { method, body: body && !form ? JSON.stringify(body) : body,
+  const r = await fetch(BASE + '/api/v2' + path, { method, body: body && !form ? JSON.stringify(body) : body,
     headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body && !form ? { 'Content-Type': 'application/json' } : {}) } });
-  if (!r.ok) throw new Error(`${method} ${path}: HTTP ${r.status} ${await r.text()}`);
-  return r.json();
+  if (!r.ok && r.status !== 304) throw new Error(`${method} ${path}: HTTP ${r.status} ${await r.text()}`);
+  return r.status === 204 || r.status === 304 ? null : r.json();      // 304: a PATCH that changes nothing
 }
 // A user of the demo's own, created on the first run, with a display name.
 async function account(username, name){
   await call('POST', '/register', { username, email: `${username}@example.com`, password: `${username}-password` }).catch(() => {});
   const { token } = await call('POST', '/login', { username, password: `${username}-password` });
   const user = await call('GET', '/user', null, token);
-  await call('POST', '/user/settings/general', { ...user.settings, name }, token);
+  await call('PATCH', '/user/settings/general', { name }, token);
   return { token, user: await call('GET', '/user', null, token) };
 }
 
 // ---------- the demo's tasks ----------
 const alex = await account('alex', 'Alex Rivera'), priya = await account('priya', 'Priya Shah');
 const A = (method, path, body) => call(method, path, body, alex.token);
-for (const p of await A('GET', '/projects')) if (p.id > 0 && p.id !== alex.user.settings.default_project_id && p.owner?.id === alex.user.id) await A('DELETE', '/projects/' + p.id);
-for (let page = await A('GET', '/tasks?per_page=100'); page.length; page = await A('GET', '/tasks?per_page=100'))
+for (const p of (await A('GET', '/projects')).items) if (p.id > 0 && p.id !== alex.user.settings.default_project_id && p.owner?.id === alex.user.id) await A('DELETE', '/projects/' + p.id);
+for (let page = (await A('GET', '/tasks?per_page=100')).items; page.length; page = (await A('GET', '/tasks?per_page=100')).items)
   for (const t of page) await A('DELETE', '/tasks/' + t.id);
-for (const l of await A('GET', '/labels')) if (l.created_by?.id === alex.user.id) await A('DELETE', '/labels/' + l.id);
-await A('POST', '/projects/' + alex.user.settings.default_project_id, { title: 'Inbox', hex_color: '' });
+for (const l of (await A('GET', '/labels')).items) if (l.created_by?.id === alex.user.id) await A('DELETE', '/labels/' + l.id);
+await A('PATCH', '/projects/' + alex.user.settings.default_project_id, { title: 'Inbox', hex_color: '' });
 
 const proj = {};
-for (const [title, hex_color] of [['Work', '1d6b52'], ['Home', 'e07a1f'], ['Errands', '2563eb']]) proj[title] = await A('PUT', '/projects', { title, hex_color });
-await A('PUT', `/projects/${proj.Work.id}/users`, { username: 'priya', permission: 1 });
+for (const [title, hex_color] of [['Work', '1d6b52'], ['Home', 'e07a1f'], ['Errands', '2563eb']]) proj[title] = await A('POST', '/projects', { title, hex_color });
+await A('POST', `/projects/${proj.Work.id}/users`, { username: 'priya', permission: 1 });
 const label = {};
-for (const [title, hex_color] of [['waiting', 'db2777'], ['calls', '7c3aed'], ['quick', '0891b2']]) label[title] = await A('PUT', '/labels', { title, hex_color });
+for (const [title, hex_color] of [['waiting', 'db2777'], ['calls', '7c3aed'], ['quick', '0891b2']]) label[title] = await A('POST', '/labels', { title, hex_color });
 
 async function task(project, t, { labels = [], subtasks = [], comment, file } = {}){
-  const made = await A('PUT', `/projects/${proj[project].id}/tasks`, t);
-  for (const l of labels) await A('PUT', `/tasks/${made.id}/labels`, { label_id: label[l].id });
+  const made = await A('POST', `/projects/${proj[project].id}/tasks`, t);
+  for (const l of labels) await A('POST', `/tasks/${made.id}/labels`, { label_id: label[l].id });
   for (const [title, done] of subtasks) {
-    const s = await A('PUT', `/projects/${proj[project].id}/tasks`, { title, done });
-    await A('PUT', `/tasks/${made.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
+    const s = await A('POST', `/projects/${proj[project].id}/tasks`, { title, done });
+    await A('POST', `/tasks/${made.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
   }
-  if (comment) await call('PUT', `/tasks/${made.id}/comments`, { comment }, priya.token);
-  if (file) { const f = new FormData(); f.append('files', new Blob([file.text, new Uint8Array(file.size)], { type: 'application/pdf' }), file.name); await A('PUT', `/tasks/${made.id}/attachments`, f); }
+  if (comment) await call('POST', `/tasks/${made.id}/comments`, { comment }, priya.token);
+  if (file) { const f = new FormData(); f.append('files', new Blob([file.text, new Uint8Array(file.size)], { type: 'application/pdf' }), file.name); await A('POST', `/tasks/${made.id}/attachments`, f); }
   return made;
 }
 const invoice = await task('Work', { title: 'Send Q3 invoice to Brightline', due_date: at(-2, 9), priority: 4, percent_done: .4,

@@ -22,7 +22,7 @@ const OUT = process.env.OUT || 'test-results';
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
 const APP = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 
-const api = (path, init = {}) => fetch(SERVER + '/api/v1' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, ...init.headers } });
+const api = (path, init = {}) => fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, ...init.headers } });
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
@@ -110,7 +110,7 @@ try {
     await check?.();
     await page.mouse.up();
   }
-  const apiTask = async () => (await (await api('/tasks?s=' + encodeURIComponent(title))).json()).find(t => t.title === title);
+  const apiTask = async () => (await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items.find(t => t.title === title);
   await step('progress-hold-and-slide', async () => {
     await slideProgress(row, 4, async () => {
       const shown = await page.getAttribute(row, 'data-pct');
@@ -134,7 +134,7 @@ try {
     const me = await (await api('/user')).json();
     const due = new Date(); due.setDate(due.getDate() - 2); due.setHours(9, 0, 0, 0);
     const late = 'Pocket smoke overdue ' + stamp;
-    const made = await (await api(`/projects/${me.settings.default_project_id}/tasks`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: late, due_date: due.toISOString() }) })).json();
+    const made = await (await api(`/projects/${me.settings.default_project_id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: late, due_date: due.toISOString() }) })).json();
     const lateRow = `.row:has(.title:has-text("${late}"))`;
     await page.click('#btn-refresh');
     await page.waitForSelector(`.sec.overdue + .list ${lateRow}`, { timeout: 15000 });
@@ -161,12 +161,12 @@ try {
     if (await page.getAttribute('nav.tabs a[data-tab=today]', 'aria-current') !== 'page') throw new Error('Cancel didn\'t go back to Today');
   });
   await step('upload-html-attachment', async () => {
-    const found = await (await api('/tasks?s=' + encodeURIComponent(title))).json();
+    const found = (await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items;
     const id = found.find(t => t.title === title)?.id;
     if (!id) throw new Error('task not found');
     const form = new FormData();
     form.append('files', new Blob(['<script>document.title="pwned"</script>'], { type: 'text/html' }), 'evil.html');
-    const r = await api(`/tasks/${id}/attachments`, { method: 'PUT', body: form });
+    const r = await api(`/tasks/${id}/attachments`, { method: 'POST', body: form });
     if (!r.ok) throw new Error('upload HTTP ' + r.status);
   });
   await step('open-task', async () => {
@@ -231,7 +231,7 @@ try {
   await step('save-keeps-changes-made-elsewhere', async () => {
     // Notes edited on the web while the sheet is open, then the priority changed in Pocket: both must stick.
     const t = await apiTask();
-    const r = await api('/tasks/' + t.id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, description: '<p>edited on the web</p>' }) });
+    const r = await api('/tasks/' + t.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...t, description: '<p>edited on the web</p>' }) });
     if (!r.ok) throw new Error('could not edit the notes: HTTP ' + r.status);
     await page.waitForSelector('#d-saved:not(:text("Saved"))', { timeout: 5000 });
     await page.selectOption('#d-prio', '2');
@@ -306,7 +306,7 @@ try {
     await page.fill('#in-capture', t);
     await page.click('#f-capture .go');
     await page.waitForSelector('#toast-msg:has-text("with the photo")', { timeout: 15000 });
-    const made = (await (await api('/tasks?s=' + encodeURIComponent(t))).json())[0];
+    const made = (await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items[0];
     if (made?.attachments?.[0]?.file?.name !== 'receipt.png') throw new Error('attachments: ' + JSON.stringify(made?.attachments));
   });
   await step('create-project-from-chip', async () => {
@@ -318,12 +318,12 @@ try {
       page.waitForSelector('#toast-msg:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
     ]);
     if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
-    const project = (await (await api('/projects')).json()).find(p => p.title === name);
+    const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     if (!project) throw new Error('project not found in Vikunja');
     createdProjects.push(project.id);
     await page.click('#f-capture .go');
     await page.waitForSelector(`#toast-msg:has-text("Added to ${name}")`, { timeout: 15000 });
-    const task = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
+    const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
   });
   await step('pasted-list-goes-to-one-project', async () => {
@@ -336,11 +336,11 @@ try {
       page.waitForSelector('#toast-msg:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
     ]);
     if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
-    const project = (await (await api('/projects')).json()).find(p => p.title === name);
+    const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     createdProjects.push(project.id);
     await page.click('#f-capture .go');
     await page.waitForSelector('#toast-msg:has-text("Added 3 tasks")', { timeout: 20000 });
-    const find = async t => ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
+    const find = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     for (const t of [line('A'), line('B'), `Pocket smoke list line C +Other ${stamp}`]) {
       const task = await find(t);
       if (task?.project_id !== project.id) throw new Error(`"${t}" is in project ${task?.project_id}`);
@@ -358,7 +358,7 @@ try {
     await page.selectOption('#d-repeat', 'month');
     let saved;                                                  // "Saved" shows only briefly, so ask Vikunja instead
     for (let i = 0; i < 40; i++) {
-      saved = (await (await api('/tasks?s=' + encodeURIComponent(t))).json())[0];
+      saved = (await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items[0];
       if (saved?.repeat_mode === 1) break;
       await page.waitForTimeout(250);
     }
@@ -426,8 +426,8 @@ try {
   });
   if (ASSIGNEE) await step('assign-from-quick-add', async () => {
     const t = `Pocket smoke assign ${stamp}`;
-    // A token without Projects → projectusers can't check who sees a project: Pocket then assigns as best it can.
-    const canLook = (await api('/projects/1/projectusers?s=x')).status !== 401;
+    // A token without Projects → Users search can't check who sees a project: Pocket then assigns as best it can.
+    const canLook = (await api('/projects/1/users/search?q=x')).status !== 401;
     await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE} @nobody-${stamp}` + (ASSIGNEE_PROJECT ? ` +"${ASSIGNEE_PROJECT}"` : ''));
     const chips = await page.textContent('#cap-chips');
     if (!chips.includes('@' + ASSIGNEE)) throw new Error('chips: ' + chips);
@@ -435,7 +435,7 @@ try {
     await page.click('#f-capture .go');
     await page.waitForSelector(`#toast-msg:has-text("no user @nobody-${stamp}")`, { timeout: 20000 });
     // The assigned person leaves the title, as in Vikunja, when Pocket could check; the unknown one stays.
-    const saved = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title.startsWith(t));
+    const saved = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title.startsWith(t));
     const want = canLook ? `${t} @nobody-${stamp}` : `${t} @${ASSIGNEE} @nobody-${stamp}`;
     if (saved?.title !== want) throw new Error('title: ' + saved?.title);
     await page.click(`.row .body:has-text("${t}")`);
@@ -451,11 +451,11 @@ try {
   });
   if (ASSIGNEE) await step('assign-picks-the-shared-project', async () => {
     // Only when the default project isn't shared with ASSIGNEE and exactly one other project is, as in the local setup.
-    const me = await (await api('/user')).json(), projects = (await (await api('/projects')).json()).filter(p => p.id > 0);
+    const me = await (await api('/user')).json(), projects = (await (await api('/projects')).json()).items.filter(p => p.id > 0);
     const home = me.settings?.default_project_id || projects[0]?.id;
-    const sees = async id => { const r = await api(`/projects/${id}/projectusers?s=${encodeURIComponent(ASSIGNEE)}`); return r.ok ? ((await r.json()) || []).some(u => u.username === ASSIGNEE) : null; };
+    const sees = async id => { const r = await api(`/projects/${id}/users/search?q=${encodeURIComponent(ASSIGNEE)}`); return r.ok ? ((await r.json()).items || []).some(u => u.username === ASSIGNEE) : null; };
     const shared = [];
-    for (const p of projects) { const v = await sees(p.id); if (v === null) { console.log('  (this token may not use Projects → projectusers: step skipped)'); return; } if (v) shared.push(p); }
+    for (const p of projects) { const v = await sees(p.id); if (v === null) { console.log('  (this token may not use Projects → Users search: step skipped)'); return; } if (v) shared.push(p); }
     if (shared.some(p => p.id === home) || shared.length !== 1) { console.log('  (needs exactly one project shared with ' + ASSIGNEE + ', not the default: step skipped)'); return; }
     const to = shared[0], homeTitle = projects.find(p => p.id === home)?.title, t = `Pocket smoke auto project ${stamp}`;
     await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE}`);
@@ -467,7 +467,7 @@ try {
     await page.waitForSelector(`#cap-chips .chip.warn`, { state: 'detached' });
     await page.click('#f-capture .go');
     await page.waitForSelector(`#toast-msg:text-is("Added to ${to.title}")`, { timeout: 20000 });   // not the last step's toast
-    const task = ((await (await api('/tasks?s=' + encodeURIComponent(t))).json()) || []).find(x => x.title === t);
+    const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== to.id) throw new Error('project ' + task?.project_id);
     if (!task.assignees?.some(u => u.username === ASSIGNEE)) throw new Error('not assigned');
   });
@@ -476,7 +476,7 @@ try {
     await page.fill('#in-capture', `Pocket smoke suggest ${stamp} *${label.slice(0, 9)}`);
     await page.click(`#cap-chips .chip[data-kind=suggest]:has-text("*${label}")`, { timeout: 15000 });
     if (await page.inputValue('#in-capture') !== `Pocket smoke suggest ${stamp} *${label} `) throw new Error('text: ' + await page.inputValue('#in-capture'));
-    if (ASSIGNEE && (await api('/projects/1/projectusers?s=x')).status !== 401) {
+    if (ASSIGNEE && (await api('/projects/1/users/search?q=x')).status !== 401) {
       await page.type('#in-capture', '@' + ASSIGNEE.slice(0, 2));
       await page.click(`#cap-chips .chip[data-kind=suggest]:has-text("@${ASSIGNEE}")`, { timeout: 15000 });
       if (!(await page.inputValue('#in-capture')).endsWith(`*${label} @${ASSIGNEE} `)) throw new Error('text: ' + await page.inputValue('#in-capture'));
@@ -498,7 +498,7 @@ try {
   await browser.close();
   for (const id of createdProjects) await api('/projects/' + id, { method: 'DELETE' });   // with their tasks
   // Delete anything this run left behind (every title it creates ends with the run's stamp).
-  const tasks = await (await api('/tasks?s=' + stamp)).json().catch(() => []);
+  const tasks = await (await api('/tasks?q=' + stamp)).json().then(d => d.items).catch(() => []);
   for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {
     // A few tries: a Vikunja on SQLite (like the local one) can answer 500 "database is locked" while busy.
     let r;
