@@ -414,6 +414,18 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
+  await step('subtasks-under-parent-in-list', async () => {
+    // In the project's list, the two still open come straight after their parent, indented.
+    const parent = ((await (await api('/tasks?q=' + encodeURIComponent(parentTitle))).json()).items || []).find(x => x.title === parentTitle);
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, parent.project_id);
+    const rows = `.list .row:has(.title:has-text("${parentTitle}"))`;
+    await page.waitForSelector(rows, { timeout: 15000 });
+    const after = await page.$eval(rows, el => [el.nextElementSibling, el.nextElementSibling?.nextElementSibling]
+      .map(r => r && { sub: r.classList.contains('sub'), title: r.querySelector('.title').textContent, left: r.querySelector('.check').getBoundingClientRect().left - el.querySelector('.check').getBoundingClientRect().left }));
+    if (!after.every(r => r?.sub && r.title.includes(`sub`) && r.title.includes(stamp) && r.left > 20)) throw new Error('rows after the parent: ' + JSON.stringify(after));
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.waitForSelector(`div:has(> .sec:has-text("Next 7 days")) .row .title:has-text("${parentTitle}")`, { timeout: 15000 });
+  });
   await step('paste-list-undo', async () => {
     const a = `Pocket smoke undo 1 ${stamp}`, b = `Pocket smoke undo 2 ${stamp}`;
     await page.fill('#in-capture', `1. ${a} tomorrow\n2. ${b} tomorrow`);

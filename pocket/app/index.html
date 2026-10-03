@@ -99,6 +99,10 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
 .row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
 .row:first-of-type{border-top:0}
+/* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too */
+.row.sub{padding-left:calc(14px + var(--depth) * 38px);border-top-color:transparent}
+.row.sub::after{left:calc(14px + var(--depth) * 38px);width:calc(var(--pct,0) * (100% - 14px - var(--depth) * 38px))}
+.row.sub .check::before{content:"";position:absolute;top:-1px;right:0;left:calc(14px + var(--depth) * 38px);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
 .row .title{font-size:16.5px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
@@ -369,10 +373,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
           <template x-if="g.key === 'overdue'"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
-            <div class="row" :class="{done: t.done, pending: t.pending, fresh: fresh.includes(t.id)}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0}">
+            <div class="row" :class="{done: t.done, pending: t.pending, fresh: fresh.includes(t.id), sub: g.depth[t.id]}" :data-id="t.id" :style="{'--pct': t.done ? 0 : t.percent_done || 0, '--depth': Math.min(g.depth[t.id], 3)}">
               <button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button>
               <button class="body" @click="t.pending || openTask(t.id)">
-                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><span x-text="t.title"></span><template x-if="!t.done && pctOf(t)"><span class="sr" x-text="', progress ' + pctOf(t) + '%'"></span></template></div>
+                <div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="t.title"></span><template x-if="!t.done && pctOf(t)"><span class="sr" x-text="', progress ' + pctOf(t) + '%'"></span></template></div>
                 <div class="meta" x-show="rowMeta(t).length">
                   <template x-for="m in rowMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" :style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
                 </div>
@@ -1334,6 +1338,20 @@ const saved = {
 // Open tasks in a list: dated first, soonest first, then undated, by priority and then newest first.
 const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date)),
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
+/* A list with each subtask straight after its parent, when the parent is in the same list, and depth: task id -> how
+   many parents up it has there. The others stay where they were. A task waiting to be sent names its parent in `parent`. */
+const nestSubtasks = tasks => {
+  const ids = new Set(tasks.map(t => t.id)), kids = new Map(), top = [];
+  for (const t of tasks) {
+    const p = (t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id)).find(id => id !== t.id && ids.has(id));
+    if (p === undefined) top.push(t); else kids.set(p, [...(kids.get(p) || []), t]);
+  }
+  const out = [], depth = {};
+  const walk = (t, d) => { if (t.id in depth) return; depth[t.id] = d; out.push(t); for (const k of kids.get(t.id) || []) walk(k, d + 1); };
+  for (const t of top) walk(t, 0);
+  for (const t of tasks) walk(t, 0);             // tasks that are each other's subtasks: nothing above them to go under
+  return {tasks: out, depth};
+};
 const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
@@ -2395,7 +2413,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       e.items.forEach((x, i) => {
         if (x.taskId) return;
         const p = x.p;
-        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child: e.nest && i > 0, title: p.title, done: false, priority: p.priority || 0,
+        const child = e.nest && i > 0;
+        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child, parent: child ? e.items[0].taskId || `pending-${e.id}-0` : null, title: p.title, done: false, priority: p.priority || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (e.nest && i > 0 ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
           waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});
@@ -2421,8 +2440,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const d = new Date(t.due_date), t0 = startOfDay();
     return d >= addDays(t0, 8) ? null : d < t0 ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
-  // The current list, with waiting tasks added where they belong.
+  // The current list, with waiting tasks added where they belong, and subtasks under their parents.
   get listGroups(){
+    return this.listBase.map(g => ({...g, ...nestSubtasks(g.tasks)}));
+  },
+  get listBase(){
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
     let base = this.view.groups;
     if (this.route.name === 'today') {
