@@ -1,7 +1,7 @@
 // The README's demo GIF and screenshots, made from the real app against the local Vikunja of `npm run dev`.
 //
 //   npm run dev          in another terminal; it keeps running
-//   npm run demo         writes docs/screenshots/pocket-demo.gif and the screenshots of Pocket and of Vikunja
+//   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-workflow.gif and the screenshots of Pocket and of Vikunja
 //
 // It uses two users of its own, alex and priya, with made-up tasks; alex's tasks and projects are replaced on each run.
 // The page's clock is fixed at Wednesday 30 September 2026, 10:05, so "Today 10:30 AM" and "2 days ago" come out the
@@ -20,6 +20,7 @@ const out = name => fileURLToPath(new URL(name, OUT));
 const NOW = new Date(2026, 8, 30, 10, 5);                    // Wednesday 30 September 2026, 10:05, local time
 const at = (days, h = 0, m = 0) => { const d = new Date(NOW); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const frames = [];                               // {png, delay}, for the GIF being filmed
 
 async function call(method, path, body, token){
   const form = body instanceof FormData;
@@ -155,20 +156,21 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
   await context.close();
 }
 
-// ---------- the GIF ----------
-const frames = [];                               // {png, delay}
-const gif = await phone({ scale: 1.5, height: 760 });
-const { page, touch } = gif;
-const snap = async (delay = 100) => frames.push({ png: await page.screenshot(), delay });
+// ---------- the GIFs ----------
+let gif;                                         // the phone being filmed: {context, page, touch}
+const snap = async (delay = 100) => frames.push({ png: await gif.page.screenshot(), delay });
 const hold = ms => { frames[frames.length - 1].delay += ms; };
 // Screenshots for a while, as fast as they come, each shown for as long as it took.
 async function film(ms){
-  for (const end = Date.now() + ms; Date.now() < end;) { const t = Date.now(); const png = await page.screenshot(); frames.push({ png, delay: Date.now() - t }); }
+  for (const end = Date.now() + ms; Date.now() < end;) { const t = Date.now(); const png = await gif.page.screenshot(); frames.push({ png, delay: Date.now() - t }); }
 }
 async function tap(sel){
-  const [x, y] = await centre(page, sel);
-  await touch('touchStart', x, y); await snap(160); await touch('touchEnd');
+  const [x, y] = await centre(gif.page, sel);
+  await gif.touch('touchStart', x, y); await snap(160); await gif.touch('touchEnd');
 }
+
+gif = await phone({ scale: 1.5, height: 760 });
+let { page, touch } = gif;
 
 await snap(1800);                                                    // Today
 // 1. Quick add: the words it reads are highlighted, and chips say what they'll save.
@@ -196,28 +198,70 @@ await film(1800); hold(1200);                                      // the new ro
 await tap('.row:has-text("Pick up dry cleaning") .check');
 await film(1300); hold(2000);
 await gif.context.close();
+await writeGif('pocket-demo.gif');
+
+// ---------- the workflow GIF: a run started from a template, its timed steps counting down ----------
+// A workflow project with a template made as Pocket makes one: labelled "template", its steps done, then itself done.
+const line = await A('POST', '/projects', { title: 'Line 2', hex_color: '475569' });
+await A('PATCH', '/projects/' + line.id, { description: '<p>Startup and shutdown of press line 2.</p><p>pocket:workflow</p>' });
+await A('POST', `/projects/${line.id}/users`, { username: 'priya', permission: 1 });
+const tplLabel = (await A('GET', '/labels')).items.find(l => l.title === 'template') || await A('POST', '/labels', { title: 'template' });
+const startup = await A('POST', `/projects/${line.id}/tasks`, { title: 'Startup' });
+for (const title of ['Check the guards and e-stops', 'Start the hydraulics {#hydraulics}', 'Load the first coil', 'Check the oil temperature T#10m:hydraulics',
+  'First article check T#30m:hydraulics', 'Sign the startup sheet']) {
+  const s = await A('POST', `/projects/${line.id}/tasks`, { title });
+  await A('POST', `/tasks/${startup.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
+  await A('PATCH', '/tasks/' + s.id, { done: true });
+}
+await A('POST', `/tasks/${startup.id}/labels`, { label_id: tplLabel.id });
+await A('PATCH', '/tasks/' + startup.id, { done: true });
+
+gif = await phone({ scale: 1.5, height: 760 });
+({ page, touch } = gif);
+await tap('nav.tabs a[data-tab=workflows]');
+await page.waitForSelector('.wf-start'); await page.waitForTimeout(300); await snap(1400);
+await tap('.wf-tpl:has-text("Startup") .wf-start');
+await page.waitForSelector('#start-go:not([disabled])'); await page.waitForTimeout(500);
+await snap(2600);                                                    // the steps, with when each is due
+await tap('#start-go');
+await page.waitForSelector('#step-title'); await page.evaluate(() => { app.toast.show = false; }); await page.waitForTimeout(400);
+await snap(1800);
+await tap('#step-done');
+await page.waitForSelector('#step-title:text-is("Start the hydraulics")'); await page.waitForTimeout(300); await snap(1200);
+await tap('#step-done');                                             // the two steps timed from it start counting down
+await page.waitForSelector('#run-timers'); await page.waitForTimeout(400);
+await film(600); hold(2600);
+await tap('#step-done');
+await page.waitForSelector('#step-title:text-is("Check the oil temperature")'); await page.waitForTimeout(400);
+await film(400); hold(2800);
+await gif.context.close();
+await writeGif('pocket-workflow.gif');
 await browser.close();
 
 // ---------- encode: one palette for all frames; each frame keeps only the pixels that changed ----------
-const images = frames.map(f => { const png = PNG.sync.read(f.png); return { data: new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.length), width: png.width, height: png.height, delay: f.delay }; });
-const { width, height } = images[0];
-const sample = new Uint8Array(images.length * width * 4 * Math.ceil(height / 8));
-let o = 0;
-for (const im of images) for (let row = 0; row < height; row += 8) { sample.set(im.data.subarray(row * width * 4, (row + 1) * width * 4), o); o += width * 4; }
-const palette = quantize(sample.subarray(0, o), 255);
-while (palette.length < 256) palette.push([0, 0, 0]);    // the last one is "unchanged"
-const KEEP = 255;
-const enc = GIFEncoder();
-let prev = null;
-for (const [i, im] of images.entries()) {
-  const idx = applyPalette(im.data, palette.slice(0, 255));
-  const out = idx.slice();
-  if (prev) for (let p = 0; p < out.length; p++) if (idx[p] === prev[p]) out[p] = KEEP;
-  enc.writeFrame(out, width, height, { palette: i === 0 ? palette : undefined, delay: im.delay, transparent: !!prev, transparentIndex: KEEP, dispose: 1 });
-  prev = idx;
+async function writeGif(name){
+  const images = frames.map(f => { const png = PNG.sync.read(f.png); return { data: new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.length), width: png.width, height: png.height, delay: f.delay }; });
+  const { width, height } = images[0];
+  const sample = new Uint8Array(images.length * width * 4 * Math.ceil(height / 8));
+  let o = 0;
+  for (const im of images) for (let row = 0; row < height; row += 8) { sample.set(im.data.subarray(row * width * 4, (row + 1) * width * 4), o); o += width * 4; }
+  const palette = quantize(sample.subarray(0, o), 255);
+  while (palette.length < 256) palette.push([0, 0, 0]);    // the last one is "unchanged"
+  const KEEP = 255;
+  const enc = GIFEncoder();
+  let prev = null;
+  for (const [i, im] of images.entries()) {
+    const idx = applyPalette(im.data, palette.slice(0, 255));
+    const out = idx.slice();
+    if (prev) for (let p = 0; p < out.length; p++) if (idx[p] === prev[p]) out[p] = KEEP;
+    enc.writeFrame(out, width, height, { palette: i === 0 ? palette : undefined, delay: im.delay, transparent: !!prev, transparentIndex: KEEP, dispose: 1 });
+    prev = idx;
+  }
+  enc.finish();
+  await mkdir(OUT, { recursive: true });
+  await writeFile(new URL(name, OUT), enc.bytes());
+  const stem = name.replace(/\.gif$/, '');
+  if (process.env.FRAMES) { await mkdir(process.env.FRAMES, { recursive: true }); for (const [i, f] of frames.entries()) await writeFile(`${process.env.FRAMES}/${stem}-${String(i).padStart(3, '0')}-${f.delay}ms.png`, f.png); }
+  console.log(`${name}: ${frames.length} frames, ${(frames.reduce((s, f) => s + f.delay, 0) / 1000).toFixed(1)} s, ${(enc.bytes().length / 1048576).toFixed(2)} MB`);
+  frames.length = 0;
 }
-enc.finish();
-await mkdir(OUT, { recursive: true });
-await writeFile(new URL('pocket-demo.gif', OUT), enc.bytes());
-if (process.env.FRAMES) { await mkdir(process.env.FRAMES, { recursive: true }); for (const [i, f] of frames.entries()) await writeFile(`${process.env.FRAMES}/${String(i).padStart(3, '0')}-${f.delay}ms.png`, f.png); }
-console.log(`pocket-demo.gif: ${frames.length} frames, ${(frames.reduce((s, f) => s + f.delay, 0) / 1000).toFixed(1)} s, ${(enc.bytes().length / 1048576).toFixed(2)} MB`);

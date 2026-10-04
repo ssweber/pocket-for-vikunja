@@ -37,15 +37,15 @@ async function step(name, fn){
 }
 
 const stamp = Date.now();
-const STEPS = ['Load the dryer {#dryer}', 'Fold T#20m', 'Pull batch B T#40m:dryer', 'Pull batch C T#1h:dryer', 'Pack T#10m', 'Sweep up'];
-const TITLES = ['Load the dryer', 'Fold', 'Pull batch B', 'Pull batch C', 'Pack', 'Sweep up'];
+const STEPS = ['Put the roast in {#roast}', 'Peel the potatoes T#20m', 'Baste the roast T#40m:roast', 'Take the roast out T#1h:roast', 'Carve T#10m', 'Wash up'];
+const TITLES = ['Put the roast in', 'Peel the potatoes', 'Baste the roast', 'Take the roast out', 'Carve', 'Wash up'];
 let project;
 
 // A run, set up as Pocket does: a copy of the template without its label, and a copy of each step under it.
 async function startRun(template, tplSteps, label){
   const run = (await api(`/tasks/${template}/duplicate`, { method: 'POST' })).duplicated_task;
   await api(`/tasks/${run.id}/labels/${label}`, { method: 'DELETE' });
-  await patch(run.id, { title: `Laundry · run · ${stamp}`, done: false, due_date: ZERO });
+  await patch(run.id, { title: `Sunday roast · run · ${stamp}`, done: false, due_date: ZERO });
   const ids = [];
   for (const [i, s] of tplSteps.entries()) {
     const c = (await api(`/tasks/${s}/duplicate`, { method: 'POST' })).duplicated_task;
@@ -61,7 +61,7 @@ try {
   const mk = title => api(`/projects/${project.id}/tasks`, { method: 'POST', body: { title } });
 
   // The template: labelled, its steps done, then itself done, as Make template does.
-  const template = await mk('Laundry ' + stamp), tplSteps = [];
+  const template = await mk('Sunday roast ' + stamp), tplSteps = [];
   for (const t of STEPS) {
     const s = await mk(t);
     await api(`/tasks/${template.id}/relations`, { method: 'POST', body: { other_task_id: s.id, relation_kind: 'subtask' } });
@@ -96,31 +96,31 @@ try {
 
   await step('fan-out-steps-dont-shift-each-other', async () => {
     const before = await dues(a);
-    await patch(a.steps[1], { done: true });                                  // Fold: nothing counts from it
-    await patch(a.steps[2], { done: true });                                  // Pull batch B: nor from it
+    await patch(a.steps[1], { done: true });                                  // Peel the potatoes: nothing counts from it
+    await patch(a.steps[2], { done: true });                                  // Baste the roast: nor from it
     await wait(1500);
     const now = await dues(a);
-    if (now[3] !== before[3]) throw new Error(`Pull batch C moved from ${before[3]} to ${now[3]}`);
+    if (now[3] !== before[3]) throw new Error(`Take the roast out moved from ${before[3]} to ${now[3]}`);
   });
 
   await step('a-late-step-counts-from-when-it-was-done', async () => {
-    // Pull batch C is due an hour after the dryer; done now, it's early, and Pack counts from now, not from its due date.
+    // Take the roast out is due an hour after it went in; done now, it's early, and Carve counts from now, not from its due date.
     const done = await patch(a.steps[3], { done: true });
-    await until('Pack got no due date', async () => isSet((await get(a.steps[4])).due_date));
+    await until('Carve got no due date', async () => isSet((await get(a.steps[4])).due_date));
     const m = after((await get(a.steps[4])).due_date, done.done_at);
-    if (m !== 10) throw new Error(`Pack is due ${m} minutes after Pull batch C was done`);
-    if (isSet((await get(a.steps[5])).due_date)) throw new Error('Sweep up, without a time, got a due date');
+    if (m !== 10) throw new Error(`Carve is due ${m} minutes after the roast came out`);
+    if (isSet((await get(a.steps[5])).due_date)) throw new Error('Wash up, without a time, got a due date');
   });
 
   await step('re-saving-a-done-step-sets-nothing', async () => {
     const mine = '2031-01-01T10:00:00Z';
-    await patch(a.steps[4], { due_date: mine });                              // someone moved Pack's due date by hand
-    await wait(2500);                                                         // Pull batch C was done a while ago
+    await patch(a.steps[4], { due_date: mine });                              // someone moved Carve's due date by hand
+    await wait(2500);                                                         // the roast came out a while ago
     await patch(a.steps[3], { priority: 3 });                                 // and is saved again
     await api(`/tasks/${a.steps[3]}/labels`, { method: 'POST', body: { label_id: label.id } }).catch(() => {});   // and labelled
     await wait(1500);
     const due = (await get(a.steps[4])).due_date;
-    if (new Date(due).getTime() !== new Date(mine).getTime()) throw new Error('Pack is due ' + due);
+    if (new Date(due).getTime() !== new Date(mine).getTime()) throw new Error('Carve is due ' + due);
   });
 
   await step('undo-leaves-due-dates-and-a-new-tick-sets-them-again', async () => {
@@ -128,16 +128,16 @@ try {
     await patch(a.steps[0], { done: false });
     await wait(1500);
     if (JSON.stringify(await dues(a)) !== JSON.stringify(before)) throw new Error('undoing changed due dates');
-    await patch(a.steps[1], { done: false });                                 // Fold isn't done any more, so it can move
+    await patch(a.steps[1], { done: false });                                 // Peel the potatoes isn't done any more, so it can move
     await wait(1100);
     const again = await patch(a.steps[0], { done: true });
-    await until('Fold never moved', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
+    await until('Peel the potatoes never moved', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
     const d = await dues(a);
     if (d[2] !== before[2] || d[3] !== before[3]) throw new Error('done steps were changed: ' + JSON.stringify([before[2], d[2], before[3], d[3]]));
   });
 
   await step('a-tick-from-the-web-app-and-done-steps-left-alone', async () => {
-    await patch(b.steps[2], { done: true });                                  // Pull batch B, done before the dryer
+    await patch(b.steps[2], { done: true });                                  // Baste the roast, done before it went in
     await wait(1100);
     const t = await api('/tasks/' + b.steps[0], { v: 'v1' });
     const done = await api('/tasks/' + b.steps[0], { method: 'POST', v: 'v1', body: { ...t, done: true } });   // as the web app saves

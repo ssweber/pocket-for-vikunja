@@ -654,7 +654,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <!-- In a workflow project: make the task a template, start a run from it, or go to the run it's part of -->
       <template x-if="wfRole"><div class="card wf-card" id="d-workflow">
         <template x-if="wfRole === 'candidate'"><div>
-          <p>Make this a template: its subtasks become the steps of every run, in this order. Add T#20m to a step to make it due 20 minutes after the step before it is done. Name a step with {#dryer}, and T#40m:dryer counts from that one instead.</p>
+          <p>Make this a template: its subtasks become the steps of every run, in this order. Add T#20m to a step to make it due 20 minutes after the step before it is done. Name a step with {#roast}, and T#40m:roast counts from that one instead.</p>
           <button class="btn block" id="d-make-template" :disabled="sheet.wfBusy" @click="makeTemplate()" x-text="sheet.wfBusy ? 'Making a template…' : 'Make template'"></button>
         </div></template>
         <template x-if="wfRole === 'template'"><div>
@@ -1112,9 +1112,9 @@ const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
 const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
 const DONE_MARK = '✅', SKIP_MARK = '⏭️';
 /* When a step is due, written in its title in the template, the way IEC 61131-3 writes times:
-     Load the dryer {#dryer}    names the step "dryer"
-     Warm up the press T#20m    due 20 minutes after the step before it is done (the first step: after the run starts)
-     Pull batch B T#40m:dryer   due 40 minutes after the step named "dryer" is done
+     Put the roast in {#roast}    names the step "roast"
+     Peel the potatoes T#20m      due 20 minutes after the step before it is done (the first step: after the run starts)
+     Baste the roast T#40m:roast  due 40 minutes after the step named "roast" is done
    Units are d, h, m, s and ms, and combine: T#1h30m. A step without a time has no due date: it's simply next. Copies
    of the steps in a run have their titles without these, and Pocket's plugin sets their due dates as steps are done. */
 const STEP_UNITS = {d: 864e5, h: 36e5, m: 6e4, s: 1e3, ms: 1};
@@ -1299,7 +1299,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
   // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
   const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
   if (quoted) { out.title = quoted[2].trim(); return out; }
-  // A workflow step's T#20m, T#40m:dryer and {#dryer} stay as they are, and nothing reads them as a date, a time or a
+  // A workflow step's T#20m, T#40m:roast and {#roast} stay as they are, and nothing reads them as a date, a time or a
   // project: each is swapped for a run of one private-use character, the same length, and put back at the end.
   const stepTokens = [];
   const hide = tok => String.fromCharCode(0xE000 + stepTokens.push(tok) - 1).repeat(tok.length);

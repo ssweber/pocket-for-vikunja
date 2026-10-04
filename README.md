@@ -6,7 +6,7 @@ Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket i
 
 <p align="center"><img src="docs/screenshots/pocket-demo.gif" width="300" alt="Pocket on a phone. Typing 'Call Ana at 4pm +work !3' highlights the words it reads, chips show Work, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds a task and slides it to 60% progress, and ticks off another, which slides away with an Undo."></p>
 
-It isn't an app from an app store or a service you sign up for. Pocket is one readable HTML file and a plugin of about 100 lines. Your own Vikunja serves both, and you can read every line before you install it.
+It isn't an app from an app store or a service you sign up for. Pocket is one readable HTML file and a plugin of about 350 lines. Your own Vikunja serves both, and you can read every line before you install it.
 
 <sub>Pocket is an unofficial companion, not made by the Vikunja team. Please report problems with it here, not to Vikunja.</sub>
 
@@ -35,7 +35,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 - **Paste a list:** each line of a list from an email or a note becomes a task, optionally as subtasks of the first.
 - **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add photos and files.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by number.
-- **Workflows (optional):** checklists people work through step by step, again and again, like starting up a line or closing a shop. Start a run from a template, tick off its steps with a photo or a note, and see who did what. See [Workflows](#workflows-optional).
+- **Workflows (optional):** checklists people work through step by step, again and again, like starting up a line or closing a shop. Start a run from a template, tick off its steps with a photo or a note, and see who did what. Steps can be timed from the step they wait on, with a countdown. See [Workflows](#workflows-optional).
 - **Projects:** your project tree with favorites, and the open or done tasks in each.
 - **Offline:** Pocket opens without a connection, and tasks and photos you add are sent once you're back online. A photo that a patchy connection cuts off mid-upload waits on the phone and goes up by itself.
 - **Your Vikunja sign-in:** sign in once, with your usual login, and Pocket and Vikunja's web app are both signed in on that device.
@@ -61,6 +61,8 @@ Since the plugin runs inside Vikunja, read [`pocket/main.go`](pocket/main.go) be
    ```
 
    Vikunja's log should now include `pocket: serving … at /api/v1/plugins/pocket/`.
+
+   If you'll use [timed workflow steps](#timed-steps), you can also turn on [step times](#step-times) here, so the steps get due dates in Vikunja. It's the one setting that lets the plugin write to Vikunja's data, so it's off unless you add it.
 
 3. **Open Pocket on your phone** at `https://<your Vikunja>/api/v1/plugins/pocket/` and sign in the way you sign in to Vikunja, with single sign-on or a password. You're then signed in to both on that device.
 
@@ -132,6 +134,8 @@ The phrases and their meanings come from Vikunja's own tests, so the same text g
 
 Workflows are checklists that people work through step by step, again and again: starting up a production line, opening or closing a shop, a packing list. They're ordinary Vikunja projects and tasks, and Pocket shows nothing of them until a project is made a workflow.
 
+<p align="center"><img src="docs/screenshots/pocket-workflow.gif" width="300" alt="Starting a run of the Line 2 Startup template in Pocket. The start sheet lists the steps, two of them due 10 and 30 minutes after 'Start the hydraulics'. The run opens one step at a time; once Start the hydraulics is ticked, 'Check the oil temperature in 10m' and 'First article check in 30m' are pinned at the top, and after the next tick the oil check is the step on screen, due in 10 minutes."></p>
+
 1. **Make a project a workflow.** Share it with the people who'll run it, at *Write*. Open it in Pocket, tap **⋯** and choose **Use as workflow**. This adds a line `pocket:workflow` to the project's description, and everyone it's shared with gets a **Workflows** tab.
 2. **Make a template.** Add a task to the project, add its steps as subtasks (pasting a list works), and tap **Make template**. Move steps up or down in the template's sheet. To time steps, see [Timed steps](#timed-steps).
 3. **Start a run.** Under Workflows, tap **Start** and choose who it's for. Pocket copies the template and its steps. Only the run is assigned, so that person gets one notification from Vikunja, not one per step.
@@ -149,14 +153,14 @@ Add a time to a step's title in the template, written the way PLC programs write
 
 | In the step | It's due |
 | --- | --- |
-| `Warm up the press T#20m` | 20 minutes after the step before it is done. On the first step, 20 minutes after the run starts. |
-| `Load the dryer {#dryer}` | When it's next. `{#dryer}` names the step "dryer". |
-| `Pull batch B T#40m:dryer` | 40 minutes after the step named "dryer" is done, whatever is done in between. |
+| `Peel the potatoes T#20m` | 20 minutes after the step before it is done. On the first step, 20 minutes after the run starts. |
+| `Put the roast in {#roast}` | When it's next. `{#roast}` names the step "roast". |
+| `Baste the roast T#40m:roast` | 40 minutes after the step named "roast" is done, whatever is done in between. |
 
 - Units are `d`, `h`, `m`, `s` and `ms`, and they combine: `T#1h30m`. A step without a `T#` has no due date: it's simply next.
 - A time counts from an earlier step, and each name is used once. Pocket checks this when you make the template, move or add a step, and start a run, and the template's sheet shows what's wrong.
 - A run's steps get their titles without `T#` and `{#…}`.
-- On the run screen, a timed step says what it waits on ("Due 40m after “Load the dryer”"). Once that step is done, it counts down. Countdowns for other steps are pinned above the step on screen.
+- On the run screen, a timed step says what it waits on ("Due 40m after “Put the roast in”"). Once that step is done, it counts down. Countdowns for other steps are pinned above the step on screen.
 - The steps' due dates in Vikunja, and so on Today and in Vikunja's web app, come from the plugin's [step times](#step-times). Without them, Pocket still counts down on the run screen.
 
 ### Step times

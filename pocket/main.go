@@ -133,8 +133,8 @@ func (p *Pocket) serve(c *echo.Context) error {
 
 /* A template step's title says when a run's copy of it is due, as Pocket's app reads it (parseStep in index.html):
      T#20m          20 minutes after the step before it is done
-     {#dryer}       names the step "dryer"
-     T#40m:dryer    40 minutes after the step named "dryer" is done
+     {#roast}       names the step "roast"
+     T#40m:roast    40 minutes after the step named "roast" is done
    Units d, h, m, s and ms, combined as in T#1h30m. Pocket checks templates when they're made, changed and started, so
    anything else here (T#-10m, a name used twice) is simply not a time. */
 var (

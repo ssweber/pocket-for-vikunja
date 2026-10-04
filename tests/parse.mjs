@@ -222,23 +222,23 @@ addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
 
 // ---------- workflow steps ----------
-// A step's T#20m, T#40m:dryer and {#dryer} stay in its title, for parseStep, and nothing reads them as a date or a time.
+// A step's T#20m, T#40m:roast and {#roast} stay in its title, for parseStep, and nothing reads them as a date or a time.
 add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a workflow step keeps its words; T#30m is read by parseStep' });
 add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
-add({ text: 'Pull batch B T#40m:dryer', title: 'Pull batch B T#40m:dryer', date: null, pocket: true, why: 'nor is T#40m:dryer' });
+add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
 // The same text with a step's token after it reads the same: [text, token, mode].
-const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:dryer'], ['01.02 Lorem Ipsum', 'T#1h30m'],
-  ['Lorem Ipsum 01.02', '{#dryer}'], ['Order resin 2026-10-12', 'T#3d'], ['Pull batch B at 5pm', 'T#40m:dryer'], ['Dryer in tomorrow', '{#dryer}'],
-  ['Fold the towels #project', 'T#20m:dryer', 'todoist'], ['Fold the towels #project', '{#fold}', 'todoist'], ['Sort the socks *laundry', 'T#5m']];
+const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:roast'], ['01.02 Lorem Ipsum', 'T#1h30m'],
+  ['Lorem Ipsum 01.02', '{#roast}'], ['Order resin 2026-10-12', 'T#3d'], ['Baste the roast at 5pm', 'T#40m:roast'], ['Roast in tomorrow', '{#roast}'],
+  ['Set the table #project', 'T#20m:roast', 'todoist'], ['Set the table #project', '{#table}', 'todoist'], ['Make the gravy *kitchen', 'T#5m']];
 // parseStep: [text, title, offset in ms, name, ref, problems]
 const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['Warm up the press T#30m', 'Warm up the press', 30 * 6e4, null, null, 0],
   ['First article check T#2h', 'First article check', 120 * 6e4, null, null, 0], ['Cool down T#1h30m', 'Cool down', 90 * 6e4, null, null, 0],
   ['Settle T#1.5h', 'Settle', 90 * 6e4, null, null, 0], ['Rinse T#90s', 'Rinse', 90e3, null, null, 0], ['Blink T#250ms', 'Blink', 250, null, null, 0],
   ['Order resin T#3d', 'Order resin', 3 * 864e5, null, null, 0], ['Sign off T#0m', 'Sign off', 0, null, null, 0], ['Soak t#20M', 'Soak', 20 * 6e4, null, null, 0],
-  ['Load the dryer {#dryer}', 'Load the dryer', null, 'dryer', null, 0], ['Pull batch B T#40m:dryer', 'Pull batch B', 40 * 6e4, null, 'dryer', 0],
-  ['Dryer in {#dryer} T#5m', 'Dryer in', 5 * 6e4, 'dryer', null, 0], ['T#1d2h3m4s Long one', 'Long one', 864e5 + 2 * 36e5 + 3 * 6e4 + 4e3, null, null, 0],
+  ['Put the roast in {#roast}', 'Put the roast in', null, 'roast', null, 0], ['Baste the roast T#40m:roast', 'Baste the roast', 40 * 6e4, null, 'roast', 0],
+  ['Roast in {#roast} T#5m', 'Roast in', 5 * 6e4, 'roast', null, 0], ['T#1d2h3m4s Long one', 'Long one', 864e5 + 2 * 36e5 + 3 * 6e4 + 4e3, null, null, 0],
   ['Email ops@T#team', 'Email ops@T#team', null, null, null, 0], ['Part AT#5', 'Part AT#5', null, null, null, 0],
-  ['Read T#30 of the manual', 'Read of the manual', null, null, null, 1], ['Pre-heat T#-10m:dryer', 'Pre-heat', null, null, null, 1],
+  ['Read T#30 of the manual', 'Read of the manual', null, null, null, 1], ['Preheat T#-10m:roast', 'Preheat', null, null, null, 1],
   ['Two times T#5m T#10m', 'Two times', 5 * 6e4, null, null, 1], ['Bad name {#1st}', 'Bad name', null, null, null, 1],
   ['Bad ref T#5m:2nd', 'Bad ref', null, null, null, 1], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
 // stepProblems over a template's steps: [titles, what each problem says]
