@@ -751,9 +751,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
             <template x-for="d in [draft('add').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
               <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
               <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
-                <template x-if="d.i === 0"><span>the start</span></template>
-                <template x-if="d.i > 0"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
-                  <option value="" :selected="d.from === ''">the step before</option>
+                <template x-if="d.i === 0 && !d.lost"><span>the start</span></template>
+                <template x-if="d.i > 0 || d.lost"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
+                  <template x-if="d.lost"><option value="?" disabled selected>pick one</option></template>
+                  <option value="" :selected="!d.lost && d.from === ''" x-text="d.i ? 'the step before' : 'the start'"></option>
                   <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
                 </select></template>
                 <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” as words'" @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
@@ -876,9 +877,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
             <template x-for="d in [draft('new').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
               <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
               <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
-                <template x-if="d.i === 0"><span>the start</span></template>
-                <template x-if="d.i > 0"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
-                  <option value="" :selected="d.from === ''">the step before</option>
+                <template x-if="d.i === 0 && !d.lost"><span>the start</span></template>
+                <template x-if="d.i > 0 || d.lost"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
+                  <template x-if="d.lost"><option value="?" disabled selected>pick one</option></template>
+                  <option value="" :selected="!d.lost && d.from === ''" x-text="d.i ? 'the step before' : 'the start'"></option>
                   <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
                 </select></template>
                 <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” as words'" @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
@@ -1338,8 +1340,8 @@ function draftSteps(rows, before = []){
   const steps = saved.map(parseStep), infos = stepInfos(saved), info = new Map();
   all.forEach((r, i) => {
     if (r.fixed) return;
-    const j = stepFrom(steps, i), lost = r.from && !at.has(r.from) && steps[i].offset !== null;
-    info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text,
+    const j = stepFrom(steps, i), lost = !!r.from && !at.has(r.from) && steps[i].offset !== null;
+    info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text, lost,
       problem: infos[i].problem || (lost ? 'the step it counts from isn\'t in this template any more: pick one' : ''),
       phrase: phrase[i]?.text || '', kept: !!(phrase[i] && r.keep), from: j === null || j < 0 ? '' : steps[i].ref ? all[j].key : '',
       choices: all.slice(0, i).map(x => ({key: x.key, title: parseStep(x.text).title}))});

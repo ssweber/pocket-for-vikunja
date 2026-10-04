@@ -131,6 +131,28 @@ try {
       throw new Error('sheet shows ' + JSON.stringify(shown));
   });
 
+  await step('a-step-it-counts-from-removed', async () => {
+    // Counting from a step that's then removed, and is first now: pick one, the start; nothing is made.
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
+    await page.fill('#nt-name', 'Not made');
+    const row = i => page.locator('#new-steps > .draft-step').nth(i);
+    await row(0).locator('.draft-in').fill('Put the roast in');
+    await page.click('#new-add-step');
+    await row(1).locator('.draft-in').fill('Baste in 20 min');
+    await row(1).locator('select').selectOption({ label: 'Put the roast in' });
+    await row(0).locator('[aria-label^="Remove"]').click();
+    await row(0).locator('.draft-meta .bad:has-text("pick one")').waitFor();
+    if (await page.isEnabled('#nt-create')) throw new Error('can be made');
+    await row(0).locator('select').selectOption({ label: 'the start' });
+    await page.waitForSelector('#nt-create:not([disabled])');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.click(`${tplRow} .body`);                                    // back to the template's sheet
+    await page.waitForSelector('#d-start');
+  });
+
   await step('reorder-steps', async () => {
     await page.click('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]');
     await until('the step never moved up in Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
