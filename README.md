@@ -35,6 +35,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 - **Paste a list:** each line of a list from an email or a note becomes a task, optionally as subtasks of the first.
 - **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add photos and files.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by number.
+- **Workflows (optional):** checklists people work through step by step, again and again, like starting up a line or closing a shop. Start a run from a template, tick off its steps with a photo or a note, and see who did what. See [Workflows](#workflows-optional).
 - **Projects:** your project tree with favorites, and the open or done tasks in each.
 - **Offline:** Pocket opens without a connection, and tasks and photos you add are sent once you're back online. A photo that a patchy connection cuts off mid-upload waits on the phone and goes up by itself.
 - **Your Vikunja sign-in:** sign in once, with your usual login, and Pocket and Vikunja's web app are both signed in on that device.
@@ -70,7 +71,7 @@ Since the plugin runs inside Vikunja, read [`pocket/main.go`](pocket/main.go) be
 <details>
 <summary>Signing in with an API token instead</summary>
 
-If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Users search** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Users search**, `@sarah` still works, but people aren't suggested as you type, the name stays in the title, and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*.
+If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and also tick **User** and **Users** under *Other*, and **Users search** under *Projects*. These let Pocket find people for `@sarah` and check that they can see the task's project; without **Users search**, `@sarah` still works, but people aren't suggested as you type, the name stays in the title, and no project is picked for her. To create projects from quick add, also tick **Create** under *Projects*. For workflows, also tick **Reactions**, and **Update** under *Projects*.
 
 A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn't affect it.
 
@@ -127,13 +128,28 @@ The phrases and their meanings come from Vikunja's own tests, so the same text g
 
 </details>
 
+## Workflows (optional)
+
+Workflows are checklists that people work through step by step, again and again: starting up a production line, opening or closing a shop, a packing list. They're ordinary Vikunja projects and tasks, and Pocket shows nothing of them until a project is made a workflow.
+
+1. **Make a project a workflow.** Share it with the people who'll run it, at *Write*. Open it in Pocket, tap **⋯** and choose **Use as workflow**. This adds a line `pocket:workflow` to the project's description, and everyone it's shared with gets a **Workflows** tab.
+2. **Make a template.** Add a task to the project, add its steps as subtasks (pasting a list works), and tap **Make template**. End a step with `^30m`, `^2h` or `^3d` to make it due that long after a run starts. Move steps up or down in the template's sheet.
+3. **Start a run.** Under Workflows, tap **Start** and choose who it's for. Pocket copies the template and its steps. Only the run is assigned, so that person gets one notification from Vikunja, not one per step.
+4. **Work through it.** One step at a time: **Done**, or **Skip**, where what you've typed as a note becomes the reason. Add a photo or a note to a step, or a note to the whole run. **Last time** shows the notes from the last finished run of the same template, as a handover. After the last step, **Finish run**.
+
+- **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too.
+- **Today** shows a run and its steps to the person who started it and the person it's for, not to everyone the project is shared with. Every run in progress is under Workflows.
+- **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them. A run started without a connection is set up then too.
+- **In Vikunja's web app**, a template is a done task labelled `template`, with its steps as done subtasks. A run is a copy of it, named like "Startup · run 3 · Oct 4", that Vikunja links to the template as "copied from". Steps keep the order they were added in. The web app can't reorder them, so reorder them in Pocket.
+- Everyone with *Write* access to a workflow project can also change its templates on the web.
+
 ## Offline
 
 Pocket opens without a connection and shows your lists as they were last loaded. A task you add appears with a light tint and a dashed circle until it reaches Vikunja; tap × to cancel it. Waiting tasks are sent when Pocket is opened, when it comes back to the front and when the connection returns, and a connection that drops halfway doesn't add a task twice.
 
 <img src="docs/screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying new tasks are sent once back online, and 'Call the plumber' tinted under Today, waiting to be sent">
 
-Only new tasks work offline. Ticking off or editing a task needs a connection. On an iPhone, waiting tasks are sent the next time Pocket is opened, since iPhones don't let web apps send in the background.
+Only new tasks, and what you do in a workflow run, work offline. Ticking off or editing a task elsewhere needs a connection. On an iPhone, waiting tasks are sent the next time Pocket is opened, since iPhones don't let web apps send in the background.
 
 ## Troubleshooting
 

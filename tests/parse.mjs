@@ -221,6 +221,26 @@ addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
 addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
 
+// ---------- workflow steps ----------
+// A step's line is read without dates, so "at 3pm" stays; "^30m" at the end is when it's due, counted from a run's start.
+add({ text: 'Check the guards at 3pm ^30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm ^30m', date: null, pocket: true, why: 'a workflow step keeps its words; ^30m is read by parseStep' });
+add({ text: 'Warm up the press ^2h', title: 'Warm up the press ^2h', date: null, pocket: true, why: "^2h isn't a time of day" });
+const steps = [];
+const addStep = (text, title, minutes) => steps.push({ text, title, minutes });
+addStep('Check the guards', 'Check the guards', null);
+addStep('Warm up the press ^30m', 'Warm up the press', 30);
+addStep('First article check ^2h', 'First article check', 120);
+addStep('Cool down ^1.5h', 'Cool down', 90);
+addStep('Order resin ^3d', 'Order resin', 3 * 1440);
+addStep('Service the line ^1w', 'Service the line', 7 * 1440);
+addStep('Sign off ^0m', 'Sign off', 0);
+addStep('Sign off ^15 min', 'Sign off', 15);
+addStep('Read ^30m of the manual', 'Read ^30m of the manual', null);
+addStep('Pressure up ^x', 'Pressure up ^x', null);
+// The line in a project's description that makes it a workflow: on its own, anywhere in it.
+const marks = [['<p>pocket:workflow</p>', true], ['<p>Line 2 startups</p><p>Pocket:Workflow </p>', true], ['Notes<br>pocket:workflow', true],
+  ['<p>Tracks our hiring workflow</p>', false], ['<p>see pocket:workflow in the docs</p>', false], ['', false]];
+
 // ---------- run ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const page = await browser.newPage();
@@ -234,6 +254,8 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
     marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
+const stepResults = await page.evaluate(steps => steps.map(s => parseStep(s.text)), steps);
+const markResults = await page.evaluate(marks => marks.map(([html]) => isWorkflowDesc(html)), marks);
 await browser.close();
 http.close();
 
@@ -259,5 +281,13 @@ cases.forEach((c, i) => {
 lists.forEach((l, i) => {
   if (!same(listResults[i], l.lines)) { failed++; console.log(`FAIL pasted list [${l.why}]: ${JSON.stringify(listResults[i])}`); }
 });
-console.log(`${cases.length + lists.length - failed} of ${cases.length + lists.length} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists)`);
+steps.forEach((s, i) => {
+  const r = stepResults[i], minutes = r.offset === null ? null : r.offset / 60000;
+  if (r.title !== s.title || minutes !== s.minutes) { failed++; console.log(`FAIL step ${JSON.stringify(s.text)}: "${r.title}", ${minutes} min`); }
+});
+marks.forEach(([html, want], i) => {
+  if (markResults[i] !== want) { failed++; console.log(`FAIL workflow marker ${JSON.stringify(html)}: ${markResults[i]}`); }
+});
+const total = cases.length + lists.length + steps.length + marks.length;
+console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${steps.length + marks.length} are workflow steps and markers)`);
 process.exitCode = failed ? 1 : 0;

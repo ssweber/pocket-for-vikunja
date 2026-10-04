@@ -81,6 +81,9 @@ header.top .search .linkish{font-weight:600;padding:8px 10px}
 nav.tabs a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 11px;border-radius:var(--r-chip);color:var(--muted);text-decoration:none;font-size:15px;font-weight:650}
 nav.tabs a svg{width:20px;height:20px}
 nav.tabs a[aria-current=page]{background:var(--surface);color:var(--accent)}
+/* with Workflows as a third tab, the tabs are icons only, so the row still fits a phone; the names stay for screen readers */
+nav.tabs.icons a{padding:0 14px}
+nav.tabs.icons .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* a project's name, under the header, scrolling with its list */
 .page-title{display:flex;align-items:center;gap:6px;margin:6px 0 0 -8px}
 .page-title .t{flex:1;min-width:0}
@@ -137,6 +140,49 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .tree .row .body{display:flex;align-items:center;gap:10px}
 .tree .chev{color:var(--muted)}
 .toggle-done{margin:14px 0 0;width:100%}
+
+/* ---------- workflows ---------- */
+.wf-tpl .body{display:flex;align-items:center;gap:10px}
+.wf-tpl .body .t{flex:1;min-width:0}
+.wf-start{flex:none;min-height:38px;padding:0 14px;font-size:15px}
+.wf-sub{margin:14px 2px 6px;color:var(--muted);font-size:13.5px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+.wf-hint{padding:14px;color:var(--muted);font-size:15px}
+a.sec-act{text-decoration:none}
+.start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
+.run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
+.run-bar{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.run-bar .track{flex:1;height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
+.run-bar .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent);transition:width .2s}
+.run-bar .num{color:var(--muted);font-size:14px;font-weight:650}
+.step-card{padding:16px}
+.step-no{color:var(--muted);font-size:14px;font-weight:650}
+.step-card h3{margin:4px 0 6px;font-size:24px;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
+.step-card .desc{padding:0;margin:8px 0 0}
+.step-due{font-size:15px;color:var(--muted)}
+.step-due.late{color:var(--overdue);font-weight:650}
+.step-who{margin-top:8px;font-size:15px;color:var(--accent);font-weight:650}
+.step-who.waiting{color:var(--muted)}
+.step-acts{display:flex;gap:10px;margin-top:16px}
+.step-acts .btn{min-height:60px;font-size:19px}
+.step-acts .go-on{flex:1}
+.step-nav{display:flex;justify-content:space-between;margin-top:12px}
+.step-nav .linkish{font-size:15px;font-weight:600;padding:8px 2px}
+.step-nav .linkish[disabled]{visibility:hidden}
+.step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
+.step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
+.step-extra .comment-form{padding:10px 0 0}
+.row.current{background:var(--accent-soft)}
+.row .skipped{color:var(--muted);font-style:italic}
+.finish-card{padding:16px}
+.finish-card h3{margin:0 0 4px;font-size:22px}
+.step-edit{display:flex;gap:2px;align-self:center}
+.step-edit .icon-btn{width:36px;height:36px;background:var(--sunk)}
+.step-edit .icon-btn[disabled]{opacity:.35}
+.wf-card{padding:14px}
+.wf-card p{margin:0 0 12px;color:var(--muted);font-size:15px}
+.wf-card p:last-child{margin-bottom:0}
+.who-pick{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px}
+.who-pick .chip{font-size:15px;padding:8px 14px}
 
 /* ---------- capture bar ---------- */
 #capture{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);background:var(--bg)}
@@ -293,6 +339,9 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5h3.2L9 6h6l1.8 2.5H20V19H4z"/><circle cx="12" cy="13.5" r="3.3"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24"><path d="M4 6.5l1.6 1.6L8.5 5M4 12.5l1.6 1.6 2.9-3.1M4 18.5l1.6 1.6 2.9-3.1M12 6.5h8M12 12.5h8M12 18.5h8"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3.2"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
 </svg>
 
 <!-- ============ LOGIN ============ -->
@@ -325,7 +374,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
       <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
       <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
-      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects.</p>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects. For workflows, also tick “Reactions”, and “Update” under Projects.</p>
     </form>
   </div>
 </section>
@@ -342,9 +391,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
              enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button type="button" id="btn-search-cancel" class="linkish" @click="closeSearch()">Cancel</button>
     </form>
-    <nav class="tabs" aria-label="Views">
-      <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg>Today</a>
-      <a href="#/projects" data-tab="projects" :aria-current="route.name !== 'today' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg>Projects</a>
+    <nav class="tabs" aria-label="Views" :class="{icons: workflowProjects.length}">
+      <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg><span class="lbl">Today</span></a>
+      <a href="#/projects" data-tab="projects" :aria-current="tab === 'projects' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg><span class="lbl">Projects</span></a>
+      <template x-if="workflowProjects.length"><a href="#/workflows" data-tab="workflows" :aria-current="tab === 'workflows' ? 'page' : null"><svg class="i"><use href="#i-flow"/></svg><span class="lbl">Workflows</span></a></template>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
     <button id="btn-refresh" class="icon-btn" aria-label="Refresh" :disabled="refreshing" @click="refresh()"><svg class="i"><use href="#i-refresh"/></svg></button>
@@ -352,9 +402,11 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   </header>
 
   <main id="view" aria-live="polite">
-    <template x-if="route.name === 'project'"><div class="page-title">
-      <button id="btn-back" class="icon-btn plain" aria-label="Back to projects" @click="go('#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
+    <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title">
+      <button id="btn-back" class="icon-btn plain" :aria-label="route.name === 'run' ? 'Back to workflows' : 'Back to projects'" @click="go(route.name === 'run' ? '#/workflows' : '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div>
+      <!-- The project's own sheet: where it's made a workflow -->
+      <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
     </div></template>
     <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks and photos are sent when you\'re back online.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
@@ -366,7 +418,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
 
     <!-- Today and a single project share the task-list markup -->
-    <template x-if="!view.loading && !view.error && route.name !== 'projects'"><div>
+    <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div>
       <template x-for="g in listGroups.filter(g => g.tasks.length)" :key="g.key"><div>
         <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span>
           <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
@@ -405,9 +457,118 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         </template></div>
       </div></template>
     </div></template>
+
+    <!-- Workflows: each workflow project's templates, to start a run from, and its runs in progress -->
+    <template x-if="!view.loading && !view.error && route.name === 'workflows'"><div id="workflows">
+      <template x-if="!view.wf.length"><div class="empty"><b>No workflows here.</b>Open a project, tap ⋯ and choose Use as workflow.</div></template>
+      <template x-for="w in view.wf" :key="w.project.id"><div class="wf" :data-project="w.project.id">
+        <div class="sec"><span x-text="w.project.title"></span><a class="sec-act" :href="'#/project/' + w.project.id">Open project</a></div>
+        <div class="list">
+          <template x-for="t in w.templates" :key="t.id"><div class="row wf-tpl" :data-id="t.id">
+            <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-flow"/></svg>
+              <div class="t"><div class="title" x-text="t.title"></div><div class="meta num" x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></div></div></button>
+            <button class="btn wf-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button>
+          </div></template>
+          <template x-if="!w.templates.length"><p class="wf-hint">No templates here yet. Add a task to this project with its steps as subtasks, then tap <b>Make template</b> on it.</p></template>
+        </div>
+        <template x-if="w.runs.length || startingIn(w.project.id).length"><div>
+          <div class="wf-sub">In progress</div>
+          <div class="list">
+            <template x-for="e in startingIn(w.project.id)" :key="e.id"><div class="row pending"><div class="body"><div class="title" x-text="'Starting ' + e.template.title"></div>
+              <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span></div></div></div></template>
+            <template x-for="r in w.runs" :key="r.id"><div class="row wf-run" :data-id="r.id">
+              <button class="body" @click="go('#/run/' + r.id)"><div class="title" x-text="r.title"></div>
+                <div class="meta"><span class="num" x-text="r.done + ' of ' + r.total + ' done'"></span><template x-if="r.next"><span x-text="'Next: ' + r.next"></span></template><template x-if="r.forText"><span x-text="r.forText"></span></template></div></button>
+              <svg class="i chev" style="align-self:center;color:var(--muted)"><use href="#i-chev"/></svg>
+            </div></template>
+          </div>
+        </div></template>
+      </div></template>
+    </div></template>
+
+    <!-- A run: the step it's on, the list of steps, notes, and the notes from the last run of the same template -->
+    <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
+      <p class="run-for" id="run-for" x-text="runView.forText"></p>
+      <div class="run-bar"><span class="track"><i :style="{'--pct': runView.total ? runView.doneCount / runView.total : 0}"></i></span><span class="num" id="run-count" x-text="runView.doneCount + ' of ' + runView.total + ' done'"></span></div>
+
+      <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
+      <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
+        <h3>All steps done</h3><p class="note" style="margin:0" x-text="runView.summary"></p>
+        <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun()">Finish run</button>
+      </div></template>
+
+      <template x-if="runView.step"><div class="card step-card" id="step-card" :data-id="runView.step.id">
+        <div class="step-no num" x-text="'Step ' + (runView.at + 1) + ' of ' + runView.total"></div>
+        <h3 id="step-title" x-text="runView.step.title"></h3>
+        <template x-if="runView.step.dueText"><div class="step-due num" :class="{late: runView.step.late}" x-text="runView.step.dueText"></div></template>
+        <template x-if="runView.step.description"><div class="desc" x-html="sanitize(runView.step.description)"></div></template>
+        <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.waiting}" x-text="runView.step.whoText"></div></template>
+        <div class="step-acts">
+          <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" @click="tickStep(runView.step, 'done')"><svg class="i"><use href="#i-check"/></svg>Done</button></template>
+          <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" @click="tickStep(runView.step, 'skip')">Skip</button></template>
+          <template x-if="runView.step.done"><button class="btn ghost go-on" id="step-undo" @click="tickStep(runView.step, 'undone')">Not done</button></template>
+        </div>
+        <div class="step-nav">
+          <button class="linkish" id="step-prev" :disabled="runView.at === 0" @click="showStep(runView.at - 1)">‹ Previous</button>
+          <button class="linkish" id="step-next" :disabled="runView.at >= runView.total - 1" @click="showStep(runView.at + 1)">Next ›</button>
+        </div>
+        <!-- Photos and notes for this step: photos wait on the phone without a connection, as everywhere in Pocket -->
+        <div class="step-extra" id="step-extra">
+          <template x-for="a in runView.step.attachments || []" :key="a.id">
+            <button class="att" @click="openAttachment(a, runView.step.id)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+          </template>
+          <template x-for="f in waitingByTask.get(runView.step.id) || []" :key="f.key">
+            <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span></div>
+          </template>
+          <template x-if="attachmentsOn"><label class="att add-att">
+            <svg class="i"><use href="#i-camera"/></svg><span class="nm">Add a photo</span>
+            <input type="file" id="step-file" class="sr" accept="image/*" multiple aria-label="Add a photo to this step" @change="addFiles($event.target.files, runView.step); $event.target.value = ''">
+          </label></template>
+          <template x-for="c in runView.step.notes" :key="c.id">
+            <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+          </template>
+          <form class="comment-form" id="step-note-form" @submit.prevent="addNote(runView.step.id, 'stepDraft')">
+            <textarea id="step-note" rows="1" placeholder="Note on this step" aria-label="Note on this step" x-model="view.run.stepDraft"></textarea>
+            <button class="go btn" style="width:44px;padding:0" aria-label="Save note"><svg class="i"><use href="#i-send"/></svg></button>
+          </form>
+        </div>
+      </div></template>
+
+      <div class="h3">Steps</div>
+      <div class="list" id="run-steps">
+        <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at}" :data-id="s.id">
+          <button class="check" :class="{wait: s.waiting}" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use href="#i-check"/></svg></button>
+          <button class="body" @click="showStep(i, true)"><div class="title" x-text="s.title"></div>
+            <div class="meta" x-show="s.dueText || (s.done && s.whoText)"><template x-if="s.dueText && !s.done"><span class="due num" :class="{overdue: s.late}" x-text="s.dueText"></span></template><template x-if="s.done && s.whoText"><span :class="{skipped: s.skipped}" x-text="s.whoText"></span></template></div></button>
+        </div></template>
+      </div>
+
+      <div class="h3">Notes on this run</div>
+      <div class="card" id="run-notes">
+        <template x-for="c in runView.notes" :key="c.id">
+          <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+        </template>
+        <form class="comment-form" id="run-note-form" @submit.prevent="addNote(view.run.run.id, 'runDraft')">
+          <textarea id="run-note" rows="1" placeholder="Note for this run, and the next one" aria-label="Note on this run" x-model="view.run.runDraft"></textarea>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Save note"><svg class="i"><use href="#i-send"/></svg></button>
+        </form>
+      </div>
+
+      <!-- What was noted on the last finished run of this template, as a handover -->
+      <template x-if="view.run.last"><div>
+        <div class="h3">Last time<span class="n" x-text="view.run.last.title"></span></div>
+        <div class="card" id="run-last">
+          <template x-if="!view.run.last.notes"><div class="loading" style="padding:16px">Loading…</div></template>
+          <template x-for="c in view.run.last.notes || []" :key="c.id">
+            <div class="comment"><div class="who"><b x-text="c.step"></b> · <span x-text="c.author"></span> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+          </template>
+          <template x-if="view.run.last.notes && !view.run.last.notes.length"><p class="note" style="padding:12px 14px;margin:0">No notes were left last time.</p></template>
+        </div>
+      </div></template>
+    </div></template>
   </main>
 
-  <div id="capture" x-ref="captureBar" :hidden="route.name === 'search'">
+  <div id="capture" x-ref="captureBar" :hidden="['search', 'workflows', 'run'].includes(route.name)">
     <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" x-ref="capMarks" aria-hidden="true" x-html="capMarksHtml"></div>
@@ -436,7 +597,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
 <!-- ============ SHEET ============ -->
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
-<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="sheet.kind === 'account' ? 'Account' : 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
+<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', start: 'Start a run'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
@@ -479,6 +640,19 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       </div>
       <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
 
+      <!-- In a workflow project: make the task a template, start a run from it, or go to the run it's part of -->
+      <template x-if="wfRole"><div class="card wf-card" id="d-workflow">
+        <template x-if="wfRole === 'candidate'"><div>
+          <p>Make this a template: its subtasks become the steps of every run, in this order. End a step with ^30m, ^2h or ^3d to make it due that long after a run starts.</p>
+          <button class="btn block" id="d-make-template" :disabled="sheet.wfBusy" @click="makeTemplate()" x-text="sheet.wfBusy ? 'Making a template…' : 'Make template'"></button>
+        </div></template>
+        <template x-if="wfRole === 'template'"><div>
+          <p>A template: every run gets its own copy of these steps.</p>
+          <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a run</button>
+        </div></template>
+        <template x-if="wfRole === 'run' || wfRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="go('#/run/' + (wfRole === 'run' ? sheet.task.id : parentTask.id))">Open the run</button></template>
+      </div></template>
+
       <div class="card">
         <div class="prop"><span class="k">Due</span><span class="v">
           <input type="datetime-local" id="d-due" aria-label="Due date" :value="toLocalInput(sheet.task.due_date)" @change="save({due_date: fromLocalInput($event.target.value)})">
@@ -515,12 +689,19 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         </div>
       </div></template>
 
-      <div class="h3">Subtasks<span class="n num" id="d-subcount" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
+      <!-- A template's subtasks are its steps: in order, with when each is due in a run, and moved up or down here -->
+      <div class="h3"><span x-text="wfRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="wfRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
       <div class="card" id="d-subtasks">
-        <template x-for="st in subtasks" :key="st.id">
-          <div class="row" :class="{done: st.done}" :data-id="st.id">
-            <button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button>
-            <button class="body" @click="openTask(st.id)"><div class="title" x-text="st.title"></div><template x-if="dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template></button>
+        <template x-for="(st, i) in subtasks" :key="st.id">
+          <div class="row" :class="{done: st.done && wfRole !== 'template'}" :data-id="st.id">
+            <template x-if="wfRole !== 'template'"><button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button></template>
+            <button class="body" @click="openTask(st.id)"><div class="title" x-text="wfRole === 'template' ? parseStep(st.title).title : st.title"></div>
+              <template x-if="wfRole === 'template' && parseStep(st.title).offset !== null"><div class="meta"><span class="num" x-text="offsetText(parseStep(st.title).offset)"></span></div></template>
+              <template x-if="wfRole !== 'template' && dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template></button>
+            <template x-if="wfRole === 'template'"><span class="step-edit">
+              <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.wfBusy" @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+              <button class="icon-btn" :aria-label="'Move down: ' + st.title" :disabled="i === subtasks.length - 1 || sheet.wfBusy" @click="moveStep(i, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+            </span></template>
           </div>
         </template>
         <form class="comment-form" id="d-subform" @submit.prevent="addSubtasks()">
@@ -583,6 +764,43 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       </div></template>
 
       <div class="danger-zone"><button class="btn danger block" id="d-delete" @click="deleteTask()">Delete task</button></div>
+    </div></template>
+
+    <!-- A project's options: making it a workflow, so everyone it's shared with gets the Workflows tab -->
+    <template x-if="sheet.kind === 'project' && sheet.project"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="sheet.project.title"></h2></div>
+      <div class="card wf-card" id="p-workflow">
+        <template x-if="!isWorkflow(sheet.project)"><div>
+          <p>Use this project for workflows: checklists that people start from a template and work through step by step. Everyone the project is shared with gets a Workflows tab in Pocket.</p>
+          <button class="btn block" id="p-use-workflow" :disabled="sheet.wfBusy" @click="setWorkflow(sheet.project, true)">Use as workflow</button>
+        </div></template>
+        <template x-if="isWorkflow(sheet.project)"><div>
+          <p>This project is a workflow: its templates and runs are under Workflows.</p>
+          <a class="btn ghost block" href="#/workflows" style="text-decoration:none;margin-bottom:10px">Go to Workflows</a>
+          <button class="btn danger block" id="p-stop-workflow" :disabled="sheet.wfBusy" @click="setWorkflow(sheet.project, false)">Stop using as workflow</button>
+        </div></template>
+      </div>
+    </div></template>
+
+    <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
+    <template x-if="sheet.kind === 'start'"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="'Start ' + (sheet.start?.template?.title || 'a run')"></h2></div>
+      <template x-if="sheet.loading"><div class="loading">Loading…</div></template>
+      <template x-if="sheet.error"><div class="err" x-html="sheet.error"></div></template>
+      <template x-if="sheet.start?.template"><div>
+        <div class="h3">For</div>
+        <div class="card who-pick" id="start-for" role="radiogroup" aria-label="Who the run is for">
+          <template x-for="u in sheet.start.people" :key="u.id"><button type="button" class="chip toggle" role="radio" :data-user="u.username" :aria-checked="String(sheet.start.forId === u.id)" :aria-pressed="String(sheet.start.forId === u.id)"
+            @click="sheet.start.forId = u.id" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
+        </div>
+        <div class="h3">Steps<span class="n num" x-text="sheet.start.steps.length"></span></div>
+        <div class="card" id="start-steps">
+          <template x-for="(s, i) in sheet.start.steps" :key="s.id"><div class="prop"><span class="k num" style="width:24px" x-text="i + 1"></span><span class="v"><span style="flex:1" x-text="parseStep(s.title).title"></span>
+            <template x-if="parseStep(s.title).offset !== null"><span class="num start-due" x-text="offsetText(parseStep(s.title).offset)"></span></template></span></div></template>
+          <template x-if="!sheet.start.steps.length"><p class="wf-hint">This template has no steps yet.</p></template>
+        </div>
+        <button class="btn block" id="start-go" style="margin-top:16px" :disabled="sheet.start.busy || !sheet.start.steps.length" @click="startRun()" x-text="sheet.start.busy ? startProgress : 'Start'"></button>
+      </div></template>
     </div></template>
 
     <template x-if="sheet.kind === 'account'"><div>
@@ -868,6 +1086,51 @@ function textToHtml(text){
   return text.trim().split(/\n{2,}/).map(p => '<p>' + esc(p).replace(/\n/g,'<br>') + '</p>').join('');
 }
 
+/* =============== workflows =============== */
+/* A workflow is a project with a line "pocket:workflow" in its description. In it, a template is a task labelled
+   "template" and marked done, and its subtasks, also done, are its steps, in the order they were linked (the order
+   Vikunja keeps and shows them in). A run is a copy of a template with a copy of each step under it, made with
+   Vikunja's duplicate, so every copy keeps a "copied from" link to what it was copied from. Who did a step is a
+   reaction on it: ✅ when it was done, ⏭️ when it was skipped. */
+const WF_MARK = 'pocket:workflow';
+const isWorkflowDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === WF_MARK);
+const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
+const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
+// An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
+const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
+const DONE_MARK = '✅', SKIP_MARK = '⏭️';
+// "Warm up the press ^30m": the step is due 30 minutes after a run starts. Minutes, hours, days or weeks.
+const STEP_OFFSET = /\s*\^(\d+(?:\.\d+)?)\s*(m|min|h|d|w)\s*$/i;
+function parseStep(title){
+  const t = String(title || ''), m = t.match(STEP_OFFSET);
+  return m ? {title: t.slice(0, m.index).trim(), offset: +m[1] * {m: 6e4, min: 6e4, h: 36e5, d: 864e5, w: 6048e5}[m[2].toLowerCase()]} : {title: t.trim(), offset: null};
+}
+function offsetText(ms){
+  if (!ms) return 'Due at the start';
+  const [n, unit] = ms % 864e5 === 0 ? [ms / 864e5, 'day'] : ms % 36e5 === 0 ? [ms / 36e5, 'hour'] : [Math.round(ms / 6e4), 'min'];
+  return `Due ${n} ${unit}${n === 1 || unit === 'min' ? '' : 's'} after the start`;
+}
+// Vikunja busy can answer 500 (on SQLite, "database is locked"): a few quick tries before taking it as an answer.
+async function patiently(fn){
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) { if (!(e instanceof ApiError && e.status >= 500) || i >= 2) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); }
+  }
+}
+// fn over each of a list, n at a time, in the list's order.
+async function inBatches(list, n, fn){
+  const out = [];
+  for (let i = 0; i < list.length; i += n) out.push(...await Promise.all(list.slice(i, i + n).map(fn)));
+  return out;
+}
+const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
+const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
+// What a run's screen keeps of a run and its steps, also saved for opening it offline.
+const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
+  comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: (t.related_tasks?.subtask || []).map(s => s.id)});
+const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, description: t.description || '',
+  attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || []});
+
 /* =============== routing =============== */
 function currentRoute(){
   const h = location.hash.replace(/^#\/?/, '');
@@ -876,6 +1139,8 @@ function currentRoute(){
   const params = new URLSearchParams(q || '');
   if (parts[0] === 'projects') return {name:'projects'};
   if (parts[0] === 'search') return {name:'search'};
+  if (parts[0] === 'workflows') return {name:'workflows'};
+  if (parts[0] === 'run' && parts[1]) return {name:'run', id: +parts[1]};
   if (parts[0] === 'project' && parts[1]) return {name:'project', id: +parts[1], showDone: params.get('done') === '1'};
   if (parts[0] === 'add') return {name:'add', text: params.get('text') || params.get('title') || ''};
   return {name:'today'};
@@ -1053,6 +1318,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
       // chrono-node reads the rest: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
       const results = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, now, {forwardDate: true}).filter(r =>
         out.title[r.index - 1] !== P.assignee                                   // part of an @username
+        && out.title[r.index - 1] !== '^'                                       // a workflow step's "^2h"
         && !/^for\b/i.test(r.text)                                              // "for 2 hours" is a duration, not a date
         && !/^now$/i.test(r.text)                                               // "Now what" isn't due this minute
         && !/^\d{1,4}[/.-]\d/.test(r.text)                                      // numeric dates are handled above, at the ends only
@@ -1185,7 +1451,8 @@ const sync = {
     this.entries = new Map([...list, ...keep].map(e => [e.id, e]));
   },
   changed(){ this.channel?.postMessage('changed'); },
-  all(user){ return [...this.entries.values()].filter(e => e.user === user); },
+  // This person's entries, oldest first, so things are sent in the order they were done (a tick, then its untick).
+  all(user){ return [...this.entries.values()].filter(e => e.user === user).sort((a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0)); },
 
   // A new entry, with its files: saved together. Returns {kept, full}: whether it's in the database, and if not,
   // whether that's because the phone has no room.
@@ -1329,6 +1596,72 @@ const LINE_STEPS = [
   }},
 ];
 
+/* How a run is set up from its template, in the same way: the outbox entry (`j`) keeps how far it got, so a try that's
+   cut off carries on where it stopped. A copy that reached Vikunja without its reply is found again through the
+   "copied to" links of what it was copied from, instead of being made twice. */
+const NOT_RELATED = 4009;
+const RUN_STEPS = [
+  {name: 'run', done: j => !!j.runId, async run(j, c){
+    let t = j.tried ? await app.findCopy(j.template.id, j.triedAt, j.at, c.taken, j.id) : null;
+    if (!t) { j.tried = true; j.triedAt = Date.now(); await c.save(); t = (await api(`/tasks/${j.template.id}/duplicate`, {method: 'POST'})).duplicated_task; }
+    sync.claim(t.id, j.id); c.taken.add(t.id); j.runId = t.id;
+  }},
+  // The copy has the template's labels, "template" too: that one comes off. (Vikunja refuses to remove one that isn't there.)
+  {name: 'unlabel', done: j => !!j.unlabeled, async run(j){
+    for (const l of (await api('/tasks/' + j.runId)).labels || []) if (isTemplateLabel(l)) await api(`/tasks/${j.runId}/labels/${l.id}`, {method: 'DELETE'});
+    j.unlabeled = true;
+  }},
+  // Named after its template, which run of it this is, and the day: "Startup · run 3 · Oct 3". Due when its last step is.
+  {name: 'name', done: j => !!j.named, async run(j){
+    const runs = ((await api('/tasks/' + j.template.id)).related_tasks?.copiedto || []).map(x => x.id).sort((a, b) => a - b);
+    const n = runs.indexOf(j.runId) + 1 || runs.length;
+    j.title = `${j.template.title} · run ${n} · ${new Date(j.at).toLocaleDateString([], {month: 'short', day: 'numeric'})}`;
+    await patchTask(j.runId, {title: j.title, done: false, due_date: j.due || ZERO});
+    j.named = true;
+  }},
+  // Who it's for, and only them. Only the run is assigned: Vikunja tells them about it once, not once per step.
+  {name: 'assign', done: j => !!j.assigned, async run(j){
+    await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: j.for.id}]}});
+    j.assigned = true;
+  }},
+  // Each step, in the template's order: a copy of the template's step, linked under the run, then named and given
+  // its due time. One part per run, so progress is kept after each.
+  {name: 'step', done: j => j.steps.every(s => s.ready), async run(j, c){
+    const s = j.steps.find(s => !s.ready);
+    if (!s.taskId) {
+      let t = s.tried ? await app.findCopy(s.from, s.triedAt, j.at, c.taken, j.id) : null;
+      if (!t) { s.tried = true; s.triedAt = Date.now(); await c.save(); t = (await api(`/tasks/${s.from}/duplicate`, {method: 'POST'})).duplicated_task; }
+      sync.claim(t.id, j.id); c.taken.add(t.id); s.taskId = t.id;
+    } else if (!s.linked) {
+      try { await app.linkSubtask(j.runId, s.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
+      s.linked = true;
+    } else {
+      await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO});
+      s.ready = true;
+    }
+  }},
+];
+// How much of a run is set up, of 4 + 3 per step.
+const runProgress = j => [j.runId, j.unlabeled, j.named, j.assigned, ...j.steps.flatMap(s => [s.taskId, s.linked, s.ready])].filter(Boolean).length;
+
+/* What's done on a run's screen: one outbox entry each, sent in the order they were done, with or without a
+   connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
+   and mark, and a note whose reply was lost is looked for before it's posted again. */
+const ACTS = {done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done']};
+const ACT_STEPS = {
+  done: a => patchTask(a.task, {done: true}),
+  undone: a => patchTask(a.task, {done: false}),
+  mark: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: DONE_MARK}}),
+  markSkip: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: SKIP_MARK}}),
+  unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },
+  note: async (a, save) => {
+    if (a.tried && await app.findNote(a.task, a.html, a.triedAt, a.at)) return;
+    a.tried = true; a.triedAt = Date.now(); await save();
+    await api(`/tasks/${a.task}/comments`, {method: 'POST', body: {comment: a.html}});
+  },
+};
+let actCount = 0;                                // orders things done in the same millisecond
+
 // The lists Pocket last loaded, shown when it opens without a connection. Cleared on sign-out.
 const saved = {
   get(k){ try { return JSON.parse(store.get('saved.' + k)); } catch { return null; } },
@@ -1352,7 +1685,7 @@ const nestSubtasks = tasks => {
   for (const t of tasks) walk(t, 0);             // tasks that are each other's subtasks: nothing above them to go under
   return {tasks: out, depth};
 };
-const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name;
+const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
   {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
@@ -1360,7 +1693,8 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: ''});
+  pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: '',
+  project: null, start: null, wfBusy: false});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -1377,7 +1711,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   labels: [], labelsLoaded: false,
   // view
   route: currentRoute(),
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null},
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, wf: [], run: null},
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
@@ -1398,6 +1732,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
+  starting: null,                              // a run being set up: {id, done, total}, for its progress
 
   init(){
     app = this;
@@ -1516,8 +1851,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (!msg) {
       const me = this.user?.id, mine = sync.all(me);
       const tasks = mine.flatMap(e => e.items.filter(x => !x.taskId)), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
-      const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`, n = tasks.length + files.length;
-      const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file')].filter(Boolean).join(' and ');
+      const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`;
+      const runs =mine.filter(e => e.kind === 'run' || e.kind === 'act').length, n = tasks.length + files.length + runs;
+      const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file'),
+        runs && (runs === 1 ? 'a change to a run' : runs + ' changes to runs')].filter(Boolean).join(' and ');
       if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and drop ${n === 1 ? 'it' : 'them'}?`)) return;
       sync.drop(e => e.user === me);
       this.pending = [];
@@ -1638,11 +1975,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   /* ---------- views ---------- */
   go(hash){ location.hash = hash; },
-  // The page's name: the tab says Today or Projects; a project shows its name, and its parent's, above its list.
+  // The page's name: the tab says Today, Projects or Workflows; a project shows its name, and its parent's, above its
+  // list; a run its own, and its project's.
   get head(){
     const r = this.route;
     if (r.name === 'projects') return {kicker: '', title: 'Projects'};
     if (r.name === 'search') return {kicker: '', title: 'Search'};
+    if (r.name === 'workflows') return {kicker: '', title: 'Workflows'};
+    if (r.name === 'run') {
+      const run = this.view.run?.run;
+      return {kicker: this.projById.get(run?.project_id)?.title || '', title: run?.title || 'Run'};
+    }
     if (r.name === 'project') {
       const p = this.view.project; if (!p) return {kicker: '', title: 'Project'};
       return {kicker: this.projById.get(p.parent_project_id)?.title || '', title: p.title};
@@ -1689,13 +2032,15 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.route = r;
     const seq = ++renderSeq;
     const fresh = this.view.route !== location.hash;   // new screen: show Loading; same screen: refresh in place
-    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null, savedAt: null});
+    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null, savedAt: null, wf: [], run: null});
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
     try {
       if (r.name === 'today') await this.loadToday(seq);
       else if (r.name === 'projects') { if (!this.projects.length) await this.loadProjects(); }
       else if (r.name === 'project') await this.loadProject(seq, r);
       else if (r.name === 'search') await this.loadSearch(seq);
+      else if (r.name === 'workflows') await this.loadWorkflows(seq);
+      else if (r.name === 'run') await this.loadRun(seq, r.id);
       if (seq === renderSeq) { this.view.loading = false; this.view.savedAt = null; }   // fresh from Vikunja
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
@@ -1703,8 +2048,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         if (!fresh && !this.view.loading) return;                          // keep what's on screen; the banner says we're offline
         const s = saved.get(viewKey(r));
         if (s) {
-          for (const g of s.groups) for (const t of g.tasks) cache.set(t.id, t);
-          Object.assign(this.view, {loading: false, groups: s.groups, project: s.project || null, savedAt: s.at});
+          for (const g of s.groups || []) for (const t of g.tasks) cache.set(t.id, t);
+          Object.assign(this.view, {loading: false, groups: s.groups || [], project: s.project || null, wf: s.wf || [], run: s.run || null, savedAt: s.at});
           return;
         }
       }
@@ -1717,8 +2062,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const t0 = startOfDay(), t1 = addDays(t0, 1);
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
-    const [tasks, added] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew)]);
+    const [all, allAdded, runs] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex()]);
     if (seq !== renderSeq) return;
+    const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
     for (const t of [...tasks, ...added]) cache.set(t.id, t);
     const groups = todayGroups(), [overdue, today, nodate, week] = groups;
     for (const t of tasks) {
@@ -1755,7 +2101,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     try { res = await fetch(new URL('.', location.href), {cache: 'no-store', headers: {'If-Modified-Since': LOADED.toUTCString()}}); }
     catch { return; }                                                          // offline: no news
     if (res.status !== 200) return;
-    const busy = this.sheet.open || this.capture.trim() || this.capPhotos.length || this.capBusy || this.searchQ || this.movingOverdue
+    const busy = this.sheet.open || this.capture.trim() || this.capPhotos.length || this.capBusy || this.searchQ || this.movingOverdue || this.starting
       || this.pending.length || pendingSaves;
     if (!busy) location.reload();
   },
@@ -2192,11 +2538,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   /* Create a task per line, in order. With parent, each becomes its subtask and lands in the parent's project
      unless the line names one. Returns the ids created and how many lines were used; stops at the first error. */
-  async createLines(lines, {pid, parent} = {}){
+  async createLines(lines, {pid, parent, ignore = {}} = {}){
     const ids = [], problems = []; let used = 0;
     try {
       for (const line of lines) {
-        const parsed = parseCapture(line, this.projects, this.parseOpts);
+        const parsed = parseCapture(line, this.projects, {...this.parseOpts, ignore});
         if (parsed.title) {
           const t = await this.createTask(parsed, parent ? parent.project_id : pid, {parent: parent?.id});
           ids.push(t.id); problems.push(...t.problems);
@@ -2272,6 +2618,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async sendEntry(id){
     const entry = await sync.fresh(id);
     if (!entry) return {status: 'gone', ids: [], tasks: []};                // another tab sent it
+    if (entry.kind === 'run') return this.sendRun(entry);
+    if (entry.kind === 'act') return this.sendAct(entry);
     const ids = [], tasks = [], problems = entry.problems ||= [], save = () => sync.save(entry);
     const all = () => [...entry.items.flatMap(x => x.problems || []), ...problems];
     const taken = new Set(entry.items.map(x => x.taskId).filter(Boolean));  // a pasted list can have a line twice
@@ -2297,6 +2645,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
           cache.set(t.id, t); this.syncTask(t);
           for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
           if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
+          const step = this.view.run?.steps.find(s => s.id === t.id);           // a photo of a run's step
+          if (step) step.attachments = t.attachments || [];
         }
       }
       return {status: 'sent', ids, tasks, problems: all(), uploaded, projectId: entry.parentProject};
@@ -2373,15 +2723,15 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (this.signedIn && this.user && this.mode === 'session' && sharedToken.get() !== seenToken) { this.sessionChanged(); return; }
     if (this.flushing || !this.signedIn || !this.user || !sync.all(this.user.id).length) return;
     this.flushing = true;
-    let sent = 0; const failed = [], tasks = [], problems = [];
+    let sent = 0; const failed = [], other = [], tasks = [], problems = [];
     try {
       await sync.lock(async () => {
         for (const e of sync.all(this.user?.id)) {
           const r = await this.sendEntry(e.id);
           tasks.push(...(r.tasks || [])); problems.push(...(r.problems || []));
           if (r.status === 'offline' && !r.reached) break;                    // no connection: the rest can wait too
-          if (r.status === 'sent') sent += r.ids.length + r.uploaded;
-          if (r.status === 'error') failed.push(r);
+          if (r.status === 'sent') sent += r.ids.length + r.uploaded + (r.changed || 0);
+          if (r.status === 'error') (r.unsent ? failed : other).push(r);
         }
       });
     } finally { this.flushing = false; this.refreshPending(); }
@@ -2390,8 +2740,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.capture = [this.capture, ...failed.flatMap(f => f.unsent)].filter(Boolean).join('\n');
       this.capPhotos = [...this.capPhotos, ...failed.flatMap(f => f.photos)];
       this.notify(`A task added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
-    } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
-    if (sent || failed.length) this.render();
+    } else if (other.length) this.notify(`Something done offline couldn't be sent: ${other[0].error.message}`);
+    else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
+    if (sent || failed.length || other.length) this.render();
   },
   async createProject(name){
     if (this.creatingProject) return;
@@ -2484,6 +2835,400 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     });
     this.refreshPending();
     this.dropping = this.dropping.filter(k => k !== key);
+  },
+
+  /* ---------- workflows ---------- */
+  isWorkflow(p){ return isWorkflowDesc(p?.description); },
+  get workflowProjects(){ return this.projects.filter(p => this.isWorkflow(p)); },
+  get wfIds(){ return new Set(this.workflowProjects.map(p => p.id)); },
+  // The lit tab: Workflows for a run as well, Projects for a project and the list of them.
+  get tab(){ return ['workflows', 'run'].includes(this.route.name) ? 'workflows' : this.route.name === 'today' ? 'today' : 'projects'; },
+  // What the open task is to a workflow: a template, a run, one of a run's steps, or a task that could be made a template.
+  get wfRole(){
+    const t = this.sheet.task, r = t?.related_tasks || {};
+    if (!t || !this.wfIds.has(t.project_id)) return null;
+    if (hasTemplateLabel(t) && t.done) return 'template';
+    if (r.parenttask?.length) return r.copiedfrom?.length ? 'step' : null;
+    return r.copiedfrom?.length && !hasTemplateLabel(t) ? 'run' : 'candidate';
+  },
+  openProject(){ const p = this.view.project; if (!p) return; this.openSheet('project'); this.sheet.project = p; },
+  /* Make a project a workflow, or not: a paragraph "pocket:workflow" added to its description, or taken out. The rest
+     of the description stays as it was. */
+  async setWorkflow(p, on){
+    this.sheet.wfBusy = true;
+    try {
+      let description;
+      if (on) description = (p.description || '').trim() + `<p>${WF_MARK}</p>`;
+      else {
+        const root = parseFragment(p.description);
+        for (const el of [...root.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6')]) if (el.textContent.trim().toLowerCase() === WF_MARK) el.remove();
+        description = root.innerHTML;
+        if (isWorkflowDesc(description)) description = description.replace(/pocket:workflow/gi, '');   // not in a paragraph of its own
+        description = description.trim() || '<p></p>';                          // Vikunja's PATCH skips an empty one
+      }
+      const got = await api('/projects/' + p.id, {method: 'PATCH', body: {description}}) || await api('/projects/' + p.id);
+      const next = {...p, ...got};
+      this.setProjects(this.projects.map(x => x.id === p.id ? next : x)); saved.set('projects', this.projects);
+      if (this.view.project?.id === p.id) this.view.project = next;
+      if (this.sheet.project?.id === p.id) this.sheet.project = next;
+      this.notify(on ? 'Now a workflow. Its templates and runs are under Workflows.' : 'No longer a workflow');
+    } catch (e) { this.notify((on ? 'Not made a workflow: ' : 'Not changed: ') + e.message); }
+    finally { this.sheet.wfBusy = false; }
+  },
+  openTasks(pid){ return allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ})); },
+  // Each workflow project, with its templates and the runs still open in it.
+  async loadWorkflows(seq){
+    const ws = this.workflowProjects;
+    const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
+    const wf = await Promise.all(ws.map(async p => {
+      const [templates, open] = await Promise.all([
+        labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `done = true && labels in ${labels.join(', ')}`})) : [],
+        this.openTasks(p.id)]);
+      return {project: {id: p.id, title: p.title},
+        templates: templates.filter(t => !t.related_tasks?.parenttask?.length).sort((a, b) => a.title.localeCompare(b.title))
+          .map(t => ({id: t.id, title: t.title, steps: (t.related_tasks?.subtask || []).length})),
+        runs: open.filter(isRun).map(t => {
+          const steps = t.related_tasks?.subtask || [];
+          return {id: t.id, title: t.title, done: steps.filter(s => s.done).length, total: steps.length, next: steps.find(s => !s.done)?.title || '', forText: this.forText(t)};
+        })};
+    }));
+    if (seq !== renderSeq) return;
+    this.view.wf = wf;
+    saved.set('workflows', {wf, at: new Date().toISOString()});
+  },
+  forText(t){
+    const who = (t.assignees || []).map(u => u.id === this.user?.id ? 'you' : u.name || u.username);
+    return who.length ? 'For ' + who.join(', ') : '';
+  },
+  // Runs being set up, waiting for a connection or under way, in a project.
+  startingIn(pid){ return this.pending.filter(e => e.kind === 'run' && e.template.project_id === pid); },
+  /* The open runs in workflow projects, and whether each is yours: you started it, or it's for you. Today shows those,
+     and not everyone else's. */
+  async loadRunIndex(){
+    const ws = this.workflowProjects;
+    if (!ws.length) return {};
+    try {
+      const index = {};
+      for (const list of await Promise.all(ws.map(p => this.openTasks(p.id)))) for (const t of list) if (isRun(t))
+        index[t.id] = t.created_by?.id === this.user?.id || (t.assignees || []).some(u => u.id === this.user?.id);
+      saved.set('runs', index);
+      return index;
+    } catch (e) { if (e instanceof NetError) return saved.get('runs') || {}; throw e; }
+  },
+  // Whether Today shows a task: in a workflow project, a run of yours, a step of one, or one assigned to you. Anything
+  // else there that isn't part of a run shows as anywhere else.
+  inToday(t, runs){
+    if (!this.wfIds.has(t.project_id) || (t.assignees || []).some(u => u.id === this.user?.id)) return true;
+    const parent = t.related_tasks?.parenttask?.[0]?.id;
+    if (t.id in runs) return runs[t.id];
+    if (parent in runs) return runs[parent];
+    return !isRun(t) && !(parent && t.related_tasks?.copiedfrom?.length);   // a run, or a step of one, that isn't known
+  },
+
+  /* Make the open task a template: label it "template", then mark its steps and itself done, so none of them is a
+     to-do anywhere. Itself last, so one cut off half way isn't a template yet, and the button finishes it. */
+  async makeTemplate(){
+    const t = this.sheet.task;
+    if (!t || this.sheet.wfBusy) return;
+    this.sheet.wfBusy = true;
+    try {
+      if (!hasTemplateLabel(t)) {
+        const all = (await this.loadLabels(true)).filter(isTemplateLabel);
+        let l = all.find(x => x.created_by?.id === this.user?.id) || all[0];
+        if (!l) { l = await api('/labels', {method: 'POST', body: {title: 'template'}}); this.labels.push(l); }
+        await api(`/tasks/${t.id}/labels`, {method: 'POST', body: {label_id: l.id}}).catch(e => { if (e.code !== ALREADY.label) throw e; });
+      }
+      for (const s of this.subtasks) if (!s.done) await patiently(() => patchTask(s.id, {done: true}));
+      await patiently(() => patchTask(t.id, {done: true}));
+      const full = await api('/tasks/' + t.id);
+      cache.set(full.id, full);
+      if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
+      this.notify('Made a template. Start runs from it here or under Workflows.');
+    } catch (e) { this.notify('Not made a template: ' + e.message); }
+    finally { this.sheet.wfBusy = false; }
+  },
+  /* Move a template's step up or down. Vikunja keeps steps in the order they were linked and can't reorder them, so
+     from the first step that moves, each is unlinked and linked again, in the new order. */
+  async moveStep(i, dir){
+    const t = this.sheet.task, steps = [...this.subtasks], j = i + dir;
+    if (!t || j < 0 || j >= steps.length || this.sheet.wfBusy) return;
+    [steps[i], steps[j]] = [steps[j], steps[i]];
+    t.related_tasks = {...t.related_tasks, subtask: steps};                    // shown in the new order straight away
+    this.sheet.wfBusy = true;
+    let loose = null;                                                         // a step unlinked and not yet linked again
+    try {
+      for (const s of steps.slice(Math.min(i, j))) {
+        await patiently(() => api(`/tasks/${t.id}/relations/subtask/${s.id}`, {method: 'DELETE'})).catch(e => { if (e.code !== NOT_RELATED) throw e; });
+        loose = s;
+        await patiently(() => this.linkSubtask(t.id, s.id)).catch(e => { if (e.code !== ALREADY.link) throw e; });
+        loose = null;
+      }
+    } catch (e) {
+      this.notify(loose ? `“${parseStep(loose.title).title}” is no longer a step: ${e.message}. Add it again.` : 'The steps weren\'t moved: ' + e.message);
+    } finally {
+      this.sheet.wfBusy = false;
+      try { const full = await api('/tasks/' + t.id); cache.set(full.id, full); if (this.sheet.task?.id === t.id) this.showTask(full); } catch {}
+    }
+  },
+
+  /* ---------- starting a run ---------- */
+  async openStart(id){
+    this.openSheet('start');
+    const mine = this.sheet;
+    Object.assign(this.sheet, {loading: true, start: {template: null, steps: [], people: [], forId: this.user?.id, busy: false}});
+    try {
+      const t = await api('/tasks/' + id);
+      // Who it can be for: everyone the project is shared with. A token without Projects → Users search: just you.
+      let people = [];
+      try { people = items(await api(`/projects/${t.project_id}/users/search`)); } catch (e) { if (e instanceof NetError) throw e; }
+      if (this.sheet !== mine) return;
+      const me = this.user;
+      people = [me, ...people.filter(u => u.id !== me.id).sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username))];
+      Object.assign(this.sheet.start, {template: {id: t.id, title: t.title, project_id: t.project_id}, steps: t.related_tasks?.subtask || [], people});
+    } catch (e) { if (this.sheet === mine) this.sheet.error = errText(e); }
+    finally { if (this.sheet === mine) this.sheet.loading = false; }
+  },
+  get startProgress(){ const s = this.starting; return s ? `Setting up… ${Math.round(100 * s.done / s.total)}%` : 'Setting up…'; },
+  /* A run is set up through the outbox, so a start that's cut off carries on where it stopped once Pocket reaches
+     Vikunja again. Each step's due time counts from the tap on Start. */
+  async startRun(){
+    const st = this.sheet.start;
+    if (!st?.template || st.busy) return;
+    const start = new Date(), steps = st.steps.map(s => {
+      const {title, offset} = parseStep(s.title);
+      return {from: s.id, title, due: offset === null ? null : new Date(+start + offset).toISOString(), taskId: null, tried: false, linked: false, ready: false};
+    });
+    const dues = steps.map(s => s.due).filter(Boolean).sort(), who = st.people.find(u => u.id === st.forId) || this.user;
+    const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template,
+      for: {id: who.id, username: who.username, name: who.name || ''}, due: dues[dues.length - 1] || null, steps, fails: 0};
+    st.busy = true;
+    this.starting = {id: entry.id, done: 0, total: 4 + steps.length * 3};
+    const {kept, full} = await sync.add(entry, []);
+    const r = await sync.lock(() => this.sendEntry(entry.id));
+    this.starting = null; st.busy = false;
+    this.refreshPending();
+    if (r.status === 'sent' || r.status === 'gone') {
+      this.closeSheet(true);
+      if (r.runId) this.go('#/run/' + r.runId);
+      this.notify('Started ' + st.template.title, r.runId && {label: 'Undo', fn: () => this.deleteRun(r.runId)});
+    } else if (r.status === 'offline') {
+      sync.keep();
+      this.closeSheet(true);
+      this.notify(!kept ? (full ? NO_ROOM : NOT_KEPT) : `${st.template.title} starts as soon as Pocket reaches Vikunja.`);
+      if (this.route.name === 'workflows') this.render(); else this.go('#/workflows');
+    } else this.notify('Not started: ' + r.error.message);
+  },
+  async sendRun(j){
+    const save = () => sync.save(j), c = {save, taken: new Set([j.runId, ...j.steps.map(s => s.taskId)].filter(Boolean))};
+    const none = {ids: [], tasks: [], problems: [], uploaded: 0};
+    try {
+      for (const step of RUN_STEPS) while (!step.done(j)) {
+        await patiently(() => step.run(j, c));
+        await save();
+        if (this.starting?.id === j.id) this.starting.done = runProgress(j);
+      }
+      await sync.remove(j.id);
+      return {...none, status: 'sent', runId: j.runId, changed: 1};
+    } catch (error) {
+      // No connection or signed out: kept for later. Vikunja still answering 500 after a few tries: kept too, a few times.
+      if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++j.fails < 5)))) {
+        await save();
+        return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
+      }
+      await sync.remove(j.id);
+      if (j.runId) this.deleteRun(j.runId, {quiet: true, also: j.steps.map(s => s.taskId).filter(Boolean)});   // what was set up so far
+      return {...none, status: 'error', error};
+    }
+  },
+  // The copy a cut-off duplicate made, if it got there: copied from this task since that try, and not one already used.
+  async findCopy(from, triedAt, at, taken, key){
+    const since = triedSince(triedAt, at);
+    return ((await api('/tasks/' + from)).related_tasks?.copiedto || [])
+      .find(t => !taken.has(t.id) && !sync.claimedByOther(t.id, key) && new Date(t.created).getTime() >= since) || null;
+  },
+  // Undo a start, or clear up one that failed half way: the run's steps, then the run.
+  async deleteRun(id, {quiet = false, also = []} = {}){
+    try {
+      const t = await api('/tasks/' + id);
+      for (const sid of new Set([...(t.related_tasks?.subtask || []).map(s => s.id), ...also]))
+        await patiently(() => api('/tasks/' + sid, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
+      await patiently(() => api('/tasks/' + id, {method: 'DELETE'}));
+      if (!quiet) this.notify('Run removed');
+      if (this.route.name === 'run' && this.route.id === id) this.go('#/workflows'); else if (!quiet) this.render();
+    } catch (e) { if (!quiet) this.notify('Not removed: ' + e.message); }
+  },
+
+  /* ---------- a run ---------- */
+  // A run, with each step's reactions (who did it), notes and photos.
+  async loadRun(seq, id){
+    const run = await api(`/tasks/${id}?expand=comments`);
+    const steps = await inBatches(run.related_tasks?.subtask || [], 4, s => api(`/tasks/${s.id}?expand=reactions&expand=comments`));
+    if (seq !== renderSeq) return;
+    for (const t of [run, ...steps]) cache.set(t.id, t);
+    const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
+    this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep?.at ?? null, stepDraft: keep?.stepDraft || '', runDraft: keep?.runDraft || '', last: keep?.last || null};
+    this.saveRun();
+    if (!keep?.last) this.loadLast(this.view.run.run);
+  },
+  // Kept for opening offline: the last few runs opened.
+  saveRun(){
+    const r = this.view.run;
+    if (!r) return;
+    const ids = [r.run.id, ...(saved.get('runs.recent') || []).filter(id => id !== r.run.id)];
+    for (const id of ids.slice(8)) store.del('saved.run.' + id);
+    saved.set('runs.recent', ids.slice(0, 8));
+    saved.set('run.' + r.run.id, {run: r, at: new Date().toISOString()});
+  },
+  // The handover: notes left on the last finished run of the same template, on the run and on its steps.
+  async loadLast(run){
+    if (!run.from) return;
+    const here = () => this.view.run?.run.id === run.id;
+    try {
+      const prev = ((await api('/tasks/' + run.from)).related_tasks?.copiedto || []).filter(x => x.id !== run.id && x.done)
+        .sort((a, b) => new Date(b.done_at) - new Date(a.done_at))[0];
+      if (!prev || !here()) return;
+      this.view.run.last = {id: prev.id, title: prev.title, notes: null};
+      const full = await api(`/tasks/${prev.id}?expand=comments`);
+      const steps = await inBatches(full.related_tasks?.subtask || [], 4, s => api(`/tasks/${s.id}?expand=comments`));
+      const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run'})),
+        ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title})))];
+      if (here()) { this.view.run.last = {id: prev.id, title: prev.title, notes}; this.saveRun(); }
+    } catch { if (here() && !this.view.run.last?.notes) this.view.run.last = null; }
+  },
+  /* The run on screen, with what's waiting to be sent laid over it, so ticks, skips and notes show straight away. */
+  get runView(){
+    const r = this.view.run;
+    if (!r) return null;
+    const me = this.user, myName = me?.name || me?.username || 'You';
+    const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.run.id);
+    const waitingNote = a => ({id: a.id, comment: a.html, author: myName, when: 'Waiting to send'});
+    const steps = r.steps.map(s => {
+      let done = s.done, skipped = done && !!s.reactions?.[SKIP_MARK]?.length, waiting = false, doneAt = s.done_at;
+      let doers = (s.reactions?.[skipped ? SKIP_MARK : DONE_MARK] || []).map(u => u.name || u.username);
+      const notes = (s.comments || []).map(noteOf);
+      for (const a of acts) if (a.task === s.id) {
+        if (a.op === 'note' || a.op === 'skip') notes.push(waitingNote(a));
+        if (a.op === 'note') continue;
+        waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; doers = [myName];
+      }
+      const due = isSet(s.due_date) ? new Date(s.due_date) : null, info = dueInfo(s.due_date);
+      return {id: s.id, title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes,
+        late: !!due && (done ? new Date(doneAt) > due : due < new Date()), dueText: info ? 'Due ' + info.label : '',
+        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
+    });
+    const total = steps.length, doneCount = steps.filter(s => s.done).length, first = steps.findIndex(s => !s.done);
+    const allDone = total > 0 && doneCount === total, at = r.at ?? (first >= 0 ? first : total - 1);
+    const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length;
+    const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
+    const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
+    return {steps, total, doneCount, allDone, at, step: allDone && r.at === null ? null : steps[at] || null,
+      finished: r.run.done || acts.some(a => a.op === 'finish'),
+      summary: [`${total} step${total === 1 ? '' : 's'}`, skippedN && `${skippedN} skipped`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
+      notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
+      forText: forText && forText[0].toUpperCase() + forText.slice(1)};
+  },
+  showStep(i, scroll){
+    if (!this.view.run) return;
+    this.view.run.at = i;
+    if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  },
+  // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
+  async tickStep(s, op){
+    const r = this.view.run;
+    if (!r) return;
+    const current = this.runView?.step?.id === s.id;
+    let html = '';
+    if (op === 'skip') { const why = current ? r.stepDraft.trim() : ''; if (why) r.stepDraft = ''; html = textToHtml('Skipped' + (why ? ': ' + why : '')); }
+    if (current && op !== 'undone') r.at = null;
+    navigator.vibrate?.(10);
+    await this.act({op, task: s.id, html});
+  },
+  async addNote(task, draft){
+    const r = this.view.run, text = r?.[draft]?.trim();
+    if (!text) return;
+    r[draft] = '';
+    await this.act({op: 'note', task, html: textToHtml(text)});
+  },
+  async finishRun(){
+    const run = this.view.run?.run;
+    if (!run) return;
+    const r = await this.act({op: 'finish', task: run.id});
+    if (r.status === 'error') return;
+    if (r.status === 'offline') { this.notify(`Finished. It's sent once Pocket reaches Vikunja.`); return; }
+    this.notify('Finished ' + run.title);
+    this.go('#/workflows');
+  },
+  /* Everything done on a run goes through the outbox. Anything done before it that's still waiting goes first, so it
+     all reaches Vikunja in the order it was done. */
+  async act(fields){
+    const entry = {id: randomId(), kind: 'act', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], stage: 0, fails: 0,
+      run: this.view.run?.run.id, ...fields};
+    const {kept, full} = await sync.add(entry, []);
+    this.refreshPending();
+    let last = {status: 'gone'};
+    await sync.lock(async () => {
+      for (const e of sync.all(this.user?.id).filter(e => e.kind === 'act')) {
+        last = await this.sendEntry(e.id);
+        if (last.status === 'error') this.notify('Not saved: ' + last.error.message);
+        if (last.status === 'offline' || e.id === entry.id) break;
+      }
+    });
+    this.refreshPending();
+    if (last.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
+    return last;
+  },
+  async sendAct(a){
+    const save = () => sync.save(a), stages = ACTS[a.op] || [], none = {ids: [], tasks: [], problems: [], uploaded: 0};
+    let comment = null;
+    try {
+      while (a.stage < stages.length) {
+        const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
+        if (stages[a.stage] === 'note' && out?.id) comment = out;
+        a.stage++;
+        await save();
+      }
+      this.applyAct(a, comment);
+      await sync.remove(a.id);
+      if (a.op !== 'finish' && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
+      return {...none, status: 'sent', changed: 1};
+    } catch (error) {
+      if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++a.fails < 5)))) {
+        await save();
+        return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
+      }
+      await sync.remove(a.id);
+      return {...none, status: 'error', error};
+    }
+  },
+  // A note whose reply was lost, if it got there: the same text, by you, since that try.
+  async findNote(task, html, triedAt, at){
+    const since = triedSince(triedAt, at), text = htmlToText(html);
+    return items(await api(`/tasks/${task}/comments`)).some(c => c.author?.id === this.user?.id && htmlToText(c.comment) === text && new Date(c.created).getTime() >= since);
+  },
+  // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
+  applyAct(a, comment){
+    const r = this.view.run;
+    if (!r || r.run.id !== a.run) return;
+    if (a.op === 'finish') { r.run.done = true; return; }
+    const s = r.steps.find(x => x.id === a.task), me = this.user;
+    if (s && a.op !== 'note') {
+      const rs = {...s.reactions}, without = m => (rs[m] || []).filter(u => u.id !== me?.id);
+      rs[DONE_MARK] = without(DONE_MARK); rs[SKIP_MARK] = without(SKIP_MARK);
+      if (a.op !== 'undone') rs[a.op === 'skip' ? SKIP_MARK : DONE_MARK].push(me);
+      Object.assign(s, {done: a.op !== 'undone', done_at: new Date().toISOString(), reactions: rs});
+    }
+    if (comment) { const on = s || r.run; on.comments = [...(on.comments || []), comment]; }
+  },
+  async refreshRunTask(id){
+    try {
+      const t = await api(`/tasks/${id}?expand=reactions&expand=comments`);
+      cache.set(id, t);
+      const r = this.view.run;
+      if (!r) return;
+      if (r.run.id === id) Object.assign(r.run, plainRun(t));
+      else { const i = r.steps.findIndex(s => s.id === id); if (i >= 0) r.steps[i] = plainStep(t); }
+      this.saveRun();
+    } catch {}
   },
 
   /* ---------- sheet ---------- */
@@ -2585,7 +3330,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const parent = this.sheet.task, lines = captureLines(this.sheet.subDraft);
     if (!parent || !lines.length || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
-    const r = await this.createLines(lines, {parent});
+    // In a workflow, a step's time comes from its ^30m, so "Check at 3pm" stays as it is; a template's steps are done.
+    const wf = this.wfIds.has(parent.project_id), template = wf && hasTemplateLabel(parent) && parent.done;
+    const r = await this.createLines(lines, {parent, ignore: wf ? {due: true, repeat: true} : {}});
+    if (template) for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     if (this.sheet.task?.id === parent.id) {
       this.sheet.subBusy = false;
       this.sheet.subDraft = r.error ? lines.slice(r.used).join('\n') : '';
@@ -2739,8 +3487,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   // From the sheet's "Add a photo or file". They go through the outbox, so without a connection they wait on the
   // phone, shown in the sheet, and upload once Pocket reaches Vikunja again.
-  async addFiles(list){
-    const files = [...list], t = this.sheet.task;
+  async addFiles(list, t = this.sheet.task){
+    const files = [...list];
     if (!files.length || !t) return;
     const big = this.tooBig(files); if (big) { this.notify(big); return; }
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
@@ -2758,11 +3506,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.capPhotos.push(...files.filter(f => !max || f.size <= max));
     this.$refs.capture.focus();
   },
-  async openAttachment(a){
+  async openAttachment(a, taskId = this.sheet.task.id){
     const inline = INLINE_TYPES.test(mimeOf(a.file?.mime));
     const w = inline ? window.open('', '_blank') : null;   // open synchronously so iOS doesn't block it
     try {
-      const res = await api(`/tasks/${this.sheet.task.id}/attachments/${a.id}`, {raw:true});
+      const res = await api(`/tasks/${taskId}/attachments/${a.id}`, {raw:true});
       const blob = await res.blob(), type = mimeOf(blob.type);
       if (inline && INLINE_TYPES.test(type)) {
         const url = URL.createObjectURL(new Blob([blob], {type}));
