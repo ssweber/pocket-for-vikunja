@@ -4,7 +4,7 @@
 pocket/        copy this folder into Vikunja's plugins folder
   main.go      the plugin: serves app/ at /api/v1/plugins/pocket/
   app/         the app itself; sw.js lets it open offline
-tests/         the five test files described below
+tests/         the six test files described below
 scripts/       dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIF and screenshots
 docs/          this file and the README's screenshots
 ```
@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/` and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
+This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/`, its step times on, and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
 
 ## Tests
 
@@ -28,12 +28,13 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugi
 - `tests/smoke.mjs`: Pocket in a headless browser against a Vikunja with the plugin. It signs in with a token, then adds, ticks off, sets the progress of, searches for, edits, comments on and deletes tasks, pastes a list with subtasks, attaches a file and a photo, creates a project, assigns someone, loads a new version of Pocket on refresh, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side, single sign-on, renewing an expired sign-in from both at once, and following a switch to another account.
 - `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload and between a task and its label, loses replies (for a task with an @username, with `ASSIGNEE`, and for a subtask link), answers 500, fills up Pocket's storage, adds the same title twice (in Pocket, and on the web then in Pocket), moves over what an older Pocket left waiting, and has two tabs send the same waiting task. `BROWSER=webkit` runs it on Safari's engine.
-- `tests/workflows.mjs`: workflows end to end, in a project of its own. It makes the project a workflow, makes a template from a task and its pasted steps, moves a step, starts runs (for you, and with `OTHER_USER` for someone else, whose Today and Workflows tab it checks too), ticks, skips, unticks and adds notes, finishes a run and checks the next one's Last time, and undoes a start. It also starts a run offline, loses the reply to a step's copy and to a note, and ticks a step offline across a reload.
+- `tests/workflows.mjs`: workflows end to end, in a project of its own. It makes the project a workflow, makes a template from a task and its pasted steps, moves a step, starts runs (for you, and with `OTHER_USER` for someone else, whose Today and Workflows tab it checks too), ticks, skips, unticks and adds notes, finishes a run and checks the next one's Last time, and undoes a start. It checks timed steps: a move or a step refused for counting from a later or unknown step, and countdowns on the run screen. It also starts a run offline, loses the reply to a step's copy and to a note, and ticks a step offline across a reload, counting down from the tick.
+- `tests/steptimes.mjs`: the plugin's step times, through the API only, so it needs a Vikunja with them on (`npm run test:local` turns them on). It sets up a template and two runs as Pocket does, then checks that a tick sets the due dates of the steps timed from it, chained and from a name; that the other run, a template marked done, a done step saved again or labelled, and a step marked not done change nothing; that a step done early counts from when it was done; and that a tick from the web app works too.
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
 npm run test:parse                 # phrases only
-npm run test:local                 # starts the local Vikunja and runs all five
+npm run test:local                 # starts the local Vikunja and runs all six
 
 # against a real server with the plugin installed (use a test account)
 VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test

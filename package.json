@@ -11,6 +11,7 @@
     "test:parse": "node tests/parse.mjs",
     "test:smoke": "node tests/smoke.mjs",
     "test:workflows": "node tests/workflows.mjs",
+    "test:steptimes": "node tests/steptimes.mjs",
     "test:local": "node scripts/dev.mjs --test",
     "demo": "node scripts/demo.mjs"
   },

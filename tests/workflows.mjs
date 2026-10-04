@@ -65,7 +65,8 @@ const online = () => page.evaluate(() => window.dispatchEvent(new Event('online'
 
 const stamp = Date.now();
 const TEMPLATE = `Startup ${stamp}`;
-const STEPS = ['Check the guards at 3pm', 'Warm up the press ^30m', 'First article check ^2h'];
+const STEPS = ['Check the guards at 3pm {#guards}', 'Warm up the press T#30m', 'First article check T#2h:guards'];
+const GUARDS = '“Check the guards at 3pm”';
 const tplRow = `.wf-tpl:has(.title:text-is("${TEMPLATE}"))`;
 let project, template, me, other, otherToken;
 const runs = [];                                 // run ids, in the order started
@@ -112,17 +113,30 @@ try {
     if (JSON.stringify(steps.map(s => s.title)) !== JSON.stringify(STEPS)) throw new Error('steps: ' + steps.map(s => s.title).join(' | '));   // "at 3pm" stays
     if (!steps.every(s => s.done)) throw new Error('a step isn\'t done');
     const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent + '|' + (e.querySelector('.meta')?.textContent || '')));
-    if (shown[1] !== 'Warm up the press|Due 30 min after the start' || shown[2] !== 'First article check|Due 2 hours after the start') throw new Error('sheet shows ' + JSON.stringify(shown));
+    if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
+      throw new Error('sheet shows ' + JSON.stringify(shown));
   });
 
   await step('reorder-steps', async () => {
     await page.click('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]');
     await until('the step never moved up in Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
+    // Above the step it counts from: refused, before anything is sent.
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
+    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');
+    await toast('Not moved: step 1, “First article check”: its time counts from “guards”, which has to be an earlier step');
+    if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('moved anyway');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]:not([disabled])');
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
     await until('the step never moved back', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
+    // A step counting from a name no step has: not added.
+    await toastGone();
+    await page.fill('#d-subin', 'Pull a sample T#5m:nope');
+    await page.press('#d-subin', 'Enter');
+    await toast('Not added: step 4, “Pull a sample”: no step is named “nope”');
+    if ((await subtasks(template.id)).length !== 3) throw new Error('added anyway');
+    await page.fill('#d-subin', '');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -153,10 +167,11 @@ try {
     if (run.related_tasks?.copiedfrom?.[0]?.id !== template.id) throw new Error('not linked to its template');
     if (JSON.stringify(steps.map(s => s.title)) !== JSON.stringify(['Check the guards at 3pm', 'Warm up the press', 'First article check'])) throw new Error('steps: ' + steps.map(s => s.title).join(' | '));
     if (steps.some(s => s.done)) throw new Error('a step is done already');
-    const off = s => (new Date(s.due_date) - first.started) / 60000;
-    if (steps[0].due_date && !steps[0].due_date.startsWith('0001')) throw new Error('the first step has a due date: ' + steps[0].due_date);
-    if (Math.abs(off(steps[1]) - 30) > 2 || Math.abs(off(steps[2]) - 120) > 2) throw new Error(`due ${off(steps[1])} and ${off(steps[2])} minutes after the start`);
-    if (Math.abs((new Date(run.due_date) - first.started) / 60000 - 120) > 2) throw new Error('the run is due ' + run.due_date);
+    // Nothing is due yet: every timed step counts from a step being done, and the run has no due date of its own.
+    const dated = [run, ...steps].filter(t => t.due_date && !t.due_date.startsWith('0001'));
+    if (dated.length) throw new Error('due dates: ' + dated.map(t => `${t.title} ${t.due_date}`).join(', '));
+    await page.waitForSelector(`#run-steps .row:nth-of-type(2) .meta:has-text("Due 30m after ${GUARDS}")`);
+    await page.waitForSelector(`#run-steps .row:nth-of-type(3) .meta:has-text("Due 2h after ${GUARDS}")`);
     if (await page.textContent('#step-title') !== 'Check the guards at 3pm') throw new Error('on step ' + await page.textContent('#step-title'));
     if (!(await page.textContent('#run-for')).startsWith('For you · started by you')) throw new Error('shows ' + await page.textContent('#run-for'));
   });
@@ -165,11 +180,14 @@ try {
   await step('tick-a-step', async () => {
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    await until('the step was never done', async () => (await runStep(first.id, 0)).done);
-    const t = await task((await runStep(first.id, 0)).id);
-    if (!t.reactions?.['✅']?.some(u => u.id === me.id)) throw new Error('no ✅ from you: ' + JSON.stringify(t.reactions));
+    const id = (await runStep(first.id, 0)).id;
+    // Done, then the ✅: sent one after the other, so wait for both.
+    await until('the step was never done with a ✅ from you', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done .meta:has-text("Done by")');
     if (await page.textContent('#run-count') !== '1 of 3 done') throw new Error('count: ' + await page.textContent('#run-count'));
+    // Both timed steps count down now: the next one on its card, the other pinned above it.
+    await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');
+    await page.waitForSelector('#run-timers .timer:has-text("First article check"):has-text("in 2h")');
   });
 
   await step('skip-with-a-reason', async () => {
@@ -207,11 +225,9 @@ try {
 
   await step('today-shows-your-run', async () => {
     await page.click('nav.tabs a[data-tab=today]');
-    const run = `.row:has(.title:has-text("${TEMPLATE} · run"))`;
-    await page.waitForSelector(run, { timeout: 15000 });
-    // Its open step, indented under it.
-    const next = await page.$eval(run, el => el.nextElementSibling && { sub: el.nextElementSibling.classList.contains('sub'), title: el.nextElementSibling.querySelector('.title').textContent });
-    if (!next?.sub || next.title !== 'Subtask: First article check') throw new Error('after the run: ' + JSON.stringify(next));
+    // The run, without a due date of its own, and its open step, by its due date.
+    await page.waitForSelector(`.sec:has-text("Workflow runs") + .list .row:has(.title:has-text("${TEMPLATE} · run"))`, { timeout: 15000 });
+    await page.waitForSelector('.row .title:has-text("First article check")');
   });
 
   let forOther;
@@ -230,8 +246,8 @@ try {
       await p.waitForSelector(`.row .title:has-text("${run.title}")`, { timeout: 15000 });
       const mine = (await api('/tasks/' + first.id)).title, seen = await rows();
       if (seen.includes(mine)) throw new Error('your run is in their Today');
-      // Your run's last step is still open too: only their run's shows.
-      if (seen.filter(t => t.endsWith('First article check')).length !== 1) throw new Error('their Today: ' + JSON.stringify(seen));
+      // Your run's last step is due, and isn't theirs; theirs has no due date yet.
+      if (seen.some(t => t.endsWith('First article check'))) throw new Error('their Today: ' + JSON.stringify(seen));
       await p.click('nav.tabs a[data-tab=workflows]');
       await p.waitForSelector(`.wf-run .title:text-is("${mine}")`, { timeout: 15000 });
       await p.waitForSelector(`.wf-run .title:text-is("${run.title}")`);
@@ -314,6 +330,7 @@ try {
     await page.click('#step-done');
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait');
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .meta:has-text("waiting to send")');
+    await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');    // counting from the tick here
     await page.fill('#step-note', 'Written offline');
     await page.click('#step-note-form button');
     await page.waitForSelector('#step-extra .comment:has-text("Written offline"):has-text("Waiting to send")');

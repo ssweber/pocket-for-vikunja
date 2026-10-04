@@ -222,21 +222,29 @@ addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
 
 // ---------- workflow steps ----------
-// A step's line is read without dates, so "at 3pm" stays; "^30m" at the end is when it's due, counted from a run's start.
-add({ text: 'Check the guards at 3pm ^30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm ^30m', date: null, pocket: true, why: 'a workflow step keeps its words; ^30m is read by parseStep' });
-add({ text: 'Warm up the press ^2h', title: 'Warm up the press ^2h', date: null, pocket: true, why: "^2h isn't a time of day" });
-const steps = [];
-const addStep = (text, title, minutes) => steps.push({ text, title, minutes });
-addStep('Check the guards', 'Check the guards', null);
-addStep('Warm up the press ^30m', 'Warm up the press', 30);
-addStep('First article check ^2h', 'First article check', 120);
-addStep('Cool down ^1.5h', 'Cool down', 90);
-addStep('Order resin ^3d', 'Order resin', 3 * 1440);
-addStep('Service the line ^1w', 'Service the line', 7 * 1440);
-addStep('Sign off ^0m', 'Sign off', 0);
-addStep('Sign off ^15 min', 'Sign off', 15);
-addStep('Read ^30m of the manual', 'Read ^30m of the manual', null);
-addStep('Pressure up ^x', 'Pressure up ^x', null);
+// A step's T#20m, T#40m:dryer and {#dryer} stay in its title, for parseStep, and nothing reads them as a date or a time.
+add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a workflow step keeps its words; T#30m is read by parseStep' });
+add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
+add({ text: 'Pull batch B T#40m:dryer', title: 'Pull batch B T#40m:dryer', date: null, pocket: true, why: 'nor is T#40m:dryer' });
+// The same text with a step's token after it reads the same: [text, token, mode].
+const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:dryer'], ['01.02 Lorem Ipsum', 'T#1h30m'],
+  ['Lorem Ipsum 01.02', '{#dryer}'], ['Order resin 2026-10-12', 'T#3d'], ['Pull batch B at 5pm', 'T#40m:dryer'], ['Dryer in tomorrow', '{#dryer}'],
+  ['Fold the towels #project', 'T#20m:dryer', 'todoist'], ['Fold the towels #project', '{#fold}', 'todoist'], ['Sort the socks *laundry', 'T#5m']];
+// parseStep: [text, title, offset in ms, name, ref, problems]
+const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['Warm up the press T#30m', 'Warm up the press', 30 * 6e4, null, null, 0],
+  ['First article check T#2h', 'First article check', 120 * 6e4, null, null, 0], ['Cool down T#1h30m', 'Cool down', 90 * 6e4, null, null, 0],
+  ['Settle T#1.5h', 'Settle', 90 * 6e4, null, null, 0], ['Rinse T#90s', 'Rinse', 90e3, null, null, 0], ['Blink T#250ms', 'Blink', 250, null, null, 0],
+  ['Order resin T#3d', 'Order resin', 3 * 864e5, null, null, 0], ['Sign off T#0m', 'Sign off', 0, null, null, 0], ['Soak t#20M', 'Soak', 20 * 6e4, null, null, 0],
+  ['Load the dryer {#dryer}', 'Load the dryer', null, 'dryer', null, 0], ['Pull batch B T#40m:dryer', 'Pull batch B', 40 * 6e4, null, 'dryer', 0],
+  ['Dryer in {#dryer} T#5m', 'Dryer in', 5 * 6e4, 'dryer', null, 0], ['T#1d2h3m4s Long one', 'Long one', 864e5 + 2 * 36e5 + 3 * 6e4 + 4e3, null, null, 0],
+  ['Email ops@T#team', 'Email ops@T#team', null, null, null, 0], ['Part AT#5', 'Part AT#5', null, null, null, 0],
+  ['Read T#30 of the manual', 'Read of the manual', null, null, null, 1], ['Pre-heat T#-10m:dryer', 'Pre-heat', null, null, null, 1],
+  ['Two times T#5m T#10m', 'Two times', 5 * 6e4, null, null, 1], ['Bad name {#1st}', 'Bad name', null, null, null, 1],
+  ['Bad ref T#5m:2nd', 'Bad ref', null, null, null, 1], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
+// stepProblems over a template's steps: [titles, what each problem says]
+const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
+  [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['names an earlier step too']],
+  [['A', 'B T#5m:nope'], ['no step is named']], [['A T#5', 'B'], ["isn't a time"]]];
 // The line in a project's description that makes it a workflow: on its own, anywhere in it.
 const marks = [['<p>pocket:workflow</p>', true], ['<p>Line 2 startups</p><p>Pocket:Workflow </p>', true], ['Notes<br>pocket:workflow', true],
   ['<p>Tracks our hiring workflow</p>', false], ['<p>see pocket:workflow in the docs</p>', false], ['', false]];
@@ -254,7 +262,12 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
     marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
-const stepResults = await page.evaluate(steps => steps.map(s => parseStep(s.text)), steps);
+const stepResults = await page.evaluate(steps => steps.map(([text]) => parseStep(text)), steps);
+const templateResults = await page.evaluate(ts => ts.map(([titles]) => stepProblems(titles).map(p => p.text)), templates);
+const collisionResults = await page.evaluate(([cs, projects]) => cs.map(([text, token, mode]) => {
+  const read = t => { const r = parseCapture(t, projects, { now: new Date(2021, 5, 24, 12, 0), mode }); return { title: r.title, due: r.due && r.due.getTime(), project: r.project?.title ?? null, labels: r.labels }; };
+  return [read(text), read(text + ' ' + token)];
+}), [collisions, PROJECTS]);
 const markResults = await page.evaluate(marks => marks.map(([html]) => isWorkflowDesc(html)), marks);
 await browser.close();
 http.close();
@@ -281,13 +294,23 @@ cases.forEach((c, i) => {
 lists.forEach((l, i) => {
   if (!same(listResults[i], l.lines)) { failed++; console.log(`FAIL pasted list [${l.why}]: ${JSON.stringify(listResults[i])}`); }
 });
-steps.forEach((s, i) => {
-  const r = stepResults[i], minutes = r.offset === null ? null : r.offset / 60000;
-  if (r.title !== s.title || minutes !== s.minutes) { failed++; console.log(`FAIL step ${JSON.stringify(s.text)}: "${r.title}", ${minutes} min`); }
+steps.forEach(([text, title, offset, name, ref, problems], i) => {
+  const r = stepResults[i];
+  if (r.title !== title || r.offset !== offset || r.name !== name || r.ref !== ref || r.problems.length !== problems)
+    { failed++; console.log(`FAIL step ${JSON.stringify(text)}: ${JSON.stringify(r)}`); }
+});
+templates.forEach(([titles, want], i) => {
+  const got = templateResults[i];
+  if (got.length !== want.length || want.some((w, j) => !got[j].includes(w))) { failed++; console.log(`FAIL template ${JSON.stringify(titles)}: ${JSON.stringify(got)}`); }
+});
+collisions.forEach(([text, token], i) => {
+  const [plain, withToken] = collisionResults[i];
+  if (!same({...plain, title: plain.title + ' ' + token}, withToken)) { failed++; console.log(`FAIL ${JSON.stringify(text + ' ' + token)}: ${JSON.stringify(withToken)}, without it ${JSON.stringify(plain)}`); }
+  if (!plain.due && !plain.project && !plain.labels.length) { failed++; console.log(`FAIL ${JSON.stringify(text)} reads nothing, so it shows no collision`); }
 });
 marks.forEach(([html, want], i) => {
   if (markResults[i] !== want) { failed++; console.log(`FAIL workflow marker ${JSON.stringify(html)}: ${markResults[i]}`); }
 });
-const total = cases.length + lists.length + steps.length + marks.length;
-console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${steps.length + marks.length} are workflow steps and markers)`);
+const wf = steps.length + templates.length + collisions.length + marks.length, total = cases.length + lists.length + wf;
+console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are workflow steps and markers)`);
 process.exitCode = failed ? 1 : 0;

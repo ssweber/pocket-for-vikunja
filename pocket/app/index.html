@@ -149,11 +149,17 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .wf-hint{padding:14px;color:var(--muted);font-size:15px}
 a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
+.start-due.bad{color:var(--overdue)}
 .run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
 .run-bar{display:flex;align-items:center;gap:10px;margin:0 0 14px}
 .run-bar .track{flex:1;height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
 .run-bar .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent);transition:width .2s}
 .run-bar .num{color:var(--muted);font-size:14px;font-weight:650}
+.timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:16px;color:var(--ink);text-align:left;cursor:pointer}
+.timer + .timer{border-top:1px solid var(--line)}
+.timer .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.timer .num{flex:none;font-weight:650;color:var(--accent)}
+.timer .num.late{color:var(--overdue)}
 .step-card{padding:16px}
 .step-no{color:var(--muted);font-size:14px;font-weight:650}
 .step-card h3{margin:4px 0 6px;font-size:24px;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
@@ -497,6 +503,11 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun()">Finish run</button>
       </div></template>
 
+      <!-- Countdowns running for other steps than the one shown, so none is missed -->
+      <template x-if="runView.timers.length"><div class="card" id="run-timers">
+        <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(runView.steps.indexOf(s), true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
+      </div></template>
+
       <template x-if="runView.step"><div class="card step-card" id="step-card" :data-id="runView.step.id">
         <div class="step-no num" x-text="'Step ' + (runView.at + 1) + ' of ' + runView.total"></div>
         <h3 id="step-title" x-text="runView.step.title"></h3>
@@ -643,7 +654,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <!-- In a workflow project: make the task a template, start a run from it, or go to the run it's part of -->
       <template x-if="wfRole"><div class="card wf-card" id="d-workflow">
         <template x-if="wfRole === 'candidate'"><div>
-          <p>Make this a template: its subtasks become the steps of every run, in this order. End a step with ^30m, ^2h or ^3d to make it due that long after a run starts.</p>
+          <p>Make this a template: its subtasks become the steps of every run, in this order. Add T#20m to a step to make it due 20 minutes after the step before it is done. Name a step with {#dryer}, and T#40m:dryer counts from that one instead.</p>
           <button class="btn block" id="d-make-template" :disabled="sheet.wfBusy" @click="makeTemplate()" x-text="sheet.wfBusy ? 'Making a template…' : 'Make template'"></button>
         </div></template>
         <template x-if="wfRole === 'template'"><div>
@@ -695,8 +706,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <template x-for="(st, i) in subtasks" :key="st.id">
           <div class="row" :class="{done: st.done && wfRole !== 'template'}" :data-id="st.id">
             <template x-if="wfRole !== 'template'"><button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button></template>
-            <button class="body" @click="openTask(st.id)"><div class="title" x-text="wfRole === 'template' ? parseStep(st.title).title : st.title"></div>
-              <template x-if="wfRole === 'template' && parseStep(st.title).offset !== null"><div class="meta"><span class="num" x-text="offsetText(parseStep(st.title).offset)"></span></div></template>
+            <button class="body" @click="openTask(st.id)"><div class="title" x-text="wfRole === 'template' ? templateSteps[i]?.title : st.title"></div>
+              <template x-if="wfRole === 'template' && (templateSteps[i]?.text || templateSteps[i]?.problem)"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
               <template x-if="wfRole !== 'template' && dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template></button>
             <template x-if="wfRole === 'template'"><span class="step-edit">
               <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.wfBusy" @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
@@ -795,11 +806,12 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         </div>
         <div class="h3">Steps<span class="n num" x-text="sheet.start.steps.length"></span></div>
         <div class="card" id="start-steps">
-          <template x-for="(s, i) in sheet.start.steps" :key="s.id"><div class="prop"><span class="k num" style="width:24px" x-text="i + 1"></span><span class="v"><span style="flex:1" x-text="parseStep(s.title).title"></span>
-            <template x-if="parseStep(s.title).offset !== null"><span class="num start-due" x-text="offsetText(parseStep(s.title).offset)"></span></template></span></div></template>
+          <template x-for="(s, i) in startSteps" :key="sheet.start.steps[i].id"><div class="prop"><span class="k num" style="width:24px" x-text="i + 1"></span><span class="v"><span style="flex:1" x-text="s.title"></span>
+            <template x-if="s.text || s.problem"><span class="num start-due" :class="{bad: s.problem}" x-text="s.problem || s.text"></span></template></span></div></template>
           <template x-if="!sheet.start.steps.length"><p class="wf-hint">This template has no steps yet.</p></template>
         </div>
-        <button class="btn block" id="start-go" style="margin-top:16px" :disabled="sheet.start.busy || !sheet.start.steps.length" @click="startRun()" x-text="sheet.start.busy ? startProgress : 'Start'"></button>
+        <template x-if="startSteps.some(s => s.problem)"><p class="note" id="start-problem">Fix the template's steps before starting a run.</p></template>
+        <button class="btn block" id="start-go" style="margin-top:16px" :disabled="sheet.start.busy || !sheet.start.steps.length || startSteps.some(s => s.problem)" @click="startRun()" x-text="sheet.start.busy ? startProgress : 'Start'"></button>
       </div></template>
     </div></template>
 
@@ -1099,16 +1111,75 @@ const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
 // An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
 const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
 const DONE_MARK = '✅', SKIP_MARK = '⏭️';
-// "Warm up the press ^30m": the step is due 30 minutes after a run starts. Minutes, hours, days or weeks.
-const STEP_OFFSET = /\s*\^(\d+(?:\.\d+)?)\s*(m|min|h|d|w)\s*$/i;
+/* When a step is due, written in its title in the template, the way IEC 61131-3 writes times:
+     Load the dryer {#dryer}    names the step "dryer"
+     Warm up the press T#20m    due 20 minutes after the step before it is done (the first step: after the run starts)
+     Pull batch B T#40m:dryer   due 40 minutes after the step named "dryer" is done
+   Units are d, h, m, s and ms, and combine: T#1h30m. A step without a time has no due date: it's simply next. Copies
+   of the steps in a run have their titles without these, and Pocket's plugin sets their due dates as steps are done. */
+const STEP_UNITS = {d: 864e5, h: 36e5, m: 6e4, s: 1e3, ms: 1};
+const STEP_TIME = /(^|\s)(T#\S*)/gi, STEP_NAME = /\{#([^}\s]*)\}/g, NAME_OK = /^[a-z][\w-]*$/i;
+const sameName = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 function parseStep(title){
-  const t = String(title || ''), m = t.match(STEP_OFFSET);
-  return m ? {title: t.slice(0, m.index).trim(), offset: +m[1] * {m: 6e4, min: 6e4, h: 36e5, d: 864e5, w: 6048e5}[m[2].toLowerCase()]} : {title: t.trim(), offset: null};
+  const out = {title: '', offset: null, name: null, ref: null, problems: []};
+  const t = String(title || '').replace(STEP_TIME, (_, sp, tok) => {
+    const m = tok.match(/^T#(-?)((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::(.*))?$/i);
+    if (!m) out.problems.push(`“${tok}” isn't a time: write it like T#20m or T#1h30m`);
+    else if (m[1]) out.problems.push(`“${tok}”: a step can't be due before another`);
+    else if (m[3] !== undefined && !NAME_OK.test(m[3])) out.problems.push(`“${tok}”: a name starts with a letter`);
+    else if (out.offset !== null) out.problems.push('a step can have only one T# time');
+    else {
+      out.offset = Math.round([...m[2].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce((n, u) => n + u[1] * STEP_UNITS[u[2].toLowerCase()], 0));
+      out.ref = m[3] ?? null;
+    }
+    return sp;
+  }).replace(STEP_NAME, (tok, name) => {
+    if (!NAME_OK.test(name)) out.problems.push(`“${tok}”: a name starts with a letter`);
+    else if (out.name) out.problems.push('a step can have only one {#name}');
+    else out.name = name;
+    return ' ';
+  });
+  out.title = t.replace(/\s{2,}/g, ' ').trim();
+  return out;
 }
-function offsetText(ms){
-  if (!ms) return 'Due at the start';
-  const [n, unit] = ms % 864e5 === 0 ? [ms / 864e5, 'day'] : ms % 36e5 === 0 ? [ms / 36e5, 'hour'] : [Math.round(ms / 6e4), 'min'];
-  return `Due ${n} ${unit}${n === 1 || unit === 'min' ? '' : 's'} after the start`;
+// What's wrong with a template's steps, in order: each step's own problems, a name used twice, and a time counted
+// from a name that isn't an earlier step's (so none can wait on itself, or on one after it).
+function stepProblems(titles){
+  const steps = titles.map(parseStep), out = [];
+  steps.forEach((s, i) => {
+    const say = text => out.push({i, title: s.title, text});
+    s.problems.forEach(say);
+    if (s.ref && !steps.slice(0, i).some(x => sameName(x.name, s.ref)))
+      say(steps.slice(i).some(x => sameName(x.name, s.ref)) ? `its time counts from “${s.ref}”, which has to be an earlier step` : `no step is named “${s.ref}”`);
+    if (s.name && steps.slice(0, i).some(x => sameName(x.name, s.name))) say(`“${s.name}” names an earlier step too`);
+  });
+  return out;
+}
+const problemText = ps => `step ${ps[0].i + 1}, “${ps[0].title}”: ${ps[0].text}` + (ps.length > 1 ? ` (and ${ps.length - 1} more)` : '');
+// 5400000 -> "1h 30m". The two largest parts, so a countdown stays short.
+function durText(ms){
+  const parts = [];
+  let left = Math.round(ms / 1000);
+  for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60], ['s', 1]]) if (left >= n) { parts.push(Math.floor(left / n) + u); left %= n; }
+  return parts.slice(0, 2).join(' ') || '0s';
+}
+// The step a timed step counts from, by index, in a list of parsed steps: -1 for the start of the run, null for none.
+function stepFrom(steps, i){
+  const s = steps[i];
+  if (s.offset === null) return null;
+  if (!s.ref) return i - 1;
+  const j = steps.findIndex(x => sameName(x.name, s.ref));
+  return j >= 0 && j < i ? j : null;
+}
+// A template's steps as shown: each one's title, when it's due in a run, its name, and what's wrong with it.
+function stepInfos(titles){
+  const steps = titles.map(parseStep), problems = stepProblems(titles);
+  return steps.map((s, i) => {
+    const j = stepFrom(steps, i), from = j === -1 ? 'the start' : j !== null && `“${steps[j].title}”`;
+    const when = !from ? '' : s.offset === 0 ? (j === -1 ? 'due at the start' : `due when ${from} is done`) : `due ${durText(s.offset)} after ${from}`;
+    const text = [when, s.name && `named “${s.name}”`].filter(Boolean).join(' · ');
+    return {title: s.title, text: text && text[0].toUpperCase() + text.slice(1), problem: problems.filter(p => p.i === i).map(p => p.text).join('; ')};
+  });
 }
 // Vikunja busy can answer 500 (on SQLite, "database is locked"): a few quick tries before taking it as an answer.
 async function patiently(fn){
@@ -1129,7 +1200,7 @@ const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.
 const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
   comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: (t.related_tasks?.subtask || []).map(s => s.id)});
 const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, description: t.description || '',
-  attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || []});
+  attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: t.related_tasks?.copiedfrom?.[0]?.title ?? null});
 
 /* =============== routing =============== */
 function currentRoute(){
@@ -1186,7 +1257,8 @@ const DAY_WORDS = [
 
 // A time after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and bare "17th" only count
 // at the start or end, so "The 9/11 Report" and "13th floor" stay as they are.
-const TIME_TAIL = '(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?\\s*$';
+// A workflow step's T#20m after it, hidden by parseCapture, doesn't count.
+const TIME_TAIL = '(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?(?:\\s+[\\uE000-\\uF8FF]+)*\\s*$';
 
 // "2021-07-06", "6/7/21", "27/1", "01.02": a date, or null. No year means the next time that date comes round.
 function numericDate(token, now){
@@ -1227,6 +1299,12 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
   // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
   const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
   if (quoted) { out.title = quoted[2].trim(); return out; }
+  // A workflow step's T#20m, T#40m:dryer and {#dryer} stay as they are, and nothing reads them as a date, a time or a
+  // project: each is swapped for a run of one private-use character, the same length, and put back at the end.
+  const stepTokens = [];
+  const hide = tok => String.fromCharCode(0xE000 + stepTokens.push(tok) - 1).repeat(tok.length);
+  text = text.replace(STEP_TIME, (_, sp, tok) => sp + hide(tok)).replace(STEP_NAME, hide);
+  out.title = text;
   // Every change to the title goes through edit(). `from` keeps where each character of the title was in `text`, and
   // `read` what each removed one was read as, so the words can be marked where they were typed.
   const from = Array.from({length: text.length}, (_, i) => i), read = new Map();
@@ -1318,7 +1396,6 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
       // chrono-node reads the rest: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
       const results = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, now, {forwardDate: true}).filter(r =>
         out.title[r.index - 1] !== P.assignee                                   // part of an @username
-        && out.title[r.index - 1] !== '^'                                       // a workflow step's "^2h"
         && !/^for\b/i.test(r.text)                                              // "for 2 hours" is a duration, not a date
         && !/^now$/i.test(r.text)                                               // "Now what" isn't due this minute
         && !/^\d{1,4}[/.-]\d/.test(r.text)                                      // numeric dates are handled above, at the ends only
@@ -1352,7 +1429,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
     out.due = d < now ? atTime(dayFrom(now, 1), dueTime) : d; out.dueFromRepeat = true;
   }
   if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
-  out.title = out.title.replace(/\s{2,}/g, ' ').trim();
+  out.title = out.title.replace(/([-])\1*/g, (run, c) => stepTokens[c.charCodeAt(0) - 0xE000] ?? run).replace(/\s{2,}/g, ' ').trim();
   // One mark per phrase: neighbouring characters read as the same thing join up, across the spaces between them.
   for (const i of [...read.keys()].sort((a, b) => a - b)) {
     const kind = read.get(i), last = out.marks[out.marks.length - 1];
@@ -1611,12 +1688,13 @@ const RUN_STEPS = [
     for (const l of (await api('/tasks/' + j.runId)).labels || []) if (isTemplateLabel(l)) await api(`/tasks/${j.runId}/labels/${l.id}`, {method: 'DELETE'});
     j.unlabeled = true;
   }},
-  // Named after its template, which run of it this is, and the day: "Startup · run 3 · Oct 3". Due when its last step is.
+  // Named after its template, which run of it this is, and the day: "Startup · run 3 · Oct 3". Without a due date of its
+  // own: its steps have theirs.
   {name: 'name', done: j => !!j.named, async run(j){
     const runs = ((await api('/tasks/' + j.template.id)).related_tasks?.copiedto || []).map(x => x.id).sort((a, b) => a - b);
     const n = runs.indexOf(j.runId) + 1 || runs.length;
     j.title = `${j.template.title} · run ${n} · ${new Date(j.at).toLocaleDateString([], {month: 'short', day: 'numeric'})}`;
-    await patchTask(j.runId, {title: j.title, done: false, due_date: j.due || ZERO});
+    await patchTask(j.runId, {title: j.title, done: false, due_date: ZERO});
     j.named = true;
   }},
   // Who it's for, and only them. Only the run is assigned: Vikunja tells them about it once, not once per step.
@@ -1624,8 +1702,8 @@ const RUN_STEPS = [
     await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: j.for.id}]}});
     j.assigned = true;
   }},
-  // Each step, in the template's order: a copy of the template's step, linked under the run, then named and given
-  // its due time. One part per run, so progress is kept after each.
+  // Each step, in the template's order: a copy of the template's step, linked under the run, then named, without its
+  // T# and {#name}, and given its due time if it counts from the start. One part per run, so progress is kept after each.
   {name: 'step', done: j => j.steps.every(s => s.ready), async run(j, c){
     const s = j.steps.find(s => !s.ready);
     if (!s.taskId) {
@@ -1688,7 +1766,7 @@ const nestSubtasks = tasks => {
 const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
-  {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+  {key:'runs', cls:'', title:'Workflow runs', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
 
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
@@ -1733,6 +1811,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
   starting: null,                              // a run being set up: {id, done, total}, for its progress
+  clock: Date.now(),                           // now, every second while a run is on screen, for its countdowns
 
   init(){
     app = this;
@@ -1748,6 +1827,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     window.addEventListener('online', () => this.flush());
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
     setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
+    setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now(); }, 1000);
     this.$watch('capture', v => { if (!v.trim()) { this.capIgnore = {}; this.capNest = false; } });
     // Search once typing pauses.
     let searchTimer;
@@ -2062,18 +2142,20 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const t0 = startOfDay(), t1 = addDays(t0, 1);
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
-    const [all, allAdded, runs] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex()]);
+    const [all, allAdded, {index: runs, mine}] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex()]);
     if (seq !== renderSeq) return;
     const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
-    for (const t of [...tasks, ...added]) cache.set(t.id, t);
-    const groups = todayGroups(), [overdue, today, nodate, week] = groups;
+    for (const t of [...tasks, ...added, ...mine]) cache.set(t.id, t);
+    const groups = todayGroups(), [overdue, today, inRuns, nodate, week] = groups;
+    // Your runs in progress: a run has no due date, its timed steps have theirs.
+    for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push({...t});
     for (const t of tasks) {
       if (!isSet(t.due_date)) continue;
       const d = new Date(t.due_date);
       (d < t0 ? overdue : d < t1 ? today : week).tasks.push({...t});
     }
     // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
-    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length) nodate.tasks.push({...t});
+    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push({...t});
     overdue.tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
     this.view.groups = groups;
     saved.set('today', {groups, at: new Date().toISOString()});
@@ -2903,17 +2985,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // Runs being set up, waiting for a connection or under way, in a project.
   startingIn(pid){ return this.pending.filter(e => e.kind === 'run' && e.template.project_id === pid); },
   /* The open runs in workflow projects, and whether each is yours: you started it, or it's for you. Today shows those,
-     and not everyone else's. */
+     and not everyone else's. `mine`: yours. */
   async loadRunIndex(){
     const ws = this.workflowProjects;
-    if (!ws.length) return {};
+    if (!ws.length) return {index: {}, mine: []};
     try {
-      const index = {};
-      for (const list of await Promise.all(ws.map(p => this.openTasks(p.id)))) for (const t of list) if (isRun(t))
+      const index = {}, mine = [];
+      for (const list of await Promise.all(ws.map(p => this.openTasks(p.id)))) for (const t of list) if (isRun(t)) {
         index[t.id] = t.created_by?.id === this.user?.id || (t.assignees || []).some(u => u.id === this.user?.id);
+        if (index[t.id]) mine.push(t);
+      }
       saved.set('runs', index);
-      return index;
-    } catch (e) { if (e instanceof NetError) return saved.get('runs') || {}; throw e; }
+      return {index, mine};
+    } catch (e) { if (e instanceof NetError) return {index: saved.get('runs') || {}, mine: []}; throw e; }
   },
   // Whether Today shows a task: in a workflow project, a run of yours, a step of one, or one assigned to you. Anything
   // else there that isn't part of a run shows as anywhere else.
@@ -2930,6 +3014,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   async makeTemplate(){
     const t = this.sheet.task;
     if (!t || this.sheet.wfBusy) return;
+    const problems = stepProblems(this.subtasks.map(s => s.title));
+    if (problems.length) { this.notify('Not made a template: ' + problemText(problems)); return; }
     this.sheet.wfBusy = true;
     try {
       if (!hasTemplateLabel(t)) {
@@ -2948,11 +3034,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     finally { this.sheet.wfBusy = false; }
   },
   /* Move a template's step up or down. Vikunja keeps steps in the order they were linked and can't reorder them, so
-     from the first step that moves, each is unlinked and linked again, in the new order. */
+     from the first step that moves, each is unlinked and linked again, in the new order. Not when that would leave a
+     step counting from a later one: a template already wrong that way can still be put right. */
   async moveStep(i, dir){
     const t = this.sheet.task, steps = [...this.subtasks], j = i + dir;
     if (!t || j < 0 || j >= steps.length || this.sheet.wfBusy) return;
+    const before = stepProblems(steps.map(s => s.title));
     [steps[i], steps[j]] = [steps[j], steps[i]];
+    const after = stepProblems(steps.map(s => s.title));
+    if (after.length > before.length) {
+      const fresh = after.filter(p => !before.some(b => b.text === p.text && b.title === p.title));
+      this.notify('Not moved: ' + problemText(fresh.length ? fresh : after));
+      return;
+    }
     t.related_tasks = {...t.related_tasks, subtask: steps};                    // shown in the new order straight away
     this.sheet.wfBusy = true;
     let loose = null;                                                         // a step unlinked and not yet linked again
@@ -2990,17 +3084,20 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   get startProgress(){ const s = this.starting; return s ? `Setting up… ${Math.round(100 * s.done / s.total)}%` : 'Setting up…'; },
   /* A run is set up through the outbox, so a start that's cut off carries on where it stopped once Pocket reaches
-     Vikunja again. Each step's due time counts from the tap on Start. */
+     Vikunja again. Only a timed first step is due from the start, counted from the tap on Start: every other timed step
+     counts from a step being done, and gets its due date then. */
   async startRun(){
     const st = this.sheet.start;
     if (!st?.template || st.busy) return;
-    const start = new Date(), steps = st.steps.map(s => {
+    const problems = stepProblems(st.steps.map(s => s.title));
+    if (problems.length) { this.notify('Not started: ' + problemText(problems)); return; }
+    const start = new Date(), steps = st.steps.map((s, i) => {
       const {title, offset} = parseStep(s.title);
-      return {from: s.id, title, due: offset === null ? null : new Date(+start + offset).toISOString(), taskId: null, tried: false, linked: false, ready: false};
+      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(+start + offset).toISOString() : null, taskId: null, tried: false, linked: false, ready: false};
     });
-    const dues = steps.map(s => s.due).filter(Boolean).sort(), who = st.people.find(u => u.id === st.forId) || this.user;
+    const who = st.people.find(u => u.id === st.forId) || this.user;
     const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template,
-      for: {id: who.id, username: who.username, name: who.name || ''}, due: dues[dues.length - 1] || null, steps, fails: 0};
+      for: {id: who.id, username: who.username, name: who.name || ''}, steps, fails: 0};
     st.busy = true;
     this.starting = {id: entry.id, done: 0, total: 4 + steps.length * 3};
     const {kept, full} = await sync.add(entry, []);
@@ -3111,17 +3208,33 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         if (a.op === 'note') continue;
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; doers = [myName];
       }
-      const due = isSet(s.due_date) ? new Date(s.due_date) : null, info = dueInfo(s.due_date);
-      return {id: s.id, title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes,
-        late: !!due && (done ? new Date(doneAt) > due : due < new Date()), dueText: info ? 'Due ' + info.label : '',
+      return {id: s.id, title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes, doneAt,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
+    });
+    /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
+       Vikunja's due date, set by Pocket's plugin, or from that step's done time if there's none, or, while that tick
+       waits to be sent, from when it was ticked here. Until that step is done it says what it waits on, not a time. */
+    const timing = r.steps.map(s => parseStep(s.tpl || '')), now = serverTime(this.clock);
+    steps.forEach((s, i) => {
+      const t = timing[i], j = stepFrom(timing, i), from = j >= 0 ? steps[j] : null;
+      let due = isSet(r.steps[i].due_date) ? new Date(r.steps[i].due_date) : null, waitsOn = '';
+      if (from) {
+        if (!from.done) { due = null; waitsOn = t.offset ? `${durText(t.offset)} after “${from.title}”` : `when “${from.title}” is done`; }
+        else if (from.waiting || !due) due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
+      }
+      const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
+      s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
+      s.counting = !s.done && t.offset !== null && !!due && soon;      // a countdown: pinned at the top while it runs
+      s.countText = !s.counting ? '' : left >= 0 ? 'in ' + durText(left < 6e4 ? Math.ceil(left / 1e3) * 1e3 : Math.ceil(left / 6e4) * 6e4) : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
+      s.dueText = waitsOn ? 'Due ' + waitsOn : s.counting ? (left >= 0 ? 'Due ' : '') + s.countText : due ? 'Due ' + dueInfo(due.toISOString()).label : '';
     });
     const total = steps.length, doneCount = steps.filter(s => s.done).length, first = steps.findIndex(s => !s.done);
     const allDone = total > 0 && doneCount === total, at = r.at ?? (first >= 0 ? first : total - 1);
     const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length;
     const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
-    return {steps, total, doneCount, allDone, at, step: allDone && r.at === null ? null : steps[at] || null,
+    const step = allDone && r.at === null ? null : steps[at] || null;
+    return {steps, total, doneCount, allDone, at, step, timers: steps.filter(s => s.counting && s !== step),
       finished: r.run.done || acts.some(a => a.op === 'finish'),
       summary: [`${total} step${total === 1 ? '' : 's'}`, skippedN && `${skippedN} skipped`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
@@ -3312,6 +3425,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.save(patch);
   },
   get subtasks(){ return this.sheet.task?.related_tasks?.subtask || []; },
+  // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
+  get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
+  get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
   get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
   async toggleSubtask(st){
     const was = st.done;
@@ -3330,8 +3446,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const parent = this.sheet.task, lines = captureLines(this.sheet.subDraft);
     if (!parent || !lines.length || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
-    // In a workflow, a step's time comes from its ^30m, so "Check at 3pm" stays as it is; a template's steps are done.
+    // In a workflow, a step's time comes from its T#30m, so "Check at 3pm" stays as it is; a template's steps are done,
+    // and are added only if they leave the template's steps no worse than they were.
     const wf = this.wfIds.has(parent.project_id), template = wf && hasTemplateLabel(parent) && parent.done;
+    if (template) {
+      const titles = this.subtasks.map(s => s.title), before = stepProblems(titles), after = stepProblems([...titles, ...lines]);
+      if (after.length > before.length) { this.sheet.subBusy = false; this.notify('Not added: ' + problemText(after.slice(before.length))); return; }
+    }
     const r = await this.createLines(lines, {parent, ignore: wf ? {due: true, repeat: true} : {}});
     if (template) for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     if (this.sheet.task?.id === parent.id) {
