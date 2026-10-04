@@ -1,7 +1,7 @@
 // The README's demo GIF and screenshots, made from the real app against the local Vikunja of `npm run dev`.
 //
 //   npm run dev          in another terminal; it keeps running
-//   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-workflow.gif and the screenshots of Pocket and of Vikunja
+//   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-checklist.gif and the screenshots of Pocket and of Vikunja
 //
 // It uses two users of its own, alex and priya, with made-up tasks; alex's tasks and projects are replaced on each run.
 // The page's clock is fixed at Wednesday 30 September 2026, 10:05, so "Today 10:30 AM" and "2 days ago" come out the
@@ -200,10 +200,10 @@ await film(1300); hold(2000);
 await gif.context.close();
 await writeGif('pocket-demo.gif');
 
-// ---------- the workflow GIF: a run started from a template, its timed steps counting down ----------
-// A workflow project with a template made as Pocket makes one: labelled "template", its steps done, then itself done.
+// ---------- the checklist GIF: a run started from a template, its timed steps counting down ----------
+// A checklist project with a template made as Pocket makes one: labelled "template", its steps done, then itself done.
 const line = await A('POST', '/projects', { title: 'Line 2', hex_color: '475569' });
-await A('PATCH', '/projects/' + line.id, { description: '<p>Startup and shutdown of press line 2.</p><p>pocket:workflow</p>' });
+await A('PATCH', '/projects/' + line.id, { description: '<p>Startup and shutdown of press line 2.</p><p>pocket:checklists</p>' });
 await A('POST', `/projects/${line.id}/users`, { username: 'priya', permission: 1 });
 const tplLabel = (await A('GET', '/labels')).items.find(l => l.title === 'template') || await A('POST', '/labels', { title: 'template' });
 const startup = await A('POST', `/projects/${line.id}/tasks`, { title: 'Startup' });
@@ -218,9 +218,9 @@ await A('PATCH', '/tasks/' + startup.id, { done: true });
 
 gif = await phone({ scale: 1.5, height: 760 });
 ({ page, touch } = gif);
-await tap('nav.tabs a[data-tab=workflows]');
-await page.waitForSelector('.wf-start'); await page.waitForTimeout(300); await snap(1400);
-await tap('.wf-tpl:has-text("Startup") .wf-start');
+await tap('nav.tabs a[data-tab=checklists]');
+await page.waitForSelector('.cl-start'); await page.waitForTimeout(300); await snap(1400);
+await tap('.cl-tpl:has-text("Startup") .cl-start');
 await page.waitForSelector('#start-go:not([disabled])'); await page.waitForTimeout(500);
 await snap(2600);                                                    // the steps, with when each is due
 await tap('#start-go');
@@ -235,7 +235,7 @@ await tap('#step-done');
 await page.waitForSelector('#step-title:text-is("Check the oil temperature")'); await page.waitForTimeout(400);
 await film(400); hold(2800);
 await gif.context.close();
-await writeGif('pocket-workflow.gif');
+await writeGif('pocket-checklist.gif');
 await browser.close();
 
 // ---------- encode: one palette for all frames; each frame keeps only the pixels that changed ----------

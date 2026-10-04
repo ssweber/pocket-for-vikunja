@@ -81,7 +81,7 @@ header.top .search .linkish{font-weight:600;padding:8px 10px}
 nav.tabs a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 11px;border-radius:var(--r-chip);color:var(--muted);text-decoration:none;font-size:15px;font-weight:650}
 nav.tabs a svg{width:20px;height:20px}
 nav.tabs a[aria-current=page]{background:var(--surface);color:var(--accent)}
-/* with Workflows as a third tab, the tabs are icons only, so the row still fits a phone; the names stay for screen readers */
+/* with Checklists as a third tab, the tabs are icons only, so the row still fits a phone; the names stay for screen readers */
 nav.tabs.icons a{padding:0 14px}
 nav.tabs.icons .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* a project's name, under the header, scrolling with its list */
@@ -141,16 +141,16 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .tree .chev{color:var(--muted)}
 .toggle-done{margin:14px 0 0;width:100%}
 
-/* ---------- workflows ---------- */
-.wf-tpl .body{display:flex;align-items:center;gap:10px}
-.wf-tpl .body .t{flex:1;min-width:0}
-.wf-start{flex:none;min-height:38px;padding:0 14px;font-size:15px}
-.wf-sub{margin:14px 2px 6px;color:var(--muted);font-size:13.5px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
-.wf-hint{padding:14px;color:var(--muted);font-size:15px}
+/* ---------- checklists ---------- */
+.cl-tpl .body{display:flex;align-items:center;gap:10px}
+.cl-tpl .body .t{flex:1;min-width:0}
+.cl-start{flex:none;min-height:38px;padding:0 14px;font-size:15px}
+.cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:13.5px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+.cl-hint{padding:14px;color:var(--muted);font-size:15px}
 a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
 .start-due.bad{color:var(--overdue)}
-.wf-new .body{display:flex;align-items:center;gap:10px;color:var(--accent);font-weight:650}
+.cl-new .body{display:flex;align-items:center;gap:10px;color:var(--accent);font-weight:650}
 .draft-step{border-top:1px solid var(--line);padding:4px 6px 4px 14px}
 .draft-step:first-child{border-top:0}
 .draft-line{display:flex;align-items:flex-start;gap:2px}
@@ -197,9 +197,9 @@ a.sec-act{text-decoration:none}
 .step-edit{display:flex;gap:2px;align-self:center}
 .step-edit .icon-btn{width:36px;height:36px;background:var(--sunk)}
 .step-edit .icon-btn[disabled]{opacity:.35}
-.wf-card{padding:14px}
-.wf-card p{margin:0 0 12px;color:var(--muted);font-size:15px}
-.wf-card p:last-child{margin-bottom:0}
+.cl-card{padding:14px}
+.cl-card p{margin:0 0 12px;color:var(--muted);font-size:15px}
+.cl-card p:last-child{margin-bottom:0}
 .who-pick{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px}
 .who-pick .chip{font-size:15px;padding:8px 14px}
 
@@ -359,7 +359,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5h3.2L9 6h6l1.8 2.5H20V19H4z"/><circle cx="12" cy="13.5" r="3.3"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/></symbol>
-  <symbol id="i-flow" viewBox="0 0 24 24"><path d="M4 6.5l1.6 1.6L8.5 5M4 12.5l1.6 1.6 2.9-3.1M4 18.5l1.6 1.6 2.9-3.1M12 6.5h8M12 12.5h8M12 18.5h8"/></symbol>
+  <symbol id="i-checklist" viewBox="0 0 24 24"><path d="M4 6.5l1.6 1.6L8.5 5M4 12.5l1.6 1.6 2.9-3.1M4 18.5l1.6 1.6 2.9-3.1M12 6.5h8M12 12.5h8M12 18.5h8"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3.2"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
 </svg>
@@ -394,7 +394,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
       <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
       <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
-      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects. For workflows, also tick “Reactions”, and “Update” under Projects.</p>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects. For checklists, also tick “Reactions”, and “Update” under Projects.</p>
     </form>
   </div>
 </section>
@@ -411,10 +411,10 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
              enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button type="button" id="btn-search-cancel" class="linkish" @click="closeSearch()">Cancel</button>
     </form>
-    <nav class="tabs" aria-label="Views" :class="{icons: workflowProjects.length}">
+    <nav class="tabs" aria-label="Views" :class="{icons: checklistProjects.length}">
       <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg><span class="lbl">Today</span></a>
       <a href="#/projects" data-tab="projects" :aria-current="tab === 'projects' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg><span class="lbl">Projects</span></a>
-      <template x-if="workflowProjects.length"><a href="#/workflows" data-tab="workflows" :aria-current="tab === 'workflows' ? 'page' : null"><svg class="i"><use href="#i-flow"/></svg><span class="lbl">Workflows</span></a></template>
+      <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
     <button id="btn-refresh" class="icon-btn" aria-label="Refresh" :disabled="refreshing" @click="refresh()"><svg class="i"><use href="#i-refresh"/></svg></button>
@@ -423,9 +423,9 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
   <main id="view" aria-live="polite">
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title">
-      <button id="btn-back" class="icon-btn plain" :aria-label="route.name === 'run' ? 'Back to workflows' : 'Back to projects'" @click="go(route.name === 'run' ? '#/workflows' : '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
+      <button id="btn-back" class="icon-btn plain" :aria-label="route.name === 'run' ? 'Back to checklists' : 'Back to projects'" @click="go(route.name === 'run' ? '#/checklists' : '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div>
-      <!-- The project's own sheet: where it's made a workflow -->
+      <!-- The project's own sheet: where it's used for checklists -->
       <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
     </div></template>
     <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks and photos are sent when you\'re back online.'"></p></template>
@@ -464,7 +464,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
     <template x-if="!view.loading && !view.error && route.name === 'projects'"><div>
       <template x-if="!projects.length"><div><div class="empty"><b>No projects yet.</b>Make one here, or in Vikunja on the web.</div>
-        <div class="list"><div class="row wf-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div></div></template>
+        <div class="list"><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div></div></template>
       <template x-if="favorites.length"><div>
         <div class="sec">Favorites</div>
         <div class="list tree"><template x-for="p in favorites" :key="p.id">
@@ -475,30 +475,30 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="sec">All projects</div>
         <div class="list tree"><template x-for="r in tree" :key="r.p.id">
           <div class="row"><button class="body" :style="{paddingLeft: r.depth * 18 + 'px'}" @click="go('#/project/' + r.p.id)"><i class="dot" style="width:10px;height:10px;margin:0" :style="{background: colorOf(r.p.hex_color)}"></i><span style="flex:1" x-text="r.p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
-        </template><div class="row wf-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div>
+        </template><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div>
       </div></template>
     </div></template>
 
-    <!-- Workflows: each workflow project's templates, to start a run from, and its runs in progress -->
-    <template x-if="!view.loading && !view.error && route.name === 'workflows'"><div id="workflows">
-      <template x-if="!view.wf.length"><div class="empty"><b>No workflows here.</b>Open a project, tap ⋯ and choose Use as workflow.</div></template>
-      <template x-for="w in view.wf" :key="w.project.id"><div class="wf" :data-project="w.project.id">
-        <div class="sec"><span x-text="w.project.title"></span><a class="sec-act" :href="'#/project/' + w.project.id">Open project</a></div>
+    <!-- Checklists: each checklist project's templates, to start a run from, and its runs in progress -->
+    <template x-if="!view.loading && !view.error && route.name === 'checklists'"><div id="checklists">
+      <template x-if="!view.checklists.length"><div class="empty"><b>No checklists here.</b>Open a project, tap ⋯ and choose Use for checklists, or make one with New project.</div></template>
+      <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
+        <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
         <div class="list">
-          <template x-for="t in w.templates" :key="t.id"><div class="row wf-tpl" :data-id="t.id">
-            <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-flow"/></svg>
+          <template x-for="t in cl.templates" :key="t.id"><div class="row cl-tpl" :data-id="t.id">
+            <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-checklist"/></svg>
               <div class="t"><div class="title" x-text="t.title"></div><div class="meta num" x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></div></div></button>
-            <button class="btn wf-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button>
+            <button class="btn cl-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button>
           </div></template>
-          <template x-if="!w.templates.length"><p class="wf-hint">No templates here yet: a template is the checklist each run is copied from.</p></template>
-          <div class="row wf-new"><button class="body" @click="openNewTemplate(w.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>
+          <template x-if="!cl.templates.length"><p class="cl-hint">No templates here yet: a template is the checklist each run is copied from.</p></template>
+          <div class="row cl-new"><button class="body" @click="openNewTemplate(cl.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>
         </div>
-        <template x-if="w.runs.length || startingIn(w.project.id).length"><div>
-          <div class="wf-sub">In progress</div>
+        <template x-if="cl.runs.length || startingIn(cl.project.id).length"><div>
+          <div class="cl-sub">In progress</div>
           <div class="list">
-            <template x-for="e in startingIn(w.project.id)" :key="e.id"><div class="row pending"><div class="body"><div class="title" x-text="'Starting ' + e.template.title"></div>
+            <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending"><div class="body"><div class="title" x-text="'Starting ' + e.template.title"></div>
               <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span></div></div></div></template>
-            <template x-for="r in w.runs" :key="r.id"><div class="row wf-run" :data-id="r.id">
+            <template x-for="r in cl.runs" :key="r.id"><div class="row cl-run" :data-id="r.id">
               <button class="body" @click="go('#/run/' + r.id)"><div class="title" x-text="r.title"></div>
                 <div class="meta"><span class="num" x-text="r.done + ' of ' + r.total + ' done'"></span><template x-if="r.next"><span x-text="'Next: ' + r.next"></span></template><template x-if="r.forText"><span x-text="r.forText"></span></template></div></button>
               <svg class="i chev" style="align-self:center;color:var(--muted)"><use href="#i-chev"/></svg>
@@ -595,7 +595,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
   </main>
 
-  <div id="capture" x-ref="captureBar" :hidden="['search', 'workflows', 'run'].includes(route.name)">
+  <div id="capture" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
     <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" x-ref="capMarks" aria-hidden="true" x-html="capMarksHtml"></div>
@@ -667,17 +667,17 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       </div>
       <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
 
-      <!-- In a workflow project: make the task a template, start a run from it, or go to the run it's part of -->
-      <template x-if="wfRole && (wfRole !== 'candidate' || subtasks.length)"><div class="card wf-card" id="d-workflow">
-        <template x-if="wfRole === 'candidate'"><div>
-          <p>Make this a template: its subtasks become the steps of every run, in this order. A step with T#20m is due 20 minutes after the step before it is done. Name a step with {#roast}, and T#40m:roast counts from that one instead.</p>
-          <button class="btn block" id="d-make-template" :disabled="sheet.wfBusy" @click="makeTemplate()" x-text="sheet.wfBusy ? 'Making a template…' : 'Make template'"></button>
+      <!-- In a checklist project: make the task a template, start a run from it, or go to the run it's part of -->
+      <template x-if="checklistRole && (checklistRole !== 'candidate' || subtasks.length)"><div class="card cl-card" id="d-checklist">
+        <template x-if="checklistRole === 'candidate'"><div>
+          <p>Use this as a checklist template: its subtasks become the steps of every run, in this order. A step with T#20m is due 20 minutes after the step before it is done. Name a step with {#roast}, and T#40m:roast counts from that one instead.</p>
+          <button class="btn block" id="d-make-template" :disabled="sheet.checklistBusy" @click="makeTemplate()" x-text="sheet.checklistBusy ? 'Making it a template…' : 'Use as checklist template'"></button>
         </div></template>
-        <template x-if="wfRole === 'template'"><div>
+        <template x-if="checklistRole === 'template'"><div>
           <p>A template: every run gets its own copy of these steps.</p>
           <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a run</button>
         </div></template>
-        <template x-if="wfRole === 'run' || wfRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="go('#/run/' + (wfRole === 'run' ? sheet.task.id : parentTask.id))">Open the run</button></template>
+        <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="go('#/run/' + (checklistRole === 'run' ? sheet.task.id : parentTask.id))">Open the run</button></template>
       </div></template>
 
       <div class="card">
@@ -717,28 +717,28 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       </div></template>
 
       <!-- A template's subtasks are its steps: in order, with when each is due in a run, and moved up or down here -->
-      <div class="h3"><span x-text="wfRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="wfRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
+      <div class="h3"><span x-text="checklistRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="checklistRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
       <div class="card" id="d-subtasks">
         <template x-for="(st, i) in subtasks" :key="st.id">
-          <div class="row" :class="{done: st.done && wfRole !== 'template'}" :data-id="st.id">
-            <template x-if="wfRole !== 'template'"><button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button></template>
-            <button class="body" @click="openTask(st.id)"><div class="title" x-text="wfRole === 'template' ? templateSteps[i]?.title : st.title"></div>
-              <template x-if="wfRole === 'template' && (templateSteps[i]?.text || templateSteps[i]?.problem)"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
-              <template x-if="wfRole !== 'template' && dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template></button>
-            <template x-if="wfRole === 'template'"><span class="step-edit">
-              <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.wfBusy" @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
-              <button class="icon-btn" :aria-label="'Move down: ' + st.title" :disabled="i === subtasks.length - 1 || sheet.wfBusy" @click="moveStep(i, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+          <div class="row" :class="{done: st.done && checklistRole !== 'template'}" :data-id="st.id">
+            <template x-if="checklistRole !== 'template'"><button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button></template>
+            <button class="body" @click="openTask(st.id)"><div class="title" x-text="checklistRole === 'template' ? templateSteps[i]?.title : st.title"></div>
+              <template x-if="checklistRole === 'template' && (templateSteps[i]?.text || templateSteps[i]?.problem)"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
+              <template x-if="checklistRole !== 'template' && dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template></button>
+            <template x-if="checklistRole === 'template'"><span class="step-edit">
+              <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.checklistBusy" @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+              <button class="icon-btn" :aria-label="'Move down: ' + st.title" :disabled="i === subtasks.length - 1 || sheet.checklistBusy" @click="moveStep(i, 1)"><svg class="i"><use href="#i-down"/></svg></button>
             </span></template>
           </div>
         </template>
-        <template x-if="wfRole !== 'template'"><form class="comment-form" id="d-subform" @submit.prevent="addSubtasks()">
+        <template x-if="checklistRole !== 'template'"><form class="comment-form" id="d-subform" @submit.prevent="addSubtasks()">
           <textarea id="d-subin" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" x-model="sheet.subDraft"
                     x-effect="sheet.subDraft; $nextTick(() => grow($el))"
                     @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); addSubtasks(); }"></textarea>
           <button class="go btn" style="width:44px;padding:0" aria-label="Add subtasks" :disabled="sheet.subBusy || !captureLines(sheet.subDraft).length"><svg class="i"><use href="#i-up"/></svg></button>
         </form></template>
         <!-- Under a template: new steps a row each, with their times, added together -->
-        <template x-if="wfRole === 'template'"><div class="draft" id="add-steps">
+        <template x-if="checklistRole === 'template'"><div class="draft" id="add-steps">
           <template x-for="(st, k) in draftRows('add')" :key="st.key"><div class="draft-step">
             <div class="draft-line">
               <template x-for="d in [draft('add').info.get(st.key)]" :key="0"><span class="num draft-no" x-text="d ? d.i + 1 : ''"></span></template>
@@ -824,24 +824,24 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <div class="danger-zone"><button class="btn danger block" id="d-delete" @click="deleteTask()">Delete task</button></div>
     </div></template>
 
-    <!-- A project's options: making it a workflow, so everyone it's shared with gets the Workflows tab -->
+    <!-- A project's options: using it for checklists, so everyone it's shared with gets the Checklists tab -->
     <template x-if="sheet.kind === 'project' && sheet.project"><div>
       <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="sheet.project.title"></h2></div>
-      <div class="card wf-card" id="p-workflow">
-        <template x-if="!isWorkflow(sheet.project)"><div>
-          <p>Use this project for workflows: checklists that people start from a template and work through step by step. Everyone the project is shared with gets a Workflows tab in Pocket.</p>
-          <button class="btn block" id="p-use-workflow" :disabled="sheet.wfBusy" @click="setWorkflow(sheet.project, true)">Use as workflow</button>
+      <div class="card cl-card" id="p-checklist">
+        <template x-if="!isChecklistProject(sheet.project)"><div>
+          <p>Use this project for checklists: templates people start, and work through step by step, again and again. Everyone the project is shared with gets a Checklists tab in Pocket.</p>
+          <button class="btn block" id="p-use-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, true)">Use for checklists</button>
         </div></template>
-        <template x-if="isWorkflow(sheet.project)"><div>
-          <p>This project is a workflow: its templates and runs are under Workflows.</p>
-          <a class="btn ghost block" href="#/workflows" style="text-decoration:none;margin-bottom:10px">Go to Workflows</a>
-          <button class="btn danger block" id="p-stop-workflow" :disabled="sheet.wfBusy" @click="setWorkflow(sheet.project, false)">Stop using as workflow</button>
+        <template x-if="isChecklistProject(sheet.project)"><div>
+          <p>This project is for checklists: its templates and runs are under Checklists.</p>
+          <a class="btn ghost block" href="#/checklists" style="text-decoration:none;margin-bottom:10px">Go to Checklists</a>
+          <button class="btn danger block" id="p-stop-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, false)">Stop using for checklists</button>
         </div></template>
       </div>
     </div></template>
 
     <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
-    <!-- A new project: its name, where it goes, and whether it's for workflows -->
+    <!-- A new project: its name, where it goes, and whether it's for checklists -->
     <template x-if="sheet.kind === 'newproj' && sheet.newProj"><div id="new-project">
       <div class="d-title"><h2 style="margin:0;font-size:24px">New project</h2></div>
       <label class="field" style="margin-top:12px"><span>Name</span><input id="np-name" x-model="sheet.newProj.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="makeProject()"></label>
@@ -849,9 +849,9 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <option value="">No other project</option>
         <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" x-text="'\u00a0\u00a0\u00a0'.repeat(r.depth) + r.p.title"></option></template>
       </select></label></template>
-      <div class="card"><label class="prop" style="cursor:pointer"><span class="v" style="display:block"><b style="font-weight:600">Use for workflows</b>
-        <span class="note" style="display:block;margin:2px 0 0">Checklists people start from a template and work through, under Workflows.</span></span>
-        <input type="checkbox" id="np-workflow" x-model="sheet.newProj.workflow" style="width:22px;height:22px;accent-color:var(--accent)"></label></div>
+      <div class="card"><label class="prop" style="cursor:pointer"><span class="v" style="display:block"><b style="font-weight:600">Use for checklists</b>
+        <span class="note" style="display:block;margin:2px 0 0">Templates people start, and work through step by step, under Checklists.</span></span>
+        <input type="checkbox" id="np-checklists" x-model="sheet.newProj.checklists" style="width:22px;height:22px;accent-color:var(--accent)"></label></div>
       <button class="btn block" id="np-create" style="margin-top:16px" :disabled="sheet.newProj.busy || !sheet.newProj.name.trim()" @click="makeProject()"
               x-text="sheet.newProj.busy ? 'Making the project…' : 'Make project'"></button>
     </div></template>
@@ -908,7 +908,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="card" id="start-steps">
           <template x-for="(s, i) in startSteps" :key="sheet.start.steps[i].id"><div class="prop"><span class="k num" style="width:24px" x-text="i + 1"></span><span class="v"><span style="flex:1" x-text="s.title"></span>
             <template x-if="s.text || s.problem"><span class="num start-due" :class="{bad: s.problem}" x-text="s.problem || s.text"></span></template></span></div></template>
-          <template x-if="!sheet.start.steps.length"><p class="wf-hint">This template has no steps yet.</p></template>
+          <template x-if="!sheet.start.steps.length"><p class="cl-hint">This template has no steps yet.</p></template>
         </div>
         <template x-if="startSteps.some(s => s.problem)"><p class="note" id="start-problem">Fix the template's steps before starting a run.</p></template>
         <button class="btn block" id="start-go" style="margin-top:16px" :disabled="sheet.start.busy || !sheet.start.steps.length || startSteps.some(s => s.problem)" @click="startRun()" x-text="sheet.start.busy ? startProgress : 'Start'"></button>
@@ -1198,20 +1198,20 @@ function textToHtml(text){
   return text.trim().split(/\n{2,}/).map(p => '<p>' + esc(p).replace(/\n/g,'<br>') + '</p>').join('');
 }
 
-/* =============== workflows =============== */
-/* A workflow is a project with a line "pocket:workflow" in its description. In it, a template is a task labelled
-   "template" and marked done, and its subtasks, also done, are its steps, in the order they were linked (the order
-   Vikunja keeps and shows them in). A run is a copy of a template with a copy of each step under it, made with
-   Vikunja's duplicate, so every copy keeps a "copied from" link to what it was copied from. Who did a step is a
-   reaction on it: ✅ when it was done, ⏭️ when it was skipped. */
-const WF_MARK = 'pocket:workflow';
-const isWorkflowDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === WF_MARK);
+/* =============== checklists =============== */
+/* Checklists live in a project with a line "pocket:checklists" in its description. In it,
+   a template is a task labelled "template" and marked done, and its subtasks, also done, are its steps, in the order
+   they were linked (the order Vikunja keeps and shows them in). A run is a copy of a template with a copy of each step
+   under it, made with Vikunja's duplicate, so every copy keeps a "copied from" link to what it was copied from. Who
+   did a step is a reaction on it: ✅ when it was done, ⏭️ when it was skipped. */
+const CHECKLIST_MARK = 'pocket:checklists';
+const isChecklistDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === CHECKLIST_MARK);
 const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
 const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
 // An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
 const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
 const DONE_MARK = '✅', SKIP_MARK = '⏭️';
-// What quick add leaves alone in a workflow's steps: dates (a step's time is its T#), and the project, so every step
+// What quick add leaves alone in a checklist's steps: dates (a step's time is its T#), and the project, so every step
 // stays in its template's project, as Pocket's plugin needs.
 const STEP_IGNORE = {due: true, repeat: true, project: true};
 /* When a step is due, written in its title in the template, the way IEC 61131-3 writes times:
@@ -1391,7 +1391,7 @@ function currentRoute(){
   const params = new URLSearchParams(q || '');
   if (parts[0] === 'projects') return {name:'projects'};
   if (parts[0] === 'search') return {name:'search'};
-  if (parts[0] === 'workflows') return {name:'workflows'};
+  if (parts[0] === 'checklists') return {name:'checklists'};
   if (parts[0] === 'run' && parts[1]) return {name:'run', id: +parts[1]};
   if (parts[0] === 'project' && parts[1]) return {name:'project', id: +parts[1], showDone: params.get('done') === '1'};
   if (parts[0] === 'add') return {name:'add', text: params.get('text') || params.get('title') || ''};
@@ -1438,7 +1438,7 @@ const DAY_WORDS = [
 
 // A time after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and bare "17th" only count
 // at the start or end, so "The 9/11 Report" and "13th floor" stay as they are.
-// A workflow step's T#20m after it, hidden by parseCapture, doesn't count.
+// A checklist step's T#20m after it, hidden by parseCapture, doesn't count.
 const TIME_TAIL = '(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?(?:\\s+[\\uE000-\\uF8FF]+)*\\s*$';
 
 // "2021-07-06", "6/7/21", "27/1", "01.02": a date, or null. No year means the next time that date comes round.
@@ -1480,7 +1480,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
   // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
   const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
   if (quoted) { out.title = quoted[2].trim(); return out; }
-  // A workflow step's T#20m, T#40m:roast and {#roast} stay as they are, and nothing reads them as a date, a time or a
+  // A checklist step's T#20m, T#40m:roast and {#roast} stay as they are, and nothing reads them as a date, a time or a
   // project: each is swapped for a run of one private-use character, the same length, and put back at the end.
   const stepTokens = [];
   const hide = tok => String.fromCharCode(0xE000 + stepTokens.push(tok) - 1).repeat(tok.length);
@@ -1957,13 +1957,13 @@ const nestSubtasks = tasks => {
 const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
-  {key:'runs', cls:'', title:'Workflow runs', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+  {key:'runs', cls:'', title:'Checklist runs', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
 
 /* =============== component =============== */
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, wfBusy: false, newTpl: null, addRows: [], newProj: null});
+  project: null, start: null, checklistBusy: false, newTpl: null, addRows: [], newProj: null});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -1980,7 +1980,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   labels: [], labelsLoaded: false,
   // view
   route: currentRoute(),
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, wf: [], run: null},
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null},
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
@@ -2246,13 +2246,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
 
   /* ---------- views ---------- */
   go(hash){ location.hash = hash; },
-  // The page's name: the tab says Today, Projects or Workflows; a project shows its name, and its parent's, above its
+  // The page's name: the tab says Today, Projects or Checklists; a project shows its name, and its parent's, above its
   // list; a run its own, and its project's.
   get head(){
     const r = this.route;
     if (r.name === 'projects') return {kicker: '', title: 'Projects'};
     if (r.name === 'search') return {kicker: '', title: 'Search'};
-    if (r.name === 'workflows') return {kicker: '', title: 'Workflows'};
+    if (r.name === 'checklists') return {kicker: '', title: 'Checklists'};
     if (r.name === 'run') {
       const run = this.view.run?.run;
       return {kicker: this.projById.get(run?.project_id)?.title || '', title: run?.title || 'Run'};
@@ -2303,14 +2303,14 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.route = r;
     const seq = ++renderSeq;
     const fresh = this.view.route !== location.hash;   // new screen: show Loading; same screen: refresh in place
-    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null, savedAt: null, wf: [], run: null});
+    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null, savedAt: null, checklists: [], run: null});
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
     try {
       if (r.name === 'today') await this.loadToday(seq);
       else if (r.name === 'projects') { if (!this.projects.length) await this.loadProjects(); }
       else if (r.name === 'project') await this.loadProject(seq, r);
       else if (r.name === 'search') await this.loadSearch(seq);
-      else if (r.name === 'workflows') await this.loadWorkflows(seq);
+      else if (r.name === 'checklists') await this.loadChecklists(seq);
       else if (r.name === 'run') await this.loadRun(seq, r.id);
       if (seq === renderSeq) { this.view.loading = false; this.view.savedAt = null; }   // fresh from Vikunja
     } catch (e) {
@@ -2320,7 +2320,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         const s = saved.get(viewKey(r));
         if (s) {
           for (const g of s.groups || []) for (const t of g.tasks) cache.set(t.id, t);
-          Object.assign(this.view, {loading: false, groups: s.groups || [], project: s.project || null, wf: s.wf || [], run: s.run || null, savedAt: s.at});
+          Object.assign(this.view, {loading: false, groups: s.groups || [], project: s.project || null, checklists: s.checklists || [], run: s.run || null, savedAt: s.at});
           return;
         }
       }
@@ -3022,22 +3022,22 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   openNewProject(){
     this.openSheet('newproj');
-    this.sheet.newProj = {name: '', parent: '', workflow: false, busy: false};
+    this.sheet.newProj = {name: '', parent: '', checklists: false, busy: false};
     this.$nextTick(() => document.getElementById('np-name')?.focus());
   },
-  // A project made from the Projects tab, inside another if picked, and for workflows if asked; then opened.
+  // A project made from the Projects tab, inside another if picked, and for checklists if asked; then opened.
   async makeProject(){
     const np = this.sheet.newProj, name = np?.name.trim();
     if (!name || np.busy) return;
     np.busy = true;
     try {
-      const body = {title: name, ...(np.parent ? {parent_project_id: +np.parent} : {}), ...(np.workflow ? {description: `<p>${WF_MARK}</p>`} : {})};
+      const body = {title: name, ...(np.parent ? {parent_project_id: +np.parent} : {}), ...(np.checklists ? {description: `<p>${CHECKLIST_MARK}</p>`} : {})};
       const p = await api('/projects', {method: 'POST', body});
       this.setProjects([...this.projects, p]);
       saved.set('projects', this.projects);
       if (this.sheet.newProj === np) this.closeSheet(true);
       this.go('#/project/' + p.id);
-      this.notify(np.workflow ? `Made ${p.title}. Its templates and runs are under Workflows.` : `Made ${p.title}`);
+      this.notify(np.checklists ? `Made ${p.title}. Its templates and runs are under Checklists.` : `Made ${p.title}`);
     } catch (e) {
       np.busy = false;
       this.notify(e instanceof NetError ? 'Offline. A project can be made once you\'re back online.' : 'Not made: ' + e.message);
@@ -3136,33 +3136,33 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     this.dropping = this.dropping.filter(k => k !== key);
   },
 
-  /* ---------- workflows ---------- */
-  isWorkflow(p){ return isWorkflowDesc(p?.description); },
-  get workflowProjects(){ return this.projects.filter(p => this.isWorkflow(p)); },
-  get wfIds(){ return new Set(this.workflowProjects.map(p => p.id)); },
-  // The lit tab: Workflows for a run as well, Projects for a project and the list of them.
-  get tab(){ return ['workflows', 'run'].includes(this.route.name) ? 'workflows' : this.route.name === 'today' ? 'today' : 'projects'; },
-  // What the open task is to a workflow: a template, a run, one of a run's steps, or a task that could be made a template.
-  get wfRole(){
+  /* ---------- checklists ---------- */
+  isChecklistProject(p){ return isChecklistDesc(p?.description); },
+  get checklistProjects(){ return this.projects.filter(p => this.isChecklistProject(p)); },
+  get checklistIds(){ return new Set(this.checklistProjects.map(p => p.id)); },
+  // The lit tab: Checklists for a run as well, Projects for a project and the list of them.
+  get tab(){ return ['checklists', 'run'].includes(this.route.name) ? 'checklists' : this.route.name === 'today' ? 'today' : 'projects'; },
+  // What the open task is in a checklist project: a template, a run, one of a run's steps, or a task that could be made a template.
+  get checklistRole(){
     const t = this.sheet.task, r = t?.related_tasks || {};
-    if (!t || !this.wfIds.has(t.project_id)) return null;
+    if (!t || !this.checklistIds.has(t.project_id)) return null;
     if (hasTemplateLabel(t) && t.done) return 'template';
     if (r.parenttask?.length) return r.copiedfrom?.length ? 'step' : null;
     return r.copiedfrom?.length && !hasTemplateLabel(t) ? 'run' : 'candidate';
   },
   openProject(){ const p = this.view.project; if (!p) return; this.openSheet('project'); this.sheet.project = p; },
-  /* Make a project a workflow, or not: a paragraph "pocket:workflow" added to its description, or taken out. The rest
+  /* Use a project for checklists, or not: a paragraph "pocket:checklists" added to its description, or taken out. The rest
      of the description stays as it was. */
-  async setWorkflow(p, on){
-    this.sheet.wfBusy = true;
+  async setChecklists(p, on){
+    this.sheet.checklistBusy = true;
     try {
       let description;
-      if (on) description = (p.description || '').trim() + `<p>${WF_MARK}</p>`;
+      if (on) description = (p.description || '').trim() + `<p>${CHECKLIST_MARK}</p>`;
       else {
         const root = parseFragment(p.description);
-        for (const el of [...root.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6')]) if (el.textContent.trim().toLowerCase() === WF_MARK) el.remove();
+        for (const el of [...root.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6')]) if (el.textContent.trim().toLowerCase() === CHECKLIST_MARK) el.remove();
         description = root.innerHTML;
-        if (isWorkflowDesc(description)) description = description.replace(/pocket:workflow/gi, '');   // not in a paragraph of its own
+        if (isChecklistDesc(description)) description = description.replace(new RegExp(CHECKLIST_MARK, 'gi'), '');   // not in a paragraph of its own
         description = description.trim() || '<p></p>';                          // Vikunja's PATCH skips an empty one
       }
       const got = await api('/projects/' + p.id, {method: 'PATCH', body: {description}}) || await api('/projects/' + p.id);
@@ -3170,16 +3170,16 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       this.setProjects(this.projects.map(x => x.id === p.id ? next : x)); saved.set('projects', this.projects);
       if (this.view.project?.id === p.id) this.view.project = next;
       if (this.sheet.project?.id === p.id) this.sheet.project = next;
-      this.notify(on ? 'Now a workflow. Its templates and runs are under Workflows.' : 'No longer a workflow');
-    } catch (e) { this.notify((on ? 'Not made a workflow: ' : 'Not changed: ') + e.message); }
-    finally { this.sheet.wfBusy = false; }
+      this.notify(on ? 'Now for checklists. Its templates and runs are under Checklists.' : 'No longer for checklists');
+    } catch (e) { this.notify('Not changed: ' + e.message); }
+    finally { this.sheet.checklistBusy = false; }
   },
   openTasks(pid){ return allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ})); },
-  // Each workflow project, with its templates and the runs still open in it.
-  async loadWorkflows(seq){
-    const ws = this.workflowProjects;
+  // Each checklist project, with its templates and the runs still open in it.
+  async loadChecklists(seq){
+    const ws = this.checklistProjects;
     const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
-    const wf = await Promise.all(ws.map(async p => {
+    const checklists = await Promise.all(ws.map(async p => {
       const [templates, open] = await Promise.all([
         labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `done = true && labels in ${labels.join(', ')}`})) : [],
         this.openTasks(p.id)]);
@@ -3192,8 +3192,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         })};
     }));
     if (seq !== renderSeq) return;
-    this.view.wf = wf;
-    saved.set('workflows', {wf, at: new Date().toISOString()});
+    this.view.checklists = checklists;
+    saved.set('checklists', {checklists, at: new Date().toISOString()});
   },
   forText(t){
     const who = (t.assignees || []).map(u => u.id === this.user?.id ? 'you' : u.name || u.username);
@@ -3201,10 +3201,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   },
   // Runs being set up, waiting for a connection or under way, in a project.
   startingIn(pid){ return this.pending.filter(e => e.kind === 'run' && e.template.project_id === pid); },
-  /* The open runs in workflow projects, and whether each is yours: you started it, or it's for you. Today shows those,
+  /* The open runs in checklist projects, and whether each is yours: you started it, or it's for you. Today shows those,
      and not everyone else's. `mine`: yours. */
   async loadRunIndex(){
-    const ws = this.workflowProjects;
+    const ws = this.checklistProjects;
     if (!ws.length) return {index: {}, mine: []};
     try {
       const index = {}, mine = [];
@@ -3216,10 +3216,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       return {index, mine};
     } catch (e) { if (e instanceof NetError) return {index: saved.get('runs') || {}, mine: []}; throw e; }
   },
-  // Whether Today shows a task: in a workflow project, a run of yours, a step of one, or one assigned to you. Anything
+  // Whether Today shows a task: in a checklist project, a run of yours, a step of one, or one assigned to you. Anything
   // else there that isn't part of a run shows as anywhere else.
   inToday(t, runs){
-    if (!this.wfIds.has(t.project_id)) return true;
+    if (!this.checklistIds.has(t.project_id)) return true;
     if (hasTemplateLabel(t)) return false;                                   // a template, or a run being set up
     if ((t.assignees || []).some(u => u.id === this.user?.id)) return true;
     const parent = t.related_tasks?.parenttask?.[0]?.id;
@@ -3232,18 +3232,18 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
      to-do anywhere. Itself last, so one cut off half way isn't a template yet, and the button finishes it. */
   async makeTemplate(){
     const t = this.sheet.task;
-    if (!t || this.sheet.wfBusy) return;
+    if (!t || this.sheet.checklistBusy) return;
     const problems = stepProblems(this.subtasks.map(s => s.title));
     if (problems.length) { this.notify('Not made a template: ' + problemText(problems)); return; }
-    this.sheet.wfBusy = true;
+    this.sheet.checklistBusy = true;
     try {
       await this.markTemplate(t, this.subtasks.filter(s => !s.done).map(s => s.id));
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
-      this.notify('Made a template. Start runs from it here or under Workflows.');
+      this.notify('Made a checklist template. Start runs from it here or under Checklists.');
     } catch (e) { this.notify('Not made a template: ' + e.message); }
-    finally { this.sheet.wfBusy = false; }
+    finally { this.sheet.checklistBusy = false; }
   },
   async markTemplate(t, stepIds){
     if (!hasTemplateLabel(t)) {
@@ -3303,10 +3303,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       await this.markTemplate(t, r.ids);
       if (this.sheet.newTpl === nt) this.closeSheet(true);
       this.notify(`Made ${name}. Start a run of it here.`);
-      if (this.route.name === 'workflows') this.render(); else this.go('#/workflows');
+      if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
     } catch (e) {
       nt.busy = false;
-      this.notify(t ? `Not finished: ${e.message}. “${name}” is in ${nt.project.title}: open it there and tap Make template.` : 'Not made: ' + e.message);
+      this.notify(t ? `Not finished: ${e.message}. “${name}” is in ${nt.project.title}: open it there and tap Use as checklist template.` : 'Not made: ' + e.message);
     }
   },
   // Steps added under a template: made, marked done like the rest, and any step they count from given its name.
@@ -3340,7 +3340,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
      step counting from a later one: a template already wrong that way can still be put right. */
   async moveStep(i, dir){
     const t = this.sheet.task, steps = [...this.subtasks], j = i + dir;
-    if (!t || j < 0 || j >= steps.length || this.sheet.wfBusy) return;
+    if (!t || j < 0 || j >= steps.length || this.sheet.checklistBusy) return;
     const before = stepProblems(steps.map(s => s.title));
     [steps[i], steps[j]] = [steps[j], steps[i]];
     const after = stepProblems(steps.map(s => s.title));
@@ -3350,7 +3350,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       return;
     }
     t.related_tasks = {...t.related_tasks, subtask: steps};                    // shown in the new order straight away
-    this.sheet.wfBusy = true;
+    this.sheet.checklistBusy = true;
     let loose = null;                                                         // a step unlinked and not yet linked again
     try {
       for (const s of steps.slice(Math.min(i, j))) {
@@ -3362,7 +3362,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     } catch (e) {
       this.notify(loose ? `“${parseStep(loose.title).title}” is no longer a step: ${e.message}. Add it again.` : 'The steps weren\'t moved: ' + e.message);
     } finally {
-      this.sheet.wfBusy = false;
+      this.sheet.checklistBusy = false;
       try { const full = await api('/tasks/' + t.id); cache.set(full.id, full); if (this.sheet.task?.id === t.id) this.showTask(full); } catch {}
     }
   },
@@ -3414,7 +3414,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       sync.keep();
       this.closeSheet(true);
       this.notify(!kept ? (full ? NO_ROOM : NOT_KEPT) : `${st.template.title} starts as soon as Pocket reaches Vikunja.`);
-      if (this.route.name === 'workflows') this.render(); else this.go('#/workflows');
+      if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
     } else this.notify('Not started: ' + r.error.message);
   },
   async sendRun(j){
@@ -3463,7 +3463,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         await patiently(() => api('/tasks/' + sid, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       await patiently(() => api('/tasks/' + id, {method: 'DELETE'}));
       if (!quiet) this.notify('Run removed');
-      if (this.route.name === 'run' && this.route.id === id) this.go('#/workflows'); else if (!quiet) this.render();
+      if (this.route.name === 'run' && this.route.id === id) this.go('#/checklists'); else if (!quiet) this.render();
     } catch (e) { if (!quiet) this.notify('Not removed: ' + e.message); }
   },
 
@@ -3583,7 +3583,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (r.status === 'error') return;
     if (r.status === 'offline') { this.notify(`Finished. It's sent once Pocket reaches Vikunja.`); return; }
     this.notify('Finished ' + run.title);
-    this.go('#/workflows');
+    this.go('#/checklists');
   },
   /* Everything done on a run goes through the outbox. Anything done before it that's still waiting goes first, so it
      all reaches Vikunja in the order it was done. */
@@ -3765,10 +3765,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const parent = this.sheet.task, lines = captureLines(this.sheet.subDraft);
     if (!parent || !lines.length || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
-    // In a workflow, a step's time comes from its T#30m, so "Check at 3pm" stays as it is. (A template's steps are
+    // In a checklist project, a step's time comes from its T#30m, so "Check at 3pm" stays as it is. (A template's steps are
     // added with addTemplateSteps.)
-    const wf = this.wfIds.has(parent.project_id);
-    const r = await this.createLines(lines, {parent, ignore: wf ? STEP_IGNORE : {}});
+    const inChecklists = this.checklistIds.has(parent.project_id);
+    const r = await this.createLines(lines, {parent, ignore: inChecklists ? STEP_IGNORE : {}});
     if (this.sheet.task?.id === parent.id) {
       this.sheet.subBusy = false;
       this.sheet.subDraft = r.error ? lines.slice(r.used).join('\n') : '';

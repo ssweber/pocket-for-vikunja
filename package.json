@@ -7,10 +7,10 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "test": "node tests/parse.mjs && node tests/smoke.mjs && node tests/workflows.mjs",
+    "test": "node tests/parse.mjs && node tests/smoke.mjs && node tests/checklists.mjs",
     "test:parse": "node tests/parse.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "test:workflows": "node tests/workflows.mjs",
+    "test:checklists": "node tests/checklists.mjs",
     "test:steptimes": "node tests/steptimes.mjs",
     "test:local": "node scripts/dev.mjs --test",
     "demo": "node scripts/demo.mjs"

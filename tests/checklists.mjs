@@ -1,14 +1,14 @@
-// Workflows, end to end: a project made a workflow, a template made from a task and its steps, runs started, worked
+// Checklists, end to end: a project used for checklists, a template made from a task and its steps, runs started, worked
 // through, finished and handed over, with and without a connection.
 //
-//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... node tests/workflows.mjs
+//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... node tests/checklists.mjs
 //   npm run test:local        (starts a local Vikunja with the plugin and runs everything against it)
 //
-// Creates a project of its own ("Pocket workflow <stamp>") and deletes it at the end, with everything in it. Leaves a
+// Creates a project of its own ("Pocket checklists <stamp>") and deletes it at the end, with everything in it. Leaves a
 // "template" label behind, which later runs reuse, as Task Management tokens can't delete labels. The token needs
 // Projects → Create and Update, and Reactions.
 // Optional: OTHER_USER and OTHER_PASSWORD, a second account: the project is shared with them, a run is started for
-// them, and their Today and Workflows tab are checked too.
+// them, and their Today and Checklists tab are checked too.
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -45,7 +45,7 @@ let failed = 0;
 async function step(name, fn){
   try { await fn(); console.log('PASS', name); }
   catch (e) {
-    failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/workflows-fail-${name}.png` }).catch(() => {});
+    failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/checklists-fail-${name}.png` }).catch(() => {});
     await context.setOffline(false); await page.unrouteAll();                // so one failure doesn't take the rest down with it
   }
 }
@@ -69,39 +69,39 @@ const TEMPLATE = `Startup ${stamp}`;
 const WRITTEN = ['Check the guards at 3pm', 'First article check 2 hours later', 'Warm up the press in 30 min'];
 const STEPS = ['Check the guards at 3pm {#check-the-guards}', 'Warm up the press T#30m', 'First article check T#2h:check-the-guards'];
 const GUARDS = '“Check the guards at 3pm”';
-const tplRow = `.wf-tpl:has(.title:text-is("${TEMPLATE}"))`;
+const tplRow = `.cl-tpl:has(.title:text-is("${TEMPLATE}"))`;
 let project, template, me, other, otherToken;
 const runs = [];                                 // run ids, in the order started
 
 try {
   me = await api('/user');
-  project = await api('/projects', { method: 'POST', body: JSON.stringify({ title: `Pocket workflow ${stamp}` }) });
+  project = await api('/projects', { method: 'POST', body: JSON.stringify({ title: `Pocket checklists ${stamp}` }) });
   if (OTHER && OTHER_PASSWORD) {
     otherToken = (await (await fetch(SERVER + '/api/v2/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: OTHER, password: OTHER_PASSWORD }) })).json()).token;
     other = await call(otherToken, '/user');
     await api(`/projects/${project.id}/users`, { method: 'POST', body: JSON.stringify({ username: OTHER, permission: 1 }) });
   }
-  const workflowsBefore = (await api('/projects')).items.filter(p => /pocket:workflow/i.test(p.description || '')).length;
+  const checklistsBefore = (await api('/projects')).items.filter(p => /pocket:checklists/i.test(p.description || '')).length;
 
   await step('sign-in', () => signIn(page, TOKEN));
 
-  await step('use-as-workflow', async () => {
-    if (!workflowsBefore && await page.isVisible('nav.tabs a[data-tab=workflows]')) throw new Error('a Workflows tab without any workflow');
-    if (!workflowsBefore && await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('the tab names are hidden');
+  await step('use-for-checklists', async () => {
+    if (!checklistsBefore && await page.isVisible('nav.tabs a[data-tab=checklists]')) throw new Error('a Checklists tab without any checklist project');
+    if (!checklistsBefore && await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('the tab names are hidden');
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
     await page.click('#btn-project');
-    await page.click('#p-use-workflow');
-    await toast('Now a workflow');
-    await page.waitForSelector('nav.tabs.icons a[data-tab=workflows]');
+    await page.click('#p-use-checklists');
+    await toast('Now for checklists');
+    await page.waitForSelector('nav.tabs.icons a[data-tab=checklists]');
     if (!await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('three tabs, but with their names showing');
-    if (!/<p>pocket:workflow<\/p>/.test((await api('/projects/' + project.id)).description)) throw new Error('no marker in the description');
+    if (!/<p>pocket:checklists<\/p>/.test((await api('/projects/' + project.id)).description)) throw new Error('no marker in the description');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
   await step('new-template', async () => {
-    await page.click('nav.tabs a[data-tab=workflows]');
-    await page.click(`.wf[data-project="${project.id}"] .wf-new .body`, { timeout: 15000 });
+    await page.click('nav.tabs a[data-tab=checklists]');
+    await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.fill('#nt-name', TEMPLATE);
     await page.press('#nt-name', 'Enter');
     // A row each, Enter for the next; a time in words gets a chip.
@@ -149,8 +149,8 @@ try {
   });
 
   const startRun = async (who) => {
-    await page.evaluate(() => { location.hash = '#/workflows'; });
-    await page.click(`${tplRow} .wf-start`, { timeout: 15000 });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`${tplRow} .cl-start`, { timeout: 15000 });
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
     if (who) await page.click(`#start-for .chip[data-user="${who}"]`);
     const before = new Set((await api('/tasks/' + template.id)).related_tasks?.copiedto?.map(t => t.id) || []);
@@ -243,7 +243,7 @@ try {
   await step('today-shows-your-run', async () => {
     await page.click('nav.tabs a[data-tab=today]');
     // The run, without a due date of its own, and its open step, by its due date.
-    await page.waitForSelector(`.sec:has-text("Workflow runs") + .list .row:has(.title:has-text("${TEMPLATE} · run"))`, { timeout: 15000 });
+    await page.waitForSelector(`.sec:has-text("Checklist runs") + .list .row:has(.title:has-text("${TEMPLATE} · run"))`, { timeout: 15000 });
     await page.waitForSelector('.row .title:has-text("First article check")');
   });
 
@@ -253,7 +253,7 @@ try {
     const run = await api('/tasks/' + forOther.id);
     if (JSON.stringify(run.assignees?.map(u => u.id)) !== JSON.stringify([other.id])) throw new Error('assignees ' + JSON.stringify(run.assignees?.map(u => u.username)));
     if (!(await page.textContent('#run-for')).startsWith(`For ${other.name || other.username} · started by you`)) throw new Error('shows ' + await page.textContent('#run-for'));
-    // Their Today has their run and not yours; their Workflows tab has both in progress.
+    // Their Today has their run and not yours; their Checklists tab has both in progress.
     const theirs = await context.browser().newContext({ viewport: { width: 390, height: 844 } }), p = await theirs.newPage();
     p.on('pageerror', e => errors.push('(other) ' + e));
     p.on('console', m => m.type() === 'error' && console.log('  (other) console:', m.text()));
@@ -265,11 +265,11 @@ try {
       if (seen.includes(mine)) throw new Error('your run is in their Today');
       // Your run's last step is due, and isn't theirs; theirs has no due date yet.
       if (seen.some(t => t.endsWith('First article check'))) throw new Error('their Today: ' + JSON.stringify(seen));
-      await p.click('nav.tabs a[data-tab=workflows]');
-      await p.waitForSelector(`.wf-run .title:text-is("${mine}")`, { timeout: 15000 });
-      await p.waitForSelector(`.wf-run .title:text-is("${run.title}")`);
+      await p.click('nav.tabs a[data-tab=checklists]');
+      await p.waitForSelector(`.cl-run .title:text-is("${mine}")`, { timeout: 15000 });
+      await p.waitForSelector(`.cl-run .title:text-is("${run.title}")`);
     } catch (e) {
-      await p.screenshot({ path: `${OUT}/workflows-fail-other.png` });
+      await p.screenshot({ path: `${OUT}/checklists-fail-other.png` });
       throw new Error(`${e.message.split('\n')[0]}; looking for "${run.title}", their rows: ${JSON.stringify(await rows())}`);
     } finally { await theirs.close(); }
   });
@@ -281,9 +281,9 @@ try {
     await page.waitForSelector('#finish-card');
     if (!(await page.textContent('#finish-card')).includes('3 steps · 1 skipped')) throw new Error('summary: ' + await page.textContent('#finish-card'));
     await page.click('#run-finish');
-    await page.waitForFunction(() => location.hash === '#/workflows', null, { timeout: 15000 });
+    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
     await until('the run was never finished', async () => (await api('/tasks/' + first.id)).done);
-    if (await page.isVisible(`.wf-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`)) throw new Error('still in progress');
+    if (await page.isVisible(`.cl-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`)) throw new Error('still in progress');
   });
 
   let third;
@@ -292,7 +292,7 @@ try {
     await page.waitForSelector('#run-last .comment:has-text("Press 2 is down")', { timeout: 15000 });
     for (const note of ['Looks good', 'Line 2 ran slow today']) await page.waitForSelector(`#run-last .comment:has-text("${note}")`);
     await page.click('#toast-act:has-text("Undo")');
-    await page.waitForFunction(() => location.hash === '#/workflows', null, { timeout: 15000 });
+    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
     await until('the run is still in Vikunja', async () => !((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).some(t => t.id === third.id));
     runs.splice(runs.indexOf(third.id), 1);
   });
@@ -304,8 +304,8 @@ try {
     return id;
   };
   const openStart = async () => {
-    await page.evaluate(() => { location.hash = '#/workflows'; });
-    await page.click(`${tplRow} .wf-start`, { timeout: 15000 });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`${tplRow} .cl-start`, { timeout: 15000 });
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
   };
 
@@ -314,9 +314,9 @@ try {
     await context.setOffline(true);
     await page.click('#start-go');
     await toast('starts as soon as Pocket reaches Vikunja');
-    await page.waitForSelector(`.wf .row.pending:has-text("Starting ${TEMPLATE}"):has-text("Waiting for a connection")`);
+    await page.waitForSelector(`.cl .row.pending:has-text("Starting ${TEMPLATE}"):has-text("Waiting for a connection")`);
     await context.setOffline(false);
-    await page.waitForSelector('.wf .row.pending', { state: 'detached', timeout: 30000 });
+    await page.waitForSelector('.cl .row.pending', { state: 'detached', timeout: 30000 });
     await newRun();
   });
 
@@ -332,7 +332,7 @@ try {
     await page.click('#start-go');
     await toast('starts as soon as Pocket reaches Vikunja');
     await online();
-    await page.waitForSelector('.wf .row.pending', { state: 'detached', timeout: 30000 });
+    await page.waitForSelector('.cl .row.pending', { state: 'detached', timeout: 30000 });
     await page.unroute('**/api/v2/tasks/*/duplicate', lose);
     const after = await copies();
     if (after.some((n, i) => n !== before[i] + 1)) throw new Error(`copies of each step: ${before} before, ${after} after`);
@@ -377,7 +377,7 @@ try {
   });
 
   await step('add-steps-to-a-template', async () => {
-    await page.evaluate(() => { location.hash = '#/workflows'; });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`${tplRow} .body`, { timeout: 15000 });
     await page.waitForSelector('#d-start');
     const row = i => page.locator('#add-steps > .draft-step').nth(i);
@@ -402,28 +402,28 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
-  await step('stop-using-as-workflow', async () => {
+  await step('stop-using-for-checklists', async () => {
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
     await page.click('#btn-project');
-    await page.click('#p-stop-workflow');
-    await toast('No longer a workflow');
-    if (/pocket:workflow/i.test((await api('/projects/' + project.id)).description)) throw new Error('the marker is still there');
-    if (!workflowsBefore && await page.isVisible('nav.tabs a[data-tab=workflows]')) throw new Error('the Workflows tab is still there');
+    await page.click('#p-stop-checklists');
+    await toast('No longer for checklists');
+    if (/pocket:checklists/i.test((await api('/projects/' + project.id)).description)) throw new Error('the marker is still there');
+    if (!checklistsBefore && await page.isVisible('nav.tabs a[data-tab=checklists]')) throw new Error('the Checklists tab is still there');
   });
-  await step('new-project-for-workflows', async () => {
+  await step('new-project-for-checklists', async () => {
     if (await page.isVisible('#btn-sheet-close')) { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); }
     await page.click('nav.tabs a[data-tab=projects]');
     await page.click('#btn-new-project', { timeout: 15000 });
     await page.fill('#np-name', `Front of house ${stamp}`);
     await page.selectOption('#np-parent', String(project.id));
-    await page.check('#np-workflow');
+    await page.check('#np-checklists');
     await page.click('#np-create');
     await page.waitForFunction(() => /^#\/project\/\d+$/.test(location.hash), null, { timeout: 15000 });
     const id = +(await page.evaluate(() => location.hash)).split('/').pop(), made = await api('/projects/' + id);
     try {
       if (made.title !== `Front of house ${stamp}` || made.parent_project_id !== project.id) throw new Error(`made ${made.title} in ${made.parent_project_id}`);
-      if (!/<p>pocket:workflow<\/p>/.test(made.description || '')) throw new Error('not a workflow: ' + made.description);
-      await page.waitForSelector('nav.tabs a[data-tab=workflows]');
+      if (!/<p>pocket:checklists<\/p>/.test(made.description || '')) throw new Error('not for checklists: ' + made.description);
+      await page.waitForSelector('nav.tabs a[data-tab=checklists]');
     } finally { await api('/projects/' + id, { method: 'DELETE' }).catch(() => {}); }
   });
   if (errors.length) { failed++; console.log('FAIL page errors:', errors); }

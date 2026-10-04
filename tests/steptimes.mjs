@@ -1,11 +1,11 @@
-// Step times, through Vikunja's API only: with the plugin's step times on, marking a step of a workflow run done sets
+// Step times, through Vikunja's API only: with the plugin's step times on, marking a step of a checklist run done sets
 // the due dates of the steps timed from it, and nothing else. Needs a Vikunja with step times on (see pocket/main.go).
 //
 //   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... node tests/steptimes.mjs
 //   npm run test:local        (starts a local Vikunja with the plugin and step times on, and runs everything against it)
 //
 // Creates a project of its own ("Pocket step times <stamp>"), sets up a template and two runs of it the way Pocket
-// does, and deletes the project at the end. Leaves a "template" label behind, as workflows.mjs does.
+// does, and deletes the project at the end. Leaves a "template" label behind, as checklists.mjs does.
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;

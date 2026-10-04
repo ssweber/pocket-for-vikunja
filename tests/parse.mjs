@@ -221,9 +221,9 @@ addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
 addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
 
-// ---------- workflow steps ----------
+// ---------- checklist steps ----------
 // A step's T#20m, T#40m:roast and {#roast} stay in its title, for parseStep, and nothing reads them as a date or a time.
-add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a workflow step keeps its words; T#30m is read by parseStep' });
+add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its words; T#30m is read by parseStep' });
 add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
 add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
 add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'a step\'s words inside a quoted label stay in the label' });
@@ -274,9 +274,9 @@ const drafts = [
   // A name doesn't end on a small word.
   [[{ key: 'a', text: 'Warm up the press' }, { key: 'b', text: 'Check in 5 min', from: 'a' }], [], ['Warm up the press {#warm-up}', 'Check T#5m:warm-up'], [], false]];
 
-// The line in a project's description that makes it a workflow: on its own, anywhere in it.
-const marks = [['<p>pocket:workflow</p>', true], ['<p>Line 2 startups</p><p>Pocket:Workflow </p>', true], ['Notes<br>pocket:workflow', true],
-  ['<p>Tracks our hiring workflow</p>', false], ['<p>see pocket:workflow in the docs</p>', false], ['', false]];
+// The line in a project's description that makes it a checklist project: on its own, anywhere in it.
+const marks = [['<p>pocket:checklists</p>', true], ['<p>Line 2 startups</p><p>Pocket:Checklists </p>', true], ['Notes<br>pocket:checklists', true],
+  ['<p>Our safety checklists</p>', false], ['<p>see pocket:checklists in the docs</p>', false], ['', false]];
 
 // ---------- run ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
@@ -302,7 +302,7 @@ const collisionResults = await page.evaluate(([cs, projects]) => cs.map(([text, 
   const read = t => { const r = parseCapture(t, projects, { now: new Date(2021, 5, 24, 12, 0), mode }); return { title: r.title, due: r.due && r.due.getTime(), project: r.project?.title ?? null, labels: r.labels }; };
   return [read(text), read(text + ' ' + token)];
 }), [collisions, PROJECTS]);
-const markResults = await page.evaluate(marks => marks.map(([html]) => isWorkflowDesc(html)), marks);
+const markResults = await page.evaluate(marks => marks.map(([html]) => isChecklistDesc(html)), marks);
 await browser.close();
 http.close();
 
@@ -350,8 +350,8 @@ collisions.forEach(([text, token], i) => {
   if (!plain.due && !plain.project && !plain.labels.length) { failed++; console.log(`FAIL ${JSON.stringify(text)} reads nothing, so it shows no collision`); }
 });
 marks.forEach(([html, want], i) => {
-  if (markResults[i] !== want) { failed++; console.log(`FAIL workflow marker ${JSON.stringify(html)}: ${markResults[i]}`); }
+  if (markResults[i] !== want) { failed++; console.log(`FAIL checklist marker ${JSON.stringify(html)}: ${markResults[i]}`); }
 });
 const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length, total = cases.length + lists.length + wf;
-console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are workflow steps and markers)`);
+console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;

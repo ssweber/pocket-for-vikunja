@@ -13,7 +13,7 @@
 // What it does to Vikunja's data:
 //
 //   - By default, nothing. It only reads the files in app/ and serves them.
-//   - With step times turned on, one thing: when a step of a workflow run is marked done, it sets the due date of the
+//   - With step times turned on, one thing: when a step of a checklist run is marked done, it sets the due date of the
 //     steps in that run timed from it (T#40m in their template step: 40 minutes after). It writes only due_date, only
 //     on steps of that run in the same project that aren't done, and nothing else, not even the time a task was last
 //     changed. All of it is in setStepDueDates.
@@ -67,7 +67,7 @@ func (p *Pocket) Init() error {
 	// Vikunja starts its events after its plugins, so a listener added here hears every one.
 	if viper.GetBool("plugins.pocket.steptimes") {
 		events.RegisterListener((&models.TaskUpdatedEvent{}).Name(), &stepTimes{})
-		log.Infof("pocket: step times on: a workflow step marked done sets the due dates of the steps timed from it")
+		log.Infof("pocket: step times on: a checklist step marked done sets the due dates of the steps timed from it")
 	}
 	for _, d := range []string{os.Getenv("POCKET_APP_DIR"), filepath.Join("plugins", "pocket", "app"), "/app/data/plugins/pocket/app"} {
 		if d == "" {
@@ -255,7 +255,7 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 }
 
 // setStepDueDates is the only place the plugin writes to Vikunja's data. Given a task marked done at doneAt that is a
-// step of a workflow run, it sets the due date of each step of the same run timed from it: its done time plus the
+// step of a checklist run, it sets the due date of each step of the same run timed from it: its done time plus the
 // offset in the title of the template step that step was copied from. It writes only due_date (not even "updated"),
 // only on steps of that run in its project that aren't done, and only when the date changes. handled: whether the task
 // was still done at doneAt, so this tick is dealt with.

@@ -86,7 +86,7 @@ console.log(`Stop with:     docker rm -f ${NAME} ${SSO}`);
 if (process.argv.includes('--test')) {
   const env = { ...process.env, VIKUNJA_URL: BASE, VIKUNJA_TOKEN: token, ASSIGNEE: 'bob', ASSIGNEE_PROJECT: 'Team',
     VIKUNJA_USER: 'dev', VIKUNJA_PASSWORD: 'dev-password', SSO_USER: 'sso', OTHER_USER: 'bob', OTHER_PASSWORD: 'bob-password' };
-  const results = ['tests/parse.mjs', 'tests/smoke.mjs', 'tests/session.mjs', 'tests/offline.mjs', 'tests/workflows.mjs', 'tests/steptimes.mjs'].map(test =>
+  const results = ['tests/parse.mjs', 'tests/smoke.mjs', 'tests/session.mjs', 'tests/offline.mjs', 'tests/checklists.mjs', 'tests/steptimes.mjs'].map(test =>
     run(process.execPath, [fileURLToPath(new URL('../' + test, import.meta.url))], { env, stdio: 'inherit', allowFail: true }).status);
   process.exitCode = results.some(Boolean) ? 1 : 0;
 }
