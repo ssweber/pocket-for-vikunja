@@ -200,7 +200,8 @@ try {
     await page.waitForSelector('#step-title:text-is("First article check")');
     await page.click('#step-prev');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    // Moved by hand in Vikunja after the tick: that's when it's due.
+    // Moved by hand in Vikunja after the tick (a second or more: one in the same second counts as before it).
+    await new Promise(r => setTimeout(r, 1100));
     const warm = (await runStep(first.id, 1)).id;
     await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(Date.now() + 3 * 36e5).toISOString() }) });
     await page.reload();
@@ -386,6 +387,9 @@ try {
     await row(0).locator('.draft-in').fill('Pull a sample T#5m:nope');
     await row(0).locator('.draft-meta .bad:has-text("no step is named “nope”")').waitFor();
     if (await page.isEnabled('#add-steps-go')) throw new Error('can be added');
+    // Its chip is still there, to pick a step it can count from.
+    await row(0).locator('select').selectOption({ label: 'Warm up the press' });
+    await page.waitForSelector('#add-steps-go:not([disabled])');
     // A pasted list becomes a row a line; one counts from a step already there, which gets a name.
     await row(0).locator('.draft-in').fill('');
     await row(0).locator('.draft-in').evaluate(el => { const dt = new DataTransfer(); dt.setData('text/plain', 'Pull a sample in 5 min\nLog the weights'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });

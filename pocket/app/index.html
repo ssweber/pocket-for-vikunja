@@ -750,7 +750,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
             </div>
             <template x-for="d in [draft('add').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
               <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
-              <template x-if="!d.problem && d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+              <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
                 <template x-if="d.i === 0"><span>the start</span></template>
                 <template x-if="d.i > 0"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
                   <option value="" :selected="d.from === ''">the step before</option>
@@ -875,7 +875,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
             </div>
             <template x-for="d in [draft('new').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
               <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
-              <template x-if="!d.problem && d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+              <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
                 <template x-if="d.i === 0"><span>the start</span></template>
                 <template x-if="d.i > 0"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
                   <option value="" :selected="d.from === ''">the step before</option>
@@ -1870,7 +1870,7 @@ async function duplicate(from, rec, save, title){
 }
 const RUN_STEPS = [
   {name: 'run', done: j => !!j.runId, async run(j, c){
-    const t = (j.tried && await app.findCopy(j.template.id, j, j.at, c.taken, j.id, null)) || await duplicate(j.template.id, j, c.save, j.template.title);
+    const t = (j.tried && await app.findCopy(j.template.id, j, j.at, c.taken, j.id, null)) || await duplicate(j.template.id, j, c.save, (await api('/tasks/' + j.template.id)).title);
     sync.claim(t.id, j.id); c.taken.add(t.id); j.runId = t.id;
   }},
   // Named after its template, which run of it this is, and the day: "Startup · run 3 · Oct 3". Without a due date of its
@@ -3526,14 +3526,16 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
        Vikunja's done time of it, or, while that tick waits to be sent, from when it was ticked here. Vikunja's due date
        counts instead if someone changed the step after that tick: Pocket's plugin sets due dates without touching
-       "updated", so one it set (maybe from an earlier tick) doesn't. Until then it says what it waits on, not a time. */
+       "updated", so one it set (maybe from an earlier tick) doesn't. "updated" has whole seconds, and things done
+       offline reach Vikunja within one, so a change in the same second as the tick counts as before it. Until that
+       step is done it says what it waits on, not a time. */
     const timing = r.steps.map(s => parseStep(s.tpl || '')), now = serverTime(this.clock);
     steps.forEach((s, i) => {
       const t = timing[i], j = stepFrom(timing, i), from = j >= 0 ? steps[j] : null;
       let due = isSet(r.steps[i].due_date) ? new Date(r.steps[i].due_date) : null, waitsOn = '';
       if (from) {
         if (!from.done) { due = null; waitsOn = t.offset ? `${durText(t.offset)} after “${from.title}”` : `when “${from.title}” is done`; }
-        else if (from.waiting || !due || !(Math.floor(+new Date(r.steps[i].updated) / 1000) >= Math.floor(+new Date(from.doneAt) / 1000)))
+        else if (from.waiting || !due || !(Math.floor(+new Date(r.steps[i].updated) / 1000) > Math.floor(+new Date(from.doneAt) / 1000)))
           due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
       }
       const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
