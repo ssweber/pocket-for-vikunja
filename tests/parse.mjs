@@ -226,6 +226,8 @@ addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint'
 add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a workflow step keeps its words; T#30m is read by parseStep' });
 add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
 add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
+add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'a step\'s words inside a quoted label stay in the label' });
+add({ text: 'Task *"batch T#20m"', title: 'Task', labels: ['batch T#20m'], pocket: true, why: 'and a T# time ends before the quote' });
 // The same text with a step's token after it reads the same: [text, token, mode].
 const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:roast'], ['01.02 Lorem Ipsum', 'T#1h30m'],
   ['Lorem Ipsum 01.02', '{#roast}'], ['Order resin 2026-10-12', 'T#3d'], ['Baste the roast at 5pm', 'T#40m:roast'], ['Roast in tomorrow', '{#roast}'],
@@ -240,7 +242,8 @@ const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['
   ['Email ops@T#team', 'Email ops@T#team', null, null, null, 0], ['Part AT#5', 'Part AT#5', null, null, null, 0],
   ['Read T#30 of the manual', 'Read of the manual', null, null, null, 1], ['Preheat T#-10m:roast', 'Preheat', null, null, null, 1],
   ['Two times T#5m T#10m', 'Two times', 5 * 6e4, null, null, 1], ['Bad name {#1st}', 'Bad name', null, null, null, 1],
-  ['Bad ref T#5m:2nd', 'Bad ref', null, null, null, 1], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
+  ['Bad ref T#5m:2nd', 'Bad ref', null, null, null, 1], ['Way off T#400d', 'Way off', null, null, null, 1],
+  ['Overflow T#999999999999999999999d', 'Overflow', null, null, null, 1], ['Nbsp\u00a0T#20m', 'Nbsp', 20 * 6e4, null, null, 0], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
 // stepProblems over a template's steps: [titles, what each problem says]
 const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
   [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['names an earlier step too']],
@@ -248,7 +251,7 @@ const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}
 // A step's time in words, read while steps are written in Pocket: [text, offset in ms or null]
 const phrases = [['Check the oil in 10 min', 6e5], ['Baste after an hour', 36e5], ['Pull the jeans 20 minutes later', 12e5], ['Carve 1h 30m after', 54e5],
   ['Rest in half an hour', 18e5], ['Call back in 2 days', 1728e5], ['Check in two hours', 72e5], ['Check in 1 hour and 30 minutes', 54e5], ['Sand in 90s', 9e4],
-  ['Stir for 2 minutes', null], ['Let it rest 10 minutes', null], ['Meet in am', null], ['Sign in and out', null], ['Log in 5', null], ['Wait in a while', null]];
+  ['Stir for 2 minutes', null], ['Let it rest 10 minutes', null], ['Meet in am', null], ['Sign in and out', null], ['Log in 5', null], ['Wait in a while', null], ['Ship in 400 days', null]];
 // Rows of steps written in Pocket, saved: [rows, steps already there, what's added, the steps renamed, a problem]
 const drafts = [
   [[{ key: 'a', text: 'Put the roast in' }, { key: 'b', text: 'Peel the potatoes in 20 min' }, { key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'd', text: 'Stir for 2 minutes' }], [],

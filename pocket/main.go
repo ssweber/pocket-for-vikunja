@@ -15,7 +15,8 @@
 //   - By default, nothing. It only reads the files in app/ and serves them.
 //   - With step times turned on, one thing: when a step of a workflow run is marked done, it sets the due date of the
 //     steps in that run timed from it (T#40m in their template step: 40 minutes after). It writes only due_date, only
-//     on steps of that run in the same project that aren't done, and nothing else. All of it is in setStepDueDates.
+//     on steps of that run in the same project that aren't done, and nothing else, not even the time a task was last
+//     changed. All of it is in setStepDueDates.
 //     Turn it on in config.yml, or with the environment variable VIKUNJA_PLUGINS_POCKET_STEPTIMES=true:
 //
 //	plugins:
@@ -37,7 +38,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
@@ -135,13 +138,14 @@ func (p *Pocket) serve(c *echo.Context) error {
      T#20m          20 minutes after the step before it is done
      {#roast}       names the step "roast"
      T#40m:roast    40 minutes after the step named "roast" is done
-   Units d, h, m, s and ms, combined as in T#1h30m. Pocket checks templates when they're made, changed and started, so
-   anything else here (T#-10m, a name used twice) is simply not a time. */
+   Units d, h, m, s and ms, combined as in T#1h30m, up to a year. Pocket checks templates when they're made, changed and
+   started, so anything else here (T#-10m, a name used twice) is simply not a time. */
 var (
 	stepTimeRe = regexp.MustCompile(`(?i)(?:^|\s)T#((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::([a-z][\w-]*))?(?:\s|$)`)
 	stepUnitRe = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)(ms|d|h|m|s)`)
 	stepNameRe = regexp.MustCompile(`\{#([A-Za-z][\w-]*)\}`)
 	stepUnits  = map[string]float64{"d": 86400000, "h": 3600000, "m": 60000, "s": 1000, "ms": 1}
+	stepMax    = 365 * 86400000.0 // a year, in ms, as index.html
 )
 
 type stepTime struct {
@@ -152,6 +156,13 @@ type stepTime struct {
 }
 
 func parseStepTime(title string) stepTime {
+	// Any kind of space is a space, as in JavaScript, where Pocket checks the same title.
+	title = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || r == 0xFEFF {
+			return ' '
+		}
+		return r
+	}, title)
 	st := stepTime{}
 	if m := stepTimeRe.FindStringSubmatch(title); m != nil {
 		ms := 0.0
@@ -159,7 +170,9 @@ func parseStepTime(title string) stepTime {
 			n, _ := strconv.ParseFloat(u[1], 64)
 			ms += n * stepUnits[strings.ToLower(u[2])]
 		}
-		st.timed, st.offset, st.ref = true, time.Duration(math.Round(ms))*time.Millisecond, m[2]
+		if ms <= stepMax {
+			st.timed, st.offset, st.ref = true, time.Duration(math.Round(ms))*time.Millisecond, m[2]
+		}
 	}
 	if m := stepNameRe.FindStringSubmatch(title); m != nil {
 		st.name = m[1]
@@ -169,96 +182,141 @@ func parseStepTime(title string) stepTime {
 
 // The fields of a task.updated event this needs.
 type eventTask struct {
-	ID      int64     `json:"id"`
-	Done    bool      `json:"done"`
-	DoneAt  time.Time `json:"done_at"`
-	Updated time.Time `json:"updated"`
+	ID     int64     `json:"id"`
+	Done   bool      `json:"done"`
+	DoneAt time.Time `json:"done_at"`
 }
 type taskEvent struct {
 	Task eventTask `json:"task"`
 }
 
+// Each time a task was marked done that's been acted on: task id and done_at, kept for stepFresh.
+type stepTick struct{ id, at int64 }
+
+var (
+	stepFresh   = 2 * time.Minute
+	stepTicks   = map[stepTick]time.Time{}
+	stepTicksMu sync.Mutex
+)
+
 type stepTimes struct{}
 
 func (l *stepTimes) Name() string { return "pocket.steptimes" }
 
-// Handle hears every task update. It acts on a task just marked done: Vikunja sets done_at only then, in the same save
-// that sets "updated". Saving a done task again later, or labelling it, sends the event with a later "updated", and is
-// left alone. Our own writes send no event at all. Returning an error makes Vikunja try again, a few times.
+// Handle hears every task update and acts once on each time a task is marked done. Vikunja's event doesn't say what
+// changed, but done_at changes only when a task is marked done: so a done task whose done_at is recent, and not acted on
+// already. Saving it again, labelling or assigning it changes nothing. (Just after Vikunja restarts, an edit within
+// stepFresh of the tick can set the same dates again.) Our own writes send no event at all. Returning an error makes
+// Vikunja try again, a few times.
 func (l *stepTimes) Handle(msg *message.Message) error {
 	ev := taskEvent{}
 	if err := json.Unmarshal(msg.Payload, &ev); err != nil {
 		return nil
 	}
 	t := ev.Task
-	if !t.Done || t.DoneAt.IsZero() {
+	if !t.Done || t.DoneAt.IsZero() || time.Since(t.DoneAt) > stepFresh {
 		return nil
 	}
-	if gap := t.Updated.Sub(t.DoneAt); gap > 2*time.Second || gap < -2*time.Second {
+	tick := stepTick{t.ID, t.DoneAt.Unix()}
+	stepTicksMu.Lock()
+	_, seen := stepTicks[tick]
+	stepTicksMu.Unlock()
+	if seen {
 		return nil
 	}
-	err := setStepDueDates(t.ID)
-	if err != nil {
+	if err := setStepDueDates(t.ID, t.DoneAt); err != nil {
 		log.Errorf("pocket: step times for task %d: %s", t.ID, err)
+		return err
 	}
-	return err
+	stepTicksMu.Lock()
+	for k, at := range stepTicks {
+		if time.Since(at) > stepFresh {
+			delete(stepTicks, k)
+		}
+	}
+	stepTicks[tick] = time.Now()
+	stepTicksMu.Unlock()
+	return nil
 }
 
-// setStepDueDates is the only place the plugin writes to Vikunja's data. Given a task just marked done that is a step
-// of a workflow run, it sets the due date of each step of the same run timed from it: its done time plus the offset in
-// the title of the template step that step was copied from. It writes only due_date, only on steps of that run in the
-// same project as the done step, only on those not done, and only when the date changes.
-func setStepDueDates(stepID int64) error {
+// setStepDueDates is the only place the plugin writes to Vikunja's data. Given a task marked done at doneAt that is a
+// step of a workflow run, it sets the due date of each step of the same run timed from it: its done time plus the
+// offset in the title of the template step that step was copied from. It writes only due_date (not even "updated"),
+// only on steps of that run that aren't done, and only when the date changes.
+//
+// Vikunja lets anyone link a task they can edit to one they can only see, so the run is taken only as Pocket makes
+// one: the run, its steps and its template all in the done step's project, the template labelled "template", and each
+// step's offset read from a step of that template.
+func setStepDueDates(stepID int64, doneAt time.Time) error {
 	s := db.NewSession()
 	defer s.Close()
 
 	step := &models.Task{}
-	if has, err := s.ID(stepID).Get(step); err != nil || !has || !step.Done {
-		return err
+	if has, err := s.ID(stepID).Get(step); err != nil || !has || !step.Done || step.DoneAt.Unix() != doneAt.Unix() {
+		return err // not done any more, or done again since: that one is acted on in its turn
 	}
-	// The run it's a step of: a copy of a template, and not a template itself (a template's steps are done too).
+	project := step.ProjectID
+	// The run it's a step of: a copy of a template, and not a template itself, nor one still being set up.
 	parents, err := relatedIDs(s, stepID, "parenttask")
 	if err != nil || len(parents) != 1 {
 		return err
 	}
-	runID := parents[0]
-	if from, err := relatedIDs(s, runID, "copiedfrom"); err != nil || len(from) == 0 {
+	run, err := taskIn(s, parents[0], project)
+	if err != nil || run == nil {
 		return err
 	}
-	if tpl, err := isTemplate(s, runID); err != nil || tpl {
+	if tpl, err := isTemplate(s, run.ID); err != nil || tpl {
+		return err
+	}
+	from, err := relatedIDs(s, run.ID, "copiedfrom")
+	if err != nil || len(from) == 0 {
+		return err
+	}
+	template, err := taskIn(s, from[0], project)
+	if err != nil || template == nil {
+		return err
+	}
+	if tpl, err := isTemplate(s, template.ID); err != nil || !tpl {
 		return err
 	}
 
-	// The run's steps in their order, each with the title of the template step it was copied from.
-	ids, err := relatedIDs(s, runID, "subtask")
-	if err != nil || len(ids) < 2 {
+	// The template's steps, and the run's in their order, each with the template step it was copied from.
+	tplStepIDs, err := relatedIDs(s, template.ID, "subtask")
+	if err != nil || len(tplStepIDs) == 0 {
+		return err
+	}
+	tplSteps := map[int64]*models.Task{}
+	if err := s.In("id", tplStepIDs).And("project_id = ?", project).Find(&tplSteps); err != nil {
+		return err
+	}
+	runStepIDs, err := relatedIDs(s, run.ID, "subtask")
+	if err != nil || len(runStepIDs) < 2 {
 		return err
 	}
 	tasks := map[int64]*models.Task{}
-	if err := s.In("id", ids).Find(&tasks); err != nil {
+	if err := s.In("id", runStepIDs).And("project_id = ?", project).Find(&tasks); err != nil {
 		return err
+	}
+	ids := []int64{}
+	for _, id := range runStepIDs {
+		if tasks[id] != nil {
+			ids = append(ids, id)
+		}
 	}
 	copied := []*models.TaskRelation{}
 	if err := s.In("task_id", ids).And("relation_kind = ?", "copiedfrom").OrderBy("id").Find(&copied); err != nil {
 		return err
 	}
-	fromOf, tplIDs := map[int64]int64{}, []int64{}
+	fromOf := map[int64]*models.Task{}
 	for _, r := range copied {
-		if _, ok := fromOf[r.TaskID]; !ok {
-			fromOf[r.TaskID] = r.OtherTaskID
-			tplIDs = append(tplIDs, r.OtherTaskID)
-		}
-	}
-	tpls := map[int64]*models.Task{}
-	if len(tplIDs) > 0 {
-		if err := s.In("id", tplIDs).Find(&tpls); err != nil {
-			return err
+		if t := tplSteps[r.OtherTaskID]; t != nil && fromOf[r.TaskID] == nil {
+			fromOf[r.TaskID] = t
 		}
 	}
 	steps, at := make([]stepTime, len(ids)), -1
 	for i, id := range ids {
-		if tpl := tpls[fromOf[id]]; tpl != nil {
-			steps[i] = parseStepTime(tpl.Title)
+		if t := fromOf[id]; t != nil {
+			steps[i] = parseStepTime(t.Title)
 		}
 		if id == stepID {
 			at = i
@@ -275,14 +333,14 @@ func setStepDueDates(stepID int64) error {
 			continue
 		}
 		dep := tasks[ids[i]]
-		if dep == nil || dep.Done || dep.ProjectID != step.ProjectID {
+		if dep.Done {
 			continue
 		}
 		due := step.DoneAt.Add(st.offset).Truncate(time.Second)
 		if dep.DueDate.Unix() == due.Unix() {
 			continue
 		}
-		if _, err := s.ID(dep.ID).Cols("due_date").Update(&models.Task{DueDate: due}); err != nil {
+		if _, err := s.ID(dep.ID).Cols("due_date").NoAutoTime().Update(&models.Task{DueDate: due}); err != nil {
 			_ = s.Rollback()
 			return err
 		}
@@ -292,6 +350,15 @@ func setStepDueDates(stepID int64) error {
 		return nil
 	}
 	return s.Commit()
+}
+
+// A task, if it's in the project; nil if not.
+func taskIn(s *xorm.Session, id, project int64) (*models.Task, error) {
+	t := &models.Task{}
+	if has, err := s.ID(id).Get(t); err != nil || !has || t.ProjectID != project {
+		return nil, err
+	}
+	return t, nil
 }
 
 // stepFrom is which step a timed step counts from: the one before it, or the earlier one with its name; -1 if none.

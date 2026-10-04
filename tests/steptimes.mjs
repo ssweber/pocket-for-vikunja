@@ -21,6 +21,7 @@ async function api(path, { method = 'GET', body, v = 'v2' } = {}){
   }
 }
 const get = id => api('/tasks/' + id);
+let me;
 const patch = (id, body) => api('/tasks/' + id, { method: 'PATCH', body });
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(what, fn, ms = 10000){
@@ -37,7 +38,7 @@ async function step(name, fn){
 }
 
 const stamp = Date.now();
-const STEPS = ['Put the roast in {#roast}', 'Peel the potatoes T#20m', 'Baste the roast T#40m:roast', 'Take the roast out T#1h:roast', 'Carve T#10m', 'Wash up'];
+const STEPS = ['Put the roast in {#roast}', 'Peel the potatoes T#20m', 'Baste the roast T#40m:roast', 'Take the roast out T#1h:roast', 'Carve\u00a0T#10m', 'Wash up'];
 const TITLES = ['Put the roast in', 'Peel the potatoes', 'Baste the roast', 'Take the roast out', 'Carve', 'Wash up'];
 let project;
 
@@ -57,6 +58,7 @@ async function startRun(template, tplSteps, label){
 }
 
 try {
+  me = await api('/user');
   project = await api('/projects', { method: 'POST', body: { title: `Pocket step times ${stamp}` } });
   const mk = title => api(`/projects/${project.id}/tasks`, { method: 'POST', body: { title } });
 
@@ -81,12 +83,17 @@ try {
   const a = await startRun(template.id, tplSteps, label.id), b = await startRun(template.id, tplSteps, label.id);
   const dues = async run => (await Promise.all(run.steps.map(get))).map(t => t.due_date);
 
-  let tick0;
+  let tick0, updatedBefore;
   await step('chain-and-fan-out-from-a-tick', async () => {
+    updatedBefore = (await get(a.steps[1])).updated;
+    await wait(1100);                                                         // so a write to "updated" would show
     tick0 = await patch(a.steps[0], { done: true });
     await until('no due dates were set', async () => isSet((await get(a.steps[3])).due_date));
     const d = await dues(a), mins = d.map(x => after(x, tick0.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
+    // Only due_date: not when the task was last changed.
+    const t = await get(a.steps[1]);
+    if (t.updated !== updatedBefore) throw new Error(`"updated" went from ${updatedBefore} to ${t.updated}`);
   });
 
   await step('the-other-run-is-untouched', async () => {
@@ -115,9 +122,10 @@ try {
   await step('re-saving-a-done-step-sets-nothing', async () => {
     const mine = '2031-01-01T10:00:00Z';
     await patch(a.steps[4], { due_date: mine });                              // someone moved Carve's due date by hand
-    await wait(2500);                                                         // the roast came out a while ago
-    await patch(a.steps[3], { priority: 3 });                                 // and is saved again
-    await api(`/tasks/${a.steps[3]}/labels`, { method: 'POST', body: { label_id: label.id } }).catch(() => {});   // and labelled
+    // Then, straight away, the roast's step is saved again, labelled and assigned: each sends Vikunja's task.updated.
+    await patch(a.steps[3], { priority: 3 });
+    await api(`/tasks/${a.steps[3]}/labels`, { method: 'POST', body: { label_id: label.id } }).catch(() => {});
+    await api(`/tasks/${a.steps[3]}/assignees`, { method: 'POST', body: { user_id: me.id } }).catch(() => {});
     await wait(1500);
     const due = (await get(a.steps[4])).due_date;
     if (new Date(due).getTime() !== new Date(mine).getTime()) throw new Error('Carve is due ' + due);
@@ -144,6 +152,18 @@ try {
     await until('no due dates were set', async () => isSet((await get(b.steps[3])).due_date));
     const mins = (await dues(b)).map(x => after(x, done.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, null, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
+  });
+  await step('a-task-that-isnt-a-run-sets-nothing', async () => {
+    // Anyone who can edit a task can link it to tasks they can only see. A parent copied from something that isn't a
+    // template, with a step "copied from" a timed template step: not a run, so nothing is written.
+    const other = await mk('Not a template ' + stamp), parent = await mk('Looks like a run ' + stamp);
+    await api(`/tasks/${parent.id}/relations`, { method: 'POST', body: { other_task_id: other.id, relation_kind: 'copiedfrom' } });
+    const x = await mk('First'), y = await mk('Second');
+    for (const t of [x, y]) await api(`/tasks/${parent.id}/relations`, { method: 'POST', body: { other_task_id: t.id, relation_kind: 'subtask' } });
+    await api(`/tasks/${tplSteps[1]}/relations`, { method: 'POST', body: { other_task_id: y.id, relation_kind: 'copiedto' } });   // Peel the potatoes T#20m
+    await patch(x.id, { done: true });
+    await wait(1500);
+    if (isSet((await get(y.id)).due_date)) throw new Error('got a due date: ' + (await get(y.id)).due_date);
   });
 } finally {
   if (project) for (let i = 0; i < 5; i++) { try { await api('/projects/' + project.id, { method: 'DELETE' }); break; } catch { await wait(500); } }

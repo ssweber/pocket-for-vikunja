@@ -463,7 +463,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
 
     <template x-if="!view.loading && !view.error && route.name === 'projects'"><div>
-      <template x-if="!projects.length"><div class="empty"><b>No projects yet.</b>Create one in Vikunja on the web.</div></template>
+      <template x-if="!projects.length"><div><div class="empty"><b>No projects yet.</b>Make one here, or in Vikunja on the web.</div>
+        <div class="list"><div class="row wf-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div></div></template>
       <template x-if="favorites.length"><div>
         <div class="sec">Favorites</div>
         <div class="list tree"><template x-for="p in favorites" :key="p.id">
@@ -474,7 +475,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
         <div class="sec">All projects</div>
         <div class="list tree"><template x-for="r in tree" :key="r.p.id">
           <div class="row"><button class="body" :style="{paddingLeft: r.depth * 18 + 'px'}" @click="go('#/project/' + r.p.id)"><i class="dot" style="width:10px;height:10px;margin:0" :style="{background: colorOf(r.p.hex_color)}"></i><span style="flex:1" x-text="r.p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
-        </template></div>
+        </template><div class="row wf-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div>
       </div></template>
     </div></template>
 
@@ -520,7 +521,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
       <!-- Countdowns running for other steps than the one shown, so none is missed -->
       <template x-if="runView.timers.length"><div class="card" id="run-timers">
-        <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(runView.steps.indexOf(s), true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
+        <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(s.i, true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
       </div></template>
 
       <template x-if="runView.step"><div class="card step-card" id="step-card" :data-id="runView.step.id">
@@ -623,7 +624,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
 <!-- ============ SHEET ============ -->
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
-<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', start: 'Start a run', newtpl: 'New template'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
+<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', start: 'Start a run', newtpl: 'New template', newproj: 'New project'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
@@ -840,6 +841,21 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
 
     <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
+    <!-- A new project: its name, where it goes, and whether it's for workflows -->
+    <template x-if="sheet.kind === 'newproj' && sheet.newProj"><div id="new-project">
+      <div class="d-title"><h2 style="margin:0;font-size:24px">New project</h2></div>
+      <label class="field" style="margin-top:12px"><span>Name</span><input id="np-name" x-model="sheet.newProj.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="makeProject()"></label>
+      <template x-if="projects.length"><label class="field"><span>Inside</span><select id="np-parent" x-model="sheet.newProj.parent">
+        <option value="">No other project</option>
+        <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" x-text="'\u00a0\u00a0\u00a0'.repeat(r.depth) + r.p.title"></option></template>
+      </select></label></template>
+      <div class="card"><label class="prop" style="cursor:pointer"><span class="v" style="display:block"><b style="font-weight:600">Use for workflows</b>
+        <span class="note" style="display:block;margin:2px 0 0">Checklists people start from a template and work through, under Workflows.</span></span>
+        <input type="checkbox" id="np-workflow" x-model="sheet.newProj.workflow" style="width:22px;height:22px;accent-color:var(--accent)"></label></div>
+      <button class="btn block" id="np-create" style="margin-top:16px" :disabled="sheet.newProj.busy || !sheet.newProj.name.trim()" @click="makeProject()"
+              x-text="sheet.newProj.busy ? 'Making the project…' : 'Make project'"></button>
+    </div></template>
+
     <!-- A new template: its name and steps, a row each, with when each is due -->
     <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
       <div class="d-title"><h2 style="margin:0;font-size:24px">New template</h2></div>
@@ -1201,7 +1217,7 @@ const DONE_MARK = '✅', SKIP_MARK = '⏭️';
      Baste the roast T#40m:roast  due 40 minutes after the step named "roast" is done
    Units are d, h, m, s and ms, and combine: T#1h30m. A step without a time has no due date: it's simply next. Copies
    of the steps in a run have their titles without these, and Pocket's plugin sets their due dates as steps are done. */
-const STEP_UNITS = {d: 864e5, h: 36e5, m: 6e4, s: 1e3, ms: 1};
+const STEP_UNITS = {d: 864e5, h: 36e5, m: 6e4, s: 1e3, ms: 1}, STEP_MAX = 365 * 864e5;   // a year, as main.go
 const STEP_TIME = /(^|\s)(T#\S*)/gi, STEP_NAME = /\{#([^}\s]*)\}/g, NAME_OK = /^[a-z][\w-]*$/i;
 const sameName = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 function parseStep(title){
@@ -1213,8 +1229,9 @@ function parseStep(title){
     else if (m[3] !== undefined && !NAME_OK.test(m[3])) out.problems.push(`“${tok}”: a name starts with a letter`);
     else if (out.offset !== null) out.problems.push('a step can have only one T# time');
     else {
-      out.offset = Math.round([...m[2].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce((n, u) => n + u[1] * STEP_UNITS[u[2].toLowerCase()], 0));
-      out.ref = m[3] ?? null;
+      const ms = Math.round([...m[2].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce((n, u) => n + u[1] * STEP_UNITS[u[2].toLowerCase()], 0));
+      if (!(ms <= STEP_MAX)) out.problems.push(`“${tok}” is longer than a year`);
+      else { out.offset = ms; out.ref = m[3] ?? null; }
     }
     return sp;
   }).replace(STEP_NAME, (tok, name) => {
@@ -1273,6 +1290,7 @@ function readStepPhrase(text){
     const n = p[1] ? +p[1] : NUMBER_WORDS[p[2].toLowerCase()] ?? 1;
     offset += n * STEP_UNIT_MS.find(([re]) => re.test(p[3].toLowerCase()))[1];
   }
+  if (!(offset <= STEP_MAX)) return null;
   return {index: m.index + m[1].length, length: m[0].length - m[1].length, offset: Math.round(offset), text: m[0].slice(m[1].length)};
 }
 // 5400000 -> "T#1h30m"; with a name, "T#1h30m:roast".
@@ -1341,6 +1359,11 @@ async function patiently(fn){
     try { return await fn(); }
     catch (e) { if (!(e instanceof ApiError && e.status >= 500) || i >= 2) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); }
   }
+}
+// A task with all its comments: expand=comments gives the first 50.
+async function allComments(t){
+  if ((t.comments || []).length >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
+  return t;
 }
 // fn over each of a list, n at a time, in the list's order.
 async function inBatches(list, n, fn){
@@ -1457,7 +1480,9 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
   // project: each is swapped for a run of one private-use character, the same length, and put back at the end.
   const stepTokens = [];
   const hide = tok => String.fromCharCode(0xE000 + stepTokens.push(tok) - 1).repeat(tok.length);
-  text = text.replace(STEP_TIME, (_, sp, tok) => sp + hide(tok)).replace(STEP_NAME, hide);
+  const unhide = t => t.replace(/([\uE000-\uF8FF])\1*/g, (run, c) => stepTokens[c.charCodeAt(0) - 0xE000] ?? run);
+  text = text.replace(/(^|\s)(T#(?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+(?::[a-z][\w-]*)?)(?=\s|$|["'])/gi, (_, sp, tok) => sp + hide(tok))
+    .replace(/\{#[a-z][\w-]*\}/gi, hide);
   out.title = text;
   // Every change to the title goes through edit(). `from` keeps where each character of the title was in `text`, and
   // `read` what each removed one was read as, so the words can be marked where they were typed.
@@ -1475,7 +1500,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
 
   // project +name: only the first one counts
   if (!ignore.project && (m = out.title.match(tokenRe(P.project, '')))) {
-    const typed = m[2] || m[3] || m[4], name = projectName(typed).toLowerCase();
+    const typed = unhide(m[2] || m[3] || m[4]), name = projectName(typed).toLowerCase();
     const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
     if (hit) out.project = hit; else out.projectMiss = typed;
     drop(m, 'project');
@@ -1483,14 +1508,14 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
   // labels *name
   if (!ignore.labels) {
     const found = [...out.title.matchAll(tokenRe(P.label))];
-    for (const x of found) { const l = x[2] || x[3] || x[4]; if (!out.labels.includes(l)) out.labels.push(l); }
+    for (const x of found) { const l = unhide(x[2] || x[3] || x[4]); if (!out.labels.includes(l)) out.labels.push(l); }
     for (const x of found.reverse()) drop(x, 'labels');
   }
   // assignees @username stay in the title for now: createTask takes out each one that gets assigned, as Vikunja does.
   // A space is needed before the @, so email addresses are left alone.
   const people = [];
   if (!ignore.assignees) for (const x of out.title.matchAll(tokenRe(P.assignee))) {
-    const u = x[2] || x[3] || x[4];
+    const u = unhide(x[2] || x[3] || x[4]);
     if (!out.assignees.includes(u)) out.assignees.push(u);
     people.push({start: from[x.index + x[1].length], end: from[x.index + x[0].length - 1] + 1, kind: 'assignees', name: u});
   }
@@ -1583,7 +1608,7 @@ function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new 
     out.due = d < now ? atTime(dayFrom(now, 1), dueTime) : d; out.dueFromRepeat = true;
   }
   if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
-  out.title = out.title.replace(/([-])\1*/g, (run, c) => stepTokens[c.charCodeAt(0) - 0xE000] ?? run).replace(/\s{2,}/g, ' ').trim();
+  out.title = unhide(out.title).replace(/\s{2,}/g, ' ').trim();
   // One mark per phrase: neighbouring characters read as the same thing join up, across the spaces between them.
   for (const i of [...read.keys()].sort((a, b) => a - b)) {
     const kind = read.get(i), last = out.marks[out.marks.length - 1];
@@ -1833,14 +1858,9 @@ const LINE_STEPS = [
 const NOT_RELATED = 4009;
 const RUN_STEPS = [
   {name: 'run', done: j => !!j.runId, async run(j, c){
-    let t = j.tried ? await app.findCopy(j.template.id, j.triedAt, j.at, c.taken, j.id) : null;
+    let t = j.tried ? await app.findCopy(j.template.id, j.triedAt, j.at, c.taken, j.id, null) : null;
     if (!t) { j.tried = true; j.triedAt = Date.now(); await c.save(); t = (await api(`/tasks/${j.template.id}/duplicate`, {method: 'POST'})).duplicated_task; }
     sync.claim(t.id, j.id); c.taken.add(t.id); j.runId = t.id;
-  }},
-  // The copy has the template's labels, "template" too: that one comes off. (Vikunja refuses to remove one that isn't there.)
-  {name: 'unlabel', done: j => !!j.unlabeled, async run(j){
-    for (const l of (await api('/tasks/' + j.runId)).labels || []) if (isTemplateLabel(l)) await api(`/tasks/${j.runId}/labels/${l.id}`, {method: 'DELETE'});
-    j.unlabeled = true;
   }},
   // Named after its template, which run of it this is, and the day: "Startup · run 3 · Oct 3". Without a due date of its
   // own: its steps have theirs.
@@ -1848,29 +1868,35 @@ const RUN_STEPS = [
     const runs = ((await api('/tasks/' + j.template.id)).related_tasks?.copiedto || []).map(x => x.id).sort((a, b) => a - b);
     const n = runs.indexOf(j.runId) + 1 || runs.length;
     j.title = `${j.template.title} · run ${n} · ${new Date(j.at).toLocaleDateString([], {month: 'short', day: 'numeric'})}`;
-    await patchTask(j.runId, {title: j.title, done: false, due_date: ZERO});
+    await patchTask(j.runId, {title: j.title, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0});
     j.named = true;
-  }},
-  // Who it's for, and only them. Only the run is assigned: Vikunja tells them about it once, not once per step.
-  {name: 'assign', done: j => !!j.assigned, async run(j){
-    await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: j.for.id}]}});
-    j.assigned = true;
   }},
   // Each step, in the template's order: a copy of the template's step, linked under the run, then named, without its
   // T# and {#name}, and given its due time if it counts from the start. One part per run, so progress is kept after each.
   {name: 'step', done: j => j.steps.every(s => s.ready), async run(j, c){
     const s = j.steps.find(s => !s.ready);
     if (!s.taskId) {
-      let t = s.tried ? await app.findCopy(s.from, s.triedAt, j.at, c.taken, j.id) : null;
+      let t = s.tried ? await app.findCopy(s.from, s.triedAt, j.at, c.taken, j.id, j.runId) : null;
       if (!t) { s.tried = true; s.triedAt = Date.now(); await c.save(); t = (await api(`/tasks/${s.from}/duplicate`, {method: 'POST'})).duplicated_task; }
       sync.claim(t.id, j.id); c.taken.add(t.id); s.taskId = t.id;
     } else if (!s.linked) {
       try { await app.linkSubtask(j.runId, s.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
       s.linked = true;
     } else {
-      await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO});
+      await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO, repeat_after: 0, repeat_mode: 0});
       s.ready = true;
     }
+  }},
+  // Who it's for, and only them. Only the run is assigned: Vikunja tells them about it once, not once per step.
+  {name: 'assign', done: j => !!j.assigned, async run(j){
+    await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: j.for.id}]}});
+    j.assigned = true;
+  }},
+  // The copy has the template's labels, "template" too: that one comes off last, so until the run is whole it isn't a
+  // run anywhere (isRun), and teammates can't start working on it. (Vikunja refuses to remove one that isn't there.)
+  {name: 'unlabel', done: j => !!j.unlabeled, async run(j){
+    for (const l of (await api('/tasks/' + j.runId)).labels || []) if (isTemplateLabel(l)) await api(`/tasks/${j.runId}/labels/${l.id}`, {method: 'DELETE'});
+    j.unlabeled = true;
   }},
 ];
 // How much of a run is set up, of 4 + 3 per step.
@@ -1926,7 +1952,7 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, wfBusy: false, newTpl: null, addRows: []});
+  project: null, start: null, wfBusy: false, newTpl: null, addRows: [], newProj: null});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -2962,8 +2988,11 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     let sent = 0; const failed = [], other = [], tasks = [], problems = [];
     try {
       await sync.lock(async () => {
+        let actsWait = false;                                                 // an act kept: the later ones wait behind it
         for (const e of sync.all(this.user?.id)) {
+          if (e.kind === 'act' && actsWait) continue;
           const r = await this.sendEntry(e.id);
+          if (e.kind === 'act' && r.status === 'offline') actsWait = true;
           tasks.push(...(r.tasks || [])); problems.push(...(r.problems || []));
           if (r.status === 'offline' && !r.reached) break;                    // no connection: the rest can wait too
           if (r.status === 'sent') sent += r.ids.length + r.uploaded + (r.changed || 0);
@@ -2979,6 +3008,29 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     } else if (other.length) this.notify(`Something done offline couldn't be sent: ${other[0].error.message}`);
     else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length || other.length) this.render();
+  },
+  openNewProject(){
+    this.openSheet('newproj');
+    this.sheet.newProj = {name: '', parent: '', workflow: false, busy: false};
+    this.$nextTick(() => document.getElementById('np-name')?.focus());
+  },
+  // A project made from the Projects tab, inside another if picked, and for workflows if asked; then opened.
+  async makeProject(){
+    const np = this.sheet.newProj, name = np?.name.trim();
+    if (!name || np.busy) return;
+    np.busy = true;
+    try {
+      const body = {title: name, ...(np.parent ? {parent_project_id: +np.parent} : {}), ...(np.workflow ? {description: `<p>${WF_MARK}</p>`} : {})};
+      const p = await api('/projects', {method: 'POST', body});
+      this.setProjects([...this.projects, p]);
+      saved.set('projects', this.projects);
+      if (this.sheet.newProj === np) this.closeSheet(true);
+      this.go('#/project/' + p.id);
+      this.notify(np.workflow ? `Made ${p.title}. Its templates and runs are under Workflows.` : `Made ${p.title}`);
+    } catch (e) {
+      np.busy = false;
+      this.notify(e instanceof NetError ? 'Offline. A project can be made once you\'re back online.' : 'Not made: ' + e.message);
+    }
   },
   async createProject(name){
     if (this.creatingProject) return;
@@ -3156,7 +3208,9 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // Whether Today shows a task: in a workflow project, a run of yours, a step of one, or one assigned to you. Anything
   // else there that isn't part of a run shows as anywhere else.
   inToday(t, runs){
-    if (!this.wfIds.has(t.project_id) || (t.assignees || []).some(u => u.id === this.user?.id)) return true;
+    if (!this.wfIds.has(t.project_id)) return true;
+    if (hasTemplateLabel(t)) return false;                                   // a template, or a run being set up
+    if ((t.assignees || []).some(u => u.id === this.user?.id)) return true;
     const parent = t.related_tasks?.parenttask?.[0]?.id;
     if (t.id in runs) return runs[t.id];
     if (parent in runs) return runs[parent];
@@ -3325,7 +3379,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (problems.length) { this.notify('Not started: ' + problemText(problems)); return; }
     const start = new Date(), steps = st.steps.map((s, i) => {
       const {title, offset} = parseStep(s.title);
-      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(+start + offset).toISOString() : null, taskId: null, tried: false, linked: false, ready: false};
+      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, taskId: null, tried: false, linked: false, ready: false};
     });
     const who = st.people.find(u => u.id === st.forId) || this.user;
     const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template,
@@ -3369,11 +3423,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       return {...none, status: 'error', error};
     }
   },
-  // The copy a cut-off duplicate made, if it got there: copied from this task since that try, and not one already used.
-  async findCopy(from, triedAt, at, taken, key){
+  /* The copy a cut-off duplicate made, if it got there: copied from this task since that try, by you, not one already
+     used, and under no other run than `run` (a copy someone else made at the same time is theirs). */
+  async findCopy(from, triedAt, at, taken, key, run){
     const since = triedSince(triedAt, at);
-    return ((await api('/tasks/' + from)).related_tasks?.copiedto || [])
-      .find(t => !taken.has(t.id) && !sync.claimedByOther(t.id, key) && new Date(t.created).getTime() >= since) || null;
+    const near = ((await api('/tasks/' + from)).related_tasks?.copiedto || [])
+      .filter(t => !taken.has(t.id) && !sync.claimedByOther(t.id, key) && new Date(t.created).getTime() >= since);
+    for (const c of near) {
+      const t = await api('/tasks/' + c.id);
+      if (t.created_by?.id === this.user?.id && (t.related_tasks?.parenttask || []).every(p => p.id === run)) return t;
+    }
+    return null;
   },
   // Undo a start, or clear up one that failed half way: the run's steps, then the run.
   async deleteRun(id, {quiet = false, also = []} = {}){
@@ -3390,8 +3450,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   /* ---------- a run ---------- */
   // A run, with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
-    const run = await api(`/tasks/${id}?expand=comments`);
-    const steps = await inBatches(run.related_tasks?.subtask || [], 4, s => api(`/tasks/${s.id}?expand=reactions&expand=comments`));
+    const run = await allComments(await api(`/tasks/${id}?expand=comments`));
+    const steps = await inBatches(run.related_tasks?.subtask || [], 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)));
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
@@ -3417,8 +3477,8 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         .sort((a, b) => new Date(b.done_at) - new Date(a.done_at))[0];
       if (!prev || !here()) return;
       this.view.run.last = {id: prev.id, title: prev.title, notes: null};
-      const full = await api(`/tasks/${prev.id}?expand=comments`);
-      const steps = await inBatches(full.related_tasks?.subtask || [], 4, s => api(`/tasks/${s.id}?expand=comments`));
+      const full = await allComments(await api(`/tasks/${prev.id}?expand=comments`));
+      const steps = await inBatches(full.related_tasks?.subtask || [], 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
       const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run'})),
         ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title})))];
       if (here()) { this.view.run.last = {id: prev.id, title: prev.title, notes}; this.saveRun(); }
@@ -3440,19 +3500,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         if (a.op === 'note') continue;
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; doers = [myName];
       }
-      return {id: s.id, title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes, doneAt,
+      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes, doneAt,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
-       Vikunja's due date, set by Pocket's plugin, or from that step's done time if there's none, or, while that tick
-       waits to be sent, from when it was ticked here. Until that step is done it says what it waits on, not a time. */
+       Vikunja's done time of it (the plugin's due date is the same, unless it's left from an earlier tick), or, while
+       that tick waits to be sent, from when it was ticked here. Until then it says what it waits on, not a time. */
     const timing = r.steps.map(s => parseStep(s.tpl || '')), now = serverTime(this.clock);
     steps.forEach((s, i) => {
       const t = timing[i], j = stepFrom(timing, i), from = j >= 0 ? steps[j] : null;
       let due = isSet(r.steps[i].due_date) ? new Date(r.steps[i].due_date) : null, waitsOn = '';
       if (from) {
         if (!from.done) { due = null; waitsOn = t.offset ? `${durText(t.offset)} after “${from.title}”` : `when “${from.title}” is done`; }
-        else if (from.waiting || !due) due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
+        else due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
       }
       const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
@@ -3548,7 +3608,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // A note whose reply was lost, if it got there: the same text, by you, since that try.
   async findNote(task, html, triedAt, at){
     const since = triedSince(triedAt, at), text = htmlToText(html);
-    return items(await api(`/tasks/${task}/comments`)).some(c => c.author?.id === this.user?.id && htmlToText(c.comment) === text && new Date(c.created).getTime() >= since);
+    return items(await api(`/tasks/${task}/comments?order_by=desc`)).some(c => c.author?.id === this.user?.id && htmlToText(c.comment) === text && new Date(c.created).getTime() >= since);
   },
   // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
   applyAct(a, comment){
@@ -3560,13 +3620,13 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       const rs = {...s.reactions}, without = m => (rs[m] || []).filter(u => u.id !== me?.id);
       rs[DONE_MARK] = without(DONE_MARK); rs[SKIP_MARK] = without(SKIP_MARK);
       if (a.op !== 'undone') rs[a.op === 'skip' ? SKIP_MARK : DONE_MARK].push(me);
-      Object.assign(s, {done: a.op !== 'undone', done_at: new Date().toISOString(), reactions: rs});
+      Object.assign(s, {done: a.op !== 'undone', done_at: new Date(serverTime(Date.now())).toISOString(), reactions: rs});
     }
     if (comment) { const on = s || r.run; on.comments = [...(on.comments || []), comment]; }
   },
   async refreshRunTask(id){
     try {
-      const t = await api(`/tasks/${id}?expand=reactions&expand=comments`);
+      const t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
       cache.set(id, t);
       const r = this.view.run;
       if (!r) return;

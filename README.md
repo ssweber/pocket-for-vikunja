@@ -36,7 +36,7 @@ It isn't an app from an app store or a service you sign up for. Pocket is one re
 - **Task details:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and comments. Changes save as you make them, and you can add photos and files.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by number.
 - **Workflows (optional):** checklists people work through step by step, again and again, like starting up a line or closing a shop. Start a run from a template, tick off its steps with a photo or a note, and see who did what. Steps can be timed from the step they wait on, with a countdown. See [Workflows](#workflows-optional).
-- **Projects:** your project tree with favorites, and the open or done tasks in each.
+- **Projects:** your project tree with favorites, and the open or done tasks in each. **New project** makes one, inside another if you like.
 - **Offline:** Pocket opens without a connection, and tasks and photos you add are sent once you're back online. A photo that a patchy connection cuts off mid-upload waits on the phone and goes up by itself.
 - **Your Vikunja sign-in:** sign in once, with your usual login, and Pocket and Vikunja's web app are both signed in on that device.
 - **A home-screen app** for iOS and Android that follows the phone's light or dark mode.
@@ -136,9 +136,9 @@ Workflows are checklists that people work through step by step, again and again:
 
 <p align="center"><img src="docs/screenshots/pocket-workflow.gif" width="300" alt="Starting a run of the Line 2 Startup template in Pocket. The start sheet lists the steps, two of them due 10 and 30 minutes after 'Start the hydraulics'. The run opens one step at a time; once Start the hydraulics is ticked, 'Check the oil temperature in 10m' and 'First article check in 30m' are pinned at the top, and after the next tick the oil check is the step on screen, due in 10 minutes."></p>
 
-1. **Make a project a workflow.** Share it with the people who'll run it, at *Write*. Open it in Pocket, tap **⋯** and choose **Use as workflow**. This adds a line `pocket:workflow` to the project's description, and everyone it's shared with gets a **Workflows** tab.
+1. **Make a project a workflow.** Open it in Pocket, tap **⋯** and choose **Use as workflow**, or make a new one with **New project** on the Projects tab and tick **Use for workflows**. This adds a line `pocket:workflow` to the project's description, and everyone it's shared with gets a **Workflows** tab. Share it in Vikunja with the people who'll run it, at *Write*.
 2. **Make a template.** Under Workflows, tap **New template**, name it, and write its steps, a row each: **Enter** or **Add a step** starts the next one, and a pasted list becomes a row a line. Move steps up or down, then tap **Make template**. A task in the project with its steps as subtasks can also be made one, with **Make template** in its sheet. To time steps, see [Timed steps](#timed-steps).
-3. **Start a run.** Under Workflows, tap **Start** and choose who it's for. Pocket copies the template and its steps. Only the run is assigned, so that person gets one notification from Vikunja, not one per step.
+3. **Start a run.** Under Workflows, tap **Start** and choose who it's for. Pocket copies the template and its steps, and assigns only the run, so that person gets one notification from Vikunja, not one per step. A step assigned to someone in the template, say QA, is assigned to them in every run too.
 4. **Work through it.** One step at a time: **Done**, or **Skip**, where what you've typed as a note becomes the reason. Add a photo or a note to a step, or a note to the whole run. **Last time** shows the notes from the last finished run of the same template, as a handover. After the last step, **Finish run**.
 
 - **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too.
@@ -178,7 +178,7 @@ plugins:
     steptimes: true
 ```
 
-What it does: when a step of a workflow run is marked done (in Pocket, in Vikunja's web app, or through the API), the plugin sets the due date of each step of the same run timed from it: the time it was marked done, plus that step's time. It writes only due dates, only on steps of that run, in the same project, that aren't done, and only when the date changes. It doesn't act on templates, on a done step saved again, or on a step marked not done, whose dependent steps keep their due dates until it's done again. All of it is in one function, `setStepDueDates` in [`pocket/main.go`](pocket/main.go).
+What it does: when a step of a workflow run is marked done (in Pocket, in Vikunja's web app, or through the API), the plugin sets the due date of each step of the same run timed from it: the time it was marked done, plus that step's time. It writes only due dates (not even when a task was last changed), only on steps of that run that aren't done, and only when the date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one project, the template labelled `template`, and each step copied from one of the template's steps. It doesn't act on templates, on a done step saved again, or on a step marked not done, whose dependent steps keep their due dates until it's done again. All of it is in one function, `setStepDueDates` in [`pocket/main.go`](pocket/main.go).
 
 A step ticked offline counts, in Vikunja, from when the tick reaches it, since Vikunja records when it got it. Pocket counts down from when you ticked it.
 

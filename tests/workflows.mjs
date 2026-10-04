@@ -195,6 +195,11 @@ try {
     // Both timed steps count down now: the next one on its card, the other pinned above it.
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');
     await page.waitForSelector('#run-timers .timer:has-text("First article check"):has-text("in 2h")');
+    // Tapping a pinned countdown shows its step; then back to the one before.
+    await page.click('#run-timers .timer:has-text("First article check")');
+    await page.waitForSelector('#step-title:text-is("First article check")');
+    await page.click('#step-prev');
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
   });
 
   await step('skip-with-a-reason', async () => {
@@ -399,6 +404,22 @@ try {
     await toast('No longer a workflow');
     if (/pocket:workflow/i.test((await api('/projects/' + project.id)).description)) throw new Error('the marker is still there');
     if (!workflowsBefore && await page.isVisible('nav.tabs a[data-tab=workflows]')) throw new Error('the Workflows tab is still there');
+  });
+  await step('new-project-for-workflows', async () => {
+    if (await page.isVisible('#btn-sheet-close')) { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); }
+    await page.click('nav.tabs a[data-tab=projects]');
+    await page.click('#btn-new-project', { timeout: 15000 });
+    await page.fill('#np-name', `Front of house ${stamp}`);
+    await page.selectOption('#np-parent', String(project.id));
+    await page.check('#np-workflow');
+    await page.click('#np-create');
+    await page.waitForFunction(() => /^#\/project\/\d+$/.test(location.hash), null, { timeout: 15000 });
+    const id = +(await page.evaluate(() => location.hash)).split('/').pop(), made = await api('/projects/' + id);
+    try {
+      if (made.title !== `Front of house ${stamp}` || made.parent_project_id !== project.id) throw new Error(`made ${made.title} in ${made.parent_project_id}`);
+      if (!/<p>pocket:workflow<\/p>/.test(made.description || '')) throw new Error('not a workflow: ' + made.description);
+      await page.waitForSelector('nav.tabs a[data-tab=workflows]');
+    } finally { await api('/projects/' + id, { method: 'DELETE' }).catch(() => {}); }
   });
   if (errors.length) { failed++; console.log('FAIL page errors:', errors); }
 } finally {
