@@ -1211,6 +1211,9 @@ const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
 // An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
 const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
 const DONE_MARK = '✅', SKIP_MARK = '⏭️';
+// What quick add leaves alone in a workflow's steps: dates (a step's time is its T#), and the project, so every step
+// stays in its template's project, as Pocket's plugin needs.
+const STEP_IGNORE = {due: true, repeat: true, project: true};
 /* When a step is due, written in its title in the template, the way IEC 61131-3 writes times:
      Put the roast in {#roast}    names the step "roast"
      Peel the potatoes T#20m      due 20 minutes after the step before it is done (the first step: after the run starts)
@@ -1327,7 +1330,7 @@ function draftSteps(rows, before = []){
   const saved = all.map((r, i) => {
     let t = r.text.trim();
     const read = phrase[i] && !r.keep ? phrase[i] : null, offset = read ? read.offset : parsed[i].offset;
-    if (read) t = t.slice(0, read.index) + stepToken(offset) + t.slice(read.index + read.length);
+    if (read) t = (t.slice(0, read.index) + t.slice(read.index + read.length)).replace(/\s+([,.!?;:])(?=\s|$)/g, '$1').trim() + ' ' + stepToken(offset);
     if (offset !== null && (r.from === '' || at.has(r.from))) t = t.replace(/(^|\s)T#\S*/i, (_, sp) => sp + stepToken(offset, r.from ? names[at.get(r.from)] : null));
     if (names[i] && !parsed[i].name) t += ` {#${names[i]}}`;
     return t.replace(/\s{2,}/g, ' ').trim();
@@ -1335,8 +1338,9 @@ function draftSteps(rows, before = []){
   const steps = saved.map(parseStep), infos = stepInfos(saved), info = new Map();
   all.forEach((r, i) => {
     if (r.fixed) return;
-    const j = stepFrom(steps, i);
-    info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text, problem: infos[i].problem,
+    const j = stepFrom(steps, i), lost = r.from && !at.has(r.from) && steps[i].offset !== null;
+    info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text,
+      problem: infos[i].problem || (lost ? 'the step it counts from isn\'t in this template any more: pick one' : ''),
       phrase: phrase[i]?.text || '', kept: !!(phrase[i] && r.keep), from: j === null || j < 0 ? '' : steps[i].ref ? all[j].key : '',
       choices: all.slice(0, i).map(x => ({key: x.key, title: parseStep(x.text).title}))});
   });
@@ -1376,7 +1380,7 @@ const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.
 // What a run's screen keeps of a run and its steps, also saved for opening it offline.
 const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
   comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: (t.related_tasks?.subtask || []).map(s => s.id)});
-const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, description: t.description || '',
+const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, updated: t.updated, description: t.description || '',
   attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: t.related_tasks?.copiedfrom?.[0]?.title ?? null});
 
 /* =============== routing =============== */
@@ -1856,10 +1860,17 @@ const LINE_STEPS = [
    cut off carries on where it stopped. A copy that reached Vikunja without its reply is found again through the
    "copied to" links of what it was copied from, instead of being made twice. */
 const NOT_RELATED = 4009;
+// A copy of a task, noting in `rec` when the try began and, if it fails, when it ended: a copy it made despite the
+// failure was made in between.
+async function duplicate(from, rec, save, title){
+  rec.tried = true; rec.triedAt = Date.now(); rec.triedUntil = null; rec.triedTitle = title ?? null;
+  await save();
+  try { return (await api(`/tasks/${from}/duplicate`, {method: 'POST'})).duplicated_task; }
+  catch (e) { rec.triedUntil = Date.now(); await save(); throw e; }
+}
 const RUN_STEPS = [
   {name: 'run', done: j => !!j.runId, async run(j, c){
-    let t = j.tried ? await app.findCopy(j.template.id, j.triedAt, j.at, c.taken, j.id, null) : null;
-    if (!t) { j.tried = true; j.triedAt = Date.now(); await c.save(); t = (await api(`/tasks/${j.template.id}/duplicate`, {method: 'POST'})).duplicated_task; }
+    const t = (j.tried && await app.findCopy(j.template.id, j, j.at, c.taken, j.id, null)) || await duplicate(j.template.id, j, c.save, j.template.title);
     sync.claim(t.id, j.id); c.taken.add(t.id); j.runId = t.id;
   }},
   // Named after its template, which run of it this is, and the day: "Startup · run 3 · Oct 3". Without a due date of its
@@ -1876,8 +1887,7 @@ const RUN_STEPS = [
   {name: 'step', done: j => j.steps.every(s => s.ready), async run(j, c){
     const s = j.steps.find(s => !s.ready);
     if (!s.taskId) {
-      let t = s.tried ? await app.findCopy(s.from, s.triedAt, j.at, c.taken, j.id, j.runId) : null;
-      if (!t) { s.tried = true; s.triedAt = Date.now(); await c.save(); t = (await api(`/tasks/${s.from}/duplicate`, {method: 'POST'})).duplicated_task; }
+      const t = (s.tried && await app.findCopy(s.from, s, j.at, c.taken, j.id, j.runId)) || await duplicate(s.from, s, c.save);
       sync.claim(t.id, j.id); c.taken.add(t.id); s.taskId = t.id;
     } else if (!s.linked) {
       try { await app.linkSubtask(j.runId, s.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
@@ -1887,7 +1897,8 @@ const RUN_STEPS = [
       s.ready = true;
     }
   }},
-  // Who it's for, and only them. Only the run is assigned: Vikunja tells them about it once, not once per step.
+  // Who it's for, and only them. Pocket assigns only the run: Vikunja tells them about it once, not once per step. (A
+  // step assigned in the template, say to QA, stays assigned: the copy keeps it.)
   {name: 'assign', done: j => !!j.assigned, async run(j){
     await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: j.for.id}]}});
     j.assigned = true;
@@ -3287,7 +3298,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       const made = await this.createLines([name], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}});
       if (made.error) throw made.error;
       t = {id: made.ids[0], project_id: nt.project.id, labels: []};
-      const r = await this.createLines(d.added, {parent: t, ignore: {due: true, repeat: true}});
+      const r = await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE});
       if (r.error) throw r.error;
       await this.markTemplate(t, r.ids);
       if (this.sheet.newTpl === nt) this.closeSheet(true);
@@ -3306,12 +3317,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const r = {ids: [], problems: [], error: null};
     try {
       for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
-      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: {due: true, repeat: true}}));
+      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE}));
       for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     } catch (e) { r.error = e; }
     if (this.sheet.task?.id === t.id) {
       this.sheet.subBusy = false;
-      this.sheet.addRows = r.error ? this.sheet.addRows.filter(x => x.text.trim()).slice(r.ids.length) : [];
+      if (r.error) {
+        const rows = this.sheet.addRows.filter(x => x.text.trim()), made = new Map(rows.slice(0, r.ids.length).map((x, k) => [x.key, 'task:' + r.ids[k]]));
+        this.sheet.addRows = rows.slice(r.ids.length).map(x => made.has(x.from) ? {...x, from: made.get(x.from)} : x);
+        const tt = this.sheet.task;
+        tt.related_tasks = {...tt.related_tasks, subtask: [...this.subtasks, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]};
+      } else this.sheet.addRows = [];
       this.sheet.dirty = true;
       try { const full = await api('/tasks/' + t.id); cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } catch {}
     }
@@ -3423,15 +3439,19 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
       return {...none, status: 'error', error};
     }
   },
-  /* The copy a cut-off duplicate made, if it got there: copied from this task since that try, by you, not one already
-     used, and under no other run than `run` (a copy someone else made at the same time is theirs). */
-  async findCopy(from, triedAt, at, taken, key, run){
-    const since = triedSince(triedAt, at);
-    const near = ((await api('/tasks/' + from)).related_tasks?.copiedto || [])
-      .filter(t => !taken.has(t.id) && !sync.claimedByOther(t.id, key) && new Date(t.created).getTime() >= since);
+  /* The copy a cut-off duplicate made, if it got there: copied from this task during that try (rec: triedAt, and
+     triedUntil once it failed), by you, not one already used, still as it was copied (no steps of its own, and for a
+     run, the template's title then or now, not a run's name), and under no other run than `run`. A copy someone else
+     made, or you on another device, is theirs. */
+  async findCopy(from, rec, at, taken, key, run){
+    const src = await api('/tasks/' + from), since = triedSince(rec.triedAt, at);
+    const until = rec.triedUntil ? serverTime(rec.triedUntil) + 3000 : Infinity;
+    const near = (src.related_tasks?.copiedto || []).filter(t => !taken.has(t.id) && !sync.claimedByOther(t.id, key)
+      && new Date(t.created).getTime() >= since && new Date(t.created).getTime() <= until);
     for (const c of near) {
-      const t = await api('/tasks/' + c.id);
-      if (t.created_by?.id === this.user?.id && (t.related_tasks?.parenttask || []).every(p => p.id === run)) return t;
+      const t = await api('/tasks/' + c.id), r = t.related_tasks || {};
+      const asCopied = run !== null || t.title === src.title || t.title === rec.triedTitle;
+      if (t.created_by?.id === this.user?.id && asCopied && !r.subtask?.length && (r.parenttask || []).every(p => p.id === run)) return t;
     }
     return null;
   },
@@ -3504,15 +3524,17 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
-       Vikunja's done time of it (the plugin's due date is the same, unless it's left from an earlier tick), or, while
-       that tick waits to be sent, from when it was ticked here. Until then it says what it waits on, not a time. */
+       Vikunja's done time of it, or, while that tick waits to be sent, from when it was ticked here. Vikunja's due date
+       counts instead if someone changed the step after that tick: Pocket's plugin sets due dates without touching
+       "updated", so one it set (maybe from an earlier tick) doesn't. Until then it says what it waits on, not a time. */
     const timing = r.steps.map(s => parseStep(s.tpl || '')), now = serverTime(this.clock);
     steps.forEach((s, i) => {
       const t = timing[i], j = stepFrom(timing, i), from = j >= 0 ? steps[j] : null;
       let due = isSet(r.steps[i].due_date) ? new Date(r.steps[i].due_date) : null, waitsOn = '';
       if (from) {
         if (!from.done) { due = null; waitsOn = t.offset ? `${durText(t.offset)} after “${from.title}”` : `when “${from.title}” is done`; }
-        else due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
+        else if (from.waiting || !due || !(Math.floor(+new Date(r.steps[i].updated) / 1000) >= Math.floor(+new Date(from.doneAt) / 1000)))
+          due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
       }
       const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
@@ -3608,7 +3630,12 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // A note whose reply was lost, if it got there: the same text, by you, since that try.
   async findNote(task, html, triedAt, at){
     const since = triedSince(triedAt, at), text = htmlToText(html);
-    return items(await api(`/tasks/${task}/comments?order_by=desc`)).some(c => c.author?.id === this.user?.id && htmlToText(c.comment) === text && new Date(c.created).getTime() >= since);
+    for (let page = 1; page <= 40; page++) {                                // newest first, back to the try
+      const data = await api(`/tasks/${task}/comments?order_by=desc&per_page=50&page=${page}`), list = items(data);
+      if (list.some(c => c.author?.id === this.user?.id && htmlToText(c.comment) === text && new Date(c.created).getTime() >= since)) return true;
+      if (!list.length || page >= (data?.total_pages || 1) || new Date(list[list.length - 1].created).getTime() < since) return false;
+    }
+    return false;
   },
   // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
   applyAct(a, comment){
@@ -3741,7 +3768,7 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     // In a workflow, a step's time comes from its T#30m, so "Check at 3pm" stays as it is. (A template's steps are
     // added with addTemplateSteps.)
     const wf = this.wfIds.has(parent.project_id);
-    const r = await this.createLines(lines, {parent, ignore: wf ? {due: true, repeat: true} : {}});
+    const r = await this.createLines(lines, {parent, ignore: wf ? STEP_IGNORE : {}});
     if (this.sheet.task?.id === parent.id) {
       this.sheet.subBusy = false;
       this.sheet.subDraft = r.error ? lines.slice(r.used).join('\n') : '';

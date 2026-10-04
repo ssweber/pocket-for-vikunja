@@ -200,6 +200,11 @@ try {
     await page.waitForSelector('#step-title:text-is("First article check")');
     await page.click('#step-prev');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    // Moved by hand in Vikunja after the tick: that's when it's due.
+    const warm = (await runStep(first.id, 1)).id;
+    await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(Date.now() + 3 * 36e5).toISOString() }) });
+    await page.reload();
+    await page.waitForSelector('#step-card .step-due:text-is("Due in 3h")', { timeout: 15000 });
   });
 
   await step('skip-with-a-reason', async () => {

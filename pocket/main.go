@@ -205,7 +205,8 @@ func (l *stepTimes) Name() string { return "pocket.steptimes" }
 
 // Handle hears every task update and acts once on each time a task is marked done. Vikunja's event doesn't say what
 // changed, but done_at changes only when a task is marked done: so a done task whose done_at is recent, and not acted on
-// already. Saving it again, labelling or assigning it changes nothing. (Just after Vikunja restarts, an edit within
+// already. Saving it again, labelling or assigning it changes nothing; marking it not done forgets it, so the next tick
+// counts even within the same second. (Just after Vikunja restarts, an edit within
 // stepFresh of the tick can set the same dates again.) Our own writes send no event at all. Returning an error makes
 // Vikunja try again, a few times.
 func (l *stepTimes) Handle(msg *message.Message) error {
@@ -214,7 +215,17 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 		return nil
 	}
 	t := ev.Task
-	if !t.Done || t.DoneAt.IsZero() || time.Since(t.DoneAt) > stepFresh {
+	if !t.Done {
+		stepTicksMu.Lock()
+		for k := range stepTicks {
+			if k.id == t.ID {
+				delete(stepTicks, k)
+			}
+		}
+		stepTicksMu.Unlock()
+		return nil
+	}
+	if t.DoneAt.IsZero() || time.Since(t.DoneAt) > stepFresh {
 		return nil
 	}
 	tick := stepTick{t.ID, t.DoneAt.Unix()}
@@ -224,9 +235,13 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 	if seen {
 		return nil
 	}
-	if err := setStepDueDates(t.ID, t.DoneAt); err != nil {
+	handled, err := setStepDueDates(t.ID, t.DoneAt)
+	if err != nil {
 		log.Errorf("pocket: step times for task %d: %s", t.ID, err)
 		return err
+	}
+	if !handled {
+		return nil // undone since, or done again: that tick's own event is acted on in its turn
 	}
 	stepTicksMu.Lock()
 	for k, at := range stepTicks {
@@ -242,20 +257,25 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 // setStepDueDates is the only place the plugin writes to Vikunja's data. Given a task marked done at doneAt that is a
 // step of a workflow run, it sets the due date of each step of the same run timed from it: its done time plus the
 // offset in the title of the template step that step was copied from. It writes only due_date (not even "updated"),
-// only on steps of that run that aren't done, and only when the date changes.
+// only on steps of that run in its project that aren't done, and only when the date changes. handled: whether the task
+// was still done at doneAt, so this tick is dealt with.
 //
 // Vikunja lets anyone link a task they can edit to one they can only see, so the run is taken only as Pocket makes
 // one: the run, its steps and its template all in the done step's project, the template labelled "template", and each
 // step's offset read from a step of that template.
-func setStepDueDates(stepID int64, doneAt time.Time) error {
+func setStepDueDates(stepID int64, doneAt time.Time) (handled bool, err error) {
 	s := db.NewSession()
 	defer s.Close()
 
 	step := &models.Task{}
 	if has, err := s.ID(stepID).Get(step); err != nil || !has || !step.Done || step.DoneAt.Unix() != doneAt.Unix() {
-		return err // not done any more, or done again since: that one is acted on in its turn
+		return false, err
 	}
-	project := step.ProjectID
+	return true, writeStepDueDates(s, step)
+}
+
+func writeStepDueDates(s *xorm.Session, step *models.Task) error {
+	stepID, project := step.ID, step.ProjectID
 	// The run it's a step of: a copy of a template, and not a template itself, nor one still being set up.
 	parents, err := relatedIDs(s, stepID, "parenttask")
 	if err != nil || len(parents) != 1 {
@@ -289,12 +309,14 @@ func setStepDueDates(stepID int64, doneAt time.Time) error {
 	if err := s.In("id", tplStepIDs).And("project_id = ?", project).Find(&tplSteps); err != nil {
 		return err
 	}
+	// All of them, wherever they are, so "the step before" is the one Pocket shows before it; only those in the
+	// project are written to.
 	runStepIDs, err := relatedIDs(s, run.ID, "subtask")
 	if err != nil || len(runStepIDs) < 2 {
 		return err
 	}
 	tasks := map[int64]*models.Task{}
-	if err := s.In("id", runStepIDs).And("project_id = ?", project).Find(&tasks); err != nil {
+	if err := s.In("id", runStepIDs).Find(&tasks); err != nil {
 		return err
 	}
 	ids := []int64{}
@@ -333,7 +355,7 @@ func setStepDueDates(stepID int64, doneAt time.Time) error {
 			continue
 		}
 		dep := tasks[ids[i]]
-		if dep.Done {
+		if dep.Done || dep.ProjectID != project {
 			continue
 		}
 		due := step.DoneAt.Add(st.offset).Truncate(time.Second)

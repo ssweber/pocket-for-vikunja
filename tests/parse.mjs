@@ -265,6 +265,12 @@ const drafts = [
   // Back to the step before; a name taken already gets a number.
   [[{ key: 'a', text: 'Put {#roast}' }, { key: 'b', text: 'Baste T#40m:roast', from: '' }], [], ['Put {#roast}', 'Baste T#40m'], [], false],
   [[{ key: 'a', text: 'Check it {#check-it}' }, { key: 'b', text: 'Check it' }, { key: 'c', text: 'Again in 5 min', from: 'b' }], [], ['Check it {#check-it}', 'Check it {#check-it-2}', 'Again T#5m:check-it-2'], [], false],
+  // A time in words before punctuation: the words go, and its T# goes at the end.
+  [[{ key: 'a', text: 'Baste in 20 min.' }, { key: 'b', text: 'Flip it after 5 minutes, then season' }], [], ['Baste. T#20m', 'Flip it, then season T#5m'], [], false],
+  // A priority stays one: only punctuation that ends a word is pulled back to it.
+  [[{ key: 'a', text: 'Baste !2 in 20 min' }], [], ['Baste !2 T#20m'], [], false],
+  // Counting from a step that isn't there: a problem, not the step before.
+  [[{ key: 'a', text: 'Baste in 20 min', from: 'task:99' }], [{ key: 'task:1', text: 'Put the roast in' }], ['Baste T#20m'], [], true],
   // A name doesn't end on a small word.
   [[{ key: 'a', text: 'Warm up the press' }, { key: 'b', text: 'Check in 5 min', from: 'a' }], [], ['Warm up the press {#warm-up}', 'Check T#5m:warm-up'], [], false]];
 
