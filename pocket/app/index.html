@@ -150,6 +150,19 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
 .start-due.bad{color:var(--overdue)}
+.wf-new .body{display:flex;align-items:center;gap:10px;color:var(--accent);font-weight:650}
+.draft-step{border-top:1px solid var(--line);padding:4px 6px 4px 14px}
+.draft-step:first-child{border-top:0}
+.draft-line{display:flex;align-items:flex-start;gap:2px}
+.draft-line .icon-btn{margin-top:2px}
+.draft-no{padding-top:11px}
+.draft-no{width:24px;flex:none;color:var(--muted);font-size:15px}
+.draft-in{flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:17px;line-height:1.3;padding:10px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
+.draft-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 8px 24px;font-size:14px;color:var(--muted)}
+.draft-meta .bad{color:var(--overdue)}
+.draft-time select{border:0;background:transparent;font:inherit;color:var(--accent);font-weight:650;max-width:13em;padding:0;text-overflow:ellipsis}
+.chip-x{display:inline-flex;border:0;background:none;padding:0 0 0 2px;color:var(--muted);cursor:pointer}
+.draft-add{display:flex;align-items:center;gap:8px;width:100%;min-height:50px;padding:0 14px;border:0;border-top:1px solid var(--line);background:none;color:var(--accent);font:inherit;font-weight:650;cursor:pointer}
 .run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
 .run-bar{display:flex;align-items:center;gap:10px;margin:0 0 14px}
 .run-bar .track{flex:1;height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
@@ -341,6 +354,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
   <symbol id="i-subtasks" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol>
   <symbol id="i-comment" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5h3.2L9 6h6l1.8 2.5H20V19H4z"/><circle cx="12" cy="13.5" r="3.3"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -475,7 +489,8 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
               <div class="t"><div class="title" x-text="t.title"></div><div class="meta num" x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></div></div></button>
             <button class="btn wf-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button>
           </div></template>
-          <template x-if="!w.templates.length"><p class="wf-hint">No templates here yet. Add a task to this project with its steps as subtasks, then tap <b>Make template</b> on it.</p></template>
+          <template x-if="!w.templates.length"><p class="wf-hint">No templates here yet: a template is the checklist each run is copied from.</p></template>
+          <div class="row wf-new"><button class="body" @click="openNewTemplate(w.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>
         </div>
         <template x-if="w.runs.length || startingIn(w.project.id).length"><div>
           <div class="wf-sub">In progress</div>
@@ -608,7 +623,7 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
 
 <!-- ============ SHEET ============ -->
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
-<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', start: 'Start a run'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
+<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', start: 'Start a run', newtpl: 'New template'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
@@ -652,9 +667,9 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
       <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
 
       <!-- In a workflow project: make the task a template, start a run from it, or go to the run it's part of -->
-      <template x-if="wfRole"><div class="card wf-card" id="d-workflow">
+      <template x-if="wfRole && (wfRole !== 'candidate' || subtasks.length)"><div class="card wf-card" id="d-workflow">
         <template x-if="wfRole === 'candidate'"><div>
-          <p>Make this a template: its subtasks become the steps of every run, in this order. Add T#20m to a step to make it due 20 minutes after the step before it is done. Name a step with {#roast}, and T#40m:roast counts from that one instead.</p>
+          <p>Make this a template: its subtasks become the steps of every run, in this order. A step with T#20m is due 20 minutes after the step before it is done. Name a step with {#roast}, and T#40m:roast counts from that one instead.</p>
           <button class="btn block" id="d-make-template" :disabled="sheet.wfBusy" @click="makeTemplate()" x-text="sheet.wfBusy ? 'Making a template…' : 'Make template'"></button>
         </div></template>
         <template x-if="wfRole === 'template'"><div>
@@ -715,12 +730,43 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
             </span></template>
           </div>
         </template>
-        <form class="comment-form" id="d-subform" @submit.prevent="addSubtasks()">
+        <template x-if="wfRole !== 'template'"><form class="comment-form" id="d-subform" @submit.prevent="addSubtasks()">
           <textarea id="d-subin" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" x-model="sheet.subDraft"
                     x-effect="sheet.subDraft; $nextTick(() => grow($el))"
                     @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); addSubtasks(); }"></textarea>
           <button class="go btn" style="width:44px;padding:0" aria-label="Add subtasks" :disabled="sheet.subBusy || !captureLines(sheet.subDraft).length"><svg class="i"><use href="#i-up"/></svg></button>
-        </form>
+        </form></template>
+        <!-- Under a template: new steps a row each, with their times, added together -->
+        <template x-if="wfRole === 'template'"><div class="draft" id="add-steps">
+          <template x-for="(st, k) in draftRows('add')" :key="st.key"><div class="draft-step">
+            <div class="draft-line">
+              <template x-for="d in [draft('add').info.get(st.key)]" :key="0"><span class="num draft-no" x-text="d ? d.i + 1 : ''"></span></template>
+              <textarea class="draft-in" rows="1" :id="'add-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Check the oil in 10 min”'" :aria-label="'Step ' + (k + 1)"
+                     enterkeyhint="next" x-effect="st.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); addDraftRow('add', k + 1); }" @paste="pasteDraft('add', $event, k)"></textarea>
+              <button type="button" class="icon-btn plain" :aria-label="'Move up: ' + (st.text || 'step ' + (k + 1))" :disabled="k === 0" @click="moveDraftRow('add', k, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+              <button type="button" class="icon-btn plain" :aria-label="'Move down: ' + (st.text || 'step ' + (k + 1))" :disabled="k === draftRows('add').length - 1" @click="moveDraftRow('add', k, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+              <button type="button" class="icon-btn plain" :aria-label="'Remove: ' + (st.text || 'step ' + (k + 1))" @click="dropDraftRow('add', k)"><svg class="i"><use href="#i-close"/></svg></button>
+            </div>
+            <template x-for="d in [draft('add').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
+              <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
+              <template x-if="!d.problem && d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+                <template x-if="d.i === 0"><span>the start</span></template>
+                <template x-if="d.i > 0"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
+                  <option value="" :selected="d.from === ''">the step before</option>
+                  <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
+                </select></template>
+                <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” as words'" @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
+              </span></template>
+              <template x-if="d.kept"><button type="button" class="chip tap off" title="Tap to read it as a time" @click="st.keep = false"><svg class="i"><use href="#i-clock"/></svg><span x-text="d.phrase"></span></button></template>
+              <template x-if="d.name"><span x-text="'Named “' + d.name + '”'"></span></template>
+            </div></template>
+          </div></template>
+          <button type="button" class="draft-add" id="add-add-step" @click="addDraftRow('add')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
+          <template x-if="sheet.addRows.some(r => r.text.trim())"><div style="padding:0 14px 14px">
+            <button class="btn block" id="add-steps-go" :disabled="sheet.subBusy || draft('add').problem" @click="addTemplateSteps()"
+                    x-text="sheet.subBusy ? 'Adding…' : 'Add ' + draft('add').added.length + (draft('add').added.length === 1 ? ' step' : ' steps')"></button>
+          </div></template>
+        </div></template>
       </div>
 
       <div class="h3">Comments<span class="n num" id="d-ccount" x-text="sheet.comments?.length || ''"></span></div>
@@ -794,6 +840,44 @@ body.sheet-open #toast{bottom:calc(env(safe-area-inset-bottom) + 20px)}
     </div></template>
 
     <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
+    <!-- A new template: its name and steps, a row each, with when each is due -->
+    <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
+      <div class="d-title"><h2 style="margin:0;font-size:24px">New template</h2></div>
+      <p class="note" style="margin:0 0 14px" x-text="'In ' + sheet.newTpl.project.title"></p>
+      <label class="field"><span>Name</span><input id="nt-name" x-model="sheet.newTpl.name" placeholder="Like Startup, or Closing up" autocomplete="off" enterkeyhint="next"
+        @keydown.enter.prevent="document.getElementById('new-step-0')?.focus()"></label>
+      <div class="h3">Steps</div>
+      <div class="card draft" id="new-steps">
+          <template x-for="(st, k) in draftRows('new')" :key="st.key"><div class="draft-step">
+            <div class="draft-line">
+              <template x-for="d in [draft('new').info.get(st.key)]" :key="0"><span class="num draft-no" x-text="d ? d.i + 1 : ''"></span></template>
+              <textarea class="draft-in" rows="1" :id="'new-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Check the oil in 10 min”'" :aria-label="'Step ' + (k + 1)"
+                     enterkeyhint="next" x-effect="st.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); addDraftRow('new', k + 1); }" @paste="pasteDraft('new', $event, k)"></textarea>
+              <button type="button" class="icon-btn plain" :aria-label="'Move up: ' + (st.text || 'step ' + (k + 1))" :disabled="k === 0" @click="moveDraftRow('new', k, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+              <button type="button" class="icon-btn plain" :aria-label="'Move down: ' + (st.text || 'step ' + (k + 1))" :disabled="k === draftRows('new').length - 1" @click="moveDraftRow('new', k, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+              <button type="button" class="icon-btn plain" :aria-label="'Remove: ' + (st.text || 'step ' + (k + 1))" @click="dropDraftRow('new', k)"><svg class="i"><use href="#i-close"/></svg></button>
+            </div>
+            <template x-for="d in [draft('new').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
+              <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
+              <template x-if="!d.problem && d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+                <template x-if="d.i === 0"><span>the start</span></template>
+                <template x-if="d.i > 0"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
+                  <option value="" :selected="d.from === ''">the step before</option>
+                  <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
+                </select></template>
+                <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” as words'" @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
+              </span></template>
+              <template x-if="d.kept"><button type="button" class="chip tap off" title="Tap to read it as a time" @click="st.keep = false"><svg class="i"><use href="#i-clock"/></svg><span x-text="d.phrase"></span></button></template>
+              <template x-if="d.name"><span x-text="'Named “' + d.name + '”'"></span></template>
+            </div></template>
+          </div></template>
+          <button type="button" class="draft-add" id="new-add-step" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
+      </div>
+      <p class="note">“in 20 min”, “after an hour” or “20 minutes later” in a step makes it due that long after the step before it is done. Pick another step in its chip to count from that one.</p>
+      <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.name.trim() || !draft('new').added.length || draft('new').problem"
+              @click="createTemplate()" x-text="sheet.newTpl.busy ? 'Making the template…' : 'Make template'"></button>
+    </div></template>
+
     <template x-if="sheet.kind === 'start'"><div>
       <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="'Start ' + (sheet.start?.template?.title || 'a run')"></h2></div>
       <template x-if="sheet.loading"><div class="loading">Loading…</div></template>
@@ -1170,6 +1254,76 @@ function stepFrom(steps, i){
   if (!s.ref) return i - 1;
   const j = steps.findIndex(x => sameName(x.name, s.ref));
   return j >= 0 && j < i ? j : null;
+}
+/* A step's time in words, read while steps are written in Pocket: "in 20 min", "after an hour", "20 minutes later",
+   "1h 30m after". Saved as T#20m. Words that say what to do, like "for 2 minutes" or "rest 10 minutes", aren't read. */
+const STEP_UNIT = '(?:seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w)(?![a-z])';
+const STEP_UNIT_MS = [[/^s/, 1e3], [/^m/, 6e4], [/^h/, 36e5], [/^d/, 864e5], [/^w/, 6048e5]];
+let stepPhraseRe = null;
+function readStepPhrase(text){
+  const words = `(?:an?|${Object.keys(NUMBER_WORDS).join('|')})`;
+  const part = `(?:\\d+(?:\\.\\d+)?\\s*|${words}\\s+)${STEP_UNIT}`, dur = `(?:half an hour|${part}(?:\\s*(?:and\\s+)?${part})*)`;
+  stepPhraseRe ||= new RegExp(`(^|\\s)(?:(?:in|after)\\s+(${dur})|(${dur})\\s+(?:later|after))(?=\\s|$|[,.!?;:])`, 'i');
+  const m = String(text || '').match(stepPhraseRe);
+  if (!m) return null;
+  const said = m[2] || m[3];
+  const half = /^half an hour$/i.test(said);
+  let offset = half ? 18e5 : 0;
+  if (!half) for (const p of said.matchAll(new RegExp(`(?:(\\d+(?:\\.\\d+)?)\\s*|(${words})\\s+)(${STEP_UNIT})`, 'gi'))) {
+    const n = p[1] ? +p[1] : NUMBER_WORDS[p[2].toLowerCase()] ?? 1;
+    offset += n * STEP_UNIT_MS.find(([re]) => re.test(p[3].toLowerCase()))[1];
+  }
+  return {index: m.index + m[1].length, length: m[0].length - m[1].length, offset: Math.round(offset), text: m[0].slice(m[1].length)};
+}
+// 5400000 -> "T#1h30m"; with a name, "T#1h30m:roast".
+function stepToken(ms, ref){
+  let t = '', left = Math.round(ms);
+  for (const [u, n] of [['d', 864e5], ['h', 36e5], ['m', 6e4], ['s', 1e3], ['ms', 1]]) if (left >= n) { t += Math.floor(left / n) + u; left %= n; }
+  return `T#${t || '0m'}${ref ? ':' + ref : ''}`;
+}
+// A name for a step from its first words, "Put the roast in" -> "put-the-roast", "Warm up the press" -> "warm-up",
+// and not one already taken.
+const NAME_FILLER = /^(?:a|an|the|and|or|of|to|in|on|at|for|with|by)$/;
+function stepName(title, taken){
+  const words = (title.toLowerCase().match(/[a-z0-9]+/g) || []).slice(0, 3);
+  while (words.length > 1 && NAME_FILLER.test(words[words.length - 1])) words.pop();
+  let base = words.join('-') || 'step';
+  if (!/^[a-z]/.test(base)) base = 'step-' + base;
+  let name = base;
+  for (let n = 2; taken.some(t => sameName(t, name)); n++) name = `${base}-${n}`;
+  return name;
+}
+/* Steps being written in Pocket, a row each ({key, text, keep, from}), after `before` ({key, text}: a template's steps
+   already there): what each is saved as, and how it reads. A time in words becomes T#…, unless `keep` keeps the
+   words. `from`: null as written, '' the step before, or another row's key: that step, which gets a name made from its
+   words if it has none. So a step keeps counting from the same one when rows are moved. */
+function draftSteps(rows, before = []){
+  const all = [...before.map(b => ({...b, fixed: true})), ...rows.filter(r => r.text.trim())];
+  const parsed = all.map(r => parseStep(r.text)), at = new Map(all.map((r, i) => [r.key, i]));
+  const phrase = all.map((r, i) => r.fixed || /(^|\s)T#/i.test(r.text) ? null : readStepPhrase(r.text));
+  const names = parsed.map(p => p.name), taken = names.filter(Boolean);
+  for (const r of all) {
+    const j = at.get(r.from);
+    if (j !== undefined && !names[j]) { names[j] = stepName(parsed[j].title, taken); taken.push(names[j]); }
+  }
+  const saved = all.map((r, i) => {
+    let t = r.text.trim();
+    const read = phrase[i] && !r.keep ? phrase[i] : null, offset = read ? read.offset : parsed[i].offset;
+    if (read) t = t.slice(0, read.index) + stepToken(offset) + t.slice(read.index + read.length);
+    if (offset !== null && (r.from === '' || at.has(r.from))) t = t.replace(/(^|\s)T#\S*/i, (_, sp) => sp + stepToken(offset, r.from ? names[at.get(r.from)] : null));
+    if (names[i] && !parsed[i].name) t += ` {#${names[i]}}`;
+    return t.replace(/\s{2,}/g, ' ').trim();
+  });
+  const steps = saved.map(parseStep), infos = stepInfos(saved), info = new Map();
+  all.forEach((r, i) => {
+    if (r.fixed) return;
+    const j = stepFrom(steps, i);
+    info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text, problem: infos[i].problem,
+      phrase: phrase[i]?.text || '', kept: !!(phrase[i] && r.keep), from: j === null || j < 0 ? '' : steps[i].ref ? all[j].key : '',
+      choices: all.slice(0, i).map(x => ({key: x.key, title: parseStep(x.text).title}))});
+  });
+  return {info, added: saved.filter((_, i) => !all[i].fixed), problem: [...info.values()].some(x => x.problem),
+    renames: all.map((r, i) => r.fixed && saved[i] !== r.text.trim() ? {key: r.key, title: saved[i]} : null).filter(Boolean)};
 }
 // A template's steps as shown: each one's title, when it's due in a run, its name, and what's wrong with it.
 function stepInfos(titles){
@@ -1772,7 +1926,7 @@ const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks
 let renderSeq = 0, saveChain = Promise.resolve(), pendingSaves = 0, saveCount = 0, closeTimer, toastTimer, freshTimer, lastFocus;
 const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, editingDesc: false, descDraft: '', comments: null, commentsNote: '', commentDraft: '', commentBusy: false, subDraft: '', subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, wfBusy: false});
+  project: null, start: null, wfBusy: false, newTpl: null, addRows: []});
 
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
   // session
@@ -3018,20 +3172,98 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     if (problems.length) { this.notify('Not made a template: ' + problemText(problems)); return; }
     this.sheet.wfBusy = true;
     try {
-      if (!hasTemplateLabel(t)) {
-        const all = (await this.loadLabels(true)).filter(isTemplateLabel);
-        let l = all.find(x => x.created_by?.id === this.user?.id) || all[0];
-        if (!l) { l = await api('/labels', {method: 'POST', body: {title: 'template'}}); this.labels.push(l); }
-        await api(`/tasks/${t.id}/labels`, {method: 'POST', body: {label_id: l.id}}).catch(e => { if (e.code !== ALREADY.label) throw e; });
-      }
-      for (const s of this.subtasks) if (!s.done) await patiently(() => patchTask(s.id, {done: true}));
-      await patiently(() => patchTask(t.id, {done: true}));
+      await this.markTemplate(t, this.subtasks.filter(s => !s.done).map(s => s.id));
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
       this.notify('Made a template. Start runs from it here or under Workflows.');
     } catch (e) { this.notify('Not made a template: ' + e.message); }
     finally { this.sheet.wfBusy = false; }
+  },
+  async markTemplate(t, stepIds){
+    if (!hasTemplateLabel(t)) {
+      const all = (await this.loadLabels(true)).filter(isTemplateLabel);
+      let l = all.find(x => x.created_by?.id === this.user?.id) || all[0];
+      if (!l) { l = await api('/labels', {method: 'POST', body: {title: 'template'}}); this.labels.push(l); }
+      await api(`/tasks/${t.id}/labels`, {method: 'POST', body: {label_id: l.id}}).catch(e => { if (e.code !== ALREADY.label) throw e; });
+    }
+    for (const id of stepIds) await patiently(() => patchTask(id, {done: true}));
+    await patiently(() => patchTask(t.id, {done: true}));
+  },
+
+  /* ---------- writing steps: under New template, and under a template ---------- */
+  // The rows being written ('new': the New template sheet, 'add': under a template), and how they read.
+  draftRows(which){ return which === 'new' ? this.sheet.newTpl?.rows || [] : this.sheet.addRows; },
+  draft(which){ return draftSteps(this.draftRows(which), which === 'new' ? [] : this.subtasks.map(s => ({key: 'task:' + s.id, text: s.title}))); },
+  addDraftRow(which, at){
+    const rows = this.draftRows(which), k = at ?? rows.length;
+    rows.splice(k, 0, {key: randomId(), text: '', keep: false, from: null});
+    this.$nextTick(() => document.getElementById(`${which}-step-${k}`)?.focus());
+  },
+  moveDraftRow(which, k, dir){
+    const rows = this.draftRows(which), j = k + dir;
+    if (j >= 0 && j < rows.length) [rows[k], rows[j]] = [rows[j], rows[k]];
+  },
+  dropDraftRow(which, k){
+    const rows = this.draftRows(which);
+    rows.splice(k, 1);
+    if (which === 'new' && !rows.length) this.addDraftRow('new');
+  },
+  // A list pasted into a row: a row a line, in place of the row if it was empty.
+  pasteDraft(which, e, k){
+    const lines = captureLines(e.clipboardData?.getData('text') || '');
+    if (lines.length < 2) return;
+    e.preventDefault();
+    const rows = this.draftRows(which), empty = !rows[k].text.trim();
+    rows.splice(empty ? k : k + 1, empty ? 1 : 0, ...lines.map(text => ({key: randomId(), text, keep: false, from: null})));
+  },
+  openNewTemplate(p){
+    this.openSheet('newtpl');
+    this.sheet.newTpl = {project: {id: p.id, title: p.title}, name: '', rows: [{key: randomId(), text: '', keep: false, from: null}], busy: false};
+    this.$nextTick(() => document.getElementById('nt-name')?.focus());
+  },
+  /* A template in one go: the task, its steps under it, then made a template. Cut off half way, the task stays in the
+     project with the steps made so far, and Make template on it finishes it. */
+  async createTemplate(){
+    const nt = this.sheet.newTpl, name = nt?.name.trim(), d = nt && draftSteps(nt.rows);
+    if (!name || !d.added.length || d.problem || nt.busy) return;
+    nt.busy = true;
+    let t = null;
+    try {
+      const made = await this.createLines([name], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}});
+      if (made.error) throw made.error;
+      t = {id: made.ids[0], project_id: nt.project.id, labels: []};
+      const r = await this.createLines(d.added, {parent: t, ignore: {due: true, repeat: true}});
+      if (r.error) throw r.error;
+      await this.markTemplate(t, r.ids);
+      if (this.sheet.newTpl === nt) this.closeSheet(true);
+      this.notify(`Made ${name}. Start a run of it here.`);
+      if (this.route.name === 'workflows') this.render(); else this.go('#/workflows');
+    } catch (e) {
+      nt.busy = false;
+      this.notify(t ? `Not finished: ${e.message}. “${name}” is in ${nt.project.title}: open it there and tap Make template.` : 'Not made: ' + e.message);
+    }
+  },
+  // Steps added under a template: made, marked done like the rest, and any step they count from given its name.
+  async addTemplateSteps(){
+    const t = this.sheet.task, d = this.draft('add');
+    if (!t || !d.added.length || d.problem || this.sheet.subBusy) return;
+    this.sheet.subBusy = true;
+    const r = {ids: [], problems: [], error: null};
+    try {
+      for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
+      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: {due: true, repeat: true}}));
+      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
+    } catch (e) { r.error = e; }
+    if (this.sheet.task?.id === t.id) {
+      this.sheet.subBusy = false;
+      this.sheet.addRows = r.error ? this.sheet.addRows.filter(x => x.text.trim()).slice(r.ids.length) : [];
+      this.sheet.dirty = true;
+      try { const full = await api('/tasks/' + t.id); cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } catch {}
+    }
+    const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
+    if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${r.error.message}`);
+    else if (but) this.notify(`Added ${r.ids.length}${but}`);
   },
   /* Move a template's step up or down. Vikunja keeps steps in the order they were linked and can't reorder them, so
      from the first step that moves, each is unlinked and linked again, in the new order. Not when that would leave a
@@ -3446,15 +3678,10 @@ document.addEventListener('alpine:init', () => Alpine.data('pocket', () => ({
     const parent = this.sheet.task, lines = captureLines(this.sheet.subDraft);
     if (!parent || !lines.length || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
-    // In a workflow, a step's time comes from its T#30m, so "Check at 3pm" stays as it is; a template's steps are done,
-    // and are added only if they leave the template's steps no worse than they were.
-    const wf = this.wfIds.has(parent.project_id), template = wf && hasTemplateLabel(parent) && parent.done;
-    if (template) {
-      const titles = this.subtasks.map(s => s.title), before = stepProblems(titles), after = stepProblems([...titles, ...lines]);
-      if (after.length > before.length) { this.sheet.subBusy = false; this.notify('Not added: ' + problemText(after.slice(before.length))); return; }
-    }
+    // In a workflow, a step's time comes from its T#30m, so "Check at 3pm" stays as it is. (A template's steps are
+    // added with addTemplateSteps.)
+    const wf = this.wfIds.has(parent.project_id);
     const r = await this.createLines(lines, {parent, ignore: wf ? {due: true, repeat: true} : {}});
-    if (template) for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     if (this.sheet.task?.id === parent.id) {
       this.sheet.subBusy = false;
       this.sheet.subDraft = r.error ? lines.slice(r.used).join('\n') : '';

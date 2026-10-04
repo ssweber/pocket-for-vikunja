@@ -65,7 +65,9 @@ const online = () => page.evaluate(() => window.dispatchEvent(new Event('online'
 
 const stamp = Date.now();
 const TEMPLATE = `Startup ${stamp}`;
-const STEPS = ['Check the guards at 3pm {#guards}', 'Warm up the press T#30m', 'First article check T#2h:guards'];
+// The steps as written in New template, and as saved: times in words become T#, and the step one counts from gets a name.
+const WRITTEN = ['Check the guards at 3pm', 'First article check 2 hours later', 'Warm up the press in 30 min'];
+const STEPS = ['Check the guards at 3pm {#check-the-guards}', 'Warm up the press T#30m', 'First article check T#2h:check-the-guards'];
 const GUARDS = '“Check the guards at 3pm”';
 const tplRow = `.wf-tpl:has(.title:text-is("${TEMPLATE}"))`;
 let project, template, me, other, otherToken;
@@ -97,23 +99,35 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
-  await step('make-template', async () => {
-    await page.fill('#in-capture', TEMPLATE);                                 // lands in the project on screen
-    await page.click('#f-capture .go');
-    await page.click(`.row .body:has-text("${TEMPLATE}")`, { timeout: 15000 });
-    await page.waitForSelector('#d-make-template');
-    await page.fill('#d-subin', STEPS.join('\n'));
-    await page.press('#d-subin', 'Enter');
-    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row').length === 3, null, { timeout: 15000 });
-    await page.click('#d-make-template');
-    await page.waitForSelector('#d-start', { timeout: 15000 });
+  await step('new-template', async () => {
+    await page.click('nav.tabs a[data-tab=workflows]');
+    await page.click(`.wf[data-project="${project.id}"] .wf-new .body`, { timeout: 15000 });
+    await page.fill('#nt-name', TEMPLATE);
+    await page.press('#nt-name', 'Enter');
+    // A row each, Enter for the next; a time in words gets a chip.
+    const next = () => page.waitForFunction(() => document.activeElement?.classList.contains('draft-in') && !document.activeElement.value);
+    for (const [i, text] of WRITTEN.entries()) { await next(); await page.keyboard.type(text); if (i < WRITTEN.length - 1) await page.keyboard.press('Enter'); }
+    const row = i => page.locator('#new-steps > .draft-step').nth(i);
+    await row(1).locator('.draft-time:has-text("2h after")').waitFor();
+    // First article check counts from the guards; moved down, it still does.
+    await row(1).locator('select').selectOption({ label: 'Check the guards at 3pm' });
+    await row(1).locator('[aria-label^="Move down"]').click();
+    if (await row(2).locator('.draft-in').inputValue() !== WRITTEN[1]) throw new Error('not moved down');
+    if (await row(2).locator('select option:checked').textContent() !== 'Check the guards at 3pm') throw new Error('counts from ' + await row(2).locator('select option:checked').textContent());
+    await row(0).locator('.draft-meta:has-text("Named “check-the-guards”")').waitFor();
+    await page.click('#nt-create');
+    await toast(`Made ${TEMPLATE}`);
+    await page.waitForSelector(tplRow, { timeout: 15000 });
     template = (await api('/tasks?q=' + encodeURIComponent(TEMPLATE))).items.find(t => t.title === TEMPLATE);
     const t = await api('/tasks/' + template.id), steps = t.related_tasks?.subtask || [];
     if (!t.done || !t.labels?.some(l => l.title === 'template')) throw new Error(`done ${t.done}, labels ${JSON.stringify(t.labels?.map(l => l.title))}`);
     if (JSON.stringify(steps.map(s => s.title)) !== JSON.stringify(STEPS)) throw new Error('steps: ' + steps.map(s => s.title).join(' | '));   // "at 3pm" stays
     if (!steps.every(s => s.done)) throw new Error('a step isn\'t done');
+    // Its sheet shows when each step is due.
+    await page.click(`${tplRow} .body`);
+    await page.waitForSelector('#d-start');
     const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent + '|' + (e.querySelector('.meta')?.textContent || '')));
-    if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
+    if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “check-the-guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
       throw new Error('sheet shows ' + JSON.stringify(shown));
   });
 
@@ -124,19 +138,12 @@ try {
     // Above the step it counts from: refused, before anything is sent.
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');
-    await toast('Not moved: step 1, “First article check”: its time counts from “guards”, which has to be an earlier step');
+    await toast('Not moved: step 1, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step');
     if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('moved anyway');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]:not([disabled])');
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
     await until('the step never moved back', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
-    // A step counting from a name no step has: not added.
-    await toastGone();
-    await page.fill('#d-subin', 'Pull a sample T#5m:nope');
-    await page.press('#d-subin', 'Enter');
-    await toast('Not added: step 4, “Pull a sample”: no step is named “nope”');
-    if ((await subtasks(template.id)).length !== 3) throw new Error('added anyway');
-    await page.fill('#d-subin', '');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -357,6 +364,32 @@ try {
     const n = ((await task(id)).comments || []).filter(c => c.comment.includes('Said once')).length;
     if (n !== 1) throw new Error(n + ' copies');
     await page.unroute('**/api/v2/tasks/*/comments', lose);
+  });
+
+  await step('add-steps-to-a-template', async () => {
+    await page.evaluate(() => { location.hash = '#/workflows'; });
+    await page.click(`${tplRow} .body`, { timeout: 15000 });
+    await page.waitForSelector('#d-start');
+    const row = i => page.locator('#add-steps > .draft-step').nth(i);
+    // Counting from a name no step has: not added.
+    await page.click('#add-add-step');
+    await row(0).locator('.draft-in').fill('Pull a sample T#5m:nope');
+    await row(0).locator('.draft-meta .bad:has-text("no step is named “nope”")').waitFor();
+    if (await page.isEnabled('#add-steps-go')) throw new Error('can be added');
+    // A pasted list becomes a row a line; one counts from a step already there, which gets a name.
+    await row(0).locator('.draft-in').fill('');
+    await row(0).locator('.draft-in').evaluate(el => { const dt = new DataTransfer(); dt.setData('text/plain', 'Pull a sample in 5 min\nLog the weights'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
+    await row(1).locator('.draft-in').waitFor();
+    await row(0).locator('select').selectOption({ label: 'Warm up the press' });
+    await page.click('#add-steps-go:has-text("Add 2 steps")');
+    await until('the steps were never added', async () => (await subtasks(template.id)).length === 5);
+    const titles = (await subtasks(template.id)).map(s => s.title);
+    const want = [STEPS[0], 'Warm up the press T#30m {#warm-up}', STEPS[2], 'Pull a sample T#5m:warm-up', 'Log the weights'];
+    if (JSON.stringify(titles) !== JSON.stringify(want)) throw new Error('steps: ' + titles.join(' | '));
+    if (!(await subtasks(template.id)).every(s => s.done)) throw new Error('a new step isn\'t done');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(4) .meta:has-text("Due 5m after “Warm up the press”")');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
   await step('stop-using-as-workflow', async () => {

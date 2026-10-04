@@ -137,7 +137,7 @@ Workflows are checklists that people work through step by step, again and again:
 <p align="center"><img src="docs/screenshots/pocket-workflow.gif" width="300" alt="Starting a run of the Line 2 Startup template in Pocket. The start sheet lists the steps, two of them due 10 and 30 minutes after 'Start the hydraulics'. The run opens one step at a time; once Start the hydraulics is ticked, 'Check the oil temperature in 10m' and 'First article check in 30m' are pinned at the top, and after the next tick the oil check is the step on screen, due in 10 minutes."></p>
 
 1. **Make a project a workflow.** Share it with the people who'll run it, at *Write*. Open it in Pocket, tap **⋯** and choose **Use as workflow**. This adds a line `pocket:workflow` to the project's description, and everyone it's shared with gets a **Workflows** tab.
-2. **Make a template.** Add a task to the project, add its steps as subtasks (pasting a list works), and tap **Make template**. Move steps up or down in the template's sheet. To time steps, see [Timed steps](#timed-steps).
+2. **Make a template.** Under Workflows, tap **New template**, name it, and write its steps, a row each: **Enter** or **Add a step** starts the next one, and a pasted list becomes a row a line. Move steps up or down, then tap **Make template**. A task in the project with its steps as subtasks can also be made one, with **Make template** in its sheet. To time steps, see [Timed steps](#timed-steps).
 3. **Start a run.** Under Workflows, tap **Start** and choose who it's for. Pocket copies the template and its steps. Only the run is assigned, so that person gets one notification from Vikunja, not one per step.
 4. **Work through it.** One step at a time: **Done**, or **Skip**, where what you've typed as a note becomes the reason. Add a photo or a note to a step, or a note to the whole run. **Last time** shows the notes from the last finished run of the same template, as a handover. After the last step, **Finish run**.
 
@@ -149,7 +149,9 @@ Workflows are checklists that people work through step by step, again and again:
 
 ### Timed steps
 
-Add a time to a step's title in the template, written the way PLC programs write times:
+In Pocket, write the time in the step: "Check the oil **in 10 min**", "Baste **after an hour**", "Pull the shirts **20 minutes later**". A chip under the step shows what Pocket read, "⏱ 10m after the step before". Pick another step in the chip to count from that one instead, or tap × to keep the words as they are. Words that tell what to do, like "stir **for** 2 minutes", aren't read as a time.
+
+Pocket saves the time in the step's title in the template, written the way PLC programs write times, and that's also how to write one in Vikunja's web app:
 
 | In the step | It's due |
 | --- | --- |
@@ -158,7 +160,8 @@ Add a time to a step's title in the template, written the way PLC programs write
 | `Baste the roast T#40m:roast` | 40 minutes after the step named "roast" is done, whatever is done in between. |
 
 - Units are `d`, `h`, `m`, `s` and `ms`, and they combine: `T#1h30m`. A step without a `T#` has no due date: it's simply next.
-- A time counts from an earlier step, and each name is used once. Pocket checks this when you make the template, move or add a step, and start a run, and the template's sheet shows what's wrong.
+- Picking a step to count from gives it a name made from its first words, like `{#put-the-roast}`. Change it if you like, in the step's title.
+- A time counts from an earlier step, and each name is used once. Pocket checks this as you write the steps, when you move one, and when you start a run, and the template's sheet shows what's wrong.
 - A run's steps get their titles without `T#` and `{#…}`.
 - On the run screen, a timed step says what it waits on ("Due 40m after “Put the roast in”"). Once that step is done, it counts down. Countdowns for other steps are pinned above the step on screen.
 - The steps' due dates in Vikunja, and so on Today and in Vikunja's web app, come from the plugin's [step times](#step-times). Without them, Pocket still counts down on the run screen.

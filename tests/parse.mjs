@@ -245,6 +245,26 @@ const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['
 const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
   [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['names an earlier step too']],
   [['A', 'B T#5m:nope'], ['no step is named']], [['A T#5', 'B'], ["isn't a time"]]];
+// A step's time in words, read while steps are written in Pocket: [text, offset in ms or null]
+const phrases = [['Check the oil in 10 min', 6e5], ['Baste after an hour', 36e5], ['Pull the jeans 20 minutes later', 12e5], ['Carve 1h 30m after', 54e5],
+  ['Rest in half an hour', 18e5], ['Call back in 2 days', 1728e5], ['Check in two hours', 72e5], ['Check in 1 hour and 30 minutes', 54e5], ['Sand in 90s', 9e4],
+  ['Stir for 2 minutes', null], ['Let it rest 10 minutes', null], ['Meet in am', null], ['Sign in and out', null], ['Log in 5', null], ['Wait in a while', null]];
+// Rows of steps written in Pocket, saved: [rows, steps already there, what's added, the steps renamed, a problem]
+const drafts = [
+  [[{ key: 'a', text: 'Put the roast in' }, { key: 'b', text: 'Peel the potatoes in 20 min' }, { key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'd', text: 'Stir for 2 minutes' }], [],
+    ['Put the roast in {#put-the-roast}', 'Peel the potatoes T#20m', 'Baste T#40m:put-the-roast', 'Stir for 2 minutes'], [], false],
+  // Moved above the step it counts from.
+  [[{ key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'a', text: 'Put the roast in' }], [], ['Baste T#40m:put-the-roast', 'Put the roast in {#put-the-roast}'], [], true],
+  // Words kept as words; an empty row left out.
+  [[{ key: 'b', text: 'Peel the potatoes in 20 min', keep: true }, { key: 'e', text: '  ' }], [], ['Peel the potatoes in 20 min'], [], false],
+  // Counting from a step already in the template names it.
+  [[{ key: 'x', text: 'Baste in 40 min', from: 'task:1' }], [{ key: 'task:1', text: 'Put the roast in' }], ['Baste T#40m:put-the-roast'], [{ key: 'task:1', title: 'Put the roast in {#put-the-roast}' }], false],
+  // Back to the step before; a name taken already gets a number.
+  [[{ key: 'a', text: 'Put {#roast}' }, { key: 'b', text: 'Baste T#40m:roast', from: '' }], [], ['Put {#roast}', 'Baste T#40m'], [], false],
+  [[{ key: 'a', text: 'Check it {#check-it}' }, { key: 'b', text: 'Check it' }, { key: 'c', text: 'Again in 5 min', from: 'b' }], [], ['Check it {#check-it}', 'Check it {#check-it-2}', 'Again T#5m:check-it-2'], [], false],
+  // A name doesn't end on a small word.
+  [[{ key: 'a', text: 'Warm up the press' }, { key: 'b', text: 'Check in 5 min', from: 'a' }], [], ['Warm up the press {#warm-up}', 'Check T#5m:warm-up'], [], false]];
+
 // The line in a project's description that makes it a workflow: on its own, anywhere in it.
 const marks = [['<p>pocket:workflow</p>', true], ['<p>Line 2 startups</p><p>Pocket:Workflow </p>', true], ['Notes<br>pocket:workflow', true],
   ['<p>Tracks our hiring workflow</p>', false], ['<p>see pocket:workflow in the docs</p>', false], ['', false]];
@@ -263,6 +283,11 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
 const stepResults = await page.evaluate(steps => steps.map(([text]) => parseStep(text)), steps);
+const phraseResults = await page.evaluate(ps => ps.map(([text]) => readStepPhrase(text)?.offset ?? null), phrases);
+const draftResults = await page.evaluate(ds => ds.map(([rows, before]) => {
+  const d = draftSteps(rows.map(r => ({ keep: false, from: null, ...r })), before);
+  return { added: d.added, renames: d.renames, problem: d.problem };
+}), drafts);
 const templateResults = await page.evaluate(ts => ts.map(([titles]) => stepProblems(titles).map(p => p.text)), templates);
 const collisionResults = await page.evaluate(([cs, projects]) => cs.map(([text, token, mode]) => {
   const read = t => { const r = parseCapture(t, projects, { now: new Date(2021, 5, 24, 12, 0), mode }); return { title: r.title, due: r.due && r.due.getTime(), project: r.project?.title ?? null, labels: r.labels }; };
@@ -299,6 +324,13 @@ steps.forEach(([text, title, offset, name, ref, problems], i) => {
   if (r.title !== title || r.offset !== offset || r.name !== name || r.ref !== ref || r.problems.length !== problems)
     { failed++; console.log(`FAIL step ${JSON.stringify(text)}: ${JSON.stringify(r)}`); }
 });
+phrases.forEach(([text, want], i) => {
+  if (phraseResults[i] !== want) { failed++; console.log(`FAIL step time in words ${JSON.stringify(text)}: ${phraseResults[i]}`); }
+});
+drafts.forEach(([rows, , added, renames, problem], i) => {
+  const r = draftResults[i];
+  if (!same(r.added, added) || !same(r.renames, renames) || r.problem !== problem) { failed++; console.log(`FAIL steps written ${JSON.stringify(rows.map(x => x.text))}: ${JSON.stringify(r)}`); }
+});
 templates.forEach(([titles, want], i) => {
   const got = templateResults[i];
   if (got.length !== want.length || want.some((w, j) => !got[j].includes(w))) { failed++; console.log(`FAIL template ${JSON.stringify(titles)}: ${JSON.stringify(got)}`); }
@@ -311,6 +343,6 @@ collisions.forEach(([text, token], i) => {
 marks.forEach(([html, want], i) => {
   if (markResults[i] !== want) { failed++; console.log(`FAIL workflow marker ${JSON.stringify(html)}: ${markResults[i]}`); }
 });
-const wf = steps.length + templates.length + collisions.length + marks.length, total = cases.length + lists.length + wf;
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length, total = cases.length + lists.length + wf;
 console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are workflow steps and markers)`);
 process.exitCode = failed ? 1 : 0;
