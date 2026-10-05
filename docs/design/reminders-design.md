@@ -15,11 +15,11 @@ on how Vikunja's own Web Push PR (#4020) goes.
 Nothing pops up, sounds or vibrates.
 
 - **Today** groups tasks into Overdue / Today / Next 7 days, and a due time that has passed shows in red. It's only
-  recomputed when Pocket opens or comes back to the front (`visibilitychange`, `index.html` ~2010). Left open on
+  recomputed when Pocket opens or comes back to the front (`visibilitychange`, in `init()` in `src/js/app/core.js`). Left open on
   Today, a 4pm task stays under Today until you leave and come back.
-- **🔔 on a row** when a task has a reminder in Vikunja that's still to come (`index.html` ~2280). Display only:
+- **🔔 on a row** when a task has a reminder in Vikunja that's still to come (`rowMeta()` in `src/js/app/views.js`). Display only:
   Pocket can't set or edit reminders.
-- **Run screen** is the one live place: countdowns tick every second (`index.html` ~2021), are pinned at the top, and
+- **Run screen** is the one live place: countdowns tick every second (`clock`, set every second in `init()` in `src/js/app/core.js`), are pinned at the top, and
   turn "2m late" in red. Nothing happens at zero.
 - **Vikunja** emails reminders set in its web app, if mail is set up.
 

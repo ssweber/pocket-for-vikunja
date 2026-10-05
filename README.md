@@ -108,8 +108,9 @@ full](docs/guide.md#checklists) and [timed steps](docs/guide.md#timed-steps), [o
 
 ## Development
 
-All of the app is in `pocket/app/index.html`, with no build step. `npm run dev` starts a local Vikunja with the plugin
-loaded. See [docs/development.md](docs/development.md) for the layout, the tests and the bundled libraries.
+The app is written in `src/` with Alpine.js, and `npm run build` makes it into the one file the plugin serves,
+`pocket/app/index.html`. `npm run dev` starts a local Vikunja with the plugin loaded, and rebuilds as you edit. See
+[docs/development.md](docs/development.md) for the layout, the tests and the bundled libraries.
 
 ## License
 

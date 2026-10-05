@@ -2,6 +2,10 @@
 
 ```
 src/           the app's code, which npm run build makes into pocket/app/index.html
+  index.html   the page, with the markup's pieces included from markup/
+  markup/      the sign-in screen, the app and its screens, the sheet and each kind of sheet
+  styles.css   all of the CSS
+  js/          main.js, where the code starts; the helpers; and app/, the parts of the Alpine component
 pocket/        the plugin, as it's installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
   app/         the built app, the libraries it uses, and sw.js, which lets it open offline
@@ -14,7 +18,13 @@ docs/          this file, guide.md (everything the README leaves out), the scree
   design/      plans for features, written before building them
 ```
 
-The app is plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. It's written in `src/`, and `npm run build` puts it all into one file, `pocket/app/index.html`, which is committed too, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/index.html`: CI checks that it's the build of `src/`. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
+The app is plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. It's written in `src/`, and `npm run build` puts it all into one file, `pocket/app/index.html` (with `pocket.js.map` next to it, so the browser's developer tools show the code as it's written in `src/`). Both are committed, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/`'s copy: CI checks that it's the build of `src/`. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
+
+The JavaScript is ES modules, each importing what it uses. The helpers in `src/js/` know nothing of the screen. The Alpine component, `pocket`, is one object: `app/core.js` has its data and what happens when Pocket opens, and each other file in `app/` adds its methods, put together in `main.js`. In those methods, `this` is the component, so any of them can call any other. A few things to know:
+
+- A module can't assign to another module's variable. A variable lives in the module that changes it; the few that several parts change are properties of `shared`, in `app/core.js`.
+- The markup's Alpine expressions see the component's data and methods, and the few helpers `main.js` makes globals. A helper used in the markup has to be added there.
+- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. CI runs it.
 
 ## Running it locally
 
@@ -29,7 +39,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugi
 
 ## Tests
 
-- `tests/parse.mjs`: how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests, and how pasted lists lose their bullets and checkboxes. It needs no server and runs in a few seconds.
+- `tests/parse.mjs`: how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests, how pasted lists lose their bullets and checkboxes, and how checklist steps are read. It loads `src/js/quickadd.js` and `src/js/checklists.js` as they are, so it needs no build and no server, and runs in a few seconds.
 - `tests/smoke.mjs`: Pocket in a headless browser against a Vikunja with the plugin. It signs in with a token, then adds, ticks off, sets the progress of, searches for, edits, comments on and deletes tasks, pastes a list with subtasks, adds subtasks in the sheet with quick add's chips, ticks off a parent and its subtasks with it, adds quick ticks up into one Undo, takes the top suggestion on Enter, reads a bare hour as daytime and warns of a repeat Vikunja can't do, closes a sheet with the phone's Back and keeps the draft through a reload, moves a ticked search result to Done, keeps notes and a comment being written when the sheet closes, adds a label with Enter and a suggested person, undoes a repeating tick, moves and deletes a task with its subtasks, renames and deletes a project from its ⋯, attaches a file and a photo, creates a project, assigns someone, loads a new version of Pocket on refresh, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side, single sign-on, renewing an expired sign-in from both at once, and following a switch to another account.
 - `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload and between a task and its label, loses replies (for a task with an @username, with `ASSIGNEE`, and for a subtask link), answers 500, fills up Pocket's storage, adds the same title twice (in Pocket, and on the web then in Pocket), adds a subtask and a comment in a sheet offline, puts a cancelled task's words back in the box, moves over what an older Pocket left waiting, and has two tabs send the same waiting task. `BROWSER=webkit` runs it on Safari's engine.
@@ -38,6 +48,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugi
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
+npm run lint                       # mistakes ESLint can see
 npm run test:parse                 # phrases only
 npm run test:local                 # starts the local Vikunja and runs all six
 
@@ -56,5 +67,5 @@ With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo
 
 Both libraries are kept in the repo rather than loaded from a CDN:
 
-- `pocket/app/alpine-<version>.min.js`: download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag.
-- `pocket/app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag.
+- `pocket/app/alpine-<version>.min.js`: download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag in `src/index.html`.
+- `pocket/app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag in `src/index.html`.
