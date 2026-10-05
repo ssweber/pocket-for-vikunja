@@ -142,7 +142,10 @@ try {
     await page.waitForSelector(`.sec.today + .list ${lateRow}`, { timeout: 15000 });
     const msg = await page.textContent('#toast-msg');
     if (!/^Moved \d+ tasks? to today$/.test(msg)) throw new Error('toast: ' + msg);
-    const want = new Date(); want.setHours(9, 0, 0, 0);
+    // At 9:00 as it was, or, once 9:00 has gone today, the next whole hour.
+    const now = new Date(), want = new Date(); want.setHours(9, 0, 0, 0);
+    const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
+    if (want < now && next.getDate() === now.getDate()) want.setTime(next.getTime());
     const moved = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (moved.getTime() !== want.getTime()) throw new Error('moved to ' + moved);
     await page.click('#toast-act:has-text("Undo")');
@@ -271,6 +274,7 @@ try {
     await page.waitForSelector('#d-done.on', { timeout: 10000 });
   });
   await step('delete', async () => {
+    await page.click('#d-more');                                             // the task's ⋯
     await page.click('#d-delete');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 10000 });
   });
@@ -397,14 +401,31 @@ try {
   });
   await step('subtasks-in-sheet', async () => {
     await page.click(`.row .body:has-text("${parentTitle}")`);
-    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row').length === 2, null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 2, null, { timeout: 10000 });
     const names = await page.$$eval('#d-subtasks .row .title', els => els.map(e => e.textContent));
     if (!names.some(n => n === `Pocket smoke sub B ${stamp}`)) throw new Error('markers not stripped: ' + names.join(' | '));
+    if (!await page.isVisible('#d-subform .go use[href="#i-plus"]')) throw new Error('the add button is not a +');
     await page.fill('#d-subin', `Pocket smoke sub C ${stamp}`);
     await page.press('#d-subin', 'Enter');
-    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row').length === 3, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 3, null, { timeout: 15000 });
+    if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error('the box lost the focus');
     await page.click('#d-subtasks .row:first-of-type .check');
     await page.waitForSelector('#d-subcount:text("1/3")', { timeout: 10000 });
+  });
+  await step('subtask-box-reads-like-quick-add', async () => {
+    // The same marks and chips as quick add; a chip tapped off keeps its words in the title.
+    await page.fill('#d-subin', `Pocket smoke sub D tomorrow !2 ${stamp}`);
+    await page.waitForSelector('#d-subchips .chip[data-kind=due]');
+    await page.waitForSelector('#d-subchips .chip[data-kind=priority]:has-text("Priority 2")');
+    const marks = await page.$$eval('#d-subbox .cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
+    if (JSON.stringify(marks) !== JSON.stringify(['due:tomorrow', 'priority:!2'])) throw new Error('marks: ' + JSON.stringify(marks));
+    await page.click('#d-subchips .chip[data-kind=due]');
+    await page.waitForSelector('#d-subchips .chip.off[data-kind=due]');
+    await page.click('#d-subform .go');
+    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 4, null, { timeout: 15000 });
+    if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error('the box lost the focus after the + was tapped');
+    const t = ((await (await api('/tasks?q=' + encodeURIComponent('sub D'))).json()).items || []).find(x => x.title.includes('sub D tomorrow') && x.title.endsWith(String(stamp)));
+    if (!t || t.priority !== 2 || (t.due_date && !t.due_date.startsWith('0001'))) throw new Error('saved as ' + JSON.stringify(t && { title: t.title, priority: t.priority, due: t.due_date }));
   });
   await step('subtask-links-to-parent', async () => {
     await page.click('#d-subtasks .row:first-of-type .body');
@@ -413,6 +434,33 @@ try {
     await page.waitForFunction(t => document.querySelector('#d-title')?.value === t, parentTitle, { timeout: 10000 });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+  await step('subtasks-under-parent-in-list', async () => {
+    // In the project's list, the two still open come straight after their parent, indented.
+    const parent = ((await (await api('/tasks?q=' + encodeURIComponent(parentTitle))).json()).items || []).find(x => x.title === parentTitle);
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, parent.project_id);
+    const rows = `.list .row:has(.title:has-text("${parentTitle}"))`;
+    await page.waitForSelector(rows, { timeout: 15000 });
+    const after = await page.$eval(rows, el => [el.nextElementSibling, el.nextElementSibling?.nextElementSibling]
+      .map(r => r && { sub: r.classList.contains('sub'), title: r.querySelector('.title').textContent, left: r.querySelector('.check').getBoundingClientRect().left - el.querySelector('.check').getBoundingClientRect().left }));
+    if (!after.every(r => r?.sub && r.title.includes(`sub`) && r.title.includes(stamp) && r.left > 20)) throw new Error('rows after the parent: ' + JSON.stringify(after));
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.waitForSelector(`div:has(> .sec:has-text("Next 7 days")) .row .title:has-text("${parentTitle}")`, { timeout: 15000 });
+  });
+  await step('done-closes-its-subtasks', async () => {
+    // Ticking a parent ticks its open subtasks too; Undo opens them all again, and not the one done before.
+    const parent = ((await (await api('/tasks?q=' + encodeURIComponent(parentTitle))).json()).items || []).find(x => x.title === parentTitle);
+    const subs = async () => (await (await api('/tasks/' + parent.id)).json()).related_tasks?.subtask || [];
+    const open = (await subs()).filter(s => !s.done).map(s => s.id);
+    if (open.length !== 3) throw new Error('open subtasks before: ' + open.length);
+    await page.click(`.row:has(> .body .title:has-text("${parentTitle}")) > .check`);
+    await page.waitForSelector('#toast.show #toast-msg:has-text("with 3 subtasks")', { timeout: 20000 });
+    if ((await subs()).some(s => !s.done)) throw new Error('a subtask is still open');
+    await page.click('#toast-act:has-text("Undo")');
+    for (let i = 0; i < 40 && (await subs()).filter(s => !s.done).length !== 3; i++) await page.waitForTimeout(250);
+    const after = await subs();
+    if (JSON.stringify(after.filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify([...open].sort())) throw new Error('open after undo: ' + JSON.stringify(after.map(s => [s.title, s.done])));
+    if ((await (await api('/tasks/' + parent.id)).json()).done) throw new Error('the parent is still done');
   });
   await step('paste-list-undo', async () => {
     const a = `Pocket smoke undo 1 ${stamp}`, b = `Pocket smoke undo 2 ${stamp}`;
@@ -483,6 +531,195 @@ try {
     }
     await page.fill('#in-capture', '');
   });
+  // ---- Things that work the same way everywhere: Undo, focus, the sheet's pickers, subtasks moving and going with their task ----
+  const me2 = await (await api('/user')).json(), projects2 = (await (await api('/projects')).json()).items.filter(p => p.id > 0);
+  const home2 = me2.settings?.default_project_id || projects2[0]?.id;
+  const json = { 'Content-Type': 'application/json' };
+  const make = async (t, extra = {}, pid = home2) => (await api(`/projects/${pid}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: t, ...extra }) })).json();
+  const get = async id => { const r = await api('/tasks/' + id); return r.ok ? r.json() : null; };
+  const todayAt = h => { const d = new Date(); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+  const refreshToday = async () => { await page.evaluate(() => { location.hash = '#/today'; }); await page.click('#btn-refresh'); await page.waitForSelector('#btn-refresh:not([disabled])'); };
+  const rowOf = t => `.row:has(> .body .title:has-text("${t}"))`;
+  const toastGone = () => page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 }).catch(() => {});
+
+  await step('quick-add-keeps-focus-with-undo-and-open', async () => {
+    const t = `Pocket smoke focus ${stamp}`;
+    await toastGone();
+    await page.focus('#in-capture');
+    await page.fill('#in-capture', t);
+    await page.click('#f-capture .go');
+    await page.waitForSelector('#toast.show #toast-msg:has-text("Added to")', { timeout: 20000 });
+    if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
+    if (await page.textContent('#toast-act') !== 'Undo' || await page.textContent('#toast-act2') !== 'Open') throw new Error('actions: ' + await page.textContent('#toast'));
+    const [made2] = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).filter(x => x.title === t);
+    await page.click('#toast-act');
+    for (let i = 0; i < 40 && await get(made2.id); i++) await page.waitForTimeout(250);
+    if (await get(made2.id)) throw new Error('Undo left the task');
+    await page.evaluate(() => document.activeElement?.blur());
+  });
+
+  await step('quick-ticks-add-up', async () => {
+    const a = await make(`Pocket smoke tick A ${stamp}`, { due_date: todayAt(23) }), b = await make(`Pocket smoke tick B ${stamp}`, { due_date: todayAt(23) });
+    await toastGone();
+    await refreshToday();
+    await page.click(`${rowOf(a.title)} > .check`, { timeout: 15000 });
+    await page.waitForSelector(`#toast.show #toast-msg:text-is("Done: ${a.title}")`);
+    await page.click(`${rowOf(b.title)} > .check`);
+    // The two add up: one message, whose Undo opens both again.
+    await page.waitForSelector('#toast.show #toast-msg:text-is("2 done")');
+    await page.click('#toast-act:has-text("Undo")');
+    for (let i = 0; i < 40 && ((await get(a.id)).done || (await get(b.id)).done); i++) await page.waitForTimeout(250);
+    if ((await get(a.id)).done || (await get(b.id)).done) throw new Error('Undo didn\'t open both');
+  });
+
+  await step('search-moves-a-ticked-task-to-done', async () => {
+    const t = `Pocket smoke tick A ${stamp}`;
+    await page.click('#btn-search');
+    await page.fill('#in-search', t);
+    const open = `#view div:has(> .sec:has-text("Open")) ${rowOf(t)}`, done = `#view div:has(> .sec:has-text("Done")) ${rowOf(t)}`;
+    await page.waitForSelector(open, { timeout: 10000 });
+    await page.click(`${open} > .check`);
+    await page.waitForSelector(done, { timeout: 10000 });
+    await page.click(`${done} > .check`);                                   // and back
+    await page.waitForSelector(open, { timeout: 10000 });
+    await page.waitForSelector('#toast.show #toast-msg:text-is("Marked not done")');
+    await page.click('#btn-search-cancel');
+  });
+
+  await step('sheet-keeps-what-was-written', async () => {
+    const t = `Pocket smoke tick A ${stamp}`, task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
+    await refreshToday();
+    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.click('#d-desc');
+    await page.fill('#d-desc-in', 'Notes saved on close');
+    await page.fill('#d-cin', 'half a comment');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    for (let i = 0; i < 40 && !(await get(task.id)).description?.includes('Notes saved on close'); i++) await page.waitForTimeout(250);
+    if (!(await get(task.id)).description?.includes('Notes saved on close')) throw new Error('notes not saved');
+    await page.click(`${rowOf(t)} > .body`);
+    await page.waitForSelector('#d-cin');
+    if (await page.inputValue('#d-cin') !== 'half a comment') throw new Error('comment: ' + await page.inputValue('#d-cin'));
+    await page.fill('#d-cin', '');
+  });
+
+  await step('label-on-enter-and-people-suggested', async () => {
+    const t = `Pocket smoke tick A ${stamp}`;
+    await page.click('#d-add-label');
+    await page.fill('#lp-q', label);
+    await page.press('#lp-q', 'Enter');
+    await page.waitForSelector(`.prop:has(.k:text("Labels")) .label-chip:has-text("${label}")`, { timeout: 10000 });
+    await page.click('#d-add-label');                                        // closes the picker
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    // People are suggested from those who can see the task's project: a task in the project shared with ASSIGNEE.
+    const team = projects2.find(p => p.title === ASSIGNEE_PROJECT);
+    if (ASSIGNEE && team && (await api('/projects/1/users/search?q=x')).status !== 401) {
+      const shared = await make(`Pocket smoke assign pick ${stamp}`, { due_date: todayAt(23) }, team.id);
+      await refreshToday();
+      await page.click(`${rowOf(shared.title)} > .body`, { timeout: 15000 });
+      await page.click('#d-add-assignee');
+      await page.fill('#d-assign-in', ASSIGNEE.slice(0, 2));
+      await page.click(`#d-assign-list .chip:has-text("@${ASSIGNEE}")`, { timeout: 15000 });
+      await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
+      await page.click('#d-assign-done');
+      await page.waitForSelector('#d-assign-in', { state: 'detached' });
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    }
+  });
+
+  await step('enter-takes-the-suggestion', async () => {
+    await page.fill('#in-capture', '');
+    await page.type('#in-capture', `Pocket smoke enter ${stamp} *${label.slice(0, 9)}`);
+    await page.waitForSelector(`#cap-chips .chip[data-kind=suggest]:has-text("*${label}")`, { timeout: 15000 });
+    await page.press('#in-capture', 'Enter');
+    if (await page.inputValue('#in-capture') !== `Pocket smoke enter ${stamp} *${label} `) throw new Error('text: ' + await page.inputValue('#in-capture'));
+    await page.fill('#in-capture', 'Call Ana at 5');
+    await page.waitForSelector('#cap-chips .chip[data-kind=due]:has-text("5:00 PM")');
+    await page.fill('#in-capture', 'Standup every weekday');
+    await page.waitForSelector('#cap-chips .chip.warn:has-text("can\'t repeat")');
+    await page.fill('#in-capture', '');
+  });
+
+  await step('back-closes-the-sheet-and-keeps-the-draft', async () => {
+    const t = `Pocket smoke tick A ${stamp}`;
+    await refreshToday();
+    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.fill('#d-cin', 'written before Back');
+    await page.goBack();                                                      // the phone's Back
+    await page.waitForSelector('#sheet', { state: 'hidden', timeout: 10000 });
+    if (!(await page.evaluate(() => location.hash)).startsWith('#/today')) throw new Error('Back left Today: ' + await page.evaluate(() => location.href));
+    await page.reload();                                                      // even after Pocket is closed
+    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    if (await page.inputValue('#d-cin') !== 'written before Back') throw new Error('comment: ' + await page.inputValue('#d-cin'));
+    await page.fill('#d-cin', '');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    // A sheet closed with ×: one Back goes to the screen before, not to the same screen again.
+    await page.click('nav.tabs a[data-tab=projects]');
+    await page.waitForFunction(() => location.hash === '#/projects');
+    await page.click('nav.tabs a[data-tab=today]');
+    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.goBack();
+    await page.waitForFunction(() => location.hash === '#/projects', null, { timeout: 10000 });
+    await page.click('nav.tabs a[data-tab=today]');
+  });
+
+  await step('repeating-tick-can-be-undone', async () => {
+    const r = await make(`Pocket smoke repeat undo ${stamp}`, { due_date: todayAt(9), repeat_after: 86400 });
+    await toastGone();
+    await refreshToday();
+    await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
+    await page.waitForSelector('#toast.show #toast-msg:has-text("Repeats")');
+    await page.click('#toast-act:has-text("Undo")');
+    const want = new Date(r.due_date).getTime();
+    for (let i = 0; i < 40 && new Date((await get(r.id)).due_date).getTime() !== want; i++) await page.waitForTimeout(250);
+    if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
+  });
+
+  await step('a-task-moves-and-goes-with-its-subtasks', async () => {
+    const other = projects2.find(p => p.id !== home2);
+    const parent = await make(`Pocket smoke move parent ${stamp}`, { due_date: todayAt(23) });
+    const kids = [await make(`Pocket smoke move kid 1 ${stamp}`), await make(`Pocket smoke move kid 2 ${stamp}`)];
+    for (const k of kids) await api(`/tasks/${parent.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    await refreshToday();
+    await page.click(`${rowOf(parent.title)} > .body`, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 2, null, { timeout: 10000 });
+    if (other) {
+      await page.selectOption('#d-proj', String(other.id));
+      for (let i = 0; i < 40 && (await get(kids[1].id)).project_id !== other.id; i++) await page.waitForTimeout(250);
+      const where = await Promise.all([parent, ...kids].map(async t => (await get(t.id)).project_id));
+      if (where.some(id => id !== other.id)) throw new Error('projects: ' + where);
+    }
+    await page.click('#d-more');
+    if (await page.textContent('#d-delete') !== 'Delete task and its 2 subtasks') throw new Error('button: ' + await page.textContent('#d-delete'));
+    await page.click('#d-delete');
+    await page.waitForSelector('#sheet', { state: 'hidden', timeout: 15000 });
+    for (let i = 0; i < 40 && await get(kids[1].id); i++) await page.waitForTimeout(250);
+    if ((await Promise.all([parent, ...kids].map(t => get(t.id)))).some(Boolean)) throw new Error('something is left');
+  });
+
+  await step('project-sheet-renames-and-deletes', async () => {
+    const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeSheet${stamp}` }) })).json();
+    createdProjects.push(proj.id);
+    await page.click('#btn-refresh');                                           // so Pocket knows the project
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
+    await page.click('#btn-project', { timeout: 15000 });
+    await page.fill('#p-name', `PocketSmokeSheet${stamp} renamed`);
+    await page.press('#p-name', 'Enter');
+    for (let i = 0; i < 40 && (await (await api('/projects/' + proj.id)).json()).title !== `PocketSmokeSheet${stamp} renamed`; i++) await page.waitForTimeout(250);
+    if ((await (await api('/projects/' + proj.id)).json()).title !== `PocketSmokeSheet${stamp} renamed`) throw new Error('not renamed');
+    await page.waitForSelector('#p-archive');
+    if (await page.textContent('#p-delete') !== 'Delete project and its 0 tasks') throw new Error('delete: ' + await page.textContent('#p-delete'));
+    await page.click('#p-delete');
+    await page.waitForFunction(() => location.hash === '#/projects', null, { timeout: 15000 });
+    if ((await api('/projects/' + proj.id)).ok) throw new Error('the project is still there');
+  });
+
   await step('projects', async () => {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.click('.tree .row .body');

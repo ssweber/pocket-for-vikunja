@@ -135,7 +135,7 @@ for (const [text, dt, pocket] of [['Lorem Ipsum in 1 hour', '2021-6-24 13:0'], [
   ['in 1 week', '2021-7-1 12:0'], ['in 2 weeks', '2021-7-8 12:0'], ['in 4 weeks', '2021-7-22 12:0'], ['in 1 month', '2021-7-24 12:0'], ['in 3 months', '2021-9-24 12:0'],
   ['Something in 5 days at 10:00', '2021-6-29 10:0'], ['Something 17th at 10:00', '2021-7-17 10:0'], ['Something sep 17 at 10:00', '2021-9-17 10:0'],
   ['Something sep 17th at 10:00', '2021-9-17 10:0'], ['Something at 10:00 in 5 days', '2021-6-29 10:0'], ['Something at 10:00 17th', '2021-7-17 10:0'],
-  ['Something at 10:00 sep 17th', '2021-9-17 10:0'], ['2nd March at 5', '2022-3-2 5:0', 1], ['2nd March at 5pm', '2022-3-2 17:0', 1], ['2nd March @ 14:00', '2022-3-2 14:0', 1],
+  ['Something at 10:00 sep 17th', '2021-9-17 10:0'], ['2nd March at 5', '2022-3-2 17:0', 1], ['2nd March at 5pm', '2022-3-2 17:0', 1], ['2nd March @ 14:00', '2022-3-2 14:0', 1],
   ['3rd April at 10:30', '2022-4-3 10:30', 1], ['15th August @ 9am', '2021-8-15 9:0'], ['21st June at 18:45', '2022-6-21 18:45', 1], ['5th Mar at 3pm', '2022-3-5 15:0', 1],
   ['Some task Mar 8th', '2022-3-8 12:0', 1], ['Some task mar 8th', '2022-3-8 12:0', 1]]) {
   const [date, time] = dt.split(' ');
@@ -211,15 +211,82 @@ add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem I
   marked: ['due:dec 21 at 3pm', 'assignees:@ann', 'labels:*calls', 'project:+project', 'priority:!2'], ...extra('everything at once') });
 add({ text: 'Team sync every monday @ 10', title: 'Team sync', repeat: { after: W, mode: 0 }, time: '10:0', marked: ['repeat:every monday', 'due:@ 10'],
   ...extra('each phrase is marked where it was typed, even "@ 10"') });
+// A bare hour is daytime: 1 to 7 is the afternoon or evening (Vikunja reads "at 5" as 5 AM). Written-out times stay.
+add({ text: 'Call Ana at 5', title: 'Call Ana', date: '2021-6-24', time: '17:0', ...extra('a bare 5 is 5 PM: today, as it’s still to come') });
+add({ text: 'Call Ana at 9', title: 'Call Ana', date: '2021-6-25', time: '9:0', ...extra('a bare 9 is the morning: the next one') });
+add({ text: 'Call Ana tomorrow at 5:30', title: 'Call Ana', date: '2021-6-25', time: '17:30', ...extra('5:30 is the afternoon too') });
+add({ text: 'Call Ana at 5am', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"am" is as written') });
+add({ text: 'Call Ana at 05:00', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"05:00" is as written') });
+// Repeats Vikunja can't do stay as words, and nothing in them is read as something else.
+add({ text: 'Water lawn every other day', title: 'Water lawn', repeat: { after: 2 * D, mode: 0 }, ...extra('"every other day" is every 2 days') });
+add({ text: 'Standup every weekday at 9', title: 'Standup every weekday', repeat: null, date: '2021-6-25', time: '9:0', ...extra('weekdays only can’t repeat in Vikunja') });
+add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursday', repeat: null, date: null, ...extra('two days a week can’t repeat in Vikunja') });
 
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
-addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk', 'Eggs'], 'iOS Notes checklist');
+addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk'], 'iOS Notes checklist: a line ticked off already is left out');
 addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols');
 addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
 addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
+
+// ---------- checklist steps ----------
+// A step's T#20m, T#40m:roast and {#roast} stay in its title, for parseStep, and nothing reads them as a date or a time.
+add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its words; T#30m is read by parseStep' });
+add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
+add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
+add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'a step\'s words inside a quoted label stay in the label' });
+add({ text: 'Task *"batch T#20m"', title: 'Task', labels: ['batch T#20m'], pocket: true, why: 'and a T# time ends before the quote' });
+// The same text with a step's token after it reads the same: [text, token, mode].
+const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:roast'], ['01.02 Lorem Ipsum', 'T#1h30m'],
+  ['Lorem Ipsum 01.02', '{#roast}'], ['Order resin 2026-10-12', 'T#3d'], ['Baste the roast at 5pm', 'T#40m:roast'], ['Roast in tomorrow', '{#roast}'],
+  ['Set the table #project', 'T#20m:roast', 'todoist'], ['Set the table #project', '{#table}', 'todoist'], ['Make the gravy *kitchen', 'T#5m']];
+// parseStep: [text, title, offset in ms, name, ref, problems]
+const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['Warm up the press T#30m', 'Warm up the press', 30 * 6e4, null, null, 0],
+  ['First article check T#2h', 'First article check', 120 * 6e4, null, null, 0], ['Cool down T#1h30m', 'Cool down', 90 * 6e4, null, null, 0],
+  ['Settle T#1.5h', 'Settle', 90 * 6e4, null, null, 0], ['Rinse T#90s', 'Rinse', 90e3, null, null, 0], ['Blink T#250ms', 'Blink', 250, null, null, 0],
+  ['Order resin T#3d', 'Order resin', 3 * 864e5, null, null, 0], ['Sign off T#0m', 'Sign off', 0, null, null, 0], ['Soak t#20M', 'Soak', 20 * 6e4, null, null, 0],
+  ['Put the roast in {#roast}', 'Put the roast in', null, 'roast', null, 0], ['Baste the roast T#40m:roast', 'Baste the roast', 40 * 6e4, null, 'roast', 0],
+  ['Roast in {#roast} T#5m', 'Roast in', 5 * 6e4, 'roast', null, 0], ['T#1d2h3m4s Long one', 'Long one', 864e5 + 2 * 36e5 + 3 * 6e4 + 4e3, null, null, 0],
+  ['Email ops@T#team', 'Email ops@T#team', null, null, null, 0], ['Part AT#5', 'Part AT#5', null, null, null, 0],
+  ['Read T#30 of the manual', 'Read of the manual', null, null, null, 1], ['Preheat T#-10m:roast', 'Preheat', null, null, null, 1],
+  ['Two times T#5m T#10m', 'Two times', 5 * 6e4, null, null, 1], ['Bad name {#1st}', 'Bad name', null, null, null, 1],
+  ['Bad ref T#5m:2nd', 'Bad ref', null, null, null, 1], ['Way off T#400d', 'Way off', null, null, null, 1],
+  ['Overflow T#999999999999999999999d', 'Overflow', null, null, null, 1], ['Nbsp\u00a0T#20m', 'Nbsp', 20 * 6e4, null, null, 0], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
+// stepProblems over a template's steps: [titles, what each problem says]
+const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
+  [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['names an earlier step too']],
+  [['A', 'B T#5m:nope'], ['no step is named']], [['A T#5', 'B'], ["isn't a time"]]];
+// A step's time in words, read while steps are written in Pocket: [text, offset in ms or null]
+const phrases = [['Check the oil in 10 min', 6e5], ['Baste after an hour', 36e5], ['Pull the jeans 20 minutes later', 12e5], ['Carve 1h 30m after', 54e5],
+  ['Rest in half an hour', 18e5], ['Call back in 2 days', 1728e5], ['Check in two hours', 72e5], ['Check in 1 hour and 30 minutes', 54e5], ['Sand in 90s', 9e4],
+  ['Stir for 2 minutes', null], ['Let it rest 10 minutes', null], ['Meet in am', null], ['Sign in and out', null], ['Log in 5', null], ['Wait in a while', null], ['Ship in 400 days', null]];
+// Rows of steps written in Pocket, saved: [rows, steps already there, what's added, the steps renamed, a problem]
+const drafts = [
+  [[{ key: 'a', text: 'Put the roast in' }, { key: 'b', text: 'Peel the potatoes in 20 min' }, { key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'd', text: 'Stir for 2 minutes' }], [],
+    ['Put the roast in {#put-the-roast}', 'Peel the potatoes T#20m', 'Baste T#40m:put-the-roast', 'Stir for 2 minutes'], [], false],
+  // Moved above the step it counts from.
+  [[{ key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'a', text: 'Put the roast in' }], [], ['Baste T#40m:put-the-roast', 'Put the roast in {#put-the-roast}'], [], true],
+  // Words kept as words; an empty row left out.
+  [[{ key: 'b', text: 'Peel the potatoes in 20 min', keep: true }, { key: 'e', text: '  ' }], [], ['Peel the potatoes in 20 min'], [], false],
+  // Counting from a step already in the template names it.
+  [[{ key: 'x', text: 'Baste in 40 min', from: 'task:1' }], [{ key: 'task:1', text: 'Put the roast in' }], ['Baste T#40m:put-the-roast'], [{ key: 'task:1', title: 'Put the roast in {#put-the-roast}' }], false],
+  // Back to the step before; a name taken already gets a number.
+  [[{ key: 'a', text: 'Put {#roast}' }, { key: 'b', text: 'Baste T#40m:roast', from: '' }], [], ['Put {#roast}', 'Baste T#40m'], [], false],
+  [[{ key: 'a', text: 'Check it {#check-it}' }, { key: 'b', text: 'Check it' }, { key: 'c', text: 'Again in 5 min', from: 'b' }], [], ['Check it {#check-it}', 'Check it {#check-it-2}', 'Again T#5m:check-it-2'], [], false],
+  // A time in words before punctuation: the words go, and its T# goes at the end.
+  [[{ key: 'a', text: 'Baste in 20 min.' }, { key: 'b', text: 'Flip it after 5 minutes, then season' }], [], ['Baste. T#20m', 'Flip it, then season T#5m'], [], false],
+  // A priority stays one: only punctuation that ends a word is pulled back to it.
+  [[{ key: 'a', text: 'Baste !2 in 20 min' }], [], ['Baste !2 T#20m'], [], false],
+  // Counting from a step that isn't there: a problem, not the step before.
+  [[{ key: 'a', text: 'Baste in 20 min', from: 'task:99' }], [{ key: 'task:1', text: 'Put the roast in' }], ['Baste T#20m'], [], true],
+  // A name doesn't end on a small word.
+  [[{ key: 'a', text: 'Warm up the press' }, { key: 'b', text: 'Check in 5 min', from: 'a' }], [], ['Warm up the press {#warm-up}', 'Check T#5m:warm-up'], [], false]];
+
+// The line in a project's description that makes it a checklist project: on its own, anywhere in it.
+const marks = [['<p>pocket:checklists</p>', true], ['<p>Line 2 startups</p><p>Pocket:Checklists </p>', true], ['Notes<br>pocket:checklists', true],
+  ['<p>Our safety checklists</p>', false], ['<p>see pocket:checklists in the docs</p>', false], ['', false]];
 
 // ---------- run ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
@@ -234,6 +301,18 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
     marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
+const stepResults = await page.evaluate(steps => steps.map(([text]) => parseStep(text)), steps);
+const phraseResults = await page.evaluate(ps => ps.map(([text]) => readStepPhrase(text)?.offset ?? null), phrases);
+const draftResults = await page.evaluate(ds => ds.map(([rows, before]) => {
+  const d = draftSteps(rows.map(r => ({ keep: false, from: null, ...r })), before);
+  return { added: d.added, renames: d.renames, problem: d.problem };
+}), drafts);
+const templateResults = await page.evaluate(ts => ts.map(([titles]) => stepProblems(titles).map(p => p.text)), templates);
+const collisionResults = await page.evaluate(([cs, projects]) => cs.map(([text, token, mode]) => {
+  const read = t => { const r = parseCapture(t, projects, { now: new Date(2021, 5, 24, 12, 0), mode }); return { title: r.title, due: r.due && r.due.getTime(), project: r.project?.title ?? null, labels: r.labels }; };
+  return [read(text), read(text + ' ' + token)];
+}), [collisions, PROJECTS]);
+const markResults = await page.evaluate(marks => marks.map(([html]) => isChecklistDesc(html)), marks);
 await browser.close();
 http.close();
 
@@ -259,5 +338,30 @@ cases.forEach((c, i) => {
 lists.forEach((l, i) => {
   if (!same(listResults[i], l.lines)) { failed++; console.log(`FAIL pasted list [${l.why}]: ${JSON.stringify(listResults[i])}`); }
 });
-console.log(`${cases.length + lists.length - failed} of ${cases.length + lists.length} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists)`);
+steps.forEach(([text, title, offset, name, ref, problems], i) => {
+  const r = stepResults[i];
+  if (r.title !== title || r.offset !== offset || r.name !== name || r.ref !== ref || r.problems.length !== problems)
+    { failed++; console.log(`FAIL step ${JSON.stringify(text)}: ${JSON.stringify(r)}`); }
+});
+phrases.forEach(([text, want], i) => {
+  if (phraseResults[i] !== want) { failed++; console.log(`FAIL step time in words ${JSON.stringify(text)}: ${phraseResults[i]}`); }
+});
+drafts.forEach(([rows, , added, renames, problem], i) => {
+  const r = draftResults[i];
+  if (!same(r.added, added) || !same(r.renames, renames) || r.problem !== problem) { failed++; console.log(`FAIL steps written ${JSON.stringify(rows.map(x => x.text))}: ${JSON.stringify(r)}`); }
+});
+templates.forEach(([titles, want], i) => {
+  const got = templateResults[i];
+  if (got.length !== want.length || want.some((w, j) => !got[j].includes(w))) { failed++; console.log(`FAIL template ${JSON.stringify(titles)}: ${JSON.stringify(got)}`); }
+});
+collisions.forEach(([text, token], i) => {
+  const [plain, withToken] = collisionResults[i];
+  if (!same({...plain, title: plain.title + ' ' + token}, withToken)) { failed++; console.log(`FAIL ${JSON.stringify(text + ' ' + token)}: ${JSON.stringify(withToken)}, without it ${JSON.stringify(plain)}`); }
+  if (!plain.due && !plain.project && !plain.labels.length) { failed++; console.log(`FAIL ${JSON.stringify(text)} reads nothing, so it shows no collision`); }
+});
+marks.forEach(([html, want], i) => {
+  if (markResults[i] !== want) { failed++; console.log(`FAIL checklist marker ${JSON.stringify(html)}: ${markResults[i]}`); }
+});
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length, total = cases.length + lists.length + wf;
+console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;
