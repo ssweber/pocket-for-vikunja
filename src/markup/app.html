@@ -1,0 +1,69 @@
+<div id="app" :hidden="screen !== 'app'" hidden>
+  <!-- Slides away as the list scrolls down, and back as soon as it scrolls up (initHeader). While searching, it holds the
+       search box instead; that's always here, hidden, so the magnifier can focus it during the tap and the phone's
+       keyboard opens (see openSearch). -->
+  <header class="top" x-ref="header" :class="{tucked: headerTucked, searching: route.name === 'search'}">
+    <form class="search" role="search" @submit.prevent="$refs.searchIn.blur()">
+      <svg class="i"><use href="#i-search"/></svg>
+      <input type="search" id="in-search" x-ref="searchIn" x-model="searchQ" placeholder="Search tasks" aria-label="Search tasks"
+             enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" id="btn-search-cancel" class="linkish" @click="closeSearch()">Cancel</button>
+    </form>
+    <nav class="tabs" aria-label="Views" :class="{icons: checklistProjects.length}">
+      <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg><span class="lbl">Today</span></a>
+      <a href="#/projects" data-tab="projects" :aria-current="tab === 'projects' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg><span class="lbl">Projects</span></a>
+      <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
+    </nav>
+    <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
+    <button id="btn-refresh" class="icon-btn" aria-label="Refresh" :disabled="refreshing" @click="refresh()"><svg class="i"><use href="#i-refresh"/></svg></button>
+    <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
+  </header>
+
+  <main id="view" aria-live="polite">
+    <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title">
+      <button id="btn-back" class="icon-btn plain" :aria-label="'Back to ' + backName" @click="route.name === 'run' ? leaveRun() : back(projectFrom || '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
+      <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" :class="{run: route.name === 'run'}" x-text="head.title"></h2></div>
+      <!-- The project's own sheet: where it's used for checklists -->
+      <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
+      <template x-if="route.name === 'run' && view.run"><button id="btn-run-more" class="icon-btn plain" aria-label="Run options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
+    </div></template>
+    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. New tasks, subtasks, comments, photos and what you do on a run are sent when you\'re back online. Ticking off or changing other tasks needs a connection.'"></p></template>
+    <template x-if="view.loading"><div class="loading">Loading…</div></template>
+
+    <template x-if="!view.loading && view.error"><div>
+      <div class="err" style="margin-top:16px" x-html="view.error"></div>
+      <button class="btn ghost block" @click="view.bootFailed ? boot() : render()">Try again</button>
+      <template x-if="view.bootFailed"><button class="btn danger block" style="margin-top:8px" @click="signOut()">Sign out</button></template>
+    </div></template>
+
+    <!-- include markup/screens/lists.html -->
+    <!-- include markup/screens/checklists.html -->
+    <!-- include markup/screens/run.html -->
+  </main>
+
+  <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
+    <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
+      <div class="cap-field">
+        <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml('cap')"></div>
+        <textarea id="in-capture" x-ref="capture" x-model="cap.text" rows="1" :placeholder="capPhotos.length ? 'What\'s this photo for?' : 'Add a task'" aria-label="New task" enterkeyhint="send"
+                  x-effect="cap.text; $nextTick(() => grow($el))"
+                  @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter('cap'); }"
+                  @input="cap.caret = $el.selectionStart" @click="cap.caret = $el.selectionStart" @keyup="cap.caret = $el.selectionStart"
+                  @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
+                  @focus="cap.focus = true" @blur="setTimeout(() => cap.focus = document.activeElement === $el, 150)"></textarea>
+      </div>
+      <template x-if="attachmentsOn"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
+        <svg class="i"><use href="#i-camera"/></svg>
+        <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
+      </label></template>
+      <button class="go" type="submit" aria-label="Add task" @mousedown.prevent :disabled="!parsed.title || cap.busy"><svg class="i"><use href="#i-up"/></svg></button>
+    </form>
+    <div class="chips" id="cap-chips" :hidden="!chips('cap').length && !(cap.focus && !cap.text)">
+      <template x-if="capLines.length > 1"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(cap.nest)" @mousedown.prevent @click="cap.nest = !cap.nest">↳ Under first line</button></template>
+      <template x-if="cap.focus && !cap.text"><span class="hint" x-text="captureHint"></span></template>
+      <template x-for="c in chips('cap')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+        :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+        @mousedown.prevent @click="tapChip('cap', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,33 @@
+<div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
+<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', runopts: 'Run', start: 'Start a run', newtpl: 'New template', newproj: 'New project'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
+  <div class="bar">
+    <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
+      <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
+      <label class="prio-pick" x-show="checklistRole !== 'template'" :class="'p' + (sheet.task.priority || 0)">
+        <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span x-text="sheet.task.priority ? PRIOS[sheet.task.priority].label : 'Priority'"></span>
+        <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
+          <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
+        </select>
+      </label>
+    </div></template></div>
+    <div class="grab"><i></i></div>
+    <template x-if="sheet.kind === 'task' && sheet.task?.identifier"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
+    <!-- What's done to the task as a whole: making it a checklist template, deleting it -->
+    <template x-if="sheet.kind === 'task' && sheet.task && canEdit"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
+    <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
+    <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)" @keydown.escape.stop="sheet.menu = false">
+      <template x-if="checklistRole === 'candidate' && subtasks.length"><button role="menuitem" id="d-make-template" :disabled="sheet.checklistBusy" @click="sheet.menu = false; makeTemplate()">
+        <span>Use as checklist template</span><small>Its subtasks become the steps of every run, in this order.</small></button></template>
+      <button role="menuitem" class="danger" id="d-delete" @click="sheet.menu = false; deleteTask()" x-text="deleteLabel"></button>
+    </div></template>
+  </div>
+  <div class="scroll" id="sheet-body">
+    <!-- include markup/sheet/task.html -->
+    <!-- include markup/sheet/checklist-options.html -->
+    <!-- include markup/sheet/new-project.html -->
+    <!-- include markup/sheet/new-template.html -->
+    <!-- include markup/sheet/start.html -->
+    <!-- include markup/sheet/account.html -->
+  </div>
+</section>

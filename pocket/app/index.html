@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pocket</title>
-<meta name="description" content="A single-file mobile web app for Vikunja, served by Vikunja itself.">
+<meta name="description" content="A mobile web app for tasks and checklists in Vikunja, served by Vikunja itself.">
 <meta name="theme-color" content="#EEF1EF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -43,7 +43,6 @@
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
 </svg>
 
-<!-- ============ LOGIN ============ -->
 <section id="login" :hidden="screen !== 'login'" hidden>
   <h1>Pocket</h1>
   <p class="lead">Today's tasks and quick capture for your Vikunja.</p>
@@ -78,7 +77,6 @@
   </div>
 </section>
 
-<!-- ============ APP ============ -->
 <div id="app" :hidden="screen !== 'app'" hidden>
   <!-- Slides away as the list scrolls down, and back as soon as it scrolls up (initHeader). While searching, it holds the
        search box instead; that's always here, hidden, so the magnifier can focus it during the tap and the phone's
@@ -160,7 +158,6 @@
         </template><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div>
       </div></template>
     </div></template>
-
     <!-- Checklists: each checklist project's templates, to start a run from, and its runs in progress -->
     <template x-if="!view.loading && !view.error && route.name === 'checklists'"><div id="checklists">
       <template x-if="!view.checklists.length"><div class="empty"><b>No checklists here.</b>Open a project, tap ⋯ and choose Use for checklists, or make one with New project.</div></template>
@@ -202,7 +199,6 @@
         </div></template>
       </div></template>
     </div></template>
-
     <!-- A run: the step it's on, the list of steps, notes, and the notes from the last run of the same template -->
     <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
       <p class="run-for" id="run-for" x-text="runView.forText"></p>
@@ -320,7 +316,6 @@
   </div>
 </div>
 
-<!-- ============ SHEET ============ -->
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
 <section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', runopts: 'Run', start: 'Start a run', newtpl: 'New template', newproj: 'New project'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <div class="bar">
@@ -564,7 +559,6 @@
       </div></template>
 
     </div></template>
-
     <!-- A project's options: using it for checklists, so everyone it's shared with gets the Checklists tab -->
     <template x-if="sheet.kind === 'project' && sheet.project"><div>
       <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="sheet.project.title"></h2></div>
@@ -613,8 +607,6 @@
       <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(view.run.run)">Delete run</button>
         <p class="note" x-text="'Deletes the run and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their notes and photos, for everyone.'"></p></div>
     </div></template>
-
-    <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
     <!-- A new project: its name, where it goes, and whether it's for checklists -->
     <template x-if="sheet.kind === 'newproj' && sheet.newProj"><div id="new-project">
       <div class="d-title"><h2 style="margin:0;font-size:24px">New project</h2></div>
@@ -629,7 +621,6 @@
       <button class="btn block" id="np-create" style="margin-top:16px" :disabled="sheet.newProj.busy || !sheet.newProj.name.trim()" @click="makeProject()"
               x-text="sheet.newProj.busy ? 'Making the project…' : 'Make project'"></button>
     </div></template>
-
     <!-- A new template: its name and steps, a row each, with when each is due -->
     <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
       <div class="d-title"><h2 style="margin:0;font-size:24px">New template</h2></div>
@@ -668,7 +659,7 @@
       <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.name.trim() || !draft('new').added.length || draft('new').problem"
               @click="createTemplate()" x-text="sheet.newTpl.busy ? 'Making the template…' : 'Make template'"></button>
     </div></template>
-
+    <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
     <template x-if="sheet.kind === 'start'"><div>
       <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="'Start ' + (sheet.start?.template?.title || 'a run')"></h2></div>
       <template x-if="sheet.loading"><div class="loading">Loading…</div></template>
@@ -694,7 +685,6 @@
         <button class="btn block" id="start-go" style="margin-top:16px" :disabled="sheet.start.busy || !sheet.start.steps.length || startSteps.some(s => s.problem)" @click="startRun()" x-text="sheet.start.busy ? startProgress : 'Start'"></button>
       </div></template>
     </div></template>
-
     <template x-if="sheet.kind === 'account'"><div>
       <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="user?.name || user?.username || 'Account'"></h2></div>
       <div class="card">

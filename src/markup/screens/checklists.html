@@ -1,0 +1,41 @@
+    <!-- Checklists: each checklist project's templates, to start a run from, and its runs in progress -->
+    <template x-if="!view.loading && !view.error && route.name === 'checklists'"><div id="checklists">
+      <template x-if="!view.checklists.length"><div class="empty"><b>No checklists here.</b>Open a project, tap ⋯ and choose Use for checklists, or make one with New project.</div></template>
+      <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
+        <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
+        <div class="list">
+          <template x-for="t in cl.templates" :key="t.id"><div class="row cl-tpl" :data-id="t.id">
+            <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-checklist"/></svg>
+              <div class="t"><div class="title" x-text="t.title"></div><div class="meta num" x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></div></div></button>
+            <template x-if="canWrite(cl.project.id)"><button class="btn cl-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button></template>
+          </div></template>
+          <template x-if="!cl.templates.length"><p class="cl-hint">No templates here yet: a template is the checklist each run is copied from.</p></template>
+          <template x-if="!canWrite(cl.project.id)"><p class="cl-hint">Shared with you to read only: you can see its runs, but not start or work on them.</p></template>
+          <div class="row cl-new" x-show="canWrite(cl.project.id)"><button class="body" @click="openNewTemplate(cl.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>
+        </div>
+        <template x-if="cl.runs.length || startingIn(cl.project.id).length"><div>
+          <div class="cl-sub">In progress</div>
+          <div class="list">
+            <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
+              <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="'For ' + (e.for.id === user?.id ? 'you' : e.for.name || e.for.username)"></span></div></div>
+              <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
+            <template x-for="r in cl.runs" :key="r.id"><div class="row cl-run" :data-id="r.id">
+              <button class="body" @click="openRun(r.id)"><div class="title" x-text="r.title"></div>
+                <div class="meta"><span class="num" x-text="runCount(r).done + ' of ' + runCount(r).total + ' done'"></span><template x-if="runCount(r).next"><span x-text="'Next: ' + runCount(r).next"></span></template><template x-if="r.forText"><span x-text="r.forText"></span></template></div></button>
+              <svg class="i chev" style="align-self:center;color:var(--muted)"><use href="#i-chev"/></svg>
+            </div></template>
+          </div>
+        </div></template>
+        <!-- The last few runs finished, to look back at, or reopen from their ⋯ -->
+        <template x-if="cl.finished?.length"><div>
+          <div class="cl-sub">Finished lately</div>
+          <div class="list">
+            <template x-for="r in cl.finished" :key="r.id"><div class="row cl-done" :data-id="r.id">
+              <button class="body" @click="openRun(r.id)"><div class="title" x-text="r.title"></div>
+                <div class="meta"><span class="num" x-text="'Finished ' + new Date(r.done_at).toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'})"></span><template x-if="r.forText"><span x-text="r.forText"></span></template></div></button>
+              <svg class="i chev" style="align-self:center;color:var(--muted)"><use href="#i-chev"/></svg>
+            </div></template>
+          </div>
+        </div></template>
+      </div></template>
+    </div></template>

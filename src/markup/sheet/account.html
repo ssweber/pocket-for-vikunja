@@ -1,0 +1,14 @@
+    <template x-if="sheet.kind === 'account'"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="user?.name || user?.username || 'Account'"></h2></div>
+      <div class="card">
+        <div class="prop"><span class="k">User</span><span class="v" x-text="'@' + (user?.username || '')"></span></div>
+        <div class="prop"><span class="k">Server</span><span class="v" style="overflow-wrap:anywhere" x-text="server"></span></div>
+        <div class="prop"><span class="k">Version</span><span class="v num" x-text="info?.version || ''"></span></div>
+        <div class="prop"><span class="k">Signed in</span><span class="v" x-text="mode === 'session' ? 'Same as Vikunja on this device' : 'With an API token'"></span></div>
+      </div>
+      <div class="h3">Quick add from anywhere</div>
+      <div class="card"><div class="desc" style="font-size:15px">Open <code style="overflow-wrap:anywhere" x-text="location.origin + location.pathname + '#/add?text=…'"></code> to start a task with text filled in — handy from an iOS Shortcut or a bookmark.</div></div>
+      <a class="btn ghost block" :href="server" target="_blank" rel="noopener" style="text-decoration:none;margin-top:6px">Open Vikunja on the web</a>
+      <div class="danger-zone"><button class="btn danger block" id="btn-signout" @click="signOut()">Sign out</button>
+        <template x-if="mode === 'session'"><p class="note">This also signs you out of Vikunja on this device.</p></template></div>
+    </div></template>

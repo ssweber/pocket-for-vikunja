@@ -1,0 +1,33 @@
+<section id="login" :hidden="screen !== 'login'" hidden>
+  <h1>Pocket</h1>
+  <p class="lead">Today's tasks and quick capture for your Vikunja.</p>
+  <div id="login-err" class="err" :hidden="!login.err" x-html="login.err" hidden></div>
+
+  <template x-if="!info && !login.err"><p class="note">Connecting…</p></template>
+  <template x-if="!info && login.err"><button class="btn ghost block" type="button" @click="probe()">Try again</button></template>
+
+  <div id="auth-step" :hidden="!info" hidden>
+    <template x-if="providers.length"><div id="sso">
+      <template x-for="p in providers" :key="p.key"><button type="button" class="btn block sso-btn" @click="signInWith(p)" x-text="'Sign in with ' + p.name"></button></template>
+      <template x-if="login.waiting"><p class="note">Finish signing in in the other tab. Pocket continues by itself.</p></template>
+      <!-- The home-screen app signs in in the same window, and the provider can only return to Vikunja's page. -->
+      <template x-if="INSTALLED"><p class="note">After signing in, Vikunja's page opens. Close it to come back to Pocket.</p></template>
+      <p class="or">or</p>
+    </div></template>
+    <div class="seg" role="group" aria-label="Sign-in method" :hidden="!passwordAllowed">
+      <button type="button" data-mode="session" :aria-pressed="String(login.method === 'session')" @click="login.method = 'session'">Password</button>
+      <button type="button" data-mode="token" :aria-pressed="String(login.method === 'token')" @click="login.method = 'token'">API token</button>
+    </div>
+    <form id="f-pass" :hidden="login.method !== 'session'" @submit.prevent="submitPassword()">
+      <label class="field"><span>Username or email</span><input id="in-user" x-ref="inUser" x-model="login.user" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label class="field"><span>Password</span><input id="in-pass" x-model="login.pass" type="password" autocomplete="current-password" required></label>
+      <label class="field" id="totp-field" :hidden="!login.showTotp" hidden><span>Two-factor code</span><input id="in-totp" x-ref="inTotp" x-model="login.totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"></label>
+      <button class="btn block" type="submit" :disabled="login.busy">Sign in</button>
+    </form>
+    <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
+      <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
+      <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
+      <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects. For checklists, also tick “Reactions”, and “Update” under Projects.</p>
+    </form>
+  </div>
+</section>

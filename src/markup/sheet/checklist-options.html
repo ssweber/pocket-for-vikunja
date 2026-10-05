@@ -1,0 +1,48 @@
+    <!-- A project's options: using it for checklists, so everyone it's shared with gets the Checklists tab -->
+    <template x-if="sheet.kind === 'project' && sheet.project"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="sheet.project.title"></h2></div>
+      <template x-if="sheet.projEdit?.perm === null"><div class="loading">Loading…</div></template>
+      <template x-if="sheet.projEdit?.perm === -1"><p class="note" id="p-offline">Changing a project needs a connection to Vikunja.</p></template>
+      <template x-if="sheet.projEdit?.perm === 0"><p class="note" id="p-readonly">You can see this project, but not change it: it's shared with you to read only.</p></template>
+      <template x-if="sheet.projEdit?.perm >= 1"><label class="field"><span>Name</span>
+        <input id="p-name" x-model="sheet.projEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="renameProject()"></label></template>
+      <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-checklist">
+        <template x-if="!isChecklistProject(sheet.project)"><div>
+          <p>Use this project for checklists: templates people start, and work through step by step, again and again. Everyone the project is shared with gets a Checklists tab in Pocket.</p>
+          <button class="btn block" id="p-use-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, true)">Use for checklists</button>
+        </div></template>
+        <template x-if="isChecklistProject(sheet.project)"><div>
+          <p>This project is for checklists: its templates and runs are under Checklists.</p>
+          <a class="btn ghost block" href="#/checklists" style="text-decoration:none;margin-bottom:10px">Go to Checklists</a>
+          <button class="btn danger block" id="p-stop-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, false)">Stop using for checklists</button>
+        </div></template>
+      </div></template>
+      <template x-if="sheet.projEdit?.perm >= 1"><div class="danger-zone">
+        <button class="btn ghost block" id="p-archive" @click="archiveProject()">Archive project</button>
+        <template x-if="sheet.projEdit.perm >= 2"><button class="btn danger block" id="p-delete" style="margin-top:10px" @click="deleteProject()"
+          x-text="sheet.projEdit.tasks === null ? 'Delete project' : 'Delete project and its ' + sheet.projEdit.tasks + (sheet.projEdit.tasks === 1 ? ' task' : ' tasks')"></button></template>
+        <template x-if="sheet.projEdit.perm < 2"><p class="note">Only the project's owner, or someone it's shared with as admin, can delete it.</p></template>
+      </div></template>
+    </div></template>
+
+    <!-- A run's ⋯: the run as a task, and deleting it -->
+    <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="view.run.run.title"></h2></div>
+      <template x-if="sheet.runEdit"><div>
+        <label class="field"><span x-text="sheet.runEdit.prefix ? 'Name, between the template\'s and the day' : 'Name'"></span>
+          <input id="r-name" x-model="sheet.runEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="saveRunName()"></label>
+        <div class="h3">For</div>
+        <div class="card who-pick" id="r-for" role="radiogroup" aria-label="Who the run is for">
+          <template x-if="!sheet.runEdit.people.length"><span class="note">Loading…</span></template>
+          <template x-for="u in sheet.runEdit.people" :key="u.id"><button type="button" class="chip toggle" role="radio" :data-user="u.username" :aria-checked="String(sheet.runEdit.forId === u.id)" :aria-pressed="String(sheet.runEdit.forId === u.id)"
+            @click="setRunFor(u)" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
+        </div>
+      </div></template>
+      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.run.run.id)">Reopen run, back under In progress</button></template>
+      <div class="card cl-card" style="margin-top:14px">
+        <p>The run is a task in Vikunja, with its steps as subtasks.</p>
+        <button class="btn ghost block" id="r-open-task" @click="openTask(view.run.run.id)">Open as a task</button>
+      </div>
+      <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(view.run.run)">Delete run</button>
+        <p class="note" x-text="'Deletes the run and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their notes and photos, for everyone.'"></p></div>
+    </div></template>

@@ -1,0 +1,38 @@
+    <!-- A new template: its name and steps, a row each, with when each is due -->
+    <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
+      <div class="d-title"><h2 style="margin:0;font-size:24px">New template</h2></div>
+      <p class="note" style="margin:0 0 14px" x-text="'In ' + sheet.newTpl.project.title"></p>
+      <label class="field"><span>Name</span><input id="nt-name" x-model="sheet.newTpl.name" placeholder="Like Startup, or Closing up" autocomplete="off" enterkeyhint="next"
+        @keydown.enter.prevent="document.getElementById('new-step-0')?.focus()"></label>
+      <div class="h3">Steps</div>
+      <div class="card draft" id="new-steps">
+          <template x-for="(st, k) in draftRows('new')" :key="st.key"><div class="draft-step">
+            <div class="draft-line">
+              <template x-for="d in [draft('new').info.get(st.key)]" :key="0"><span class="num draft-no" x-text="d ? d.i + 1 : ''"></span></template>
+              <textarea class="draft-in" rows="1" :id="'new-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Take the croissants out in 18 min”'" :aria-label="'Step ' + (k + 1)"
+                     enterkeyhint="next" x-effect="st.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); addDraftRow('new', k + 1); }" @paste="pasteDraft('new', $event, k)"></textarea>
+              <button type="button" class="icon-btn plain" :aria-label="'Move up: ' + (st.text || 'step ' + (k + 1))" :disabled="k === 0" @click="moveDraftRow('new', k, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+              <button type="button" class="icon-btn plain" :aria-label="'Move down: ' + (st.text || 'step ' + (k + 1))" :disabled="k === draftRows('new').length - 1" @click="moveDraftRow('new', k, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+              <button type="button" class="icon-btn plain" :aria-label="'Remove: ' + (st.text || 'step ' + (k + 1))" @click="dropDraftRow('new', k)"><svg class="i"><use href="#i-close"/></svg></button>
+            </div>
+            <template x-for="d in [draft('new').info.get(st.key)].filter(d => d && (d.problem || d.offset !== null || d.kept || d.name))" :key="0"><div class="draft-meta">
+              <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
+              <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+                <template x-if="d.i === 0 && !d.lost"><span>the start</span></template>
+                <template x-if="d.i > 0 || d.lost"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
+                  <template x-if="d.lost"><option value="?" disabled selected>pick one</option></template>
+                  <option value="" :selected="!d.lost && d.from === ''" x-text="d.i ? 'the step before' : 'the start'"></option>
+                  <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
+                </select></template>
+                <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” as words'" @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
+              </span></template>
+              <template x-if="d.kept"><button type="button" class="chip tap off" title="Tap to read it as a time" @click="st.keep = false"><svg class="i"><use href="#i-clock"/></svg><span x-text="d.phrase"></span></button></template>
+              <template x-if="d.name"><span x-text="'Named “' + d.name + '”'"></span></template>
+            </div></template>
+          </div></template>
+          <button type="button" class="draft-add" id="new-add-step" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
+      </div>
+      <p class="note">“in 20 min”, “after an hour” or “20 minutes later” in a step makes it due that long after the step before it is done. Pick another step in its chip to count from that one.</p>
+      <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.name.trim() || !draft('new').added.length || draft('new').problem"
+              @click="createTemplate()" x-text="sheet.newTpl.busy ? 'Making the template…' : 'Make template'"></button>
+    </div></template>

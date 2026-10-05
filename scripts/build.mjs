@@ -4,7 +4,7 @@
 //   npm run build -- --watch   again on every change in src/ (npm run dev does this)
 //
 // It reads src/index.html and puts into it, in place:
-//   <!-- include markup/x.html -->                 that file from src/ (and any includes in it)
+//   <!-- include markup/x.html -->                 src/markup/x.html (and any includes in it, also from src/)
 //   <link rel="stylesheet" href="styles.css">      that stylesheet from src/, minified, in a <style>
 //   <script type="module" src="js/main.js">        that script from src/ and everything it imports, as one minified
 //                                                  script, with a source map next to the page (pocket.js.map)
@@ -32,7 +32,7 @@ const inSrc = (from, path) => {
 function include(file, seen = []){
   if (seen.includes(file)) throw new Error(`${relative(ROOT, file)} includes itself`);
   return read(file).replace(/^([ \t]*)<!-- include (\S+) -->\n?/gm, (_, indent, path) => {
-    const part = inSrc(file, path);
+    const part = inSrc(join(SRC, 'index.html'), path);                         // always from src/, wherever it's written
     if (!part) throw new Error(`${relative(ROOT, file)}: no src file ${path} to include`);
     return include(part, [...seen, file]);
   });

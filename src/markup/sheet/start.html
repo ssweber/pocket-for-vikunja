@@ -1,0 +1,26 @@
+    <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
+    <template x-if="sheet.kind === 'start'"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="'Start ' + (sheet.start?.template?.title || 'a run')"></h2></div>
+      <template x-if="sheet.loading"><div class="loading">Loading…</div></template>
+      <template x-if="sheet.error"><div class="err" x-html="sheet.error"></div></template>
+      <template x-if="sheet.start?.template"><div>
+        <div class="h3">For</div>
+        <div class="card who-pick" id="start-for" role="radiogroup" aria-label="Who the run is for">
+          <template x-for="u in sheet.start.people" :key="u.id"><button type="button" class="chip toggle" role="radio" :data-user="u.username" :aria-checked="String(sheet.start.forId === u.id)" :aria-pressed="String(sheet.start.forId === u.id)"
+            @click="sheet.start.forId = u.id" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
+        </div>
+        <!-- What the run is called: the words typed take the place of "run 3", between the template's name and the day -->
+        <label class="field" style="margin-top:14px"><span>Name, between the template's and the day</span>
+          <input id="start-name" x-model="sheet.start.name" :placeholder="'run ' + sheet.start.next" autocomplete="off" enterkeyhint="go"
+                 @keydown.enter.prevent="startRun()"></label>
+        <p class="note" id="start-title" style="margin-top:-6px" x-text="'Called “' + runTitle(sheet.start.template.title, sheet.start.name.trim() || 'run ' + sheet.start.next, new Date()) + '”'"></p>
+        <div class="h3">Steps<span class="n num" x-text="sheet.start.steps.length"></span></div>
+        <div class="card" id="start-steps">
+          <template x-for="(s, i) in startSteps" :key="sheet.start.steps[i].id"><div class="prop"><span class="k num" style="width:24px" x-text="i + 1"></span><span class="v"><span style="flex:1" x-text="s.title"></span>
+            <template x-if="s.text || s.problem"><span class="num start-due" :class="{bad: s.problem}" x-text="s.problem || s.text"></span></template></span></div></template>
+          <template x-if="!sheet.start.steps.length"><p class="cl-hint">This template has no steps yet.</p></template>
+        </div>
+        <template x-if="startSteps.some(s => s.problem)"><p class="note" id="start-problem">Fix the template's steps before starting a run.</p></template>
+        <button class="btn block" id="start-go" style="margin-top:16px" :disabled="sheet.start.busy || !sheet.start.steps.length || startSteps.some(s => s.problem)" @click="startRun()" x-text="sheet.start.busy ? startProgress : 'Start'"></button>
+      </div></template>
+    </div></template>
