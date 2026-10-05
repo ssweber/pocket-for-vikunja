@@ -57,7 +57,7 @@ import (
 type Pocket struct{ dir string }
 
 func (p *Pocket) Name() string    { return "pocket" }
-func (p *Pocket) Version() string { return "0.1.0" }
+func (p *Pocket) Version() string { return "0.0.0-dev" } // set from the tag when a release is made
 func (p *Pocket) Shutdown() error { return nil }
 
 // Init turns on step times if asked to, and finds the app/ folder. Vikunja doesn't tell a plugin where it lives, so
@@ -79,7 +79,7 @@ func (p *Pocket) Init() error {
 				return err
 			}
 			p.dir = abs
-			log.Infof("pocket: serving %s at /api/v1/plugins/pocket/", abs)
+			log.Infof("pocket: serving %s at /api/v1/plugins/pocket/ (version %s)", abs, p.Version())
 			return nil
 		}
 	}

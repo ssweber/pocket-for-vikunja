@@ -51,9 +51,10 @@ Pocket works offline, and keeps whatever you're writing until it's sent. It foll
 
 Pocket needs Vikunja 2.7 or later.
 
-1. **Copy the `pocket` folder** from this repo into Vikunja's `plugins` folder, so that you have
-   `plugins/pocket/main.go` and `plugins/pocket/app/index.html`. On Cloudron, use the Vikunja app's **File Manager** to
-   put it at `/app/data/plugins/pocket/`; elsewhere, `plugins` goes in Vikunja's root path.
+1. **Download `pocket-v….zip`** from the [latest release](https://github.com/ssweber/pocket-for-vikunja/releases/latest)
+   and unzip it into Vikunja's `plugins` folder, so that you have `plugins/pocket/main.go` and
+   `plugins/pocket/app/index.html`. On Cloudron, use the Vikunja app's **File Manager** to put it at
+   `/app/data/plugins/pocket/`; elsewhere, `plugins` goes in Vikunja's root path.
 
 2. **Add this to Vikunja's `config.yml`** (`/app/data/config.yml` on Cloudron), then restart Vikunja:
 
@@ -74,8 +75,8 @@ Pocket needs Vikunja 2.7 or later.
 
 4. **Add it to your home screen** from the browser's Share or menu button.
 
-**Updating:** replace the files in `plugins/pocket/app/`, then reopen Pocket while online. Only a changed `main.go`
-needs a Vikunja restart.
+**Updating:** unzip a newer release over `plugins/pocket/`, then reopen Pocket while online. Vikunja needs a restart
+only for a changed `main.go`, and the version in its log comes from there: a restart shows the new one.
 
 ## Using it
 

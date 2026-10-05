@@ -4,9 +4,10 @@
 //   npm run dev          start it, then open the printed address and sign in as dev / dev-password, or with "Mock SSO"
 //   npm run test:local   start it and run all the test files against it
 //
-// Edits to pocket/app/ show up on reload; after changing pocket/main.go, run it again. The data lives only as long as
+// Both build Pocket's page from src/ first. npm run dev then keeps building it as src/ changes, so edits show up on
+// reload, until it's stopped with Ctrl+C; Vikunja keeps running. After changing pocket/main.go, run it again. The data lives only as long as
 // the containers. Stop them with: docker rm -f pocket-dev pocket-dev-sso
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,6 +36,7 @@ async function waitFor(url, what){
   }
 }
 
+run(process.execPath, [fileURLToPath(new URL('build.mjs', import.meta.url))], { stdio: 'inherit' });
 run('docker', ['rm', '-f', NAME, SSO], { allowFail: true });
 
 // The mock provider signs anyone in as "sso". Vikunja joins its network, so both the browser and Vikunja reach the
@@ -89,4 +91,6 @@ if (process.argv.includes('--test')) {
   const results = ['tests/parse.mjs', 'tests/smoke.mjs', 'tests/session.mjs', 'tests/offline.mjs', 'tests/checklists.mjs', 'tests/steptimes.mjs'].map(test =>
     run(process.execPath, [fileURLToPath(new URL('../' + test, import.meta.url))], { env, stdio: 'inherit', allowFail: true }).status);
   process.exitCode = results.some(Boolean) ? 1 : 0;
+} else {
+  spawn(process.execPath, [fileURLToPath(new URL('build.mjs', import.meta.url)), '--watch'], { stdio: 'inherit' });
 }

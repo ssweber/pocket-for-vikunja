@@ -1,13 +1,13 @@
 # Pocket for Vikunja
 
-A mobile web app for Vikunja, served by Vikunja itself through a plugin (`pocket/main.go`). Read
-`docs/development.md` for the layout, running it locally and the tests, and `docs/roadmap.md` before changing how the
-code is organised.
+A mobile web app for tasks and checklists in Vikunja, served by Vikunja itself through a plugin (`pocket/main.go`).
+Read `docs/development.md` for the layout, running it locally and the tests, and `docs/roadmap.md` before changing how
+the code is organised.
 
 ## The code
 
-- All of the app is in `pocket/app/index.html`: plain CSS, and Alpine.js. There's no build step yet (the roadmap adds
-  one). Edit it in place, in the marked section that fits.
+- The app is written in `src/` (plain CSS, and Alpine.js), and `npm run build` makes `pocket/app/index.html` from it.
+  Edit `src/`, never `pocket/app/index.html`, and commit both: CI checks they match.
 - `pocket/app/sw.js` lets Pocket open offline. A new file in `pocket/app/` needs thinking about how it's cached there.
 - `pocket/main.go` runs inside Vikunja with Yaegi, from source. It changes no Vikunja data except what its header
   comment says.

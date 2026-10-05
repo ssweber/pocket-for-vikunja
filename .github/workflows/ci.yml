@@ -1,0 +1,47 @@
+# Runs on each pull request to main and each push to main, not on every push to dev.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build and quick add
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: The committed page is the build of src/
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain pocket/app)" ]; then
+            git status --short pocket/app
+            echo "::error::pocket/app/ doesn't match src/. Run npm run build and commit what it changes."
+            exit 1
+          fi
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:parse
+
+  e2e:
+    name: Against Vikunja
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # A local Vikunja in Docker, with the plugin loaded from this checkout, and every test file against it.
+      - run: npm run test:local

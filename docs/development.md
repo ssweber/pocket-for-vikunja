@@ -1,17 +1,20 @@
 # Developing Pocket
 
 ```
-pocket/        copy this folder into Vikunja's plugins folder
-  main.go      the plugin: serves app/ at /api/v1/plugins/pocket/
-  app/         the app itself; sw.js lets it open offline
+src/           the app's code, which npm run build makes into pocket/app/index.html
+pocket/        the plugin, as it's installed in Vikunja's plugins folder
+  main.go      serves app/ at /api/v1/plugins/pocket/
+  app/         the built app, the libraries it uses, and sw.js, which lets it open offline
 tests/         the six test files described below
-scripts/       dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and screenshots
+scripts/       build.mjs: the build; dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and
+               screenshots
+.github/       CI on pull requests and main, and the zip attached to each release
 docs/          this file, guide.md (everything the README leaves out), the screenshots, design/ (feature plans) and
                roadmap.md: how the code and the way we work on it will change
   design/      plans for features, written before building them
 ```
 
-All of the app's code is in `pocket/app/index.html`: plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. There's no build step. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
+The app is plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. It's written in `src/`, and `npm run build` puts it all into one file, `pocket/app/index.html`, which is committed too, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/index.html`: CI checks that it's the build of `src/`. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
 
 ## Running it locally
 
@@ -22,7 +25,7 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/`, its step times on, and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. Edits to `pocket/app/` show up when you reload; after changing `main.go`, run `npm run dev` again.
+This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/`, its step times on, and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. It keeps building the page as `src/` changes, so edits show up when you reload, until you stop it with Ctrl+C (Vikunja keeps running). After changing `main.go`, run `npm run dev` again.
 
 ## Tests
 

@@ -77,9 +77,12 @@ Each step is its own commit, with the tests passing before and after.
    - Versions follow [semantic versioning](https://semver.org), starting at 0.1.0. Until 1.0, anything may change: a
      new feature, or a change to what Pocket writes into Vikunja (the step times syntax, the marker of a project for
      checklists, the `template` label), goes up to the next 0.x.0; fixes only, to the next 0.x.y. 1.0 is a promise that
-     those won't change without a major version. The version is in `package.json` and `Version()` in `main.go`, and
-     each release is tagged with it (`v0.1.0`) on `main`.
-   - GitHub Actions run the tests on each pull request and each push to `main`, not on every push to `dev`.
+     those won't change without a major version.
+   - A release is made on GitHub: **Releases → Draft a new release**, a new tag on `main` like `v0.1.0`, and
+     **Publish**. The tag is the version: `.github/workflows/release.yml` writes it into `Version()` in `main.go` and
+     attaches `pocket-v0.1.0.zip`, the folder to install. In the repo, the version stays `0.0.0-dev`.
+   - `.github/workflows/ci.yml` runs the tests on each pull request to `main` and each push to it, not on every push
+     to `dev`.
 3. **The build, splitting nothing.** `src/index.html` starts as a copy of today's file, and the build only copies and
    minifies it. `npm run dev` rebuilds on every change; the tests and `npm run demo` use the output. Add the CI check
    that the output matches `src/`. This proves the build with nothing else changing.
