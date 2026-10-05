@@ -2,25 +2,34 @@
 //
 //   npm run test:parse
 //
-// Loads pocket/app/index.html in a headless browser and runs parseCapture() on each phrase with a fixed "now",
-// and captureLines() on a few pasted lists.
+// Loads src/js/quickadd.js and src/js/checklists.js in a headless browser, with chrono from pocket/app/, and runs
+// parseCapture() on each phrase with a fixed "now", captureLines() on a few pasted lists, and the checklist steps' own
+// reading on steps. It tests src/ as it is, so there's no need to build first.
 // The phrases and expectations are adapted from Vikunja's own Quick Add Magic tests
 // (frontend/src/modules/quickAddMagic/quickAddMagic.test.ts), so Pocket reads text the way Vikunja does.
 // Cases marked `pocket` are where Pocket deliberately differs from Vikunja, or goes further; `why` says how.
 // Optional: BROWSER_CHANNEL=msedge|chrome.
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+/* global parseCapture, captureLines, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc */
 
-const ROOT = resolve(fileURLToPath(new URL('../pocket/app', import.meta.url)));
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
+// The page: the modules' functions, as globals for page.evaluate().
+const CHRONO = (await readdir(resolve(ROOT, 'pocket/app'))).find(f => /^chrono-.*\.js$/.test(f));
+const PAGE = `<!doctype html><script type="module">
+import * as chrono from '/pocket/app/${CHRONO}'; window.chrono = chrono;
+const quickadd = await import('/src/js/quickadd.js'), checklists = await import('/src/js/checklists.js');
+Object.assign(window, quickadd, checklists);
+</script>`;
 const http = createServer(async (req, res) => {
   let file = '';
   try { file = resolve(ROOT, '.' + decodeURIComponent(new URL(req.url, 'http://x').pathname)); } catch {}
-  if (file === ROOT) file = resolve(ROOT, 'index.html');
-  if (!file.startsWith(ROOT + sep)) { res.writeHead(404).end(); return; }
+  if (file === ROOT) { res.writeHead(200, { 'Content-Type': 'text/html' }).end(PAGE); return; }
+  if (![resolve(ROOT, 'src'), resolve(ROOT, 'pocket/app')].some(dir => file.startsWith(dir + sep))) { res.writeHead(404).end(); return; }
   let body;
   try { body = await readFile(file); } catch { res.writeHead(404).end(); return; }
   res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(body);

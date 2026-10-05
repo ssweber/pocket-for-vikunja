@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   check:
-    name: Build and quick add
+    name: Build, lint and quick add
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -29,6 +29,7 @@ jobs:
             echo "::error::pocket/app/ doesn't match src/. Run npm run build and commit what it changes."
             exit 1
           fi
+      - run: npm run lint
       - run: npx playwright install --with-deps chromium
       - run: npm run test:parse
 

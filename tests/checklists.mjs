@@ -372,7 +372,7 @@ try {
       await p.waitForSelector(`.cl-run .title:text-is("${run.title}")`);
     } catch (e) {
       await p.screenshot({ path: `${OUT}/checklists-fail-other.png` });
-      throw new Error(`${e.message.split('\n')[0]}; looking for "${run.title}", their rows: ${JSON.stringify(await rows())}`);
+      throw new Error(`${e.message.split('\n')[0]}; looking for "${run.title}", their rows: ${JSON.stringify(await rows())}`, { cause: e });
     } finally { await theirs.close(); }
   });
 

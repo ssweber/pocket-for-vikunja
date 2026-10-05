@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "lint": "eslint .",
     "dev": "node scripts/dev.mjs",
     "test": "node tests/parse.mjs && node tests/smoke.mjs && node tests/checklists.mjs",
     "test:parse": "node tests/parse.mjs",

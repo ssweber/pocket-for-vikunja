@@ -20,7 +20,6 @@ const OUT = new URL('../docs/screenshots/', import.meta.url);
 const out = name => fileURLToPath(new URL(name, OUT));
 const NOW = new Date(2026, 8, 30, 10, 5);                    // Wednesday 30 September 2026, 10:05, local time
 const at = (days, h = 0, m = 0) => { const d = new Date(NOW); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const frames = [];                               // {png, delay}, for the GIF being filmed
 
 async function call(method, path, body, token){
@@ -34,7 +33,6 @@ async function call(method, path, body, token){
 async function account(username, name){
   await call('POST', '/register', { username, email: `${username}@example.com`, password: `${username}-password` }).catch(() => {});
   const { token } = await call('POST', '/login', { username, password: `${username}-password` });
-  const user = await call('GET', '/user', null, token);
   await call('PATCH', '/user/settings/general', { name }, token);
   return { token, user: await call('GET', '/user', null, token) };
 }
@@ -196,7 +194,7 @@ await page.locator('#in-capture').blur();
 await film(1800); hold(1200);                                      // the new row lights up, then fades
 // 2. Progress: hold a task, then slide.
 {
-  await page.evaluate(() => { app.toast.show = false; }); await page.waitForTimeout(250); await snap(300);
+  await page.evaluate(() => { Alpine.$data(document.body).toast.show = false; }); await page.waitForTimeout(250); await snap(300);
   const row = await page.locator('.row:has-text("Post next week")').boundingBox();
   const x = row.x + 30, y = row.y + row.height / 2;        // so the finger ends at the edge of the fill
   await touch('touchStart', x, y); await snap(250);
@@ -232,14 +230,14 @@ await template('Opening up', ['Turn on the espresso machine {#machine}', 'Put th
 await template('Closing down', ['Backflush the espresso machine', 'Count the till', 'Wipe down the tables', 'Lock up']);
 
 gif = await phone({ scale: 1.5, height: 760 });
-({ page, touch } = gif);
+({ page } = gif);
 await tap('nav.tabs a[data-tab=checklists]');
 await page.waitForSelector('.cl-start'); await page.waitForTimeout(300); await snap(1400);
 await tap('.cl-tpl:has-text("Opening up") .cl-start');
 await page.waitForSelector('#start-go:not([disabled])'); await page.waitForTimeout(500);
 await snap(2600);                                                    // the steps, with when each is due
 await tap('#start-go');
-await page.waitForSelector('#step-title'); await page.evaluate(() => { app.toast.show = false; }); await page.waitForTimeout(400);
+await page.waitForSelector('#step-title'); await page.evaluate(() => { Alpine.$data(document.body).toast.show = false; }); await page.waitForTimeout(400);
 await snap(1800);
 await tap('#step-done');
 await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")'); await page.waitForTimeout(300); await snap(1200);

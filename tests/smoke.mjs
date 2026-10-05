@@ -219,7 +219,7 @@ try {
     if (r.ms > 1000) throw new Error(`sanitize took ${Math.round(r.ms)} ms`);
     if (/javascript/i.test(r.links) || !r.links.includes('href="https://ok.example/"')) throw new Error('links: ' + r.links);
     if (/x-|@click|:class/.test(r.alpine)) throw new Error('attributes kept: ' + r.alpine);
-    if (/<(svg|math|text|mi)/i.test(r.foreign)) throw new Error('SVG/MathML kept: ' + r.foreign);
+    if (/<(svg|math|text|mi)\b/i.test(r.foreign)) throw new Error('SVG/MathML kept: ' + r.foreign);
     if (r.color !== 'var(--muted)') throw new Error('color not rejected: ' + r.color);
   });
   await step('set-priority', async () => {
@@ -604,7 +604,6 @@ try {
   });
 
   await step('label-on-enter-and-people-suggested', async () => {
-    const t = `Pocket smoke tick A ${stamp}`;
     await page.click('#d-add-label');
     await page.fill('#lp-q', label);
     await page.press('#lp-q', 'Enter');

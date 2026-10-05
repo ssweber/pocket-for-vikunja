@@ -1,0 +1,218 @@
+// Checklists: how templates, runs and timed steps are kept in Vikunja, and steps as they are written.
+import {allPages, ApiError} from './api.js';
+import {htmlToText} from './html.js';
+import {NUMBER_WORDS} from './quickadd.js';
+
+/* Checklists live in a project with a line "pocket:checklists" in its description. In it,
+   a template is a task labelled "template" and marked done, and its subtasks, also done, are its steps, in the order
+   they were linked (the order Vikunja keeps and shows them in). A run is a copy of a template with a copy of each step
+   under it, made with Vikunja's duplicate, so every copy keeps a "copied from" link to what it was copied from. Who
+   did a step is a reaction on it: ✅ when it was done, ⏭️ when it was skipped. */
+export const CHECKLIST_MARK = 'pocket:checklists';
+export const isChecklistDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === CHECKLIST_MARK);
+export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
+export const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
+// An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
+export const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
+export const DONE_MARK = '✅', SKIP_MARK = '⏭️';
+// What quick add leaves alone in a checklist's steps: dates (a step's time is its T#), and the project, so every step
+// stays in its template's project, as Pocket's plugin needs.
+export const STEP_IGNORE = {due: true, repeat: true, project: true};
+/* When a step is due, written in its title in the template, the way IEC 61131-3 writes times:
+     Put the roast in {#roast}    names the step "roast"
+     Peel the potatoes T#20m      due 20 minutes after the step before it is done (the first step: after the run starts)
+     Baste the roast T#40m:roast  due 40 minutes after the step named "roast" is done
+   Units are d, h, m, s and ms, and combine: T#1h30m. A step without a time has no due date: it's simply next. Copies
+   of the steps in a run have their titles without these, and Pocket's plugin sets their due dates as steps are done. */
+const STEP_UNITS = {d: 864e5, h: 36e5, m: 6e4, s: 1e3, ms: 1}, STEP_MAX = 365 * 864e5;   // a year, as main.go
+const STEP_TIME = /(^|\s)(T#\S*)/gi, STEP_NAME = /\{#([^}\s]*)\}/g, NAME_OK = /^[a-z][\w-]*$/i;
+const sameName = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+export function parseStep(title){
+  const out = {title: '', offset: null, name: null, ref: null, problems: []};
+  const t = String(title || '').replace(STEP_TIME, (_, sp, tok) => {
+    const m = tok.match(/^T#(-?)((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::(.*))?$/i);
+    if (!m) out.problems.push(`“${tok}” isn't a time: write it like T#20m or T#1h30m`);
+    else if (m[1]) out.problems.push(`“${tok}”: a step can't be due before another`);
+    else if (m[3] !== undefined && !NAME_OK.test(m[3])) out.problems.push(`“${tok}”: a name starts with a letter`);
+    else if (out.offset !== null) out.problems.push('a step can have only one T# time');
+    else {
+      const ms = Math.round([...m[2].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce((n, u) => n + u[1] * STEP_UNITS[u[2].toLowerCase()], 0));
+      if (!(ms <= STEP_MAX)) out.problems.push(`“${tok}” is longer than a year`);
+      else { out.offset = ms; out.ref = m[3] ?? null; }
+    }
+    return sp;
+  }).replace(STEP_NAME, (tok, name) => {
+    if (!NAME_OK.test(name)) out.problems.push(`“${tok}”: a name starts with a letter`);
+    else if (out.name) out.problems.push('a step can have only one {#name}');
+    else out.name = name;
+    return ' ';
+  });
+  out.title = t.replace(/\s{2,}/g, ' ').trim();
+  return out;
+}
+// What's wrong with a template's steps, in order: each step's own problems, a name used twice, and a time counted
+// from a name that isn't an earlier step's (so none can wait on itself, or on one after it).
+export function stepProblems(titles){
+  const steps = titles.map(parseStep), out = [];
+  steps.forEach((s, i) => {
+    const say = text => out.push({i, title: s.title, text});
+    s.problems.forEach(say);
+    if (s.ref && !steps.slice(0, i).some(x => sameName(x.name, s.ref)))
+      say(steps.slice(i).some(x => sameName(x.name, s.ref)) ? `its time counts from “${s.ref}”, which has to be an earlier step` : `no step is named “${s.ref}”`);
+    if (s.name && steps.slice(0, i).some(x => sameName(x.name, s.name))) say(`“${s.name}” names an earlier step too`);
+  });
+  return out;
+}
+export const problemText = ps => `step ${ps[0].i + 1}, “${ps[0].title}”: ${ps[0].text}` + (ps.length > 1 ? ` (and ${ps.length - 1} more)` : '');
+// 5400000 -> "1h 30m". The two largest parts, so a countdown stays short.
+export function durText(ms){
+  const parts = [];
+  let left = Math.round(ms / 1000);
+  for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60], ['s', 1]]) if (left >= n) { parts.push(Math.floor(left / n) + u); left %= n; }
+  return parts.slice(0, 2).join(' ') || '0s';
+}
+// The step a timed step counts from, by index, in a list of parsed steps: -1 for the start of the run, null for none.
+export function stepFrom(steps, i){
+  const s = steps[i];
+  if (s.offset === null) return null;
+  if (!s.ref) return i - 1;
+  const j = steps.findIndex(x => sameName(x.name, s.ref));
+  return j >= 0 && j < i ? j : null;
+}
+/* A step's time in words, read while steps are written in Pocket: "in 20 min", "after an hour", "20 minutes later",
+   "1h 30m after". Saved as T#20m. Words that say what to do, like "for 2 minutes" or "rest 10 minutes", aren't read. */
+const STEP_UNIT = '(?:seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w)(?![a-z])';
+const STEP_UNIT_MS = [[/^s/, 1e3], [/^m/, 6e4], [/^h/, 36e5], [/^d/, 864e5], [/^w/, 6048e5]];
+let stepPhraseRe = null;
+export function readStepPhrase(text){
+  const words = `(?:an?|${Object.keys(NUMBER_WORDS).join('|')})`;
+  const part = `(?:\\d+(?:\\.\\d+)?\\s*|${words}\\s+)${STEP_UNIT}`, dur = `(?:half an hour|${part}(?:\\s*(?:and\\s+)?${part})*)`;
+  stepPhraseRe ||= new RegExp(`(^|\\s)(?:(?:in|after)\\s+(${dur})|(${dur})\\s+(?:later|after))(?=\\s|$|[,.!?;:])`, 'i');
+  const m = String(text || '').match(stepPhraseRe);
+  if (!m) return null;
+  const said = m[2] || m[3];
+  const half = /^half an hour$/i.test(said);
+  let offset = half ? 18e5 : 0;
+  if (!half) for (const p of said.matchAll(new RegExp(`(?:(\\d+(?:\\.\\d+)?)\\s*|(${words})\\s+)(${STEP_UNIT})`, 'gi'))) {
+    const n = p[1] ? +p[1] : NUMBER_WORDS[p[2].toLowerCase()] ?? 1;
+    offset += n * STEP_UNIT_MS.find(([re]) => re.test(p[3].toLowerCase()))[1];
+  }
+  if (!(offset <= STEP_MAX)) return null;
+  return {index: m.index + m[1].length, length: m[0].length - m[1].length, offset: Math.round(offset), text: m[0].slice(m[1].length)};
+}
+/* A template step's title as it's written in Pocket: "Baste T#40m:roast" -> "Baste 40m after Put the roast in". Its
+   {#name} stays, as other steps may count from it. */
+export function stepWords(title, titles){
+  const s = parseStep(title);
+  if (s.offset === null) return title;
+  const ref = s.ref && titles.map(parseStep).find(x => sameName(x.name, s.ref));
+  const when = s.ref ? (ref ? `${durText(s.offset)} after ${ref.title}` : null) : `in ${durText(s.offset)}`;
+  return when ? `${s.title} ${when}` + (s.name ? ` {#${s.name}}` : '') : title;
+}
+/* After "<time> after", the name of an earlier step, as written ("the" and "starting" in front are fine): {key, length}
+   of what names it, or null. The latest step with that name. */
+function afterStep(text, phrase, before){
+  if (!/\safter$/i.test(phrase.text.trim()) || !before.length) return null;
+  const rest = text.slice(phrase.index + phrase.length), lead = rest.match(/^\s+(?:(?:the|starting|start of)\s+)?/i);
+  if (!lead) return null;
+  const body = rest.slice(lead[0].length).toLowerCase();
+  for (let k = before.length - 1; k >= 0; k--) {
+    const title = parseStep(before[k].text).title.toLowerCase().replace(/[.!?]+$/, '');
+    for (const name of new Set([title, title.replace(/^the\s+/, '')])) {
+      if (name && body.startsWith(name) && !/[a-z0-9]/i.test(body[name.length] || '')) return {key: before[k].key, length: lead[0].length + name.length};
+    }
+  }
+  return null;
+}
+// 5400000 -> "T#1h30m"; with a name, "T#1h30m:roast".
+function stepToken(ms, ref){
+  let t = '', left = Math.round(ms);
+  for (const [u, n] of [['d', 864e5], ['h', 36e5], ['m', 6e4], ['s', 1e3], ['ms', 1]]) if (left >= n) { t += Math.floor(left / n) + u; left %= n; }
+  return `T#${t || '0m'}${ref ? ':' + ref : ''}`;
+}
+// A name for a step from its first words, "Put the roast in" -> "put-the-roast", "Warm up the press" -> "warm-up",
+// and not one already taken.
+const NAME_FILLER = /^(?:a|an|the|and|or|of|to|in|on|at|for|with|by)$/;
+function stepName(title, taken){
+  const words = (title.toLowerCase().match(/[a-z0-9]+/g) || []).slice(0, 3);
+  while (words.length > 1 && NAME_FILLER.test(words[words.length - 1])) words.pop();
+  let base = words.join('-') || 'step';
+  if (!/^[a-z]/.test(base)) base = 'step-' + base;
+  let name = base;
+  for (let n = 2; taken.some(t => sameName(t, name)); n++) name = `${base}-${n}`;
+  return name;
+}
+/* Steps being written in Pocket, a row each ({key, text, keep, from}), after `before` ({key, text}: a template's steps
+   already there): what each is saved as, and how it reads. A time in words becomes T#…, unless `keep` keeps the
+   words. `from`: null as written, '' the step before, or another row's key: that step, which gets a name made from its
+   words if it has none. So a step keeps counting from the same one when rows are moved. */
+export function draftSteps(rows, before = []){
+  const all = [...before.map(b => ({...b, fixed: true})), ...rows.filter(r => r.text.trim())];
+  const parsed = all.map(r => parseStep(r.text)), at = new Map(all.map((r, i) => [r.key, i]));
+  const phrase = all.map((r, i) => r.fixed || /(^|\s)T#/i.test(r.text) ? null : readStepPhrase(r.text));
+  // "30 minutes after the first article check": the words naming an earlier step go with the time, and the step counts
+  // from that one, as if it were picked in the chip (which still wins).
+  const named = all.map((r, i) => phrase[i] && afterStep(r.text, phrase[i], all.slice(0, i)));
+  named.forEach((n, i) => { if (n) phrase[i] = {...phrase[i], length: phrase[i].length + n.length, text: phrase[i].text + all[i].text.slice(phrase[i].index + phrase[i].length, phrase[i].index + phrase[i].length + n.length)}; });
+  const fromOf = (r, i) => r.from ?? (r.keep ? null : named[i]?.key ?? null);
+  const names = parsed.map(p => p.name), taken = names.filter(Boolean);
+  for (const [i, r] of all.entries()) {
+    const j = at.get(fromOf(r, i));
+    if (j !== undefined && !names[j]) { names[j] = stepName(parsed[j].title, taken); taken.push(names[j]); }
+  }
+  const saved = all.map((r, i) => {
+    let t = r.text.trim();
+    const read = phrase[i] && !r.keep ? phrase[i] : null, offset = read ? read.offset : parsed[i].offset;
+    if (read) t = (t.slice(0, read.index) + t.slice(read.index + read.length)).replace(/\s+([,.!?;:])(?=\s|$)/g, '$1').trim() + ' ' + stepToken(offset);
+    const from = fromOf(r, i);
+    if (offset !== null && (from === '' || at.has(from))) t = t.replace(/(^|\s)T#\S*/i, (_, sp) => sp + stepToken(offset, from ? names[at.get(from)] : null));
+    if (names[i] && !parsed[i].name) t += ` {#${names[i]}}`;
+    return t.replace(/\s{2,}/g, ' ').trim();
+  });
+  const steps = saved.map(parseStep), infos = stepInfos(saved), info = new Map();
+  all.forEach((r, i) => {
+    if (r.fixed) return;
+    const j = stepFrom(steps, i), from = fromOf(r, i), lost = !!from && !at.has(from) && steps[i].offset !== null;
+    info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text, lost,
+      problem: infos[i].problem || (lost ? 'the step it counts from isn\'t in this template any more: pick one' : ''),
+      phrase: phrase[i]?.text || '', kept: !!(phrase[i] && r.keep), from: j === null || j < 0 ? '' : steps[i].ref ? all[j].key : '',
+      choices: all.slice(0, i).map(x => ({key: x.key, title: parseStep(x.text).title}))});
+  });
+  return {info, added: saved.filter((_, i) => !all[i].fixed), problem: [...info.values()].some(x => x.problem),
+    renames: all.map((r, i) => r.fixed && saved[i] !== r.text.trim() ? {key: r.key, title: saved[i]} : null).filter(Boolean)};
+}
+// A template's steps as shown: each one's title, when it's due in a run, its name, and what's wrong with it.
+export function stepInfos(titles){
+  const steps = titles.map(parseStep), problems = stepProblems(titles);
+  return steps.map((s, i) => {
+    const j = stepFrom(steps, i), from = j === -1 ? 'the start' : j !== null && `“${steps[j].title}”`;
+    const when = !from ? '' : s.offset === 0 ? (j === -1 ? 'due at the start' : `due when ${from} is done`) : `due ${durText(s.offset)} after ${from}`;
+    const text = [when, s.name && `named “${s.name}”`].filter(Boolean).join(' · ');
+    return {title: s.title, text: text && text[0].toUpperCase() + text.slice(1), problem: problems.filter(p => p.i === i).map(p => p.text).join('; ')};
+  });
+}
+// Vikunja busy can answer 500 (on SQLite, "database is locked"): a few quick tries before taking it as an answer.
+export async function patiently(fn){
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) { if (!(e instanceof ApiError && e.status >= 500) || i >= 2) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); }
+  }
+}
+// A task with all its comments: expand=comments gives the first 50.
+export async function allComments(t){
+  if ((t.comments || []).length >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
+  return t;
+}
+// fn over each of a list, n at a time, in the list's order.
+export async function inBatches(list, n, fn){
+  const out = [];
+  for (let i = 0; i < list.length; i += n) out.push(...await Promise.all(list.slice(i, i + n).map(fn)));
+  return out;
+}
+const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
+export const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
+// What a run's screen keeps of a run and its steps, also saved for opening it offline.
+export const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
+  comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: (t.related_tasks?.subtask || []).map(s => s.id)});
+export const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, updated: t.updated, description: t.description || '',
+  attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: t.related_tasks?.copiedfrom?.[0]?.title ?? null});
