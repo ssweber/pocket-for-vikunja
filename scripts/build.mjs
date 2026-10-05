@@ -74,8 +74,14 @@ async function build(){
   // A "</script" or "</style" inside what was put in would end it early.
   for (const [, to] of parts) if (/<\/(script|style)/i.test(to.replace(/^<(script|style)[^>]*>/, '').replace(/<\/(script|style)>$/, '')))
     throw new Error('A </script> or </style> inside the inlined code would cut it short');
-  writeFileSync(join(OUT, 'index.html'), page);
-  if (map) writeFileSync(join(OUT, MAP), map);
+  write(join(OUT, 'index.html'), page);
+  if (map) write(join(OUT, MAP), map);
+}
+
+// Only a file that changed is written: a new modification time is a new version of Pocket to every open copy of it,
+// which reloads to get it.
+function write(file, text){
+  if (!existsSync(file) || read(file) !== text) writeFileSync(file, text);
 }
 
 try {
