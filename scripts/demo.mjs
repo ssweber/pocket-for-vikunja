@@ -3,7 +3,8 @@
 //   npm run dev          in another terminal; it keeps running
 //   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-checklist.gif and the screenshots of Pocket and of Vikunja
 //
-// It uses two users of its own, alex and priya, with made-up tasks; alex's tasks and projects are replaced on each run.
+// The story is a small café: Alex owns it, and Priya is the shift lead who opens up. They're two users of the demo's
+// own, with made-up tasks; alex's tasks and projects are replaced on each run.
 // The page's clock is fixed at Wednesday 30 September 2026, 10:05, so "Today 10:30 AM" and "2 days ago" come out the
 // same every time. BROWSER_CHANNEL=msedge|chrome as for the tests; FRAMES=<folder> also saves the GIF's frames there.
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -41,17 +42,25 @@ async function account(username, name){
 // ---------- the demo's tasks ----------
 const alex = await account('alex', 'Alex Rivera'), priya = await account('priya', 'Priya Shah');
 const A = (method, path, body) => call(method, path, body, alex.token);
-for (const p of (await A('GET', '/projects')).items) if (p.id > 0 && p.id !== alex.user.settings.default_project_id && p.owner?.id === alex.user.id) await A('DELETE', '/projects/' + p.id);
+// Back to an Inbox as the default project (the café is the default by the end of a run), then everything else goes.
+const own = (await A('GET', '/projects')).items.filter(p => p.id > 0 && p.owner?.id === alex.user.id);
+const inbox = own.find(p => p.title === 'Inbox') || await A('POST', '/projects', { title: 'Inbox' });
+await A('PATCH', '/user/settings/general', { default_project_id: inbox.id });
+for (const p of own) if (p.id !== inbox.id) await A('DELETE', '/projects/' + p.id);
 for (let page = (await A('GET', '/tasks?per_page=100')).items; page.length; page = (await A('GET', '/tasks?per_page=100')).items)
   for (const t of page) await A('DELETE', '/tasks/' + t.id);
 for (const l of (await A('GET', '/labels')).items) if (l.created_by?.id === alex.user.id) await A('DELETE', '/labels/' + l.id);
-await A('PATCH', '/projects/' + alex.user.settings.default_project_id, { title: 'Inbox', hex_color: '' });
+await A('PATCH', '/projects/' + inbox.id, { title: 'Inbox', hex_color: '' });
 
+// The café, shared with Priya and used for checklists; the orders to suppliers, Alex's own; and home.
 const proj = {};
-for (const [title, hex_color] of [['Work', '1d6b52'], ['Home', 'e07a1f'], ['Errands', '2563eb']]) proj[title] = await A('POST', '/projects', { title, hex_color });
-await A('POST', `/projects/${proj.Work.id}/users`, { username: 'priya', permission: 1 });
+for (const [title, hex_color] of [['Café', '1d6b52'], ['Orders', '2563eb'], ['Home', 'e07a1f']]) proj[title] = await A('POST', '/projects', { title, hex_color });
+await A('PATCH', '/projects/' + proj['Café'].id, { description: '<p>The café: opening up, closing down, and the jobs in between.</p><p>pocket:checklists</p>' });
+for (const p of ['Café', 'Orders']) await A('POST', `/projects/${proj[p].id}/users`, { username: 'priya', permission: 1 });
+// The café is where Alex's tasks go unless another project is named.
+await A('PATCH', '/user/settings/general', { default_project_id: proj['Café'].id });
 const label = {};
-for (const [title, hex_color] of [['waiting', 'db2777'], ['calls', '7c3aed'], ['quick', '0891b2']]) label[title] = await A('POST', '/labels', { title, hex_color });
+for (const [title, hex_color] of [['suppliers', 'db2777'], ['calls', '7c3aed'], ['quick', '0891b2']]) label[title] = await A('POST', '/labels', { title, hex_color });
 
 async function task(project, t, { labels = [], subtasks = [], comment, file } = {}){
   const made = await A('POST', `/projects/${proj[project].id}/tasks`, t);
@@ -64,17 +73,18 @@ async function task(project, t, { labels = [], subtasks = [], comment, file } = 
   if (file) { const f = new FormData(); f.append('files', new Blob([file.text, new Uint8Array(file.size)], { type: 'application/pdf' }), file.name); await A('POST', `/tasks/${made.id}/attachments`, f); }
   return made;
 }
-const invoice = await task('Work', { title: 'Send Q3 invoice to Brightline', due_date: at(-2, 9), priority: 4, percent_done: .4,
-  description: '<p>Use the new rate from the September contract.</p>' }, {
-  labels: ['waiting'], comment: '<p>Brightline asked for PO number 4471 on the invoice.</p>', file: { name: 'rates-2026.pdf', text: '%PDF-1.4 demo', size: 184000 },
-  subtasks: [['Export hours from the time tracker', true], ['Attach expense receipts', false], ['CC accounts@brightline.example', false]] });
-await task('Errands', { title: 'Renew car registration', due_date: at(-1) });
-await task('Work', { title: 'Review Priya’s onboarding draft', due_date: at(0, 10, 30), priority: 3 });
-await task('Home', { title: 'Call the dentist to reschedule', due_date: at(0) }, { labels: ['calls'] });
-await task('Errands', { title: 'Pick up dry cleaning', due_date: at(0, 17, 30) }, { labels: ['quick'] });
-await task('Work', { title: 'Team retro', due_date: at(1, 14) });
-await task('Home', { title: 'Water the plants', due_date: at(2), repeat_after: 604800 });
-await task('Work', { title: 'Book flights for the offsite', due_date: at(4), priority: 2, reminders: [{ reminder: at(3, 9) }] });
+const oatMilk = await task('Orders', { title: 'Order oat milk from Riverside Dairy', due_date: at(-2, 9), priority: 4, percent_done: .4,
+  description: '<p>Two cases a week from October: set it up as a standing order.</p>' }, {
+  labels: ['suppliers'], comment: '<p>We’re on the last case. Riverside’s cut-off is 2pm for next-day delivery.</p>', file: { name: 'riverside-price-list.pdf', text: '%PDF-1.4 demo', size: 184000 },
+  subtasks: [['Count what’s left in the fridge', true], ['Ask about the October price', false], ['Set up the standing order', false]] });
+await task('Orders', { title: 'Pay the coffee roaster’s invoice', due_date: at(-1) });
+await task('Café', { title: 'Post next week’s rota', due_date: at(0, 10, 30), priority: 3 });
+await task('Café', { title: 'Call the plumber about the dishwasher', due_date: at(0) }, { labels: ['calls'] });
+await task('Café', { title: 'Pick up change from the bank', due_date: at(0, 15, 30) }, { labels: ['quick'] });
+await task('Café', { title: 'Try the autumn menu with Priya', due_date: at(1, 14) });
+await task('Café', { title: 'Deep-clean the espresso machine', due_date: at(2), repeat_after: 604800 });
+await task('Home', { title: 'Book the van in for a service', due_date: at(3) });
+await task('Café', { title: 'Renew the food hygiene certificate', due_date: at(4), priority: 2, reminders: [{ reminder: at(3, 9) }] });
 
 // ---------- the browser ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
@@ -111,7 +121,7 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
 {
   const { context, page } = await phone();
   await page.screenshot({ path: out('pocket-today.png') });
-  await page.locator('.row .body:has-text("Send Q3 invoice")').click();
+  await page.locator('.row .body:has-text("Order oat milk")').click();
   await page.waitForSelector('#d-comments .comment'); await page.waitForTimeout(500);
   await page.screenshot({ path: out('pocket-task.png') });
   await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -120,14 +130,16 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
     await then?.(); await page.waitForTimeout(300);
     return crop(page, '#capture');
   };
-  await page.screenshot({ path: out('pocket-capture.png'), clip: await box('Call Ana Friday at 10 +work !3') });
-  await page.screenshot({ path: out('pocket-chip-undo.png'), clip: await box('Watch Monday night football', () => page.click('#cap-chips .chip[data-kind=due]')) });
-  await page.screenshot({ path: out('pocket-paste-list.png'), clip: await box('Groceries\n• milk\n• eggs\n• coffee', () => page.click('#cap-nest')) });
-  await page.screenshot({ path: out('pocket-new-project.png'), clip: await box('Call contractor friday +Kitchen') });
+  await page.screenshot({ path: out('pocket-capture.png'), clip: await box('Order 6 bags of house blend fri at 9 +orders !3') });
+  // Handing it off: @priya, in the café, which Priya can see.
+  await page.screenshot({ path: out('pocket-assign.png'), clip: await box('Clean the milk steamer tomorrow @priya', () => page.waitForTimeout(1500)) });
+  await page.screenshot({ path: out('pocket-chip-undo.png'), clip: await box('Write the Sunday brunch menu', () => page.click('#cap-chips .chip[data-kind=due]')) });
+  await page.screenshot({ path: out('pocket-paste-list.png'), clip: await box('Supplier order\n• oat milk\n• paper cups\n• napkins', () => page.click('#cap-nest')) });
+  await page.screenshot({ path: out('pocket-new-project.png'), clip: await box('Get quotes for patio heaters friday +Patio') });
   // Offline: the banner, and a task waiting to be sent.
   await page.fill('#in-capture', '');
   await context.setOffline(true);
-  await page.fill('#in-capture', 'Call the plumber today');
+  await page.fill('#in-capture', 'Buy till receipt rolls today');
   await page.click('#f-capture .go');
   await page.waitForSelector('.row.pending'); await page.waitForTimeout(400);
   const banner = await page.locator('.offline').boundingBox(), pending = await page.locator('.row.pending').boundingBox();
@@ -150,7 +162,7 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
   await page.locator('text=Add this app to your home screen').locator('xpath=ancestor::*[.//button][1]').locator('button').last().click({ timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(400);
   await page.screenshot({ path: out('vikunja-home.png') });
-  await page.goto(BASE + '/tasks/' + invoice.id);
+  await page.goto(BASE + '/tasks/' + oatMilk.id);
   await page.waitForLoadState('networkidle'); await page.waitForTimeout(800);
   await page.screenshot({ path: out('vikunja-task.png') });
   await context.close();
@@ -165,6 +177,7 @@ async function film(ms){
   for (const end = Date.now() + ms; Date.now() < end;) { const t = Date.now(); const png = await gif.page.screenshot(); frames.push({ png, delay: Date.now() - t }); }
 }
 async function tap(sel){
+  await gif.page.locator(sel).first().scrollIntoViewIfNeeded();            // a finger can only tap what's on screen
   const [x, y] = await centre(gif.page, sel);
   await gif.touch('touchStart', x, y); await snap(160); await gif.touch('touchEnd');
 }
@@ -175,65 +188,65 @@ let { page, touch } = gif;
 await snap(1800);                                                    // Today
 // 1. Quick add: the words it reads are highlighted, and chips say what they'll save.
 await tap('#in-capture');
-for (const ch of 'Call Ana at 4pm +work !3') { await page.keyboard.type(ch); await snap(ch === ' ' ? 40 : 75); }
+for (const ch of 'Order 6 bags of house blend at 4 +orders !3') { await page.keyboard.type(ch); await snap(ch === ' ' ? 40 : 75); }
 hold(1600);
 await tap('#f-capture .go');
-await page.waitForSelector('.row .title:has-text("Call Ana")');
+await page.waitForSelector('.row .title:has-text("Order 6 bags")');
 await page.locator('#in-capture').blur();
 await film(1800); hold(1200);                                      // the new row lights up, then fades
 // 2. Progress: hold a task, then slide.
 {
   await page.evaluate(() => { app.toast.show = false; }); await page.waitForTimeout(250); await snap(300);
-  const row = await page.locator('.row:has-text("Review Priya")').boundingBox();
+  const row = await page.locator('.row:has-text("Post next week")').boundingBox();
   const x = row.x + 30, y = row.y + row.height / 2;        // so the finger ends at the edge of the fill
   await touch('touchStart', x, y); await snap(250);
   await page.waitForSelector('.row.setting'); await snap(350);
-  const width = (await page.locator('.row:has-text("Review Priya")').boundingBox()).width * .8;
+  const width = (await page.locator('.row:has-text("Post next week")').boundingBox()).width * .8;
   for (let step = 1; step <= 6; step++) { await touch('touchMove', x + width * step / 10, y); await snap(130); }
   hold(600);
   await touch('touchEnd');
   await film(400); hold(1600);
 }
 // 3. Done: tick one off, and it slides away with an Undo.
-await tap('.row:has-text("Pick up dry cleaning") .check');
+await tap('.row:has-text("Pick up change from the bank") .check');
 await film(1300); hold(2000);
 await gif.context.close();
 await writeGif('pocket-demo.gif');
 
-// ---------- the checklist GIF: a run started from a template, its timed steps counting down ----------
-// A checklist project with a template made as Pocket makes one: labelled "template", its steps done, then itself done.
-const line = await A('POST', '/projects', { title: 'Line 2', hex_color: '475569' });
-await A('PATCH', '/projects/' + line.id, { description: '<p>Startup and shutdown of press line 2.</p><p>pocket:checklists</p>' });
-await A('POST', `/projects/${line.id}/users`, { username: 'priya', permission: 1 });
+// ---------- the checklist GIF: opening up the café, its timed steps counting down ----------
+// Templates made as Pocket makes them: labelled "template", their steps done, then themselves done.
 const tplLabel = (await A('GET', '/labels')).items.find(l => l.title === 'template') || await A('POST', '/labels', { title: 'template' });
-const startup = await A('POST', `/projects/${line.id}/tasks`, { title: 'Startup' });
-for (const title of ['Check the guards and e-stops', 'Start the hydraulics {#hydraulics}', 'Load the first coil', 'Check the oil temperature T#10m:hydraulics',
-  'First article check T#30m:hydraulics', 'Sign the startup sheet']) {
-  const s = await A('POST', `/projects/${line.id}/tasks`, { title });
-  await A('POST', `/tasks/${startup.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
-  await A('PATCH', '/tasks/' + s.id, { done: true });
+async function template(title, steps){
+  const t = await A('POST', `/projects/${proj['Café'].id}/tasks`, { title });
+  for (const step of steps) {
+    const s = await A('POST', `/projects/${proj['Café'].id}/tasks`, { title: step });
+    await A('POST', `/tasks/${t.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
+    await A('PATCH', '/tasks/' + s.id, { done: true });
+  }
+  await A('POST', `/tasks/${t.id}/labels`, { label_id: tplLabel.id });
+  await A('PATCH', '/tasks/' + t.id, { done: true });
 }
-await A('POST', `/tasks/${startup.id}/labels`, { label_id: tplLabel.id });
-await A('PATCH', '/tasks/' + startup.id, { done: true });
+// Four steps, so the start sheet's Start button shows on the GIF's screen.
+await template('Opening up', ['Turn on the espresso machine {#machine}', 'Put the croissants in the oven {#croissants}',
+  'Dial in the grinder T#20m:machine', 'Take the croissants out T#18m:croissants']);
+await template('Closing down', ['Backflush the espresso machine', 'Count the till', 'Wipe down the tables', 'Lock up']);
 
 gif = await phone({ scale: 1.5, height: 760 });
 ({ page, touch } = gif);
 await tap('nav.tabs a[data-tab=checklists]');
 await page.waitForSelector('.cl-start'); await page.waitForTimeout(300); await snap(1400);
-await tap('.cl-tpl:has-text("Startup") .cl-start');
+await tap('.cl-tpl:has-text("Opening up") .cl-start');
 await page.waitForSelector('#start-go:not([disabled])'); await page.waitForTimeout(500);
 await snap(2600);                                                    // the steps, with when each is due
 await tap('#start-go');
 await page.waitForSelector('#step-title'); await page.evaluate(() => { app.toast.show = false; }); await page.waitForTimeout(400);
 await snap(1800);
 await tap('#step-done');
-await page.waitForSelector('#step-title:text-is("Start the hydraulics")'); await page.waitForTimeout(300); await snap(1200);
-await tap('#step-done');                                             // the two steps timed from it start counting down
-await page.waitForSelector('#run-timers'); await page.waitForTimeout(400);
-await film(600); hold(2600);
-await tap('#step-done');
-await page.waitForSelector('#step-title:text-is("Check the oil temperature")'); await page.waitForTimeout(400);
-await film(400); hold(2800);
+await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")'); await page.waitForTimeout(300); await snap(1200);
+await tap('#step-done');                                             // the grinder counts down, and the croissants above it
+await page.waitForSelector('#step-title:text-is("Dial in the grinder")'); await page.waitForSelector('#run-timers'); await page.waitForTimeout(400);
+await film(600); hold(3600);
+await page.screenshot({ path: out('pocket-run.png') });             // a still of the run, for the README
 await gif.context.close();
 await writeGif('pocket-checklist.gif');
 await browser.close();
