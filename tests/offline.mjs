@@ -95,6 +95,10 @@ try {
     await page.waitForSelector(pendingRow(T('X')));
     await page.click(`${pendingRow(T('X'))} button[aria-label^="Cancel"]`);
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
+    // Its words are back in the box, to change or add again.
+    if (await page.inputValue('#in-capture') !== `${T('X')} tomorrow`) throw new Error('box: ' + await page.inputValue('#in-capture'));
+    await page.fill('#in-capture', '');
+    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
   });
 
   await step('undated-task-offline-shows-in-added-today', async () => {
@@ -213,6 +217,44 @@ try {
     const names = await attached('G');
     if (!names.includes('keep.png') || names.includes('drop.png')) throw new Error('attachments: ' + names.join());
     await page.click('#btn-sheet-close');
+  });
+
+  await step('subtasks-added-offline-wait', async () => {
+    // The sheet's subtask box goes through the outbox too: offline, a subtask waits in the sheet, then is sent.
+    await page.click(`.row .body:has-text("${T('G')}")`);
+    await page.waitForSelector('#d-subin');
+    await context.setOffline(true);
+    await page.fill('#d-subin', T('G1'));
+    await page.press('#d-subin', 'Enter');
+    await page.waitForSelector(`#d-subtasks .row.pending:has-text("${T('G1')}"):has-text("Waiting for a connection")`);
+    if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error('the box lost the focus');
+    await context.setOffline(false);
+    await online();
+    await page.waitForSelector(`#d-subtasks .row:not(.pending) .title:text-is("${T('G1')}")`, { timeout: 20000 });
+    const [g] = await byTitle(T('G'));
+    const subs = (await (await api('/tasks/' + g.id)).json()).related_tasks?.subtask || [];
+    if (subs.filter(s => s.title === T('G1')).length !== 1) throw new Error('subtasks: ' + subs.map(s => s.title).join(' | '));
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+
+  await step('comment-written-offline-waits', async () => {
+    // A comment goes through the outbox too; the banner says what waits and what needs a connection.
+    await page.click(`.row .body:has-text("${T('G')}")`);
+    await page.waitForSelector('#d-cin');
+    await context.setOffline(true);
+    await page.fill('#d-cin', T('comment'));
+    await page.click('#d-cform button');
+    await page.waitForSelector(`#d-comments .comment.waiting:has-text("${T('comment')}"):has-text("Waiting for a connection")`);
+    if (!(await page.textContent('.offline')).includes('Ticking off or changing other tasks needs a connection')) throw new Error('banner: ' + await page.textContent('.offline'));
+    await context.setOffline(false);
+    await online();
+    await page.waitForSelector(`#d-comments .comment:not(.waiting):has-text("${T('comment')}")`, { timeout: 20000 });
+    const [g] = await byTitle(T('G'));
+    const got = await (await api(`/tasks/${g.id}/comments`)).json(), list = Array.isArray(got) ? got : got.items || [];
+    if (list.filter(c => c.comment.includes(T('comment'))).length !== 1) throw new Error('comments: ' + list.length);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
   await step('cut-off-label-is-still-added', async () => {

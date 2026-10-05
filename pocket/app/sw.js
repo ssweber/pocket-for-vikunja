@@ -27,9 +27,11 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== location.origin || !url.pathname.startsWith(SCOPE)) return;
   if (event.request.mode === 'navigate' || url.href === PAGE || url.pathname === SCOPE) {
-    event.respondWith(fetch(event.request).then(res => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(PAGE, copy)); }
-      return res;
+    // A server error instead of Pocket (a proxy's 502, say) gets the saved copy too, when there is one: an installed
+    // Pocket has no reload button to get out of it. (A 304, Pocket asking whether it changed, passes as it is.)
+    event.respondWith(fetch(event.request).then(async res => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(PAGE, copy)); return res; }
+      return res.status >= 500 && (await caches.match(PAGE)) || res;
     }).catch(() => caches.match(PAGE)));
     return;
   }

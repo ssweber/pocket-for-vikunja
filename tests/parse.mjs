@@ -135,7 +135,7 @@ for (const [text, dt, pocket] of [['Lorem Ipsum in 1 hour', '2021-6-24 13:0'], [
   ['in 1 week', '2021-7-1 12:0'], ['in 2 weeks', '2021-7-8 12:0'], ['in 4 weeks', '2021-7-22 12:0'], ['in 1 month', '2021-7-24 12:0'], ['in 3 months', '2021-9-24 12:0'],
   ['Something in 5 days at 10:00', '2021-6-29 10:0'], ['Something 17th at 10:00', '2021-7-17 10:0'], ['Something sep 17 at 10:00', '2021-9-17 10:0'],
   ['Something sep 17th at 10:00', '2021-9-17 10:0'], ['Something at 10:00 in 5 days', '2021-6-29 10:0'], ['Something at 10:00 17th', '2021-7-17 10:0'],
-  ['Something at 10:00 sep 17th', '2021-9-17 10:0'], ['2nd March at 5', '2022-3-2 5:0', 1], ['2nd March at 5pm', '2022-3-2 17:0', 1], ['2nd March @ 14:00', '2022-3-2 14:0', 1],
+  ['Something at 10:00 sep 17th', '2021-9-17 10:0'], ['2nd March at 5', '2022-3-2 17:0', 1], ['2nd March at 5pm', '2022-3-2 17:0', 1], ['2nd March @ 14:00', '2022-3-2 14:0', 1],
   ['3rd April at 10:30', '2022-4-3 10:30', 1], ['15th August @ 9am', '2021-8-15 9:0'], ['21st June at 18:45', '2022-6-21 18:45', 1], ['5th Mar at 3pm', '2022-3-5 15:0', 1],
   ['Some task Mar 8th', '2022-3-8 12:0', 1], ['Some task mar 8th', '2022-3-8 12:0', 1]]) {
   const [date, time] = dt.split(' ');
@@ -211,11 +211,21 @@ add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem I
   marked: ['due:dec 21 at 3pm', 'assignees:@ann', 'labels:*calls', 'project:+project', 'priority:!2'], ...extra('everything at once') });
 add({ text: 'Team sync every monday @ 10', title: 'Team sync', repeat: { after: W, mode: 0 }, time: '10:0', marked: ['repeat:every monday', 'due:@ 10'],
   ...extra('each phrase is marked where it was typed, even "@ 10"') });
+// A bare hour is daytime: 1 to 7 is the afternoon or evening (Vikunja reads "at 5" as 5 AM). Written-out times stay.
+add({ text: 'Call Ana at 5', title: 'Call Ana', date: '2021-6-24', time: '17:0', ...extra('a bare 5 is 5 PM: today, as it’s still to come') });
+add({ text: 'Call Ana at 9', title: 'Call Ana', date: '2021-6-25', time: '9:0', ...extra('a bare 9 is the morning: the next one') });
+add({ text: 'Call Ana tomorrow at 5:30', title: 'Call Ana', date: '2021-6-25', time: '17:30', ...extra('5:30 is the afternoon too') });
+add({ text: 'Call Ana at 5am', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"am" is as written') });
+add({ text: 'Call Ana at 05:00', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"05:00" is as written') });
+// Repeats Vikunja can't do stay as words, and nothing in them is read as something else.
+add({ text: 'Water lawn every other day', title: 'Water lawn', repeat: { after: 2 * D, mode: 0 }, ...extra('"every other day" is every 2 days') });
+add({ text: 'Standup every weekday at 9', title: 'Standup every weekday', repeat: null, date: '2021-6-25', time: '9:0', ...extra('weekdays only can’t repeat in Vikunja') });
+add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursday', repeat: null, date: null, ...extra('two days a week can’t repeat in Vikunja') });
 
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
-addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk', 'Eggs'], 'iOS Notes checklist');
+addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk'], 'iOS Notes checklist: a line ticked off already is left out');
 addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols');
 addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
 addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
