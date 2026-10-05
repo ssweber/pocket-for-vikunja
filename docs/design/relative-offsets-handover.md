@@ -1,7 +1,7 @@
 # Handover: relative offsets in workflow steps
 
 For the agent picking up the "relative offsets" spec (at the end of this note). Workflows v1 is committed on the
-`workflows` branch as `61a3b95`. Read `scratchpad/workflows-plan.md` for the v1 design and why it is that way, then
+`workflows` branch as `61a3b95`. Read `docs/design/workflows-plan.md` for the v1 design and why it is that way, then
 this note, then the code. All five test files pass on Vikunja 2.7.0.
 
 ## What exists now (v1)
