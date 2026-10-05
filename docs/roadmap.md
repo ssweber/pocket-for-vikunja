@@ -65,17 +65,21 @@ folder, and CI fails if it doesn't match `src/`. It's edited only through `src/`
 
 ## Steps, in order
 
-Each step is its own pull request, with the tests passing before and after.
+Each step is its own commit, with the tests passing before and after.
 
 1. **Finish `workflows`.** Commit it and merge it into `main`.
 2. **The way we work.**
-   - A branch for each feature or fix, merged into `main` by pull request.
+   - Work happens on `dev`, or on a branch from it for something big. `main` is what's released: `dev` is merged into
+     it by pull request.
    - [Conventional commits](https://www.conventionalcommits.org): a type, an optional area, then the same plain
      sentence as now, e.g. `feat(checklists): let a step whose step to count from is gone pick the start`. Types:
      `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
-   - A tag for each release, the same as `Version()` in `main.go` (`v1.1.0`).
-   - GitHub Actions: `npm run test:parse` on every push; `npm run test:local` (the local Vikunja, in Docker) on pull
-     requests.
+   - Versions follow [semantic versioning](https://semver.org), starting at 0.1.0. Until 1.0, anything may change: a
+     new feature, or a change to what Pocket writes into Vikunja (the step times syntax, the marker of a project for
+     checklists, the `template` label), goes up to the next 0.x.0; fixes only, to the next 0.x.y. 1.0 is a promise that
+     those won't change without a major version. The version is in `package.json` and `Version()` in `main.go`, and
+     each release is tagged with it (`v0.1.0`) on `main`.
+   - GitHub Actions run the tests on each pull request and each push to `main`, not on every push to `dev`.
 3. **The build, splitting nothing.** `src/index.html` starts as a copy of today's file, and the build only copies and
    minifies it. `npm run dev` rebuilds on every change; the tests and `npm run demo` use the output. Add the CI check
    that the output matches `src/`. This proves the build with nothing else changing.
