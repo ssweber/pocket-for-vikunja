@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global parseCapture, captureLines, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc */
+/* global parseCapture, captureLines, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -296,6 +296,17 @@ const drafts = [
 // The line in a project's description that makes it a checklist project: on its own, anywhere in it.
 const marks = [['<p>pocket:checklists</p>', true], ['<p>Line 2 startups</p><p>Pocket:Checklists </p>', true], ['Notes<br>pocket:checklists', true],
   ['<p>Our safety checklists</p>', false], ['<p>see pocket:checklists in the docs</p>', false], ['', false]];
+// A template's step order, a line in its description: [description, the order read, the step ids as shown].
+const S = [{id: 3}, {id: 5}, {id: 9}, {id: 12}];
+const orders = [['<p>Notes</p><p>pocket:order 9 3 5 12</p>', [9, 3, 5, 12], [9, 3, 5, 12]],
+  ['<p>pocket:order 12 5</p>', [12, 5], [12, 5, 3, 9]],                     // steps it doesn't list follow, as they were
+  ['<p>pocket:order 40 9 41</p>', [40, 9, 41], [9, 3, 5, 12]],               // ids no longer steps are skipped
+  ['<p>Notes</p>', null, [3, 5, 9, 12]], ['<p>pocket:order</p>', [], [3, 5, 9, 12]], ['', null, [3, 5, 9, 12]],
+  ['<p>see pocket:order 9 3 in the docs</p>', null, [3, 5, 9, 12]]];
+// Written: [description, ids, what it becomes].
+const orderWrites = [['<p>Notes</p>', [5, 3], '<p>Notes</p><p>pocket:order 5 3</p>'], ['', [5], '<p>pocket:order 5</p>'],
+  ['<p>pocket:order 3 5</p><p>Notes</p>', [5, 3], '<p>pocket:order 5 3</p><p>Notes</p>'],
+  ['<p>Notes</p><p>pocket:order 3 5</p>', null, '<p>Notes</p>']];
 
 // ---------- run ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
@@ -322,6 +333,12 @@ const collisionResults = await page.evaluate(([cs, projects]) => cs.map(([text, 
   return [read(text), read(text + ' ' + token)];
 }), [collisions, PROJECTS]);
 const markResults = await page.evaluate(marks => marks.map(([html]) => isChecklistDesc(html)), marks);
+const orderResults = await page.evaluate(([os, steps]) => os.map(([html]) => [stepOrder(html),
+  stepsOf({labels: [{title: 'template'}], description: html, related_tasks: {subtask: steps}}).map(s => s.id)]), [orders, S]);
+const orderWriteResults = await page.evaluate(ws => ws.map(([html, ids]) => withOrder(html, ids)), orderWrites);
+// A run's steps by id, whatever order Vikunja gives them in; any other task's subtasks as they are.
+const runOrder = await page.evaluate(() => [stepsOf({related_tasks: {copiedfrom: [{id: 1}], subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
+  stepsOf({related_tasks: {subtask: [{id: 9}, {id: 3}]}}).map(s => s.id)]);
 await browser.close();
 http.close();
 
@@ -371,6 +388,13 @@ collisions.forEach(([text, token], i) => {
 marks.forEach(([html, want], i) => {
   if (markResults[i] !== want) { failed++; console.log(`FAIL checklist marker ${JSON.stringify(html)}: ${markResults[i]}`); }
 });
-const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length, total = cases.length + lists.length + wf;
+orders.forEach(([html, order, shown], i) => {
+  if (!same(orderResults[i], [order, shown])) { failed++; console.log(`FAIL step order ${JSON.stringify(html)}: ${JSON.stringify(orderResults[i])}`); }
+});
+orderWrites.forEach(([html, ids, want], i) => {
+  if (orderWriteResults[i] !== want) { failed++; console.log(`FAIL step order written ${JSON.stringify([html, ids])}: ${orderWriteResults[i]}`); }
+});
+if (!same(runOrder, [[3, 9], [9, 3]])) { failed++; console.log(`FAIL a run's steps by id, a task's as they are: ${JSON.stringify(runOrder)}`); }
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + 1, total = cases.length + lists.length + wf;
 console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;

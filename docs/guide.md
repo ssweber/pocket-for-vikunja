@@ -167,7 +167,10 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
 - **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them.
 - **In Vikunja's web app**, a template is a done task labelled `template`, with its steps as done subtasks. A run is a
   copy of it, named like "Opening up · run 3 · Oct 4", which Vikunja links to the template as "copied from". The web app
-  can't reorder steps, so reorder them in Pocket. Everyone with *Write* access can change templates there too.
+  can't reorder steps, so reorder them in Pocket: it keeps the order in a line like `pocket:order 12 15 13` in the
+  template's description (the steps' task numbers). Leave that line be; steps it doesn't list, like one added in the
+  web app, come last. A run keeps the order it was started with. Everyone with *Write* access can change templates
+  there too.
 
 ## Timed steps
 

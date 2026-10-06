@@ -1,7 +1,7 @@
 // Sending to Vikunja: what's waiting, kept on the phone, and the steps each kind of change is sent in.
 import {app, ZERO} from './util.js';
 import {api, passing, patchTask} from './api.js';
-import {DONE_MARK, isTemplateLabel, SKIP_MARK} from './checklists.js';
+import {DONE_MARK, isTemplateLabel, SKIP_MARK, stepOrder, withOrder} from './checklists.js';
 import {removeAssignee} from './quickadd.js';
 
 /* Everything waiting to go to Vikunja: tasks added without a connection (or whose sending was cut off), and photos and
@@ -236,6 +236,8 @@ export const RUN_STEPS = [
   {name: 'run', done: j => !!j.runId, async run(j, c){
     const t = (j.tried && await app.findCopy(j.template.id, j, j.at, c.taken, j.id, null)) || await duplicate(j.template.id, j, c.save, (await api('/tasks/' + j.template.id)).title);
     sync.claim(t.id, j.id); c.taken.add(t.id); j.runId = t.id;
+    // The template's notes come with it, but not its order line: the ids in it are the template's steps.
+    if (stepOrder(t.description)) j.desc = withOrder(t.description, null) || '<p></p>';   // Vikunja's PATCH skips an empty one
   }},
   // Named after its template, the name typed when it was started or else which run of it this is, and the day:
   // "Startup · Night shift · Oct 3", or "Startup · run 3 · Oct 3". Without a due date of its own: its steps have theirs.
@@ -246,7 +248,7 @@ export const RUN_STEPS = [
       name = 'run ' + (runs.indexOf(j.runId) + 1 || runs.length);
     }
     j.title = runTitle(j.template.title, name, new Date(j.at));
-    await patchTask(j.runId, {title: j.title, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0});
+    await patchTask(j.runId, {title: j.title, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, ...j.desc && {description: j.desc}});
     j.named = true;
   }},
   // Each step, in the template's order: a copy of the template's step, linked under the run, then named, without its

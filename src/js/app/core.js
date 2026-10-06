@@ -1,7 +1,6 @@
 // The Alpine component's data, and what Pocket does when it opens. Its methods are in the other files of app/.
 import {setApp, store, taskDrafts} from '../util.js';
 import {sharedToken} from '../api.js';
-import {htmlToText} from '../html.js';
 import {currentRoute} from '../routing.js';
 import {saved} from '../lists.js';
 
@@ -104,7 +103,7 @@ export default () => ({
       this.$watch(get, v => { const t = this.sheet.task; if (this.sheet.kind === 'task' && t) taskDrafts.set(k + ':' + t.id, v); });
     this.$watch(() => this.sheet.editingDesc ? this.sheet.descDraft : null, v => {
       const t = this.sheet.task;
-      if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== htmlToText(t.description).trim() ? v : null);
+      if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== this.notesText(t).trim() ? v : null);
     });
     this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.name, rows: nt.rows}); });
     this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addRows, rows => { if (rows) taskDrafts.set('addsteps:' + this.sheet.task.id, rows.some(r => r.text.trim()) ? rows : null); });

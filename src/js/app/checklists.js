@@ -2,15 +2,16 @@
 import {cache, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask} from '../api.js';
 import {parseFragment} from '../html.js';
-import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepProblems, stepWords} from '../checklists.js';
+import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
-import {ALREADY, NOT_RELATED, randomId, sync} from '../sync.js';
+import {ALREADY, randomId, sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 
-// Templates as last loaded, kept for starting a run without a connection: id -> {id, title, project_id, related_tasks}.
+// Templates as last loaded, kept for starting a run without a connection: id -> {id, title, project_id, related_tasks},
+// with the steps in order.
 let templatesKept = {};
-const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, related_tasks: {subtask: (t.related_tasks?.subtask || []).map(s => ({id: s.id, title: s.title}))}}; };
+const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, related_tasks: {subtask: stepsOf(t).map(s => ({id: s.id, title: s.title}))}}; };
 
 export default {
   isChecklistProject(p){ return isChecklistDesc(p?.description); },
@@ -114,7 +115,7 @@ export default {
         templates: templates.filter(t => !t.related_tasks?.parenttask?.length).sort((a, b) => a.title.localeCompare(b.title))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.title, steps: (t.related_tasks?.subtask || []).length}; }),
         runs: open.filter(isRun).map(t => ({id: t.id, title: t.title, forText: this.forText(t),
-          steps: (t.related_tasks?.subtask || []).map(s => ({id: s.id, done: s.done, title: s.title}))})),
+          steps: stepsOf(t).map(s => ({id: s.id, done: s.done, title: s.title}))})),
         finished: finished.filter(t => this.isRunTask(t)).slice(0, 5).map(t => ({id: t.id, title: t.title, done_at: t.done_at, forText: this.forText(t)}))};
     }));
     if (seq !== renderSeq) return;
@@ -274,9 +275,6 @@ export default {
     if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${r.error.message}`);
     else if (but) this.notify(`Added ${r.ids.length}${but}`);
   },
-  /* Move a template's step up or down. Vikunja keeps steps in the order they were linked and can't reorder them, so
-     from the first step that moves, each is unlinked and linked again, in the new order. Not when that would leave a
-     step counting from a later one: a template already wrong that way can still be put right. */
   // Change a template's step in place: written as in New template, a time in words read as T#.
   editStep(st){ this.sheet.stepEdit = {id: st.id, text: stepWords(st.title, this.subtasks.map(s => s.title))}; },
   // What the step being changed is saved as, read after the steps before it.
@@ -318,32 +316,21 @@ export default {
     } catch (err) { this.notify('Not removed: ' + err.message); }
     finally { this.sheet.checklistBusy = false; }
   },
+  /* Move a template's step up or down: its order line is written with every step in the new order. Not when that would
+     leave a step with a problem it didn't have, such as counting from a later one: a template already wrong that way
+     can still be put right. */
   async moveStep(i, dir){
     const t = this.sheet.task, steps = [...this.subtasks], j = i + dir;
     if (!t || j < 0 || j >= steps.length || this.sheet.checklistBusy) return;
     const before = stepProblems(steps.map(s => s.title));
     [steps[i], steps[j]] = [steps[j], steps[i]];
-    const after = stepProblems(steps.map(s => s.title));
-    if (after.length > before.length) {
-      const fresh = after.filter(p => !before.some(b => b.text === p.text && b.title === p.title));
-      this.notify('Not moved: ' + problemText(fresh.length ? fresh : after));
-      return;
-    }
-    t.related_tasks = {...t.related_tasks, subtask: steps};                    // shown in the new order straight away
+    const fresh = stepProblems(steps.map(s => s.title)).filter(p => !before.some(b => b.text === p.text && b.title === p.title));
+    if (fresh.length) { this.notify('Not moved: ' + problemText(fresh)); return; }
+    const was = t.description, description = withOrder(was, steps.map(s => s.id));
+    t.description = description;                                              // shown in the new order straight away
     this.sheet.checklistBusy = true;
-    let loose = null;                                                         // a step unlinked and not yet linked again
-    try {
-      for (const s of steps.slice(Math.min(i, j))) {
-        await patiently(() => api(`/tasks/${t.id}/relations/subtask/${s.id}`, {method: 'DELETE'})).catch(e => { if (e.code !== NOT_RELATED) throw e; });
-        loose = s;
-        await patiently(() => this.linkSubtask(t.id, s.id)).catch(e => { if (e.code !== ALREADY.link) throw e; });
-        loose = null;
-      }
-    } catch (e) {
-      this.notify(loose ? `“${parseStep(loose.title).title}” is no longer a step: ${e.message}. Add it again.` : 'The steps weren\'t moved: ' + e.message);
-    } finally {
-      this.sheet.checklistBusy = false;
-      try { const full = await api('/tasks/' + t.id); cache.set(full.id, full); if (this.sheet.task?.id === t.id) this.showTask(full); } catch {}
-    }
+    try { await patiently(() => patchTask(t.id, {description})); cache.set(t.id, {...cache.get(t.id), ...t}); this.sheet.dirty = true; }
+    catch (e) { if (this.sheet.task?.id === t.id) t.description = was; this.notify('Not moved: ' + e.message); }
+    finally { this.sheet.checklistBusy = false; }
   },
 };

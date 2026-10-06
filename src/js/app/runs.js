@@ -4,7 +4,7 @@ import {api, ApiError, errText, items, NetError, passing, serverTime, triedSince
 import {dueInfo, isSet} from '../dates.js';
 import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, noteOf, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, stepFrom, stepProblems} from '../checklists.js';
+import {allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, noteOf, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, stepFrom, stepProblems, stepsOf} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
@@ -34,7 +34,7 @@ export default {
       if (this.sheet !== mine) return;
       const me = this.user;
       people = [me, ...people.filter(u => u.id !== me.id).sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username))];
-      Object.assign(this.sheet.start, {template: {id: t.id, title: t.title, project_id: t.project_id}, steps: t.related_tasks?.subtask || [], people,
+      Object.assign(this.sheet.start, {template: {id: t.id, title: t.title, project_id: t.project_id}, steps: stepsOf(t), people,
         next: (t.related_tasks?.copiedto || []).length + 1});
     } catch (e) { if (this.sheet === mine) this.sheet.error = errText(e); }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
@@ -180,7 +180,7 @@ export default {
   async loadRun(seq, id){
     const run = await allComments(await api(`/tasks/${id}?expand=comments`));
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a checklist run. Open it from its project instead.');
-    const steps = await inBatches(run.related_tasks?.subtask || [], 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)));
+    const steps = await inBatches(stepsOf(run), 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)));
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
@@ -208,7 +208,7 @@ export default {
       if (!prev || !here()) return;
       this.view.run.last = {id: prev.id, title: prev.title, notes: null};
       const full = await allComments(await api(`/tasks/${prev.id}?expand=comments`));
-      const steps = await inBatches(full.related_tasks?.subtask || [], 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
+      const steps = await inBatches(stepsOf(full), 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
       const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run'})),
         ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title})))];
       if (here()) { this.view.run.last = {id: prev.id, title: prev.title, notes}; this.saveRun(); }

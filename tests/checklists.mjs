@@ -27,7 +27,14 @@ const call = async (token, path, init = {}) => {
 };
 const api = (path, init) => call(TOKEN, path, init);
 const task = id => api(`/tasks/${id}?expand=reactions&expand=comments`);
-const subtasks = async id => (await api('/tasks/' + id)).related_tasks?.subtask || [];
+// A task's steps in the order Pocket shows them: a template's by the line "pocket:order …" in its description (steps it
+// doesn't list after, as Vikunja gives them), a run's by id.
+const stepOrder = desc => (desc || '').match(/<p>pocket:order((?:\s+\d+)*)<\/p>/i)?.[1].trim().split(/\s+/).filter(Boolean).map(Number) || null;
+const subtasks = async id => {
+  const t = await api('/tasks/' + id), subs = t.related_tasks?.subtask || [], order = stepOrder(t.description);
+  if (order) return subs.map((s, k) => [s, order.includes(s.id) ? order.indexOf(s.id) : order.length + k]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  return t.related_tasks?.copiedfrom?.length ? [...subs].sort((a, b) => a.id - b.id) : subs;
+};
 async function until(what, fn, ms = 20000){
   for (const end = Date.now() + ms; ; await new Promise(r => setTimeout(r, 300))) { if (await fn()) return; if (Date.now() > end) throw new Error(what); }
 }
@@ -154,9 +161,27 @@ try {
   });
 
   await step('reorder-steps', async () => {
+    const links = (await api('/tasks/' + template.id)).related_tasks.subtask.map(s => s.id);
     await page.click('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]');
     await until('the step never moved up in Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
+    // Only the order line is written: the steps are linked as they were, and the line isn't shown in the notes.
+    const t = await api('/tasks/' + template.id);
+    if (JSON.stringify(stepOrder(t.description)) !== JSON.stringify([links[0], links[2], links[1]])) throw new Error('description: ' + t.description);
+    if (JSON.stringify(t.related_tasks.subtask.map(s => s.id)) !== JSON.stringify(links)) throw new Error('the steps were linked again');
+    if (/pocket:order/.test(await page.textContent('#d-desc'))) throw new Error('the notes show the order line');
+    // The order stays after a reload.
+    await page.reload();
+    await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+    if (!await page.waitForSelector('#d-start', { timeout: 3000 }).catch(() => null)) { await page.evaluate(() => { location.hash = '#/checklists'; }); await page.click(`${tplRow} .body`, { timeout: 15000 }); }
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")', { timeout: 15000 });
+    // Cut off mid-move: back as it was, and it says so.
+    await page.route(`**/api/v2/tasks/${template.id}`, r => r.request().method() === 'PATCH' ? r.abort('internetdisconnected') : r.continue());
+    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
+    await toast('Not moved');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
+    await page.unrouteAll(); await online(); await toastGone();
+    if ((await subtasks(template.id)).map(s => s.title)[1] !== STEPS[2]) throw new Error('moved in Vikunja anyway');
     // Above the step it counts from: refused, before anything is sent.
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');
@@ -189,7 +214,7 @@ try {
   let first;
   await step('start-a-run', async () => {
     first = await startRun();
-    const run = await api('/tasks/' + first.id), steps = await Promise.all((run.related_tasks?.subtask || []).map(s => api('/tasks/' + s.id)));
+    const run = await api('/tasks/' + first.id), steps = await Promise.all((await subtasks(first.id)).map(s => api('/tasks/' + s.id)));
     if (!new RegExp(`^${TEMPLATE} · run \\d+ · `).test(run.title)) throw new Error('title: ' + run.title);
     if (run.done || run.labels?.some(l => l.title === 'template')) throw new Error(`done ${run.done}, labels ${JSON.stringify(run.labels?.map(l => l.title))}`);
     if (JSON.stringify(run.assignees?.map(u => u.id)) !== JSON.stringify([me.id])) throw new Error('assignees ' + JSON.stringify(run.assignees?.map(u => u.username)));

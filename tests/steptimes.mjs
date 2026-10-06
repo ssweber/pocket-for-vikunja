@@ -42,18 +42,20 @@ const STEPS = ['Put the roast in {#roast}', 'Peel the potatoes T#20m', 'Baste th
 const TITLES = ['Put the roast in', 'Peel the potatoes', 'Baste the roast', 'Take the roast out', 'Carve', 'Wash up'];
 let project;
 
-// A run, set up as Pocket does: a copy of the template without its label, and a copy of each step under it.
-async function startRun(template, tplSteps, label){
+// A run, set up as Pocket does: a copy of the template without its label, and a copy of each step under it. `backwards`
+// links the copies last to first.
+async function startRun(template, tplSteps, label, backwards = false){
   const run = (await api(`/tasks/${template}/duplicate`, { method: 'POST' })).duplicated_task;
   await api(`/tasks/${run.id}/labels/${label}`, { method: 'DELETE' });
   await patch(run.id, { title: `Sunday roast · run · ${stamp}`, done: false, due_date: ZERO });
   const ids = [];
   for (const [i, s] of tplSteps.entries()) {
     const c = (await api(`/tasks/${s}/duplicate`, { method: 'POST' })).duplicated_task;
-    await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: c.id, relation_kind: 'subtask' } });
+    if (!backwards) await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: c.id, relation_kind: 'subtask' } });
     await patch(c.id, { title: TITLES[i], done: false, due_date: ZERO });
     ids.push(c.id);
   }
+  if (backwards) for (const id of [...ids].reverse()) await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: id, relation_kind: 'subtask' } });
   return { id: run.id, steps: ids };
 }
 
@@ -152,6 +154,14 @@ try {
     await until('no due dates were set', async () => isSet((await get(b.steps[3])).due_date));
     const mins = (await dues(b)).map(x => after(x, done.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, null, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
+  });
+  await step('a-runs-steps-go-in-the-order-they-were-copied', async () => {
+    // Pocket copies a run's steps in its template's order and shows them by id, whatever order Vikunja links them in.
+    const c = await startRun(template.id, tplSteps, label.id, true);
+    const done = await patch(c.steps[0], { done: true });
+    await until('no due dates were set', async () => isSet((await get(c.steps[3])).due_date));
+    const mins = (await dues(c)).map(x => after(x, done.done_at));
+    if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
   });
   await step('a-task-that-isnt-a-run-sets-nothing', async () => {
     // Anyone who can edit a task can link it to tasks they can only see. A parent copied from something that isn't a

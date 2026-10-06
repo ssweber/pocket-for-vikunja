@@ -36,6 +36,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -300,7 +301,8 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 		return err
 	}
 
-	// The template's steps, and the run's in their order, each with the template step it was copied from.
+	// The template's steps, and the run's in their order, each with the template step it was copied from. A run's steps
+	// are copied one at a time in its template's order, so they're in order by id, as Pocket shows them.
 	tplStepIDs, err := relatedIDs(s, template.ID, "subtask")
 	if err != nil || len(tplStepIDs) == 0 {
 		return err
@@ -325,6 +327,7 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 			ids = append(ids, id)
 		}
 	}
+	sort.Slice(ids, func(a, b int) bool { return ids[a] < ids[b] })
 	copied := []*models.TaskRelation{}
 	if err := s.In("task_id", ids).And("relation_kind = ?", "copiedfrom").OrderBy("id").Find(&copied); err != nil {
 		return err
@@ -396,7 +399,7 @@ func stepFrom(steps []stepTime, i int) int {
 	return -1
 }
 
-// The tasks related to a task by one kind of relation, in the order the relations were made (a run's steps' order).
+// The tasks related to a task by one kind of relation, in the order the relations were made.
 func relatedIDs(s *xorm.Session, taskID int64, kind string) ([]int64, error) {
 	rels := []*models.TaskRelation{}
 	if err := s.Where("task_id = ? AND relation_kind = ?", taskID, kind).OrderBy("id").Find(&rels); err != nil {

@@ -1,19 +1,48 @@
 // Checklists: how templates, runs and timed steps are kept in Vikunja, and steps as they are written.
 import {allPages, ApiError} from './api.js';
-import {htmlToText} from './html.js';
+import {htmlToText, parseFragment} from './html.js';
 import {NUMBER_WORDS} from './quickadd.js';
 
 /* Checklists live in a project with a line "pocket:checklists" in its description. In it,
-   a template is a task labelled "template" and marked done, and its subtasks, also done, are its steps, in the order
-   they were linked (the order Vikunja keeps and shows them in). A run is a copy of a template with a copy of each step
-   under it, made with Vikunja's duplicate, so every copy keeps a "copied from" link to what it was copied from. Who
-   did a step is a reaction on it: ✅ when it was done, ⏭️ when it was skipped. */
+   a template is a task labelled "template" and marked done, and its subtasks, also done, are its steps (in the order
+   below). A run is a copy of a template with a copy of each step under it, made with Vikunja's duplicate, so every copy
+   keeps a "copied from" link to what it was copied from. Who did a step is a reaction on it: ✅ when it was done, ⏭️
+   when it was skipped. */
 export const CHECKLIST_MARK = 'pocket:checklists';
 export const isChecklistDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === CHECKLIST_MARK);
+/* A template's step order, a line "pocket:order 12 15 13" in its description, written when a step is moved: Vikunja
+   can't order subtasks. Steps it doesn't list follow in Vikunja's order, and ids no longer steps are skipped, so adding
+   or removing a step leaves the line alone. A run's steps are copied one at a time in that order, so a run is in order
+   by its steps' ids, and keeps the order it started with. */
+export const ORDER_MARK = 'pocket:order';
+const ORDER_LINE = /^pocket:order(\s+\d+)*$/i;
+export function stepOrder(html){
+  const line = htmlToText(html || '').split('\n').map(l => l.trim()).find(l => ORDER_LINE.test(l));
+  return line ? (line.match(/\d+/g) || []).map(Number) : null;
+}
+export function inOrder(steps, order){
+  if (!order?.length) return steps;
+  const at = new Map(order.map((id, k) => [id, k]));
+  return steps.map((s, k) => [s, at.get(s.id) ?? order.length + k]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+}
+// The description with its order line set to these ids (taken out, for null), the rest as it was.
+export function withOrder(html, ids){
+  const root = parseFragment(html || ''), el = [...root.querySelectorAll('p')].find(p => ORDER_LINE.test(p.textContent.trim()));
+  if (!ids) el?.remove();
+  else if (el) el.textContent = `${ORDER_MARK} ${ids.join(' ')}`;
+  else root.insertAdjacentHTML('beforeend', `<p>${ORDER_MARK} ${ids.join(' ')}</p>`);
+  return root.innerHTML;
+}
 export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
 export const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
 // An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
 export const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && !!t.related_tasks?.copiedfrom?.length && !hasTemplateLabel(t);
+// A template's or a run's steps in order; any other task's subtasks as Vikunja gives them.
+export function stepsOf(t){
+  const r = t?.related_tasks || {}, subs = r.subtask || [];
+  if (hasTemplateLabel(t)) return inOrder(subs, stepOrder(t.description));
+  return r.copiedfrom?.length && !r.parenttask?.length ? [...subs].sort((a, b) => a.id - b.id) : subs;
+}
 export const DONE_MARK = '✅', SKIP_MARK = '⏭️';
 // What quick add leaves alone in a checklist's steps: dates (a step's time is its T#), and the project, so every step
 // stays in its template's project, as Pocket's plugin needs.
@@ -213,6 +242,6 @@ const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeSt
 export const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
 // What a run's screen keeps of a run and its steps, also saved for opening it offline.
 export const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
-  comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: (t.related_tasks?.subtask || []).map(s => s.id)});
+  comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: stepsOf(t).map(s => s.id)});
 export const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, updated: t.updated, description: t.description || '',
   attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: t.related_tasks?.copiedfrom?.[0]?.title ?? null});

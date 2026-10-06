@@ -4,7 +4,7 @@ import {api, errText, items, NetError, patchTask} from '../api.js';
 import {addDays, isSet} from '../dates.js';
 import {pctOf, progressPatch} from '../progress.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
-import {patiently, stepInfos} from '../checklists.js';
+import {patiently, stepInfos, stepOrder, stepsOf, withOrder} from '../checklists.js';
 import {atTime} from '../quickadd.js';
 import {fileEntry, NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
 import {blankSheet, shared} from './core.js';
@@ -49,11 +49,11 @@ export default {
   leaveTask(){
     const sh = this.sheet, t = sh.task;
     if (!sh.open || sh.kind !== 'task' || !t) return;
-    if (sh.editingDesc && sh.descDraft.trim() !== htmlToText(t.description).trim()) {
+    if (sh.editingDesc && sh.descDraft.trim() !== this.notesText(t).trim()) {
       const v = sh.descDraft;
       sh.editingDesc = false; sh.dirty = true;
       taskDrafts.set('desc:' + t.id, v);                                     // kept until it's saved
-      this.saveTask(t.id, {description: v.trim() ? textToHtml(v) : ''}).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
+      this.saveTask(t.id, {description: this.notesHtml(t, v)}).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
         e => this.notify(e instanceof NetError ? 'Offline: the notes are kept on this phone. Open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.'));
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
@@ -128,7 +128,7 @@ export default {
     if (v !== 'none' && !isSet(this.sheet.task.due_date)) { const d = atTime(new Date(), this.dueTime); patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString(); }
     this.save(patch);
   },
-  get subtasks(){ return this.sheet.task?.related_tasks?.subtask || []; },
+  get subtasks(){ return stepsOf(this.sheet.task); },
   // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
@@ -182,7 +182,7 @@ export default {
   // Subtasks of the open task still waiting to be sent, for its sheet.
   get pendingSubtasks(){ return this.pendingTasks.filter(t => t.parent === this.sheet.task?.id); },
   get descHtml(){
-    const d = (this.sheet.task?.description || '').replace(/<p>\s*<\/p>/g,'').trim();
+    const d = withOrder(this.sheet.task?.description, null).replace(/<p>\s*<\/p>/g,'').trim();
     return d ? sanitize(d) : '<span class="ph">Add notes</span>';
   },
 
@@ -252,13 +252,16 @@ export default {
     const v = this.sheet.title.trim();
     if (v && v !== this.sheet.task.title) this.save({title: v}); else this.sheet.title = this.sheet.task.title;
   },
+  // The notes as text, and as saved: a template's order line is left out while they're edited, and kept.
+  notesText(t){ return htmlToText(withOrder(t.description, null)); },
+  notesHtml(t, text){ const html = text.trim() ? textToHtml(text) : '', order = stepOrder(t.description); return order ? withOrder(html, order) : html; },
   editDesc(){
-    this.sheet.descDraft = htmlToText(this.sheet.task.description);
+    this.sheet.descDraft = this.notesText(this.sheet.task);
     this.sheet.editingDesc = true;
   },
   // Save the notes. If they can't be saved (offline, say), they stay in the editor, and on the phone, to save later.
   async saveDesc(){
-    const v = this.sheet.descDraft, t = this.sheet.task, html = v.trim() ? textToHtml(v) : '';
+    const v = this.sheet.descDraft, t = this.sheet.task, html = this.notesHtml(t, v);
     this.sheet.editingDesc = false;
     await this.save({description: html});
     if ((cache.get(t.id)?.description || '') === html || htmlToText(cache.get(t.id)?.description) === htmlToText(html)) { taskDrafts.delete('desc:' + t.id); this.sheet.descUnsaved = false; return; }
