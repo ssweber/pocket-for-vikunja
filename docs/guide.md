@@ -171,11 +171,12 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
    first, and they stay not done.
 
-- **A step the template doesn't have:** under Done and Skip, **Insert a step** adds one before the step on screen, for
-  this run only, and **Repeat “…”** does the step before it again: a fresh copy of it, not done, with the template's
+- **A step the template doesn't have:** in **Steps**, just above the step on screen, **Insert a step** adds one before
+  it, for this run only, and **Repeat “…”** does the step before it again: a fresh copy of it, not done, with the template's
   notes and photos for it but none of this run's. Either says **Inserted** or **Repeated** under its title, here, in the
-  run's sheet and in Last time, and works like any step, offline too. One that isn't done yet can be deleted with
-  **Delete this step**. The template never changes; a step from the template can't be taken out of a run, only skipped.
+  run's sheet and in Last time, and works like any step, offline too. One that isn't done yet can be deleted with the ×
+  on its row while it's on screen. The template never changes; a step from the template can't be taken out of a run,
+  only skipped.
 - **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too. A step ticked on
   Today counts the same.
 - **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the

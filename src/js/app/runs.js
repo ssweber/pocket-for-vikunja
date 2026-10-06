@@ -218,6 +218,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
+    if (!keep) this.runInsert = null;
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
     this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null, last: keep?.last || null};
     this.saveRun();
@@ -402,7 +403,7 @@ export default {
   showStep(i, scroll){
     if (!this.view.run) return;
     this.view.run.at = i;
-    this.runInsert = null;                                                  // a step being inserted was for the step left
+    this.closeInsert();                                                     // a step being inserted was for the step left
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
@@ -573,10 +574,21 @@ export default {
   /* ---------- steps inserted during a run ---------- */
   /* Insert a step before the one on screen, or repeat the one before it (repeatStep). Through the outbox, as a tick is:
      offline it waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
+  /* The box for a step to insert opens in its place in Steps, with a history entry of its own, as a sheet has, so the
+     phone's Back closes it; so do its ×, Escape, Enter or leaving it empty, and showing another step. */
+  openInsert(){
+    this.runInsert = {text: ''};
+    if (!history.state?.insert) history.pushState({...(history.state || {}), insert: true}, '');
+  },
+  closeInsert(){
+    if (!this.runInsert) return;
+    this.runInsert = null;
+    if (history.state?.insert) { shared.skipPop = true; history.back(); }
+  },
   async insertStep(){
     const v = this.runView, title = this.runInsert?.text.trim();
     if (!v?.step || !title) return;
-    this.runInsert = null;
+    this.closeInsert();
     await this.addStep({title, before: v.step.id});
   },
   async repeatStep(s){

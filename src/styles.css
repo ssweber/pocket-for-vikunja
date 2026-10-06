@@ -223,13 +223,21 @@ a.sec-act{text-decoration:none}
 .step-acts{display:flex;gap:10px;margin-top:16px}
 .step-acts .btn{min-height:60px;font-size:19px}
 .step-acts .go-on{flex:1;max-width:360px}
-/* A step added during the run, and the way to add one: quiet, under Done and Skip */
+/* A step added during the run, and the way to add one: a gap in Steps, above the step on screen, not near Done */
 .step-added{font-size:14px;color:var(--muted);margin-bottom:4px}
-.step-more{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:14px}
-.step-more .linkish{font-size:15px;font-weight:600;padding:6px 0}
-.step-more .linkish.danger{color:var(--danger)}
-#step-insert-form{margin-top:8px}
+#run-steps{display:flex;flex-direction:column}
 #run-steps .meta .added{color:var(--muted)}
+.step-gap{border-top:1px solid var(--line);background:var(--bg)}
+.step-gap.top{border-top:0}
+#run-steps:has(.step-gap.top) .row:first-of-type{border-top:1px solid var(--line)}
+.gap-acts{display:flex;flex-wrap:wrap;align-items:center;gap:0 16px;padding-right:14px}
+.gap-acts .draft-add{width:auto;min-height:46px;border-top:0}
+.gap-acts .linkish{font-weight:650;font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:12px 0 12px 14px}
+.step-gap .draft-line{padding:8px 10px 8px 14px}
+.step-gap .icon-btn{width:36px;height:36px;margin-top:3px;background:var(--sunk)}
+.step-gap .icon-btn.go{background:var(--accent);color:var(--accent-ink)}
+.step-gap .icon-btn.go[disabled]{opacity:.45}
+.row .step-del{align-self:center;width:34px;height:34px;color:var(--danger)}
 #heading{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
 .step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}

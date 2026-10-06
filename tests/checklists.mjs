@@ -827,6 +827,10 @@ try {
     await page.click('#step-insert');
     await page.click('#step-title');
     await page.waitForSelector('#step-insert-form', { state: 'detached' });
+    await page.click('#step-insert');                                         // and with the phone's Back, staying on the run
+    await page.evaluate(() => history.back());
+    await page.waitForSelector('#step-insert-form', { state: 'detached' });
+    if (!(await page.evaluate(() => location.hash)).startsWith('#/run/')) throw new Error('Back left the run');
     await page.click('#step-insert');
     await page.fill('#step-insert-in', 'Wipe the oil off the floor');
     await page.press('#step-insert-in', 'Enter');
