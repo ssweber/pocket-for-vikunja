@@ -1,0 +1,15 @@
+<!-- Steps being written, a row each, for `which` ('new' or 'add'): numbered after the steps there already, each in the
+     subtask box's look, with its time chip under it. Enter opens the next row; a pasted list makes a row a line. -->
+<template x-for="(st, k) in draftRows(which)" :key="st.key"><div class="draft-step">
+  <div class="draft-line">
+    <template x-for="d in [draft(which).info.get(st.key)]" :key="0"><span class="check step-n num" aria-hidden="true" x-text="d ? d.i + 1 : ''"></span></template>
+    <div class="step-box"><textarea class="draft-in" rows="1" :id="which + '-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Take the croissants out in 18 min”'" :aria-label="'Step ' + (k + 1)"
+           enterkeyhint="next" x-effect="st.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); addDraftRow(which, k + 1); }" @paste="pasteDraft(which, $event, k)"></textarea></div>
+    <button type="button" class="icon-btn" :aria-label="'Move up: ' + (st.text || 'step ' + (k + 1))" :disabled="k === 0" @click="moveDraftRow(which, k, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+    <button type="button" class="icon-btn" :aria-label="'Move down: ' + (st.text || 'step ' + (k + 1))" :disabled="k === draftRows(which).length - 1" @click="moveDraftRow(which, k, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+    <button type="button" class="icon-btn" :aria-label="'Remove: ' + (st.text || 'step ' + (k + 1))" @click="dropDraftRow(which, k)"><svg class="i"><use href="#i-close"/></svg></button>
+  </div>
+  <template x-for="d in draftShown(draft(which).info.get(st.key))" :key="0">
+    <!-- include markup/sheet/step-time.html -->
+  </template>
+</div></template>

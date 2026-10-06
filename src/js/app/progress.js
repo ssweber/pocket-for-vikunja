@@ -78,7 +78,7 @@ export default {
   initSheetProgress(){
     this.holdToSlide(this.$refs.sheet, target => {
       const head = target.closest('.d-head'), t = this.sheet.task;
-      if (!head || !t || this.isRunTask(t) || this.checklistRole === 'template' || target.closest('textarea, button, a, select')) return null;
+      if (!head || !t || this.isRunTask(t) || this.ofTemplate || target.closest('textarea, button, a, select')) return null;
       return {start: Math.round(pctOf(t) / 10) * 10, width: head.clientWidth,
         show: pct => { this.sheet.pct = pct; head.classList.add('setting'); head.style.setProperty('--pct', pct / 100); head.dataset.pct = pct + '%'; },
         finish: pct => {

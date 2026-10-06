@@ -1,0 +1,16 @@
+<!-- A step being written: when it's due, read from its words, with the step it counts from to pick, and what's wrong.
+     For `st`, the row ({text, keep, from}), and `d`, how it reads (draftSteps). Its buttons keep the keyboard up. -->
+<div class="draft-meta">
+  <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
+  <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+    <template x-if="d.i === 0 && !d.lost"><span>the start</span></template>
+    <template x-if="d.i > 0 || d.lost"><select :aria-label="'What “' + st.text + '” counts from'" @change="st.from = $event.target.value">
+      <template x-if="d.lost"><option value="?" disabled selected>pick one</option></template>
+      <option value="" :selected="!d.lost && d.from === ''" x-text="d.i ? 'the step before' : 'the start'"></option>
+      <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
+    </select></template>
+    <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” as words'" @mousedown.prevent @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
+  </span></template>
+  <template x-if="d.kept"><button type="button" class="chip tap off" title="Tap to read it as a time" @mousedown.prevent @click="st.keep = false"><svg class="i"><use href="#i-clock"/></svg><span x-text="d.phrase"></span></button></template>
+  <template x-if="d.name"><span x-text="'Named “' + d.name + '”'"></span></template>
+</div>

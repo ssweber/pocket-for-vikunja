@@ -1,8 +1,8 @@
 // Checklists, their projects and templates, and writing steps.
 import {cache, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask, why} from '../api.js';
-import {parseFragment} from '../html.js';
-import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isRunDesc, isRunStepTask, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
+import {htmlToText, parseFragment} from '../html.js';
+import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
@@ -27,14 +27,19 @@ export default {
   get checklistIds(){ return new Set(this.checklistProjects.map(p => p.id)); },
   // The lit tab: Checklists for a run as well, Projects for a project and the list of them.
   get tab(){ return ['checklists', 'run'].includes(this.route.name) ? 'checklists' : this.route.name === 'today' ? 'today' : 'projects'; },
-  // What the open task is in a checklist project: a template, a run, one of a run's steps, or a task that could be made a template.
+  /* What the open task is in a checklist project: a template, one of its steps ('tplstep'), a run, one of a run's steps,
+     or a task that could be made a template. Vikunja's related tasks come without their labels, so a step's template is
+     known from its own copy, as last loaded. */
   get checklistRole(){
     const t = this.sheet.task, r = t?.related_tasks || {};
     if (!t || !this.checklistIds.has(t.project_id)) return null;
     if (hasTemplateLabel(t) && t.done) return 'template';
-    if (r.parenttask?.length) return isRunStepTask(t) ? 'step' : null;
+    const p = r.parenttask?.[0];
+    if (p) return isRunStepTask(t) ? 'step' : hasTemplateLabel(cache.get(p.id)) || templatesKept[p.id] ? 'tplstep' : null;
     return (r.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t) ? 'run' : 'candidate';
   },
+  // A template and its steps are never done or not done: their sheets have no tick, progress, priority or due date.
+  get ofTemplate(){ return ['template', 'tplstep'].includes(this.checklistRole); },
   /* A project's ⋯. What's offered depends on your access to it (Vikunja's max_permission: 0 read, 1 write, 2 admin):
      renaming, archiving and checklists need write access, and deleting needs admin. */
   async openProject(){
@@ -299,33 +304,59 @@ export default {
     if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`);
     else if (but) this.notify(`Added ${r.ids.length}${but}`);
   },
-  // Change a template's step in place: written as in New template, a time in words read as T#.
-  editStep(st){ this.sheet.stepEdit = {id: st.id, text: stepWords(st.title, this.subtasks.map(s => s.title))}; },
-  // What the step being changed is saved as, read after the steps before it.
-  stepEditInfo(i){
+  // A row's time chip, when there's something to show in it: as a list, for x-for.
+  draftShown(d){ return d && (d.problem || d.offset !== null || d.kept || d.name) ? [d] : []; },
+  // The first line of a step's notes, under it in its template.
+  stepNote(st){ return htmlToText(notesOnly(st.description)).trim().split('\n')[0]; },
+  // Change a template's step in place: written as a row in New template, a time in words read as T#, with its chip.
+  // Its field is there only after the tap, so an unseen one takes the focus now to open the keyboard, as in addDraftRow.
+  editStep(st){
+    const e = this.sheet.stepEdit, k = e ? this.subtasks.findIndex(s => s.id === e.id) : -1;
+    if (k >= 0 && e.id !== st.id) this.saveStepEdit(k);                       // one still open, its box no longer focused
+    document.getElementById('focus-keeper')?.focus({preventScroll: true});
+    this.sheet.stepEdit = {id: st.id, text: stepWords(st.title, this.subtasks.map(s => s.title)), keep: false, from: null};
+  },
+  /* The step being changed, read as a row after the steps before it: how it reads (draftSteps), with every step's title
+     once it's saved, since a step it now counts from may get a name. Null while it's empty. */
+  stepEditDraft(i){
     const e = this.sheet.stepEdit;
     if (!e?.text.trim()) return null;
     const before = this.subtasks.slice(0, i).map(s => ({key: 'task:' + s.id, text: s.title}));
-    const d = draftSteps([{key: 'edit', text: e.text, keep: false, from: null}], before).info.get('edit');
-    const titles = this.subtasks.map((s, k) => k === i ? d.saved : s.title), problems = stepProblems(titles).filter(p => p.i === i);
-    return {saved: d.saved, text: d.text, problem: problems.map(p => p.text).join('; ') || d.problem};
+    const d = draftSteps([{key: 'edit', text: e.text, keep: e.keep, from: e.from}], before), info = d.info.get('edit');
+    const titles = this.subtasks.map((s, k) => k === i ? info.saved : d.renames.find(r => r.key === 'task:' + s.id)?.title ?? s.title);
+    return {...info, titles, problem: stepProblems(titles).filter(p => p.i === i).map(p => p.text).join('; ') || info.problem};
   },
   async saveStepEdit(i){
     const e = this.sheet.stepEdit, st = this.subtasks[i];
     if (!e || !st || st.id !== e.id) return;
-    const info = this.stepEditInfo(i);
-    if (!info || info.saved === st.title) { this.sheet.stepEdit = null; return; }
+    const d = this.stepEditDraft(i);
+    const todo = d ? this.subtasks.map((s, k) => ({s, was: s.title, title: d.titles[k]})).filter(x => x.title !== x.was) : [];
+    if (!todo.length) { this.sheet.stepEdit = null; return; }
     // Refused, or not saved: what was typed stays in the box, to put right or try again.
-    const titles = this.subtasks.map((s, k) => k === i ? info.saved : s.title);
-    if (stepProblems(titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not changed: ' + problemText(stepProblems(titles))); return; }
+    if (stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not changed: ' + problemText(stepProblems(d.titles))); return; }
     this.sheet.stepEdit = null;
-    const was = st.title;
-    st.title = info.saved;
-    try { await this.saveTask(st.id, {title: info.saved}); this.sheet.dirty = true; }
+    for (const x of todo) x.s.title = x.title;
+    // A step it counts from first, given its name, then this one.
+    try { for (const x of todo) { await this.saveTask(x.s.id, {title: x.title}); x.saved = true; this.sheet.dirty = true; } }
     catch (err) {
-      st.title = was; this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message);
+      for (const x of todo) if (!x.saved) x.s.title = x.was;
+      this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message);
       if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = {...e};
     }
+  },
+  // A step's notes and photos, in its own sheet. What was written in its box is saved first, and if it can't be, it stays.
+  async openStep(i){
+    const st = this.subtasks[i];
+    await this.saveStepEdit(i);
+    if (st && !this.sheet.stepEdit) this.openTask(st.id);
+  },
+  // A template's step in its own sheet: its number, and when it's due, read from its template's steps.
+  get tplStep(){
+    const t = this.sheet.task, p = this.parentTask, tpl = p && (cache.get(p.id) || templatesKept[p.id]);
+    if (!tpl) return null;
+    const steps = stepsOf(tpl), i = steps.findIndex(s => s.id === t?.id);
+    if (i < 0) return null;
+    return {no: i + 1, of: steps.length, ...stepInfos(steps.map(s => s.id === t.id ? t.title : s.title))[i]};
   },
   // Take a step out of a template. Runs started already keep their copy of it.
   async removeStep(i){
@@ -369,8 +400,11 @@ export default {
     let steps;
     try { steps = moved(this.subtasks); } catch (e) { this.notify('Not moved: ' + e.message); return; }
     if (!steps) return;
-    const was = stepOrder(t.description);
+    const was = stepOrder(t.description), box = document.getElementById('step-edit-' + st.id);
     t.description = withOrder(t.description, steps.map(s => s.id));          // shown in the new order straight away
+    // Its row moved takes the focus off its box: given back once it's moved, before its row looks for where the focus
+    // went (its focusout), so the step stays open to move again.
+    if (box && box === document.activeElement) setTimeout(() => box.isConnected && box.focus({preventScroll: true}));
     this.sheet.checklistBusy = true;
     try {
       const got = await patiently(() => this.saveTask(t.id, null, now => { const s = moved(stepsOf(now)); return s && {description: withOrder(now.description, s.map(x => x.id))}; }));

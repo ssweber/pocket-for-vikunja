@@ -77,6 +77,14 @@ const WRITTEN = ['Check the guards at 3pm', 'First article check 2 hours later',
 const STEPS = ['Check the guards at 3pm {#check-the-guards}', 'Warm up the press T#30m', 'First article check T#2h:check-the-guards'];
 const GUARDS = '“Check the guards at 3pm”';
 const tplRow = `.cl-tpl:has(.title:text-is("${TEMPLATE}"))`;
+// A template's step shows its ↑ ↓ × once it's tapped: the button on the nth step, which is tapped first if it isn't open.
+const stepButton = async (n, label) => {
+  const row = `#d-subtasks .row:nth-of-type(${n})`;
+  if (!await page.$(`${row} .step-edit`)) await page.click(`${row} > button.body`);
+  return `${row} [aria-label^="${label}"]`;
+};
+// Tapped, and the step closed again after, as tapping elsewhere would.
+const tapStep = async (n, label) => { await page.click(await stepButton(n, label)); await page.press('#d-subtasks .step-box textarea', 'Escape'); };
 let project, template, me, other, otherToken;
 const runs = [];                                 // run ids, in the order started
 
@@ -172,7 +180,7 @@ try {
 
   await step('reorder-steps', async () => {
     const links = (await api('/tasks/' + template.id)).related_tasks.subtask.map(s => s.id);
-    await page.click('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]');
+    await tapStep(3, 'Move up');
     await until('the step never moved up in Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
     // Only the order line is written: the steps are linked as they were, and the line isn't shown in the notes.
@@ -187,41 +195,41 @@ try {
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")', { timeout: 15000 });
     // Cut off mid-move: back as it was, and it says so.
     await page.route(`**/api/v2/tasks/${template.id}`, r => r.request().method() === 'PATCH' ? r.abort('internetdisconnected') : r.continue());
-    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
+    await tapStep(2, 'Move down');
     await toast('Not moved');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
     await page.unrouteAll(); await online(); await toastGone();
     if ((await subtasks(template.id)).map(s => s.title)[1] !== STEPS[2]) throw new Error('moved in Vikunja anyway');
     // Above the step it counts from: refused, before anything is sent.
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
-    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');
+    await page.waitForSelector(await stepButton(2, 'Move up') + ':not([disabled])');
+    await tapStep(2, 'Move up');
     await toast('Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step');
     if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('moved anyway');
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]:not([disabled])');
-    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
+    await page.waitForSelector(await stepButton(2, 'Move down') + ':not([disabled])');
+    await tapStep(2, 'Move down');
     await until('the step never moved back', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
     // Its reply lost on the way back: moved all the same, as Vikunja has it, and it doesn't say otherwise.
     const loseReply = async r => { if (r.request().method() !== 'PATCH') return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
     await page.route(`**/api/v2/tasks/${template.id}`, loseReply);
     await toastGone().catch(() => {});
-    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
+    await tapStep(2, 'Move down');
     await until('the move never reached Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]:not([disabled])');   // done saving
+    await page.waitForSelector(await stepButton(3, 'Move up') + ':not([disabled])');   // done saving
     await page.unroute(`**/api/v2/tasks/${template.id}`, loseReply);
     if (await page.$('#toast.show #toast-msg:has-text("Not moved")')) throw new Error('it says it wasn\'t moved');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
-    await page.click('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]');
+    await tapStep(3, 'Move up');
     await until('the step never moved back again', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
+    await page.waitForSelector(await stepButton(2, 'Move up') + ':not([disabled])');
     // A move, or notes, saved here change only their part of what Vikunja has when they're sent: notes and a move saved
     // elsewhere (on the web, another phone) since the sheet opened stay.
     const ids = (await subtasks(template.id)).map(s => s.id), was = (await api('/tasks/' + template.id)).description;
     const elsewhere = () => api('/tasks/' + template.id, { method: 'PATCH', body: JSON.stringify({ description: `<p>Wear gloves for the press.</p><p>pocket:order ${ids[0]} ${ids[2]} ${ids[1]}</p>` }) });
     const order = async () => JSON.stringify(stepOrder((await api('/tasks/' + template.id)).description));
     await elsewhere();
-    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');   // "Warm up the press", 3rd in Vikunja now
+    await tapStep(2, 'Move up');   // "Warm up the press", 3rd in Vikunja now
     await until('the move wasn\'t made to Vikunja\'s order: ' + await order(), async () => await order() === JSON.stringify(ids));
     if (!/Wear gloves/.test((await api('/tasks/' + template.id)).description)) throw new Error('the move deleted the notes');
     await page.waitForSelector('#d-desc:has-text("Wear gloves for the press")');
@@ -810,6 +818,8 @@ try {
     await page.waitForSelector('#d-start');
     if (await page.$('#d-done') || await page.$('#d-progress')) throw new Error('a template can be ticked');
     await page.click('#d-subtasks .row:nth-of-type(1) .body');
+    // Tapped, the step is ready to type or speak into.
+    await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, a.id, { timeout: 5000 });
     await page.fill(`#step-edit-${a.id}`, 'Stir in 2 min');
     await page.press(`#step-edit-${a.id}`, 'Enter');
     await until('the step never changed', async () => (await api('/tasks/' + a.id)).title === 'Stir T#2m');
@@ -822,7 +832,20 @@ try {
     await page.press(`#step-edit-${a.id}`, 'Escape');
     await page.waitForSelector(`#step-edit-${a.id}`, { state: 'detached' });
     if ((await api('/tasks/' + a.id)).title !== 'Stir T#2m') throw new Error('changed anyway');
-    await page.click(`#d-subtasks .row:nth-of-type(2) [aria-label^="Remove step"]`);
+    // A step's notes and photos, in its own sheet: its name without its time, no tick or due date, and back again.
+    await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
+    if (await page.$$eval('#d-subtasks .step-edit', els => els.length) !== 1) throw new Error('buttons on more than the step tapped');
+    await page.click(`#step-notes-${a.id}`);
+    await page.waitForSelector('#d-step-title:text-is("Stir")');
+    await page.waitForSelector('#d-step-when:has-text("Step 1 of 2")');
+    if (await page.$('#d-done') || await page.$('#d-progress') || await page.isVisible('#d-due') || await page.isVisible('#d-subtasks')) throw new Error("a template's step has a tick, a date or subtasks");
+    await page.click('#d-desc');
+    await page.fill('#d-desc-in', 'Use the long spoon.\nNot the whisk.');
+    await page.click('#d-desc-save');
+    await until('the notes never reached the step', async () => /long spoon/.test((await api('/tasks/' + a.id)).description || ''));
+    await page.click('#d-open-template');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(1) .step-note:text-is("Use the long spoon.")', { timeout: 10000 });
+    await page.click(await stepButton(2, 'Remove step'));
     await until('the step was never removed', async () => (await subtasks(tpl.id)).length === 1);
     await page.click('#d-more');
     await page.waitForSelector('#d-delete:text-is("Delete template and its 1 step")', { timeout: 10000 });
