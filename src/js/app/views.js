@@ -289,7 +289,8 @@ export default {
     await this.save(patch || {done: true});
     if (!subs.length || !cache.get(t.id)?.done) return;                     // not saved, or it repeats
     const closed = await this.closeSubtasks(subs);
-    for (const s of subs) if (closed.includes(s.id)) s.done = true;
+    // The parent's save brought Vikunja's copy of its subtasks, still open then: those are the ones the sheet shows.
+    for (const s of t.related_tasks?.subtask || []) if (closed.includes(s.id)) s.done = true;
     this.sheet.dirty = true;
     this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, fn: async () => {
       await this.saveTask(t.id, {done: false, percent_done: pctWas / 100}).catch(() => {});

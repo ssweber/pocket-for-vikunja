@@ -480,6 +480,16 @@ try {
     const after = await subs();
     if (JSON.stringify(after.filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify([...open].sort())) throw new Error('open after undo: ' + JSON.stringify(after.map(s => [s.title, s.done])));
     if ((await (await api('/tasks/' + parent.id)).json()).done) throw new Error('the parent is still done');
+    // The same from its sheet, whose subtasks show as done straight away.
+    await page.click(`.row .body:has-text("${parentTitle}")`);
+    await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 10000 });
+    await page.click('#d-done');
+    await page.waitForSelector('#toast.show #toast-msg:has-text("with 3 subtasks")', { timeout: 20000 });
+    await page.waitForSelector('#d-subcount:text("4/4")', { timeout: 5000 });
+    await page.click('#toast-act:has-text("Undo")');
+    await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 15000 });
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
   });
   await step('paste-list-undo', async () => {
     const a = `Pocket smoke undo 1 ${stamp}`, b = `Pocket smoke undo 2 ${stamp}`;
