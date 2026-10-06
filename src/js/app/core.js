@@ -14,7 +14,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
+  project: null, start: null, subPeople: {}, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
 
 export default () => ({
   // session
@@ -59,6 +59,7 @@ export default () => ({
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
   clock: Date.now(),                           // now, every second while a run is on screen, for its countdowns
+  avatars: saved.get('avatars') || {},         // username -> {url, at}: people's pictures (claims.js)
 
   init(){
     setApp(this);

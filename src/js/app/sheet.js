@@ -94,10 +94,10 @@ export default {
       if (this.sheet !== mine) return;
       // If something was changed while this loaded, the save already brought a newer copy; don't put the old one back.
       if (saveCount === edits) { cache.set(id, t); this.showTask(t); }
-      this.loadComments(id);
+      this.loadComments(id); this.loadSubPeople(t);
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
-      else if (this.sheet === mine) this.loadComments(id);                  // says it can't, offline; a comment can still be written
+      else if (this.sheet === mine) { this.loadComments(id); this.loadSubPeople(cached); }   // says it can't, offline; a comment can still be written
     }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
@@ -161,7 +161,7 @@ export default {
       const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && here()) {
         this.sheet.dirty = true;
-        try { const t = await api('/tasks/' + parent.id); cache.set(t.id, t); if (here()) this.showTask(t); } catch {}
+        try { const t = await api('/tasks/' + parent.id); cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); } } catch {}
       }
       if (r.status === 'offline') {
         sync.keep();

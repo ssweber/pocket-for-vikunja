@@ -227,10 +227,11 @@ export default {
       const notes = (s.comments || []).map(noteOf);
       for (const a of acts) if (a.task === s.id) {
         if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
-        if (a.op === 'note') continue;
+        if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; doers = [myName];
       }
-      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes, doneAt,
+      const slot = this.claimSlot({...s, project_id: r.run.project_id}, this.peopleOf(s.id, s.assignees), done || r.run.done);
+      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
@@ -429,7 +430,8 @@ export default {
     const title = cache.get(a.task)?.title || this.view.run?.steps.find(x => x.id === a.task)?.title || this.view.run?.run.title;
     const on = title ? ` on “${parseStep(title).title}”` : '';
     error.what = {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
-      done: 'A tick' + on, undone: 'An untick' + on, finish: 'Finishing the run', reopen: 'Reopening the run'}[a.op] || 'Something done offline';
+      done: 'A tick' + on, undone: 'An untick' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
+      claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it')}[a.op] || 'Something done offline';
     const text = a.html ? htmlToText(a.html).replace(/^Skipped:?\s*/, '').trim() : '';
     if (!text) return;
     const add = (was = '') => [was.trim(), text].filter(Boolean).join('\n');
@@ -451,6 +453,7 @@ export default {
   },
   // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
   applyAct(a, comment){
+    if (a.op === 'claim' || a.op === 'unclaim') { this.claimSent(a); return; }
     const r = this.view.run;
     if (!r || r.run.id !== a.run) return;
     if (a.op === 'finish' || a.op === 'reopen') { r.run.done = a.op === 'finish'; return; }

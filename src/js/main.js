@@ -13,6 +13,7 @@ import quickadd from './app/quickadd.js';
 import sending from './app/sending.js';
 import checklists from './app/checklists.js';
 import runs from './app/runs.js';
+import claims from './app/claims.js';
 import sheet from './app/sheet.js';
 import toast from './app/toast.js';
 
@@ -23,7 +24,7 @@ Object.assign(window, {colorOf, durText, dueInfo, fmtSize, fromLocalInput, grow,
 // Alpine's component is one object: the data from core.js, with the methods of each part of the app. Getters are
 // copied as getters (a spread, {...auth}, would read each one once and keep the value), so they still work out what
 // they show each time they're read.
-const parts = [auth, views, progress, quickadd, sending, checklists, runs, sheet, toast];
+const parts = [auth, views, progress, quickadd, sending, checklists, runs, claims, sheet, toast];
 document.addEventListener('alpine:init', () => Alpine.data('pocket', () => {
   const component = core();
   for (const part of parts) Object.defineProperties(component, Object.getOwnPropertyDescriptors(part));

@@ -283,13 +283,17 @@ export const RUN_STEPS = [
 export const runProgress = j => [j.runId, j.unlabeled, j.named, j.assigned, ...j.steps.flatMap(s => [s.taskId, s.linked, s.ready])].filter(Boolean).length;
 /* What's done on a run's screen: one outbox entry each, sent in the order they were done, with or without a
    connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
-   and mark, and a note whose reply was lost is looked for before it's posted again. */
-export const ACTS = {done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note']};
+   and mark, someone is assigned once, and a note whose reply was lost is looked for before it's posted again. Claiming
+   a subtask or a step (assigning yourself) goes the same way, from anywhere. */
+export const ACTS = {done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
+  claim: ['claim'], unclaim: ['unclaim']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),
   undone: a => patchTask(a.task, {done: false}),
   mark: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: DONE_MARK}}),
   markSkip: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: SKIP_MARK}}),
+  claim: a => api(`/tasks/${a.task}/assignees`, {method: 'POST', body: {user_id: a.user}}).catch(e => { if (e.code !== ALREADY.assignee) throw e; }),
+  unclaim: a => api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }),
   unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },
   note: async (a, save) => {
     if (a.tried && await app.findNote(a.task, a.html, a.triedAt, a.at)) return;

@@ -427,6 +427,24 @@ try {
     const t = ((await (await api('/tasks?q=' + encodeURIComponent('sub D'))).json()).items || []).find(x => x.title.includes('sub D tomorrow') && x.title.endsWith(String(stamp)));
     if (!t || t.priority !== 2 || (t.due_date && !t.due_date.startsWith('0001'))) throw new Error('saved as ' + JSON.stringify(t && { title: t.title, priority: t.priority, due: t.due_date }));
   });
+  await step('claim-a-subtask', async () => {
+    // "+ me" on an open subtask assigns it to you, and your picture there lets it go. A done one has no slot.
+    const me = await (await api('/user')).json(), row = '#d-subtasks .row:nth-of-type(2)';
+    const id = +await page.getAttribute(row, 'data-id'), people = async () => ((await (await api('/tasks/' + id)).json()).assignees || []).map(u => u.id);
+    if (await page.$('#d-subtasks .row:first-of-type .claim')) throw new Error('a done subtask with no one on it has a slot');
+    await page.click(`${row} .claim:has(.me)`);
+    await page.waitForSelector(`${row} .claim.mine .av`);
+    for (let i = 0; JSON.stringify(await people()) !== JSON.stringify([me.id]); i++) { if (i > 40) throw new Error('never assigned'); await new Promise(r => setTimeout(r, 250)); }
+    // Shown again when the sheet is opened again: Vikunja leaves a task's subtasks' assignees out, so Pocket asks.
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.click(`.row .body:has-text("${parentTitle}")`);
+    await page.waitForSelector(`${row} .claim.mine .av`, { timeout: 10000 });
+    if (!(await page.getAttribute(`${row} .claim`, 'aria-label')).startsWith("You're doing")) throw new Error('says ' + await page.getAttribute(`${row} .claim`, 'aria-label'));
+    await page.click(`${row} .claim`);
+    await page.waitForSelector(`${row} .claim .me`);
+    for (let i = 0; (await people()).length; i++) { if (i > 40) throw new Error('never let go'); await new Promise(r => setTimeout(r, 250)); }
+  });
   await step('subtask-links-to-parent', async () => {
     await page.click('#d-subtasks .row:first-of-type .body');
     await page.waitForSelector(`#d-parent:has-text("${parentTitle}")`, { timeout: 10000 });

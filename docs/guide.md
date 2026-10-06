@@ -133,6 +133,12 @@ in a project they can see.
 - A checklist run is for one person, picked when it's started or later from its **⋯**. Vikunja tells them about it once,
   not once per step.
 
+**Who's doing a subtask or a step:** every subtask in a task's sheet, and every step of a run, has a slot at the end of
+its row. **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
+shows who has it; to hand it over, open it and use **Assigned**. Done or skipped is still recorded for whoever taps it,
+whoever has the step, and claiming never ticks anything. A step you claim in someone else's run shows on your Today.
+Vikunja tells the task's creator (for a step, whoever started the run) when you claim it.
+
 ## Checklists
 
 Checklists are the things done the same way again and again: opening up, closing down, a delivery check. Each start of

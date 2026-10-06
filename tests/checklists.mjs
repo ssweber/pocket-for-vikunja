@@ -317,6 +317,47 @@ try {
     await until('never done again', async () => (await task(id)).done);
   });
 
+  await step('claim-a-step', async () => {
+    // "+ me" on a step assigns it to you; your picture lets it go. A done step no one had shows nothing.
+    const row = '#run-steps .row:nth-of-type(3)', id = (await runStep(first.id, 2)).id;
+    const people = async () => ((await task(id)).assignees || []).map(u => u.id);
+    if (await page.$('#run-steps .row:nth-of-type(1) .claim')) throw new Error('a done step with no one on it has a slot');
+    await page.click(`${row} .claim:has(.me)`);
+    await page.waitForSelector(`${row} .claim.mine .av`);
+    await until('never assigned', async () => JSON.stringify(await people()) === JSON.stringify([me.id]));
+    await page.reload();
+    await page.waitForSelector(`${row} .claim.mine .av`, { timeout: 15000 });
+    await page.click(`${row} .claim`);
+    await page.waitForSelector(`${row} .claim .me`);
+    await until('never let go', async () => !(await people()).length);
+    // Offline, it waits like a tick, and shows as yours meanwhile.
+    await context.setOffline(true);
+    await page.click(`${row} .claim:has(.me)`);
+    await page.waitForSelector(`${row} .claim.mine .av`);
+    await context.setOffline(false); await online();
+    await until('the claim made offline never arrived', async () => JSON.stringify(await people()) === JSON.stringify([me.id]));
+    await page.click(`${row} .claim`);
+    await until('never let go', async () => !(await people()).length);
+    if (!other) return;
+    // Someone else's: shows who, and a tap does nothing. Done still works, with a ✅ from whoever taps it.
+    await api(`/tasks/${id}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
+    try {
+      await page.reload();
+      await page.waitForSelector(`${row} .claim[aria-disabled=true] .av`, { timeout: 15000 });
+      const said = await page.getAttribute(`${row} .claim`, 'aria-label');
+      if (!said.startsWith(`${other.name || other.username} is doing`)) throw new Error('says ' + said);
+      await page.click(`${row} .claim`, { force: true });                       // Playwright won't tap an aria-disabled button
+      await new Promise(r => setTimeout(r, 1000));
+      if (JSON.stringify(await people()) !== JSON.stringify([other.id])) throw new Error('a tap on their picture changed it');
+      await page.click(`${row} .check`);
+      await until('Done on their step has no ✅ from you', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
+      await page.click(`${row} .check`);
+      await until('never undone', async () => !(await task(id)).done);
+    } finally { await api(`/tasks/${id}/assignees/${other.id}`, { method: 'DELETE' }); }
+    await page.reload();
+    await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
+  });
+
   await step('today-shows-your-run', async () => {
     await page.click('nav.tabs a[data-tab=today]');
     // The run, without a due date of its own, and its open step, by its due date.
