@@ -30,8 +30,12 @@ export default {
     if (key) return document.getElementById(`${which}-step-${this.draftRows(which).findIndex(r => r.key === key)}`);
     return this.$refs.capture;
   },
-  // What a box never reads: in a checklist project, a step's time is its T#30m, so "Check at 3pm" stays as it is.
-  boxBase(w){ return w === 'cap' || (w === 'sub' && !this.checklistIds.has(this.sheet.task?.project_id)) ? {} : STEP_IGNORE; },
+  /* What a box never reads: a subtask stays in its task's project, so "+Garden" stays in its title; and in a checklist
+     project a step's time is its T#30m, so "Check at 3pm" stays as it is. */
+  boxBase(w){
+    if (w === 'cap') return {};
+    return w === 'sub' && !this.checklistIds.has(this.sheet.task?.project_id) ? {project: true} : STEP_IGNORE;
+  },
   // Where a line without a +project goes: the default project, the open task's, the run's, or the template's.
   boxHome(w){
     if (w === 'sub' || w === 'edit' || w.startsWith('add:')) return this.sheet.task?.project_id;
@@ -71,9 +75,11 @@ export default {
     const project = owner >= 0 ? parsed[owner].project : null, miss = owner >= 0 ? parsed[owner].projectMiss : null;
     return {parsed: lines.length > 1 ? parsed.map(p => ({...p, project})) : parsed, project, miss};
   },
-  get captureHint(){
+  get captureHint(){ return this.boxHint('cap'); },
+  // What a box reads, under it while it's empty: without +project in a subtask box, which doesn't read it.
+  boxHint(w){
     const p = this.prefixes;
-    return p ? `${p.project}project  ${p.label}label  ${p.assignee}user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it`
+    return p ? `${this.boxBase(w).project ? '' : p.project + 'project  '}${p.label}label  ${p.assignee}user  !1–5  tomorrow · fri at 2 · Oct 12 · every week · tap a chip to undo it`
       : 'Quick add shortcuts are turned off in your Vikunja settings';
   },
 

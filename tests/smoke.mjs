@@ -437,6 +437,13 @@ try {
     await page.click('#d-subform .go');
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 4, null, { timeout: 15000 });
     if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error('the box lost the focus after the + was tapped');
+    // A subtask stays in its task's project: +project isn't read, or offered in the hint, and stays in the title.
+    await page.waitForSelector('#d-subhint');
+    if ((await page.textContent('#d-subhint')).includes('project')) throw new Error('hint: ' + await page.textContent('#d-subhint'));
+    await page.fill('#d-subin', `Pocket smoke sub E +Elsewhere ${stamp}`);
+    await page.waitForTimeout(300);
+    if (await page.$('#d-subchips .chip[data-kind=project], #d-subchips .chip[data-kind=new-project]')) throw new Error('+project was read in a subtask');
+    await page.fill('#d-subin', '');
     const t = ((await (await api('/tasks?q=' + encodeURIComponent('sub D'))).json()).items || []).find(x => x.title.includes('sub D tomorrow') && x.title.endsWith(String(stamp)));
     if (!t || t.priority !== 2 || (t.due_date && !t.due_date.startsWith('0001'))) throw new Error('saved as ' + JSON.stringify(t && { title: t.title, priority: t.priority, due: t.due_date }));
   });

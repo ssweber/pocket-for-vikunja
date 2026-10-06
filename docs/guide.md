@@ -56,7 +56,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   done; 100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. A checklist
   run's bar shows how many of its steps are done instead, and a run's steps are held and slid the same way.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
-  comments. Changes save as you make them. Subtasks are added with the same box as quick add. Moving a task to another
+  comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
+  subtask stays in its task's project. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks. Tap the project above the title to open it.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done.

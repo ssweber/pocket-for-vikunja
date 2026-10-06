@@ -165,8 +165,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             </div>
             <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="sheet.sub.busy || !boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
           </form>
-          <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text && !Object.keys(boxBase('sub')).length)">
-            <template x-if="sheet.sub.focus && !sheet.sub.text && !Object.keys(boxBase('sub')).length"><span class="hint" x-text="captureHint"></span></template>
+          <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text && !boxBase('sub').due)">
+            <template x-if="sheet.sub.focus && !sheet.sub.text && !boxBase('sub').due"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>
             <template x-for="c in chips('sub')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
               :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
               @mousedown.prevent @click="tapChip('sub', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
