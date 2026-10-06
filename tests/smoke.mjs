@@ -136,13 +136,17 @@ try {
     const due = new Date(); due.setDate(due.getDate() - 2); due.setHours(9, 0, 0, 0);
     const late = 'Pocket smoke overdue ' + stamp;
     const made = await (await api(`/projects/${me.settings.default_project_id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: late, due_date: due.toISOString() }) })).json();
+    // A repeating task stays: moved, its next times would follow the new date.
+    const daily = await (await api(`/projects/${me.settings.default_project_id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Pocket smoke repeats ' + stamp, due_date: due.toISOString(), repeat_after: 86400 }) })).json();
     const lateRow = `.row:has(.title:has-text("${late}"))`;
     await page.click('#btn-refresh');
     await page.waitForSelector(`.sec.overdue + .list ${lateRow}`, { timeout: 15000 });
     await page.click('#btn-overdue-today');
     await page.waitForSelector(`.sec.today + .list ${lateRow}`, { timeout: 15000 });
     const msg = await page.textContent('#toast-msg');
-    if (!/^Moved \d+ tasks? to today$/.test(msg)) throw new Error('toast: ' + msg);
+    if (!/^Moved \d+ tasks? to today\. \d+ repeating tasks? stays?: tick/.test(msg)) throw new Error('toast: ' + msg);
+    if (new Date((await (await api('/tasks/' + daily.id)).json()).due_date).getTime() !== due.getTime()) throw new Error('the repeating task was moved');
+    await api('/tasks/' + daily.id, { method: 'DELETE' });
     // At 9:00 as it was, or, once 9:00 has gone today, the next whole hour (in the day's last hour, 11:59 PM).
     const now = new Date(), want = new Date(); want.setHours(9, 0, 0, 0);
     const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
@@ -605,7 +609,7 @@ try {
   await step('today-moves-a-task-to-overdue-as-its-time-passes', async () => {
     // Left open on Today: once a minute it regroups, without asking Vikunja, and a task whose time passes says so.
     const t = `Pocket smoke due soon ${stamp}`, due = new Date(Date.now() + 6000);
-    if (due.getDate() !== new Date().getDate() || [0, 12].includes(due.getHours()) && !due.getMinutes()) return;   // a time Today reads as "no time"
+    if (due.getDate() !== new Date().getDate() || !due.getHours() && !due.getMinutes()) return;   // midnight: a day without a time
     const made = await make(t, { due_date: due.toISOString() });
     try {
       await toastGone();
@@ -734,6 +738,30 @@ try {
     await page.waitForSelector('#d-cin');
     if (await page.inputValue('#d-cin') !== 'half a comment') throw new Error('comment: ' + await page.inputValue('#d-cin'));
     await page.fill('#d-cin', '');
+    // Notes changed elsewhere while these were written aren't written over: both are shown, and saving again replaces them.
+    const notes = async () => (await get(task.id)).description || '';
+    const elsewhere = text => api('/tasks/' + task.id, { method: 'PATCH', headers: json, body: JSON.stringify({ description: `<p>${text}</p>` }) });
+    await page.click('#d-desc');
+    await page.fill('#d-desc-in', 'Mine, from Pocket');
+    await elsewhere('Theirs, from the web');
+    await page.click('#d-desc-save');
+    await page.waitForSelector('#d-desc-conflict:has-text("Theirs, from the web")', { timeout: 15000 });
+    if (!(await notes()).includes('Theirs')) throw new Error('written over: ' + await notes());
+    await page.click('#d-desc-save');
+    for (let i = 0; i < 40 && !(await notes()).includes('Mine'); i++) await page.waitForTimeout(250);
+    if (!(await notes()).includes('Mine, from Pocket')) throw new Error('not saved again: ' + await notes());
+    // The same when the sheet closes: they're kept on the phone instead.
+    await page.click('#d-desc');
+    await page.fill('#d-desc-in', 'Mine again');
+    await elsewhere('Theirs again');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#toast.show #toast-msg:has-text("changed elsewhere")', { timeout: 15000 });
+    if (!(await notes()).includes('Theirs again')) throw new Error('written over on close: ' + await notes());
+    await page.click(`${rowOf(t)} > .body`);
+    await page.waitForSelector('#d-desc-conflict:has-text("Theirs again")', { timeout: 15000 });
+    if (await page.inputValue('#d-desc-in') !== 'Mine again') throw new Error('kept: ' + await page.inputValue('#d-desc-in'));
+    await page.click('#d-desc-cancel');
+    await page.waitForSelector('#d-desc:has-text("Theirs again")');
   });
 
   await step('label-on-enter-and-people-suggested', async () => {

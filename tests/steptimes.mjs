@@ -43,16 +43,18 @@ const TITLES = ['Put the roast in', 'Peel the potatoes', 'Baste the roast', 'Tak
 let project;
 
 // A run, set up as Pocket does: a copy of the template without its label, and a copy of each step under it, a timed one
-// with a reminder at its due time. `backwards` links the copies last to first.
-async function startRun(template, tplSteps, label, backwards = false){
+// with a reminder at its due time, each keeping its template step's title in a line, and the run a line saying it's one.
+// `backwards` links the copies last to first; `old` sets it up as Pocket did before runs kept those lines.
+async function startRun(template, tplSteps, label, { backwards = false, old = false } = {}){
   const run = (await api(`/tasks/${template}/duplicate`, { method: 'POST' })).duplicated_task;
   await api(`/tasks/${run.id}/labels/${label}`, { method: 'DELETE' });
-  await patch(run.id, { title: `Sunday roast · run · ${stamp}`, done: false, due_date: ZERO });
+  await patch(run.id, { title: `Sunday roast · run · ${stamp}`, done: false, due_date: ZERO, ...!old && { description: '<p>pocket:run</p>' } });
   const ids = [];
   for (const [i, s] of tplSteps.entries()) {
     const c = (await api(`/tasks/${s}/duplicate`, { method: 'POST' })).duplicated_task;
     if (!backwards) await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: c.id, relation_kind: 'subtask' } });
-    await patch(c.id, { title: TITLES[i], done: false, due_date: ZERO, ...STEPS[i].includes('T#') && { reminders: [{ relative_to: 'due_date', relative_period: 0 }] } });
+    await patch(c.id, { title: TITLES[i], done: false, due_date: ZERO, ...STEPS[i].includes('T#') && { reminders: [{ relative_to: 'due_date', relative_period: 0 }] },
+      ...!old && { description: `<p>pocket:step ${STEPS[i]}</p>` } });
     ids.push(c.id);
   }
   if (backwards) for (const id of [...ids].reverse()) await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: id, relation_kind: 'subtask' } });
@@ -172,7 +174,7 @@ try {
   });
   await step('a-runs-steps-go-in-the-order-they-were-copied', async () => {
     // Pocket copies a run's steps in its template's order and shows them by id, whatever order Vikunja links them in.
-    const c = await startRun(template.id, tplSteps, label.id, true);
+    const c = await startRun(template.id, tplSteps, label.id, { backwards: true, old: true });   // and one started before runs kept their times
     const done = await patch(c.steps[0], { done: true });
     await until('no due dates were set', async () => isSet((await get(c.steps[3])).due_date));
     const mins = (await dues(c)).map(x => after(x, done.done_at));
@@ -189,6 +191,17 @@ try {
     await patch(x.id, { done: true });
     await wait(1500);
     if (isSet((await get(y.id)).due_date)) throw new Error('got a due date: ' + (await get(y.id)).due_date);
+  });
+  await step('a-run-keeps-its-times-when-its-template-changes', async () => {
+    // Started, then its template's "Peel the potatoes" is given another time, "Baste the roast" is deleted, and then the
+    // template itself: the run still counts as it was started.
+    const d = await startRun(template.id, tplSteps, label.id);
+    await patch(tplSteps[1], { title: 'Peel the potatoes T#50m' });
+    for (const id of [tplSteps[2], template.id]) await api('/tasks/' + id, { method: 'DELETE' });
+    const done = await patch(d.steps[0], { done: true });
+    await until('no due dates were set', async () => isSet((await get(d.steps[3])).due_date));
+    const mins = (await dues(d)).map(x => after(x, done.done_at));
+    if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
   });
 } finally {
   if (project) for (let i = 0; i < 5; i++) { try { await api('/projects/' + project.id, { method: 'DELETE' }); break; } catch { await wait(500); } }

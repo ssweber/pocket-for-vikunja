@@ -1,8 +1,7 @@
 // The Alpine component's data, and what Pocket does when it opens. Its methods are in the other files of app/.
-import {setApp, store, taskDrafts} from '../util.js';
+import {grow, setApp, store, taskDrafts} from '../util.js';
 import {sharedToken} from '../api.js';
 import {currentRoute} from '../routing.js';
-import {setDefaultTime} from '../dates.js';
 import {saved} from '../lists.js';
 
 /* What more than one part of the app changes. (A module can't assign to a variable of another module, so these are
@@ -14,7 +13,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 // pasted list goes under its first line, whether the 🔔 chip is on, and whether it's sending.
 const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  pct: null, menu: false, editingDesc: false, descDraft: '', descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
+  pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
   project: null, start: null, subPeople: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
 
 export default () => ({
@@ -100,7 +99,6 @@ export default () => ({
     // A run on screen is fetched again every 20 seconds, so a step a teammate ticked shows as done, by them.
     setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible' && !this.sheet.open && !this.offline && !this.view.loading) this.render(); }, 20000);
     // A date without a time is late only once its day is over; quick add gives it the user's default due time.
-    this.$watch('dueTime', setDefaultTime);
     // An emptied add box starts afresh: no chips tapped off.
     this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.remind = false; } });
     this.$watch('sheet.sub.text', v => { if (!v.trim()) { this.sheet.sub.ignore = {}; this.sheet.sub.remind = false; } });
@@ -110,7 +108,7 @@ export default () => ({
       this.$watch(get, v => { const t = this.sheet.task; if (this.sheet.kind === 'task' && t) taskDrafts.set(k + ':' + t.id, v); });
     this.$watch(() => this.sheet.editingDesc ? this.sheet.descDraft : null, v => {
       const t = this.sheet.task;
-      if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== this.notesText(t).trim() ? v : null);
+      if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== this.notesText(t).trim() ? {text: v, base: this.sheet.descBase} : null);
     });
     this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.name, rows: nt.rows}); });
     this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addRows, rows => { if (rows) taskDrafts.set('addsteps:' + this.sheet.task.id, rows.some(r => r.text.trim()) ? rows : null); });
@@ -134,6 +132,11 @@ export default () => ({
       this.initHeader();
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
+      // Turning the phone, or the keyboard opening or closing, changes the boxes' width: each fits its text again, and
+      // quick add's highlights stay over the words they mark.
+      const refit = () => { for (const id of ['in-capture', 'd-subin']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
+      (window.visualViewport || window).addEventListener('resize', refit);
+      addEventListener('orientationchange', () => setTimeout(refit, 300));
     });
     if (store.get('mode') === 'token' && store.get('token')) { this.mode = 'token'; this.token = store.get('token'); }
     if (this.mode === 'token' || sharedToken.get()) this.boot();

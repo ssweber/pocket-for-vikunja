@@ -62,7 +62,7 @@ export default {
   dropSheet(keep = false){
     const sh = this.sheet, t = sh.task;
     if (keep && sh.open && sh.kind === 'task' && t) {
-      if (sh.editingDesc) taskDrafts.set('desc:' + t.id, sh.descDraft);
+      if (sh.editingDesc) taskDrafts.set('desc:' + t.id, {text: sh.descDraft, base: sh.descBase});
       taskDrafts.set('comment:' + t.id, sh.commentDraft); taskDrafts.set('sub:' + t.id, sh.sub.text);
     }
     Object.assign(this.sheet, {editingDesc: false, commentDraft: '', task: null, newTpl: null}); this.closeSheet(true);
@@ -167,7 +167,7 @@ export default {
     sync.ready.then(() => this.refreshPending());
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
-      this.user = user; this.info = info;
+      this.user = user; this.info = info || this.info || saved.get('info');   // /info not read this time: as it was
       // What was being written when a session ended is kept for the same person only.
       const owner = store.get('drafts.user');
       if (owner && owner !== String(user.id)) { taskDrafts.clear(); this.runDrafts = {}; }

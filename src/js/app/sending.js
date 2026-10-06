@@ -312,7 +312,7 @@ export default {
     if (r.name !== 'today') return null;
     if (!isSet(t.due_date)) return t.child ? null : 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
-    return d >= addDays(t0, 8) ? null : isLate(t.due_date, new Date(), this.dueTime) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
+    return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
   // The current list, with waiting tasks added where they belong, and subtasks under their parents.
   get listGroups(){

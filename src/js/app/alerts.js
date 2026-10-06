@@ -30,7 +30,7 @@ export default {
     const passed = (at) => at > since && at <= now;
     const due = [], reminded = [];
     for (const t of dated) {
-      if (isSet(t.due_date) && passed(+new Date(t.due_date)) && isLate(t.due_date, new Date(now), this.dueTime)) due.push(t);
+      if (isSet(t.due_date) && passed(+new Date(t.due_date)) && isLate(t.due_date, new Date(now))) due.push(t);
       else if ((t.reminders || []).some(r => isSet(r.reminder) && passed(+new Date(r.reminder)))) reminded.push(t);
     }
     const name = t => `“${t.title}”`, list = [...due, ...reminded];
@@ -49,7 +49,7 @@ export default {
   placeDated(groups, tasks){
     const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // a day of 23 or 25 hours too
     for (const g of [overdue, today, week]) g.tasks = [];
-    for (const t of tasks) (isLate(t.due_date, now, this.dueTime) ? overdue : new Date(t.due_date) < t1 ? today : week).tasks.push(t);
+    for (const t of tasks) (isLate(t.due_date, now) ? overdue : new Date(t.due_date) < t1 ? today : week).tasks.push(t);
     overdue.tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
     today.tasks.sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
     this.groupedAt = +now;

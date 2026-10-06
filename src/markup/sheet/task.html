@@ -57,8 +57,11 @@
         <template x-if="sheet.editingDesc"><div class="desc-edit">
           <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())"></textarea>
           <template x-if="sheet.descUnsaved"><p class="note" id="d-desc-unsaved" style="margin:6px 2px">Not saved yet: these notes are kept on this phone until they're saved.</p></template>
+          <template x-if="sheet.descConflict !== null"><p class="note" id="d-desc-conflict" style="margin:6px 2px; white-space:pre-wrap">They were changed elsewhere while you wrote. The notes in Vikunja now:
+<span x-text="sheet.descConflict || '(none)'"></span>
+Save to replace them with yours, or Cancel to keep them.</p></template>
           <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>
-          <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="sheet.editingDesc = false; sheet.descUnsaved = false; taskDrafts.delete('desc:' + sheet.task.id)">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
+          <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="cancelDesc()">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
         </div></template>
       </div>
 

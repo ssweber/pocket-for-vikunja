@@ -1,5 +1,6 @@
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
 <section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', runopts: 'Run', start: 'Start a run', newtpl: 'New template', newproj: 'New project'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
+  <input id="focus-keeper" class="focus-keeper" aria-hidden="true" tabindex="-1" autocomplete="off">
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->

@@ -345,11 +345,11 @@ const orderResults = await page.evaluate(([os, steps]) => os.map(([html]) => [st
   stepsOf({labels: [{title: 'template'}], description: html, related_tasks: {subtask: steps}}).map(s => s.id)]), [orders, S]);
 const orderWriteResults = await page.evaluate(ws => ws.map(([html, ids]) => withOrder(html, ids)), orderWrites);
 // A run's steps by id, whatever order Vikunja gives them in; any other task's subtasks as they are.
-// Late: [due, now, default due time, late?]. A time of its own is late once it's passed; a day without one, once it's over.
-const lates = [['2021-06-24T09:30', '2021-06-24T10:00', '12:00', true], ['2021-06-24T10:30', '2021-06-24T10:00', '12:00', false],
-  ['2021-06-24T12:00', '2021-06-24T15:00', '12:00', false], ['2021-06-24T00:00', '2021-06-24T15:00', '12:00', false],
-  ['2021-06-24T09:00', '2021-06-24T15:00', '09:00', false], ['2021-06-23T12:00', '2021-06-24T08:00', '12:00', true]];
-const lateResults = await page.evaluate(ls => ls.map(([due, now, dt]) => isLate(new Date(due).toISOString(), new Date(now), dt)), lates);
+// Late: [due, now, late?]. Any time is late once it's passed, noon too; midnight, a day without a time, once it's over.
+const lates = [['2021-06-24T09:30', '2021-06-24T10:00', true], ['2021-06-24T10:30', '2021-06-24T10:00', false],
+  ['2021-06-24T12:00', '2021-06-24T15:00', true], ['2021-06-24T00:00', '2021-06-24T15:00', false],
+  ['2021-06-24T09:00', '2021-06-24T15:00', true], ['2021-06-23T00:00', '2021-06-24T08:00', true]];
+const lateResults = await page.evaluate(ls => ls.map(([due, now]) => isLate(new Date(due).toISOString(), new Date(now))), lates);
 const runOrder = await page.evaluate(() => [stepsOf({related_tasks: {copiedfrom: [{id: 1}], subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
   stepsOf({related_tasks: {subtask: [{id: 9}, {id: 3}]}}).map(s => s.id)]);
 await browser.close();
@@ -407,8 +407,8 @@ orders.forEach(([html, order, shown], i) => {
 orderWrites.forEach(([html, ids, want], i) => {
   if (orderWriteResults[i] !== want) { failed++; console.log(`FAIL step order written ${JSON.stringify([html, ids])}: ${orderWriteResults[i]}`); }
 });
-lates.forEach(([due, now, dt, want], i) => {
-  if (lateResults[i] !== want) { failed++; console.log(`FAIL late ${JSON.stringify([due, now, dt])}: ${lateResults[i]}`); }
+lates.forEach(([due, now, want], i) => {
+  if (lateResults[i] !== want) { failed++; console.log(`FAIL late ${JSON.stringify([due, now])}: ${lateResults[i]}`); }
 });
 if (!same(runOrder, [[3, 9], [9, 3]])) { failed++; console.log(`FAIL a run's steps by id, a task's as they are: ${JSON.stringify(runOrder)}`); }
 const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 1, total = cases.length + lists.length + wf;

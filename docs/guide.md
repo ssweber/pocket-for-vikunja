@@ -44,10 +44,11 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
 ## Tasks
 
 - **Today** groups tasks into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task added without a
-  date stays in view until tonight instead of vanishing into a project. A task is overdue once its time has passed; one
-  due on a day without a time ("friday") once that day is over. Left open, Today moves tasks to Overdue as their time
-  passes. **Move all to today** brings every overdue task to today, each at the time of day it had, or the next whole
-  hour if that time has gone today.
+  date stays in view until tonight instead of vanishing into a project. A task is overdue once its time has passed, as
+  in Vikunja: "friday" is due at your default due time, noon unless you changed it. One due at midnight, as Vikunja's
+  web app sets a day without a time, is overdue once that day is over. Left open, Today moves tasks to Overdue as their
+  time passes. **Move all to today** brings every overdue task to today, each at the time of day it had, or the next
+  whole hour if that time has gone today. A repeating task stays where it is: tick it to move it on to its next date.
 - **Ticking off:** a ticked task slides away, with an Undo. Ticks in a row add up into one message, "3 done", whose Undo
   opens them all again. A task's open subtasks are ticked off with it. A repeating task moves to its next date, and Undo
   puts its date back. An Undo leaves alone a task that was changed elsewhere since.
@@ -219,8 +220,9 @@ plugin sets the due date of each step of the same run timed from it: the time it
 time. When the step is marked not done again, the steps waiting on it lose that due date until it's done again, so no
 reminder goes off for a step that's still waiting. It writes only due dates (not even when a task was last changed),
 and the time of a reminder counted from the due date, only on steps of that run that aren't done, and only when the
-date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one project, the
-template labelled `template`, and each step copied from one of the template's steps. It doesn't act on templates, or
+date changes. It only acts on a run Pocket would make: the run and its steps in one project, each step with the time
+it was started with (or, for a run started before Pocket kept those, copied from a step of a template labelled
+`template` in the project). It doesn't act on templates, or
 on a done step saved again. All of it is in one function, `writeStepDueDates` in [`pocket/main.go`](../pocket/main.go).
 It can also be turned on with `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`.
 
@@ -276,8 +278,9 @@ Pocket opens without a connection and shows your lists as they were last loaded.
   sent has a light tint and a dashed circle; its × cancels it and puts its words back in the box. Ticking off or editing
   other tasks needs a connection, and the offline banner says so.
 - **Nothing you write is lost:** a comment, notes, subtasks, a step's note or a new template is kept on the phone until
-  it's sent, even if Pocket is closed. Something Vikunja turns down for good says what it was, and its words go back in
-  the box.
+  it's sent, even if Pocket is closed, and through a sign-in that runs out. Something Vikunja turns down for good says
+  what it was, and its words go back in the box. Notes someone changed elsewhere while you wrote yours aren't written
+  over: both are shown, and saving again replaces theirs.
 - **Sending:** waiting things are sent when Pocket is opened, when it comes back to the front, and when the connection
   returns, in the order they were done, and a connection that drops halfway doesn't send anything twice. Vikunja not
   answering within 20 seconds counts as no connection. On an iPhone, waiting things are sent the next time Pocket is

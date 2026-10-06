@@ -2,7 +2,7 @@
 import {cache, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask, why} from '../api.js';
 import {parseFragment} from '../html.js';
-import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
+import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isRunDesc, isRunStepTask, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
@@ -32,8 +32,8 @@ export default {
     const t = this.sheet.task, r = t?.related_tasks || {};
     if (!t || !this.checklistIds.has(t.project_id)) return null;
     if (hasTemplateLabel(t) && t.done) return 'template';
-    if (r.parenttask?.length) return r.copiedfrom?.length ? 'step' : null;
-    return r.copiedfrom?.length && !hasTemplateLabel(t) ? 'run' : 'candidate';
+    if (r.parenttask?.length) return isRunStepTask(t) ? 'step' : null;
+    return (r.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t) ? 'run' : 'candidate';
   },
   /* A project's ⋯. What's offered depends on your access to it (Vikunja's max_permission: 0 read, 1 write, 2 admin):
      renaming, archiving and checklists need write access, and deleting needs admin. */
@@ -177,7 +177,7 @@ export default {
     const parent = t.related_tasks?.parenttask?.[0]?.id;
     if (t.id in runs) return runs[t.id];
     if (parent in runs) return runs[parent];
-    return !isRun(t) && !(parent && t.related_tasks?.copiedfrom?.length);   // a run, or a step of one, that isn't known
+    return !isRun(t) && !isRunStepTask(t);                                 // a run, or a step of one, that isn't known
   },
 
   /* Make the open task a template: label it "template", then mark its steps and itself done, so none of them is a
@@ -213,6 +213,9 @@ export default {
   draftRows(which){ return which === 'new' ? this.sheet.newTpl?.rows || [] : this.sheet.addRows; },
   draft(which){ return draftSteps(this.draftRows(which), which === 'new' ? [] : this.subtasks.map(s => ({key: 'task:' + s.id, text: s.title}))); },
   addDraftRow(which, at){
+    // A phone only opens its keyboard for a field focused during the tap, and the new row is there only after it: an
+    // unseen field takes the focus now, so the keyboard opens, and passes it on.
+    document.getElementById('focus-keeper')?.focus({preventScroll: true});
     const rows = this.draftRows(which), k = at ?? rows.length;
     rows.splice(k, 0, {key: randomId(), text: '', keep: false, from: null});
     this.$nextTick(() => document.getElementById(`${which}-step-${k}`)?.focus());

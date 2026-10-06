@@ -4,7 +4,7 @@ import {api, ApiError, errText, items, NetError, passing, serverTime, triedSince
 import {dueInfo, isSet} from '../dates.js';
 import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, noteOf, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, stepFrom, stepProblems, stepsOf} from '../checklists.js';
+import {allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
@@ -56,7 +56,7 @@ export default {
     if (problems.length) { this.notify('Not started: ' + problemText(problems)); return; }
     const start = new Date(), steps = st.steps.map((s, i) => {
       const {title, offset} = parseStep(s.title);
-      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, remind: offset >= 6e4,
+      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, remind: offset >= 6e4, tpl: s.title,
         taskId: null, tried: false, linked: false, ready: false};
     });
     const who = st.people.find(u => u.id === st.forId) || this.user;
@@ -256,10 +256,11 @@ export default {
     const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.run.id);
     const waitingNote = a => ({id: a.id, comment: a.html, author: myName, when: 'Waiting to send'});
     const steps = r.steps.map(s => {
-      let done = s.done, skipped = done && !!s.reactions?.[SKIP_MARK]?.length, waiting = false, doneAt = s.done_at;
+      const skipper = skippedBy(s);
+      let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at;
       const kept = keptTicks()[s.id];
       if (done && kept && Date.parse(kept.there) === Date.parse(s.done_at)) doneAt = kept.here;
-      let doers = (s.reactions?.[skipped ? SKIP_MARK : DONE_MARK] || []).map(u => u.name || u.username);
+      let doers = (skipped ? [skipper] : s.reactions?.[DONE_MARK] || []).map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
       for (const a of acts) if (a.task === s.id) {
         if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
@@ -267,7 +268,7 @@ export default {
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; doers = [myName];
       }
       const slot = this.claimSlot({...s, project_id: r.run.project_id}, this.peopleOf(s.id, s.assignees), done || r.run.done);
-      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: s.description, attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot,
+      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
@@ -326,7 +327,7 @@ export default {
   // A checklist run, done or not: a copy of a template, in a checklist project, not under another task.
   isRunTask(t){
     const r = t?.related_tasks || {};
-    return !!t && this.checklistIds.has(t.project_id) && !!r.copiedfrom?.length && !r.parenttask?.length && !hasTemplateLabel(t);
+    return !!t && this.checklistIds.has(t.project_id) && (!!r.copiedfrom?.length || isRunDesc(t.description)) && !r.parenttask?.length && !hasTemplateLabel(t);
   },
   // Whether you can change things in a project: not when it's shared with you to read only. (Not known yet: yes.)
   canWrite(pid){ const v = this.perms[pid]; return v === undefined || v === null || v >= 1; },
@@ -344,7 +345,7 @@ export default {
   // The run a task is a step of, or null.
   stepRun(t){
     const r = t?.related_tasks || {};
-    return this.checklistIds.has(t?.project_id) && r.copiedfrom?.length && r.parenttask?.length && !hasTemplateLabel(t) ? r.parenttask[0].id : null;
+    return this.checklistIds.has(t?.project_id) && isRunStepTask(t) && !hasTemplateLabel(t) ? r.parenttask[0].id : null;
   },
   // Whether a list row has a tick: not a template, and not a run, except in its project's own list.
   canTick(t){

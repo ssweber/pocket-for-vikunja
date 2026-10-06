@@ -4,13 +4,16 @@ import {api, errText, items, NetError, patchTask} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, progressPatch} from '../progress.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
-import {patiently, stepInfos, stepOrder, stepsOf, withOrder} from '../checklists.js';
+import {notesOnly, patiently, stepInfos, stepsOf, withLinesOf} from '../checklists.js';
 import {atTime} from '../quickadd.js';
 import {fileEntry, NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 
 export let pendingSaves = 0;
+// Notes written and not saved yet, kept on the phone: {text, base: what the notes said when the editing began}. An older
+// Pocket kept the text only.
+const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
 // Saves to each task: how many have begun or ended, and how many haven't ended. A copy read while one was under way can
 // be older than Vikunja's, so it isn't shown (readTask).
 const saving = new Map();
@@ -69,11 +72,12 @@ export default {
     const sh = this.sheet, t = sh.task;
     if (!sh.open || sh.kind !== 'task' || !t) return;
     if (sh.editingDesc && sh.descDraft.trim() !== this.notesText(t).trim()) {
-      const v = sh.descDraft;
+      const v = sh.descDraft, base = sh.descConflict ?? sh.descBase;
       sh.editingDesc = false; sh.dirty = true;
-      taskDrafts.set('desc:' + t.id, v);                                     // kept until it's saved
-      this.saveTask(t.id, null, now => ({description: this.notesHtml(now, v)})).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
-        e => this.notify(e instanceof NetError ? 'Offline: the notes are kept on this phone. Open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.'));
+      taskDrafts.set('desc:' + t.id, {text: v, base});                       // kept until it's saved
+      this.saveTask(t.id, null, now => this.notesPatch(now, v, base)).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
+        e => this.notify(e.notes !== undefined ? 'Notes not saved: they were changed elsewhere while you wrote. Yours are kept: open the task to see both.'
+          : e instanceof NetError ? 'Offline: the notes are kept on this phone. Open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.'));
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
   },
@@ -103,8 +107,8 @@ export default {
     this.sheet.commentDraft = taskDrafts.get('comment:' + id) || '';
     this.sheet.sub.text = taskDrafts.get('sub:' + id) || '';
     // Notes that couldn't be saved (offline, say): back in the editor, to save again.
-    const desc = taskDrafts.get('desc:' + id);
-    if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc, descUnsaved: true});
+    const desc = notesDraft(id);
+    if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc.text, descBase: desc.base, descUnsaved: true});
     this.sheet.addRows = taskDrafts.get('addsteps:' + id) || [];
     const mine = this.sheet, cached = cache.get(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
@@ -112,7 +116,7 @@ export default {
       // If it was changed while this loaded, the save brings a newer copy; the old one isn't put back.
       const t = await this.readTask(id);
       if (this.sheet !== mine) return;
-      if (t) { cache.set(id, t); this.showTask(t); }
+      if (t) { cache.set(id, t); this.showTask(t); this.checkNotes(t); }
       this.loadComments(id); this.loadSubPeople(t || cached || {id});
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
@@ -209,7 +213,7 @@ export default {
   // Subtasks of the open task still waiting to be sent, for its sheet.
   get pendingSubtasks(){ return this.pendingTasks.filter(t => t.parent === this.sheet.task?.id); },
   get descHtml(){
-    const d = withOrder(this.sheet.task?.description, null).replace(/<p>\s*<\/p>/g,'').trim();
+    const d = notesOnly(this.sheet.task?.description).replace(/<p>\s*<\/p>/g,'').trim();
     return d ? sanitize(d) : '<span class="ph">Add notes</span>';
   },
 
@@ -291,22 +295,54 @@ export default {
     const v = this.sheet.title.trim();
     if (v && v !== this.sheet.task.title) this.save({title: v}); else this.sheet.title = this.sheet.task.title;
   },
-  // The notes as text, and as saved: a template's order line is left out while they're edited, and kept. Saved with the
-  // order line Vikunja has when they're sent (`t`, read then), so a step moved elsewhere meanwhile stays moved.
-  notesText(t){ return htmlToText(withOrder(t.description, null)); },
-  notesHtml(t, text){ const html = text.trim() ? textToHtml(text) : '', order = stepOrder(t.description); return order ? withOrder(html, order) : html; },
+  // The notes as text, and as saved: Pocket's lines (a template's order, a run's) are left out while they're edited, and
+  // kept. Saved with the lines Vikunja has when they're sent (`t`, read then), so a step moved elsewhere stays moved.
+  notesText(t){ return htmlToText(notesOnly(t.description)); },
+  notesHtml(t, text){ return withLinesOf(text.trim() ? textToHtml(text) : '', t.description); },
+  // Editing the notes starts from what they say now (descBase), so a save can tell if they were changed elsewhere since.
   editDesc(){
-    this.sheet.descDraft = this.notesText(this.sheet.task);
-    this.sheet.editingDesc = true;
+    Object.assign(this.sheet, {descDraft: this.notesText(this.sheet.task), descBase: this.notesText(this.sheet.task), descConflict: null, editingDesc: true});
   },
-  // Save the notes. If they can't be saved (offline, say), they stay in the editor, and on the phone, to save later.
+  cancelDesc(){
+    Object.assign(this.sheet, {editingDesc: false, descUnsaved: false, descConflict: null});
+    taskDrafts.delete('desc:' + this.sheet.task.id);
+  },
+  /* The notes to save, made to Vikunja's copy as it is when they're sent (`now`). Not if its notes were changed since
+     the editing began (`base`; null: not known, from an older Pocket): those aren't written over unseen. The error
+     carries them (notes) and Vikunja's copy (now). */
+  notesPatch(now, text, base){
+    const has = this.notesText(now).trim();
+    if (base !== null && base !== undefined && has !== base.trim() && has !== text.trim())
+      throw Object.assign(new Error('the notes were changed elsewhere while you wrote'), {notes: has, now});
+    return {description: this.notesHtml(now, text)};
+  },
+  // Notes kept on the phone, opened again: if Vikunja's have changed since they were begun, both are shown.
+  checkNotes(t){
+    const sh = this.sheet, has = this.notesText(t).trim();
+    if (sh.editingDesc && sh.descBase !== null && sh.descBase !== undefined && has !== sh.descBase.trim() && has !== sh.descDraft.trim()) sh.descConflict = has;
+  },
+  /* Save the notes. If they can't be saved (offline, say), they stay in the editor, and on the phone, to save later. If
+     they were changed elsewhere meanwhile, Vikunja's are shown under them: saving again replaces those, once seen. */
   async saveDesc(){
-    const v = this.sheet.descDraft, t = this.sheet.task, html = this.notesHtml(t, v);
-    this.sheet.editingDesc = false;
-    await this.save({description: html}, now => ({description: this.notesHtml(now, v)}));
-    if (this.notesText(cache.get(t.id) || {}) === this.notesText({description: html})) { taskDrafts.delete('desc:' + t.id); this.sheet.descUnsaved = false; return; }
-    taskDrafts.set('desc:' + t.id, v);
-    if (this.sheet.task?.id === t.id) Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true});
+    const sh = this.sheet, v = sh.descDraft, t = sh.task, base = sh.descConflict ?? sh.descBase, here = () => this.sheet.task?.id === t.id;
+    Object.assign(sh, {editingDesc: false, savedMsg: 'Saving…'});
+    try {
+      const got = await this.saveTask(t.id, null, now => this.notesPatch(now, v, base));
+      taskDrafts.delete('desc:' + t.id);
+      if (!here()) return;
+      this.showTask(got);
+      Object.assign(this.sheet, {descUnsaved: false, descConflict: null, dirty: true, savedMsg: 'Saved'});
+      setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
+    } catch (e) {
+      const seen = e.notes ?? null;
+      taskDrafts.set('desc:' + t.id, {text: v, base});
+      if (here()) {
+        if (e.now) { cache.set(t.id, e.now); this.showTask(e.now); }
+        Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
+      }
+      this.notify(seen !== null ? 'Not saved: the notes were changed elsewhere while you wrote. Both are shown: save again to replace them with yours.'
+        : e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+    }
   },
 
   /* ---------- reminders ---------- */

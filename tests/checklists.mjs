@@ -276,6 +276,19 @@ try {
   });
   const runStep = async (run, i) => (await subtasks(run))[i];
 
+  await step('a-template-changed-after-a-start-leaves-the-run', async () => {
+    // A run keeps its steps' times from when it started: a template step given another time changes only runs after.
+    const warm = (await subtasks(template.id)).find(s => s.title === STEPS[1]);
+    await api('/tasks/' + warm.id, { method: 'PATCH', body: JSON.stringify({ title: 'Warm up the press T#45m' }) });
+    try {
+      await page.reload();
+      await page.waitForSelector(`#run-steps .row:nth-of-type(2) .meta:has-text("Due 30m after ${GUARDS}")`, { timeout: 15000 });
+      if (/pocket:/.test(await page.textContent('#run'))) throw new Error('a line of Pocket\'s shows on the run');
+      const run = await api('/tasks/' + first.id), step2 = await api('/tasks/' + (await runStep(first.id, 1)).id);
+      if (!/pocket:run/.test(run.description) || !step2.description.includes('pocket:step Warm up the press T#30m')) throw new Error(`run ${run.description}, step ${step2.description}`);
+    } finally { await api('/tasks/' + warm.id, { method: 'PATCH', body: JSON.stringify({ title: STEPS[1] }) }); }
+  });
+
   await step('tick-a-step', async () => {
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
@@ -394,6 +407,31 @@ try {
     await until('never undone a third time', async () => !(await task(id)).done);
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await until('never done with a ✅', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
+    if (!other) return;
+    // Skipped by someone else, then unticked and done here: done, not skipped, though their ⏭️ stays (only they can
+    // take it back).
+    // (Vikunja on SQLite answers 500 "database is locked" now and then: tried again, as Pocket does.)
+    const retry = async fn => { for (let i = 0; ; i++) { try { return await fn(); } catch (e) { if (i >= 4 || !/HTTP 500/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } };
+    const row1 = '#run-steps .row:nth-of-type(1)', as = (path, body, method = 'POST') => retry(() => call(otherToken, path, { method, body: JSON.stringify(body) }));
+    await page.click(`${row1} .check`);
+    await until('never undone for their skip', async () => !(await task(id)).done);
+    await as('/tasks/' + id, { done: true }, 'PATCH');
+    await as(`/tasks/${id}/reactions`, { value: '⏭️' });
+    await as(`/tasks/${id}/comments`, { comment: '<p>Skipped: it was done already</p>' });
+    try {
+      await page.reload();
+      await page.waitForSelector(`${row1} .meta:has-text("Skipped by ${other.name || other.username}")`, { timeout: 15000 })
+        .catch(async () => { throw new Error('not shown as skipped by them: ' + await page.textContent(`${row1} .meta`)); });
+      await new Promise(r => setTimeout(r, 1100));                            // Vikunja's times have whole seconds
+      await page.click(`${row1} .check`);
+      await until('their skip never undone', async () => !(await task(id)).done);
+      await page.click(`${row1} .check`);
+      await until('never done after their skip', async () => (await task(id)).done);
+      await page.reload();
+      await page.waitForSelector(`${row1} .meta:has-text("Done by")`, { timeout: 15000 })
+        .catch(async () => { const t = await task(id); throw new Error(`not shown as done: ${await page.textContent(`${row1} .meta`)}; done_at ${t.done_at}, notes ${JSON.stringify((t.comments || []).map(c => [c.created, c.comment]))}`); });
+      if (await page.$(`${row1} .meta:has-text("Skipped")`)) throw new Error('still shows as skipped');
+    } finally { await as(`/tasks/${id}/reactions/delete`, { value: '⏭️' }).catch(() => {}); }
   });
 
   await step('claim-a-step', async () => {
@@ -505,14 +543,14 @@ try {
     p.on('pageerror', e => errors.push('(other) ' + e));
     p.on('console', m => m.type() === 'error' && console.log('  (other) console:', m.text()));
     const rows = () => p.$$eval('.row .title', els => els.map(x => x.textContent));
-    // A step of your run they've claimed is on their Today, even without a due date. (It's done by now: not done for this.)
-    const warm = (await runStep(first.id, 1)).id, warmDue = (await task(warm)).due_date;
-    await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ done: false, due_date: '0001-01-01T00:00:00Z' }) });
-    await call(otherToken, `/tasks/${warm}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
+    // A step of your run they've claimed is on their Today, though it has no due date. (It's done by now: not done for this.)
+    const guards = (await runStep(first.id, 0)).id;
+    await api('/tasks/' + guards, { method: 'PATCH', body: JSON.stringify({ done: false }) });
+    await call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
     try {
       await signIn(p, otherToken);
       await p.waitForSelector(`.row .title:has-text("${run.title}")`, { timeout: 15000 });
-      await p.waitForSelector('.row .title:has-text("Warm up the press")', { timeout: 15000 }).catch(() => { throw new Error("their claimed step isn't on their Today"); });
+      await p.waitForSelector('.row .title:has-text("Check the guards at 3pm")', { timeout: 15000 }).catch(() => { throw new Error("their claimed step isn't on their Today"); });
       const mine = (await api('/tasks/' + first.id)).title, seen = await rows();
       if (seen.includes(mine)) throw new Error('your run is in their Today');
       // Your run's last step is due, and isn't theirs; theirs has no due date yet.
@@ -525,8 +563,8 @@ try {
       throw new Error(`${e.message.split('\n')[0]}; looking for "${run.title}", their rows: ${JSON.stringify(await rows())}`, { cause: e });
     } finally {
       await theirs.close();
-      await api(`/tasks/${warm}/assignees/${other.id}`, { method: 'DELETE' }).catch(() => {});
-      await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ done: true, due_date: warmDue }) });
+      await api(`/tasks/${guards}/assignees/${other.id}`, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + guards, { method: 'PATCH', body: JSON.stringify({ done: true }) });
     }
   });
 
@@ -819,6 +857,7 @@ try {
     const row = i => page.locator('#add-steps > .draft-step').nth(i);
     // Counting from a name no step has: not added.
     await page.click('#add-add-step');
+    await page.waitForFunction(() => document.activeElement?.id === 'add-step-0', null, { timeout: 5000 });   // ready to type in
     await row(0).locator('.draft-in').fill('Pull a sample T#5m:nope');
     await row(0).locator('.draft-meta .bad:has-text("no step is named “nope”")').waitFor();
     if (await page.isEnabled('#add-steps-go')) throw new Error('can be added');

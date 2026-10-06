@@ -1,7 +1,7 @@
 // Sending to Vikunja: what's waiting, kept on the phone, and the steps each kind of change is sent in.
 import {app, ZERO} from './util.js';
 import {api, passing, patchTask} from './api.js';
-import {DONE_MARK, isTemplateLabel, SKIP_MARK, stepOrder, withOrder} from './checklists.js';
+import {DONE_MARK, isTemplateLabel, notesOnly, SKIP_MARK, withRunMark, withStepLine} from './checklists.js';
 import {removeAssignee} from './quickadd.js';
 
 /* Everything waiting to go to Vikunja: tasks added without a connection (or whose sending was cut off), and photos and
@@ -237,8 +237,9 @@ export const RUN_STEPS = [
   {name: 'run', done: j => !!j.runId, async run(j, c){
     const t = (j.tried && await app.findCopy(j.template.id, j, j.at, c.taken, j.id, null)) || await duplicate(j.template.id, j, c.save, (await api('/tasks/' + j.template.id)).title);
     sync.claim(t.id, j.id); c.taken.add(t.id); j.runId = t.id;
-    // The template's notes come with it, but not its order line: the ids in it are the template's steps.
-    if (stepOrder(t.description)) j.desc = withOrder(t.description, null) || '<p></p>';   // Vikunja's PATCH skips an empty one
+    // The template's notes come with it, but not its order line: the ids in it are the template's steps. And a line
+    // saying it's a run, so it still is if its template is deleted.
+    j.desc = withRunMark(notesOnly(t.description));
   }},
   // Named after its template, the name typed when it was started or else which run of it this is, and the day:
   // "Startup · Night shift · Oct 3", or "Startup · run 3 · Oct 3". Without a due date of its own: its steps have theirs.
@@ -261,13 +262,16 @@ export const RUN_STEPS = [
     const s = j.steps.find(s => !s.ready);
     if (!s.taskId) {
       const t = (s.tried && await app.findCopy(s.from, s, j.at, c.taken, j.id, j.runId)) || await duplicate(s.from, s, c.save);
-      sync.claim(t.id, j.id); c.taken.add(t.id); s.taskId = t.id;
+      sync.claim(t.id, j.id); c.taken.add(t.id); s.taskId = t.id; s.desc = t.description || '';
     } else if (!s.linked) {
       try { await app.linkSubtask(j.runId, s.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
       s.linked = true;
     } else {
+      // Its template step's title, whose T# and {#name} its time is read from: changing the template later changes
+      // only runs started after.
       await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO, repeat_after: 0, repeat_mode: 0,
-        ...(s.remind ?? s.timed) && {reminders: [{relative_to: 'due_date', relative_period: 0}]}});
+        ...(s.remind ?? s.timed) && {reminders: [{relative_to: 'due_date', relative_period: 0}]},
+        ...s.tpl != null && s.desc != null && {description: withStepLine(notesOnly(s.desc), s.tpl)}});
       s.ready = true;
     }
   }},

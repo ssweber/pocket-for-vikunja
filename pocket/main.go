@@ -32,6 +32,7 @@ package main
 
 import (
 	"encoding/json"
+	"html"
 	"math"
 	"net/http"
 	"os"
@@ -149,7 +150,20 @@ var (
 	stepNameRe = regexp.MustCompile(`\{#([A-Za-z][\w-]*)\}`)
 	stepUnits  = map[string]float64{"d": 86400000, "h": 3600000, "m": 60000, "s": 1000, "ms": 1}
 	stepMax    = 365 * 86400000.0 // a year, in ms, as index.html
+	// A run keeps what it was started from (checklists.js): "pocket:run" in its description, and "pocket:step <its
+	// template step's title then>" in each step's, so a template changed or deleted since changes only later runs.
+	runLineRe  = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:run\s*(?:<|$)`)
+	stepLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:step\s+([^<\n]+)`)
 )
+
+// A run's step's template step title when the run started, from its description; ok false for a run started before.
+func stepLineOf(desc string) (title string, ok bool) {
+	m := stepLineRe.FindStringSubmatch(desc)
+	if m == nil {
+		return "", false
+	}
+	return strings.TrimSpace(html.UnescapeString(m[1])), true
+}
 
 type stepTime struct {
 	timed  bool
@@ -266,8 +280,8 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 // tick is dealt with.
 //
 // Vikunja lets anyone link a task they can edit to one they can only see, so the run is taken only as Pocket makes
-// one: the run, its steps and its template all in the done step's project, the template labelled "template", and each
-// step's offset read from a step of that template.
+// one: the run and its steps in the done step's project, and each step's offset read from its own "pocket:step" line
+// or, for a run started before runs kept them, from a step of its template, in the project and labelled "template".
 func setStepDueDates(stepID int64, doneAt time.Time) (handled bool, err error) {
 	s := db.NewSession()
 	defer s.Close()
@@ -312,28 +326,42 @@ func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 	if tpl, err := isTemplate(s, run.ID); err != nil || tpl {
 		return err
 	}
+	// Its template's steps, for a run started before runs kept their steps' times: the template it was copied from, in
+	// the project and labelled "template". A run that keeps them needs no template: it may have been deleted since.
+	tplSteps := map[int64]*models.Task{}
 	from, err := relatedIDs(s, run.ID, "copiedfrom")
-	if err != nil || len(from) == 0 {
+	if err != nil {
 		return err
 	}
-	template, err := taskIn(s, from[0], project)
-	if err != nil || template == nil {
-		return err
+	if len(from) > 0 {
+		template, err := taskIn(s, from[0], project)
+		if err != nil {
+			return err
+		}
+		if template != nil {
+			tpl, err := isTemplate(s, template.ID)
+			if err != nil {
+				return err
+			}
+			if tpl {
+				tplStepIDs, err := relatedIDs(s, template.ID, "subtask")
+				if err != nil {
+					return err
+				}
+				if len(tplStepIDs) > 0 {
+					if err := s.In("id", tplStepIDs).And("project_id = ?", project).Find(&tplSteps); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
-	if tpl, err := isTemplate(s, template.ID); err != nil || !tpl {
-		return err
+	if len(tplSteps) == 0 && !runLineRe.MatchString(run.Description) {
+		return nil // not a run Pocket made
 	}
 
-	// The template's steps, and the run's in their order, each with the template step it was copied from. A run's steps
-	// are copied one at a time in its template's order, so they're in order by id, as Pocket shows them.
-	tplStepIDs, err := relatedIDs(s, template.ID, "subtask")
-	if err != nil || len(tplStepIDs) == 0 {
-		return err
-	}
-	tplSteps := map[int64]*models.Task{}
-	if err := s.In("id", tplStepIDs).And("project_id = ?", project).Find(&tplSteps); err != nil {
-		return err
-	}
+	// The run's steps in their order, each with its time: from its own line, or else from the template step it was copied
+	// from. A run's steps are copied one at a time in its template's order, so they're in order by id, as Pocket shows them.
 	// All of them, wherever they are, so "the step before" is the one Pocket shows before it; only those in the
 	// project are written to.
 	runStepIDs, err := relatedIDs(s, run.ID, "subtask")
@@ -363,7 +391,9 @@ func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 	}
 	steps, at := make([]stepTime, len(ids)), -1
 	for i, id := range ids {
-		if t := fromOf[id]; t != nil {
+		if title, ok := stepLineOf(tasks[id].Description); ok {
+			steps[i] = parseStepTime(title)
+		} else if t := fromOf[id]; t != nil {
 			steps[i] = parseStepTime(t.Title)
 		}
 		if id == stepID {

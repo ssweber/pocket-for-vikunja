@@ -212,6 +212,9 @@ export default {
     this.updateIfNew();
     this.refreshing = true;
     this.people = null; this.access = {}; this.userKnown = {}; this.labelsLoaded = false;   // sharing and labels may have changed too
+    // Your settings and the server's (reminder emails, say), changed in Vikunja since Pocket opened.
+    api('/user').then(u => { if (u?.id === this.user?.id) { this.user = u; saved.set('user', u); } }, () => {});
+    api('/info', {auth: false}).then(i => { if (i) { this.info = i; saved.set('info', i); } }, () => {});
     try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }
   },
 
@@ -346,9 +349,12 @@ export default {
   },
 
   /* ---------- overdue ---------- */
-  // "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back.
+  /* "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back. Not a
+     repeating task: moved, its next times would follow the new date; ticked, it moves on to its next date. */
   async moveOverdueToToday(){
-    const tasks = this.view.groups.find(g => g.key === 'overdue')?.tasks || [];
+    const overdue = this.view.groups.find(g => g.key === 'overdue')?.tasks || [], tasks = overdue.filter(t => !repeats(t));
+    const stay = overdue.length - tasks.length, stays = !stay ? '' : `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}: tick ${stay === 1 ? 'it' : 'them'} to move on to the next date.`;
+    if (!tasks.length && stay) { this.notify('Nothing moved. ' + stays); return; }
     if (!tasks.length || this.movingOverdue) return;
     this.movingOverdue = true;
     const now = new Date();
@@ -359,7 +365,7 @@ export default {
     const moves = tasks.map(t => {
       const d = new Date(t.due_date);
       d.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
-      return {t, was: t.due_date, due: (isLate(d.toISOString(), now, this.dueTime) ? next : d).toISOString()};
+      return {t, was: t.due_date, due: (isLate(d.toISOString(), now) ? next : d).toISOString()};
     });
     const moved = await this.saveEach(moves.map(m => [m.t, {due_date: m.due}]));
     this.movingOverdue = false;
@@ -373,7 +379,7 @@ export default {
       this.render();
     }};
     if (!n) return this.notify(this.offline ? 'Offline — not moved' : 'Not moved: Vikunja didn\'t save the changes');
-    this.notify(`Moved ${n === 1 ? '1 task' : n + ' tasks'} to today` + (left ? `. ${left === 1 ? '1 wasn\'t' : left + ' weren\'t'} saved and ${left === 1 ? 'is' : 'are'} still overdue.` : ''), undo);
+    this.notify(`Moved ${n === 1 ? '1 task' : n + ' tasks'} to today` + (left ? `. ${left === 1 ? '1 wasn\'t' : left + ' weren\'t'} saved and ${left === 1 ? 'is' : 'are'} still overdue.` : '.') + (stays ? ' ' + stays : ''), undo);
     this.render();
   },
   // Whether a task is still as Pocket last saved it, so an Undo doesn't write over a change made since, elsewhere.
