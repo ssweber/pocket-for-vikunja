@@ -12,16 +12,23 @@ export default {
   /* A subtask's or a step's slot for who's doing it, on its row. Empty and open, "+ me": a tap claims it, which assigns
      it to you. Yours: a tap lets it go. Someone else's shows who has it and does nothing: handing it over is done with
      Assign in its sheet. Done, it shows who had it and can't be tapped. Claiming never ticks anything: Done and Skip
-     work for anyone, whoever has the step. `people`: its assignees, with claims waiting to be sent (peopleOf). */
+     work for anyone, whoever has the step. `people`: its assignees, with claims waiting to be sent (peopleOf). Up to two
+     pictures show (`users`), yours first, then how many more. */
   claimSlot(t, people, done){
-    const me = this.user, mine = people.some(u => u.id === me?.id), who = mine ? me : people[0] || null;
-    const title = parseStep(t.title).title, more = people.length > 1 ? people.length - 1 : 0;
-    const names = people.map(u => u.id === me?.id ? 'you' : this.nameOf(u)).join(', ');
-    if (done || !this.canWrite(t.project_id)) return who ? {user: who, more, can: false, label: `Assigned to ${names}: ${title}`} : null;
-    const others = people.filter(u => u.id !== me?.id).map(u => this.nameOf(u)).join(', ');
-    if (mine) return {user: me, more, can: true, mine: true, label: `You're doing ${title}${others ? ', with ' + others : ''}. Tap to let it go`};
-    if (who) return {user: who, more, can: false, label: `${names} ${people.length > 1 ? 'are' : 'is'} doing ${title}`};
-    return {user: null, more: 0, can: true, label: `Tap to say you'll do ${title}`};
+    const me = this.user, mine = people.some(u => u.id === me?.id), title = parseStep(t.title).title;
+    const all = mine ? [me, ...people.filter(u => u.id !== me.id)] : people, users = all.slice(0, 2), more = all.length - users.length;
+    const names = all.map(u => u.id === me?.id ? 'you' : this.nameOf(u)).join(', ');
+    if (done || !this.canWrite(t.project_id)) return all.length ? {users, more, can: false, label: `Assigned to ${names}: ${title}`} : null;
+    const others = all.filter(u => u.id !== me?.id).map(u => this.nameOf(u)).join(', ');
+    if (mine) return {users, more, can: true, mine: true, label: `You're doing ${title}${others ? ', with ' + others : ''}. Tap to let it go`};
+    if (all.length) return {users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
+    return {users: [], more: 0, can: true, label: `Tap to say you'll do ${title}`};
+  },
+  /* A done step's pictures: whoever did it, with a ✓ (⏭ for a skip, grey while it waits to be sent), then the others
+     it's assigned to, all one size. Null when there's no one to show. */
+  doneSlot(by, people, badge){
+    const all = [...by.map(u => ({...u, badge})), ...people.filter(u => !by.some(d => d.id === u.id))];
+    return all.length ? {users: all.slice(0, 2), more: Math.max(0, all.length - 2), can: false} : null;
   },
   // A task's assignees as shown: Vikunja's, with your claims and let-gos still waiting to be sent laid over them.
   peopleOf(id, base){

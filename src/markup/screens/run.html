@@ -61,14 +61,15 @@
           <button class="body" @click="showStep(i, true)"><div class="title" x-text="s.title"></div>
             <div class="meta" x-show="(s.dueText && !s.done) || s.added"><template x-if="s.added"><span class="added" x-text="s.added"></span></template>
               <template x-if="s.dueText && !s.done"><span class="due num" :class="{overdue: s.late}" x-text="s.dueText"></span></template></div></button>
-          <!-- Who did it: Pocket's tick (or the skip arrow, as on the circle) and their picture, beside who it's assigned to -->
-          <template x-if="s.done"><span class="did" :class="{waiting: s.waiting, skip: s.skipped}" role="img" :aria-label="s.whoText"><svg class="i" aria-hidden="true"><use :href="s.skipped ? '#i-send' : '#i-check'"/></svg>
-            <template x-if="s.waiting"><span class="more">…</span></template>
-            <template x-if="!s.waiting && s.by[0]"><span class="av"><span x-text="initials(s.by[0])"></span><img x-show="avatarUrl(s.by[0])" :src="avatarUrl(s.by[0])" alt=""></span></template>
-            <template x-if="!s.waiting && s.by.length > 1"><span class="more num" x-text="'+' + (s.by.length - 1)"></span></template></span></template>
-          <template x-if="s.slot"><button class="claim" :class="{free: !s.slot.user, mine: s.slot.mine}" :aria-disabled="!s.slot.can" :aria-label="s.slot.label" @click="toggleClaim(s, s.slot, view.run.run.id)">
-            <template x-if="s.slot.user"><span class="av"><span x-text="initials(s.slot.user)"></span><img x-show="avatarUrl(s.slot.user)" :src="avatarUrl(s.slot.user)" alt=""></span></template>
-            <template x-if="!s.slot.user"><span class="me">+ me</span></template><template x-if="s.slot.more"><span class="more num" x-text="'+' + s.slot.more"></span></template></button></template>
+          <!-- Done: who did it, ✓ on their picture (⏭ for a skip), and who else it's assigned to -->
+          <template x-if="s.done && s.slot"><span class="did" :class="{waiting: s.waiting, skip: s.skipped}" role="img" :aria-label="s.whoText"><template x-for="slot in [s.slot]" :key="0"><span class="pics">
+            <!-- include markup/pics.html -->
+          </span></template></span></template>
+          <!-- Not done: who's doing it; "+ me" claims it, your picture lets it go -->
+          <template x-if="!s.done && s.slot"><button class="claim" :class="{free: !s.slot.users.length, mine: s.slot.mine}" :aria-disabled="!s.slot.can" :aria-label="s.slot.label" @click="toggleClaim(s, s.slot, view.run.run.id)">
+            <template x-if="!s.slot.users.length"><span class="me">+ me</span></template><template x-for="slot in [s.slot]" :key="0"><span class="pics">
+              <!-- include markup/pics.html -->
+            </span></template></button></template>
           <!-- A step added during the run, on screen and not done: likely a mistake, so it can go -->
           <template x-if="s.added && !s.done && i === runView.at && !runView.finished && canWrite(view.run.run.project_id)"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + s.title" @click="deleteAddedStep(s)"><svg class="i"><use href="#i-close"/></svg></button></template>
         </div></template>

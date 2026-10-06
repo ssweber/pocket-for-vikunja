@@ -312,7 +312,9 @@ export default {
         if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
-      const slot = s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, this.peopleOf(s.id, s.assignees), done || r.run.done);
+      const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
+      const slot = done ? this.doneSlot(by, people, waiting ? 'wait' : skipped ? 'skip' : 'done')
+        : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done);
       // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
       return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by,
         added: s.added || '', pending: s.pending || null, from: s.from || null, tpl: s.tpl,
