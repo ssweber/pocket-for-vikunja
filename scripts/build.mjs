@@ -51,6 +51,7 @@ async function js(file){
   const code = r.outputFiles.find(f => f.path.endsWith('.js')).text.trim();
   const map = JSON.parse(r.outputFiles.find(f => f.path.endsWith('.map')).text);
   map.sources = map.sources.map(s => s.replace(/^(\.\.\/)+/, ''));       // "src/js/api.js", the same on every computer
+  map.sourcesContent = map.sourcesContent.map(s => s.replace(/\r\n/g, '\n'));   // esbuild reads them as checked out
   map.file = 'index.html';
   return { code, map: JSON.stringify(map) + '\n' };
 }
