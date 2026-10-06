@@ -32,10 +32,15 @@ So part 3 of the PRD is mostly there. What's missing is seeing it, and keeping w
 It comes up after a step is done, when the run has moved on to the next: "I need to do something else before this
 one", or "that last step needs doing again". So both put a step **before the step on screen**:
 
-- **Insert a step**: a new step, typed like a subtask (quick add, with dates and project left alone, as
-  `STEP_IGNORE`).
-- **Repeat “Taste the soup”**: a fresh copy of the step before the one on screen, when it's done. The copy goes right
-  after it. The first one stays done, with its ✅, notes and photos; the copy starts not done, with none of that.
+- Where: in **Steps**, between the step done last and the one on screen, a box is always there, unfocused, like the
+  subtask box: `( ) [Insert a step] 🔁 +`. Nothing near Done and Skip, so a low tap can't add a step.
+- **Insert a step**: what's typed in the box, added with **+** or Enter. Escape empties the box. (Built as a plain
+  title; quick add's marks aren't read yet.)
+- **Repeat**: **🔁** puts the step before the one on screen in the box, when it's done, with a note under it ("A fresh
+  copy of the step before, not done. Change the words to insert a new step instead."). Left as it is, **+** makes a
+  fresh copy of it, right after it; changed, it's an inserted step. The first one stays done, with its ✅, notes and
+  photos; the copy starts not done, with none of that.
+- An added step that isn't done has a red **×** on its row while it's on screen, to delete it.
 - Either is a step like any other: Done, Skip, claim, notes, photos, ✅ by who did it, and offline through the outbox.
 - Each says so in grey under its title, **Inserted** or **Repeated**, on the run screen, in the run's sheet and in
   Last time.
@@ -236,8 +241,8 @@ Each is its own `feat` commit with its tests, after the user's go.
 1. A run's order line is written at every start.
 2. An inserted step has no time and timing skips it; a step timed from a repeated one counts from the copy.
 3. Inserted and repeated steps can be deleted until done; template steps are skipped, not removed.
-4. Both put a step before the one on screen: "Insert a step", and "Repeat “Taste the soup”" for the step before.
-   Marked "Inserted" and "Repeated".
+4. Both put a step before the one on screen, from a box always there above it in Steps: type and +, or 🔁 to put
+   the step before in it. Marked "Inserted" and "Repeated". A done step's who-did-it shows Pocket's tick, not ✅.
 5. No scheduler on the server: the template is Vikunja's repeating task, and starting a run ticks it. (A plugin making
    runs would have meant calling Vikunja's internals, or an API token in its config.)
 6. Any template with a due date comes round: the due date is the cursor.
