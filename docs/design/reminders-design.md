@@ -169,6 +169,7 @@ see only that a push was sent. Reading `notifications` is one more tie to Vikunj
   handle `{title, body, url, tag, notification_id}` in `sw.js`, rewriting the `url` to Pocket's
   `#/task/<id>`. A subscription is tied to a sign-in session, so API-token sign-ins can't use it.
 - Levels 1 and 2 carry over unchanged.
+- Checked in detail, with a draft comment of what's missing, in `web-push-pr4020-review.md`.
 
 ## Sources
 
