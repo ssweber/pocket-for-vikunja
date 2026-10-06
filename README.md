@@ -2,8 +2,8 @@
 
 **Tasks and checklists for [Vikunja](https://vikunja.io), on the go.**
 
-Add a task in a line, finish it the same day, hand it to a teammate with an @. Turn the things you do every day, like
-opening up and closing down, into checklists that you and your team tick off, step by step.
+Add a task in a line, finish it the same day, hand it to a teammate with an @. Turn the things you do again and again,
+like opening up and closing down, into checklists that you and your team tick off, step by step.
 
 <table>
   <tr>
@@ -37,7 +37,7 @@ Vikunja tells them about it once, not once per step.
 
 <img src="docs/screenshots/pocket-assign.png" width="320" alt="'Clean the milk steamer tomorrow @priya', with chips showing Café, Tomorrow and @priya">
 
-## Checklists for every day
+## Repeatable checklists
 
 Write the steps once, as a template: "Turn on the espresso machine", "Put the croissants in the oven", "Take the
 croissants out in 18 min". Then start a run each morning, for yourself or someone on shift, and work through it one
