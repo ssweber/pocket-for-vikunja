@@ -193,6 +193,9 @@ a.sec-act{text-decoration:none}
 .timer .num{flex:none;font-weight:650;color:var(--accent)}
 .timer .num.late{color:var(--overdue)}
 .step-card{padding:16px}
+.step-head{display:flex;align-items:center;gap:2px;margin:-6px 0 0 -8px}
+.step-head .icon-btn{width:32px;height:32px;color:var(--accent)}
+.step-head .icon-btn[disabled]{opacity:.3}
 .step-no{color:var(--muted);font-size:14px;font-weight:650}
 .step-card h3{margin:4px 0 6px;font-size:24px;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
 .step-card .desc{padding:0;margin:8px 0 0}
@@ -204,9 +207,6 @@ a.sec-act{text-decoration:none}
 .step-acts .btn{min-height:60px;font-size:19px}
 .step-acts .go-on{flex:1;max-width:360px}
 #heading{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
-.step-nav{display:flex;justify-content:space-between;margin-top:12px}
-.step-nav .linkish{font-size:15px;font-weight:600;padding:8px 2px}
-.step-nav .linkish[disabled]{visibility:hidden}
 .step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
 .step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
 .step-extra .comment-form{padding:10px 0 0}
