@@ -694,7 +694,9 @@ try {
       await page.waitForSelector('#cap-chips .chip[data-kind=due]');
       if (await page.$('#cap-chips .chip[data-kind=remind]')) throw new Error('a 🔔 chip for a time gone');
       await page.fill('#in-capture', `${t} at 4pm`);
-      await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=false]:has-text("🔔 Remind me at 4:00")');
+      await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=false]:has-text("🔔 Remind me")');
+      // The time is in its own chip already: this one doesn't say it again.
+      if ((await page.textContent('#cap-chips .chip[data-kind=remind]')).trim() !== '🔔 Remind me') throw new Error('the 🔔 chip says ' + await page.textContent('#cap-chips .chip[data-kind=remind]'));
       await page.click('#cap-chips .chip[data-kind=remind]');
       await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=true]');
       await page.press('#in-capture', 'Enter');

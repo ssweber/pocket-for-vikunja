@@ -1,6 +1,5 @@
 // The add box: what it read, who can see the project, suggestions for @username and *label, and the marks behind the words.
 import {colorOf, esc, userCache} from '../util.js';
-import {fmtTime} from '../dates.js';
 import {api, ApiError, items, NetError} from '../api.js';
 import {STEP_IGNORE} from '../checklists.js';
 import {captureLines, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES, tickedLines} from '../quickadd.js';
@@ -243,7 +242,7 @@ export default {
     // A time typed ("at 4pm", "in 2 hours", not a bare "friday"): a reminder at it, only when tapped on. Vikunja sends it
     // by email, so only when that reaches you, and only for a time still to come.
     if (all.due && all.timeRead && all.due > new Date() && !off('due') && this.remindersReach) out.push({key: 'rem', kind: 'remind', cls: 'toggle', pressed: b.remind,
-      text: `🔔 Remind me at ${fmtTime(all.due)}`, hint: b.remind ? 'Tap for no reminder' : 'Tap to have Vikunja email you a reminder at this time', action: () => { b.remind = !b.remind; }});
+      text: '🔔 Remind me', hint: b.remind ? 'Tap for no reminder' : 'Tap to have Vikunja email you a reminder at this time', action: () => { b.remind = !b.remind; }});
     if (all.repeatWarn) out.push({key: 'rw', cls: 'warn', text: `Vikunja can't repeat “${all.repeatWarn}”: it stays in the title`});
     if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
