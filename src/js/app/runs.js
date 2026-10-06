@@ -6,7 +6,7 @@ import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
 import {allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf} from '../checklists.js';
 import {routeOf} from '../routing.js';
-import {ACT_STEPS, ACTS, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
+import {ACT_STEPS, ACTS, heldTasks, KEPT, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {shared} from './core.js';
 import {renderSeq} from './views.js';
@@ -428,15 +428,24 @@ export default {
      all reaches Vikunja in the order it was done. */
   async act(fields){
     if (this.toast.show && this.toast.startOf && this.toast.startOf === (fields.run ?? this.view.run?.run.id)) this.toast.show = false;
+    // Its task's title, so Waiting to send can say what it is after a reload too.
     const entry = {id: randomId(), kind: 'act', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], stage: 0, fails: 0,
-      run: this.view.run?.run.id, ...fields};
+      run: this.view.run?.run.id, label: this.actTitle(fields.task), ...fields};
     const {kept, full} = await sync.add(entry, []);
     this.refreshPending();
     let last = {status: 'gone'};
     await sync.lock(async () => {
-      for (const e of sync.all(this.user?.id).filter(e => e.kind === 'act')) {
+      const all = sync.all(this.user?.id).filter(e => e.kind === 'act'), held = heldTasks(all);
+      for (const e of all) {
+        if (e.failed || held.has(e.task)) {                                  // waits behind one turned down
+          if (e.id !== entry.id) continue;
+          this.notify(`Waiting: something done before it on “${parseStep(entry.label || 'it').title}” was turned down. Tap the warning sign at the top to try that again.`);
+          last = {status: 'offline', reached: true};
+          break;
+        }
         last = await this.sendEntry(e.id);
-        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.error.back ? ' Its words are back in the box.' : ''));
+        if (last.kept) held.add(e.task);
+        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : last.error.back ? ' Its words are back in the box.' : ''));
         if (last.status === 'offline' || e.id === entry.id) break;
       }
     });
@@ -467,23 +476,29 @@ export default {
       }
       if (error.status === 403 && /mark/i.test(stages[a.stage] || '') && this.mode === 'token')
         error.message = 'your API token can\'t record who did a step: make one with Reactions ticked, as the guide says';
-      await sync.remove(a.id);
       // Its first part went through (the tick, say, before the ✅ was refused): that much is in Vikunja, so it's said, and
       // the step is shown as Vikunja has it.
       if (a.stage > 0 && ['done', 'undone'].includes(stages[0])) error.saved = stages[0] === 'done' ? 'it\'s marked done' : 'it\'s marked not done';
       if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
-      this.giveBack(a, error);
-      return {...none, status: 'error', error};
+      error.what = this.actWhat(a);
+      // A note's words go back where they were written. Anything else is kept, under Waiting to send, to try again or
+      // drop: a tick has no words to give back, and a toast is easily missed.
+      if (a.op === 'note') { await sync.remove(a.id); this.giveBack(a, error); return {...none, status: 'error', error}; }
+      a.failed = {message: error.message, at: new Date().toISOString()}; a.fails = 0;
+      await save();
+      return {...none, status: 'error', error, kept: true};
     }
   },
-  /* An action on a run, or a comment, that Vikunja turned down for good: its words go back where they were written,
-     and the error says what it was (error.what) and whether they're back (error.back). */
-  giveBack(a, error){
-    const title = cache.get(a.task)?.title || this.view.run?.steps.find(x => x.id === a.task)?.title || this.view.run?.run.title;
-    const on = title ? ` on “${parseStep(title).title}”` : '';
-    error.what = {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
+  // What an act was, for a message: "A tick on “Check the milk fridge”".
+  actWhat(a){
+    const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '';
+    return {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
       done: 'A tick' + on, undone: 'An untick' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
       claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it')}[a.op] || 'Something done offline';
+  },
+  /* An action on a run, or a comment, that won't be sent: its words go back where they were written, and `error.back`
+     says so. */
+  giveBack(a, error){
     const text = a.html ? htmlToText(a.html).replace(/^Skipped:?\s*/, '').trim() : '';
     if (!text) return;
     const add = (was = '') => [was.trim(), text].filter(Boolean).join('\n');

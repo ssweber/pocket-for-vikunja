@@ -54,7 +54,7 @@ export default {
   // the outbox, under their name, to be sent when they're back.
   switchAccount(){
     saved.clear(); this.forgetPeople(); this.dropSheet();
-    this.user = null; this.pending = []; this.cap.text = ''; this.capPhotos = [];
+    this.user = null; this.pending = []; this.failed = []; this.cap.text = ''; this.capPhotos = [];
     this.boot();
   },
   // Close the sheet without saving anything written in it: dropped, for the next person on this device, or with keep,
@@ -102,7 +102,7 @@ export default {
         runs && (runs === 1 ? 'a change to a run' : runs + ' changes to runs')].filter(Boolean).join(' and ');
       if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and drop ${n === 1 ? 'it' : 'them'}?`)) return;
       sync.drop(e => e.user === me);
-      this.pending = [];
+      this.pending = []; this.failed = [];
     }
     saved.clear();
     if (this.mode === 'session') {

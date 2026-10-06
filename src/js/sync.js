@@ -145,6 +145,7 @@ sync.ready = sync.start();
 // A copy the database can store: parts of an entry can be Alpine's reactive proxies, which it can't.
 const plain = o => JSON.parse(JSON.stringify(o));
 export const NO_ROOM = 'There\'s no room left on this phone to keep this until there\'s a connection. Keep Pocket open until it\'s sent.';
+export const KEPT = ' It\'s kept: tap the warning sign at the top to try again.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
 export const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
   labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind});
@@ -294,6 +295,8 @@ export const runProgress = j => [j.runId, j.unlabeled, j.named, j.assigned, ...j
    connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
    and mark, someone is assigned once, and a note whose reply was lost is looked for before it's posted again. Claiming
    a subtask or a step (assigning yourself) goes the same way, from anywhere. */
+// The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
+export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
 export const ACTS = {done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
   claim: ['claim'], unclaim: ['unclaim']};
 export const ACT_STEPS = {

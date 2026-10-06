@@ -101,6 +101,24 @@ try {
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
   });
 
+  await step('the-header-says-what-is-waiting', async () => {
+    // Refresh becomes what's waiting, with how many; tapping it lists them, and one can be dropped from there.
+    await page.waitForSelector('#btn-refresh.waits[aria-label$="waiting to send"] #outbox-count');
+    await capture(`${T('Y')} tomorrow`);
+    await page.waitForSelector(pendingRow(T('Y')));
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#outbox-status:has-text("No connection")');
+    for (const text of [`New task: ${T('A')}`, `New task: ${T('P')}`, `Subtask of “${T('P')}”: ${T('P1')}`, `New task: ${T('Y')}`])
+      await page.waitForSelector(`#outbox-rows .ob-row:has-text("${text}")`);
+    if (await page.textContent('#outbox-count') !== String(await page.locator('#outbox-rows .ob-row').count())) throw new Error('the count isn\'t the rows');
+    await page.click(`#outbox-rows .ob-row:has-text("${T('Y')}") .ob-drop`);
+    await page.waitForSelector(`#outbox-rows .ob-row:has-text("${T('Y')}")`, { state: 'detached' });
+    await page.click('#btn-sheet-close');
+    if (await page.inputValue('#in-capture') !== `${T('Y')} tomorrow`) throw new Error('box: ' + await page.inputValue('#in-capture'));
+    await page.fill('#in-capture', '');
+    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
+  });
+
   await step('undated-task-offline-shows-in-added-today', async () => {
     await capture(T('U'));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
@@ -128,13 +146,14 @@ try {
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('A')}"))`);   // now a normal task
     await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('U')}"))`);   // added today, no date
     for (const n of ['A', 'P', 'P1', 'P2', 'U', 'F']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
-    if ((await byTitle(T('X'))).length) throw new Error('the cancelled task was added');
+    if ((await byTitle(T('X'))).length || (await byTitle(T('Y'))).length) throw new Error('a cancelled task was added');
     const parent = (await byTitle(T('P')))[0];
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
     if (await page.isVisible('.offline')) throw new Error('still says offline');
     // Kept on the phone across the reload, then uploaded.
     await until('the photo added offline never reached the task', async () => (await attached('F')).join() === 'offline.png');
+    await page.waitForSelector('#btn-refresh[aria-label="Refresh"]:not(.waits)');   // nothing waiting: Refresh again
   });
 
   await step('lost-reply-is-not-added-twice', async () => {
@@ -239,14 +258,14 @@ try {
   });
 
   await step('comment-written-offline-waits', async () => {
-    // A comment goes through the outbox too; the banner says what waits and what needs a connection.
+    // A comment goes through the outbox too; the banner says what needs a connection.
     await page.click(`.row .body:has-text("${T('G')}")`);
     await page.waitForSelector('#d-cin');
     await context.setOffline(true);
     await page.fill('#d-cin', T('comment'));
     await page.click('#d-cform button');
     await page.waitForSelector(`#d-comments .comment.waiting:has-text("${T('comment')}"):has-text("Waiting for a connection")`);
-    if (!(await page.textContent('.offline')).includes('Ticking off or changing other tasks needs a connection')) throw new Error('banner: ' + await page.textContent('.offline'));
+    if (!(await page.textContent('.offline')).includes('Ticking off or changing tasks needs a connection, except on a run')) throw new Error('banner: ' + await page.textContent('.offline'));
     await context.setOffline(false);
     await online();
     await page.waitForSelector(`#d-comments .comment:not(.waiting):has-text("${T('comment')}")`, { timeout: 20000 });

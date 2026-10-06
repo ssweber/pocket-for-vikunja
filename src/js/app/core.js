@@ -51,6 +51,8 @@ export default () => ({
   fresh: [],                                   // tasks just added: their rows light up briefly, to show where they went
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
+  failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
+  waitShown: false,                            // something has waited a moment: the header's button says so
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
   starting: null,                              // a run being set up: {id, done, total}, for its progress

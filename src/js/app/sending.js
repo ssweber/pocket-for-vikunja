@@ -3,10 +3,10 @@ import {cache, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, dueInfo, isLate, isSet, startOfDay} from '../dates.js';
 import {parseCapture} from '../quickadd.js';
-import {entryDone, fileEntry, isChild, itemDone, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
+import {entryDone, fileEntry, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
 
-let freshTimer;
+let freshTimer, waitTimer;
 // What createLines keeps of each line: an earlier try's, for a line that's the same, or a new one.
 export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
 
@@ -237,10 +237,12 @@ export default {
     try {
       await sync.lock(async () => {
         let actsWait = false;                                                 // an act kept: the later ones wait behind it
-        for (const e of sync.all(this.user?.id)) {
-          if (e.kind === 'act' && actsWait) continue;
+        const all = sync.all(this.user?.id), held = heldTasks(all);           // and behind one turned down, those on its task
+        for (const e of all) {
+          if (e.failed || (e.kind === 'act' && (actsWait || held.has(e.task)))) continue;
           const r = await this.sendEntry(e.id);
           if (e.kind === 'act' && r.status === 'offline') actsWait = true;
+          if (r.kept) held.add(e.task);
           tasks.push(...(r.tasks || [])); problems.push(...(r.problems || []));
           if (r.status === 'offline' && !r.reached) break;                    // no connection: the rest can wait too
           if (r.status === 'sent') sent += r.ids.length + r.uploaded + (r.changed || 0);
@@ -271,13 +273,21 @@ export default {
         + (f.unsent.length ? ` Not added: ${f.unsent.join('; ')}.` : ''));
     } else if (failed.length) {
       this.notify(`${subs.length ? 'A subtask' : 'A task'} added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
-    } else if (other.length) this.notify(`${other[0].error.what || 'Something done offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].error.back ? ' Its words are back in the box.' : ''));
+    } else if (other.length) this.notify(`${other[0].error.what || 'Something done offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : other[0].error.back ? ' Its words are back in the box.' : ''));
     else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length || other.length) this.render();
   },
 
   /* ---------- what's waiting to be sent ---------- */
-  refreshPending(){ this.pending = this.user ? sync.all(this.user.id) : []; },
+  // What's waiting, and what Vikunja turned down (kept to try again or drop). The header's button says something is
+  // waiting only once it has for a moment: a tick sent at once doesn't make it flicker.
+  refreshPending(){
+    const all = this.user ? sync.all(this.user.id) : [];
+    this.pending = all.filter(e => !e.failed); this.failed = all.filter(e => e.failed);
+    clearTimeout(waitTimer);
+    if (!this.pending.length) this.waitShown = false;
+    else if (!this.waitShown) waitTimer = setTimeout(() => { this.waitShown = !!this.pending.length; }, 1500);
+  },
   pendingNested(entryId){ const e = this.pending.find(x => x.id === entryId); return !!e?.nest && e.items.length > 1; },
   // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
   get pendingTasks(){

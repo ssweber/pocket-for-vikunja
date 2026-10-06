@@ -413,8 +413,19 @@ try {
     await page.unroute('**/api/v2/tasks/*/reactions', refuse);
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done', { timeout: 15000 });
     if (!(await task(id)).done) throw new Error('not done in Vikunja');
-    await page.click('#run-steps .row:nth-of-type(1) .check');                 // as it was: done, with the ✅
-    await until('never undone a third time', async () => !(await task(id)).done);
+    // It's kept, to try again: the header says so. An untick meanwhile waits behind it, so it can't arrive first.
+    await page.waitForSelector('#btn-refresh.trouble[aria-label="1 couldn\'t be sent"]');
+    await toastGone().catch(() => {});
+    await page.click('#run-steps .row:nth-of-type(1) .check');
+    await toast('Waiting: something done before it');
+    if (!(await task(id)).done) throw new Error('the untick went before the tick it waits on');
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#outbox-rows .ob-row.failed:has-text("Done: Check the guards at 3pm"):has-text("Vikunja turned it down")');
+    await page.click('#outbox-rows .ob-row.failed .ob-retry');
+    await page.waitForSelector('#outbox-status:has-text("Everything has reached Vikunja")', { timeout: 15000 });
+    await page.click('#btn-sheet-close');
+    await until('the ✅ and then the untick never arrived', async () => { const t = await task(id); return !t.done && !t.reactions?.['✅']?.some(u => u.id === me.id); });
+    await page.waitForSelector('#btn-refresh[aria-label="Refresh"]');
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await until('never done with a ✅', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
     if (!other) return;

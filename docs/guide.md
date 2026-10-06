@@ -280,11 +280,16 @@ Pocket opens without a connection and shows your lists as they were last loaded.
 
 - **What works offline:** new tasks and subtasks, comments, and what you do in a checklist run. A task waiting to be
   sent has a light tint and a dashed circle; its × cancels it and puts its words back in the box. Ticking off or editing
-  other tasks needs a connection, and the offline banner says so.
+  other tasks needs a connection.
+- **What's waiting:** while anything waits to be sent, the refresh button at the top turns amber, with how many. Tap it
+  for **Waiting to send**: each thing in words ("Done: Check the milk fridge", "Photo for “Restock cups”"), when you did
+  it, and **Don't send it** on anything not started yet. **Try now** sends what it can.
 - **Nothing you write is lost:** a comment, notes, subtasks, a step's note or a new template is kept on the phone until
-  it's sent, even if Pocket is closed, and through a sign-in that runs out. Something Vikunja turns down for good says
-  what it was, and its words go back in the box. Notes someone changed elsewhere while you wrote yours aren't written
-  over: both are shown, and saving again replaces theirs.
+  it's sent, even if Pocket is closed, and through a sign-in that runs out. A task or note Vikunja turns down for good
+  says what it was, and its words go back in the box. A tick, skip, claim or finish it turns down is kept: the button
+  turns red, and Waiting to send says why, with **Try again** and **Don't send it**. Until then, anything done after it
+  on the same task waits behind it. Notes someone changed elsewhere while you wrote yours aren't written over: both are
+  shown, and saving again replaces theirs.
 - **Sending:** waiting things are sent when Pocket is opened, when it comes back to the front, and when the connection
   returns, in the order they were done, and a connection that drops halfway doesn't send anything twice. Vikunja not
   answering within 20 seconds counts as no connection. On an iPhone, waiting things are sent the next time Pocket is

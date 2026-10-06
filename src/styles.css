@@ -55,6 +55,21 @@ header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg
 header.top.tucked{transform:translateY(-100%)}
 #app::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:6}
 header.top > .icon-btn{width:38px;height:38px}
+/* Refresh, while something waits to be sent: its count in a dot on the corner; amber waiting, red turned down */
+#btn-refresh{position:relative}
+#btn-refresh.waits{color:var(--today)}
+#btn-refresh.trouble{color:var(--danger)}
+#btn-refresh .count{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--today);color:var(--surface);font-size:11px;font-weight:700;line-height:18px;text-align:center}
+#btn-refresh.trouble .count{background:var(--danger)}
+/* Waiting to send: a row each, and what Vikunja said about one it turned down */
+.ob-row{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+.ob-row:first-child{border-top:0}
+.ob-row .body{flex:1;min-width:0}
+.ob-row .meta{font-size:14px;color:var(--muted);margin-top:2px}
+.ob-row .why{font-size:14px;color:var(--danger);margin-top:4px}
+.ob-row .acts{display:flex;gap:14px;margin-top:8px}
+.ob-row .linkish{font-size:15px;font-weight:600}
+.ob-row .linkish.danger{color:var(--danger)}
 nav.tabs{flex:1;min-width:0;display:flex;gap:4px}
 /* searching: the search box takes the whole row */
 header.top .search{display:none;flex:1;min-width:0;align-items:center;gap:8px;height:40px;padding:0 4px 0 12px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted)}

@@ -1,0 +1,19 @@
+    <!-- What's waiting to send, from the header's button: a row each, oldest first, and what Vikunja turned down (outbox.js) -->
+    <template x-if="sheet.kind === 'outbox'"><div>
+      <div class="d-title"><h2 style="margin:0;font-size:24px">Waiting to send</h2></div>
+      <p class="note" id="outbox-status" style="margin:0 2px 12px" x-text="outboxStatus"></p>
+      <template x-if="outboxRows.length"><div class="card" id="outbox-rows">
+        <template x-for="r in outboxRows" :key="r.key"><div class="ob-row" :class="{failed: r.failed}">
+          <div class="body">
+            <div class="title" x-text="r.text"></div>
+            <div class="meta num" x-text="r.when"></div>
+            <template x-if="r.failed"><div class="why" x-text="'Vikunja turned it down: ' + r.failed"></div></template>
+            <template x-if="r.retry || r.drop"><div class="acts">
+              <template x-if="r.retry"><button type="button" class="linkish ob-retry" @click="retryAct(r.key)">Try again</button></template>
+              <template x-if="r.drop"><button type="button" class="linkish danger ob-drop" @click="$data[r.drop[0]](...r.drop.slice(1))">Don't send it</button></template>
+            </div></template>
+          </div>
+        </div></template>
+      </div></template>
+      <button class="btn ghost block" id="outbox-try" :disabled="flushing || refreshing" @click="tryNow()" x-text="flushing ? 'Sending…' : 'Try now'"></button>
+    </div></template>
