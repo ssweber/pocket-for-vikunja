@@ -12,6 +12,11 @@ import {shared} from './core.js';
 import {renderSeq} from './views.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
+/* Ticks that waited to be sent (offline): Vikunja has a step done when the tick arrived, but its countdowns go on
+   counting from when it was ticked here, as they did while it waited, so they don't jump, nor chime again. By step:
+   {here, there: Vikunja's done time, while it's that tick's, kept: when}. Kept a day. */
+let ticks = null;
+const keptTicks = () => ticks ||= saved.get('ticks') || {};
 
 export default {
   async openStart(id){
@@ -51,7 +56,8 @@ export default {
     if (problems.length) { this.notify('Not started: ' + problemText(problems)); return; }
     const start = new Date(), steps = st.steps.map((s, i) => {
       const {title, offset} = parseStep(s.title);
-      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, taskId: null, tried: false, linked: false, ready: false};
+      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, remind: offset >= 6e4,
+        taskId: null, tried: false, linked: false, ready: false};
     });
     const who = st.people.find(u => u.id === st.forId) || this.user;
     const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template, name: st.name.trim(),
@@ -77,6 +83,7 @@ export default {
   async sendRun(j){
     const save = () => sync.save(j), c = {save, taken: new Set([j.runId, ...j.steps.map(s => s.taskId)].filter(Boolean))};
     const none = {ids: [], tasks: [], problems: [], uploaded: 0};
+    if (j.cancelled) return this.unstart(j, c, none);
     try {
       for (const step of RUN_STEPS) while (!step.done(j)) {
         await patiently(() => step.run(j, c));
@@ -91,8 +98,34 @@ export default {
         await save();
         return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
       }
+      // What was set up so far is deleted: kept as a start called off until it is.
+      error.what = 'Starting ' + j.template.title;
+      j.cancelled = true; await save();
+      await this.unstart(j, c, none);
+      return {...none, status: 'error', error};
+    }
+  },
+  /* A start called off, or failed for good: each copy it made is deleted, steps first, a copy whose reply was lost
+     found first. Without a connection it stays in the outbox, to finish later. */
+  async unstart(j, c, none){
+    try {
+      if (!j.runId && j.tried) { const t = await this.findCopy(j.template.id, j, j.at, c.taken, j.id, null); if (t) { j.runId = t.id; c.taken.add(t.id); } }
+      for (const s of j.steps) if (!s.taskId && s.tried) {
+        const t = await this.findCopy(s.from, s, j.at, c.taken, j.id, j.runId);
+        if (t) { s.taskId = t.id; c.taken.add(t.id); }
+      }
+      await sync.save(j);
+      const kids = j.runId ? await api('/tasks/' + j.runId).then(t => (t.related_tasks?.subtask || []).map(s => s.id), e => { if (e.status === 404) return []; throw e; }) : [];
+      for (const id of [...new Set([...j.steps.map(s => s.taskId).filter(Boolean), ...kids]), j.runId].filter(Boolean)) {
+        await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
+        cache.delete(id); this.removeRow(id);
+      }
       await sync.remove(j.id);
-      if (j.runId) this.deleteRun(j.runId, {quiet: true, also: j.steps.map(s => s.taskId).filter(Boolean)});   // what was set up so far
+      return {...none, status: 'sent', changed: 0};
+    } catch (error) {
+      if (passing(error) || error.status === 401 || error.status >= 500) { await sync.save(j); return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401}; }
+      await sync.remove(j.id);
+      error.what = 'Clearing up a start called off';
       return {...none, status: 'error', error};
     }
   },
@@ -179,7 +212,7 @@ export default {
   /* ---------- a run ---------- */
   // A run, with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
-    const run = await allComments(await api(`/tasks/${id}?expand=comments`));
+    const run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a checklist run. Open it from its project instead.');
     const steps = await inBatches(stepsOf(run), 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)));
     if (seq !== renderSeq) return;
@@ -224,6 +257,8 @@ export default {
     const waitingNote = a => ({id: a.id, comment: a.html, author: myName, when: 'Waiting to send'});
     const steps = r.steps.map(s => {
       let done = s.done, skipped = done && !!s.reactions?.[SKIP_MARK]?.length, waiting = false, doneAt = s.done_at;
+      const kept = keptTicks()[s.id];
+      if (done && kept && Date.parse(kept.there) === Date.parse(s.done_at)) doneAt = kept.here;
       let doers = (s.reactions?.[skipped ? SKIP_MARK : DONE_MARK] || []).map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
       for (const a of acts) if (a.task === s.id) {
@@ -276,6 +311,13 @@ export default {
     this.go('#/run/' + id + (step ? '?step=' + step : ''));
   },
   leaveRun(){ this.back(this.runFrom || '#/checklists'); },
+  // The run on screen was deleted (on another phone, say): off its screen, and no longer kept for opening offline.
+  runGone(id){
+    store.del('saved.run.' + id); saved.set('runs.recent', (saved.get('runs.recent') || []).filter(x => x !== id));
+    if (this.view.run?.run.id === id) this.view.run = null;
+    this.leaveRun();
+    this.notify('That run isn\'t there any more.');
+  },
   // Where Back goes, by name: from a run, the screen before it; from a project, the list it was opened from.
   get backName(){
     if (this.route.name === 'run') return {today: 'Today', project: 'the project', search: 'search'}[routeOf(this.runFrom || '').name] || 'checklists';
@@ -391,7 +433,7 @@ export default {
     await sync.lock(async () => {
       for (const e of sync.all(this.user?.id).filter(e => e.kind === 'act')) {
         last = await this.sendEntry(e.id);
-        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved: ${last.error.message}.` + (last.error.back ? ' Its words are back in the box.' : ''));
+        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.error.back ? ' Its words are back in the box.' : ''));
         if (last.status === 'offline' || e.id === entry.id) break;
       }
     });
@@ -406,6 +448,7 @@ export default {
       while (a.stage < stages.length) {
         const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
         if (stages[a.stage] === 'note' && out?.id) comment = out;
+        if (stages[a.stage] === 'done' && out?.done_at) this.keepTick(a, a.doneAt = out.done_at);
         a.stage++;
         await save();
       }
@@ -422,6 +465,10 @@ export default {
       if (error.status === 403 && /mark/i.test(stages[a.stage] || '') && this.mode === 'token')
         error.message = 'your API token can\'t record who did a step: make one with Reactions ticked, as the guide says';
       await sync.remove(a.id);
+      // Its first part went through (the tick, say, before the ✅ was refused): that much is in Vikunja, so it's said, and
+      // the step is shown as Vikunja has it.
+      if (a.stage > 0 && ['done', 'undone'].includes(stages[0])) error.saved = stages[0] === 'done' ? 'it\'s marked done' : 'it\'s marked not done';
+      if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
       this.giveBack(a, error);
       return {...none, status: 'error', error};
     }
@@ -453,6 +500,13 @@ export default {
     }
     return false;
   },
+  keepTick(a, there){
+    const here = serverTime(+new Date(a.at));
+    if (Date.parse(there) - here < 5000) return;                           // sent as it was done
+    ticks = Object.fromEntries(Object.entries(keptTicks()).filter(([, x]) => Date.now() - x.kept < 864e5));
+    ticks[a.task] = {here: new Date(here).toISOString(), there, kept: Date.now()};
+    saved.set('ticks', ticks);
+  },
   // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
   applyAct(a, comment){
     if (a.op === 'claim' || a.op === 'unclaim') { this.claimSent(a); return; }
@@ -464,7 +518,7 @@ export default {
       const rs = {...s.reactions}, without = m => (rs[m] || []).filter(u => u.id !== me?.id);
       rs[DONE_MARK] = without(DONE_MARK); rs[SKIP_MARK] = without(SKIP_MARK);
       if (a.op !== 'undone') rs[a.op === 'skip' ? SKIP_MARK : DONE_MARK].push(me);
-      Object.assign(s, {done: a.op !== 'undone', done_at: new Date(serverTime(Date.now())).toISOString(), reactions: rs});
+      Object.assign(s, {done: a.op !== 'undone', done_at: a.doneAt || new Date(serverTime(Date.now())).toISOString(), reactions: rs});
     }
     if (comment) { const on = s || r.run; on.comments = [...(on.comments || []), comment]; }
   },

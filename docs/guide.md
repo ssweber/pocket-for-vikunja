@@ -216,13 +216,24 @@ screen.
 
 What it does: when a step of a checklist run is marked done (in Pocket, in Vikunja's web app, or through the API), the
 plugin sets the due date of each step of the same run timed from it: the time it was marked done, plus that step's
-time. It writes only due dates (not even when a task was last changed), and the time of a reminder counted from the
-due date, only on steps of that run that aren't done, and only when the date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one
-project, the template labelled `template`, and each step copied from one of the template's steps. It doesn't act on
-templates, on a done step saved again, or on a step marked not done. All of it is in one function, `setStepDueDates` in
-[`pocket/main.go`](../pocket/main.go). It can also be turned on with `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`.
+time. When the step is marked not done again, the steps waiting on it lose that due date until it's done again, so no
+reminder goes off for a step that's still waiting. It writes only due dates (not even when a task was last changed),
+and the time of a reminder counted from the due date, only on steps of that run that aren't done, and only when the
+date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one project, the
+template labelled `template`, and each step copied from one of the template's steps. It doesn't act on templates, or
+on a done step saved again. All of it is in one function, `writeStepDueDates` in [`pocket/main.go`](../pocket/main.go).
+It can also be turned on with `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`.
 
 A step ticked offline counts, in Vikunja, from when the tick reaches it. Pocket counts down from when you ticked it.
+
+What it can't do:
+
+- Vikunja's web app, and apps that sync through CalDAV, save a whole task from the copy they loaded. A step saved that
+  way from a copy loaded before its due date was set loses the due date again (and its reminder). Pocket still counts
+  down to it.
+- The plugin sets due dates without changing when a task was last changed, so apps that sync through CalDAV, and
+  Vikunja's saved filters, don't see them until the step is changed some other way.
+- A tick Vikunja handles while it's restarting, or more than 2 minutes late, sets no due dates.
 
 ## Reminders and alerts
 
@@ -248,7 +259,9 @@ apps already), and reminder emails turned on in your own Vikunja settings. Pocke
 - **🔔 in quick add:** type a time ("at 4pm", "in 2 hours") and a 🔔 chip offers a reminder at it. It's off until you tap
   it. A day without a time ("friday") gets none, and it only shows when Vikunja's reminder emails reach you.
 - **Timed steps** of a run get a reminder at their due time, which goes to whoever started the run and anyone who's
-  claimed the step. It goes off once the plugin's [step times](#step-times) give the step its due date.
+  claimed the step. It goes off once the plugin's [step times](#step-times) give the step its due date. A step due less
+  than a minute after the one it waits on gets none: Vikunja checks reminders once a minute, so it would never be sent.
+  Pocket still rings for it while it's open.
 
 Vikunja's web push, being worked on in [go-vikunja/vikunja#4020](https://github.com/go-vikunja/vikunja/pull/4020), would
 let reminders ring the phone too.

@@ -28,12 +28,12 @@ const call = async (token, path, init = {}) => {
 const api = (path, init) => call(TOKEN, path, init);
 const task = id => api(`/tasks/${id}?expand=reactions&expand=comments`);
 // A task's steps in the order Pocket shows them: a template's by the line "pocket:order …" in its description (steps it
-// doesn't list after, as Vikunja gives them), a run's by id.
+// doesn't list after, by id), a run's by id.
 const stepOrder = desc => (desc || '').match(/<p>pocket:order((?:\s+\d+)*)<\/p>/i)?.[1].trim().split(/\s+/).filter(Boolean).map(Number) || null;
 const subtasks = async id => {
   const t = await api('/tasks/' + id), subs = t.related_tasks?.subtask || [], order = stepOrder(t.description);
-  if (order) return subs.map((s, k) => [s, order.includes(s.id) ? order.indexOf(s.id) : order.length + k]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
-  return t.related_tasks?.copiedfrom?.length ? [...subs].sort((a, b) => a.id - b.id) : subs;
+  const at = s => order?.includes(s.id) ? order.indexOf(s.id) : Infinity;
+  return t.related_tasks?.copiedfrom?.length || t.labels?.some(l => l.title === 'template') ? [...subs].sort((a, b) => at(a) - at(b) || a.id - b.id) : subs;
 };
 async function until(what, fn, ms = 20000){
   for (const end = Date.now() + ms; ; await new Promise(r => setTimeout(r, 300))) { if (await fn()) return; if (Date.now() > end) throw new Error(what); }
@@ -122,8 +122,18 @@ try {
     if (await row(2).locator('.draft-in').inputValue() !== WRITTEN[1]) throw new Error('not moved down');
     if (await row(2).locator('select option:checked').textContent() !== 'Check the guards at 3pm') throw new Error('counts from ' + await row(2).locator('select option:checked').textContent());
     await row(0).locator('.draft-meta:has-text("Named “check-the-guards”")').waitFor();
+    // The reply to its second step is lost: Make template again carries on with the same template, adding nothing twice.
+    let posts = 0;
+    const loseStep = async r => { if (r.request().method() !== 'POST' || ++posts !== 3) return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
+    await page.route(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await page.click('#nt-create');
+    await toast('Tap Make template again');
+    await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await toastGone();
     await page.click('#nt-create');
     await toast(`Made ${TEMPLATE}`);
+    const named = async title => (await api('/tasks?q=' + encodeURIComponent(title))).items.filter(t => t.title === title && t.project_id === project.id).length;
+    for (const title of [TEMPLATE, ...STEPS]) if (await named(title) !== 1) throw new Error(`${await named(title)} tasks “${title}”`);
     await page.waitForSelector(tplRow, { timeout: 15000 });
     template = (await api('/tasks?q=' + encodeURIComponent(TEMPLATE))).items.find(t => t.title === TEMPLATE);
     const t = await api('/tasks/' + template.id), steps = t.related_tasks?.subtask || [];
@@ -191,6 +201,38 @@ try {
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
     await until('the step never moved back', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
+    // Its reply lost on the way back: moved all the same, as Vikunja has it, and it doesn't say otherwise.
+    const loseReply = async r => { if (r.request().method() !== 'PATCH') return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
+    await page.route(`**/api/v2/tasks/${template.id}`, loseReply);
+    await toastGone().catch(() => {});
+    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
+    await until('the move never reached Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]:not([disabled])');   // done saving
+    await page.unroute(`**/api/v2/tasks/${template.id}`, loseReply);
+    if (await page.$('#toast.show #toast-msg:has-text("Not moved")')) throw new Error('it says it wasn\'t moved');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
+    await page.click('#d-subtasks .row:nth-of-type(3) [aria-label^="Move up"]');
+    await until('the step never moved back again', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
+    // A move, or notes, saved here change only their part of what Vikunja has when they're sent: notes and a move saved
+    // elsewhere (on the web, another phone) since the sheet opened stay.
+    const ids = (await subtasks(template.id)).map(s => s.id), was = (await api('/tasks/' + template.id)).description;
+    const elsewhere = () => api('/tasks/' + template.id, { method: 'PATCH', body: JSON.stringify({ description: `<p>Wear gloves for the press.</p><p>pocket:order ${ids[0]} ${ids[2]} ${ids[1]}</p>` }) });
+    const order = async () => JSON.stringify(stepOrder((await api('/tasks/' + template.id)).description));
+    await elsewhere();
+    await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');   // "Warm up the press", 3rd in Vikunja now
+    await until('the move wasn\'t made to Vikunja\'s order: ' + await order(), async () => await order() === JSON.stringify(ids));
+    if (!/Wear gloves/.test((await api('/tasks/' + template.id)).description)) throw new Error('the move deleted the notes');
+    await page.waitForSelector('#d-desc:has-text("Wear gloves for the press")');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("Warm up the press")');
+    await elsewhere();
+    await page.click('#d-desc');
+    await page.fill('#d-desc-in', 'Wear gloves and goggles.');
+    await page.click('#d-desc-save');
+    await until('the notes were never saved', async () => /goggles/.test((await api('/tasks/' + template.id)).description));
+    if (await order() !== JSON.stringify([ids[0], ids[2], ids[1]])) throw new Error('the notes put back an older order: ' + await order());
+    await api('/tasks/' + template.id, { method: 'PATCH', body: JSON.stringify({ description: was }) });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -337,6 +379,21 @@ try {
     await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")');     // back on the first step not done
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await until('never done again', async () => (await task(id)).done);
+    // The ✅ refused after the tick went through: it says what was saved, and shows the step done, as Vikunja has it.
+    await page.click('#run-steps .row:nth-of-type(1) .check');
+    await until('never undone again', async () => !(await task(id)).done);
+    const refuse = r => r.request().method() === 'POST' ? r.fulfill({ status: 403, contentType: 'application/json', body: '{}' }) : r.fallback();
+    await page.route('**/api/v2/tasks/*/reactions', refuse);
+    await toastGone().catch(() => {});
+    await page.click('#run-steps .row:nth-of-type(1) .check');
+    await toast('couldn\'t be saved in full (it\'s marked done)');
+    await page.unroute('**/api/v2/tasks/*/reactions', refuse);
+    await page.waitForSelector('#run-steps .row:nth-of-type(1).done', { timeout: 15000 });
+    if (!(await task(id)).done) throw new Error('not done in Vikunja');
+    await page.click('#run-steps .row:nth-of-type(1) .check');                 // as it was: done, with the ✅
+    await until('never undone a third time', async () => !(await task(id)).done);
+    await page.click('#run-steps .row:nth-of-type(1) .check');
+    await until('never done with a ✅', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
   });
 
   await step('claim-a-step', async () => {
@@ -583,6 +640,30 @@ try {
     if (after !== before) throw new Error(`runs: ${before} before, ${after} after`);
   });
 
+  await step('cancel-a-start-whose-copy-was-made', async () => {
+    // The run's copy reaches Vikunja but its reply doesn't, and the start is called off without a connection: once Pocket
+    // reaches Vikunja, the copy is found and deleted, so no half-made run is left looking like a second template.
+    const copies = async () => ((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).length;
+    const before = await copies();
+    let first = true;
+    const lose = async r => { if (r.request().method() !== 'POST') return r.fallback(); if (first) { first = false; await r.fetch(); } return r.abort('internetdisconnected'); };
+    await page.route('**/api/v2/tasks/*/duplicate', lose);
+    await toastGone();
+    await openStart();
+    await page.fill('#start-name', 'Called off');
+    await page.click('#start-go');
+    await toast('starts as soon as Pocket reaches Vikunja');
+    await until('the copy never reached Vikunja', async () => await copies() === before + 1);
+    await context.setOffline(true);
+    const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} · Called off")`;
+    await page.click(`${waiting} button[aria-label^="Don't start"]`);
+    await page.waitForSelector(waiting, { state: 'detached' });
+    await page.unroute('**/api/v2/tasks/*/duplicate', lose);
+    await context.setOffline(false);
+    await online();
+    await until('the copy is still in Vikunja', async () => await copies() === before, 40000);
+  });
+
   await step('start-cut-off-is-not-copied-twice', async () => {
     // A step's copy reaches Vikunja but its reply doesn't. The start carries on later, without a second copy.
     const copies = async () => Promise.all((await subtasks(template.id)).map(async s => ((await api('/tasks/' + s.id)).related_tasks?.copiedto || []).length));
@@ -731,8 +812,18 @@ try {
     await row(0).locator('.draft-in').evaluate(el => { const dt = new DataTransfer(); dt.setData('text/plain', 'Pull a sample in 5 min\nLog the weights'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
     await row(1).locator('.draft-in').waitFor();
     await row(0).locator('select').selectOption({ label: 'Warm up the press' });
+    // The reply to the first is lost: Add again finds it, rather than leaving a stray copy as a to-do.
+    let posts = 0;
+    const loseStep = async r => { if (r.request().method() !== 'POST' || ++posts !== 1) return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
+    await page.route(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await toastGone().catch(() => {});
+    await page.click('#add-steps-go:has-text("Add 2 steps")');
+    await toast('Added 0 of 2');
+    await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
     await page.click('#add-steps-go:has-text("Add 2 steps")');
     await until('the steps were never added', async () => (await subtasks(template.id)).length === 5);
+    const sample = (await api('/tasks?q=' + encodeURIComponent('Pull a sample'))).items.filter(t => t.project_id === project.id);
+    if (sample.length !== 1) throw new Error(`${sample.length} tasks “Pull a sample”`);
     const titles = (await subtasks(template.id)).map(s => s.title);
     const want = [STEPS[0], 'Warm up the press T#30m {#warm-up}', STEPS[2], 'Pull a sample T#5m:warm-up', 'Log the weights'];
     if (JSON.stringify(titles) !== JSON.stringify(want)) throw new Error('steps: ' + titles.join(' | '));

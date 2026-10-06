@@ -7,6 +7,8 @@ import {entryDone, fileEntry, isChild, itemDone, LINE_STEPS, NO_ROOM, NOT_KEPT, 
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
 
 let freshTimer;
+// What createLines keeps of each line: an earlier try's, for a line that's the same, or a new one.
+export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
 
 export default {
   /* Create one task from a parsed line; labels are created when missing. */
@@ -35,14 +37,16 @@ export default {
     return api(`/tasks/${parentId}/relations`, {method:'POST', body:{other_task_id: childId, relation_kind: 'subtask'}});
   },
   /* Create a task per line, in order. With parent, each becomes its subtask and lands in the parent's project
-     unless the line names one. Returns the ids created and how many lines were used; stops at the first error. */
-  async createLines(lines, {pid, parent, ignore = {}} = {}){
+     unless the line names one. Returns the ids created and how many lines were used; stops at the first error.
+     `jobs` (from jobsFor) keeps how far each line got, so trying again carries on: a task whose reply was lost is found
+     rather than added twice. */
+  async createLines(lines, {pid, parent, ignore = {}, jobs = jobsFor([], lines)} = {}){
     const ids = [], problems = []; let used = 0;
     try {
-      for (const line of lines) {
+      for (const [k, line] of lines.entries()) {
         const parsed = parseCapture(line, this.projects, {...this.parseOpts, ignore});
         if (parsed.title) {
-          const t = await this.createTask(parsed, parent ? parent.project_id : pid, {parent: parent?.id});
+          const job = jobs[k], t = await this.createTask(parsed, parent ? parent.project_id : pid, {job, at: job.at, skip: new Set(ids), parent: parent?.id});
           ids.push(t.id); problems.push(...t.problems);
         }
         used++;
@@ -143,7 +147,7 @@ export default {
       if (files.length) {
         this.refreshPending();
         // The task with its new attachments, for its row and its sheet.
-        const t = await api('/tasks/' + target).catch(() => null);
+        const t = await this.readTask(target).catch(() => null);
         if (t) {
           cache.set(t.id, t); this.syncTask(t);
           for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
@@ -244,7 +248,8 @@ export default {
     this.placeSent(tasks);
     // Subtasks that were waiting, of the task whose sheet is open: shown there now.
     const open = this.sheet.task?.id;
-    if (open && tasks.some(t => t.parent === open)) api('/tasks/' + open).then(t => {
+    if (open && tasks.some(t => t.parent === open)) this.readTask(open).then(t => {
+      if (!t) return;
       cache.set(t.id, t);
       if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
     }).catch(() => {});

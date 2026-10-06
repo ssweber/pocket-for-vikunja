@@ -137,9 +137,9 @@ try {
     if (new Date(due).getTime() !== new Date(mine).getTime()) throw new Error('Carve is due ' + due);
   });
 
-  await step('undo-leaves-due-dates-and-a-new-tick-sets-them-again', async () => {
+  await step('undo-leaves-done-steps-and-a-new-tick-sets-them-again', async () => {
     const before = await dues(a);
-    await patch(a.steps[0], { done: false });
+    await patch(a.steps[0], { done: false });                                  // the steps timed from it are done
     await wait(1500);
     if (JSON.stringify(await dues(a)) !== JSON.stringify(before)) throw new Error('undoing changed due dates');
     await patch(a.steps[1], { done: false });                                 // Peel the potatoes isn't done any more, so it can move
@@ -148,6 +148,17 @@ try {
     await until('Peel the potatoes never moved', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
     const d = await dues(a);
     if (d[2] !== before[2] || d[3] !== before[3]) throw new Error('done steps were changed: ' + JSON.stringify([before[2], d[2], before[3], d[3]]));
+  });
+
+  await step('undo-takes-the-due-date-off-a-step-waiting-on-it', async () => {
+    // Peel the potatoes isn't done and waits on the roast going in: unticked, it has no due date until the roast is in
+    // again, and its reminder won't go off.
+    await patch(a.steps[0], { done: false });
+    await until('Peel the potatoes kept its due date', async () => !isSet((await get(a.steps[1])).due_date));
+    const peel = await get(a.steps[1]);
+    if ((peel.reminders || []).some(r => isSet(r.reminder))) throw new Error('its reminder is still set: ' + JSON.stringify(peel.reminders));
+    const again = await patch(a.steps[0], { done: true });
+    await until('Peel the potatoes never got a due date again', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
   });
 
   await step('a-tick-from-the-web-app-and-done-steps-left-alone', async () => {

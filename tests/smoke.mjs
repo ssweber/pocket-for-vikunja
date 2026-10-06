@@ -28,8 +28,9 @@ await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const page = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
 const errors = [];
-// A token without some permission gets 401s, which Pocket handles; the browser still logs them, so they're left out here.
-page.on('console', m => m.type() === 'error' && !/status of 401/.test(m.text()) && errors.push(m.text()));
+// A token without some permission gets 401s, which Pocket handles; the browser still logs them, so they're left out here,
+// with the reply a test cuts off on purpose.
+page.on('console', m => m.type() === 'error' && !/status of 401|ERR_CONNECTION_RESET/.test(m.text()) && errors.push(m.text()));
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
@@ -640,6 +641,22 @@ try {
       await page.click('#d-reminders .chip.rem:has-text("At due") .chip-x');
       for (let i = 0; i < 40 && (await rems()).includes('due_date0'); i++) await page.waitForTimeout(250);
       if ((await rems()).includes('due_date0')) throw new Error('not removed: ' + JSON.stringify(await rems()));
+      // A reminder added or removed elsewhere (on the web, say) since the sheet showed them stays that way.
+      const elsewhere = async fn => {
+        const list = (await get(made.id)).reminders.map(r => r.relative_to ? { relative_to: r.relative_to, relative_period: r.relative_period } : { reminder: r.reminder });
+        await api('/tasks/' + made.id, { method: 'PATCH', headers: json, body: JSON.stringify({ reminders: fn(list) }) });
+      };
+      const expect = async (want, what) => {
+        for (let i = 0; i < 40 && JSON.stringify((await rems()).sort()) !== JSON.stringify(want); i++) await page.waitForTimeout(250);
+        if (JSON.stringify((await rems()).sort()) !== JSON.stringify(want)) throw new Error(what + ': ' + JSON.stringify(await rems()));
+      };
+      await elsewhere(list => [...list, { relative_to: 'due_date', relative_period: -86400 }]);
+      await page.click('#d-reminders .chip.rem:has-text("1 hour before due") .chip-x');
+      await expect(['at', 'due_date-86400'], 'removing one took others with it');
+      await page.waitForSelector('#d-reminders .chip.rem:has-text("1 day before due")');
+      await elsewhere(list => list.filter(r => r.relative_to));
+      await page.selectOption('#d-remind-add', { label: '15 min before due' });
+      await expect(['due_date-86400', 'due_date-900'], 'adding one brought back one removed elsewhere');
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });
     } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
@@ -785,6 +802,21 @@ try {
     const want = new Date(r.due_date).getTime();
     for (let i = 0; i < 40 && new Date((await get(r.id)).due_date).getTime() !== want; i++) await page.waitForTimeout(250);
     if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
+  });
+  await step('a-tick-whose-reply-is-lost-is-saved', async () => {
+    // The tick reaches Vikunja, which moves the task to its next date, but the reply is lost: Pocket reads it back and
+    // says it repeats, rather than that it wasn't saved, so it isn't ticked again and a date skipped.
+    const r = await make(`Pocket smoke repeat lost ${stamp}`, { due_date: todayAt(9), repeat_after: 86400 });
+    const lose = async x => { if (x.request().method() !== 'PATCH') return x.fallback(); await x.fetch(); return x.abort('connectionreset'); };
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.route(`**/api/v2/tasks/${r.id}`, lose);
+      await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
+      await page.waitForSelector('#toast.show #toast-msg:has-text("Repeats")', { timeout: 20000 });
+      const due = new Date((await get(r.id)).due_date).getTime();
+      if (due !== new Date(r.due_date).getTime() + 864e5) throw new Error('due ' + (await get(r.id)).due_date);
+    } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, lose); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
 
   await step('a-task-moves-and-goes-with-its-subtasks', async () => {

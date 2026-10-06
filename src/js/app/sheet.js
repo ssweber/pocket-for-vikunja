@@ -11,7 +11,26 @@ import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 
 export let pendingSaves = 0;
-let saveCount = 0;
+// Saves to each task: how many have begun or ended, and how many haven't ended. A copy read while one was under way can
+// be older than Vikunja's, so it isn't shown (readTask).
+const saving = new Map();
+const saveMark = (id, open) => { const s = saving.get(id) || {n: 0, open: 0}; s.n++; s.open += open; saving.set(id, s); };
+const reminderKey = r => r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
+// The reminders as Vikunja takes them back: a relative one by what it counts from, so it keeps moving with that date.
+const plainReminders = t => (t?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder});
+const repeats = t => t.repeat_after > 0 || t.repeat_mode === 1;
+// Whether Vikunja's copy `now` has the change `body` made to `before`. A repeating task marked done is moved to its
+// next date instead.
+function landed(now, body, before){
+  if (body.done === true && !now.done && repeats(now)) return !!before && !before.done && now.due_date !== before.due_date;
+  return Object.entries(body).every(([k, v]) => {
+    if (k === 'reminders') return JSON.stringify(plainReminders(now).map(reminderKey).sort()) === JSON.stringify(v.map(reminderKey).sort());
+    if (k === 'description') return htmlToText(now[k] || '') === htmlToText(v || '');
+    if (k.endsWith('_date')) return Date.parse(now[k]) === Date.parse(v);
+    if (typeof v === 'number') return Math.abs((now[k] || 0) - v) < 1e-6;
+    return (now[k] ?? null) === (v ?? null);
+  });
+}
 let closeTimer;
 let lastFocus;
 
@@ -53,7 +72,7 @@ export default {
       const v = sh.descDraft;
       sh.editingDesc = false; sh.dirty = true;
       taskDrafts.set('desc:' + t.id, v);                                     // kept until it's saved
-      this.saveTask(t.id, {description: this.notesHtml(t, v)}).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
+      this.saveTask(t.id, null, now => ({description: this.notesHtml(now, v)})).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
         e => this.notify(e instanceof NetError ? 'Offline: the notes are kept on this phone. Open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.'));
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
@@ -87,22 +106,30 @@ export default {
     const desc = taskDrafts.get('desc:' + id);
     if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc, descUnsaved: true});
     this.sheet.addRows = taskDrafts.get('addsteps:' + id) || [];
-    const mine = this.sheet, cached = cache.get(id), edits = saveCount;
+    const mine = this.sheet, cached = cache.get(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
-      const t = await api('/tasks/' + id);
+      // If it was changed while this loaded, the save brings a newer copy; the old one isn't put back.
+      const t = await this.readTask(id);
       if (this.sheet !== mine) return;
-      // If something was changed while this loaded, the save already brought a newer copy; don't put the old one back.
-      if (saveCount === edits) { cache.set(id, t); this.showTask(t); }
-      this.loadComments(id); this.loadSubPeople(t);
+      if (t) { cache.set(id, t); this.showTask(t); }
+      this.loadComments(id); this.loadSubPeople(t || cached || {id});
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
       else if (this.sheet === mine) { this.loadComments(id); this.loadSubPeople(cached); }   // says it can't, offline; a comment can still be written
     }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
+  // Vikunja's copy of a task, read once the saves waiting now are done; or null if another save to it was under way
+  // while it was read: that save's reply is newer.
+  async readTask(id){
+    await shared.saveChain;
+    const before = saving.get(id), n = before?.n, t = await api('/tasks/' + id);
+    return !before?.open && saving.get(id)?.n === n ? t : null;
+  },
   showTask(t){
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
+    this.keepTemplate(this.sheet.task);
     if (document.activeElement?.id !== 'd-title') this.sheet.title = t.title;
   },
   /* Repeat settings as Vikunja stores them: repeat_mode 1 is monthly, otherwise repeat_after is an interval in seconds. */
@@ -161,7 +188,7 @@ export default {
       const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && here()) {
         this.sheet.dirty = true;
-        try { const t = await api('/tasks/' + parent.id); cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); } } catch {}
+        try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); } } } catch {}
       }
       if (r.status === 'offline') {
         sync.keep();
@@ -173,7 +200,7 @@ export default {
         const n = r.ids.length;
         this.notify(`Added ${n} subtask${n === 1 ? '' : 's'}${but}`, {label: 'Undo', fn: async () => {
           await this.deleteTasks(r.ids);
-          const t = await api('/tasks/' + parent.id).catch(() => null);
+          const t = await this.readTask(parent.id).catch(() => null);
           if (t && here()) { cache.set(t.id, t); this.showTask(t); }
         }});
       }
@@ -187,12 +214,12 @@ export default {
   },
 
   /* Save a change to the open task. The sheet updates right away; the server's copy is applied once no other saves are queued. */
-  save(patch){
+  save(patch, rebase){
     const id = this.sheet.task?.id; if (!id) return;
     Object.assign(this.sheet.task, patch);
     this.sheet.savedMsg = 'Saving…';
     pendingSaves++;
-    return this.saveTask(id, patch).then(saved => {
+    return this.saveTask(id, patch, rebase).then(saved => {
       if (--pendingSaves || this.sheet.task?.id !== id) return;
       const repeated = patch.done === true && !saved.done;
       this.showTask(saved); this.sheet.dirty = true;
@@ -206,15 +233,27 @@ export default {
   },
   // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
   // Resolves to Vikunja's copy; rejects if not saved.
-  saveTask(id, patch){
-    saveCount++;
+  saveTask(id, patch, rebase){
+    saveMark(id, 1);
     const run = shared.saveChain.then(async () => {
       // Only the change is sent, so anything changed elsewhere since Pocket loaded the task (notes edited on the web,
-      // say) stays as it is.
-      const saved = await patchTask(id, patch);
+      // say) stays as it is. A field holding a list, or a template's order line in its notes, is sent whole: `rebase`
+      // makes the change to Vikunja's copy as it is now, read first (null: nothing to change).
+      let saved = rebase && await api('/tasks/' + id);
+      const before = saved || cache.get(id), body = rebase ? rebase(saved) : patch;
+      if (body) {
+        try { saved = await patchTask(id, body); }
+        catch (e) {
+          // A reply lost on the way back (a dropped connection, a timeout) doesn't mean the change didn't reach Vikunja:
+          // its copy, read now, says. Ticking a repeating task again would skip a date.
+          const now = e instanceof NetError && await api('/tasks/' + id).catch(() => null);
+          if (!now || !landed(now, body, before)) throw e;
+          saved = now;
+        }
+      }
       cache.set(id, saved); this.syncTask(saved);
       return saved;
-    });
+    }).finally(() => saveMark(id, -1));
     shared.saveChain = run.catch(() => {});
     return run;
   },
@@ -252,7 +291,8 @@ export default {
     const v = this.sheet.title.trim();
     if (v && v !== this.sheet.task.title) this.save({title: v}); else this.sheet.title = this.sheet.task.title;
   },
-  // The notes as text, and as saved: a template's order line is left out while they're edited, and kept.
+  // The notes as text, and as saved: a template's order line is left out while they're edited, and kept. Saved with the
+  // order line Vikunja has when they're sent (`t`, read then), so a step moved elsewhere meanwhile stays moved.
   notesText(t){ return htmlToText(withOrder(t.description, null)); },
   notesHtml(t, text){ const html = text.trim() ? textToHtml(text) : '', order = stepOrder(t.description); return order ? withOrder(html, order) : html; },
   editDesc(){
@@ -263,8 +303,8 @@ export default {
   async saveDesc(){
     const v = this.sheet.descDraft, t = this.sheet.task, html = this.notesHtml(t, v);
     this.sheet.editingDesc = false;
-    await this.save({description: html});
-    if ((cache.get(t.id)?.description || '') === html || htmlToText(cache.get(t.id)?.description) === htmlToText(html)) { taskDrafts.delete('desc:' + t.id); this.sheet.descUnsaved = false; return; }
+    await this.save({description: html}, now => ({description: this.notesHtml(now, v)}));
+    if (this.notesText(cache.get(t.id) || {}) === this.notesText({description: html})) { taskDrafts.delete('desc:' + t.id); this.sheet.descUnsaved = false; return; }
     taskDrafts.set('desc:' + t.id, v);
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true});
   },
@@ -294,12 +334,17 @@ export default {
   },
   addReminder(v){
     if (v === 'at') { this.sheet.remindAt = true; this.$nextTick(() => { const el = document.getElementById('d-remind-at'); el?.focus(); try { el?.showPicker(); } catch {} }); }
-    else if (v) this.save({reminders: [...this.plainReminders(), {relative_to: 'due_date', relative_period: +v}]});
+    else if (v) this.changeReminders({relative_to: 'due_date', relative_period: +v}, null);
   },
-  addReminderAt(v){ this.sheet.remindAt = false; if (v) this.save({reminders: [...this.plainReminders(), {reminder: new Date(v).toISOString()}]}); },
-  removeReminder(k){ this.save({reminders: this.plainReminders().filter((_, i) => i !== k)}); },
-  // The reminders as Vikunja takes them back: a relative one by what it counts from, so it keeps moving with that date.
-  plainReminders(){ return (this.sheet.task?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder}); },
+  addReminderAt(v){ this.sheet.remindAt = false; if (v) this.changeReminders({reminder: new Date(v).toISOString()}, null); },
+  removeReminder(k){ const r = plainReminders(this.sheet.task)[k]; if (r) this.changeReminders(null, r); },
+  // Add a reminder or take one out, of those Vikunja has when it's sent: one added or removed elsewhere since the sheet
+  // opened stays that way.
+  changeReminders(add, drop){
+    const skip = new Set([add, drop].filter(Boolean).map(reminderKey));
+    const edit = t => [...plainReminders(t).filter(r => !skip.has(reminderKey(r))), ...add ? [add] : []];
+    return this.save({reminders: edit(this.sheet.task)}, now => ({reminders: edit(now)}));
+  },
 
   /* ---------- labels ---------- */
   async toggleLabelPicker(){

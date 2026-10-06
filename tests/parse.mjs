@@ -297,16 +297,21 @@ const drafts = [
 const marks = [['<p>pocket:checklists</p>', true], ['<p>Line 2 startups</p><p>Pocket:Checklists </p>', true], ['Notes<br>pocket:checklists', true],
   ['<p>Our safety checklists</p>', false], ['<p>see pocket:checklists in the docs</p>', false], ['', false]];
 // A template's step order, a line in its description: [description, the order read, the step ids as shown].
-const S = [{id: 3}, {id: 5}, {id: 9}, {id: 12}];
+const S = [{id: 9}, {id: 3}, {id: 12}, {id: 5}];                             // as Vikunja gives them: in no set order
 const orders = [['<p>Notes</p><p>pocket:order 9 3 5 12</p>', [9, 3, 5, 12], [9, 3, 5, 12]],
-  ['<p>pocket:order 12 5</p>', [12, 5], [12, 5, 3, 9]],                     // steps it doesn't list follow, as they were
+  ['<p>pocket:order 12 5</p>', [12, 5], [12, 5, 3, 9]],                     // steps it doesn't list follow, in the order made
   ['<p>pocket:order 40 9 41</p>', [40, 9, 41], [9, 3, 5, 12]],               // ids no longer steps are skipped
   ['<p>Notes</p>', null, [3, 5, 9, 12]], ['<p>pocket:order</p>', [], [3, 5, 9, 12]], ['', null, [3, 5, 9, 12]],
-  ['<p>see pocket:order 9 3 in the docs</p>', null, [3, 5, 9, 12]]];
+  ['<p>see pocket:order 9 3 in the docs</p>', null, [3, 5, 9, 12]],
+  ['<p>pocket:order 12 5<br>Bring cash for the float</p>', [12, 5], [12, 5, 3, 9]],   // a line of a paragraph (Shift+Enter)
+  ['<p>pocket:order 12</p><p>pocket:order 5</p>', [12], [12, 3, 5, 9]], ['<ul><li>pocket:order 12</li></ul>', null, [3, 5, 9, 12]]];
 // Written: [description, ids, what it becomes].
 const orderWrites = [['<p>Notes</p>', [5, 3], '<p>Notes</p><p>pocket:order 5 3</p>'], ['', [5], '<p>pocket:order 5</p>'],
   ['<p>pocket:order 3 5</p><p>Notes</p>', [5, 3], '<p>pocket:order 5 3</p><p>Notes</p>'],
-  ['<p>Notes</p><p>pocket:order 3 5</p>', null, '<p>Notes</p>']];
+  ['<p>Notes</p><p>pocket:order 3 5</p>', null, '<p>Notes</p>'],
+  ['<p>pocket:order 3 5<br>Bring cash</p>', [5, 3], '<p>pocket:order 5 3<br>Bring cash</p>'], ['<p>pocket:order 3 5<br>Bring cash</p>', null, '<p>Bring cash</p>'],
+  ['<p>Bring cash<br>pocket:order 3 5</p>', null, '<p>Bring cash</p>'], ['<p>pocket:order 3</p><p>pocket:order 5</p>', [9], '<p>pocket:order 9</p>'],
+  ['<ul><li>pocket:order 3</li></ul>', [9], '<ul><li>pocket:order 3</li></ul><p>pocket:order 9</p>']];
 
 // ---------- run ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });

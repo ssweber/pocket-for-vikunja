@@ -2,9 +2,10 @@
 import {cache, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask} from '../api.js';
 import {parseFragment} from '../html.js';
-import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
+import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
+import {jobsFor} from './sending.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 
@@ -14,6 +15,13 @@ let templatesKept = {};
 const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, related_tasks: {subtask: stepsOf(t).map(s => ({id: s.id, title: s.title}))}}; };
 
 export default {
+  // A template as its sheet shows it now, kept for starting a run offline: so a step just moved, added or removed is
+  // taken into account, not only once Checklists loads again.
+  keepTemplate(t){
+    if (!hasTemplateLabel(t) || !t.done || t.related_tasks?.parenttask?.length) return;
+    templatesKept = {...saved.get('templates'), ...templatesKept};
+    keepTemplate(t); saved.set('templates', templatesKept);
+  },
   isChecklistProject(p){ return isChecklistDesc(p?.description); },
   get checklistProjects(){ return this.projects.filter(p => this.isChecklistProject(p)); },
   get checklistIds(){ return new Set(this.checklistProjects.map(p => p.id)); },
@@ -127,18 +135,24 @@ export default {
     const who = (t.assignees || []).map(u => u.id === this.user?.id ? 'you' : u.name || u.username);
     return who.length ? 'For ' + who.join(', ') : '';
   },
-  // Don't start a run that's waiting to be set up after all. What was set up already is deleted.
+  /* Don't start a run that's waiting to be set up after all. What reached Vikunja already is deleted (sendRun), now or,
+     without a connection, once Pocket reaches it: until then the entry stays, so a half-made copy isn't left behind. */
   async cancelStart(id){
-    let made = null, gone = false;
-    await sync.lock(async () => { const e = await sync.fresh(id); if (!e) { gone = true; return; } await sync.remove(id); if (e.runId) made = e; });
+    let gone = false, made = false;
+    await sync.lock(async () => {
+      const e = await sync.fresh(id);
+      if (!e) { gone = true; return; }
+      made = !!(e.tried || e.steps.some(s => s.tried));
+      if (made) await sync.save({...e, cancelled: true}); else await sync.remove(id);
+    });
     this.refreshPending();
     if (gone) { this.notify('It had started already. Delete it from its ⋯ if it isn\'t needed.'); this.render(); return; }
-    if (made) await this.deleteRun(made.runId, {quiet: true, also: made.steps.map(s => s.taskId).filter(Boolean)});
+    if (made) { await sync.lock(() => this.sendEntry(id)); this.refreshPending(); }
     this.notify('Not started');
     this.render();
   },
   // Runs being set up, waiting for a connection or under way, in a project.
-  startingIn(pid){ return this.pending.filter(e => e.kind === 'run' && e.template.project_id === pid); },
+  startingIn(pid){ return this.pending.filter(e => e.kind === 'run' && !e.cancelled && e.template.project_id === pid); },
   /* The open runs in checklist projects, and whether each is yours: you started it, or it's for you. Today shows those,
      and not everyone else's. `mine`: yours. */
   async loadRunIndex(){
@@ -227,17 +241,21 @@ export default {
     this.$nextTick(() => document.getElementById('nt-name')?.focus());
   },
   /* A template in one go: the task, its steps under it, then made a template. Cut off half way, the task stays in the
-     project with the steps made so far, and Make template on it finishes it. */
+     project with the steps made so far: tapping Make again carries on with that one (nt.jobs), and Use as checklist
+     template on it finishes it too. */
   async createTemplate(){
     const nt = this.sheet.newTpl, name = nt?.name.trim(), d = nt && draftSteps(nt.rows);
     if (!name || !d.added.length || d.problem || nt.busy) return;
     nt.busy = true;
     let t = null;
     try {
-      const made = await this.createLines([name], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}});
+      // Another name is another task, and its steps are new too.
+      const kept = nt.jobs?.name[0]?.line === name ? nt.jobs : null;
+      const jobs = nt.jobs = {name: jobsFor(kept?.name || [], [name]), steps: jobsFor(kept?.steps || [], d.added)};
+      const made = await this.createLines([name], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}, jobs: jobs.name});
       if (made.error) throw made.error;
       t = {id: made.ids[0], project_id: nt.project.id, labels: []};
-      const r = await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE});
+      const r = await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, jobs: jobs.steps});
       if (r.error) throw r.error;
       await this.markTemplate(t, r.ids);
       nt.made = true; taskDrafts.delete('newtpl:' + nt.project.id);
@@ -246,7 +264,7 @@ export default {
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
     } catch (e) {
       nt.busy = false;
-      this.notify(t ? `Not finished: ${e.message}. “${name}” is in ${nt.project.title}: open it there and tap Use as checklist template.` : 'Not made: ' + e.message);
+      this.notify(t ? `Not finished: ${e.message}. Tap Make template again to finish “${name}”.` : 'Not made: ' + e.message);
     }
   },
   // Steps added under a template: made, marked done like the rest, and any step they count from given its name.
@@ -255,9 +273,12 @@ export default {
     if (!t || !d.added.length || d.problem || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
     const r = {ids: [], problems: [], error: null};
+    // Each row keeps how far it got, so Add after a cut-off finds a step whose reply was lost instead of adding it again.
+    const rows = this.sheet.addRows.filter(x => x.text.trim()), jobs = jobsFor(rows.map(x => x.job), d.added);
+    rows.forEach((x, k) => { x.job = jobs[k]; });
     try {
       for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
-      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE}));
+      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, jobs}));
       for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     } catch (e) { r.error = e; }
     if (this.sheet.task?.id === t.id) {
@@ -269,7 +290,7 @@ export default {
         tt.related_tasks = {...tt.related_tasks, subtask: [...this.subtasks, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]};
       } else this.sheet.addRows = [];
       this.sheet.dirty = true;
-      try { const full = await api('/tasks/' + t.id); cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } catch {}
+      try { const full = await this.readTask(t.id); if (full) { cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } } catch {}
     }
     const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
     if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${r.error.message}`);
@@ -308,9 +329,13 @@ export default {
     if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Runs already started keep it.`)) return;
     this.sheet.checklistBusy = true;
     try {
-      await patiently(() => api('/tasks/' + st.id, {method: 'DELETE'}));
+      // Gone already, or a reply lost on the way back: removed all the same if Vikunja no longer has it.
+      await patiently(() => api('/tasks/' + st.id, {method: 'DELETE'})).catch(async e => {
+        if (e.status !== 404 && (!(e instanceof NetError) || await api('/tasks/' + st.id).then(() => true, x => x.status !== 404))) throw e;
+      });
       cache.delete(st.id);
       t.related_tasks = {...t.related_tasks, subtask: this.subtasks.filter(s => s.id !== st.id)};
+      this.keepTemplate(t);
       this.sheet.dirty = true;
       this.notify('Step removed');
     } catch (err) { this.notify('Not removed: ' + err.message); }
@@ -318,19 +343,32 @@ export default {
   },
   /* Move a template's step up or down: its order line is written with every step in the new order. Not when that would
      leave a step with a problem it didn't have, such as counting from a later one: a template already wrong that way
-     can still be put right. */
+     can still be put right. The step is moved in the order Vikunja has when it's sent, and only the order line changes,
+     so notes and moves saved elsewhere since the sheet opened stay. */
   async moveStep(i, dir){
-    const t = this.sheet.task, steps = [...this.subtasks], j = i + dir;
-    if (!t || j < 0 || j >= steps.length || this.sheet.checklistBusy) return;
-    const before = stepProblems(steps.map(s => s.title));
-    [steps[i], steps[j]] = [steps[j], steps[i]];
-    const fresh = stepProblems(steps.map(s => s.title)).filter(p => !before.some(b => b.text === p.text && b.title === p.title));
-    if (fresh.length) { this.notify('Not moved: ' + problemText(fresh)); return; }
-    const was = t.description, description = withOrder(was, steps.map(s => s.id));
-    t.description = description;                                              // shown in the new order straight away
+    const t = this.sheet.task, st = this.subtasks[i];
+    if (!t || !st || this.sheet.checklistBusy) return;
+    // The steps in their new order, or null if this step can't go that way in them; throws for a problem it makes.
+    const moved = steps => {
+      const k = steps.findIndex(s => s.id === st.id), out = [...steps];
+      if (k < 0 || k + dir < 0 || k + dir >= steps.length) return null;
+      [out[k], out[k + dir]] = [out[k + dir], out[k]];
+      const before = stepProblems(steps.map(s => s.title));
+      const fresh = stepProblems(out.map(s => s.title)).filter(p => !before.some(b => b.text === p.text && b.title === p.title));
+      if (fresh.length) throw new Error(problemText(fresh));
+      return out;
+    };
+    let steps;
+    try { steps = moved(this.subtasks); } catch (e) { this.notify('Not moved: ' + e.message); return; }
+    if (!steps) return;
+    const was = stepOrder(t.description);
+    t.description = withOrder(t.description, steps.map(s => s.id));          // shown in the new order straight away
     this.sheet.checklistBusy = true;
-    try { await patiently(() => patchTask(t.id, {description})); cache.set(t.id, {...cache.get(t.id), ...t}); this.sheet.dirty = true; }
-    catch (e) { if (this.sheet.task?.id === t.id) t.description = was; this.notify('Not moved: ' + e.message); }
+    try {
+      const got = await patiently(() => this.saveTask(t.id, null, now => { const s = moved(stepsOf(now)); return s && {description: withOrder(now.description, s.map(x => x.id))}; }));
+      if (this.sheet.task?.id === t.id) this.showTask(got);
+      this.sheet.dirty = true;
+    } catch (e) { if (this.sheet.task?.id === t.id) t.description = withOrder(t.description, was); this.notify('Not moved: ' + e.message); }
     finally { this.sheet.checklistBusy = false; }
   },
 };

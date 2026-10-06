@@ -255,7 +255,8 @@ export const RUN_STEPS = [
   // Each step, in the template's order: a copy of the template's step, linked under the run, then named, without its
   // T# and {#name}, and given its due time if it counts from the start. A timed step gets a reminder at its due time,
   // which Vikunja emails to whoever started the run and anyone on the step; Pocket's plugin moves it with the due date
-  // it sets. One part per run, so progress is kept after each.
+  // it sets. Not one due less than a minute after the step it waits on: Vikunja looks for reminders once a minute, so it
+  // would be past before it's seen. One part per run, so progress is kept after each.
   {name: 'step', done: j => j.steps.every(s => s.ready), async run(j, c){
     const s = j.steps.find(s => !s.ready);
     if (!s.taskId) {
@@ -266,7 +267,7 @@ export const RUN_STEPS = [
       s.linked = true;
     } else {
       await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO, repeat_after: 0, repeat_mode: 0,
-        ...s.timed && {reminders: [{relative_to: 'due_date', relative_period: 0}]}});
+        ...(s.remind ?? s.timed) && {reminders: [{relative_to: 'due_date', relative_period: 0}]}});
       s.ready = true;
     }
   }},

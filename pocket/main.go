@@ -17,7 +17,8 @@
 //     steps in that run timed from it (T#40m in their template step: 40 minutes after). It writes only due_date, and
 //     the time of those steps' reminders counted from their due date (Vikunja works those out only when a task is
 //     saved through it), only on steps of that run in the same project that aren't done, and nothing else, not even
-//     the time a task was last changed. All of it is in setStepDueDates.
+//     the time a task was last changed. When the step is marked not done again, it takes those due dates off, and
+//     those reminders with them, so none goes off for a step that's still waiting. All of it is in writeStepDueDates.
 //     Turn it on in config.yml, or with the environment variable VIKUNJA_PLUGINS_POCKET_STEPTIMES=true:
 //
 //	plugins:
@@ -208,9 +209,9 @@ func (l *stepTimes) Name() string { return "pocket.steptimes" }
 // Handle hears every task update and acts once on each time a task is marked done. Vikunja's event doesn't say what
 // changed, but done_at changes only when a task is marked done: so a done task whose done_at is recent, and not acted on
 // already. Saving it again, labelling or assigning it changes nothing; marking it not done forgets it, so the next tick
-// counts even within the same second. (Just after Vikunja restarts, an edit within
-// stepFresh of the tick can set the same dates again.) Our own writes send no event at all. Returning an error makes
-// Vikunja try again, a few times.
+// counts even within the same second, and takes the due dates it set off the steps waiting on it. (Just after Vikunja
+// restarts, an edit within stepFresh of the tick can set the same dates again.) Our own writes send no event at all.
+// Returning an error makes Vikunja try again, a few times.
 func (l *stepTimes) Handle(msg *message.Message) error {
 	ev := taskEvent{}
 	if err := json.Unmarshal(msg.Payload, &ev); err != nil {
@@ -225,6 +226,10 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 			}
 		}
 		stepTicksMu.Unlock()
+		if err := clearStepDueDates(t.ID); err != nil {
+			log.Errorf("pocket: step times for task %d: %s", t.ID, err)
+			return err
+		}
 		return nil
 	}
 	if t.DoneAt.IsZero() || time.Since(t.DoneAt) > stepFresh {
@@ -256,11 +261,9 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 	return nil
 }
 
-// setStepDueDates is the only place the plugin writes to Vikunja's data. Given a task marked done at doneAt that is a
-// step of a checklist run, it sets the due date of each step of the same run timed from it: its done time plus the
-// offset in the title of the template step that step was copied from. It writes only due_date (not even "updated"),
-// and the time of the step's reminders counted from its due date, only on steps of that run in its project that aren't
-// done, and only when the date changes. handled: whether the task was still done at doneAt, so this tick is dealt with.
+// setStepDueDates: given a task marked done at doneAt that is a step of a checklist run, it sets the due date of each
+// step of the same run timed from it (writeStepDueDates). handled: whether the task was still done at doneAt, so this
+// tick is dealt with.
 //
 // Vikunja lets anyone link a task they can edit to one they can only see, so the run is taken only as Pocket makes
 // one: the run, its steps and its template all in the done step's project, the template labelled "template", and each
@@ -273,10 +276,29 @@ func setStepDueDates(stepID int64, doneAt time.Time) (handled bool, err error) {
 	if has, err := s.ID(stepID).Get(step); err != nil || !has || !step.Done || step.DoneAt.Unix() != doneAt.Unix() {
 		return false, err
 	}
-	return true, writeStepDueDates(s, step)
+	return true, writeStepDueDates(s, step, false)
 }
 
-func writeStepDueDates(s *xorm.Session, step *models.Task) error {
+// clearStepDueDates: given a task marked not done, if it's a step of a checklist run, the steps timed from it that
+// aren't done have no due date until it's done again, as Pocket shows them. Read again, as events can arrive out of order:
+// a step done again since is left to that tick.
+func clearStepDueDates(stepID int64) error {
+	s := db.NewSession()
+	defer s.Close()
+
+	step := &models.Task{}
+	if has, err := s.ID(stepID).Get(step); err != nil || !has || step.Done {
+		return err
+	}
+	return writeStepDueDates(s, step, true)
+}
+
+// writeStepDueDates is the only place the plugin writes to Vikunja's data. Given a step of a checklist run, it sets
+// the due date of each step of the same run timed from it to its done time plus the offset in the title of the template
+// step that step was copied from, or, to clear them, to none. It writes only due_date (not even "updated"), and the
+// time of the step's reminders counted from its due date, only on steps of that run in its project that aren't done,
+// and only when the date changes.
+func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 	stepID, project := step.ID, step.ProjectID
 	// The run it's a step of: a copy of a template, and not a template itself, nor one still being set up.
 	parents, err := relatedIDs(s, stepID, "parenttask")
@@ -362,7 +384,10 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 		if dep.Done || dep.ProjectID != project {
 			continue
 		}
-		due := step.DoneAt.Add(st.offset).Truncate(time.Second)
+		due := time.Time{}
+		if !clear {
+			due = step.DoneAt.Add(st.offset).Truncate(time.Second)
+		}
 		if dep.DueDate.Unix() == due.Unix() {
 			continue
 		}
@@ -371,14 +396,17 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 			return err
 		}
 		// A reminder counted from the due date (Pocket gives timed steps one at it) moves with it, as Vikunja would
-		// move it if the date were saved through Vikunja.
+		// move it if the date were saved through Vikunja: without a due date, to none, which Vikunja never sends.
 		reminders := []*models.TaskReminder{}
 		if err := s.Where("task_id = ? AND relative_to = ?", dep.ID, "due_date").Find(&reminders); err != nil {
 			_ = s.Rollback()
 			return err
 		}
 		for _, r := range reminders {
-			at := due.Add(time.Duration(r.RelativePeriod) * time.Second)
+			at := time.Time{}
+			if !clear {
+				at = due.Add(time.Duration(r.RelativePeriod) * time.Second)
+			}
 			if _, err := s.ID(r.ID).Cols("reminder").Update(&models.TaskReminder{Reminder: at}); err != nil {
 				_ = s.Rollback()
 				return err

@@ -148,6 +148,7 @@ export default {
           return;
         }
       }
+      if (r.name === 'run' && e.runGone) { this.runGone(r.id); return; }
       // A project that's gone (deleted elsewhere): back to the list of them.
       if (r.name === 'project' && e instanceof ApiError && e.status === 404) { await this.loadProjects().catch(() => {}); this.go('#/projects'); this.notify('That project isn\'t there any more.'); return; }
       // A refresh that fails says so, unless it would hide a message still being read.
@@ -247,7 +248,7 @@ export default {
     t.done = !was;
     navigator.vibrate?.(10);
     const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
-    if (r.status === 'error') { t.done = was; return; }
+    if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
     if (!was) this.notify(r.status === 'offline' ? `Done: ${t.title}. It's sent once Pocket reaches Vikunja.` : doneText(0, 0, t.title),
       {label: 'Undo', done: true, fn: async () => { await this.act({op: 'undone', task: t.id, run}); t.done = false; this.render(); }});
     this.afterTick(t, rowEl, was);

@@ -11,26 +11,36 @@ import {NUMBER_WORDS} from './quickadd.js';
 export const CHECKLIST_MARK = 'pocket:checklists';
 export const isChecklistDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === CHECKLIST_MARK);
 /* A template's step order, a line "pocket:order 12 15 13" in its description, written when a step is moved: Vikunja
-   can't order subtasks. Steps it doesn't list follow in Vikunja's order, and ids no longer steps are skipped, so adding
-   or removing a step leaves the line alone. A run's steps are copied one at a time in that order, so a run is in order
-   by its steps' ids, and keeps the order it started with. */
+   can't order subtasks, and gives them in no set order. Steps it doesn't list follow in the order they were made (by
+   id), and ids no longer steps are skipped, so adding or removing a step leaves the line alone. A run's steps are
+   copied one at a time in that order, so a run is in order by its steps' ids, and keeps the order it started with. */
 export const ORDER_MARK = 'pocket:order';
 const ORDER_LINE = /^pocket:order(\s+\d+)*$/i;
+// The order lines in a description: a paragraph of their own, or a line of one (after Shift+Enter in Vikunja's
+// editor), not in a list. The first is the one read; any other is left over, and taken out when the line is written.
+function orderLines(root){
+  const out = [], walk = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n; (n = walk.nextNode());) if (ORDER_LINE.test(n.nodeValue.trim()) && !n.parentElement.closest('li')) out.push(n);
+  return out;
+}
 export function stepOrder(html){
-  const line = htmlToText(html || '').split('\n').map(l => l.trim()).find(l => ORDER_LINE.test(l));
-  return line ? (line.match(/\d+/g) || []).map(Number) : null;
+  const line = orderLines(parseFragment(html || ''))[0];
+  return line ? (line.nodeValue.match(/\d+/g) || []).map(Number) : null;
 }
 export function inOrder(steps, order){
-  if (!order?.length) return steps;
-  const at = new Map(order.map((id, k) => [id, k]));
-  return steps.map((s, k) => [s, at.get(s.id) ?? order.length + k]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  const at = new Map((order || []).map((id, k) => [id, k]));
+  return [...steps].sort((a, b) => (at.get(a.id) ?? Infinity) - (at.get(b.id) ?? Infinity) || a.id - b.id);
 }
 // The description with its order line set to these ids (taken out, for null), the rest as it was.
 export function withOrder(html, ids){
-  const root = parseFragment(html || ''), el = [...root.querySelectorAll('p')].find(p => ORDER_LINE.test(p.textContent.trim()));
-  if (!ids) el?.remove();
-  else if (el) el.textContent = `${ORDER_MARK} ${ids.join(' ')}`;
-  else root.insertAdjacentHTML('beforeend', `<p>${ORDER_MARK} ${ids.join(' ')}</p>`);
+  const root = parseFragment(html || ''), [line, ...extra] = orderLines(root);
+  for (const n of ids ? extra : [line, ...extra].filter(Boolean)) {
+    const p = n.parentNode, br = [n.nextSibling, n.previousSibling].find(x => x?.nodeName === 'BR');
+    n.remove(); br?.remove();
+    if (p !== root && !p.textContent.trim() && !p.querySelector('img, hr, table')) p.remove();   // its paragraph, now empty
+  }
+  if (ids && line) line.nodeValue = `${ORDER_MARK} ${ids.join(' ')}`;
+  else if (ids) root.insertAdjacentHTML('beforeend', `<p>${ORDER_MARK} ${ids.join(' ')}</p>`);
   return root.innerHTML;
 }
 export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
