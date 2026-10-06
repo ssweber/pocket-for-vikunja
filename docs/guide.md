@@ -171,8 +171,10 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
    first, and they stay not done.
 
-- **A step the template doesn't have:** in **Steps**, just above the step on screen, is a box: what's typed in it and
-  added with **+** is a step before that one, for this run only. **🔁** beside it puts the step before in the box: left
+- **A step the template doesn't have:** in **Steps**, just above the step on screen, is a box like the subtask box:
+  what's typed in it and added with **+** is a step before that one, for this run only (a pasted list, a step a line).
+  Once every step is done, the box is after the last, to add one at the end. Quick add reads labels, people and
+  priority there, but not dates. **🔁** beside it puts the step before in the box: left
   as it is, **+** does that step again, as a fresh copy, not done, with the template's notes and photos for it but none
   of this run's; changed, it's a new step. Either says **Inserted** or **Repeated** under its title, here, in the
   run's sheet and in Last time, and works like any step, offline too. One that isn't done yet can be deleted with the ×

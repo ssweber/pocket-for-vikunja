@@ -310,9 +310,10 @@ export const INSERT_STEPS = [
       const t = (j.tried && await app.findCopy(j.from, j, j.at, c.taken, j.id, j.run)) || await duplicate(j.from, j, c.save);
       sync.claim(t.id, j.id); j.taskId = t.id; j.desc = t.description || '';
     } else {
-      // Under the run, as a subtask is added; found again by its title and time if its reply was lost.
+      // Under the run, as a subtask is added, with what quick add read; found again by its title and time if its reply
+      // was lost.
       j.job ||= {key: j.id};
-      const t = await app.createTask({title: j.title, labels: [], assignees: []}, j.project, {job: j.job, save: c.save, at: j.at, parent: j.run});
+      const t = await app.createTask(j.p ? unpackParsed(j.p) : {title: j.title, labels: [], assignees: []}, j.project, {job: j.job, save: c.save, at: j.at, parent: j.run});
       Object.assign(j, {taskId: t.id, linked: true, desc: j.desc ?? ''});
     }
   }},
@@ -323,7 +324,8 @@ export const INSERT_STEPS = [
   // Not done, no time of its own, nothing that repeats or reminds: it's done when it's done.
   {name: 'mark', done: j => !!j.marked, async run(j){
     const desc = withAdded(j.tpl != null ? withStepLine(notesOnly(j.desc), j.tpl) : notesOnly(j.desc));
-    await patchTask(j.taskId, {title: j.title, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], description: desc});
+    // A repeat's title is its template step's, without T#; an inserted step's is as quick add sent it (without @people).
+    await patchTask(j.taskId, {...(j.from || j.tpl != null) && {title: j.title}, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], description: desc});
     j.marked = true;
   }},
   // Before the step it was inserted at, read from the run as it is now, so another step inserted meanwhile stays.

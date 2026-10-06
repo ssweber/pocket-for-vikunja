@@ -7,15 +7,16 @@ import {captureLines, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES
 let peopleLoading = null;                      // loadPeople() while it runs
 
 export default {
-  /* Two add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
-     ('cap'), and the subtask box in a task's sheet ('sub'), whose lines become subtasks of the open task, in its project.
-     The methods below take which box. */
-  box(w){ return w === 'sub' ? this.sheet.sub : this.cap; },
-  boxEl(w){ return w === 'sub' ? document.getElementById('d-subin') : this.$refs.capture; },
+  /* Three add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
+     ('cap'), the subtask box in a task's sheet ('sub'), whose lines become subtasks of the open task, in its project,
+     and the box above the step on screen in a run ('ins'), whose lines are inserted as steps before it. The methods
+     below take which box. */
+  box(w){ return w === 'sub' ? this.sheet.sub : w === 'ins' ? this.runInsert : this.cap; },
+  boxEl(w){ return w === 'sub' ? document.getElementById('d-subin') : w === 'ins' ? document.getElementById('step-insert-in') : this.$refs.capture; },
   // What a box never reads: in a checklist project, a step's time is its T#30m, so "Check at 3pm" stays as it is.
-  boxBase(w){ return w === 'sub' && this.checklistIds.has(this.sheet.task?.project_id) ? STEP_IGNORE : {}; },
-  // Where a line without a +project goes: the default project, or the open task's.
-  boxHome(w){ return w === 'sub' ? this.sheet.task?.project_id : this.defaultProjectId(); },
+  boxBase(w){ return w === 'ins' || (w === 'sub' && this.checklistIds.has(this.sheet.task?.project_id)) ? STEP_IGNORE : {}; },
+  // Where a line without a +project goes: the default project, the open task's, or the run's.
+  boxHome(w){ return w === 'sub' ? this.sheet.task?.project_id : w === 'ins' ? this.view.run?.run.project_id : this.defaultProjectId(); },
   boxLines(w){ return captureLines(this.box(w).text); },
   get capLines(){ return this.boxLines('cap'); },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
@@ -194,7 +195,7 @@ export default {
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
-    if (w === 'cap') this.submitCapture(); else this.addSubtasks();
+    if (w === 'cap') this.submitCapture(); else if (w === 'ins') this.insertStep(); else this.addSubtasks();
   },
   // Whether what's sent from a box gets a reminder at its due time: one line, with a time, and the 🔔 chip on.
   remindOn(w, lines){ const p = this.boxParsed(w); return this.box(w).remind && lines.length === 1 && !!p.due && p.due > new Date() && !!p.timeRead && this.remindersReach; },
@@ -210,14 +211,14 @@ export default {
     // Photos for the new task, each with a tap to take it off again. A pasted list puts them on its first task.
     const photos = !cap ? [] : this.capPhotos.map((f, i) => ({key: 'ph' + i, cls: 'photo', icon: 'clip', hint: 'Tap to remove this photo',
       text: f.name + (this.capLines.length > 1 ? ' · on the first task' : '') + '  ✕', action: () => this.capPhotos.splice(i, 1)}));
-    if (!b.text.trim()) return photos;
+    if (!b.text.trim() || (w === 'ins' && b.repeat)) return photos;           // a step to repeat is copied as it is
     const sg = this.suggestions(w);
     if (sg) return sg;
     const ticked = tickedLines(b.text);
     if (ticked) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
     const parsed = this.boxParsed(w), p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.boxLines(w).length;
     out.push(...photos);
-    if (n > 1 && !cap) { out.push({key: 'n', text: `${n} subtasks`}); return out; }
+    if (n > 1 && !cap) { out.push({key: 'n', text: `${n} ${w === 'ins' ? 'steps' : 'subtasks'}`}); return out; }
     if (n > 1) {
       out.push({key: 'n', text: this.cap.nest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
       const {project, miss} = this.parseList(this.capLines);
@@ -258,7 +259,7 @@ export default {
   // Marks in the text as typed, over every line of a pasted list. A tapped-off chip's words aren't marked, since they
   // stay in the title, nor is an @username that won't be assigned: no such user, or one who can't see the project.
   marks(w){
-    if (!this.prefixes || !this.boxLines(w).length) return [];
+    if (!this.prefixes || !this.boxLines(w).length || (w === 'ins' && this.runInsert.repeat)) return [];
     const parsed = this.boxParsedLines(w), target = parsed.length === 1 ? this.boxPid(w) : null;
     const stays = n => this.userKnown[n.toLowerCase()] === false || (target && this.access[target + ':' + n.toLowerCase()] === false);
     const out = [];

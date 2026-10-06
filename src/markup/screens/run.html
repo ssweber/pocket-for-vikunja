@@ -75,18 +75,30 @@
         <!-- Between the step done last and the one on screen, where a step the template didn't have goes: always there,
              unfocused, like the subtask box. 🔁 puts the step before it in the box, to do again; + adds what's in the box.
              Last in the page, put in its place by order, so it isn't a row. -->
-        <template x-if="runView.step && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" :class="{top: runView.at === 0}" :style="{order: runView.at * 2 - 1}">
-          <form class="draft-line" id="step-insert-form" @submit.prevent="insertStep()">
-            <span class="check step-n" aria-hidden="true"></span>
-            <div class="step-box"><textarea class="draft-in" id="step-insert-in" rows="1" placeholder="Insert a step" :aria-label="'A step to insert before “' + runView.step.title + '”'"
-                      enterkeyhint="done" x-model="runInsert.text" @input="if (runInsert.repeat && runInsert.text !== runInsert.repeat.title) runInsert.repeat = null"
-                      @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); insertStep(); }" @keydown.escape="runInsert = {text: '', repeat: null}; $el.blur()"
-                      x-effect="runInsert.text; $nextTick(() => grow($el))"></textarea></div>
-            <template x-if="runView.repeatable"><button type="button" class="icon-btn" id="step-repeat" :class="{on: runInsert.repeat}" :aria-pressed="String(!!runInsert.repeat)"
-              :aria-label="'Repeat “' + runView.repeatable.title + '”: put it in the box'" @mousedown.prevent @click="armRepeat(runView.repeatable)"><svg class="i"><use href="#i-repeat"/></svg></button></template>
-            <button type="submit" class="icon-btn go" id="step-insert" :aria-label="runInsert.repeat ? 'Repeat the step' : 'Insert the step'" @mousedown.prevent :disabled="!runInsert.text.trim()"><svg class="i"><use href="#i-plus"/></svg></button>
-          </form>
-          <template x-if="runInsert.repeat"><p class="gap-note" id="step-repeat-note">A fresh copy of the step before, not done. Change the words to insert a new step instead.</p></template>
+        <template x-if="runView.insertAt !== null && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" :class="{top: runView.insertAt === 0}" :style="{order: runView.insertAt * 2 - 1}">
+          <div class="addbox sub" id="step-insbox">
+            <form id="step-insert-form" autocomplete="off" @submit.prevent="insertStep()">
+              <div class="cap-field">
+                <div class="cap-marks" aria-hidden="true" x-html="marksHtml('ins')"></div>
+                <textarea id="step-insert-in" x-model="runInsert.text" rows="1" :placeholder="runView.step ? 'Insert a step, or paste a list' : 'Add a step, or paste a list'" :aria-label="runView.step ? 'Steps to insert before “' + runView.step.title + '”' : 'Steps to add at the end'" enterkeyhint="send"
+                          x-effect="runInsert.text; $nextTick(() => grow($el))"
+                          @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter('ins'); }" @keydown.escape="runInsert = {...runInsert, text: '', repeat: null, ignore: {}}; $el.blur()"
+                          @input="runInsert.caret = $el.selectionStart; if (runInsert.repeat && runInsert.text !== runInsert.repeat.title) runInsert.repeat = null"
+                          @click="runInsert.caret = $el.selectionStart" @keyup="runInsert.caret = $el.selectionStart"
+                          @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
+                          @focus="runInsert.focus = true; loadPeople()" @blur="setTimeout(() => runInsert.focus = document.activeElement === $el, 150)"></textarea>
+              </div>
+              <template x-if="runView.repeatable"><button type="button" class="rep" id="step-repeat" :class="{on: runInsert.repeat}" :aria-pressed="String(!!runInsert.repeat)"
+                :aria-label="'Repeat “' + runView.repeatable.title + '”: put it in the box'" @mousedown.prevent @click="armRepeat(runView.repeatable)"><svg class="i"><use href="#i-repeat"/></svg></button></template>
+              <button class="go" type="submit" id="step-insert" :aria-label="runInsert.repeat ? 'Repeat the step' : 'Insert the steps'" @mousedown.prevent :disabled="runInsert.busy || !boxParsedLines('ins').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
+            </form>
+            <template x-if="runInsert.repeat"><p class="gap-note" id="step-repeat-note">A fresh copy of the step before, not done. Change the words to insert a new step instead.</p></template>
+            <div class="chips" id="step-inschips" :hidden="!chips('ins').length">
+              <template x-for="c in chips('ins')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
+                :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+                @mousedown.prevent @click="tapChip('ins', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+            </div>
+          </div>
         </div></template>
       </div>
 

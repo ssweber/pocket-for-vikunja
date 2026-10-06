@@ -32,10 +32,12 @@ So part 3 of the PRD is mostly there. What's missing is seeing it, and keeping w
 It comes up after a step is done, when the run has moved on to the next: "I need to do something else before this
 one", or "that last step needs doing again". So both put a step **before the step on screen**:
 
-- Where: in **Steps**, between the step done last and the one on screen, a box is always there, unfocused, like the
+- Where: in **Steps**, between the step done last and the one on screen (once every step is done, after the last, so a
+  step can be added at the end), a box is always there, unfocused, like the
   subtask box: `( ) [Insert a step] 🔁 +`. Nothing near Done and Skip, so a low tap can't add a step.
-- **Insert a step**: what's typed in the box, added with **+** or Enter. Escape empties the box. (Built as a plain
-  title; quick add's marks aren't read yet.)
+- **Insert a step**: what's typed in the box, added with **+** or Enter. It's the subtask box: quick add's marks,
+  chips and suggestions for labels, people and priority, but no dates (a step's time is its template's) and no project;
+  a pasted list inserts a step a line, in order. Escape empties the box.
 - **Repeat**: **🔁** puts the step before the one on screen in the box, when it's done, with a note under it ("A fresh
   copy of the step before, not done. Change the words to insert a new step instead."). Left as it is, **+** makes a
   fresh copy of it, right after it; changed, it's an inserted step. The first one stays done, with its ✅, notes and

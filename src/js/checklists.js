@@ -89,8 +89,8 @@ export const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t
 // A template's or a run's steps in order (its own order line); any other task's subtasks as Vikunja gives them.
 export function stepsOf(t){
   const r = t?.related_tasks || {}, subs = r.subtask || [];
-  const ordered = hasTemplateLabel(t) || ((r.copiedfrom?.length || isRunDesc(t.description)) && !r.parenttask?.length);
-  return ordered ? inOrder(subs, stepOrder(t.description)) : subs;
+  const ordered = hasTemplateLabel(t) || ((r.copiedfrom?.length || isRunDesc(t?.description)) && !r.parenttask?.length);
+  return ordered ? inOrder(subs, stepOrder(t?.description)) : subs;
 }
 export const DONE_MARK = '✅', SKIP_MARK = '⏭️';
 /* Who skipped a done step, or null: someone who left a ⏭️ and a "Skipped" note since it was last marked done. Vikunja

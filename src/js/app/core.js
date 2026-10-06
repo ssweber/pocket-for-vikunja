@@ -11,7 +11,7 @@ import {saved} from '../lists.js';
 export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.resolve()};
 // An add box: its text, whether it has focus and where the cursor is (for suggestions), the chips tapped off, whether a
 // pasted list goes under its first line, whether the 🔔 chip is on, and whether it's sending.
-const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
+export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
   project: null, start: null, subPeople: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
@@ -57,7 +57,7 @@ export default () => ({
   flushing: false,
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
-  runInsert: {text: '', repeat: null},         // the box above the step on screen: what's typed, and the step it repeats
+  runInsert: {...newBox(), repeat: null},      // the box above the step on screen in a run (quick add's 'ins'), and the step it repeats
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back

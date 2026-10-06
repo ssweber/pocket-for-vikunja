@@ -119,6 +119,7 @@ try {
   await step('new-template', async () => {
     await page.click('nav.tabs a[data-tab=checklists]');
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
+    await page.waitForFunction(() => document.activeElement?.id === 'nt-name');   // the sheet's own focus, before typing
     await page.fill('#nt-name', TEMPLATE);
     await page.press('#nt-name', 'Enter');
     // A row each, Enter for the next; a time in words gets a chip.
@@ -163,6 +164,7 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
+    await page.waitForFunction(() => document.activeElement?.id === 'nt-name');   // the sheet's own focus, before typing
     await page.fill('#nt-name', 'Not made');
     const row = i => page.locator('#new-steps > .draft-step').nth(i);
     await row(0).locator('.draft-in').fill('Put the roast in');
@@ -887,11 +889,39 @@ try {
     }, 30000);
     const order = (await titles()).split(' | ');
     if (order.indexOf('Offline step') !== order.indexOf('Sweep up') - 1) throw new Error('not where it was inserted: ' + order.join(' | '));
+    // Quick add, as in the subtask box: its chips and marks, no date (a step's time is its template's), and a pasted
+    // list is a step a line, in order.
+    await page.fill('#step-insert-in', 'Mop up !3 tomorrow');
+    await page.waitForSelector('#step-inschips .chip:has-text("Priority 3")');
+    await page.waitForSelector('#step-insbox .cap-marks mark[data-kind="priority"]', { state: 'attached' });
+    if (await page.$('#step-inschips .chip[data-kind="due"]')) throw new Error('a date was read');
+    await page.fill('#step-insert-in', 'Mop up !3 tomorrow\nRinse the mop');
+    await page.waitForSelector('#step-inschips .chip:has-text("2 steps")');
+    await page.press('#step-insert-in', 'Enter');
+    await until('the pasted steps were never inserted', async () => (await titles()).includes('Mop up tomorrow | Rinse the mop'));
+    const mop = (await subtasks(id)).find(s => s.title === 'Mop up tomorrow');
+    if ((await api('/tasks/' + mop.id)).priority !== 3) throw new Error('its priority was not read');
+  });
+
+  await step('add-a-step-after-the-last', async () => {
+    // Every step done, the run not finished: the box is after the last step, and what's added goes at the end.
+    const { id } = await startRun();
+    for (const t of ['Warm up the press', 'First article check']) { await page.click('#step-done'); await page.waitForSelector(`#step-title:text-is("${t}")`); }
+    await page.click('#step-done');
+    await page.waitForSelector('#finish-card');
+    await page.waitForSelector('#step-gap #step-insert-in');
+    await page.click('#step-repeat');                                         // 🔁 offers the last step
+    if (await page.inputValue('#step-insert-in') !== 'First article check') throw new Error('box: ' + await page.inputValue('#step-insert-in'));
+    await page.fill('#step-insert-in', 'Lock the back door');
+    await page.press('#step-insert-in', 'Enter');
+    await page.waitForSelector('#step-title:text-is("Lock the back door")', { timeout: 15000 });
+    await until('not added at the end', async () => (await subtasks(id)).map(s => s.title).pop() === 'Lock the back door');
   });
 
   await step('a-time-after-a-step-named-in-words', async () => {
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
+    await page.waitForFunction(() => document.activeElement?.id === 'nt-name');   // the sheet's own focus, before typing
     await page.fill('#nt-name', `Words ${stamp}`);
     await page.fill('#new-step-0', 'Start the hydraulics');
     await page.press('#new-step-0', 'Enter');

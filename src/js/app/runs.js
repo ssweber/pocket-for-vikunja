@@ -6,9 +6,9 @@ import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf} from '../checklists.js';
 import {routeOf} from '../routing.js';
-import {ACT_STEPS, ACTS, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
+import {ACT_STEPS, ACTS, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
-import {shared} from './core.js';
+import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
@@ -218,7 +218,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
-    if (!keep) this.runInsert = {text: '', repeat: null};
+    if (!keep) this.runInsert = {...newBox(), repeat: null};
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
     this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null, last: keep?.last || null};
     this.saveRun();
@@ -319,9 +319,11 @@ export default {
     const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
     const step = allDone && r.at === null ? null : steps[at] || null;
-    // The step before the one on screen, done, can be repeated: a fresh copy goes before the one on screen.
-    const before = step && steps[at - 1], repeatable = before?.done && !before.pending ? before : null;
-    return {steps, total, doneCount, allDone, at, step, repeatable, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+    /* Where a step can be inserted: before the one on screen, or, once every step is done (and the run isn't finished),
+       after the last. The step before that place, done, can be repeated there. */
+    const insertAt = step ? at : allDone ? total : null, insertBefore = step ? step.id : null;
+    const before = insertAt > 0 ? steps[insertAt - 1] : null, repeatable = before?.done && !before.pending ? before : null;
+    return {steps, total, doneCount, allDone, at, step, insertAt, insertBefore, repeatable, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       finished: (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish',
       summary: [`${total} step${total === 1 ? '' : 's'}`, skippedN && `${skippedN} skipped`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
@@ -403,7 +405,7 @@ export default {
   showStep(i, scroll){
     if (!this.view.run) return;
     this.view.run.at = i;
-    if (this.runInsert.repeat) this.runInsert = {text: '', repeat: null};   // the step before is another one now
+    if (this.runInsert.repeat) this.runInsert = {...newBox(), repeat: null};   // the step before is another one now
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
@@ -574,20 +576,27 @@ export default {
   /* ---------- steps inserted during a run ---------- */
   /* Insert a step before the one on screen, or repeat the one before it (repeatStep). Through the outbox, as a tick is:
      offline it waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
-  /* The box in Steps, above the step on screen (runInsert): what's typed is inserted. 🔁 puts the step before it in the
-     box (armRepeat): left as it is, + repeats that step; changed, it's a new step with those words. */
-  armRepeat(s){ this.runInsert = {text: s.title, repeat: s}; },
+  /* The box in Steps, above the step on screen: quick add's 'ins' box, so it reads labels, people and priority as the
+     subtask box does (not dates: a step's time is its template's), and each line of a pasted list is a step, in order.
+     🔁 puts the step before it in the box (armRepeat): left as it is, + repeats that step; changed, it's a new step. */
+  armRepeat(s){ this.runInsert = {...newBox(), text: s.title, repeat: s}; },
   async insertStep(){
-    const v = this.runView, {text, repeat} = this.runInsert, title = text.trim();
-    if (!v?.step || !title) return;
-    this.runInsert = {text: '', repeat: null};
-    if (repeat && title === repeat.title) await this.repeatStep(repeat);
-    else await this.addStep({title, before: v.step.id});
+    const v = this.runView, b = this.runInsert;
+    if (v?.insertAt == null || b.busy) return;
+    if (b.repeat && b.text.trim() === b.repeat.title) {
+      this.runInsert = {...newBox(), repeat: null};
+      await this.repeatStep(b.repeat);
+      return;
+    }
+    const lines = this.boxParsedLines('ins').filter(p => p.title);
+    if (!lines.length) return;
+    this.runInsert = {...newBox(), repeat: null};
+    for (const p of lines) await this.addStep({title: p.title, p: packParsed(p), before: v.insertBefore});
   },
   async repeatStep(s){
     const v = this.runView;
-    if (!v?.step || !s) return;
-    await this.addStep({title: s.title, before: v.step.id, from: s.from, tpl: s.tpl ?? null});
+    if (v?.insertAt == null || !s) return;
+    await this.addStep({title: s.title, before: v.insertBefore, from: s.from, tpl: s.tpl ?? null});
   },
   async addStep(fields){
     const r = this.view.run;
