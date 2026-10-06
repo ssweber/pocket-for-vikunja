@@ -1,7 +1,7 @@
-# Steps inserted during a run, runs that start on their own, and what's waiting to send — plan
+# Steps inserted during a run, checklists that come round again, and what's waiting to send — plan
 
 Proposed 2026-10-06, from the user's PRD "Checklist round-out features", with the user's answers the same day. Nothing
-is built yet. What's still open is at the end.
+is built yet.
 
 The rule for all three: Pocket runs repeatable work simply. A template is what we expect to do; a run is what actually
 happened. No branching, approvals, routing, recurrence language of Pocket's own, or sync console.
@@ -94,97 +94,85 @@ template can't be taken out of a run: Skip it, so the run says it was skipped.
 - `steptimes.mjs`: a run's order line is followed; an inserted step doesn't change what a step counts from; a step
   timed from a repeated one counts from the copy.
 
-## 2. Runs that start on their own
+## 2. Checklists that come round again
 
 ### What it is
 
-A template's due date is its cursor: the next run to make, or the one being worked through now. With a repeat (Vikunja's
-own `repeat_after` and `repeat_mode`), it moves on by itself. When it's due, a run is made on the server, whether or
-not anyone has Pocket open. Any template with a due date starts on its own; taking the due date off stops it. Manual
-starts work as now and never move the cursor.
+Vikunja has no way to make a task at a set time: a repeating task is the same task, whose dates move on when it's
+ticked. So the template itself is the repeating task. Vikunja keeps the schedule, shows it and emails its reminders;
+Pocket makes the run when someone starts it, exactly as a manual start does now. Nothing on the server makes tasks, and
+the plugin needs no token: it still only keeps step times.
 
-### Where it runs: in `main.go`
+- **A template without a due date** is done, as now, and out of every list.
+- **A template with a due date** is left not done. Vikunja shows it at its time, on Today in Pocket and in its own
+  Upcoming, emails its reminders (so "remind me 15 minutes before" goes on the template), and moves it on when it's
+  ticked, by its own repeat: every so often, every month, or from the day it's ticked.
+- **Starting a run** of a template due today or earlier ticks it: with a repeat, Vikunja moves it to the next time and
+  leaves it not done; without one, it's a plain done template again, and that schedule is over. A start at 7:55 is the
+  8:00 one, so there's no second run.
 
-Turned on in `config.yml` (`plugins.pocket.schedules: true`, or `VIKUNJA_PLUGINS_POCKET_SCHEDULES=true`), like step
-times, and listed in the header comment of what the plugin writes.
+The template owns the schedule, and a run never repeats. A run is made when the work starts, which is what happened.
 
-Vikunja's repeat fields aren't the risk: `repeat_after`, `repeat_mode` and their three modes are long-standing, and
-the plugin reads them and works out the next time itself. The risk is that making a run calls Vikunja's own code
-(`models.TaskDuplicate.Create`, task relations, saving tasks), whose shape can change between versions, and if Yaegi
-can't load `main.go`, Pocket's page isn't served either. Kept small by:
+### Setting it, in Pocket
 
-- calling as few of Vikunja's functions as it can, each in one place;
-- the CI check from the workflows plan: boot the latest Vikunja image with the plugin and check Pocket loads, so a
-  break is seen before a release, not after an upgrade.
+- In the template's sheet, its due date and Repeats (Repeats is already in Details).
+- Setting a due date on a done template: the date (and repeat), then not done.
+- Taking it off: the repeat off first, then no due date and done. In one save, Vikunja would move the date and leave it
+  not done: it moves a repeating task's dates when it goes from not done to done, by the repeat it had.
+- Make template: a task with a due date becomes a template that comes round at that time, left not done, its repeat
+  kept; the confirm says when. Without one, done, as now.
 
-### Once a minute
+### Starting
 
-For each template (done, labelled "template", in a project for checklists) with a due date. The plugin keeps a line on
-the template saying what it last made: `pocket:made 2026-10-07T08:00:00Z 4812` (the due date it was for, and the run),
-hidden in Pocket as `pocket:order` is.
+- Tapping the template on Today, or Start under Checklists, opens the Start sheet, as now.
+- Who it's for starts as the template's assignees, if it has any, else you; it can be changed, as now.
+- One more part of `RUN_STEPS`, last, so a start called off ticks nothing: when the start began with the template not
+  done and due by the end of that day, tick it. The start keeps the due date it saw, and ticks only if the template is
+  still not done and still at that date. A tick sent again after a lost reply would otherwise skip a second time.
+- After Vikunja moves it on, if its next time is still past (a template left for weeks), Pocket moves it on to the
+  first time after now, on the same beat. No catching up missed runs.
+- The run's own due date is the time the template was due, so a run left open shows on Today, and as overdue. A run
+  started from a template not due has none, as now.
+- The run has no repeat, no "template" label and none of the template's reminders (duplicate copies them all).
 
-1. Not due yet: nothing.
-2. A run it made of this template is still open: nothing. Runs don't pile up behind one left open.
-3. It last made a run for this due date, and that run is finished or deleted: move the due date on.
-   - No repeat: nothing more. It made its one run. Changing the due date by hand schedules another.
-   - Every so often (`repeat_after`, from the due date): the first time after now, on the same beat (due + n × the
-     interval). January's monthly run finished in April: next is May, no February or March.
-   - Every month (`repeat_mode` 1): a month at a time, until after now.
-   - From the day it's done (`repeat_mode` 2): the run's done time plus the interval. A deleted run counts from now.
-   - Only the due date is written, and the template stays done. (Vikunja moves a repeating task's dates only when it
-     goes from not done to done, so saving a done template's repeat is safe. Its own default mode also skips missed
-     times, as here.)
-4. Otherwise: make one run for this due date, however late the plugin is, and write `pocket:made`.
+### On Today and under Checklists (to discuss before building)
 
-Moving the due date happens on the minute after the run is finished, and also covers the plugin having been off.
+- On Today, a template that's due shows where any task due then would, as runs do: with no tick, and tapping it opens
+  the Start sheet. Under it in grey, "Checklist: tap to start".
+- Under Checklists, the template's grey line: "Next: Wed Oct 7, 8:00, then every day", or "Due now".
+- Runs of the same template can be open at once, scheduled or not, as manual ones can now: one left open doesn't hold
+  back the next time.
 
-Making the run and writing `pocket:made` are one transaction, and `pocket:made` is written only if it's still what was
-read, so a second Vikunja server on the same database can't make the run twice.
+### In Vikunja's web app
 
-### The run it makes
-
-The same as a run started in Pocket, so the app needs no second kind:
-
-- Title "Opening up · run 12 · Oct 7"; `pocket:run`, its `pocket:order` line, and `pocket:scheduled
-  2026-10-07T08:00:00Z`, which is how the plugin and Pocket tell it from a manual run. Its steps with their
-  `pocket:step` lines, titles without T#, a reminder on each timed one, the first timed step due from when the run is
-  made. No repeat, no "template" label.
-- Its own due date is the time it was scheduled for, so it shows on Today, and as overdue if it's left. (A manual run
-  has no due date.)
-- It's for the template's assignees, which Vikunja's duplicate copies. None: nobody, and it shows to everyone under the
-  checklist's In progress.
-- Vikunja needs a user to make it as: the template's creator. If they can no longer write to the project, nothing is
-  made, and the template says so in Pocket.
-- The run screen says "Started on schedule" where it says "started by …".
-
-### In Pocket (to discuss before building)
-
-- The template's sheet shows its due date and Repeats (Repeats is already in Details), and under them in grey: "Next
-  run: Wed Oct 7, 8:00, then every day", or "Waiting for the run of Oct 7 to be finished before the next".
-- Under Checklists, a template with a due date shows that same grey line.
-- The Start sheet, when a scheduled run of this template is open: "A run scheduled for Oct 7 is open: Open it", above
-  Start. Starting another is still allowed, and doesn't count as the scheduled one. No starting the next scheduled run
-  early in v1.
-- Make template clears a repeat before marking the task done: otherwise Vikunja would move its date and leave it not
-  done. It keeps the due date, so a task with one becomes a template that starts on its own; the Make template confirm
-  says when.
+- At its time it shows as a task, labelled "template", with its steps as done subtasks.
+- Ticking it there skips that time: with a repeat, Vikunja moves it to the next; without, the schedule is over. No run
+  is made.
+- Deleting it there deletes the template. So a template's title starts with "TEMPLATE: " ("TEMPLATE: Opening up"),
+  which says what it is wherever Vikunja shows it, beside the "template" label. Pocket writes it when a template is
+  made, keeps it when one is renamed, and shows the name without it: in Checklists, the Start sheet, a run's title
+  ("Opening up · run 12 · Oct 7"), Today and the template's sheet. The label stays what marks a template, for Pocket
+  and the plugin; a template without the prefix still is one. A separate task to hold the schedule would need its own
+  link, title and clearing up.
 
 ### Not in v1
 
-Making runs ahead of time, catching up missed runs, a list of schedules, purging old runs. A later purge must never
-delete a template.
+Making runs ahead of time, catching up missed runs, a list of schedules, a run made with nobody starting it, purging
+old runs. A later purge must never delete a template.
 
-### Spike first
+### Check first, on the local Vikunja 2.7
 
-On the local Vikunja 2.7, from Yaegi: `TaskDuplicate.Create` with a `*user.User` as who did it; that events are sent
-once it's committed (`events.DispatchPending`), so webhooks and search see the new tasks; whether duplicating a task
-with assignees notifies them; that Vikunja sends no reminders for a done template.
+How far each repeat mode moves a template left for weeks (Vikunja's every-so-often seems to jump past now, its monthly
+one month at a time); that saving a done template's repeat leaves it done; that its reminders are emailed while it's
+not done; what deleting a template does to its steps.
 
 ### Tests
 
-`tests/schedules.mjs`, through the API like `steptimes.mjs`, with the minute shortened by an environment variable:
-one-time, every so often, monthly, from the day it's done; no run behind an open one; one run however late; a deleted
-run moves it on; a manual run changes nothing; a template without a due date is left alone.
+`checklists.mjs`: a due date on a template leaves it not done, on Today with no tick, and tapping it opens Start;
+starting ticks it, moved on, the run due at that time with no repeat or reminders; a start well before it's due
+doesn't tick it; a lost reply to the tick doesn't skip twice; a template left for weeks moves to the first time after
+now; taking the date off leaves it done where it is; Make template from a task with a due date; with no repeat, a start
+leaves it done.
 
 ## 3. What's waiting to send
 
@@ -205,9 +193,13 @@ run moves it on; a manual run changes nothing; a template without a due date is 
   for “Restock cups”, 2.1 MB", "Starting Opening up", "Inserted in Opening up: “Flush the line”", "New task: Buy milk".
   At the top, why it's waiting: "No connection: these go when Pocket reaches Vikunja", or Vikunja's last answer. A
   **Try now** button, which also refreshes. With nothing waiting, it refreshes, as now.
-- A tick, skip, untick, claim or finish that Vikunja turns down: still open, below.
+- A tick, skip, untick, claim or finish that Vikunja turns down stays in the sheet, with why, and **Try again** and
+  **Don't send it** (its confirm says what that leaves: "“Check the milk fridge” stays not done in Vikunja"). Later
+  acts on the same task wait behind it, so an untick can't arrive before its tick. Tasks and notes keep going back in
+  their box, as now.
 - Rows still waiting can be cancelled where they can now (a task, a file, a start), and a tick or note too.
-- The Offline banner shrinks to "Offline · showing tasks from …", as the sheet says the rest.
+- The Offline banner shrinks to "Offline · showing tasks from …. Ticking off or changing tasks needs a connection,
+  except on a run.", as the sheet says what waits.
 - Diagnostics, later: Pocket's and Vikunja's versions at the bottom of the account sheet, nothing more in v1. No
   tokens, and no notes or photos beyond what the sheet's rows show.
 
@@ -216,25 +208,26 @@ run moves it on; a manual run changes nothing; a template without a due date is 
 | Write | Sent again after a lost reply |
 |---|---|
 | A run's order line at start | the same line again |
+| Ticking the template at start | only if it's still not done and still at the due date the start saw |
+| Moving a late template to the first time after now | the same date again |
 | Insert a step | the task looked for by title, time and who (`findSent`); the link: "already linked" counts as done |
 | Repeat | the copy found through "copied to" (`findCopy`); then as above |
 | The order line, on insert | puts the id in only if it isn't there, re-reading first |
 | Deleting an inserted step | "not found" counts as done |
-| A scheduled run | on the server, one transaction, written only if `pocket:made` is unchanged |
 
 A double tap on Insert or Repeat: the button is off while the entry is made, and each entry is made once.
 
 ### Tests
 
-`offline.mjs`: the button's icons and the sheet offline, a turned-down act as decided, later acts on its task waiting,
-Try now.
+`offline.mjs`: the button's icons and the sheet offline, a turned-down tick kept with Try again and Don't send it,
+later acts on its task waiting, Try now.
 
 ## Build order
 
 1. What's waiting to send: small, separate, and it helps check the rest.
 2. A run's order line, at start and read by the app and `main.go`; then Insert a step.
 3. Repeat, and the timing rules.
-4. The scheduler spike, then the scheduler, then its place in Pocket.
+4. The checks on the local Vikunja, then templates with due dates.
 
 Each is its own `feat` commit with its tests, after the user's go.
 
@@ -243,18 +236,19 @@ Each is its own `feat` commit with its tests, after the user's go.
 1. A run's order line is written at every start.
 2. An inserted step has no time and timing skips it; a step timed from a repeated one counts from the copy.
 3. Inserted and repeated steps can be deleted until done; template steps are skipped, not removed.
-4. Both put a step before the one on screen: Insert, and Repeat the step before.
-5. The scheduler is in `main.go`, behind a config switch.
-6. Any template with a due date starts on its own: the due date is the cursor.
-7. A scheduled run is for the template's assignees.
-8. A scheduled run is due at the time it was scheduled for.
+4. Both put a step before the one on screen: "Insert a step", and "Repeat “Taste the soup”" for the step before.
+   Marked "Inserted" and "Repeated".
+5. No scheduler on the server: the template is Vikunja's repeating task, and starting a run ticks it. (A plugin making
+   runs would have meant calling Vikunja's internals, or an API token in its config.)
+6. Any template with a due date comes round: the due date is the cursor.
+7. A run of a template that's due is for the template's assignees.
+8. That run is due at the time the template was.
 9. The refresh button changes icon when something waits, and opens the sheet.
+10. Acts Vikunja turns down stay in the sheet, with Try again and Don't send it.
+11. Runs of a template can be open at once: the PRD's "only one run outstanding" is dropped.
+12. A template's title starts with "TEMPLATE: ", so it isn't deleted by mistake on the web; Pocket shows it without.
 
-## Still open
+## To note
 
-- **Labels**: "Insert a step" and "Repeat “Taste the soup”" on the step screen; "Inserted" and "Repeated" in grey on
-  the steps.
-- **Turned-down acts**: kept in the sheet with Try again and Don't send it (its confirm says what that leaves:
-  "“Check the milk fridge” stays not done in Vikunja"), and later acts on the same task wait behind it; or dropped with
-  a toast, as now.
-- **Who a scheduled run is made by**: the template's creator.
+- "From the day it's done" counts from when the run is started (the template is ticked then), not when it's finished,
+  as the PRD had it. The template has no way to know when a run is finished without Pocket open.
