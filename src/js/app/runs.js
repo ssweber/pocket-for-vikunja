@@ -1,12 +1,12 @@
 // Starting a run, and working through one.
-import {cache, store, taskDrafts} from '../util.js';
+import {cache, store, taskDrafts, ZERO} from '../util.js';
 import {api, ApiError, errText, items, NetError, passing, serverTime, triedSince} from '../api.js';
 import {dueInfo, isSet} from '../dates.js';
 import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf} from '../checklists.js';
+import {addedText, allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf} from '../checklists.js';
 import {routeOf} from '../routing.js';
-import {ACT_STEPS, ACTS, heldTasks, KEPT, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
+import {ACT_STEPS, ACTS, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {shared} from './core.js';
 import {renderSeq} from './views.js';
@@ -63,7 +63,7 @@ export default {
     const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template, name: st.name.trim(),
       for: {id: who.id, username: who.username, name: who.name || ''}, steps, fails: 0};
     st.busy = true;
-    this.starting = {id: entry.id, done: 0, total: 4 + steps.length * 3};
+    this.starting = {id: entry.id, done: 0, total: 5 + steps.length * 3};
     const {kept, full} = await sync.add(entry, []);
     const r = await sync.lock(() => this.sendEntry(entry.id));
     this.starting = null; st.busy = false;
@@ -244,7 +244,7 @@ export default {
       const full = await allComments(await api(`/tasks/${prev.id}?expand=comments`));
       const steps = await inBatches(stepsOf(full), 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
       const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run'})),
-        ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title})))];
+        ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title + (addedText(s.description) ? ` (${addedText(s.description).toLowerCase()})` : '')})))];
       if (here()) { this.view.run.last = {id: prev.id, title: prev.title, notes}; this.saveRun(); }
     } catch { if (here() && !this.view.run.last?.notes) this.view.run.last = null; }
   },
@@ -255,7 +255,14 @@ export default {
     const me = this.user, myName = me?.name || me?.username || 'You';
     const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.run.id);
     const waitingNote = a => ({id: a.id, comment: a.html, author: myName, when: 'Waiting to send'});
-    const steps = r.steps.map(s => {
+    // Steps inserted or repeated that are still waiting to be sent, in their place: before the step they were inserted at.
+    const base = [...r.steps];
+    for (const e of this.pending) if (e.kind === 'step' && e.run === r.run.id && !base.some(s => s.id === e.taskId)) {
+      const k = base.findIndex(s => s.id === e.before);
+      base.splice(k < 0 ? base.length : k, 0, {id: 'pending-' + e.id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
+        assignees: [], attachments: [], reactions: {}, comments: [], tpl: e.tpl ?? null, from: e.from, added: e.from || e.tpl != null ? 'Repeated' : 'Inserted', pending: e.id});
+    }
+    const steps = base.map((s, i) => {
       const skipper = skippedBy(s);
       let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at;
       const kept = keptTicks()[s.id];
@@ -263,14 +270,15 @@ export default {
       let by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
       const doers = () => by.map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
-      for (const a of acts) if (a.task === s.id) {
+      for (const a of acts) if (this.actTask(a) === s.id) {
         if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
         if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
-      const slot = this.claimSlot({...s, project_id: r.run.project_id}, this.peopleOf(s.id, s.assignees), done || r.run.done);
+      const slot = s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, this.peopleOf(s.id, s.assignees), done || r.run.done);
       // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
-      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by,
+      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by,
+        added: s.added || '', pending: s.pending || null, from: s.from || null, tpl: s.tpl,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : by.length ? ' by ' + doers().join(', ') : '')};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
@@ -278,14 +286,23 @@ export default {
        counts instead if someone changed the step after that tick: Pocket's plugin sets due dates without touching
        "updated", so one it set (maybe from an earlier tick) doesn't. "updated" has whole seconds, and things done
        offline reach Vikunja within one, so a change in the same second as the tick counts as before it. Until that
-       step is done it says what it waits on, not a time. */
-    const timing = r.steps.map(s => parseStep(s.tpl || '')), now = serverTime(this.clock);
+       step is done it says what it waits on, not a time.
+       "The step before" and names are read among the template's steps only, as the plugin does: an inserted step has no
+       time and isn't seen. A repeated one has no time of its own, but stands in for the one it repeats: a step timed from
+       that counts from whichever of them was done last. */
+    const group = [], timing = [], place = [], now = serverTime(this.clock);
+    base.forEach((s, i) => {
+      group[i] = -1;
+      if (!s.added) { group[i] = timing.length; timing.push(parseStep(s.tpl || '')); place.push(i); }
+      else if (s.tpl != null) for (let j = i - 1; j >= 0; j--) if (group[j] >= 0 && base[j].tpl === s.tpl) { group[i] = group[j]; break; }
+    });
+    const lastOf = g => steps.filter((s, i) => group[i] === g && s.done).sort((a, b) => new Date(a.doneAt) - new Date(b.doneAt)).pop() || steps[place[g]];
     steps.forEach((s, i) => {
-      const t = timing[i], j = stepFrom(timing, i), from = j >= 0 ? steps[j] : null;
-      let due = isSet(r.steps[i].due_date) ? new Date(r.steps[i].due_date) : null, waitsOn = '';
+      const own = !s.added && group[i] >= 0, t = own ? timing[group[i]] : {offset: null}, j = own ? stepFrom(timing, group[i]) : null, from = j >= 0 ? lastOf(j) : null;
+      let due = isSet(base[i].due_date) ? new Date(base[i].due_date) : null, waitsOn = '';
       if (from) {
         if (!from.done) { due = null; waitsOn = t.offset ? `${durText(t.offset)} after “${from.title}”` : `when “${from.title}” is done`; }
-        else if (from.waiting || !due || !(Math.floor(+new Date(r.steps[i].updated) / 1000) > Math.floor(+new Date(from.doneAt) / 1000)))
+        else if (from.waiting || !due || !(Math.floor(+new Date(base[i].updated) / 1000) > Math.floor(+new Date(from.doneAt) / 1000)))
           due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
       }
       const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
@@ -301,7 +318,9 @@ export default {
     const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
     const step = allDone && r.at === null ? null : steps[at] || null;
-    return {steps, total, doneCount, allDone, at, step, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+    // The step before the one on screen, done, can be repeated: a fresh copy goes before the one on screen.
+    const before = step && steps[at - 1], repeatable = before?.done && !before.pending ? before : null;
+    return {steps, total, doneCount, allDone, at, step, repeatable, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       finished: (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish',
       summary: [`${total} step${total === 1 ? '' : 's'}`, skippedN && `${skippedN} skipped`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
@@ -383,6 +402,7 @@ export default {
   showStep(i, scroll){
     if (!this.view.run) return;
     this.view.run.at = i;
+    this.runInsert = null;                                                  // a step being inserted was for the step left
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
@@ -457,6 +477,13 @@ export default {
     const save = () => sync.save(a), stages = ACTS[a.op] || [], none = {ids: [], tasks: [], problems: [], uploaded: 0};
     let comment = null;
     try {
+      // On a step inserted offline: its id once it's in Vikunja. Until then it waits; if it never got there, it's turned down.
+      if (typeof a.task === 'string') {
+        const key = a.task.replace(/^pending-/, ''), id = sync.taskOf(key);
+        if (!id && sync.entries.has(key)) return {...none, status: 'offline', reached: true};
+        if (!id) throw new ApiError(404, 'the step it was for couldn\'t be added');
+        a.task = id; await save();
+      }
       while (a.stage < stages.length) {
         const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
         if (stages[a.stage] === 'note' && out?.id) comment = out;
@@ -539,6 +566,83 @@ export default {
       Object.assign(s, {done: a.op !== 'undone', done_at: a.doneAt || new Date(serverTime(Date.now())).toISOString(), reactions: rs});
     }
     if (comment) { const on = s || r.run; on.comments = [...(on.comments || []), comment]; }
+  },
+  // The task an act is for: a step inserted offline is known by its entry until it's in Vikunja.
+  actTask(a){ return typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) ?? a.task : a.task; },
+
+  /* ---------- steps inserted during a run ---------- */
+  /* Insert a step before the one on screen, or repeat the one before it (repeatStep). Through the outbox, as a tick is:
+     offline it waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
+  async insertStep(){
+    const v = this.runView, title = this.runInsert?.text.trim();
+    if (!v?.step || !title) return;
+    this.runInsert = null;
+    await this.addStep({title, before: v.step.id});
+  },
+  async repeatStep(s){
+    const v = this.runView;
+    if (!v?.step || !s) return;
+    await this.addStep({title: s.title, before: v.step.id, from: s.from, tpl: s.tpl ?? null});
+  },
+  async addStep(fields){
+    const r = this.view.run;
+    if (!r) return;
+    // Before a step that's itself still waiting: where that one goes.
+    if (typeof fields.before === 'string') fields.before = this.pending.find(e => 'pending-' + e.id === fields.before)?.before ?? null;
+    const entry = {id: randomId(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], fails: 0,
+      run: r.run.id, runTitle: r.run.title, project: r.run.project_id, from: null, tpl: null, ...fields};
+    const {kept, full} = await sync.add(entry, []);
+    this.refreshPending();
+    const res = await sync.lock(() => this.sendEntry(entry.id));
+    this.refreshPending();
+    if (res.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
+    if (res.status === 'error') this.notify(`${res.error.what} couldn't be done: ${res.error.message}.`);
+    if (res.status === 'sent' && this.view.run?.run.id === entry.run) this.render();
+  },
+  async sendStep(j){
+    const save = () => sync.save(j), c = {save, taken: new Set()}, none = {ids: [], tasks: [], problems: [], uploaded: 0};
+    try {
+      for (const step of INSERT_STEPS) while (!step.done(j)) { await patiently(() => step.run(j, c)); await save(); }
+      await sync.remove(j.id);
+      return {...none, status: 'sent', changed: 1};
+    } catch (error) {
+      if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++j.fails < 5)))) {
+        await save();
+        return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
+      }
+      // Turned down for good (the run deleted meanwhile, say): what it made goes again.
+      if (j.taskId) await api('/tasks/' + j.taskId, {method: 'DELETE'}).catch(() => {});
+      await sync.remove(j.id);
+      error.what = (j.from || j.tpl != null ? 'Repeating' : 'Inserting') + ` “${j.title}”`;
+      return {...none, status: 'error', error};
+    }
+  },
+  /* Delete a step inserted or repeated during the run, until it's done: it was likely a mistake. One still waiting to
+     be sent isn't sent, nor is anything done on it. A step from the template can't be taken out: it's skipped. */
+  async deleteAddedStep(s){
+    if (!s?.added || s.done || !confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`)) return;
+    if (s.pending) { await this.dropStep(s.pending); return; }
+    try {
+      await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
+      cache.delete(s.id);
+      await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
+      this.refreshPending();
+      this.notify('Step deleted');
+      this.render();
+    } catch (e) { this.notify(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message); }
+  },
+  // Don't send a step waiting to be inserted, nor what was done on it; one being sent already can't be stopped.
+  async dropStep(id){
+    let started = false;
+    await sync.lock(async () => {
+      const e = await sync.fresh(id);
+      if (!e) return;
+      if (e.taskId || e.tried || e.job?.tried) { started = true; return; }
+      await sync.remove(id);
+      for (const a of sync.all(this.user?.id)) if (a.kind === 'act' && a.task === 'pending-' + id) await sync.remove(a.id);
+    });
+    this.refreshPending();
+    this.notify(started ? 'It\'s being sent: delete it once it\'s there.' : 'Not sent.');
   },
   async refreshRunTask(id){
     try {

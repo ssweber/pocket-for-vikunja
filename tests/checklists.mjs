@@ -29,8 +29,8 @@ const api = (path, init) => call(TOKEN, path, init);
 // Vikunja on SQLite answers 500 "database is locked" now and then: tried again, as Pocket does.
 const retry = async fn => { for (let i = 0; ; i++) { try { return await fn(); } catch (e) { if (i >= 4 || !/HTTP 500/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } };
 const task = id => api(`/tasks/${id}?expand=reactions&expand=comments`);
-// A task's steps in the order Pocket shows them: a template's by the line "pocket:order …" in its description (steps it
-// doesn't list after, by id), a run's by id.
+// A task's steps in the order Pocket shows them, a template's or a run's: by the line "pocket:order …" in its
+// description, then steps it doesn't list, by id.
 const stepOrder = desc => (desc || '').match(/<p>pocket:order((?:\s+\d+)*)<\/p>/i)?.[1].trim().split(/\s+/).filter(Boolean).map(Number) || null;
 const subtasks = async id => {
   const t = await api('/tasks/' + id), subs = t.related_tasks?.subtask || [], order = stepOrder(t.description);
@@ -273,6 +273,8 @@ try {
     if (run.related_tasks?.copiedfrom?.[0]?.id !== template.id) throw new Error('not linked to its template');
     if (JSON.stringify(steps.map(s => s.title)) !== JSON.stringify(['Check the guards at 3pm', 'Warm up the press', 'First article check'])) throw new Error('steps: ' + steps.map(s => s.title).join(' | '));
     if (steps.some(s => s.done)) throw new Error('a step is done already');
+    // The run has its own order line, its steps as copied: it never reads its template's again.
+    if (JSON.stringify(stepOrder(run.description)) !== JSON.stringify(steps.map(s => s.id))) throw new Error('order line: ' + run.description);
     // Nothing is due yet: every timed step counts from a step being done, and the run has no due date of its own.
     const dated = [run, ...steps].filter(t => t.due_date && !t.due_date.startsWith('0001'));
     if (dated.length) throw new Error('due dates: ' + dated.map(t => `${t.title} ${t.due_date}`).join(', '));
@@ -809,6 +811,79 @@ try {
     const n = ((await task(id)).comments || []).filter(c => c.comment.includes('Said once')).length;
     if (n !== 1) throw new Error(n + ' copies');
     await page.unroute('**/api/v2/tasks/*/comments', lose);
+  });
+
+  await step('insert-and-repeat-a-step', async () => {
+    // After a step is done, the run moves on: a step to do before the next one goes in there, and the one before it can
+    // be done again, as a fresh copy. Neither changes the template.
+    const { id } = await startRun(), tplSteps = (await subtasks(template.id)).length;
+    const titles = async () => (await subtasks(id)).map(s => s.title).join(' | ');
+    await page.click('#step-done');
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    // The box for it closes again: with its ×, and when it's left empty.
+    await page.click('#step-insert');
+    await page.click('#step-insert-cancel');
+    await page.waitForSelector('#step-insert-form', { state: 'detached' });
+    await page.click('#step-insert');
+    await page.click('#step-title');
+    await page.waitForSelector('#step-insert-form', { state: 'detached' });
+    await page.click('#step-insert');
+    await page.fill('#step-insert-in', 'Wipe the oil off the floor');
+    await page.press('#step-insert-in', 'Enter');
+    await page.waitForSelector('#step-title:text-is("Wipe the oil off the floor")');            // on screen: it's next
+    await page.waitForSelector('#step-added:text-is("Inserted")', { timeout: 15000 });
+    await until('not inserted before Warm up the press', async () => await titles() === 'Check the guards at 3pm | Wipe the oil off the floor | Warm up the press | First article check');
+    const inserted = await api('/tasks/' + (await runStep(id, 1)).id);
+    if (!/pocket:added/.test(inserted.description) || inserted.related_tasks?.copiedfrom?.length || inserted.done) throw new Error('inserted: ' + JSON.stringify(inserted.description));
+    // The step after it still counts from the template's step before it.
+    await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .due:text-matches("^Due in (30|29)m$")');
+    // Repeat the step before the one on screen: a copy of its template step, not done, right after it.
+    await page.click('#step-repeat:has-text("Repeat “Check the guards at 3pm”")');
+    await page.waitForSelector('#step-added:text-is("Repeated")', { timeout: 15000 });
+    await until('not repeated after the first step', async () => await titles() === 'Check the guards at 3pm | Check the guards at 3pm | Wipe the oil off the floor | Warm up the press | First article check');
+    const [orig, copy] = await Promise.all([0, 1].map(async i => task((await runStep(id, i)).id)));
+    if (copy.done || copy.reactions?.['✅']?.length || copy.related_tasks?.copiedfrom?.[0]?.id === orig.id) throw new Error('the copy has the first one\'s history');
+    if (!/pocket:added/.test(copy.description) || !copy.description.includes('pocket:step Check the guards at 3pm')) throw new Error('copy: ' + copy.description);
+    if ((await subtasks(template.id)).length !== tplSteps) throw new Error('the template changed');
+    // Its order stays after a reload, each marked.
+    await page.reload();
+    await page.waitForSelector('#run-steps .row:nth-of-type(2) .meta .added:text-is("Repeated")', { timeout: 15000 });
+    await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .added:text-is("Inserted")');
+    // One added by mistake is deleted, until it's done.
+    await page.click('#run-steps .row:nth-of-type(3) .body');
+    await page.click('#step-delete');
+    await toast('Step deleted');
+    await until('the inserted step is still there', async () => !(await titles()).includes('Wipe the oil'));
+    // Its reply lost: inserted once.
+    let cut = true;
+    const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/api/v2/projects/*/tasks', lose);
+    await page.click('#step-insert');
+    await page.fill('#step-insert-in', 'Sweep up');
+    await page.press('#step-insert-in', 'Enter');
+    await online();
+    await until('never inserted after its reply was lost', async () => (await titles()).includes('Sweep up'));
+    await page.unroute('**/api/v2/projects/*/tasks', lose);
+    if ((await titles()).split('Sweep up').length !== 2) throw new Error('inserted twice: ' + await titles());
+    // Offline: shown in its place, waiting, and ticked meanwhile; both reach Vikunja once it's back.
+    await page.waitForSelector('#step-added:text-is("Inserted")', { timeout: 15000 });
+    await context.setOffline(true);
+    await page.click('#step-insert');
+    await page.fill('#step-insert-in', 'Offline step');
+    await page.press('#step-insert-in', 'Enter');
+    await page.waitForSelector('#step-added:text-is("Inserted · waiting to send")');
+    await page.click('#step-done');
+    await page.waitForSelector('#run-steps .row:has-text("Offline step") .check.wait');
+    await context.setOffline(false);
+    await online();
+    await until('the step inserted offline never reached Vikunja, ticked', async () => {
+      const s = (await subtasks(id)).find(x => x.title === 'Offline step');
+      if (!s) return false;
+      const t = await task(s.id);
+      return t.done && t.reactions?.['✅']?.some(u => u.id === me.id);
+    }, 30000);
+    const order = (await titles()).split(' | ');
+    if (order.indexOf('Offline step') !== order.indexOf('Sweep up') - 1) throw new Error('not where it was inserted: ' + order.join(' | '));
   });
 
   await step('a-time-after-a-step-named-in-words', async () => {

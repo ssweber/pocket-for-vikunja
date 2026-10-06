@@ -192,6 +192,54 @@ try {
     await wait(1500);
     if (isSet((await get(y.id)).due_date)) throw new Error('got a due date: ' + (await get(y.id)).due_date);
   });
+  // A run's own order line, as Pocket writes it when the run starts and when a step is inserted.
+  const setOrder = async (run, ids) => patch(run, { description: `<p>pocket:run</p><p>pocket:order ${ids.join(' ')}</p>` });
+  // A step added during a run, under it: inserted (a task of its own), or a repeat of a template step (a copy of it,
+  // keeping its line).
+  const addStep = async (run, { repeat } = {}) => {
+    const t = repeat === undefined ? await mk('Mop the floor') : (await api(`/tasks/${tplSteps[repeat]}/duplicate`, { method: 'POST' })).duplicated_task;
+    await api(`/tasks/${run}/relations`, { method: 'POST', body: { other_task_id: t.id, relation_kind: 'subtask' } });
+    await patch(t.id, { done: false, due_date: ZERO, ...repeat !== undefined && { title: TITLES[repeat] },
+      description: (repeat !== undefined ? `<p>pocket:step ${STEPS[repeat]}</p>` : '') + '<p>pocket:added</p>' });
+    return t.id;
+  };
+  await step('a-runs-order-line-is-followed', async () => {
+    // Carve counts from the step before it: with Wash up put before it, from Wash up, not from the roast coming out.
+    const c = await startRun(template.id, tplSteps, label.id), s = c.steps;
+    await setOrder(c.id, [s[0], s[1], s[2], s[3], s[5], s[4]]);
+    await patch(s[3], { done: true });
+    await wait(1500);
+    if (isSet((await get(s[4])).due_date)) throw new Error('Carve counted from the roast coming out');
+    const done = await patch(s[5], { done: true });
+    await until('Carve never counted from Wash up', async () => after((await get(s[4])).due_date, done.done_at) === 10);
+  });
+  await step('an-inserted-step-isnt-the-step-before', async () => {
+    // Mopping inserted after the roast goes in: Peel the potatoes still counts from the roast, and mopping sets nothing.
+    const c = await startRun(template.id, tplSteps, label.id), s = c.steps, mop = await addStep(c.id);
+    await setOrder(c.id, [s[0], mop, ...s.slice(1)]);
+    const done = await patch(s[0], { done: true });
+    await until('Peel the potatoes never counted from the roast', async () => after((await get(s[1])).due_date, done.done_at) === 20);
+    const before = await dues(c);
+    await wait(1100);
+    await patch(mop, { done: true });
+    await wait(1500);
+    if (JSON.stringify(await dues(c)) !== JSON.stringify(before)) throw new Error('mopping moved due dates');
+  });
+  await step('a-step-timed-from-a-repeated-one-counts-from-the-copy', async () => {
+    // The roast put in again: Peel the potatoes and Baste the roast count from the copy once it's done, and from the
+    // first again once the copy isn't.
+    const c = await startRun(template.id, tplSteps, label.id), s = c.steps, again = await addStep(c.id, { repeat: 0 });
+    await setOrder(c.id, [s[0], again, ...s.slice(1)]);
+    const first = await patch(s[0], { done: true });
+    await until('Peel the potatoes never counted from the roast', async () => after((await get(s[1])).due_date, first.done_at) === 20);
+    await wait(1100);
+    const copy = await patch(again, { done: true });
+    await until('Peel the potatoes never counted from the copy', async () => after((await get(s[1])).due_date, copy.done_at) === 20);
+    if (after((await get(s[2])).due_date, copy.done_at) !== 40) throw new Error('Baste the roast didn\'t count from the copy');
+    if (isSet((await get(again)).due_date)) throw new Error('the copy got a time of its own');
+    await patch(again, { done: false });
+    await until('Peel the potatoes never went back to the first', async () => after((await get(s[1])).due_date, first.done_at) === 20);
+  });
   await step('a-run-keeps-its-times-when-its-template-changes', async () => {
     // Started, then its template's "Peel the potatoes" is given another time, "Baste the roast" is deleted, and then the
     // template itself: the run still counts as it was started.

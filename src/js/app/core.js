@@ -57,6 +57,7 @@ export default () => ({
   flushing: false,
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
+  runInsert: null,                             // a step being written to insert before the one on screen: {text}
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back

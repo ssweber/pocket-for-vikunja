@@ -12,14 +12,15 @@ export const CHECKLIST_MARK = 'pocket:checklists';
 export const isChecklistDesc = html => htmlToText(html || '').split('\n').some(l => l.trim().toLowerCase() === CHECKLIST_MARK);
 /* A template's step order, a line "pocket:order 12 15 13" in its description, written when a step is moved: Vikunja
    can't order subtasks, and gives them in no set order. Steps it doesn't list follow in the order they were made (by
-   id), and ids no longer steps are skipped, so adding or removing a step leaves the line alone. A run's steps are
-   copied one at a time in that order, so a run is in order by its steps' ids, and keeps the order it started with. */
+   id), and ids no longer steps are skipped, so adding or removing a step leaves the line alone. A run has a line of its
+   own, written when it starts, so it never reads its template's again, and when a step is inserted in it. */
 export const ORDER_MARK = 'pocket:order';
 const ORDER_LINE = /^pocket:order(\s+\d+)*$/i;
 /* A run keeps what it was started from, in lines of its own, so changing or deleting its template changes only runs
    started after: "pocket:run" in its description, so it's a run without its template, and "pocket:step <the template
-   step's title then>" in each step's, which its time is read from. */
-const RUN_LINE = /^pocket:run$/i, STEP_LINE = /^pocket:step\s+\S/i;
+   step's title then>" in each step's, which its time is read from. A step inserted during the run, or repeated, has
+   "pocket:added": a repeated one also keeps the "pocket:step" line of the one it repeats. */
+const RUN_LINE = /^pocket:run$/i, STEP_LINE = /^pocket:step\s+\S/i, ADDED_LINE = /^pocket:added$/i;
 // The lines in a description matching `re`: a paragraph of their own, or a line of one (after Shift+Enter in Vikunja's
 // editor), not in a list. The first is the one read; any other is left over, and taken out when the line is written.
 function markLines(root, re){
@@ -32,6 +33,9 @@ export function stepOrder(html){
   return line ? (line.nodeValue.match(/\d+/g) || []).map(Number) : null;
 }
 export const isRunDesc = html => !!markLines(parseFragment(html || ''), RUN_LINE).length;
+export const isAddedDesc = html => !!markLines(parseFragment(html || ''), ADDED_LINE).length;
+// "Inserted" or "Repeated", for a step added during its run; '' for one from its template.
+export const addedText = html => !isAddedDesc(html) ? '' : stepLine(html) !== null ? 'Repeated' : 'Inserted';
 // A run's step's title in its template when the run started, or null for a run started before runs kept it.
 export function stepLine(html){
   const line = markLines(parseFragment(html || ''), STEP_LINE)[0];
@@ -41,6 +45,13 @@ export function inOrder(steps, order){
   const at = new Map((order || []).map((id, k) => [id, k]));
   return [...steps].sort((a, b) => (at.get(a.id) ?? Infinity) - (at.get(b.id) ?? Infinity) || a.id - b.id);
 }
+// The ids with `id` put just before `before` (at the end if that's gone); as they are if it's in them already.
+export const placeBefore = (ids, id, before) => {
+  if (ids.includes(id)) return ids;
+  const out = [...ids], at = out.indexOf(before);
+  out.splice(at < 0 ? out.length : at, 0, id);
+  return out;
+};
 // The description with its line matching `re` set to `text` (taken out, for null), the rest as it was.
 function withLine(html, re, text){
   const root = parseFragment(html || ''), [line, ...extra] = markLines(root, re);
@@ -57,27 +68,29 @@ function withLine(html, re, text){
 export const withOrder = (html, ids) => withLine(html, ORDER_LINE, ids ? `${ORDER_MARK} ${ids.join(' ')}` : null);
 export const withRunMark = html => withLine(html, RUN_LINE, 'pocket:run');
 export const withStepLine = (html, title) => withLine(html, STEP_LINE, title === null ? null : 'pocket:step ' + title);
+export const withAdded = html => withLine(html, ADDED_LINE, 'pocket:added');
 // The notes alone, without Pocket's lines.
-export const notesOnly = html => [ORDER_LINE, RUN_LINE, STEP_LINE].reduce((h, re) => withLine(h, re, null), html || '');
+export const notesOnly = html => [ORDER_LINE, RUN_LINE, STEP_LINE, ADDED_LINE].reduce((h, re) => withLine(h, re, null), html || '');
 // The notes as written, with the lines `from` has put back.
 export function withLinesOf(html, from){
   const order = stepOrder(from), step = stepLine(from);
   if (order) html = withOrder(html, order);
   if (isRunDesc(from)) html = withRunMark(html);
   if (step !== null) html = withStepLine(html, step);
+  if (isAddedDesc(from)) html = withAdded(html);
   return html;
 }
 export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
 export const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
 // An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
 export const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && (!!t.related_tasks?.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t);
-// A step of a run: under a task, and copied from a template's step, or (since runs keep their steps' times) with its line.
-export const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t.related_tasks.copiedfrom?.length || stepLine(t.description) !== null);
-// A template's or a run's steps in order; any other task's subtasks as Vikunja gives them.
+// A step of a run: under a task, and copied from a template's step, or with its line, or inserted during the run.
+export const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t.related_tasks.copiedfrom?.length || stepLine(t.description) !== null || isAddedDesc(t.description));
+// A template's or a run's steps in order (its own order line); any other task's subtasks as Vikunja gives them.
 export function stepsOf(t){
   const r = t?.related_tasks || {}, subs = r.subtask || [];
-  if (hasTemplateLabel(t)) return inOrder(subs, stepOrder(t.description));
-  return (r.copiedfrom?.length || isRunDesc(t.description)) && !r.parenttask?.length ? [...subs].sort((a, b) => a.id - b.id) : subs;
+  const ordered = hasTemplateLabel(t) || ((r.copiedfrom?.length || isRunDesc(t.description)) && !r.parenttask?.length);
+  return ordered ? inOrder(subs, stepOrder(t.description)) : subs;
 }
 export const DONE_MARK = '✅', SKIP_MARK = '⏭️';
 /* Who skipped a done step, or null: someone who left a ⏭️ and a "Skipped" note since it was last marked done. Vikunja
@@ -288,4 +301,5 @@ export const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.nam
 export const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
   comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: stepsOf(t).map(s => s.id)});
 export const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, updated: t.updated, description: t.description || '', assignees: t.assignees || [],
-  attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: stepLine(t.description) ?? t.related_tasks?.copiedfrom?.[0]?.title ?? null});
+  attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: stepLine(t.description) ?? t.related_tasks?.copiedfrom?.[0]?.title ?? null,
+  added: addedText(t.description), from: t.related_tasks?.copiedfrom?.[0]?.id ?? null});

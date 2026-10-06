@@ -154,7 +154,28 @@ var (
 	// template step's title then>" in each step's, so a template changed or deleted since changes only later runs.
 	runLineRe  = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:run\s*(?:<|$)`)
 	stepLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:step\s+([^<\n]+)`)
+	// A run's own order, "pocket:order 12 15 13", written when it starts and when a step is inserted; and "pocket:added"
+	// on a step inserted during the run, or repeated (which also keeps the "pocket:step" line of the one it repeats).
+	orderLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:order((?:\s+\d+)*)\s*(?:<|$)`)
+	addedLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:added\s*(?:<|$)`)
 )
+
+// The ids in a run's order line, by where they are in it; nil for a run without one.
+func orderOf(desc string) map[int64]int {
+	m := orderLineRe.FindStringSubmatch(desc)
+	if m == nil {
+		return nil
+	}
+	at := map[int64]int{}
+	for k, f := range strings.Fields(m[1]) {
+		if id, err := strconv.ParseInt(f, 10, 64); err == nil {
+			if _, seen := at[id]; !seen {
+				at[id] = k
+			}
+		}
+	}
+	return at
+}
 
 // A run's step's template step title when the run started, from its description; ok false for a run started before.
 func stepLineOf(desc string) (title string, ok bool) {
@@ -290,12 +311,12 @@ func setStepDueDates(stepID int64, doneAt time.Time) (handled bool, err error) {
 	if has, err := s.ID(stepID).Get(step); err != nil || !has || !step.Done || step.DoneAt.Unix() != doneAt.Unix() {
 		return false, err
 	}
-	return true, writeStepDueDates(s, step, false)
+	return true, writeStepDueDates(s, step)
 }
 
 // clearStepDueDates: given a task marked not done, if it's a step of a checklist run, the steps timed from it that
-// aren't done have no due date until it's done again, as Pocket shows them. Read again, as events can arrive out of order:
-// a step done again since is left to that tick.
+// aren't done have no due date until it's done again, as Pocket shows them (or, if it was repeated, count from a copy
+// still done). Read again, as events can arrive out of order: a step done again since is left to that tick.
 func clearStepDueDates(stepID int64) error {
 	s := db.NewSession()
 	defer s.Close()
@@ -304,15 +325,15 @@ func clearStepDueDates(stepID int64) error {
 	if has, err := s.ID(stepID).Get(step); err != nil || !has || step.Done {
 		return err
 	}
-	return writeStepDueDates(s, step, true)
+	return writeStepDueDates(s, step)
 }
 
 // writeStepDueDates is the only place the plugin writes to Vikunja's data. Given a step of a checklist run, it sets
-// the due date of each step of the same run timed from it to its done time plus the offset in the title of the template
-// step that step was copied from, or, to clear them, to none. It writes only due_date (not even "updated"), and the
-// time of the step's reminders counted from its due date, only on steps of that run in its project that aren't done,
-// and only when the date changes.
-func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
+// the due date of each step of the same run timed from it to when it was done (or the last of its repeats was) plus the
+// offset in that step's template step title, or, when none of them is done, to none. It writes only due_date (not even
+// "updated"), and the time of the step's reminders counted from its due date, only on steps of that run in its project
+// that aren't done, and only when the date changes.
+func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 	stepID, project := step.ID, step.ProjectID
 	// The run it's a step of: a copy of a template, and not a template itself, nor one still being set up.
 	parents, err := relatedIDs(s, stepID, "parenttask")
@@ -360,10 +381,9 @@ func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 		return nil // not a run Pocket made
 	}
 
-	// The run's steps in their order, each with its time: from its own line, or else from the template step it was copied
-	// from. A run's steps are copied one at a time in its template's order, so they're in order by id, as Pocket shows them.
-	// All of them, wherever they are, so "the step before" is the one Pocket shows before it; only those in the
-	// project are written to.
+	// The run's steps in their order: its own order line, written when it starts and when a step is inserted, then any it
+	// doesn't list in the order they were copied, by id, as Pocket shows them. All of them, wherever they are, so "the
+	// step before" is the one Pocket shows before it; only those in the project are written to.
 	runStepIDs, err := relatedIDs(s, run.ID, "subtask")
 	if err != nil || len(runStepIDs) < 2 {
 		return err
@@ -378,7 +398,19 @@ func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 			ids = append(ids, id)
 		}
 	}
-	sort.Slice(ids, func(a, b int) bool { return ids[a] < ids[b] })
+	order := orderOf(run.Description)
+	rank := func(id int64) int {
+		if k, ok := order[id]; ok {
+			return k
+		}
+		return math.MaxInt32
+	}
+	sort.Slice(ids, func(a, b int) bool {
+		if ra, rb := rank(ids[a]), rank(ids[b]); ra != rb {
+			return ra < rb
+		}
+		return ids[a] < ids[b]
+	})
 	copied := []*models.TaskRelation{}
 	if err := s.In("task_id", ids).And("relation_kind = ?", "copiedfrom").OrderBy("id").Find(&copied); err != nil {
 		return err
@@ -389,34 +421,63 @@ func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 			fromOf[r.TaskID] = t
 		}
 	}
-	steps, at := make([]stepTime, len(ids)), -1
+	/* Each step's time, read from its own line or else from the template step it was copied from, and its group. "The
+	   step before" and a name are read among the template's steps only. A step inserted during the run ("pocket:added",
+	   with no template step) has no time, and timing doesn't see it. A repeated step (added, with the line of the one it
+	   repeats) has no time of its own, but joins that one's group: a step timed from the group counts from whichever of
+	   it was done last. group[i] is the index of the step's template step in steps, or -1. */
+	// One assignment a line: Yaegi gets an index and an append in the same assignment wrong.
+	steps, place, at := []stepTime{}, []int{}, -1
+	group, lines := make([]int, len(ids)), make([]string, len(ids))
 	for i, id := range ids {
-		if title, ok := stepLineOf(tasks[id].Description); ok {
-			steps[i] = parseStepTime(title)
-		} else if t := fromOf[id]; t != nil {
-			steps[i] = parseStepTime(t.Title)
+		desc := tasks[id].Description
+		title, ok := stepLineOf(desc)
+		if t := fromOf[id]; !ok && t != nil {
+			title, ok = t.Title, true
+		}
+		lines[i] = title
+		group[i] = -1
+		if !addedLineRe.MatchString(desc) {
+			group[i] = len(steps)
+			steps = append(steps, parseStepTime(title))
+			place = append(place, i)
+		} else if ok {
+			for j := i - 1; j >= 0; j-- {
+				if group[j] >= 0 && lines[j] == title {
+					group[i] = group[j]
+					break
+				}
+			}
 		}
 		if id == stepID {
 			at = i
 		}
 	}
-	if at < 0 {
+	if at < 0 || group[at] < 0 {
 		return nil
+	}
+	// When the group was last done; none if none of it is done any more.
+	g := group[at]
+	last := time.Time{}
+	for i, id := range ids {
+		if t := tasks[id]; group[i] == g && t.Done && t.DoneAt.After(last) {
+			last = t.DoneAt
+		}
 	}
 
 	wrote := false
-	for i := at + 1; i < len(ids); i++ {
-		st := steps[i]
-		if !st.timed || stepFrom(steps, i) != at {
+	for k := g + 1; k < len(steps); k++ {
+		st := steps[k]
+		if !st.timed || stepFrom(steps, k) != g {
 			continue
 		}
-		dep := tasks[ids[i]]
+		dep := tasks[ids[place[k]]]
 		if dep.Done || dep.ProjectID != project {
 			continue
 		}
 		due := time.Time{}
-		if !clear {
-			due = step.DoneAt.Add(st.offset).Truncate(time.Second)
+		if !last.IsZero() {
+			due = last.Add(st.offset).Truncate(time.Second)
 		}
 		if dep.DueDate.Unix() == due.Unix() {
 			continue
@@ -434,7 +495,7 @@ func writeStepDueDates(s *xorm.Session, step *models.Task, clear bool) error {
 		}
 		for _, r := range reminders {
 			at := time.Time{}
-			if !clear {
+			if !due.IsZero() {
 				at = due.Add(time.Duration(r.RelativePeriod) * time.Second)
 			}
 			if _, err := s.ID(r.ID).Cols("reminder").Update(&models.TaskReminder{Reminder: at}); err != nil {

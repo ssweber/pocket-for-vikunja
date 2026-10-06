@@ -171,6 +171,11 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
    first, and they stay not done.
 
+- **A step the template doesn't have:** under Done and Skip, **Insert a step** adds one before the step on screen, for
+  this run only, and **Repeat “…”** does the step before it again: a fresh copy of it, not done, with the template's
+  notes and photos for it but none of this run's. Either says **Inserted** or **Repeated** under its title, here, in the
+  run's sheet and in Last time, and works like any step, offline too. One that isn't done yet can be deleted with
+  **Delete this step**. The template never changes; a step from the template can't be taken out of a run, only skipped.
 - **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too. A step ticked on
   Today counts the same.
 - **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the
@@ -184,8 +189,9 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   copy of it, named like "Opening up · run 3 · Oct 4", which Vikunja links to the template as "copied from". The web app
   can't reorder steps, so reorder them in Pocket: it keeps the order in a line like `pocket:order 12 15 13` in the
   template's description (the steps' task numbers). Leave that line be; steps it doesn't list, like one added in the
-  web app, come last. A run keeps the order it was started with. Everyone with *Write* access can change templates
-  there too.
+  web app, come last. A run gets a line of its own when it starts, so it keeps the order it was started with, and a step
+  inserted in it goes in its line. A step added during a run has a line `pocket:added`. Everyone with *Write* access can
+  change templates there too.
 
 ## Timed steps
 
@@ -210,6 +216,8 @@ to write one in Vikunja's web app:
 - A time counts from an earlier step, and each name is used once. Pocket checks this as you write the steps, when you
   move one, and when you start a run.
 - A run's steps get their titles without `T#` and `{#…}`.
+- A step inserted during a run has no time, and isn't "the step before" for the step after it. A repeated step has no
+  time of its own, but a step timed from the one it repeats counts from whichever of them was done last.
 - On the run screen, a timed step says what it waits on ("Due 18m after “Put the croissants in the oven”"). Once that
   step is done, it counts down. Countdowns for other steps are pinned above the step on screen, soonest first.
 

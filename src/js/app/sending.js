@@ -129,6 +129,7 @@ export default {
     const entry = await sync.fresh(id);
     if (!entry) return {status: 'gone', ids: [], tasks: []};                // another tab sent it
     if (entry.kind === 'run') return this.sendRun(entry);
+    if (entry.kind === 'step') return this.sendStep(entry);
     if (entry.kind === 'act') return this.sendAct(entry);
     const ids = [], tasks = [], problems = entry.problems ||= [], save = () => sync.save(entry);
     const all = () => [...entry.items.flatMap(x => x.problems || []), ...problems];

@@ -1,7 +1,7 @@
 // Sending to Vikunja: what's waiting, kept on the phone, and the steps each kind of change is sent in.
 import {app, ZERO} from './util.js';
 import {api, passing, patchTask} from './api.js';
-import {DONE_MARK, isTemplateLabel, notesOnly, SKIP_MARK, withRunMark, withStepLine} from './checklists.js';
+import {DONE_MARK, isTemplateLabel, notesOnly, placeBefore, SKIP_MARK, stepOrder, stepsOf, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
 import {removeAssignee} from './quickadd.js';
 
 /* Everything waiting to go to Vikunja: tasks added without a connection (or whose sending was cut off), and photos and
@@ -136,6 +136,8 @@ export const sync = {
     this.tx(['claims'], 'readwrite', s => s('claims').put(c)).catch(() => {});
   },
   claimedByOther(id, key){ const c = this.claimed.get(id); return !!c && c.key !== key; },
+  // The task added for an entry (a step inserted in a run, say), once it's in Vikunja; null until then.
+  taskOf(key){ for (const [id, c] of this.claimed) if (c.key === key) return id; return null; },
   // Once something has to wait, ask the browser not to clear the database when the phone runs low on space.
   keep(){ if (!this.asked) { this.asked = true; navigator.storage?.persist?.().catch(() => {}); } },
   // One sender at a time, even with Pocket open in two tabs.
@@ -276,6 +278,12 @@ export const RUN_STEPS = [
       s.ready = true;
     }
   }},
+  // The run's own order, its steps' ids as copied: from now on it never reads its template's, and a step inserted
+  // during the run goes in it. Written again after a lost reply, it's the same line.
+  {name: 'order', done: j => !!j.ordered, async run(j){
+    await patchTask(j.runId, {description: withOrder(j.desc ?? '', j.steps.map(s => s.taskId))});
+    j.ordered = true;
+  }},
   // Who it's for, and only them. Pocket assigns only the run: Vikunja tells them about it once, not once per step. (A
   // step assigned in the template, say to QA, stays assigned: the copy keeps it.)
   {name: 'assign', done: j => !!j.assigned, async run(j){
@@ -289,8 +297,44 @@ export const RUN_STEPS = [
     j.unlabeled = true;
   }},
 ];
-// How much of a run is set up, of 4 + 3 per step.
-export const runProgress = j => [j.runId, j.unlabeled, j.named, j.assigned, ...j.steps.flatMap(s => [s.taskId, s.linked, s.ready])].filter(Boolean).length;
+// How much of a run is set up, of 5 + 3 per step.
+export const runProgress = j => [j.runId, j.unlabeled, j.named, j.ordered, j.assigned, ...j.steps.flatMap(s => [s.taskId, s.linked, s.ready])].filter(Boolean).length;
+/* A step inserted in a run, or repeated, in the same way: the entry (`j`) keeps how far it got. Inserted: a new task under
+   the run. Repeated: a copy of the template step the repeated one was copied from (`from`), as a start makes one, so it
+   has that step's notes and photos but none of this run's, found again through "copied to" if its reply was lost.
+   Either is marked "pocket:added" (a repeated one also keeps the "pocket:step" line of the one it repeats, `tpl`), and
+   goes in the run's order before the step it was inserted at (`before`). */
+export const INSERT_STEPS = [
+  {name: 'task', done: j => !!j.taskId, async run(j, c){
+    if (j.from) {
+      const t = (j.tried && await app.findCopy(j.from, j, j.at, c.taken, j.id, j.run)) || await duplicate(j.from, j, c.save);
+      sync.claim(t.id, j.id); j.taskId = t.id; j.desc = t.description || '';
+    } else {
+      // Under the run, as a subtask is added; found again by its title and time if its reply was lost.
+      j.job ||= {key: j.id};
+      const t = await app.createTask({title: j.title, labels: [], assignees: []}, j.project, {job: j.job, save: c.save, at: j.at, parent: j.run});
+      Object.assign(j, {taskId: t.id, linked: true, desc: j.desc ?? ''});
+    }
+  }},
+  {name: 'link', done: j => !!j.linked, async run(j){
+    try { await app.linkSubtask(j.run, j.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
+    j.linked = true;
+  }},
+  // Not done, no time of its own, nothing that repeats or reminds: it's done when it's done.
+  {name: 'mark', done: j => !!j.marked, async run(j){
+    const desc = withAdded(j.tpl != null ? withStepLine(notesOnly(j.desc), j.tpl) : notesOnly(j.desc));
+    await patchTask(j.taskId, {title: j.title, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], description: desc});
+    j.marked = true;
+  }},
+  // Before the step it was inserted at, read from the run as it is now, so another step inserted meanwhile stays.
+  {name: 'order', done: j => !!j.ordered, async run(j){
+    await app.saveTask(j.run, null, now => {
+      if (stepOrder(now.description)?.includes(j.taskId)) return null;
+      return {description: withOrder(now.description, placeBefore(stepsOf(now).map(s => s.id).filter(id => id !== j.taskId), j.taskId, j.before))};
+    });
+    j.ordered = true;
+  }},
+];
 /* What's done on a run's screen: one outbox entry each, sent in the order they were done, with or without a
    connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
    and mark, someone is assigned once, and a note whose reply was lost is looked for before it's posted again. Claiming

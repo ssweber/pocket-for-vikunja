@@ -20,6 +20,9 @@ export default {
       if (e.kind === 'run') {
         const what = (e.cancelled ? 'Calling off the start of ' : 'Starting ') + e.template.title;
         rows.push({key: e.id, text: what, when, drop: e.cancelled ? null : ['cancelStart', e.id]});
+      } else if (e.kind === 'step') {
+        const text = `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
+        rows.push({key: e.id, text, when, drop: e.taskId || e.tried || e.job?.tried ? null : ['dropStep', e.id]});
       } else if (e.kind === 'act') {
         rows.push({key: e.id, text: this.actText(e), when, failed: e.failed?.message || '', retry: !!e.failed,
           drop: e.failed || (!e.stage && !e.tried) ? ['dropAct', e.id] : null});
@@ -60,6 +63,7 @@ export default {
   },
   actTitle(id){
     const r = this.view.run;
+    if (typeof id === 'string') return this.pending.find(e => 'pending-' + e.id === id)?.title || '';   // a step still being inserted
     return cache.get(id)?.title || r?.steps.find(x => x.id === id)?.title || (r?.run.id === id ? r.run.title : '') || '';
   },
   // What not sending it leaves in Vikunja, for the confirm.
