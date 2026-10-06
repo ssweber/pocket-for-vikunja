@@ -222,6 +222,7 @@ export default {
   async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl);
+    if (this.isRunTask(t) && !extra.quiet) return this.tickRunTask(t, rowEl);
     const was = t.done, subs = this.isRunTask(t) || extra.quiet ? [] : openSubtasks(t);   // a run's steps are ticked on its screen, with who did each
     // A repeating task moves on its dates, and its reminders at a set time: Undo puts them back.
     const back = {due_date: t.due_date};
@@ -254,6 +255,20 @@ export default {
     }
   },
 
+  /* A run ticked in its project's list or its sheet: finished, or opened again, as on its screen, through the outbox. Its
+     steps are ticked one by one on its screen, with who did each, so ticking the run leaves them as they are: with steps
+     not done, it asks first. */
+  async tickRunTask(t, rowEl){
+    const was = t.done, open = (t.related_tasks?.subtask || []).filter(s => !s.done).length;
+    if (!was && open && !confirm(`Finish “${t.title}” with ${open} step${open === 1 ? '' : 's'} not done? ${open === 1 ? 'It stays' : 'They stay'} not done.`)) return;
+    const r = await this.act({op: was ? 'reopen' : 'finish', task: t.id, run: t.id});
+    if (r.status === 'error') return;
+    t.done = !was;
+    if (this.sheet.task?.id === t.id) this.sheet.task.done = t.done;
+    if (!was) this.notify(r.status === 'offline' ? `Finished. It's sent once Pocket reaches Vikunja.` : 'Finished ' + t.title,
+      {label: 'Undo', fn: async () => { await this.act({op: 'reopen', task: t.id, run: t.id}); t.done = false; this.render(); }});
+    this.afterTick(t, rowEl, was);
+  },
   /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
      waits without a connection. */
   async tickRunStep(t, run, rowEl){
@@ -303,6 +318,7 @@ export default {
     const t = this.sheet.task;
     if (!t) return;
     if (this.checklistRole === 'step' && this.parentTask) { await this.tickRunStep(t, this.parentTask.id, null); this.sheet.dirty = true; return; }
+    if (this.isRunTask(t)) { await this.tickRunTask(t, null); this.sheet.dirty = true; return; }
     if (!patch && t.done) return this.save({done: false});                  // the tick, on a done task: not done after all
     const subs = this.isRunTask(t) ? [] : openSubtasks(t), pctWas = pctOf(t);
     await this.save(patch || {done: true});

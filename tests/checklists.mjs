@@ -665,6 +665,31 @@ try {
     await until('the run or a step is still in Vikunja', async () => (await Promise.all([id, ...steps].map(gone))).every(Boolean));
   });
 
+  await step('a-run-ticked-in-its-project', async () => {
+    // Ticked in its project's list with steps not done: it asks first, then finishes it as Finish run does, through the
+    // outbox, and leaves its steps as they are. Undo opens it again.
+    const { id } = await startRun();
+    const title = (await api('/tasks/' + id)).title, asked = [], record = d => asked.push(d.message());
+    page.on('dialog', record);                                                // accepted by the handler at the top
+    try {
+      await page.evaluate(pid => { location.hash = '#/project/' + pid; }, project.id);
+      await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+      await page.click('#btn-refresh');                                       // its rows from Vikunja, not the copy shown first
+      await page.waitForSelector('#btn-refresh:not([disabled])');
+      await toastGone().catch(() => {});
+      await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`, { timeout: 15000 });
+      await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
+      if (!asked.some(m => m.includes('with 3 steps not done'))) throw new Error('asked ' + JSON.stringify(asked));
+      if ((await subtasks(id)).some(x => x.done)) throw new Error('a step was ticked with it');
+      await page.click('#toast-act:has-text("Undo")');
+      await until('Undo never opened it again', async () => !(await api('/tasks/' + id)).done);
+    } finally {
+      page.off('dialog', record);
+      for (const x of await subtasks(id)) await api('/tasks/' + x.id, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + id, { method: 'DELETE' }).catch(() => {});
+    }
+  });
+
   await step('start-offline-waits', async () => {
     await openStart();
     await context.setOffline(true);

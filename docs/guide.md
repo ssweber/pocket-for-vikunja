@@ -168,7 +168,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    with the note** saves it on the step, and **Skip with the note** makes it the reason. Add a photo or a note to a step,
    or a note to the whole run. **Last time** shows the notes from the last finished run of the same template, as a
    handover. ‹ and › beside the step's number show the step before and after. After the last step, **Finish run**,
-   with an Undo.
+   with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
+   first, and they stay not done.
 
 - **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too. A step ticked on
   Today counts the same.
