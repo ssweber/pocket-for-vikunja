@@ -260,16 +260,18 @@ export default {
       let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at;
       const kept = keptTicks()[s.id];
       if (done && kept && Date.parse(kept.there) === Date.parse(s.done_at)) doneAt = kept.here;
-      let doers = (skipped ? [skipper] : s.reactions?.[DONE_MARK] || []).map(u => u.name || u.username);
+      let by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
+      const doers = () => by.map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
       for (const a of acts) if (a.task === s.id) {
         if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
         if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
-        waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; doers = [myName];
+        waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
       const slot = this.claimSlot({...s, project_id: r.run.project_id}, this.peopleOf(s.id, s.assignees), done || r.run.done);
-      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot,
-        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : doers.length ? ' by ' + doers.join(', ') : '')};
+      // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
+      return {id: s.id, i: r.steps.indexOf(s), title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by,
+        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : by.length ? ' by ' + doers().join(', ') : '')};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
        Vikunja's done time of it, or, while that tick waits to be sent, from when it was ticked here. Vikunja's due date

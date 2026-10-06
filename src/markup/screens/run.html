@@ -58,7 +58,12 @@
         <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at}" :data-id="s.id">
           <button class="check" :class="{wait: s.waiting, skip: s.skipped}" :disabled="runView.finished || !canWrite(view.run.run.project_id)" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use :href="s.skipped ? '#i-send' : '#i-check'"/></svg></button>
           <button class="body" @click="showStep(i, true)"><div class="title" x-text="s.title"></div>
-            <div class="meta" x-show="s.dueText || (s.done && s.whoText)"><template x-if="s.dueText && !s.done"><span class="due num" :class="{overdue: s.late}" x-text="s.dueText"></span></template><template x-if="s.done && s.whoText"><span :class="{skipped: s.skipped}" x-text="s.whoText"></span></template></div></button>
+            <div class="meta" x-show="s.dueText && !s.done"><span class="due num" :class="{overdue: s.late}" x-text="s.dueText"></span></div></button>
+          <!-- Who did it, as a reaction is shown: ✅ or ⏭️ and their picture, beside who it's assigned to -->
+          <template x-if="s.done"><span class="did" :class="{waiting: s.waiting}" role="img" :aria-label="s.whoText"><span aria-hidden="true" x-text="s.skipped ? '⏭️' : '✅'"></span>
+            <template x-if="s.waiting"><span class="more">…</span></template>
+            <template x-if="!s.waiting && s.by[0]"><span class="av"><span x-text="initials(s.by[0])"></span><img x-show="avatarUrl(s.by[0])" :src="avatarUrl(s.by[0])" alt=""></span></template>
+            <template x-if="!s.waiting && s.by.length > 1"><span class="more num" x-text="'+' + (s.by.length - 1)"></span></template></span></template>
           <template x-if="s.slot"><button class="claim" :class="{free: !s.slot.user, mine: s.slot.mine}" :aria-disabled="!s.slot.can" :aria-label="s.slot.label" @click="toggleClaim(s, s.slot, view.run.run.id)">
             <template x-if="s.slot.user"><span class="av"><span x-text="initials(s.slot.user)"></span><img x-show="avatarUrl(s.slot.user)" :src="avatarUrl(s.slot.user)" alt=""></span></template>
             <template x-if="!s.slot.user"><span class="me">+ me</span></template><template x-if="s.slot.more"><span class="more num" x-text="'+' + s.slot.more"></span></template></button></template>

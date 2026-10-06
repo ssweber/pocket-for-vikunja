@@ -303,7 +303,7 @@ try {
     const id = (await runStep(first.id, 0)).id;
     // Done, then the ✅: sent one after the other, so wait for both.
     await until('the step was never done with a ✅ from you', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
-    await page.waitForSelector('#run-steps .row:nth-of-type(1).done .meta:has-text("Done by")');
+    await page.waitForSelector('#run-steps .row:nth-of-type(1).done .did[aria-label^="Done by"]');
     if (await page.textContent('#run-count') !== '1 of 3 done') throw new Error('count: ' + await page.textContent('#run-count'));
     // Both timed steps count down now: the next one on its card, the other pinned above it.
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');
@@ -350,7 +350,7 @@ try {
       const t = await task(id);
       return t.done && t.reactions?.['⏭️']?.some(u => u.id === me.id) && (t.comments || []).some(c => c.comment.includes('Skipped: Press 2 is down'));
     });
-    await page.waitForSelector('#run-steps .row:nth-of-type(2) .skipped:has-text("Skipped by")');
+    await page.waitForSelector('#run-steps .row:nth-of-type(2) .did[aria-label^="Skipped by"]');
   });
 
   await step('a-note-being-written-stays-with-its-step', async () => {
@@ -428,16 +428,16 @@ try {
     await as(`/tasks/${id}/comments`, { comment: '<p>Skipped: it was done already</p>' });
     try {
       await page.reload();
-      await page.waitForSelector(`${row1} .meta:has-text("Skipped by ${other.name || other.username}")`, { timeout: 15000 })
-        .catch(async () => { throw new Error('not shown as skipped by them: ' + await page.textContent(`${row1} .meta`)); });
+      await page.waitForSelector(`${row1} .did[aria-label="Skipped by ${other.name || other.username}"]`, { timeout: 15000 })
+        .catch(async () => { throw new Error('not shown as skipped by them: ' + await page.$eval(`${row1} .did`, e => e.getAttribute('aria-label')).catch(() => 'no ✅ or ⏭️')); });
       await new Promise(r => setTimeout(r, 1100));                            // Vikunja's times have whole seconds
       await page.click(`${row1} .check`);
       await until('their skip never undone', async () => !(await task(id)).done);
       await page.click(`${row1} .check`);
       await until('never done after their skip', async () => (await task(id)).done);
       await page.reload();
-      await page.waitForSelector(`${row1} .meta:has-text("Done by")`, { timeout: 15000 })
-        .catch(async () => { const t = await task(id); throw new Error(`not shown as done: ${await page.textContent(`${row1} .meta`)}; done_at ${t.done_at}, notes ${JSON.stringify((t.comments || []).map(c => [c.created, c.comment]))}`); });
+      await page.waitForSelector(`${row1} .did[aria-label^="Done by"]`, { timeout: 15000 })
+        .catch(async () => { const t = await task(id); throw new Error(`not shown as done: ${await page.$eval(`${row1} .did`, e => e.getAttribute('aria-label')).catch(() => 'no ✅ or ⏭️')}; done_at ${t.done_at}, notes ${JSON.stringify((t.comments || []).map(c => [c.created, c.comment]))}`); });
       if (await page.$(`${row1} .meta:has-text("Skipped")`)) throw new Error('still shows as skipped');
     } finally { await as(`/tasks/${id}/reactions/delete`, { value: '⏭️' }).catch(() => {}); }
   });
@@ -745,7 +745,7 @@ try {
     await context.setOffline(true);
     await page.click('#step-done');
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait');
-    await page.waitForSelector('#run-steps .row:nth-of-type(1) .meta:has-text("waiting to send")');
+    await page.waitForSelector('#run-steps .row:nth-of-type(1) .did.waiting[aria-label$="waiting to send"]');
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');    // counting from the tick here
     await page.fill('#step-note', 'Written offline');
     await page.click('#step-note-form button');
