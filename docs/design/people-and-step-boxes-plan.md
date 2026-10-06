@@ -23,3 +23,16 @@ written in a box that isn't quick add's.
 3. **Quick add's box** for steps being written (New template, Add steps), for a step changed in place, and for New
    template's name: chips and suggestions for people, labels and priority, with the step's time chip as now. Dates stay
    out: a step's time is its T#. A step changed in place is read the same way: `@priya` assigns it, `*front` labels it.
+
+Built 2026-10-06: 1 and 2 in 31dbebe, 3 after it.
+
+## Next: Insert a step, from any step (decided, not built)
+
+The box above the step on screen is always there, in the way most of the time. Instead (the user's pick of four: › on
+each step, + between steps, swipe a step, one closed link):
+
+- Each step in a run's Steps has a small › at its left edge. Tapping it opens a box under that step, saying where:
+  "After “Turn on the espresso machine”". What's typed goes after that step; 🔁 in it repeats that step there. One open at
+  a time; tapping › again, or another step's, closes it.
+- "+ Add a step at the end" stays after the last step.
+- To settle when it's built: whether 🔁 is offered on a step not done yet, and what Back does with a box open.

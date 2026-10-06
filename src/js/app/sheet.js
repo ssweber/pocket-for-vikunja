@@ -109,7 +109,7 @@ export default {
     // Notes that couldn't be saved (offline, say): back in the editor, to save again.
     const desc = notesDraft(id);
     if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc.text, descBase: desc.base, descUnsaved: true});
-    this.sheet.addRows = taskDrafts.get('addsteps:' + id) || [];
+    this.sheet.addRows = (taskDrafts.get('addsteps:' + id) || []).map(r => ({...r, focus: false}));
     const mine = this.sheet, cached = cache.get(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {

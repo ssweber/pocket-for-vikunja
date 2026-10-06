@@ -1,10 +1,13 @@
-<!-- Steps being written, a row each, for `which` ('new' or 'add'): numbered after the steps there already, each in the
-     subtask box's look, with its time chip under it. Enter opens the next row; a pasted list makes a row a line. -->
-<template x-for="(st, k) in draftRows(which)" :key="st.key"><div class="draft-step">
+<!-- Steps being written, a row each, for `which` ('new' or 'add'): numbered after the steps there already, each in
+     quick add's box ('new:<key>', 'add:<key>'), with its time chip and what quick add read under it. Enter opens the next
+     row; a pasted list makes a row a line. -->
+<template x-for="(st, k) in draftRows(which)" :key="st.key"><div class="draft-step" x-data="{bw: which + ':' + st.key}">
   <div class="draft-line">
     <template x-for="d in [draft(which).info.get(st.key)]" :key="0"><span class="check step-n num" aria-hidden="true" x-text="d ? d.i + 1 : ''"></span></template>
-    <div class="step-box"><textarea class="draft-in" rows="1" :id="which + '-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Take the croissants out in 18 min”'" :aria-label="'Step ' + (k + 1)"
-           enterkeyhint="next" x-effect="st.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); addDraftRow(which, k + 1); }" @paste="pasteDraft(which, $event, k)"></textarea></div>
+    <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml(bw)"></div><textarea class="draft-in" rows="1" :id="which + '-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Take the croissants out in 18 min”'" :aria-label="'Step ' + (k + 1)"
+           enterkeyhint="next" x-effect="st.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); boxEnter(bw); }" @paste="pasteDraft(which, $event, k)"
+           @input="st.caret = $el.selectionStart" @click="st.caret = $el.selectionStart" @keyup="st.caret = $el.selectionStart"
+           @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="st.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="setTimeout(() => st.focus = document.activeElement === $el, 150)"></textarea></div></div>
     <button type="button" class="icon-btn" :aria-label="'Move up: ' + (st.text || 'step ' + (k + 1))" :disabled="k === 0" @click="moveDraftRow(which, k, -1)"><svg class="i"><use href="#i-up"/></svg></button>
     <button type="button" class="icon-btn" :aria-label="'Move down: ' + (st.text || 'step ' + (k + 1))" :disabled="k === draftRows(which).length - 1" @click="moveDraftRow(which, k, 1)"><svg class="i"><use href="#i-down"/></svg></button>
     <button type="button" class="icon-btn" :aria-label="'Remove: ' + (st.text || 'step ' + (k + 1))" @click="dropDraftRow(which, k)"><svg class="i"><use href="#i-close"/></svg></button>
@@ -12,4 +15,5 @@
   <template x-for="d in draftShown(draft(which).info.get(st.key))" :key="0">
     <!-- include markup/sheet/step-time.html -->
   </template>
+  <!-- include markup/sheet/box-chips.html -->
 </div></template>

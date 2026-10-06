@@ -276,7 +276,8 @@ function stepName(title, taken){
    already there): what each is saved as, and how it reads. A time in words becomes T#…, unless `keep` keeps the
    words. `from`: null as written, '' the step before, or another row's key: that step, which gets a name made from its
    words if it has none. So a step keeps counting from the same one when rows are moved. */
-export function draftSteps(rows, before = []){
+// `clean` takes what quick add reads out of a title (@people, *labels), so a step is named by its words alone.
+export function draftSteps(rows, before = [], clean = t => t){
   const all = [...before.map(b => ({...b, fixed: true})), ...rows.filter(r => r.text.trim())];
   const parsed = all.map(r => parseStep(r.text)), at = new Map(all.map((r, i) => [r.key, i]));
   const phrase = all.map((r, i) => r.fixed || /(^|\s)T#/i.test(r.text) ? null : readStepPhrase(r.text));
@@ -288,7 +289,7 @@ export function draftSteps(rows, before = []){
   const names = parsed.map(p => p.name), taken = names.filter(Boolean);
   for (const [i, r] of all.entries()) {
     const j = at.get(fromOf(r, i));
-    if (j !== undefined && !names[j]) { names[j] = stepName(parsed[j].title, taken); taken.push(names[j]); }
+    if (j !== undefined && !names[j]) { names[j] = stepName(clean(parsed[j].title), taken); taken.push(names[j]); }
   }
   const saved = all.map((r, i) => {
     let t = r.text.trim();
@@ -306,7 +307,7 @@ export function draftSteps(rows, before = []){
     info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text, lost,
       problem: infos[i].problem || (lost ? 'the step it counts from isn\'t in this template any more: pick one' : ''),
       phrase: phrase[i]?.text || '', kept: !!(phrase[i] && r.keep), from: j === null || j < 0 ? '' : steps[i].ref ? all[j].key : '',
-      choices: all.slice(0, i).map(x => ({key: x.key, title: parseStep(x.text).title}))});
+      choices: all.slice(0, i).map(x => ({key: x.key, title: clean(parseStep(x.text).title)}))});
   });
   return {info, added: saved.filter((_, i) => !all[i].fixed), problem: [...info.values()].some(x => x.problem),
     renames: all.map((r, i) => r.fixed && saved[i] !== r.text.trim() ? {key: r.key, title: saved[i]} : null).filter(Boolean)};

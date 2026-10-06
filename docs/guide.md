@@ -155,8 +155,9 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    checklists** in **New project**. Everyone it's shared with gets a **Checklists** tab. Share it in Vikunja with the
    people who'll run it, at *Write*.
 2. **Make a template.** Under Checklists, tap **New template**, name it, and write its steps, a row each: **Enter** or
-   **Add a step** starts the next one, and a pasted list becomes a row a line. Move steps up or down, then tap **Make
-   template**. In a template's sheet, tap a step to change it, move it with ↑ and ↓, or remove it with ×; runs already
+   **Add a step** starts the next one, and a pasted list becomes a row a line. The name and each step are read as quick
+   add reads a task, with the same chips: `@priya` assigns it, `*front` labels it, `!3` sets its priority. Dates aren't
+   read there: a step's time is its own. Move steps up or down, then tap **Make template**. In a template's sheet, tap a step to change it, move it with ↑ and ↓, or remove it with ×; runs already
    started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
    comes with its notes, so that's the place for how to do it.
    A task with its steps as subtasks can also be made one, with **Use as checklist template** in its sheet's **⋯**.

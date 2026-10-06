@@ -7,16 +7,38 @@ import {captureLines, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES
 let peopleLoading = null;                      // loadPeople() while it runs
 
 export default {
-  /* Three add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
+  /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
      ('cap'), the subtask box in a task's sheet ('sub'), whose lines become subtasks of the open task, in its project,
-     and the box above the step on screen in a run ('ins'), whose lines are inserted as steps before it. The methods
-     below take which box. */
-  box(w){ return w === 'sub' ? this.sheet.sub : w === 'ins' ? this.runInsert : this.cap; },
-  boxEl(w){ return w === 'sub' ? document.getElementById('d-subin') : w === 'ins' ? document.getElementById('step-insert-in') : this.$refs.capture; },
+     the box above the step on screen in a run ('ins'), whose lines are inserted as steps before it, and the boxes a
+     template is written in: its name in New template ('tname'), each step being written ('new:<row key>' there,
+     'add:<row key>' under a template) and a step being changed ('edit'). The methods below take which box. */
+  box(w){
+    if (w === 'sub') return this.sheet.sub;
+    if (w === 'ins') return this.runInsert;
+    if (w === 'tname') return this.sheet.newTpl?.box || {text: ''};
+    if (w === 'edit') return this.sheet.stepEdit || {text: ''};
+    const [which, key] = w.split(':');
+    if (key) return this.draftRows(which).find(r => r.key === key) || {text: ''};
+    return this.cap;
+  },
+  boxEl(w){
+    if (w === 'sub') return document.getElementById('d-subin');
+    if (w === 'ins') return document.getElementById('step-insert-in');
+    if (w === 'tname') return document.getElementById('nt-name');
+    if (w === 'edit') return document.getElementById('step-edit-' + this.sheet.stepEdit?.id);
+    const [which, key] = w.split(':');
+    if (key) return document.getElementById(`${which}-step-${this.draftRows(which).findIndex(r => r.key === key)}`);
+    return this.$refs.capture;
+  },
   // What a box never reads: in a checklist project, a step's time is its T#30m, so "Check at 3pm" stays as it is.
-  boxBase(w){ return w === 'ins' || (w === 'sub' && this.checklistIds.has(this.sheet.task?.project_id)) ? STEP_IGNORE : {}; },
-  // Where a line without a +project goes: the default project, the open task's, or the run's.
-  boxHome(w){ return w === 'sub' ? this.sheet.task?.project_id : w === 'ins' ? this.view.run?.run.project_id : this.defaultProjectId(); },
+  boxBase(w){ return w === 'cap' || (w === 'sub' && !this.checklistIds.has(this.sheet.task?.project_id)) ? {} : STEP_IGNORE; },
+  // Where a line without a +project goes: the default project, the open task's, the run's, or the template's.
+  boxHome(w){
+    if (w === 'sub' || w === 'edit' || w.startsWith('add:')) return this.sheet.task?.project_id;
+    if (w === 'ins') return this.view.run?.run.project_id;
+    if (w === 'tname' || w.startsWith('new:')) return this.sheet.newTpl?.project.id;
+    return this.defaultProjectId();
+  },
   boxLines(w){ return captureLines(this.box(w).text); },
   get capLines(){ return this.boxLines('cap'); },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
@@ -83,7 +105,7 @@ export default {
       }
       if (fits.length === 1) out.auto = fits[0];
     }
-    if (!out.auto || this.box(w).ignore.autoProject) blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
+    if (!out.auto || this.box(w).ignore?.autoProject) blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
   },
   async checkAccess(w){
@@ -122,7 +144,7 @@ export default {
   // The project a single task goes to: its +project, or the one picked for its @usernames, or the box's own.
   boxPid(w){
     const auto = this.accessHints(w).auto;
-    return this.boxParsed(w).project?.id || (auto && !this.box(w).ignore.autoProject ? auto.id : this.boxHome(w));
+    return this.boxParsed(w).project?.id || (auto && !this.box(w).ignore?.autoProject ? auto.id : this.boxHome(w));
   },
 
   /* ---------- suggestions for the @username or *label at the cursor ---------- */
@@ -191,18 +213,24 @@ export default {
     return peopleLoading;
   },
 
-  // Enter in an add box: while @ or * is being typed and something's suggested, the suggestion on top; else send.
+  /* Enter in an add box: while @ or * is being typed and something's suggested, the suggestion on top; else send. In a
+     template's boxes: the name goes on to the first step, a step being written to the next row, a step changed is done. */
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
-    if (w === 'cap') this.submitCapture(); else if (w === 'ins') this.insertStep(); else this.addSubtasks();
+    if (w === 'cap') this.submitCapture(); else if (w === 'ins') this.insertStep(); else if (w === 'sub') this.addSubtasks();
+    else if (w === 'tname') document.getElementById('new-step-0')?.focus();
+    else if (w === 'edit') this.boxEl(w)?.blur();
+    else { const [which, key] = w.split(':'); this.addDraftRow(which, this.draftRows(which).findIndex(r => r.key === key) + 1); }
   },
+  // A template's step, or its name, as quick add reads it, without the chips tapped off: its time is its own.
+  stepParsed(text, ignore){ return parseCapture(text || '', this.projects, {...this.parseOpts, ignore: {...STEP_IGNORE, ...ignore}}); },
   // Whether what's sent from a box gets a reminder at its due time: one line, with a time, and the 🔔 chip on.
   remindOn(w, lines){ const p = this.boxParsed(w); return this.box(w).remind && lines.length === 1 && !!p.due && p.due > new Date() && !!p.timeRead && this.remindersReach; },
   // A chip tapped: its own action, or its words kept in the title (tapped off), or read again.
   tapChip(w, c){
     const b = this.box(w);
-    if (c.action) c.action(); else if (c.kind) b.ignore = {...b.ignore, [c.kind]: !b.ignore[c.kind]};
+    if (c.action) c.action(); else if (c.kind) b.ignore = {...b.ignore, [c.kind]: !b.ignore?.[c.kind]};
   },
   /* What a box read, as chips under it. A subtask box doesn't name the project its lines go to (the task's), and has no
      photos or "Under first line". */
@@ -218,7 +246,7 @@ export default {
     if (ticked) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
     const parsed = this.boxParsed(w), p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.boxLines(w).length;
     out.push(...photos);
-    if (n > 1 && !cap) { out.push({key: 'n', text: `${n} ${w === 'ins' ? 'steps' : 'subtasks'}`}); return out; }
+    if (n > 1 && !cap) { out.push({key: 'n', text: `${n} ${w === 'sub' ? 'subtasks' : 'steps'}`}); return out; }
     if (n > 1) {
       out.push({key: 'n', text: this.cap.nest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
       const {project, miss} = this.parseList(this.capLines);
@@ -229,7 +257,7 @@ export default {
       return out;
     }
     // Chips come from the full parse; tapped-off ones stay visible (struck through) so they can be turned back on.
-    const all = this.boxParsed(w, true), off = k => !!b.ignore[k];
+    const all = this.boxParsed(w, true), off = k => !!b.ignore?.[k];
     const {auto, warn} = this.accessHints(w);
     if (all.project) out.push({key: 'p', kind: 'project', color: colorOf(all.project.hex_color), text: all.project.title, off: off('project')});
     // A project picked because the @usernames can see it; tap to send it to the default project after all.

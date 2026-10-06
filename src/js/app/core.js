@@ -113,7 +113,7 @@ export default () => ({
       const t = this.sheet.task;
       if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== this.notesText(t).trim() ? {text: v, base: this.sheet.descBase} : null);
     });
-    this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.name, rows: nt.rows}); });
+    this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.box.text, rows: nt.rows}); });
     this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addRows, rows => { if (rows) taskDrafts.set('addsteps:' + this.sheet.task.id, rows.some(r => r.text.trim()) ? rows : null); });
     // Search once typing pauses.
     let searchTimer;

@@ -1,0 +1,5 @@
+<!-- What quick add read in a template's box (`bw`, its name in box()): people, labels and priority, as chips to tap off,
+     or what @ and * suggest. -->
+<div class="chips box-chips" x-show="chips(bw).length"><template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+  :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>

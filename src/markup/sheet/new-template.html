@@ -2,14 +2,20 @@
     <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
       <div class="d-title"><h2 style="margin:0;font-size:24px">New template</h2></div>
       <p class="note" style="margin:0 0 14px" x-text="'In ' + sheet.newTpl.project.title"></p>
-      <label class="field"><span>Name</span><input id="nt-name" x-model="sheet.newTpl.name" placeholder="Like Startup, or Closing up" autocomplete="off" enterkeyhint="next"
-        @keydown.enter.prevent="document.getElementById('new-step-0')?.focus()"></label>
+      <!-- Its name, in quick add's box ('tname'): "Opening up @priya" makes it for Priya -->
+      <div class="nt-name" x-data="{bw: 'tname'}"><label for="nt-name">Name</label>
+        <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" id="nt-name" x-model="sheet.newTpl.box.text" placeholder="Like Startup, or Closing up" autocomplete="off" enterkeyhint="next"
+          x-effect="sheet.newTpl.box.text; $nextTick(() => grow($el))" @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); boxEnter('tname'); }"
+          @input="sheet.newTpl.box.caret = $el.selectionStart" @click="sheet.newTpl.box.caret = $el.selectionStart" @keyup="sheet.newTpl.box.caret = $el.selectionStart"
+           @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="sheet.newTpl.box.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="setTimeout(() => { if (sheet.newTpl?.box) sheet.newTpl.box.focus = document.activeElement === $el; }, 150)"></textarea></div></div>
+        <!-- include markup/sheet/box-chips.html -->
+      </div>
       <div class="h3">Steps</div>
       <div class="card draft" id="new-steps" x-data="{which: 'new'}">
           <!-- include markup/sheet/draft-steps.html -->
           <button type="button" class="draft-add" id="new-add-step" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
       </div>
       <p class="note">“in 20 min”, “after an hour” or “20 minutes later” in a step makes it due that long after the step before it is done. Pick another step in its chip to count from that one.</p>
-      <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.name.trim() || !draft('new').added.length || draft('new').problem"
+      <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.box.text.trim() || !draft('new').added.length || draft('new').problem"
               @click="createTemplate()" x-text="sheet.newTpl.busy ? 'Making the template…' : 'Make template'"></button>
     </div></template>

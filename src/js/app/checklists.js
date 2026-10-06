@@ -9,6 +9,7 @@ import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
+import {newBox} from './core.js';
 
 // Templates as last loaded, kept for starting a run without a connection: id -> {id, title, project_id, related_tasks},
 // with the steps in order, and when it comes round and who for.
@@ -240,7 +241,11 @@ export default {
   /* ---------- writing steps: under New template, and under a template ---------- */
   // The rows being written ('new': the New template sheet, 'add': under a template), and how they read.
   draftRows(which){ return which === 'new' ? this.sheet.newTpl?.rows || [] : this.sheet.addRows; },
-  draft(which){ return draftSteps(this.draftRows(which), which === 'new' ? [] : this.subtasks.map(s => ({key: 'task:' + s.id, text: s.title}))); },
+  draft(which){ return draftSteps(this.draftRows(which), which === 'new' ? [] : this.subtasks.map(s => ({key: 'task:' + s.id, text: s.title})), this.stepWordsOnly); },
+  // A step's words without what quick add reads in them (@people, *labels, !priority): what it's named and picked by.
+  get stepWordsOnly(){ return t => this.stepParsed(t).title || t; },
+  // The rows being written that will be sent, each with the chips tapped off in it.
+  draftIgnores(which){ return this.draftRows(which).filter(r => r.text.trim()).map(r => r.ignore || {}); },
   addDraftRow(which, at){
     // A phone only opens its keyboard for a field focused during the tap, and the new row is there only after it: an
     // unseen field takes the focus now, so the keyboard opens, and passes it on.
@@ -269,34 +274,37 @@ export default {
   openNewTemplate(p){
     this.openSheet('newtpl');
     const kept = taskDrafts.get('newtpl:' + p.id);                          // written before, and not made yet
-    this.sheet.newTpl = {project: {id: p.id, title: p.title}, name: kept?.name || '', rows: kept?.rows?.length ? kept.rows : [{key: randomId(), text: '', keep: false, from: null}], busy: false};
+    // The name is written in quick add's box ('tname'), and each step in one of its own.
+    this.sheet.newTpl = {project: {id: p.id, title: p.title}, box: {...newBox(), text: kept?.name || ''},
+      rows: kept?.rows?.length ? kept.rows.map(r => ({...r, focus: false})) : [{key: randomId(), text: '', keep: false, from: null}], busy: false};
     this.$nextTick(() => document.getElementById('nt-name')?.focus());
   },
   /* A template in one go: the task, its steps under it, then made a template. Cut off half way, the task stays in the
      project with the steps made so far: tapping Make again carries on with that one (nt.jobs), and Use as checklist
      template on it finishes it too. */
   async createTemplate(){
-    const nt = this.sheet.newTpl, name = nt?.name.trim(), d = nt && draftSteps(nt.rows);
+    const nt = this.sheet.newTpl, name = nt?.box.text.trim(), d = nt && this.draft('new');
     if (!name || !d.added.length || d.problem || nt.busy) return;
+    const shown = templateName(this.stepParsed(name, nt.box.ignore).title);   // without @people and *labels
     nt.busy = true;
     let t = null;
     try {
       // Another name is another task, and its steps are new too.
       const line = templateTitle(name), kept = nt.jobs?.name[0]?.line === line ? nt.jobs : null;
       const jobs = nt.jobs = {name: jobsFor(kept?.name || [], [line]), steps: jobsFor(kept?.steps || [], d.added)};
-      const made = await this.createLines([line], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}, jobs: jobs.name});
+      const made = await this.createLines([line], {pid: nt.project.id, ignore: {...STEP_IGNORE, ...nt.box.ignore}, jobs: jobs.name});
       if (made.error) throw made.error;
       t = {id: made.ids[0], project_id: nt.project.id, labels: []};
-      const r = await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, jobs: jobs.steps});
+      const r = await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('new'), jobs: jobs.steps});
       if (r.error) throw r.error;
       await this.markTemplate(t, r.ids);
       nt.made = true; taskDrafts.delete('newtpl:' + nt.project.id);
       if (this.sheet.newTpl === nt) this.closeSheet(true);
-      this.notify(`Made ${name}. Start a run of it here.`);
+      this.notify(`Made ${shown}. Start a run of it here.`);
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
     } catch (e) {
       nt.busy = false;
-      this.notify(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${name}”.` : 'Not made: ' + why(e));
+      this.notify(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${shown}”.` : 'Not made: ' + why(e));
     }
   },
   // Steps added under a template: made, marked done like the rest, and any step they count from given its name.
@@ -310,7 +318,7 @@ export default {
     rows.forEach((x, k) => { x.job = jobs[k]; });
     try {
       for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
-      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, jobs}));
+      Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
       for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     } catch (e) { r.error = e; }
     if (this.sheet.task?.id === t.id) {
@@ -346,7 +354,7 @@ export default {
     const e = this.sheet.stepEdit;
     if (!e?.text.trim()) return null;
     const before = this.subtasks.slice(0, i).map(s => ({key: 'task:' + s.id, text: s.title}));
-    const d = draftSteps([{key: 'edit', text: e.text, keep: e.keep, from: e.from}], before), info = d.info.get('edit');
+    const d = draftSteps([{key: 'edit', text: e.text, keep: e.keep, from: e.from}], before, this.stepWordsOnly), info = d.info.get('edit');
     const titles = this.subtasks.map((s, k) => k === i ? info.saved : d.renames.find(r => r.key === 'task:' + s.id)?.title ?? s.title);
     return {...info, titles, problem: stepProblems(titles).filter(p => p.i === i).map(p => p.text).join('; ') || info.problem};
   },
@@ -359,10 +367,22 @@ export default {
     // Refused, or not saved: what was typed stays in the box, to put right or try again.
     if (stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not changed: ' + problemText(stepProblems(d.titles))); return; }
     this.sheet.stepEdit = null;
+    // Read as quick add reads a step: @people assign it, *labels label it, !priority sets it. Its title without them.
+    const own = todo.find(x => x.s.id === e.id), p = own && this.stepParsed(own.title, e.ignore);
+    if (own) own.title = p.title;
     for (const x of todo) x.s.title = x.title;
     // A step it counts from first, given its name, then this one.
-    try { for (const x of todo) { await this.saveTask(x.s.id, {title: x.title}); x.saved = true; this.sheet.dirty = true; } }
-    catch (err) {
+    try {
+      for (const x of todo) { await this.saveTask(x.s.id, {title: x.title}); x.saved = true; this.sheet.dirty = true; }
+      if (p && (p.assignees.length || p.labels.length || p.priority)) {
+        // As a line of quick add is sent, on the step that's there: someone who can't see the project stays in its title.
+        const job = {taskId: e.id, done: false}, t = await this.createTask(p, this.sheet.task?.project_id, {job});
+        if (job.body.title !== p.title || p.priority) await this.saveTask(e.id, {title: job.body.title, ...p.priority && {priority: p.priority}});
+        if (t.problems.length) this.notify('Changed, but ' + t.problems.join('; '));
+        const full = await this.readTask(this.sheet.task.id).catch(() => null);
+        if (full && this.sheet.task?.id === full.id) this.showTask(full);
+      }
+    } catch (err) {
       for (const x of todo) if (!x.saved) x.s.title = x.was;
       this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message);
       if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = {...e};

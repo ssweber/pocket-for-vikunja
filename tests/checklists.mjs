@@ -1024,6 +1024,43 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 15000 });
   });
 
+  await step('quick-add-in-a-template', async () => {
+    // The name and each step are written in quick add's box: what it reads shows as chips, and goes to Vikunja. A step
+    // changed in place is read the same way, its words without them.
+    const name = `Quick ${stamp}`;
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
+    await page.waitForFunction(() => document.activeElement?.id === 'nt-name');
+    await page.keyboard.type(other ? `${name} @${OTHER}` : `${name} !2`);
+    await page.waitForSelector(`.nt-name .box-chips .chip:has-text("${other ? '@' + OTHER : 'Priority 2'}")`);
+    await page.fill('#new-step-0', 'Unlock the door !3');
+    await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .chip:has-text("Priority 3")');
+    await page.press('#new-step-0', 'Enter');
+    await page.waitForFunction(() => document.activeElement?.id === 'new-step-1');
+    await page.keyboard.type('Turn the sign 5 min later');
+    await page.click('#nt-create');
+    await page.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 });
+    let tpl;
+    await until('the template never appeared', async () => (tpl = ((await api(`/projects/${project.id}/tasks?filter=${encodeURIComponent('done = true')}`)).items || []).find(t => t.title === `TEMPLATE: ${name}`)));
+    tpl = await api('/tasks/' + tpl.id);
+    if (other ? !tpl.assignees?.some(u => u.id === other.id) : tpl.priority !== 2) throw new Error(`template: assignees ${JSON.stringify(tpl.assignees?.map(u => u.username))}, priority ${tpl.priority}`);
+    const steps = await Promise.all((await subtasks(tpl.id)).map(s => api('/tasks/' + s.id)));
+    if (JSON.stringify(steps.map(s => [s.title, s.priority])) !== JSON.stringify([['Unlock the door', 3], ['Turn the sign T#5m', 0]])) throw new Error('steps: ' + JSON.stringify(steps.map(s => [s.title, s.priority])));
+    // Changed in place: !1 sets its priority, and leaves its name as it was.
+    await page.click(`.cl-tpl:has(.title:text-is("${name}")) .body`, { timeout: 15000 });
+    await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
+    await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, steps[0].id, { timeout: 5000 });
+    await page.fill(`#step-edit-${steps[0].id}`, 'Unlock the door !1');
+    await page.waitForSelector('.step-in .box-chips .chip:has-text("Priority 1")');
+    await page.press(`#step-edit-${steps[0].id}`, 'Enter');
+    await until('its priority never changed', async () => (await api('/tasks/' + steps[0].id)).priority === 1);
+    if ((await api('/tasks/' + steps[0].id)).title !== 'Unlock the door') throw new Error('title: ' + (await api('/tasks/' + steps[0].id)).title);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    for (const st of steps) await api('/tasks/' + st.id, { method: 'DELETE' });
+    await api('/tasks/' + tpl.id, { method: 'DELETE' });
+  });
+
   await step('add-steps-to-a-template', async () => {
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`${tplRow} .body`, { timeout: 15000 });

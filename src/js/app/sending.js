@@ -39,12 +39,12 @@ export default {
   /* Create a task per line, in order. With parent, each becomes its subtask and lands in the parent's project
      unless the line names one. Returns the ids created and how many lines were used; stops at the first error.
      `jobs` (from jobsFor) keeps how far each line got, so trying again carries on: a task whose reply was lost is found
-     rather than added twice. */
-  async createLines(lines, {pid, parent, ignore = {}, jobs = jobsFor([], lines)} = {}){
+     rather than added twice. `ignores`: each line's chips tapped off, on top of `ignore`. */
+  async createLines(lines, {pid, parent, ignore = {}, ignores = [], jobs = jobsFor([], lines)} = {}){
     const ids = [], problems = []; let used = 0;
     try {
       for (const [k, line] of lines.entries()) {
-        const parsed = parseCapture(line, this.projects, {...this.parseOpts, ignore});
+        const parsed = parseCapture(line, this.projects, {...this.parseOpts, ignore: {...ignore, ...ignores[k]}});
         if (parsed.title) {
           const job = jobs[k], t = await this.createTask(parsed, parent ? parent.project_id : pid, {job, at: job.at, skip: new Set(ids), parent: parent?.id});
           ids.push(t.id); problems.push(...t.problems);

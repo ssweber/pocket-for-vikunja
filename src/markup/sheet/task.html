@@ -112,15 +112,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             <template x-if="checklistRole !== 'template'"><button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button></template>
             <!-- A template's step has its number where a subtask has its tick -->
             <template x-if="checklistRole === 'template'"><span class="check step-n num" aria-hidden="true" x-text="i + 1"></span></template>
-            <template x-if="checklistRole === 'template' && sheet.stepEdit?.id === st.id"><div class="body step-in">
-              <div class="step-box"><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
+            <template x-if="checklistRole === 'template' && sheet.stepEdit?.id === st.id"><div class="body step-in" x-data="{bw: 'edit'}">
+              <!-- Quick add's box ('edit'): @people assign the step, *labels label it, as when it was written -->
+              <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
                         x-init="$nextTick(() => { $el.focus(); grow($el); })" x-effect="sheet.stepEdit?.text; $nextTick(() => grow($el))"
-                        @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.stepEdit = null"></textarea></div>
+                        @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); boxEnter('edit'); }" @keydown.escape.stop="sheet.stepEdit = null"
+                        @input="sheet.stepEdit.caret = $el.selectionStart" @click="sheet.stepEdit.caret = $el.selectionStart" @keyup="sheet.stepEdit.caret = $el.selectionStart"
+           @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="sheet.stepEdit.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="setTimeout(() => { if (sheet.stepEdit) sheet.stepEdit.focus = document.activeElement === $el; }, 150)"></textarea></div></div>
               <template x-for="st in [sheet.stepEdit]" :key="0"><div>
                 <template x-for="d in draftShown(stepEditDraft(i))" :key="0">
                   <!-- include markup/sheet/step-time.html -->
                 </template>
               </div></template>
+              <!-- include markup/sheet/box-chips.html -->
               <button type="button" class="linkish step-notes" :id="'step-notes-' + st.id" @mousedown.prevent @click="openStep(i)">Notes and photos ›</button>
             </div></template>
             <button class="body" x-show="!(checklistRole === 'template' && sheet.stepEdit?.id === st.id)" @click="checklistRole === 'run' ? openRun(sheet.task.id, st.id) : checklistRole === 'template' ? editStep(st) : openTask(st.id)"><div class="title" x-text="checklistRole === 'template' ? templateSteps[i]?.title : st.title"></div>
