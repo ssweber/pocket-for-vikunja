@@ -128,6 +128,8 @@ export const items = data => data?.items || [];
 export function netHelp(){
   return `Can't reach Vikunja at ${esc(location.origin)}. Check your connection, then try again.`;
 }
+// Why something wasn't done, in a message: Vikunja's answer, or that it couldn't be reached.
+export const why = e => e instanceof NetError ? 'no connection to Vikunja' : e.message;
 export function errText(e){
   if (e instanceof NetError) return netHelp();
   if (e instanceof ApiError && e.status === 429) return 'Too many attempts from here. Wait a minute, then try again.';

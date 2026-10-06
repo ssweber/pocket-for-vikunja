@@ -198,7 +198,7 @@ export default {
     if (w === 'cap') this.submitCapture(); else this.addSubtasks();
   },
   // Whether what's sent from a box gets a reminder at its due time: one line, with a time, and the 🔔 chip on.
-  remindOn(w, lines){ const p = this.boxParsed(w); return this.box(w).remind && lines.length === 1 && !!p.due && !!p.timeRead && this.remindersReach; },
+  remindOn(w, lines){ const p = this.boxParsed(w); return this.box(w).remind && lines.length === 1 && !!p.due && p.due > new Date() && !!p.timeRead && this.remindersReach; },
   // A chip tapped: its own action, or its words kept in the title (tapped off), or read again.
   tapChip(w, c){
     const b = this.box(w);
@@ -241,8 +241,8 @@ export default {
       text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(all.projectMiss)}”`, action: () => this.createProject(all.projectMiss)});
     if (all.due && !all.dueFromRepeat) out.push({key: 'due', kind: 'due', cls: 'num', text: all.dueLabel, off: off('due')});
     // A time typed ("at 4pm", "in 2 hours", not a bare "friday"): a reminder at it, only when tapped on. Vikunja sends it
-    // by email, so only when that reaches you.
-    if (all.due && all.timeRead && !off('due') && this.remindersReach) out.push({key: 'rem', kind: 'remind', cls: 'toggle', pressed: b.remind,
+    // by email, so only when that reaches you, and only for a time still to come.
+    if (all.due && all.timeRead && all.due > new Date() && !off('due') && this.remindersReach) out.push({key: 'rem', kind: 'remind', cls: 'toggle', pressed: b.remind,
       text: `🔔 Remind me at ${fmtTime(all.due)}`, hint: b.remind ? 'Tap for no reminder' : 'Tap to have Vikunja email you a reminder at this time', action: () => { b.remind = !b.remind; }});
     if (all.repeatWarn) out.push({key: 'rw', cls: 'warn', text: `Vikunja can't repeat “${all.repeatWarn}”: it stays in the title`});
     if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});

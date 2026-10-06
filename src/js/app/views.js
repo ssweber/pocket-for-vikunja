@@ -8,7 +8,7 @@ import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {shared} from './core.js';
-import {pendingSaves} from './sheet.js';
+import {pendingSaves, plainReminders} from './sheet.js';
 
 export let renderSeq = 0;
 
@@ -82,7 +82,7 @@ export default {
     return {kicker: '', title: 'Today'};
   },
   // Shown on the Today heading, so "Friday" on a task can be read against today.
-  get todayDate(){ return new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}); },
+  get todayDate(){ return new Date(this.groupedAt || Date.now()).toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}); },
   get emptyText(){
     if (this.route.name === 'today') return {title: 'Nothing due this week.', body: `Today is ${this.todayDate}. Add a task below — try “Call Ana tomorrow !3”.`};
     if (this.route.name === 'search') return this.searchQ.trim()
@@ -140,11 +140,13 @@ export default {
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
       if (e instanceof NetError) {
-        if (!fresh && !this.view.loading) return;                          // keep what's on screen; the banner says we're offline
+        // Keep what's on screen, the banner saying we're offline; Today placed again for the time now (after midnight, say).
+        if (!fresh && !this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
         const s = saved.get(viewKey(r));
         if (s) {
           for (const g of s.groups || []) for (const t of g.tasks) cache.set(t.id, t);
           Object.assign(this.view, {loading: false, groups: s.groups || [], project: s.project || null, checklists: s.checklists || [], run: s.run || null, savedAt: s.at});
+          if (r.name === 'today') this.regroupToday();
           return;
         }
       }
@@ -161,14 +163,19 @@ export default {
     const t0 = startOfDay();
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
-    const [all, allAdded, {index: runs, mine}] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex()]);
+    // And steps you've claimed in someone else's run, still open, which may have no date yet.
+    const qMine = new URLSearchParams({filter: `done = false && assignees in ${this.user?.username}`, filter_timezone: TZ, expand: 'comment_count'});
+    const [all, allAdded, {index: runs, mine}, claimed] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
+      this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : []]);
     if (seq !== renderSeq) return;
     const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
     for (const t of [...tasks, ...added, ...mine]) cache.set(t.id, t);
     const groups = todayGroups(), [, , inRuns, nodate] = groups;
     // Your runs in progress: a run has no due date, its timed steps have theirs.
     for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push({...t});
+    for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) { cache.set(t.id, t); inRuns.tasks.push({...t}); }
     this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(t => ({...t})));
+    this.todayDay = +startOfDay();
     // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
     for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push({...t});
     this.view.groups = groups;
@@ -213,7 +220,10 @@ export default {
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl);
     const was = t.done, subs = this.isRunTask(t) || extra.quiet ? [] : openSubtasks(t);   // a run's steps are ticked on its screen, with who did each
-    const dueBefore = t.due_date;
+    // A repeating task moves on its dates, and its reminders at a set time: Undo puts them back.
+    const back = {due_date: t.due_date};
+    for (const k of ['start_date', 'end_date']) if (isSet(t[k])) back[k] = t[k];
+    if ((t.reminders || []).some(r => !r.relative_to)) back.reminders = plainReminders(t);
     t.done = !was;
     try {
       const {quiet, ...patch} = extra;
@@ -224,7 +234,7 @@ export default {
         this.notify(d ? 'Repeats · next ' + d.label : 'Done — repeats', {label: 'Undo', fn: async () => {
           try {
             if (!await this.unchanged(t)) { this.notify(`Not undone: “${t.title}” was changed since.`); return; }
-            Object.assign(t, await this.saveTask(t.id, {due_date: dueBefore, ...undoExtra}));
+            Object.assign(t, await this.saveTask(t.id, {...back, ...undoExtra}));
           } catch (e) { this.notify('Not undone: ' + e.message); }
           this.render();
         }});
@@ -232,7 +242,7 @@ export default {
       }
       // Its open subtasks are done with it, and Undo opens them again too.
       const closed = was ? [] : await this.closeSubtasks(subs);
-      if (!was) this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, fn: async () => { await this.toggleDone(t, null, {...undoExtra, quiet: true}); await this.reopen(closed); this.render(); }});
+      if (!was) this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, says: closed.length < subs.length, fn: async () => { await this.toggleDone(t, null, {...undoExtra, quiet: true}); await this.reopen(closed); this.render(); }});
       else if (!extra.quiet && !undoing(extra)) this.notify('Marked not done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null, {quiet: true}); this.render(); }});
       this.afterTick(t, rowEl, was, [t.id, ...closed]);
     } catch (e) {
@@ -250,7 +260,7 @@ export default {
     const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
     if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
     if (!was) this.notify(r.status === 'offline' ? `Done: ${t.title}. It's sent once Pocket reaches Vikunja.` : doneText(0, 0, t.title),
-      {label: 'Undo', done: true, fn: async () => { await this.act({op: 'undone', task: t.id, run}); t.done = false; this.render(); }});
+      {label: 'Undo', done: true, says: r.status === 'offline', fn: async () => { await this.act({op: 'undone', task: t.id, run}); t.done = false; this.render(); }});
     this.afterTick(t, rowEl, was);
   },
   /* After a tick in a list, once it has registered: the row slides away if the list doesn't show tasks done (or not
@@ -279,7 +289,12 @@ export default {
     for (const s of subs) { try { await this.saveTask(s.id, {done: true}); closed.push(s.id); } catch { break; } }
     return closed;
   },
-  async reopen(ids){ for (const id of ids) await this.saveTask(id, {done: false}).catch(() => {}); },
+  // Mark these subtasks not done again (an Undo), saying if any couldn't be.
+  async reopen(ids){
+    let failed = 0;
+    for (const id of ids) await this.saveTask(id, {done: false}).catch(() => failed++);
+    if (failed) this.notify(`Not all undone: ${failed} subtask${failed === 1 ? '' : 's'} couldn't be marked not done.`);
+  },
   /* The sheet's tick, or its progress taken to 100%: done, and its open subtasks with it, as in the list. */
   async sheetDone(patch = null){
     const t = this.sheet.task;
@@ -293,8 +308,8 @@ export default {
     // The parent's save brought Vikunja's copy of its subtasks, still open then: those are the ones the sheet shows.
     for (const s of t.related_tasks?.subtask || []) if (closed.includes(s.id)) s.done = true;
     this.sheet.dirty = true;
-    this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, fn: async () => {
-      await this.saveTask(t.id, {done: false, percent_done: pctWas / 100}).catch(() => {});
+    this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, says: closed.length < subs.length, fn: async () => {
+      await this.saveTask(t.id, {done: false, percent_done: pctWas / 100}).catch(e => this.notify('Not undone: ' + e.message));
       await this.reopen(closed);
       const back = await api('/tasks/' + t.id).catch(() => null);
       if (back && this.sheet.task?.id === t.id) { cache.set(back.id, back); this.showTask(back); }

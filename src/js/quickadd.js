@@ -196,6 +196,10 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
       const dated = !day && results.find(r => !timeOnly(r));
       if (dated) {
         day = daytime(dated);
+        // Without a year, chrono takes a date earlier than now as next year's, by the time it assumes for it (noon): so
+        // today's date typed in the afternoon would be next year. Today's is today.
+        const thisYear = new Date(day); thisYear.setFullYear(now.getFullYear());
+        if (!dated.start.isCertain('year') && day.getFullYear() > now.getFullYear() && thisYear.toDateString() === now.toDateString()) day = thisYear;
         if (dated.start.isCertain('hour')) time = day;
         else day.setHours(0, 0, 0, 0);
       }

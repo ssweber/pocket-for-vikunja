@@ -57,10 +57,18 @@ export default {
     this.user = null; this.pending = []; this.cap.text = ''; this.capPhotos = [];
     this.boot();
   },
-  // Close the sheet without saving or keeping anything written in it: for the next person on this device.
-  dropSheet(){ Object.assign(this.sheet, {editingDesc: false, commentDraft: '', task: null, newTpl: null}); this.closeSheet(true); },
-  forgetPeople(){
-    this.runDrafts = {}; taskDrafts.clear();
+  // Close the sheet without saving anything written in it: dropped, for the next person on this device, or with keep,
+  // kept on the phone for when the same person is back.
+  dropSheet(keep = false){
+    const sh = this.sheet, t = sh.task;
+    if (keep && sh.open && sh.kind === 'task' && t) {
+      if (sh.editingDesc) taskDrafts.set('desc:' + t.id, sh.descDraft);
+      taskDrafts.set('comment:' + t.id, sh.commentDraft); taskDrafts.set('sub:' + t.id, sh.sub.text);
+    }
+    Object.assign(this.sheet, {editingDesc: false, commentDraft: '', task: null, newTpl: null}); this.closeSheet(true);
+  },
+  forgetPeople(drafts = true){
+    if (drafts) { this.runDrafts = {}; taskDrafts.clear(); store.del('drafts.user'); }
     cache.clear(); userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null;
     this.labels = []; this.labelsLoaded = false;
   },
@@ -83,9 +91,10 @@ export default {
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, {tellServer = true} = {}){
+    const me = this.user?.id;
     // Signing out yourself drops the saved lists and anything still waiting to be sent (after asking).
     if (!msg) {
-      const me = this.user?.id, mine = sync.all(me);
+      const mine = sync.all(me);
       const tasks = mine.flatMap(e => e.items.filter(x => !x.taskId)), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
       const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`;
       const runs =mine.filter(e => e.kind === 'run' || e.kind === 'act').length, n = tasks.length + files.length + runs;
@@ -102,8 +111,12 @@ export default {
       sharedToken.del();
     }
     this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
-    store.del('token'); store.del('mode'); this.dropSheet(); this.forgetPeople();
-    this.forgetPeople();
+    store.del('token'); store.del('mode');
+    // A sign-out you chose drops what was being written. A session that ended, or a sign-out in Vikunja's web app, keeps
+    // it on the phone for when you're back (boot): someone else signing in starts without it.
+    const keep = !!msg && !!me;
+    this.dropSheet(keep); this.forgetPeople(!keep);
+    if (keep) store.set('drafts.user', String(me));
     this.showLogin(msg ? esc(msg) : '');
     if (!this.info) this.probe();
   },
@@ -155,6 +168,10 @@ export default {
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
       this.user = user; this.info = info;
+      // What was being written when a session ended is kept for the same person only.
+      const owner = store.get('drafts.user');
+      if (owner && owner !== String(user.id)) { taskDrafts.clear(); this.runDrafts = {}; }
+      store.del('drafts.user');
       if (this.mode === 'session') setSeenToken(sharedToken.get());             // whose session this is, checked
       saved.set('user', user); if (info) saved.set('info', info);
       await this.loadProjects();

@@ -4,7 +4,7 @@
    and quietly skipped where it doesn't. Reminders while Pocket is closed are Vikunja's, by email. */
 import {store} from '../util.js';
 import {serverTime} from '../api.js';
-import {isLate, isSet, startOfDay} from '../dates.js';
+import {addDays, isLate, isSet, startOfDay} from '../dates.js';
 
 let sound = null;                                // the AudioContext, made on a tap so the browser lets it play
 let wakeLock = null, askingLock = false, lockFailed = 0;
@@ -22,30 +22,37 @@ export default {
      (a new day loads afresh), and one whose due time or reminder passes while you're looking says so. */
   tickToday(){
     const now = Date.now(), since = lastTick;
+    if (this.sheet.open && this.route.name === 'today') return;            // what passes meanwhile is said once it's closed
     lastTick = now;
-    if (this.route.name !== 'today' || document.visibilityState !== 'visible' || this.view.loading || this.sheet.open) return;
+    if (this.route.name !== 'today' || document.visibilityState !== 'visible' || this.view.loading) return;
     if (this.todayDay !== +startOfDay()) { this.render(); return; }
-    const groups = this.view.groups, dated = groups.filter(g => ['overdue', 'today', 'week'].includes(g.key));
-    this.placeDated(groups, dated.flatMap(g => g.tasks));
+    const dated = this.regroupToday();
     const passed = (at) => at > since && at <= now;
     const due = [], reminded = [];
-    for (const t of dated.flatMap(g => g.tasks)) {
+    for (const t of dated) {
       if (isSet(t.due_date) && passed(+new Date(t.due_date)) && isLate(t.due_date, new Date(now), this.dueTime)) due.push(t);
       else if ((t.reminders || []).some(r => isSet(r.reminder) && passed(+new Date(r.reminder)))) reminded.push(t);
     }
     const name = t => `“${t.title}”`, list = [...due, ...reminded];
-    if (list.length === 1) this.notify(due.length ? `${name(list[0])} is due now` : `Reminder: ${name(list[0])}`);
-    else if (list.length) this.notify(`${list.length} tasks are due now: ${name(list[0])} and ${list.length - 1} more`);
+    if (list.length === 1) this.notifyAfterUndo(due.length ? `${name(list[0])} is due now` : `Reminder: ${name(list[0])}`);
+    else if (list.length) this.notifyAfterUndo(`${list.length} tasks are due ${reminded.length ? 'or have a reminder ' : ''}now: ${name(list[0])} and ${list.length - 1} more`);
+  },
+  // Today's dated tasks placed again for the time now, without asking Vikunja: each minute, and offline after midnight.
+  // Returns them.
+  regroupToday(){
+    const groups = this.view.groups, dated = groups.filter(g => ['overdue', 'today', 'week'].includes(g.key)).flatMap(g => g.tasks);
+    if (groups.length === 5) this.placeDated(groups, dated);
+    return dated;
   },
   /* Today's dated tasks, each in its group: Overdue once its time has passed (one due on a day, with no time of its own,
      once that day is over), Today, or the next 7 days. The app's icon shows how many are overdue. */
   placeDated(groups, tasks){
-    const [overdue, today, , , week] = groups, now = new Date(), t1 = +startOfDay() + 864e5;
+    const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // a day of 23 or 25 hours too
     for (const g of [overdue, today, week]) g.tasks = [];
     for (const t of tasks) (isLate(t.due_date, now, this.dueTime) ? overdue : new Date(t.due_date) < t1 ? today : week).tasks.push(t);
     overdue.tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
     today.tasks.sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
-    this.todayDay = +startOfDay();
+    this.groupedAt = +now;
     this.setBadge(overdue.tasks.length);
   },
   setBadge(n){

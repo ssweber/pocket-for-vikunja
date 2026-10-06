@@ -117,9 +117,16 @@ try {
   });
 
   await step('signing-out-in-vikunja-signs-out-pocket', async () => {
+    // Something being written in Pocket, kept on the phone as it is when a sheet closes.
+    await pocket.evaluate(() => localStorage.setItem('pocket.drafts', JSON.stringify({ ...JSON.parse(localStorage.getItem('pocket.drafts') || '{}'), 'comment:1': 'Half a comment' })));
     await vikunja.evaluate(() => localStorage.removeItem('token'));             // what Vikunja's logout does in the browser
     await pocket.waitForSelector('#login:not([hidden])', { timeout: 10000 });   // after the 2-second check
     if (!(await pocket.textContent('#login-err')).includes('signed out in Vikunja')) throw new Error('no message');
+    // Signed in again as the same person: what was being written is still there.
+    await vikunjaSignIn();
+    await pocketInApp();
+    const kept = await pocket.evaluate(() => JSON.parse(localStorage.getItem('pocket.drafts') || '{}')['comment:1']);
+    if (kept !== 'Half a comment') throw new Error('what was being written was dropped: ' + kept);
   });
 
   await fresh();

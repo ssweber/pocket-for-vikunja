@@ -23,7 +23,8 @@ export const grow = ta => { ta.style.height = 'auto'; if (ta.scrollHeight) ta.st
 export const cache = new Map();                       // task id -> latest task from the server
 /* What was being written and not sent yet, kept on the phone so closing Pocket doesn't lose it: 'comment:<task id>',
    'sub:<task id>', 'desc:<task id>' (notes not saved yet), 'run' (notes on runs and steps, by task id), 'newtpl:<project
-   id>' and 'addsteps:<task id>' (steps being written). Cleared on sign-out. */
+   id>' and 'addsteps:<task id>' (steps being written). Cleared on a sign-out you choose, and kept through a session
+   that ends for when the same person is back. */
 export const taskDrafts = {
   all(){ try { return JSON.parse(store.get('drafts')) || {}; } catch { return {}; } },
   get(k){ return this.all()[k]; },

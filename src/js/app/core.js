@@ -60,7 +60,8 @@ export default () => ({
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
   clock: Date.now(),                           // now, every second while a run is on screen, for its countdowns
-  todayDay: 0,                                 // the day Today's groups are for (alerts.js)
+  todayDay: 0,                                 // the day Today's groups were loaded for (alerts.js)
+  groupedAt: 0,                                // when they were last placed in groups, for the heading's date
   avatars: saved.get('avatars') || {},         // username -> {url, at}: people's pictures (claims.js)
 
   init(){

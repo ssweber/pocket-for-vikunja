@@ -612,9 +612,12 @@ try {
       await refreshToday();
       await page.waitForSelector(`.sec.today + .list ${rowOf(t)}`, { timeout: 15000 });
       await page.waitForTimeout(Math.max(0, due - Date.now()) + 1000);
+      // An Undo showing (a tick's, say) isn't replaced: the message waits for it to go.
+      await page.evaluate(() => Alpine.$data(document.body).notify('Done: something', { label: 'Undo', done: true, fn(){} }));
       await page.evaluate(() => Alpine.$data(document.body).tickToday());     // what the minute's timer does
       await page.waitForSelector(`.sec.overdue + .list ${rowOf(t)}`, { timeout: 5000 });
-      await page.waitForSelector(`#toast.show #toast-msg:text-is("“${t}” is due now")`, { timeout: 5000 });
+      if (!await page.$('#toast.show #toast-msg:text-is("Done: something")')) throw new Error('the Undo was replaced');
+      await page.waitForSelector(`#toast.show #toast-msg:text-is("“${t}” is due now")`, { timeout: 10000 });
     } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
   });
 
@@ -637,6 +640,7 @@ try {
       await page.fill('#d-remind-at', `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}T09:30`);
       for (let i = 0; i < 40 && (await rems()).length < 3; i++) await page.waitForTimeout(250);
       if (!(await rems()).includes('at')) throw new Error('no reminder at a set time: ' + JSON.stringify(await rems()));
+      await page.waitForSelector('#d-reminders .chip.rem:has-text("9:30")');           // its time shows, not only its day
       // Removed with its ×.
       await page.click('#d-reminders .chip.rem:has-text("At due") .chip-x');
       for (let i = 0; i < 40 && (await rems()).includes('due_date0'); i++) await page.waitForTimeout(250);
@@ -681,6 +685,10 @@ try {
       await page.fill('#in-capture', `${t} friday`);
       await page.waitForSelector('#cap-chips .chip[data-kind=due]');
       if (await page.$('#cap-chips .chip[data-kind=remind]')) throw new Error('a 🔔 chip for a day without a time');
+      // A time gone already: none, as Vikunja would never send it.
+      await page.fill('#in-capture', `${t} yesterday at 4pm`);
+      await page.waitForSelector('#cap-chips .chip[data-kind=due]');
+      if (await page.$('#cap-chips .chip[data-kind=remind]')) throw new Error('a 🔔 chip for a time gone');
       await page.fill('#in-capture', `${t} at 4pm`);
       await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=false]:has-text("🔔 Remind me at 4:00")');
       await page.click('#cap-chips .chip[data-kind=remind]');
@@ -793,7 +801,8 @@ try {
   });
 
   await step('repeating-tick-can-be-undone', async () => {
-    const r = await make(`Pocket smoke repeat undo ${stamp}`, { due_date: todayAt(9), repeat_after: 86400 });
+    // Its dates and its reminder at a set time, which moved on with it, go back too.
+    const r = await make(`Pocket smoke repeat undo ${stamp}`, { due_date: todayAt(9), repeat_after: 86400, reminders: [{ reminder: todayAt(8) }] });
     await toastGone();
     await refreshToday();
     await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
@@ -802,6 +811,21 @@ try {
     const want = new Date(r.due_date).getTime();
     for (let i = 0; i < 40 && new Date((await get(r.id)).due_date).getTime() !== want; i++) await page.waitForTimeout(250);
     if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
+    const rem = (await get(r.id)).reminders?.[0]?.reminder;
+    if (new Date(rem).getTime() !== new Date(todayAt(8)).getTime()) throw new Error('reminder at ' + rem);
+  });
+  await step('a-repeating-subtask-keeps-its-date', async () => {
+    // Ticking a parent leaves a subtask that repeats as it is: marked done, it would only move to its next date.
+    const parent = await make(`Pocket smoke parent of a repeat ${stamp}`), sub = await make(`Pocket smoke weekly subtask ${stamp}`, { due_date: todayAt(9), repeat_after: 604800 });
+    try {
+      await api(`/tasks/${parent.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: sub.id, relation_kind: 'subtask' }) });
+      await toastGone();
+      await refreshToday();
+      await page.click(`${rowOf(parent.title)} > .check`, { timeout: 15000 });
+      await page.waitForSelector('#toast.show #toast-msg:has-text("Done: Pocket smoke parent")', { timeout: 20000 });
+      const s = await get(sub.id);
+      if (s.done || new Date(s.due_date).getTime() !== new Date(sub.due_date).getTime()) throw new Error(`subtask done ${s.done}, due ${s.due_date}`);
+    } finally { for (const id of [sub.id, parent.id]) await api('/tasks/' + id, { method: 'DELETE' }); }
   });
   await step('a-tick-whose-reply-is-lost-is-saved', async () => {
     // The tick reaches Vikunja, which moves the task to its next date, but the reply is lost: Pocket reads it back and

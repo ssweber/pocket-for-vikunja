@@ -245,6 +245,9 @@ addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint'
 add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its words; T#30m is read by parseStep' });
 add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
 add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
+add({ text: 'pay rent Oct 5', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2026-10-5', pocket: true, why: 'today\'s date is today, typed after noon too' });
+add({ text: 'pay rent oct 7 at 10am', now: new Date(2026, 9, 7, 11, 0), title: 'pay rent', date: '2026-10-7', time: '10:0', pocket: true, why: 'today\'s date with a time gone is today' });
+add({ text: 'pay rent Oct 4', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2027-10-4', pocket: true, why: 'yesterday\'s date is next year\'s' });
 add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'a step\'s words inside a quoted label stay in the label' });
 add({ text: 'Task *"batch T#20m"', title: 'Task', labels: ['batch T#20m'], pocket: true, why: 'and a T# time ends before the quote' });
 // The same text with a step's token after it reads the same: [text, token, mode].

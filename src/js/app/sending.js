@@ -1,7 +1,7 @@
 // Sending what was added to Vikunja, through the outbox, and the "Waiting to send" rows.
 import {cache, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
-import {addDays, dueInfo, isSet, startOfDay} from '../dates.js';
+import {addDays, dueInfo, isLate, isSet, startOfDay} from '../dates.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, isChild, itemDone, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
@@ -54,8 +54,11 @@ export default {
       return {ids, used, problems, error: null};
     } catch (error) { return {ids, used, problems, error}; }
   },
+  // An Undo of tasks just added: deleted, saying if any couldn't be.
   async deleteTasks(ids){
-    for (const id of [...ids].reverse()) await api('/tasks/' + id, {method:'DELETE'}).catch(() => {});
+    let failed = 0;
+    for (const id of [...ids].reverse()) await api('/tasks/' + id, {method:'DELETE'}).catch(e => { if (e.status !== 404) failed++; });
+    if (failed) this.notify(`Not all undone: ${failed} of ${ids.length} couldn't be deleted.`);
     this.render();
   },
   /* Every capture goes through the outbox: online it's sent straight away, offline it waits. */
@@ -309,7 +312,7 @@ export default {
     if (r.name !== 'today') return null;
     if (!isSet(t.due_date)) return t.child ? null : 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
-    return d >= addDays(t0, 8) ? null : d < t0 ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
+    return d >= addDays(t0, 8) ? null : isLate(t.due_date, new Date(), this.dueTime) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
   // The current list, with waiting tasks added where they belong, and subtasks under their parents.
   get listGroups(){

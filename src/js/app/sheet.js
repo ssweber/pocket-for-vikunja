@@ -1,7 +1,7 @@
 // A task's sheet: its details, labels and people, comments and attachments, and deleting.
 import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts} from '../util.js';
 import {api, errText, items, NetError, patchTask} from '../api.js';
-import {addDays, dueInfo, isSet} from '../dates.js';
+import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, progressPatch} from '../progress.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
 import {patiently, stepInfos, stepOrder, stepsOf, withOrder} from '../checklists.js';
@@ -17,7 +17,7 @@ const saving = new Map();
 const saveMark = (id, open) => { const s = saving.get(id) || {n: 0, open: 0}; s.n++; s.open += open; saving.set(id, s); };
 const reminderKey = r => r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
 // The reminders as Vikunja takes them back: a relative one by what it counts from, so it keeps moving with that date.
-const plainReminders = t => (t?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder});
+export const plainReminders = t => (t?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder});
 const repeats = t => t.repeat_after > 0 || t.repeat_mode === 1;
 // Whether Vikunja's copy `now` has the change `body` made to `before`. A repeating task marked done is moved to its
 // next date instead.
@@ -318,7 +318,8 @@ export default {
   },
   // A reminder in words: "At due", "15 min before due", or when it goes off. One counted from a date the task doesn't have says so.
   reminderText(r){
-    if (!r.relative_to) return dueInfo(r.reminder)?.label || '';
+    // At a set time: its day and time, even at noon or midnight, and whether it's past.
+    if (!r.relative_to) { const d = new Date(r.reminder); return isSet(r.reminder) ? `${dueInfo(startOfDay(d).toISOString()).label} ${fmtTime(d)}${d < new Date() ? ' (past)' : ''}` : ''; }
     const s = Math.abs(r.relative_period || 0), from = {due_date: 'due', start_date: 'the start', end_date: 'the end'}[r.relative_to] || r.relative_to;
     const unset = !isSet(this.sheet.task?.[r.relative_to]) ? ' (no date: it won\'t go off)' : '';
     if (!s) return (r.relative_to === 'due_date' ? 'At due' : 'At ' + from) + unset;

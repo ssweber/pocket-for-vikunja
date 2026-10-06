@@ -1,6 +1,6 @@
 // Checklists, their projects and templates, and writing steps.
 import {cache, taskDrafts, TZ} from '../util.js';
-import {allPages, api, items, NetError, patchTask} from '../api.js';
+import {allPages, api, items, NetError, patchTask, why} from '../api.js';
 import {parseFragment} from '../html.js';
 import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isTemplateLabel, parseStep, patiently, problemText, STEP_IGNORE, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
@@ -264,7 +264,7 @@ export default {
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
     } catch (e) {
       nt.busy = false;
-      this.notify(t ? `Not finished: ${e.message}. Tap Make template again to finish “${name}”.` : 'Not made: ' + e.message);
+      this.notify(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${name}”.` : 'Not made: ' + why(e));
     }
   },
   // Steps added under a template: made, marked done like the rest, and any step they count from given its name.
@@ -293,7 +293,7 @@ export default {
       try { const full = await this.readTask(t.id); if (full) { cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } } catch {}
     }
     const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
-    if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${r.error.message}`);
+    if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`);
     else if (but) this.notify(`Added ${r.ids.length}${but}`);
   },
   // Change a template's step in place: written as in New template, a time in words read as T#.
@@ -311,21 +311,26 @@ export default {
     const e = this.sheet.stepEdit, st = this.subtasks[i];
     if (!e || !st || st.id !== e.id) return;
     const info = this.stepEditInfo(i);
-    this.sheet.stepEdit = null;
-    if (!info || info.saved === st.title) return;
+    if (!info || info.saved === st.title) { this.sheet.stepEdit = null; return; }
+    // Refused, or not saved: what was typed stays in the box, to put right or try again.
     const titles = this.subtasks.map((s, k) => k === i ? info.saved : s.title);
     if (stepProblems(titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not changed: ' + problemText(stepProblems(titles))); return; }
+    this.sheet.stepEdit = null;
     const was = st.title;
     st.title = info.saved;
     try { await this.saveTask(st.id, {title: info.saved}); this.sheet.dirty = true; }
-    catch (err) { st.title = was; this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message); }
+    catch (err) {
+      st.title = was; this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message);
+      if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = {...e};
+    }
   },
   // Take a step out of a template. Runs started already keep their copy of it.
   async removeStep(i){
     const t = this.sheet.task, st = this.subtasks[i];
     if (!t || !st || this.sheet.checklistBusy) return;
     const rest = this.subtasks.filter((_, k) => k !== i).map(s => s.title), problems = stepProblems(rest);
-    if (problems.length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not removed: ' + problemText(problems)); return; }
+    // Said by their number on screen, before the step comes out.
+    if (problems.length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not removed: ' + problemText(problems.map(p => ({...p, i: p.i >= i ? p.i + 1 : p.i})))); return; }
     if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Runs already started keep it.`)) return;
     this.sheet.checklistBusy = true;
     try {
@@ -338,7 +343,7 @@ export default {
       this.keepTemplate(t);
       this.sheet.dirty = true;
       this.notify('Step removed');
-    } catch (err) { this.notify('Not removed: ' + err.message); }
+    } catch (err) { this.notify('Not removed: ' + why(err)); }
     finally { this.sheet.checklistBusy = false; }
   },
   /* Move a template's step up or down: its order line is written with every step in the new order. Not when that would
@@ -355,7 +360,7 @@ export default {
       [out[k], out[k + dir]] = [out[k + dir], out[k]];
       const before = stepProblems(steps.map(s => s.title));
       const fresh = stepProblems(out.map(s => s.title)).filter(p => !before.some(b => b.text === p.text && b.title === p.title));
-      if (fresh.length) throw new Error(problemText(fresh));
+      if (fresh.length) throw new Error(problemText(fresh.map(p => ({...p, i: steps.indexOf(out[p.i])}))));   // by its number on screen
       return out;
     };
     let steps;
@@ -368,7 +373,7 @@ export default {
       const got = await patiently(() => this.saveTask(t.id, null, now => { const s = moved(stepsOf(now)); return s && {description: withOrder(now.description, s.map(x => x.id))}; }));
       if (this.sheet.task?.id === t.id) this.showTask(got);
       this.sheet.dirty = true;
-    } catch (e) { if (this.sheet.task?.id === t.id) t.description = withOrder(t.description, was); this.notify('Not moved: ' + e.message); }
+    } catch (e) { if (this.sheet.task?.id === t.id) t.description = withOrder(t.description, was); this.notify('Not moved: ' + why(e)); }
     finally { this.sheet.checklistBusy = false; }
   },
 };

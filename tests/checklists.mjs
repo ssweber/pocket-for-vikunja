@@ -195,7 +195,7 @@ try {
     // Above the step it counts from: refused, before anything is sent.
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]:not([disabled])');
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move up"]');
-    await toast('Not moved: step 1, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step');
+    await toast('Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step');
     if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('moved anyway');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]:not([disabled])');
     await page.click('#d-subtasks .row:nth-of-type(2) [aria-label^="Move down"]');
@@ -505,20 +505,29 @@ try {
     p.on('pageerror', e => errors.push('(other) ' + e));
     p.on('console', m => m.type() === 'error' && console.log('  (other) console:', m.text()));
     const rows = () => p.$$eval('.row .title', els => els.map(x => x.textContent));
+    // A step of your run they've claimed is on their Today, even without a due date. (It's done by now: not done for this.)
+    const warm = (await runStep(first.id, 1)).id, warmDue = (await task(warm)).due_date;
+    await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ done: false, due_date: '0001-01-01T00:00:00Z' }) });
+    await call(otherToken, `/tasks/${warm}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
     try {
       await signIn(p, otherToken);
       await p.waitForSelector(`.row .title:has-text("${run.title}")`, { timeout: 15000 });
+      await p.waitForSelector('.row .title:has-text("Warm up the press")', { timeout: 15000 }).catch(() => { throw new Error("their claimed step isn't on their Today"); });
       const mine = (await api('/tasks/' + first.id)).title, seen = await rows();
       if (seen.includes(mine)) throw new Error('your run is in their Today');
       // Your run's last step is due, and isn't theirs; theirs has no due date yet.
       if (seen.some(t => t.endsWith('First article check'))) throw new Error('their Today: ' + JSON.stringify(seen));
       await p.click('nav.tabs a[data-tab=checklists]');
       await p.waitForSelector(`.cl-run .title:text-is("${mine}")`, { timeout: 15000 });
-      await p.waitForSelector(`.cl-run .title:text-is("${run.title}")`);
+      await p.waitForSelector(`.cl-run .title:text-is("${run.title}")`, { timeout: 20000 }).catch(() => { throw new Error("their run isn't under Checklists"); });
     } catch (e) {
       await p.screenshot({ path: `${OUT}/checklists-fail-other.png` });
       throw new Error(`${e.message.split('\n')[0]}; looking for "${run.title}", their rows: ${JSON.stringify(await rows())}`, { cause: e });
-    } finally { await theirs.close(); }
+    } finally {
+      await theirs.close();
+      await api(`/tasks/${warm}/assignees/${other.id}`, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ done: true, due_date: warmDue }) });
+    }
   });
 
   await step('finish-a-run', async () => {
@@ -766,6 +775,15 @@ try {
     await page.fill(`#step-edit-${a.id}`, 'Stir in 2 min');
     await page.press(`#step-edit-${a.id}`, 'Enter');
     await until('the step never changed', async () => (await api('/tasks/' + a.id)).title === 'Stir T#2m');
+    // Refused: what was typed stays in the box, to put right.
+    await page.click('#d-subtasks .row:nth-of-type(1) .body');
+    await page.fill(`#step-edit-${a.id}`, 'Stir T#2m:nope');
+    await page.press(`#step-edit-${a.id}`, 'Enter');
+    await toast('Not changed: step 1, “Stir”');
+    if (await page.inputValue(`#step-edit-${a.id}`) !== 'Stir T#2m:nope') throw new Error('what was typed went');
+    await page.press(`#step-edit-${a.id}`, 'Escape');
+    await page.waitForSelector(`#step-edit-${a.id}`, { state: 'detached' });
+    if ((await api('/tasks/' + a.id)).title !== 'Stir T#2m') throw new Error('changed anyway');
     await page.click(`#d-subtasks .row:nth-of-type(2) [aria-label^="Remove step"]`);
     await until('the step was never removed', async () => (await subtasks(tpl.id)).length === 1);
     await page.click('#d-more');
