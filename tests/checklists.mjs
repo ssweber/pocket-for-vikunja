@@ -582,8 +582,8 @@ try {
       // Your run's last step is due, and isn't theirs; theirs has no due date yet.
       if (seen.some(t => t.endsWith('First article check'))) throw new Error('their Today: ' + JSON.stringify(seen));
       await p.click('nav.tabs a[data-tab=checklists]');
-      await p.waitForSelector(`.cl-run .title:text-is("${mine}")`, { timeout: 15000 });
-      await p.waitForSelector(`.cl-run .title:text-is("${run.title}")`, { timeout: 20000 }).catch(() => { throw new Error("their run isn't under Checklists"); });
+      await p.waitForSelector(`.cl-run .title:has-text("${mine}")`, { timeout: 15000 });
+      await p.waitForSelector(`.cl-run .title:has-text("${run.title}")`, { timeout: 20000 }).catch(() => { throw new Error("their run isn't under Checklists"); });
     } catch (e) {
       await p.screenshot({ path: `${OUT}/checklists-fail-other.png` });
       throw new Error(`${e.message.split('\n')[0]}; looking for "${run.title}", their rows: ${JSON.stringify(await rows())}`, { cause: e });
@@ -595,9 +595,14 @@ try {
   });
 
   await step('finish-a-run', async () => {
-    // Opened from Checklists, so finishing goes back there.
+    // Opened from Checklists, so finishing goes back there. Its row there is Today's: its progress line, steps done and
+    // the next.
     await page.evaluate(() => { location.hash = '#/checklists'; });
-    await page.click(`.cl-run .body:has(.title:text-is("${(await api('/tasks/' + first.id)).title}"))`, { timeout: 15000 });
+    const runRow = `.cl-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`;
+    await page.waitForSelector(`${runRow} .meta:has-text("Next: First article check")`, { timeout: 15000 });
+    const line = await page.$eval(runRow, el => [parseFloat(getComputedStyle(el).getPropertyValue('--pct')), parseFloat(getComputedStyle(el, '::after').width)]);
+    if (!(line[0] > 0 && line[1] > 0)) throw new Error('no progress line under Checklists: ' + line);
+    await page.click(`.cl-run .body:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`, { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#step-done');
     await page.waitForSelector('#finish-card');
@@ -823,25 +828,31 @@ try {
   });
 
   await step('insert-and-repeat-a-step', async () => {
-    // After a step is done, the run moves on: a step to do before the next one goes in there, and the one before it can
-    // be done again, as a fresh copy. Neither changes the template.
+    // A step's › opens a box under it: a step typed there goes after it, and the step can be done again there, as a
+    // fresh copy. Neither changes the template.
     const { id } = await startRun(), tplSteps = (await subtasks(template.id)).length;
     const titles = async () => (await subtasks(id)).map(s => s.title).join(' | ');
+    const openUnder = async n => { await page.click(`#run-steps .row:nth-of-type(${n}) .ins-open`); await page.waitForSelector('#step-gap #step-insert-in'); };
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    // A box for it is always there, above the step on screen, and + is off while it's empty.
-    await page.waitForSelector('#step-gap #step-insert-in');
+    // No box until a › is tapped; then one under that step, saying so, and + is off while it's empty.
+    if (await page.$('#step-gap')) throw new Error('the box is open before a › is tapped');
+    await openUnder(1);
+    if (await page.textContent('#step-gap-where') !== 'After “Check the guards at 3pm”') throw new Error('says ' + await page.textContent('#step-gap-where'));
+    if (await page.getAttribute('#run-steps .row:nth-of-type(1) .ins-open', 'aria-expanded') !== 'true') throw new Error('its › isn\'t open');
     if (!await page.isDisabled('#step-insert')) throw new Error('+ works with nothing in the box');
     await page.fill('#step-insert-in', 'Wipe the oil off the floor');
     await page.press('#step-insert-in', 'Enter');
     await page.waitForSelector('#step-title:text-is("Wipe the oil off the floor")');            // on screen: it's next
+    await page.waitForSelector('#step-gap', { state: 'detached' });                             // and the box is closed
     await page.waitForSelector('#step-added:text-is("Inserted")', { timeout: 15000 });
     await until('not inserted before Warm up the press', async () => await titles() === 'Check the guards at 3pm | Wipe the oil off the floor | Warm up the press | First article check');
     const inserted = await api('/tasks/' + (await runStep(id, 1)).id);
     if (!/pocket:added/.test(inserted.description) || inserted.related_tasks?.copiedfrom?.length || inserted.done) throw new Error('inserted: ' + JSON.stringify(inserted.description));
     // The step after it still counts from the template's step before it.
     await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .due:text-matches("^Due in (30|29)m$")');
-    // 🔁 puts the step before the one on screen in the box; changed, it would be a new step, and Escape empties it.
+    // 🔁 puts the step the box is under in it; changed, it would be a new step, and Escape closes the box.
+    await openUnder(1);
     await page.click('#step-repeat[aria-label^="Repeat “Check the guards at 3pm”"]');
     if (await page.inputValue('#step-insert-in') !== 'Check the guards at 3pm') throw new Error('box: ' + await page.inputValue('#step-insert-in'));
     await page.waitForSelector('#step-repeat-note');
@@ -849,8 +860,10 @@ try {
     await page.type('#step-insert-in', ' again');
     await page.waitForSelector('#step-repeat-note', { state: 'detached' });
     await page.press('#step-insert-in', 'Escape');
-    if (await page.inputValue('#step-insert-in') !== '') throw new Error('Escape left: ' + await page.inputValue('#step-insert-in'));
+    await page.waitForSelector('#step-gap', { state: 'detached' });
     // Left as it is, + repeats it: a copy of its template step, not done, right after it.
+    await openUnder(1);
+    if (await page.inputValue('#step-insert-in') !== '') throw new Error('opened with: ' + await page.inputValue('#step-insert-in'));
     await page.click('#step-repeat');
     await page.click('#step-insert');
     await page.waitForSelector('#step-added:text-is("Repeated")', { timeout: 15000 });
@@ -872,17 +885,21 @@ try {
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
     await page.route('**/api/v2/projects/*/tasks', lose);
+    await openUnder(1);
     await page.fill('#step-insert-in', 'Sweep up');
     await page.press('#step-insert-in', 'Enter');
     await online();
     await until('never inserted after its reply was lost', async () => (await titles()).includes('Sweep up'));
     await page.unroute('**/api/v2/projects/*/tasks', lose);
     if ((await titles()).split('Sweep up').length !== 2) throw new Error('inserted twice: ' + await titles());
-    // Offline: shown in its place, waiting, and ticked meanwhile; both reach Vikunja once it's back.
-    await page.waitForSelector('#step-added:text-is("Inserted")', { timeout: 15000 });
+    // Offline: shown in its place, waiting, and ticked meanwhile; both reach Vikunja once it's back. (What's inserted goes
+    // where the box was, not on screen: tapped, it is.)
+    await page.waitForSelector('#run-steps .row:nth-of-type(2):has-text("Sweep up")', { timeout: 15000 });
     await context.setOffline(true);
+    await openUnder(1);
     await page.fill('#step-insert-in', 'Offline step');
     await page.press('#step-insert-in', 'Enter');
+    await page.click('#run-steps .row:has-text("Offline step") > .body');
     await page.waitForSelector('#step-added:text-is("Inserted · waiting to send")');
     await page.click('#step-done');
     await page.waitForSelector('#run-steps .row:has-text("Offline step") .check.wait');
@@ -898,6 +915,7 @@ try {
     if (order.indexOf('Offline step') !== order.indexOf('Sweep up') - 1) throw new Error('not where it was inserted: ' + order.join(' | '));
     // Quick add, as in the subtask box: its chips and marks, no date (a step's time is its template's), and a pasted
     // list is a step a line, in order.
+    await openUnder(1);
     await page.fill('#step-insert-in', 'Mop up !3 tomorrow');
     await page.waitForSelector('#step-inschips .chip:has-text("Priority 3")');
     await page.waitForSelector('#step-insbox .cap-marks mark[data-kind="priority"]', { state: 'attached' });
@@ -911,11 +929,12 @@ try {
   });
 
   await step('add-a-step-after-the-last', async () => {
-    // Every step done, the run not finished: the box is after the last step, and what's added goes at the end.
+    // Every step done, the run not finished: the last step's › opens the box under it, and what's added goes at the end.
     const { id } = await startRun();
     for (const t of ['Warm up the press', 'First article check']) { await page.click('#step-done'); await page.waitForSelector(`#step-title:text-is("${t}")`); }
     await page.click('#step-done');
     await page.waitForSelector('#finish-card');
+    await page.click('#run-steps .row:nth-of-type(3) .ins-open');
     await page.waitForSelector('#step-gap #step-insert-in');
     await page.click('#step-repeat');                                         // 🔁 offers the last step
     if (await page.inputValue('#step-insert-in') !== 'First article check') throw new Error('box: ' + await page.inputValue('#step-insert-in'));
@@ -923,6 +942,57 @@ try {
     await page.press('#step-insert-in', 'Enter');
     await page.waitForSelector('#step-title:text-is("Lock the back door")', { timeout: 15000 });
     await until('not added at the end', async () => (await subtasks(id)).map(s => s.title).pop() === 'Lock the back door');
+  });
+
+  await step('hold-a-step-to-set-its-progress', async () => {
+    // As on a task's row: hold, then slide. Sent like a tick, with Undo; 100% is Done, with its ✅.
+    const { id } = await startRun();
+    const row = '#run-steps .row:nth-of-type(2)', step2 = (await runStep(id, 1)).id;
+    const slide = async (n, check) => {
+      // From 0%: the room to 48px short of the screen's edge is the way to 100% (holdToSlide's EDGE).
+      const box = await page.locator(row).boundingBox(), x = box.x + box.width * .45, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await page.waitForSelector(`${row}.setting`, { timeout: 2000 });
+      await page.mouse.move(x + (page.viewportSize().width - 48 - x) * n / 10, y, { steps: 10 });
+      await check?.();
+      await page.mouse.up();
+    };
+    // The row's bar shows it, as a task's does.
+    const bar = () => page.$eval(row, el => [getComputedStyle(el).getPropertyValue('--pct').trim(), parseFloat(getComputedStyle(el, '::after').width)]);
+    await toastGone().catch(() => {});
+    await slide(3);
+    await toast('Progress set to 30%');
+    await until('its progress never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 30);
+    const [pct, width] = await bar();
+    if (pct !== '0.3' || !(width > 0)) throw new Error(`its bar: --pct ${pct}, ${width}px`);
+    if (await page.textContent('#step-title') !== 'Check the guards at 3pm') throw new Error('letting go opened the step');
+    await page.click('#toast-act:has-text("Undo")');
+    await until('Undo never put it back', async () => !(await api('/tasks/' + step2)).percent_done);
+    await page.waitForFunction(sel => getComputedStyle(document.querySelector(sel)).getPropertyValue('--pct').trim() === '0', row, { timeout: 10000 });
+    // A hold on its › doesn't set progress: let go, it's a tap, and opens the box under it.
+    await toastGone().catch(() => {});
+    const chev = await page.locator(`${row} .ins-open`).boundingBox();
+    await page.mouse.move(chev.x + chev.width / 2, chev.y + chev.height / 2); await page.mouse.down();
+    await page.waitForTimeout(800);
+    if (await page.$(`${row}.setting`)) throw new Error('holding › set progress');
+    await page.mouse.up();
+    await page.waitForSelector('#step-gap-where:text-is("After “Warm up the press”")', { timeout: 5000 });
+    if ((await api('/tasks/' + step2)).percent_done) throw new Error('holding › saved progress');
+    // With a box open, a step's row still slides.
+    await slide(2);
+    await toast('Progress set to 20%');
+    await until('its progress never reached Vikunja with a box open', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 20);
+    await page.press('#step-insert-in', 'Escape');
+    await page.waitForSelector('#step-gap', { state: 'detached' });
+    await toastGone().catch(() => {});
+    // Pulled past 100% and held while the run's screen redraws (every second, for countdowns): it says 100%, and its
+    // line stays full.
+    await slide(12, async () => {
+      await page.waitForTimeout(1500);
+      const [shown, line, width] = await page.$eval(row, el => [el.dataset.pct, parseFloat(getComputedStyle(el, '::after').width), el.clientWidth]);
+      if (shown !== '100%' || line < width - 1) throw new Error(`held past 100%: says ${shown}, line ${line} of ${width}px`);
+    });
+    await until('100% never made it done', async () => { const t = await task(step2); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
   });
 
   await step('a-time-after-a-step-named-in-words', async () => {

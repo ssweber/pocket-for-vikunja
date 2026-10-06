@@ -254,7 +254,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
-    if (!keep) this.runInsert = {...newBox(), repeat: null};
+    if (!keep) this.runInsert = {...newBox(), repeat: null, after: null};
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
     this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null, last: keep?.last || null};
     this.saveRun();
@@ -301,7 +301,7 @@ export default {
     }
     const steps = base.map((s, i) => {
       const skipper = skippedBy(s);
-      let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at;
+      let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at, pct = Math.round((s.percent_done || 0) * 100);
       const kept = keptTicks()[s.id];
       if (done && kept && Date.parse(kept.there) === Date.parse(s.done_at)) doneAt = kept.here;
       let by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
@@ -309,6 +309,7 @@ export default {
       const notes = (s.comments || []).map(noteOf);
       for (const a of acts) if (this.actTask(a) === s.id) {
         if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
+        if (a.op === 'progress') { pct = a.pct; continue; }
         if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
         waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
@@ -316,7 +317,7 @@ export default {
       const slot = done ? this.doneSlot(by, people, waiting ? 'wait' : skipped ? 'skip' : 'done')
         : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done);
       // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
-      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by,
+      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by, pct,
         added: s.added || '', pending: s.pending || null, from: s.from || null, tpl: s.tpl,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : by.length ? ' by ' + doers().join(', ') : '')};
     });
@@ -357,11 +358,11 @@ export default {
     const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
     const step = allDone && r.at === null ? null : steps[at] || null;
-    /* Where a step can be inserted: before the one on screen, or, once every step is done (and the run isn't finished),
-       after the last. The step before that place, done, can be repeated there. */
-    const insertAt = step ? at : allDone ? total : null, insertBefore = step ? step.id : null;
-    const before = insertAt > 0 ? steps[insertAt - 1] : null, repeatable = before?.done && !before.pending ? before : null;
-    return {steps, total, doneCount, allDone, at, step, insertAt, insertBefore, repeatable, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+    /* Where the insert box is open: under the step whose › was tapped (`after`), so what's added goes before the step
+       after it, or at the end after the last. That step can be repeated there, done or not, once it's been sent. */
+    const k = steps.findIndex(s => s.id === this.runInsert.after), under = k >= 0 ? steps[k] : null;
+    const insert = !under ? null : {at: k, after: under, before: steps[k + 1]?.id ?? null, repeatable: under.pending ? null : under};
+    return {steps, total, doneCount, allDone, at, step, insert, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       finished: (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish',
       summary: [`${total} step${total === 1 ? '' : 's'}`, skippedN && `${skippedN} skipped`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
@@ -426,9 +427,8 @@ export default {
     const steps = t.related_tasks?.subtask || [];
     return steps.length ? Math.round(100 * steps.filter(x => this.stepDone(x.id, x.done)).length / steps.length) : 0;
   },
-  // A run's row under Checklists: steps done (waiting ticks too), and the next one.
+  // A run's steps done (waiting ticks too), and the next one: {steps: [{id, done, title}]}.
   runCount(r){
-    if (!r.steps) return {done: r.done, total: r.total, next: r.next};          // saved offline by an older Pocket
     const done = r.steps.map(x => this.stepDone(x.id, x.done));
     return {done: done.filter(Boolean).length, total: r.steps.length, next: r.steps.find((x, i) => !done[i])?.title || ''};
   },
@@ -445,7 +445,6 @@ export default {
   showStep(i, scroll){
     if (!this.view.run) return;
     this.view.run.at = i;
-    if (this.runInsert.repeat) this.runInsert = {...newBox(), repeat: null};   // the step before is another one now
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
@@ -563,7 +562,7 @@ export default {
   actWhat(a){
     const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '';
     return {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
-      done: 'A tick' + on, undone: 'An untick' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
+      done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
       claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it')}[a.op] || 'Something done offline';
   },
   /* An action on a run, or a comment, that won't be sent: its words go back where they were written, and `error.back`
@@ -602,6 +601,7 @@ export default {
     if (!r || r.run.id !== a.run) return;
     if (a.op === 'finish' || a.op === 'reopen') { r.run.done = a.op === 'finish'; return; }
     const s = r.steps.find(x => x.id === a.task), me = this.user;
+    if (s && a.op === 'progress') { s.percent_done = a.pct / 100; return; }
     if (s && a.op !== 'note') {
       const rs = {...s.reactions}, without = m => (rs[m] || []).filter(u => u.id !== me?.id);
       rs[DONE_MARK] = without(DONE_MARK); rs[SKIP_MARK] = without(SKIP_MARK);
@@ -614,29 +614,43 @@ export default {
   actTask(a){ return typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) ?? a.task : a.task; },
 
   /* ---------- steps inserted during a run ---------- */
-  /* Insert a step before the one on screen, or repeat the one before it (repeatStep). Through the outbox, as a tick is:
-     offline it waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
-  /* The box in Steps, above the step on screen: quick add's 'ins' box, so it reads labels, people and priority as the
-     subtask box does (not dates: a step's time is its template's), and each line of a pasted list is a step, in order.
-     🔁 puts the step before it in the box (armRepeat): left as it is, + repeats that step; changed, it's a new step. */
-  armRepeat(s){ this.runInsert = {...newBox(), text: s.title, repeat: s}; },
+  /* Insert a step after any step, or repeat that step there (repeatStep). Through the outbox, as a tick is: offline it
+     waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
+  /* The box opens under a step from the › at its left (openInsert), one at a time, out of the way otherwise. It's quick
+     add's 'ins' box, so it reads labels, people and priority as the subtask box does (not dates: a step's time is its
+     template's), and each line of a pasted list is a step, in order. 🔁 puts the step it's under in the box (armRepeat):
+     left as it is, + repeats that step; changed, it's a new step. */
+  openInsert(s){
+    const open = this.runInsert.after === s?.id ? null : s?.id ?? null;
+    this.runInsert = {...newBox(), repeat: null, after: open};
+    if (open) this.$nextTick(() => document.getElementById('step-insert-in')?.focus());
+  },
+  closeInsert(){ this.runInsert = {...newBox(), repeat: null, after: null}; },
+  armRepeat(s){ this.runInsert = {...newBox(), text: s.title, repeat: s, after: this.runInsert.after}; },
   async insertStep(){
     const v = this.runView, b = this.runInsert;
-    if (v?.insertAt == null || b.busy) return;
+    if (!v?.insert || b.busy) return;
+    const before = v.insert.before;
     if (b.repeat && b.text.trim() === b.repeat.title) {
-      this.runInsert = {...newBox(), repeat: null};
-      await this.repeatStep(b.repeat);
+      this.closeInsert();
+      await this.repeatStep(b.repeat, before);
       return;
     }
     const lines = this.boxParsedLines('ins').filter(p => p.title);
     if (!lines.length) return;
-    this.runInsert = {...newBox(), repeat: null};
-    for (const p of lines) await this.addStep({title: p.title, p: packParsed(p), before: v.insertBefore});
+    this.closeInsert();
+    for (const p of lines) await this.addStep({title: p.title, p: packParsed(p), before});
   },
-  async repeatStep(s){
-    const v = this.runView;
-    if (v?.insertAt == null || !s) return;
-    await this.addStep({title: s.title, before: v.insertBefore, from: s.from, tpl: s.tpl ?? null});
+  async repeatStep(s, before){
+    if (!s) return;
+    await this.addStep({title: s.title, before, from: s.from, tpl: s.tpl ?? null});
+  },
+  /* A step's progress, held and slid on its row as on a task's: through the outbox, as a tick is. 100% is done, with its
+     ✅, as Done is. `undoing`: putting back what it was. */
+  async stepProgress(s, pct, undoing = false){
+    if (pct >= 100 && !undoing) { await this.tickStep(s, 'done'); return; }
+    const was = s.pct, r = await this.act({op: 'progress', task: s.id, pct});
+    if (r.status !== 'error' && !undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.stepProgress(s, was, true)});
   },
   async addStep(fields){
     const r = this.view.run;

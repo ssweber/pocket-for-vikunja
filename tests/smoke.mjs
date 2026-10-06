@@ -100,14 +100,17 @@ try {
     await page.waitForSelector(row, { timeout: 15000 });
     if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after undo');
   });
-  // Hold a row, then slide it sideways by `steps` tens of percent, as with a finger.
-  async function slideProgress(sel, steps, check){
+  /* How far right a finger at x slides to go from `from`% to `to`%: the room to the screen's edge is the rest of the way
+     to 100%, 48px short of it (holdToSlide's EDGE). */
+  const slideBy = (x, from, to) => (page.viewportSize().width - 48 - x) * (to - from) / (100 - from);
+  // Hold a row, then slide it sideways from `from`% by `steps` tens of percent, as with a finger.
+  async function slideProgress(sel, steps, check, from = 0){
     const box = await page.locator(sel).boundingBox();
     const x = box.x + box.width * .2, y = box.y + box.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.waitForSelector(`${sel}.setting`, { timeout: 2000 });
-    await page.mouse.move(x + box.width * .8 * steps / 10, y, { steps: 10 });
+    await page.mouse.move(x + slideBy(x, from, from + steps * 10), y, { steps: 10 });
     await check?.();
     await page.mouse.up();
   }
@@ -123,7 +126,7 @@ try {
     if (Math.round(t.percent_done * 100) !== 40) throw new Error('saved percent_done ' + t.percent_done);
   });
   await step('progress-100-marks-done-and-undo', async () => {
-    await slideProgress(row, 6);
+    await slideProgress(row, 6, null, 40);                                 // from 40%, to the edge: 100%
     await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
     await page.click('#toast-act:has-text("Undo")');
     await page.waitForSelector(row, { timeout: 15000 });
@@ -260,7 +263,7 @@ try {
     await page.mouse.move(bar.x + 20, bar.y + bar.height / 2);              // hold the bar, then slide two steps
     await page.mouse.down();
     await page.waitForSelector('.d-head.setting', { timeout: 2000 });
-    await page.mouse.move(bar.x + 20 + head.width * .8 * .2, bar.y + bar.height / 2, { steps: 6 });
+    await page.mouse.move(bar.x + 20 + slideBy(bar.x + 20, 40, 60), bar.y + bar.height / 2, { steps: 6 });
     if (await page.getAttribute('.d-head', 'data-pct') !== '60%') throw new Error('showed ' + await page.getAttribute('.d-head', 'data-pct') + ' while sliding');
     await page.mouse.up();
     await savedPct(60);

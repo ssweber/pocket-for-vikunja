@@ -56,7 +56,9 @@
 
       <div class="h3">Steps</div>
       <div class="list" id="run-steps">
-        <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at}" :data-id="s.id" :style="{order: i * 2}">
+        <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at, 'ins-on': runView.insert?.at === i}" :data-id="s.id" :style="{order: i * 2, '--pct': s.done ? 0 : s.pct / 100}">
+          <!-- › opens the box under this step, to insert a step after it or repeat it -->
+          <template x-if="!runView.finished && canWrite(view.run.run.project_id)"><button class="ins-open" :aria-expanded="String(runView.insert?.at === i)" :aria-label="'Insert a step after “' + s.title + '”'" @click="openInsert(s)"><svg class="i"><use href="#i-chev"/></svg></button></template>
           <button class="check" :class="{wait: s.waiting, skip: s.skipped}" :disabled="runView.finished || !canWrite(view.run.run.project_id)" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use :href="s.skipped ? '#i-send' : '#i-check'"/></svg></button>
           <button class="body" @click="showStep(i, true)"><div class="title" x-text="s.title"></div>
             <div class="meta" x-show="(s.dueText && !s.done) || s.added"><template x-if="s.added"><span class="added" x-text="s.added"></span></template>
@@ -73,27 +75,27 @@
           <!-- A step added during the run, on screen and not done: likely a mistake, so it can go -->
           <template x-if="s.added && !s.done && i === runView.at && !runView.finished && canWrite(view.run.run.project_id)"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + s.title" @click="deleteAddedStep(s)"><svg class="i"><use href="#i-close"/></svg></button></template>
         </div></template>
-        <!-- Between the step done last and the one on screen, where a step the template didn't have goes: always there,
-             unfocused, like the subtask box. 🔁 puts the step before it in the box, to do again; + adds what's in the box.
-             Last in the page, put in its place by order, so it isn't a row. -->
-        <template x-if="runView.insertAt !== null && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" :class="{top: runView.insertAt === 0}" :style="{order: runView.insertAt * 2 - 1}">
+        <!-- The box under the step whose › was tapped, for a step the template didn't have: 🔁 puts that step in the box, to do
+             again; + adds what's in the box after it. Last in the page, put in its place by order, so it isn't a row. -->
+        <template x-if="runView.insert && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" :style="{order: runView.insert.at * 2 + 1}">
+          <p class="gap-where" id="step-gap-where" x-text="'After “' + runView.insert.after.title + '”'"></p>
           <div class="addbox sub" id="step-insbox">
             <form id="step-insert-form" autocomplete="off" @submit.prevent="insertStep()">
               <div class="cap-field">
                 <div class="cap-marks" aria-hidden="true" x-html="marksHtml('ins')"></div>
-                <textarea id="step-insert-in" x-model="runInsert.text" rows="1" :placeholder="runView.step ? 'Insert a step, or paste a list' : 'Add a step, or paste a list'" :aria-label="runView.step ? 'Steps to insert before “' + runView.step.title + '”' : 'Steps to add at the end'" enterkeyhint="send"
+                <textarea id="step-insert-in" x-model="runInsert.text" rows="1" placeholder="Insert a step, or paste a list" :aria-label="'Steps to insert after “' + runView.insert.after.title + '”'" enterkeyhint="send"
                           x-effect="runInsert.text; $nextTick(() => grow($el))"
-                          @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter('ins'); }" @keydown.escape="runInsert = {...runInsert, text: '', repeat: null, ignore: {}}; $el.blur()"
+                          @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter('ins'); }" @keydown.escape.stop="closeInsert()"
                           @input="runInsert.caret = $el.selectionStart; if (runInsert.repeat && runInsert.text !== runInsert.repeat.title) runInsert.repeat = null"
                           @click="runInsert.caret = $el.selectionStart" @keyup="runInsert.caret = $el.selectionStart"
                           @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
                           @focus="runInsert.focus = true; loadPeople()" @blur="setTimeout(() => runInsert.focus = document.activeElement === $el, 150)"></textarea>
               </div>
-              <template x-if="runView.repeatable"><button type="button" class="rep" id="step-repeat" :class="{on: runInsert.repeat}" :aria-pressed="String(!!runInsert.repeat)"
-                :aria-label="'Repeat “' + runView.repeatable.title + '”: put it in the box'" @mousedown.prevent @click="armRepeat(runView.repeatable)"><svg class="i"><use href="#i-repeat"/></svg></button></template>
+              <template x-if="runView.insert.repeatable"><button type="button" class="rep" id="step-repeat" :class="{on: runInsert.repeat}" :aria-pressed="String(!!runInsert.repeat)"
+                :aria-label="'Repeat “' + runView.insert.repeatable.title + '”: put it in the box'" @mousedown.prevent @click="armRepeat(runView.insert.repeatable)"><svg class="i"><use href="#i-repeat"/></svg></button></template>
               <button class="go" type="submit" id="step-insert" :aria-label="runInsert.repeat ? 'Repeat the step' : 'Insert the steps'" @mousedown.prevent :disabled="runInsert.busy || !boxParsedLines('ins').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
             </form>
-            <template x-if="runInsert.repeat"><p class="gap-note" id="step-repeat-note">A fresh copy of the step before, not done. Change the words to insert a new step instead.</p></template>
+            <template x-if="runInsert.repeat"><p class="gap-note" id="step-repeat-note">A fresh copy of that step, not done. Change the words to insert a new step instead.</p></template>
             <div class="chips" id="step-inschips" :hidden="!chips('ins').length">
               <template x-for="c in chips('ins')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
                 :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"

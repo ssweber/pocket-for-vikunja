@@ -360,11 +360,12 @@ export const INSERT_STEPS = [
    a subtask or a step (assigning yourself) goes the same way, from anywhere. */
 // The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
-export const ACTS = {done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
+export const ACTS = {progress: ['progress'], done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
   claim: ['claim'], unclaim: ['unclaim']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),
   undone: a => patchTask(a.task, {done: false}),
+  progress: a => patchTask(a.task, {percent_done: a.pct / 100}),
   mark: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: DONE_MARK}}),
   markSkip: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: SKIP_MARK}}),
   claim: a => api(`/tasks/${a.task}/assignees`, {method: 'POST', body: {user_id: a.user}}).catch(e => { if (e.code !== ALREADY.assignee) throw e; }),

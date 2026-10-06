@@ -162,7 +162,10 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 /* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
 .list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .row::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:calc(var(--pct,0) * 100%);background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
-.row.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--pct) * 100%),var(--surface) 0)}
+.row.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--slide) * 100%),var(--surface) 0)}
+/* While it's being set, from --slide, which the screen's redraws don't touch (progress.js) */
+.row.setting::after{width:calc(var(--slide) * 100%)}
+.row.sub.setting::after{width:calc(var(--slide) * (100% - 14px - var(--depth) * 38px))}
 .row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
@@ -245,8 +248,12 @@ a.sec-act{text-decoration:none}
 #run-steps{display:flex;flex-direction:column}
 #run-steps .meta .added{color:var(--muted)}
 .step-gap{border-top:1px solid var(--line);background:var(--bg)}
-.step-gap.top{border-top:0}
-#run-steps:has(.step-gap.top) .row:first-of-type{border-top:1px solid var(--line)}
+.gap-where{margin:0;padding:8px 14px 0;font-size:13px;color:var(--muted)}
+/* A step's ›, at its left edge: opens the box under it */
+.ins-open{flex:none;align-self:stretch;width:30px;margin:-12px -8px -12px -14px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
+.ins-open svg.i{width:16px;height:16px;transition:transform .15s}
+.ins-open[aria-expanded=true]{color:var(--accent)}
+.ins-open[aria-expanded=true] svg.i{transform:rotate(90deg)}
 /* The subtask box, with 🔁 beside + */
 .step-gap .rep{width:38px;height:38px;border-radius:10px;border:0;background:var(--sunk);color:var(--ink);display:grid;place-items:center;flex:none}
 .step-gap .rep.on{background:var(--accent-soft);color:var(--accent)}
@@ -346,7 +353,7 @@ body.sheet-open{overflow:hidden}
 .d-title{display:flex;gap:12px;align-items:flex-start;margin:0 0 6px}
 /* progress under the title: a bar to slide along, which thickens while it's being set */
 .d-head{position:relative;margin:0 -8px;padding:4px 8px 2px;border-radius:var(--r-row)}
-.d-head.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--pct) * 100%),transparent 0)}
+.d-head.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--slide) * 100%),transparent 0)}
 .d-path,.d-progress{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .d-progress{display:flex;align-items:center;gap:10px;height:40px;margin:0 0 2px 42px}
 .d-progress .track{flex:1;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;transition:height .12s}

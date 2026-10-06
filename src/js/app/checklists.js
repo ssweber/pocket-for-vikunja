@@ -135,8 +135,7 @@ export default {
         templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,
             done: t.done, labels: t.labels, due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}; }),
-        runs: open.filter(isRun).map(t => ({id: t.id, title: t.title, forText: this.forText(t),
-          steps: stepsOf(t).map(s => ({id: s.id, done: s.done, title: s.title}))})),
+        runs: open.filter(isRun).map(t => ({...t})),
         finished: finished.filter(t => this.isRunTask(t)).slice(0, 5).map(t => ({id: t.id, title: t.title, done_at: t.done_at, forText: this.forText(t)}))};
     }));
     if (seq !== renderSeq) return;

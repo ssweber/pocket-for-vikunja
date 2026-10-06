@@ -53,7 +53,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   opens them all again. A task's open subtasks are ticked off with it. A repeating task moves to its next date, and Undo
   puts its date back. An Undo leaves alone a task that was changed elsewhere since.
 - **Progress:** hold a task, then slide sideways to set how far along it is, in steps of 10%. Sliding to 100% marks it
-  done. A checklist run's bar shows how many of its steps are done instead.
+  done; 100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. A checklist
+  run's bar shows how many of its steps are done instead, and a run's steps are held and slid the same way.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
   comments. Changes save as you make them. Subtasks are added with the same box as quick add. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks. Tap the project above the title to open it.
@@ -181,19 +182,20 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   line says when it's next due. Without a repeat, starting it ends the schedule; taking its date off does too. **Move
   all to today** leaves it where it is. Runs of the same template can be open at once. A task with a due date made a
   template comes round at that date.
-- **A step the template doesn't have:** in **Steps**, just above the step on screen, is a box like the subtask box:
-  what's typed in it and added with **+** is a step before that one, for this run only (a pasted list, a step a line).
-  Once every step is done, the box is after the last, to add one at the end. Quick add reads labels, people and
-  priority there, but not dates. **🔁** beside it puts the step before in the box: left
-  as it is, **+** does that step again, as a fresh copy, not done, with the template's notes and photos for it but none
-  of this run's; changed, it's a new step. Either says **Inserted** or **Repeated** under its title, here, in the
+- **A step the template doesn't have:** in **Steps**, the **›** at the left of any step opens a box under it, like the
+  subtask box: what's typed in it and added with **+** is a step after that one, for this run only (a pasted list, a
+  step a line). The last step's › adds one at the end. Quick add reads labels, people and priority there, but not
+  dates. **🔁** beside it puts that step in the box: left as it is, **+** does that step again, as a fresh copy, not
+  done, with the template's notes and photos for it but none of this run's; changed, it's a new step. Escape, or its ›
+  again, closes the box. Either says **Inserted** or **Repeated** under its title, here, in the
   run's sheet and in Last time, and works like any step, offline too. One that isn't done yet can be deleted with the ×
   on its row while it's on screen. The template never changes; a step from the template can't be taken out of a run,
   only skipped.
 - **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too. A step ticked on
   Today counts the same.
 - **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the
-  person who started the run and the person it's for. A run has no tick on Today: it's finished on its screen. Tapping a
+  person who started the run and the person it's for. A run's row is the same there and under Checklists: its steps
+  done, the next one, and its progress line. A run has no tick on Today: it's finished on its screen. Tapping a
   run opens it; tapping a step opens its run on that step.
 - **The run on screen** updates by itself as teammates tick steps.
 - **A run's ⋯** changes its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its

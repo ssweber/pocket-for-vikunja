@@ -3,7 +3,7 @@ import {cache, collapse, colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError} from '../api.js';
 import {addDays, dueInfo, isLate, isSet, repeats, startOfDay} from '../dates.js';
 import {doneText, openSubtasks, pctOf, undoing} from '../progress.js';
-import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
@@ -113,7 +113,12 @@ export default {
     for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: u.name || '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     const subs = t.related_tasks?.subtask || [];
-    if (subs.length) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
+    // A run's steps done, ticks waiting to be sent too, and the next one.
+    if (subs.length && this.isRunTask(t)) {
+      const c = this.runCount({steps: stepsOf(t)});
+      out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: c.done + '/' + c.total, label: 'Steps done'});
+      if (c.next && !t.done) out.push({key: 'next', text: 'Next: ' + c.next});
+    } else if (subs.length) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments'});
     // Photos and files still uploading count too, so a photo added with a task shows on its row straight away.
     const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waitingByTask.get(t.id)?.length || 0;
