@@ -32,9 +32,9 @@
         <label class="field"><span x-text="sheet.runEdit.prefix ? 'Name, between the template\'s and the day' : 'Name'"></span>
           <input id="r-name" x-model="sheet.runEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="saveRunName()"></label>
         <div class="h3">For</div>
-        <div class="card who-pick" id="r-for" role="radiogroup" aria-label="Who the run is for">
+        <div class="card who-pick" id="r-for" role="group" aria-label="Who the run is for">
           <template x-if="!sheet.runEdit.people.length"><span class="note">Loading…</span></template>
-          <template x-for="u in sheet.runEdit.people" :key="u.id"><button type="button" class="chip toggle" role="radio" :data-user="u.username" :aria-checked="String(sheet.runEdit.forId === u.id)" :aria-pressed="String(sheet.runEdit.forId === u.id)"
+          <template x-for="u in sheet.runEdit.people" :key="u.id"><button type="button" class="chip toggle" :data-user="u.username" :aria-pressed="String(sheet.runEdit.forIds.includes(u.id))"
             @click="setRunFor(u)" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
         </div>
       </div></template>

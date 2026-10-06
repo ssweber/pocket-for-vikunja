@@ -1,6 +1,7 @@
 // Checklists: how templates, runs and timed steps are kept in Vikunja, and steps as they are written.
 import {allPages, ApiError} from './api.js';
 import {htmlToText, parseFragment} from './html.js';
+import {isSet} from './dates.js';
 import {NUMBER_WORDS} from './quickadd.js';
 
 /* Checklists live in a project with a line "pocket:checklists" in its description. In it,
@@ -82,6 +83,49 @@ export function withLinesOf(html, from){
 }
 export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
 export const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
+/* A template: labelled "template", not anyone's step, and done, or not done with a due date: then it's Vikunja's
+   repeating task, which comes round at its time, and starting a run ticks it. A copy still being set up as a run has the
+   label too, not done, with the template's date: its "copied from" link, or its run line, says it isn't one. */
+export const isTemplate = t => !!t && hasTemplateLabel(t) && !t.related_tasks?.parenttask?.length
+  && (t.done || (isSet(t.due_date) && !t.related_tasks?.copiedfrom?.length && !isRunDesc(t.description)));
+// A template that comes round: one with a due date, left not done.
+export const comesRound = t => isTemplate(t) && !t.done;
+/* A template's title starts with "TEMPLATE: ", so it says what it is wherever Vikunja shows it, and isn't deleted on
+   the web by mistake. Pocket shows the name without it. A template without it still is one: the label says so. */
+export const TEMPLATE_PREFIX = 'TEMPLATE: ';
+export const templateName = title => String(title || '').replace(/^\s*template:\s*/i, '');
+export const templateTitle = name => TEMPLATE_PREFIX + templateName(name).trim();
+// How a template repeats, in words: "every day", "every 3 days", "every month", or '' for not at all. Vikunja's "from the
+// day it's done" (mode 2) counts from when a run is started, which ticks the template.
+export function repeatWords(t){
+  if (t.repeat_mode === 1) return 'every month';
+  const s = t.repeat_after || 0;
+  if (!s) return '';
+  const n = s % 86400 === 0 ? [s / 86400, 'day'] : s % 3600 === 0 ? [s / 3600, 'hour'] : [Math.round(s / 60), 'minute'];
+  const every = n[0] === 1 ? 'every ' + n[1] : n[1] === 'day' && n[0] % 7 === 0 ? `every ${n[0] / 7 === 1 ? '' : n[0] / 7 + ' '}week${n[0] / 7 === 1 ? '' : 's'}` : `every ${n[0]} ${n[1]}s`;
+  return t.repeat_mode === 2 ? every + ' after a run starts' : every;
+}
+/* Where Vikunja moves a template when it's ticked: by at least one beat, and every so often (mode 0) on to the first
+   time after now; every month one month only (so one left for months is still late); from the day it's done, the
+   interval after now. Null if it doesn't repeat. Checked on Vikunja 2.7 (the plan's "Check first"). */
+export function vikunjaNext(t, now = Date.now()){
+  const due = Date.parse(t.due_date);
+  if (!isSet(t.due_date)) return null;
+  if (t.repeat_mode === 1) return addMonths(due, 1);
+  const s = (t.repeat_after || 0) * 1000;
+  if (!s) return null;
+  if (t.repeat_mode === 2) return now + s;
+  return due + Math.max(1, Math.floor((now - due) / s) + 1) * s;
+}
+// The first time after `now` on the template's beat, moved on from `from`: where Pocket moves one that Vikunja's tick
+// left in the past (every month).
+export function nextAfter(t, from, now = Date.now()){
+  let d = from;
+  for (let i = 1; d <= now && i < 1200; i++) d = t.repeat_mode === 1 ? addMonths(from, i) : from + i * (t.repeat_after || 0) * 1000;
+  return d;
+}
+// A month on, as Vikunja does it (Go's AddDate): the same day of the month, overflowing into the next (Jan 31 → Mar 3).
+const addMonths = (ms, n) => { const d = new Date(ms); d.setUTCMonth(d.getUTCMonth() + n); return +d; };
 // An open run: a copy of a template, at the top (not anyone's step), and not one still being set up (labelled "template").
 export const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && (!!t.related_tasks?.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t);
 // A step of a run: under a task, and copied from a template's step, or with its line, or inserted during the run.

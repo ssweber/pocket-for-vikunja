@@ -160,8 +160,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
    comes with its notes, so that's the place for how to do it.
    A task with its steps as subtasks can also be made one, with **Use as checklist template** in its sheet's **⋯**.
-3. **Start a run.** Tap **Start** and choose who it's for: people who can work on the project. A name, like "Saturday",
-   takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
+3. **Start a run.** Tap **Start** and choose who it's for: one or more people who can work on the project, the
+   template's assignees to start with. A name, like "Saturday", takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
    seen under Checklists, and is set up once Pocket reaches Vikunja. A step assigned to someone in the template stays
    assigned to them in every run.
 4. **Work through it.** One step at a time: **Done**, or **Skip**. A note typed on the step goes with either: **Done,
@@ -171,6 +171,15 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
    first, and they stay not done.
 
+- **A checklist that comes round:** give the template a date in its sheet, under **Comes round**, and how it
+  **Repeats**: every day at 8:00, say. It's then Vikunja's repeating task: at its time it shows on Today, without a tick,
+  to its assignees (or, with none, everyone who can work on the project), and Vikunja emails its reminders. Tapping it
+  opens Start. Starting a run of it on the day it's due moves it on to its next time, and the run is due at the time
+  the template was, so one left open shows as overdue; the Start sheet says which time it's for. A start at 7:55 is the
+  8:00 one. One left for weeks moves on to its next time after now: missed times aren't made up. Under Checklists, its
+  line says when it's next due. Without a repeat, starting it ends the schedule; taking its date off does too. **Move
+  all to today** leaves it where it is. Runs of the same template can be open at once. A task with a due date made a
+  template comes round at that date.
 - **A step the template doesn't have:** in **Steps**, just above the step on screen, is a box like the subtask box:
   what's typed in it and added with **+** is a step before that one, for this run only (a pasted list, a step a line).
   Once every step is done, the box is after the last, to add one at the end. Quick add reads labels, people and
@@ -189,7 +198,9 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
 - **A run's ⋯** changes its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its
   steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
 - **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them.
-- **In Vikunja's web app**, a template is a done task labelled `template`, with its steps as done subtasks. A run is a
+- **In Vikunja's web app**, a template is a task labelled `template`, its title starting "TEMPLATE: " so it isn't
+  deleted by mistake, with its steps as done subtasks. It's done, unless it comes round: then it's a repeating task
+  there, and ticking it there skips that time without a run. Pocket shows the name without "TEMPLATE: ". A run is a
   copy of it, named like "Opening up · run 3 · Oct 4", which Vikunja links to the template as "copied from". The web app
   can't reorder steps, so reorder them in Pocket: it keeps the order in a line like `pocket:order 12 15 13` in the
   template's description (the steps' task numbers). Leave that line be; steps it doesn't list, like one added in the

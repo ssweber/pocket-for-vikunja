@@ -6,7 +6,7 @@
         <div class="list">
           <template x-for="t in cl.templates" :key="t.id"><div class="row cl-tpl" :data-id="t.id">
             <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-checklist"/></svg>
-              <div class="t"><div class="title" x-text="t.title"></div><div class="meta num" x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></div></div></button>
+              <div class="t"><div class="title" x-text="t.title"></div><div class="meta num"><span x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></span><template x-if="scheduleText(t)"><span class="cl-when" x-text="scheduleText(t)"></span></template></div></div></button>
             <template x-if="canWrite(cl.project.id)"><button class="btn cl-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button></template>
           </div></template>
           <template x-if="!cl.templates.length"><p class="cl-hint">No templates here yet: a template is the checklist each run is copied from.</p></template>
@@ -17,7 +17,7 @@
           <div class="cl-sub">In progress</div>
           <div class="list">
             <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
-              <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="'For ' + (e.for.id === user?.id ? 'you' : e.for.name || e.for.username)"></span></div></div>
+              <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="forText({assignees: e.for})"></span></div></div>
               <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
             <template x-for="r in cl.runs" :key="r.id"><div class="row cl-run" :data-id="r.id">
               <button class="body" @click="openRun(r.id)"><div class="title" x-text="r.title"></div>

@@ -1,10 +1,10 @@
 // A task's sheet: its details, labels and people, comments and attachments, and deleting.
-import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts} from '../util.js';
+import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO} from '../util.js';
 import {api, errText, items, NetError, patchTask} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, progressPatch} from '../progress.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
-import {notesOnly, patiently, stepInfos, stepsOf, withLinesOf} from '../checklists.js';
+import {hasTemplateLabel, notesOnly, patiently, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
 import {atTime} from '../quickadd.js';
 import {fileEntry, NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
 import {blankSheet, shared} from './core.js';
@@ -134,7 +134,7 @@ export default {
   showTask(t){
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
     this.keepTemplate(this.sheet.task);
-    if (document.activeElement?.id !== 'd-title') this.sheet.title = t.title;
+    if (document.activeElement?.id !== 'd-title') this.sheet.title = this.rowTitle(t);
   },
   /* Repeat settings as Vikunja stores them: repeat_mode 1 is monthly, otherwise repeat_after is an interval in seconds. */
   get repeatValue(){
@@ -155,10 +155,30 @@ export default {
     if (v === 'custom') return;
     const patch = v === 'month' ? {repeat_mode: 1, repeat_after: 0}
       : {repeat_mode: 0, repeat_after: {none: 0, day: 86400, week: 604800, '2weeks': 1209600}[v]};
-    // A repeating task needs a due date to move forward from.
-    if (v !== 'none' && !isSet(this.sheet.task.due_date)) { const d = atTime(new Date(), this.dueTime); patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString(); }
+    // A repeating task needs a due date to move forward from. A template that's done has none that counts: given one, it
+    // comes round, not done.
+    const tpl = this.checklistRole === 'template';
+    if (v !== 'none' && !isSet(this.dueShown)) {
+      const d = atTime(new Date(), this.dueTime);
+      patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString();
+      if (tpl) patch.done = false;
+    }
     this.save(patch);
   },
+  // The due date the sheet shows: a template's is when it next comes round, so a done one has none.
+  get dueShown(){ const t = this.sheet.task; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
+  /* The due date set in the sheet. A template's is when it comes round: given one, it's left not done; taken off, it's
+     done again, its repeat first, then the date and done, in two saves: in one, Vikunja would move it on to its next
+     time and leave it not done. */
+  async setDue(v){
+    const t = this.sheet.task;
+    if (this.checklistRole !== 'template') return this.save({due_date: v});
+    if (isSet(v)) return this.save({due_date: v, ...t.done && {done: false}});
+    if (repeats(t) && await this.save({repeat_after: 0, repeat_mode: 0}) === false) return;
+    return this.save({due_date: ZERO, done: true});
+  },
+  // The template a step is in, by name.
+  get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },
   get subtasks(){ return stepsOf(this.sheet.task); },
   // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
@@ -233,6 +253,7 @@ export default {
       pendingSaves--;
       if (this.sheet.task?.id === id) { this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id)); }
       this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+      return false;
     });
   },
   // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
@@ -291,9 +312,10 @@ export default {
     } catch (e) { this.notify(`Moved, but not all its subtasks: ${e.message}`); }
     this.sheet.dirty = true;
   },
+  // A template's name: its title keeps "TEMPLATE: " before it.
   saveTitle(){
-    const v = this.sheet.title.trim();
-    if (v && v !== this.sheet.task.title) this.save({title: v}); else this.sheet.title = this.sheet.task.title;
+    const t = this.sheet.task, v = this.sheet.title.trim();
+    if (v && v !== this.rowTitle(t)) this.save({title: hasTemplateLabel(t) ? templateTitle(v) : v}); else this.sheet.title = this.rowTitle(t);
   },
   // The notes as text, and as saved: Pocket's lines (a template's order, a run's) are left out while they're edited, and
   // kept. Saved with the lines Vikunja has when they're sent (`t`, read then), so a step moved elsewhere stays moved.

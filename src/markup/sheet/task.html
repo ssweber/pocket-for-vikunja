@@ -6,7 +6,7 @@
         <!-- Where the task lives: its project, and the task it's part of -->
         <div class="d-path" id="d-path">
           <i class="dot" :style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheet.task.project_id)" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
-          <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTask.title"></button></span></template>
+          <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTitle"></button></span></template>
         </div>
         <div class="d-title">
           <template x-if="!ofTemplate && canEdit"><button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="sheetDone()"><svg class="i"><use href="#i-check"/></svg></button></template>
@@ -43,13 +43,21 @@
       </div></template>
 
       <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Shared with you to read only: you can see this task, but not change it.</p></template>
-      <div class="card" x-show="!ofTemplate">
-        <div class="prop"><span class="k">Due</span><span class="v">
-          <input type="datetime-local" id="d-due" aria-label="Due date" :disabled="!canEdit" :value="toLocalInput(sheet.task.due_date)" @change="save({due_date: fromLocalInput($event.target.value)})">
-          <template x-if="isSet(sheet.task.due_date) && canEdit"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="save({due_date: ZERO})"><svg class="i"><use href="#i-close"/></svg></button></template>
+      <!-- A template's: when it comes round, as Vikunja's repeating task, and the reminders Vikunja emails before then -->
+      <template x-if="checklistRole === 'template'"><div class="h3">Comes round</div></template>
+      <div class="card" id="d-due-card" x-show="!ofTemplate || checklistRole === 'template'">
+        <div class="prop"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
+          <input type="datetime-local" id="d-due" :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
+          <template x-if="isSet(dueShown) && canEdit"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="setDue(ZERO)"><svg class="i"><use href="#i-close"/></svg></button></template>
         </span></div>
-        <!-- Reminders, which Vikunja sends by email: counted back from the due date when there is one, or at a set time -->
-        <div class="prop" id="d-reminders"><span class="k">Reminders</span><span class="v">
+        <template x-if="checklistRole === 'template'"><div class="prop"><span class="k">Repeats</span><span class="v">
+          <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">
+            <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
+          </select>
+        </span></div></template>
+        <!-- Reminders, which Vikunja sends by email: counted back from the due date when there is one, or at a set time.
+             Only while a task isn't done, so a template's only while it comes round. -->
+        <div class="prop" id="d-reminders" x-show="checklistRole !== 'template' || isSet(dueShown)"><span class="k">Reminders</span><span class="v">
           <template x-for="(r, k) in sheet.task.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
             <template x-if="canEdit"><button class="chip-x" :aria-label="'Remove the reminder ' + reminderText(r)" @click="removeReminder(k)"><svg class="i"><use href="#i-close"/></svg></button></template></span></template>
           <template x-if="canEdit && !sheet.remindAt"><select id="d-remind-add" aria-label="Add a reminder" @change="addReminder($event.target.value); $event.target.value = ''">
@@ -59,6 +67,7 @@
         </span></div>
         <template x-if="remindersNote && (sheet.task.reminders || []).length"><p class="note prop-note" x-text="remindersNote"></p></template>
       </div>
+      <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round">With a date, it shows on Today then, and starting a run moves it on. Without one, start it from Checklists.</p></template>
 
       <div class="h3">Notes</div>
       <div class="card" id="d-desc-card">
@@ -210,11 +219,11 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             </template></div>
           </div></template>
         </span></div>
-        <div class="prop"><span class="k">Repeats</span><span class="v">
+        <template x-if="checklistRole !== 'template'"><div class="prop"><span class="k">Repeats</span><span class="v">
           <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
           </select>
-        </span></div>
+        </span></div></template>
       </div>
       <template x-if="picker.open"><div class="card picker">
         <template x-if="picker.loading"><div class="loading" style="padding:16px">Loading labels…</div></template>

@@ -3,7 +3,7 @@ import {cache, collapse, colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError} from '../api.js';
 import {addDays, dueInfo, isLate, isSet, repeats, startOfDay} from '../dates.js';
 import {doneText, openSubtasks, pctOf, undoing} from '../progress.js';
-import {CHECKLIST_MARK} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
@@ -91,10 +91,18 @@ export default {
     if (!this.view.project) return {title: 'Project not found.', body: 'It may be archived or you lost access.'};
     return this.route.showDone ? {title: 'Nothing done here yet.', body: ''} : {title: 'All clear.', body: 'New tasks you add now land in this project.'};
   },
+  // A row's title: a template's without its "TEMPLATE: ".
+  rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
   rowMeta(t){
     const out = [], due = dueInfo(t.due_date);
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
+    // A template that comes round: what tapping it does, and who it's for, instead of its project, label and steps.
+    if (comesRound(t) && this.checklistIds.has(t.project_id)) {
+      out.push({key: 'tpl', text: this.canWrite(t.project_id) ? 'Checklist: tap to start' : 'Checklist'});
+      for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: u.name || '@' + u.username, label: 'For ' + (u.name || u.username)});
+      return out;
+    }
     const p = (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
     // A step of a run on Today or in search: which run, instead of the project (the run's), so two runs' steps can be
     // told apart. (In a project's list, it's under its run already.)
@@ -368,9 +376,12 @@ export default {
   /* "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back. Not a
      repeating task: moved, its next times would follow the new date; ticked, it moves on to its next date. */
   async moveOverdueToToday(){
-    const overdue = this.view.groups.find(g => g.key === 'overdue')?.tasks || [], tasks = overdue.filter(t => !repeats(t));
-    const stay = overdue.length - tasks.length, stays = !stay ? '' : `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}: tick ${stay === 1 ? 'it' : 'them'} to move on to the next date.`;
-    if (!tasks.length && stay) { this.notify('Nothing moved. ' + stays); return; }
+    // Nor a checklist that comes round: moved, a weekly one would come round on another day from then on.
+    const overdue = this.view.groups.find(g => g.key === 'overdue')?.tasks || [], tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
+    const tpl = overdue.filter(t => hasTemplateLabel(t)).length, stay = overdue.length - tasks.length - tpl;
+    const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}: tick ${stay === 1 ? 'it' : 'them'} to move on to the next date.`,
+      tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}: start ${tpl === 1 ? 'it' : 'them'} to move on to the next time.`].filter(Boolean).join(' ');
+    if (!tasks.length && stays) { this.notify('Nothing moved. ' + stays); return; }
     if (!tasks.length || this.movingOverdue) return;
     this.movingOverdue = true;
     const now = new Date();

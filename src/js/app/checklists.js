@@ -1,8 +1,9 @@
 // Checklists, their projects and templates, and writing steps.
 import {cache, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask, why} from '../api.js';
+import {fmtTime, isSet, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
-import {CHECKLIST_MARK, draftSteps, hasTemplateLabel, isChecklistDesc, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, withOrder} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, draftSteps, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
@@ -10,15 +11,19 @@ import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 
 // Templates as last loaded, kept for starting a run without a connection: id -> {id, title, project_id, related_tasks},
-// with the steps in order.
+// with the steps in order, and when it comes round and who for.
 let templatesKept = {};
-const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, related_tasks: {subtask: stepsOf(t).map(s => ({id: s.id, title: s.title}))}}; };
+const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, labels: t.labels, done: t.done, due_date: t.due_date,
+  repeat_after: t.repeat_after, repeat_mode: t.repeat_mode, assignees: t.assignees || [], related_tasks: {subtask: stepsOf(t).map(s => ({id: s.id, title: s.title}))}}; };
+// A time as a template's line says it: "6:00 PM" today, else "Wed, Oct 7, 8:00 AM".
+const whenText = (d, today) => +startOfDay(d) === +startOfDay() ? fmtTime(d) + (today ? ' ' + today : '')
+  : d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
 
 export default {
   // A template as its sheet shows it now, kept for starting a run offline: so a step just moved, added or removed is
   // taken into account, not only once Checklists loads again.
   keepTemplate(t){
-    if (!hasTemplateLabel(t) || !t.done || t.related_tasks?.parenttask?.length) return;
+    if (!isTemplate(t)) return;
     templatesKept = {...saved.get('templates'), ...templatesKept};
     keepTemplate(t); saved.set('templates', templatesKept);
   },
@@ -33,7 +38,7 @@ export default {
   get checklistRole(){
     const t = this.sheet.task, r = t?.related_tasks || {};
     if (!t || !this.checklistIds.has(t.project_id)) return null;
-    if (hasTemplateLabel(t) && t.done) return 'template';
+    if (isTemplate(t)) return 'template';
     const p = r.parenttask?.[0];
     if (p) return isRunStepTask(t) ? 'step' : hasTemplateLabel(cache.get(p.id)) || templatesKept[p.id] ? 'tplstep' : null;
     return (r.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t) ? 'run' : 'candidate';
@@ -120,13 +125,15 @@ export default {
     const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
     const checklists = await Promise.all(ws.map(async p => {
       const [templates, open, finished] = await Promise.all([
-        labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `done = true && labels in ${labels.join(', ')}`})) : [],
+        // Done, or not done with a due date: one that comes round.
+        labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `labels in ${labels.join(', ')}`})) : [],
         this.openTasks(p.id),
         // Finished lately: one page of the newest done tasks, of which the runs.
         api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', sort_by: 'done_at', order_by: 'desc', per_page: 50})).then(items)]);
       return {project: {id: p.id, title: p.title},
-        templates: templates.filter(t => !t.related_tasks?.parenttask?.length).sort((a, b) => a.title.localeCompare(b.title))
-          .map(t => { keepTemplate(t); return {id: t.id, title: t.title, steps: (t.related_tasks?.subtask || []).length}; }),
+        templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
+          .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,
+            done: t.done, labels: t.labels, due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}; }),
         runs: open.filter(isRun).map(t => ({id: t.id, title: t.title, forText: this.forText(t),
           steps: stepsOf(t).map(s => ({id: s.id, done: s.done, title: s.title}))})),
         finished: finished.filter(t => this.isRunTask(t)).slice(0, 5).map(t => ({id: t.id, title: t.title, done_at: t.done_at, forText: this.forText(t)}))};
@@ -135,6 +142,18 @@ export default {
     saved.set('templates', templatesKept);
     this.view.checklists = checklists;
     saved.set('checklists', {checklists, at: new Date().toISOString()});
+  },
+  /* A template's line under Checklists, after its steps: "Next: Wed, Oct 7, 8:00 AM, then every day", or "Due now,
+     since 6:00 PM today, just once". '' for one that doesn't come round. */
+  scheduleText(t){
+    if (!comesRound(t)) return '';
+    const d = new Date(t.due_date), then = repeatWords(t) ? ', then ' + repeatWords(t) : ', just once';
+    return (d <= new Date() ? 'Due now, since ' + whenText(d, 'today') : 'Next: ' + (+startOfDay(d) === +startOfDay() ? 'today, ' : '') + whenText(d)) + then;
+  },
+  // Whether a template that's due shows on your Today: for its assignees, or, with none, for anyone who can start it.
+  templateFor(t){
+    const who = t.assignees || [];
+    return who.length ? who.some(u => u.id === this.user?.id) : this.canWrite(t.project_id);
   },
   forText(t){
     const who = (t.assignees || []).map(u => u.id === this.user?.id ? 'you' : u.name || u.username);
@@ -177,7 +196,7 @@ export default {
   // else there that isn't part of a run shows as anywhere else.
   inToday(t, runs){
     if (!this.checklistIds.has(t.project_id)) return true;
-    if (hasTemplateLabel(t)) return false;                                   // a template, or a run being set up
+    if (hasTemplateLabel(t)) return comesRound(t) && this.templateFor(t);  // a template that's due, not a run being set up
     if ((t.assignees || []).some(u => u.id === this.user?.id)) return true;
     const parent = t.related_tasks?.parenttask?.[0]?.id;
     if (t.id in runs) return runs[t.id];
@@ -185,8 +204,9 @@ export default {
     return !isRun(t) && !isRunStepTask(t);                                 // a run, or a step of one, that isn't known
   },
 
-  /* Make the open task a template: label it "template", then mark its steps and itself done, so none of them is a
-     to-do anywhere. Itself last, so one cut off half way isn't a template yet, and the button finishes it. */
+  /* Make the open task a template: label it "template", then mark its steps done, so none of them is a to-do anywhere,
+     and itself: done, or, with a due date, left not done to come round at that time (its repeat kept). Itself last, so
+     one cut off half way isn't a template yet, and the button finishes it. */
   async makeTemplate(){
     const t = this.sheet.task;
     if (!t || this.sheet.checklistBusy) return;
@@ -198,7 +218,8 @@ export default {
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
-      this.notify('Made a checklist template. Start runs from it here or under Checklists.');
+      this.notify(comesRound(full) ? `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a run moves it on.`
+        : 'Made a checklist template. Start runs from it here or under Checklists.');
     } catch (e) { this.notify('Not made a template: ' + e.message); }
     finally { this.sheet.checklistBusy = false; }
   },
@@ -210,7 +231,10 @@ export default {
       await api(`/tasks/${t.id}/labels`, {method: 'POST', body: {label_id: l.id}}).catch(e => { if (e.code !== ALREADY.label) throw e; });
     }
     for (const id of stepIds) await patiently(() => patchTask(id, {done: true}));
-    await patiently(() => patchTask(t.id, {done: true}));
+    // A copy of something (a template duplicated on the web, say): its "copied from" link would make it a run being set up.
+    for (const c of t.related_tasks?.copiedfrom || [])
+      await patiently(() => api(`/tasks/${t.id}/relations/copiedfrom/${c.id}`, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
+    await patiently(() => patchTask(t.id, {done: !isSet(t.due_date), ...t.title && {title: templateTitle(t.title)}}));
   },
 
   /* ---------- writing steps: under New template, and under a template ---------- */
@@ -258,9 +282,9 @@ export default {
     let t = null;
     try {
       // Another name is another task, and its steps are new too.
-      const kept = nt.jobs?.name[0]?.line === name ? nt.jobs : null;
-      const jobs = nt.jobs = {name: jobsFor(kept?.name || [], [name]), steps: jobsFor(kept?.steps || [], d.added)};
-      const made = await this.createLines([name], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}, jobs: jobs.name});
+      const line = templateTitle(name), kept = nt.jobs?.name[0]?.line === line ? nt.jobs : null;
+      const jobs = nt.jobs = {name: jobsFor(kept?.name || [], [line]), steps: jobsFor(kept?.steps || [], d.added)};
+      const made = await this.createLines([line], {pid: nt.project.id, ignore: {due: true, repeat: true, project: true}, jobs: jobs.name});
       if (made.error) throw made.error;
       t = {id: made.ids[0], project_id: nt.project.id, labels: []};
       const r = await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, jobs: jobs.steps});

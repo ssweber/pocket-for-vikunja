@@ -1,10 +1,10 @@
 // Starting a run, and working through one.
 import {cache, store, taskDrafts, ZERO} from '../util.js';
-import {api, ApiError, errText, items, NetError, passing, serverTime, triedSince} from '../api.js';
-import {dueInfo, isSet} from '../dates.js';
+import {api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
+import {addDays, dueInfo, isSet, startOfDay} from '../dates.js';
 import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf} from '../checklists.js';
+import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
@@ -22,7 +22,7 @@ export default {
   async openStart(id){
     this.openSheet('start');
     const mine = this.sheet;
-    Object.assign(this.sheet, {loading: true, start: {template: null, steps: [], people: [], forId: this.user?.id, busy: false, name: '', next: 1}});
+    Object.assign(this.sheet, {loading: true, start: {template: null, steps: [], people: [], forIds: [this.user?.id], busy: false, name: '', next: 1}});
     try {
       // Without a connection, the template as it was last loaded under Checklists: the run is set up once Pocket
       // reaches Vikunja.
@@ -39,10 +39,34 @@ export default {
       if (this.sheet !== mine) return;
       const me = this.user;
       people = [me, ...people.filter(u => u.id !== me.id).sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username))];
-      Object.assign(this.sheet.start, {template: {id: t.id, title: t.title, project_id: t.project_id}, steps: stepsOf(t), people,
+      // For the template's assignees, to start with, if it has any (and they can tick a step); else for you.
+      const forIds = (t.assignees || []).map(u => u.id).filter(id => people.some(u => u.id === id));
+      Object.assign(this.sheet.start, {template: {id: t.id, title: templateName(t.title), project_id: t.project_id, labels: t.labels, done: t.done,
+        due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}, steps: stepsOf(t), people, forIds: forIds.length ? forIds : [me.id],
         next: (t.related_tasks?.copiedto || []).length + 1});
     } catch (e) { if (this.sheet === mine) this.sheet.error = errText(e); }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
+  },
+  // Who a run is for: any number of people, at least one.
+  toggleFor(st, u){
+    const on = st.forIds.includes(u.id);
+    if (on && st.forIds.length === 1) return;
+    st.forIds = on ? st.forIds.filter(id => id !== u.id) : [...st.forIds, u.id];
+  },
+  /* The due date a start ticks: a template that comes round and is due by the end of today. Started at 7:55, it's the
+     8:00 one, so the 8:00 doesn't make a second run. Null for any other. */
+  tickOf(tpl){ return comesRound(tpl) && new Date(tpl.due_date) < addDays(startOfDay(), 1) ? tpl.due_date : null; },
+  // Under For in the Start sheet: what starting does to a template that comes round.
+  get startNote(){
+    const t = this.sheet.start?.template;
+    if (!t || !comesRound(t)) return '';
+    const due = new Date(t.due_date), today = +startOfDay(due) === +startOfDay();
+    const at = d => d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+    if (!this.tickOf(t)) return `${t.title} is next due ${at(due)}: this run doesn't move it on.`;
+    const one = today ? `the ${due.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})} one` : `the one due ${at(due)}`;
+    const next = vikunjaNext(t);
+    if (next === null) return `This is ${one}: starting it marks ${t.title} done, and it doesn't come round again.`;
+    return `This is ${one}: starting it moves ${t.title} on to ${at(new Date(nextAfter(t, next)))}.`;
   },
   get startProgress(){ const s = this.starting; return s ? `Setting up… ${Math.round(100 * s.done / s.total)}%` : 'Setting up…'; },
   /* A run is set up through the outbox, so a start that's cut off carries on where it stopped once Pocket reaches
@@ -59,11 +83,12 @@ export default {
       return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, remind: offset >= 6e4, tpl: s.title,
         taskId: null, tried: false, linked: false, ready: false};
     });
-    const who = st.people.find(u => u.id === st.forId) || this.user;
+    const who = st.people.filter(u => st.forIds.includes(u.id));
+    // tick: the template's due date, if this start ticks it (tickOf); the run is due then too.
     const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template, name: st.name.trim(),
-      for: {id: who.id, username: who.username, name: who.name || ''}, steps, fails: 0};
+      for: (who.length ? who : [this.user]).map(u => ({id: u.id, username: u.username, name: u.name || ''})), steps, tick: this.tickOf(st.template), fails: 0};
     st.busy = true;
-    this.starting = {id: entry.id, done: 0, total: 5 + steps.length * 3};
+    this.starting = {id: entry.id, done: 0, total: 6 + steps.length * 3};
     const {kept, full} = await sync.add(entry, []);
     const r = await sync.lock(() => this.sendEntry(entry.id));
     this.starting = null; st.busy = false;
@@ -71,7 +96,7 @@ export default {
     if (r.status === 'sent' || r.status === 'gone') {
       this.closeSheet(true);
       if (r.runId) this.openRun(r.runId);
-      this.notify('Started ' + st.template.title, r.runId && {label: 'Undo', fn: () => this.deleteRun(r.runId)});
+      this.notify('Started ' + st.template.title, r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }});
       this.toast.startOf = r.runId;                                          // gone once anything's done in the run (act)
     } else if (r.status === 'offline') {
       sync.keep();
@@ -91,7 +116,7 @@ export default {
         if (this.starting?.id === j.id) this.starting.done = runProgress(j);
       }
       await sync.remove(j.id);
-      return {...none, status: 'sent', runId: j.runId, changed: 1};
+      return {...none, status: 'sent', runId: j.runId, ticked: j.ticked?.to ? {id: j.template.id, ...j.ticked} : null, changed: 1};
     } catch (error) {
       // No connection or signed out: kept for later. Vikunja still answering 500 after a few tries: kept too, a few times.
       if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++j.fails < 5)))) {
@@ -129,6 +154,14 @@ export default {
       return {...none, status: 'error', error};
     }
   },
+  /* A start undone: the template it ticked back at the time it was due, unless it's been changed since (started again,
+     say). */
+  async untick({id, from, to, done}){
+    try {
+      const t = await api('/tasks/' + id);
+      if (t.done === done && Date.parse(t.due_date) === Date.parse(to)) await patiently(() => patchTask(id, {due_date: from, done: false}));
+    } catch {}
+  },
   /* The copy a cut-off duplicate made, if it got there: copied from this task during that try (rec: triedAt, and
      triedUntil once it failed), by you, not one already used, still as it was copied (no steps of its own, and for a
      run, the template's title then or now, not a run's name), and under no other run than `run`. A copy someone else
@@ -153,7 +186,7 @@ export default {
     this.openSheet('runopts');
     const parts = run.title.split(' · '), named = parts.length >= 3;
     this.sheet.runEdit = {prefix: named ? parts[0] : '', day: named ? parts[parts.length - 1] : '', name: named ? parts.slice(1, -1).join(' · ') : run.title,
-      forId: run.assignees?.[0]?.id ?? null, people: []};
+      forIds: (run.assignees || []).map(u => u.id), people: []};
     const edit = this.sheet.runEdit;
     try {
       const people = items(await api(`/projects/${run.project_id}/users/search`)), me = this.user;
@@ -168,19 +201,22 @@ export default {
     try { const t = await this.saveTask(run.id, {title}); run.title = t.title; this.saveRun(); this.notify('Renamed'); }
     catch (err) { this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message); }
   },
+  // Someone added to or taken off who the run is for: at least one stays.
   async setRunFor(u){
     const e = this.sheet.runEdit, run = this.view.run?.run;
-    if (!run || e.forId === u.id) return;
-    const was = e.forId;
-    e.forId = u.id;
+    if (!run) return;
+    const was = e.forIds, on = was.includes(u.id);
+    if (on && was.length === 1) return;
+    e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
+    const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
-      // After any save still going (a new name, say), so Vikunja doesn't save over it with the old assignee.
-      const put = shared.saveChain.then(() => api(`/tasks/${run.id}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: u.id}]}}));
+      // After any save still going (a new name, say), so Vikunja doesn't save over it with the old assignees.
+      const put = shared.saveChain.then(() => api(`/tasks/${run.id}/assignees/bulk`, {method: 'PUT', body: {assignees: e.forIds.map(id => ({id}))}}));
       shared.saveChain = put.catch(() => {});
       await put;
-      run.assignees = [u]; this.saveRun();
-      this.notify('Now for ' + (u.id === this.user?.id ? 'you' : u.name || u.username));
-    } catch (err) { e.forId = was; this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message); }
+      run.assignees = who; this.saveRun();
+      this.notify(this.forText({assignees: who}).replace(/^For/, 'Now for'));
+    } catch (err) { e.forIds = was; this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message); }
   },
   // Delete a run, from its ⋯ or its sheet: its steps go too, so none is left behind as a task of its own.
   async confirmDeleteRun(run){
@@ -395,9 +431,11 @@ export default {
     return {done: done.filter(Boolean).length, total: r.steps.length, next: r.steps.find((x, i) => !done[i])?.title || ''};
   },
   goProject(id){ this.closeSheet(true); this.go('#/project/' + id); },
-  // A row in a list: a checklist run, or a step of one, opens the run; any other task opens its sheet.
+  // A row in a list: a checklist run, or a step of one, opens the run; a template that comes round, its Start sheet;
+  // any other task opens its sheet.
   openRow(t){
     if (this.isRunTask(t)) return this.openRun(t.id);
+    if (this.checklistIds.has(t.project_id) && isTemplate(t) && !t.done) return this.openStart(t.id);
     const run = this.stepRun(t);
     if (run) return this.openRun(run, t.id);
     this.openTask(t.id);

@@ -5,10 +5,12 @@
       <template x-if="sheet.error"><div class="err" x-html="sheet.error"></div></template>
       <template x-if="sheet.start?.template"><div>
         <div class="h3">For</div>
-        <div class="card who-pick" id="start-for" role="radiogroup" aria-label="Who the run is for">
-          <template x-for="u in sheet.start.people" :key="u.id"><button type="button" class="chip toggle" role="radio" :data-user="u.username" :aria-checked="String(sheet.start.forId === u.id)" :aria-pressed="String(sheet.start.forId === u.id)"
-            @click="sheet.start.forId = u.id" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
+        <!-- Any number of people, at least one: the template's assignees to start with -->
+        <div class="card who-pick" id="start-for" role="group" aria-label="Who the run is for">
+          <template x-for="u in sheet.start.people" :key="u.id"><button type="button" class="chip toggle" :data-user="u.username" :aria-pressed="String(sheet.start.forIds.includes(u.id))"
+            @click="toggleFor(sheet.start, u)" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
         </div>
+        <template x-if="startNote"><p class="note" id="start-note" x-text="startNote"></p></template>
         <!-- What the run is called: the words typed take the place of "run 3", between the template's name and the day -->
         <label class="field" style="margin-top:14px"><span>Name, between the template's and the day</span>
           <input id="start-name" x-model="sheet.start.name" :placeholder="'run ' + sheet.start.next" autocomplete="off" enterkeyhint="go"

@@ -103,6 +103,8 @@ template can't be taken out of a run: Skip it, so the run says it was skipped.
 
 ## 2. Checklists that come round again
 
+Built 2026-10-06, as below.
+
 ### What it is
 
 Vikunja has no way to make a task at a set time: a repeating task is the same task, whose dates move on when it's
@@ -142,11 +144,20 @@ The template owns the schedule, and a run never repeats. A run is made when the 
   started from a template not due has none, as now.
 - The run has no repeat, no "template" label and none of the template's reminders (duplicate copies them all).
 
-### On Today and under Checklists (to discuss before building)
+### On Today, under Checklists, in its sheet and the Start sheet (decided 2026-10-06)
 
 - On Today, a template that's due shows where any task due then would, as runs do: with no tick, and tapping it opens
-  the Start sheet. Under it in grey, "Checklist: tap to start".
-- Under Checklists, the template's grey line: "Next: Wed Oct 7, 8:00, then every day", or "Due now".
+  the Start sheet. Under it in grey, "Checklist: tap to start". It shows to the template's assignees, or to everyone
+  who can write to its project if it has none. Move all to today leaves templates where they are: it would move a
+  weekly one to another weekday for good.
+- Under Checklists, the template's grey line after its steps: "Next: Wed Oct 7, 8:00, then every day" (or "just
+  once"), or "Due now, since 18:00 today, then every day". Without a date, its steps only, as now.
+- The template's sheet has a card of its own, "Comes round": Next due, Repeats (moved there from Details for a
+  template) and Reminders, with a note under it: with a date, it shows on Today then, and starting a run moves it on;
+  without one, start it from Checklists.
+- The Start sheet's For picks any number of people, at least one: the template's assignees to start with, else you.
+  The run is assigned to all of them. Under For, what starting does: "This is the 8:00 one: starting it moves Opening
+  up on to Wed Oct 7, 8:00", or that a template not due by the end of today isn't moved on.
 - Runs of the same template can be open at once, scheduled or not, as manual ones can now: one left open doesn't hold
   back the next time.
 
@@ -169,9 +180,25 @@ old runs. A later purge must never delete a template.
 
 ### Check first, on the local Vikunja 2.7
 
-How far each repeat mode moves a template left for weeks (Vikunja's every-so-often seems to jump past now, its monthly
-one month at a time); that saving a done template's repeat leaves it done; that its reminders are emailed while it's
-not done; what deleting a template does to its steps.
+Checked 2026-10-06 through API v2 (and Vikunja's source for emails):
+
+- **Every so often (mode 0)** jumps to the first time after now, keeping the time of day: a daily one due three weeks
+  ago at 19:09 moved to 19:09 today; a weekly one, to the same weekday. Ticked early, it still moves one beat: a daily
+  one due tomorrow went to the day after.
+- **Every month (mode 1)** moves one month only: one due three months ago is still two months late after the tick.
+  This is the only mode Pocket has to move on itself, a month at a time.
+- **From the day it's done (mode 2)** moves to the time of the tick plus the interval, so the time of day follows the
+  start (started at 7:55, next is 7:55 tomorrow). Pocket never sets this mode; the web app can.
+- Reminders counted from the due date follow it. A reminder at a set time is moved by its own sum, so it can end up a
+  beat apart from the due date (moved 22 days where the due date moved 21).
+- Saving a done task's repeat leaves it done and its dates where they were; marking it not done then moves nothing.
+  The repeat off, then no due date and done, in two saves, leaves it done with no date. In one save Vikunja moves the
+  date and leaves it not done, as the source said.
+- Duplicate copies the title as it is (`TEMPLATE: ` too), the due date, the repeat and the reminders, not done, with a
+  `copiedfrom` link.
+- Reminder emails are only for tasks not done (`tasks.done = false` in `getTasksWithRemindersDueAndTheirUsers`), to
+  the task's assignees, its creator and its subscribers.
+- Deleting a parent leaves its subtasks as tasks of their own, with no link: a deleted template's steps stay, done.
 
 ### Tests
 

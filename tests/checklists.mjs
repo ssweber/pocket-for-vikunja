@@ -144,9 +144,10 @@ try {
     await page.click('#nt-create');
     await toast(`Made ${TEMPLATE}`);
     const named = async title => (await api('/tasks?q=' + encodeURIComponent(title))).items.filter(t => t.title === title && t.project_id === project.id).length;
-    for (const title of [TEMPLATE, ...STEPS]) if (await named(title) !== 1) throw new Error(`${await named(title)} tasks “${title}”`);
+    // Its title says it's a template wherever Vikunja shows it; Pocket shows its name (tplRow).
+    for (const title of [`TEMPLATE: ${TEMPLATE}`, ...STEPS]) if (await named(title) !== 1) throw new Error(`${await named(title)} tasks “${title}”`);
     await page.waitForSelector(tplRow, { timeout: 15000 });
-    template = (await api('/tasks?q=' + encodeURIComponent(TEMPLATE))).items.find(t => t.title === TEMPLATE);
+    template = (await api('/tasks?q=' + encodeURIComponent(TEMPLATE))).items.find(t => t.title === `TEMPLATE: ${TEMPLATE}`);
     const t = await api('/tasks/' + template.id), steps = t.related_tasks?.subtask || [];
     if (!t.done || !t.labels?.some(l => l.title === 'template')) throw new Error(`done ${t.done}, labels ${JSON.stringify(t.labels?.map(l => l.title))}`);
     if (JSON.stringify(steps.map(s => s.title)) !== JSON.stringify(STEPS)) throw new Error('steps: ' + steps.map(s => s.title).join(' | '));   // "at 3pm" stays
@@ -154,6 +155,7 @@ try {
     // Its sheet shows when each step is due.
     await page.click(`${tplRow} .body`);
     await page.waitForSelector('#d-start');
+    if (await page.inputValue('#d-title') !== TEMPLATE) throw new Error('its sheet is titled ' + await page.inputValue('#d-title'));
     const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent + '|' + (e.querySelector('.meta')?.textContent || '')));
     if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “check-the-guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
       throw new Error('sheet shows ' + JSON.stringify(shown));
@@ -253,7 +255,8 @@ try {
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`${tplRow} .cl-start`, { timeout: 15000 });
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
-    if (who) await page.click(`#start-for .chip[data-user="${who}"]`);
+    // For you, to start with: someone else instead is picked, and you taken off.
+    if (who) { await page.click(`#start-for .chip[data-user="${who}"]`); await page.click(`#start-for .chip[data-user="${me.username}"]`); }
     const before = new Set((await api('/tasks/' + template.id)).related_tasks?.copiedto?.map(t => t.id) || []);
     const started = Date.now();
     await page.click('#start-go');
@@ -657,8 +660,12 @@ try {
     await page.press('#r-name', 'Enter');
     await until('never renamed', async () => (await api('/tasks/' + id)).title.startsWith(`${TEMPLATE} · Day shift · `));
     if (other) {
+      // For them as well, then for them only.
+      const forIds = async () => JSON.stringify((await api('/tasks/' + id)).assignees?.map(u => u.id).sort((a, b) => a - b));
       await page.click(`#r-for .chip[data-user="${OTHER}"]`);
-      await until('never reassigned', async () => JSON.stringify((await api('/tasks/' + id)).assignees?.map(u => u.id)) === JSON.stringify([other.id]));
+      await until('never for them too', async () => await forIds() === JSON.stringify([me.id, other.id].sort((a, b) => a - b)));
+      await page.click(`#r-for .chip[data-user="${me.username}"]`);
+      await until('never reassigned', async () => await forIds() === JSON.stringify([other.id]));
     }
     await page.click('#btn-sheet-close');
     // Last time opens the run finished before: it can be looked at, not ticked, and reopened from its ⋯.
@@ -931,7 +938,7 @@ try {
     await page.click('#nt-create');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 });
     let tpl;
-    await until('the template never appeared', async () => (tpl = ((await api(`/projects/${project.id}/tasks?filter=${encodeURIComponent('done = true')}`)).items || []).find(t => t.title === `Words ${stamp}`)));
+    await until('the template never appeared', async () => (tpl = ((await api(`/projects/${project.id}/tasks?filter=${encodeURIComponent('done = true')}`)).items || []).find(t => t.title === `TEMPLATE: Words ${stamp}`)));
     const titles = (await subtasks(tpl.id)).map(s => s.title);
     if (JSON.stringify(titles) !== JSON.stringify(['Start the hydraulics {#start-the-hydraulics}', 'Wipe the bed', 'Check the oil T#30m:start-the-hydraulics'])) throw new Error('steps: ' + titles.join(' | '));
     for (const s of await subtasks(tpl.id)) await api('/tasks/' + s.id, { method: 'DELETE' });
@@ -1010,7 +1017,7 @@ try {
     if (await page.$('#d-checklist')) throw new Error('a card for it shows on the task');
     await page.click('#d-more');
     await page.click('#d-make-template');
-    await until('never made a template', async () => { const x = await api('/tasks/' + t.id); return x.done && x.labels?.some(l => l.title === 'template'); });
+    await until('never made a template', async () => { const x = await api('/tasks/' + t.id); return x.done && x.labels?.some(l => l.title === 'template') && x.title === `TEMPLATE: Deliveries ${stamp}`; });
     await page.waitForSelector('#d-start', { timeout: 15000 });           // now its sheet is a template's
     await page.click('#d-more');
     await page.click('#d-delete');
@@ -1053,6 +1060,178 @@ try {
     if (JSON.stringify(titles) !== JSON.stringify(want)) throw new Error('steps: ' + titles.join(' | '));
     if (!(await subtasks(template.id)).every(s => s.done)) throw new Error('a new step isn\'t done');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(4) .meta:has-text("Due 5m after “Warm up the press”")');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+
+  /* A template that comes round: its date set in its sheet leaves it not done, a repeating task in Vikunja; on Today it
+     has no tick and opens Start; a start ticks it, so Vikunja moves it on, unless it isn't due until later; a lost reply
+     to the tick doesn't skip twice; one left for months moves to its next time after now; without a repeat a start
+     ends it; and taking its date off leaves it done. A template of its own, with one step. */
+  const ZERO = '0001-01-01T00:00:00Z';
+  const minute = ms => new Date(Math.floor(ms / 60000) * 60000);
+  const local = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
+  const DAILY = `Daily ${stamp}`, dailyRow = `.cl-tpl:has(.title:text-is("${DAILY}"))`;
+  let daily;
+  const setDaily = fields => api('/tasks/' + daily.id, { method: 'PATCH', body: JSON.stringify(fields) });
+  // Started from Today's row, or from Checklists: the run it made, and the template after.
+  const startDaily = async () => {
+    await toastGone().catch(() => {});
+    const before = new Set(((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).map(t => t.id));
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`${dailyRow} .cl-start`, { timeout: 15000 });
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    const note = await page.textContent('#start-note').catch(() => '');
+    await page.click('#start-go');
+    await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+    const id = (((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).find(t => !before.has(t.id)) || {}).id;
+    return { run: await api('/tasks/' + id), tpl: await api('/tasks/' + daily.id), note };
+  };
+
+  await step('a-template-that-comes-round', async () => {
+    const label = (await api('/labels?s=template')).items?.find(l => l.title === 'template') || (await api('/labels')).items?.find(l => l.title === 'template');
+    daily = await api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: `TEMPLATE: ${DAILY}` }) });
+    const st = await api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'Unlock the door', done: true }) });
+    await api(`/tasks/${daily.id}/relations`, { method: 'POST', body: JSON.stringify({ other_task_id: st.id, relation_kind: 'subtask' }) });
+    await api(`/tasks/${daily.id}/labels`, { method: 'POST', body: JSON.stringify({ label_id: label.id }) });
+    await setDaily({ done: true });
+    if (other) await api(`/tasks/${daily.id}/assignees/bulk`, { method: 'PUT', body: JSON.stringify({ assignees: [{ id: me.id }, { id: other.id }] }) });
+    // Its sheet: a date and a repeat, under Comes round. The date leaves it not done.
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`${dailyRow} .body`, { timeout: 15000 });
+    await page.waitForSelector('#d-comes-round');
+    const due = minute(Date.now() - 3600e3);
+    await page.fill('#d-due', local(due));
+    await page.dispatchEvent('#d-due', 'change');
+    await until('its date never made it not done', async () => { const t = await api('/tasks/' + daily.id); return !t.done && sameTime(t.due_date, due.toISOString()); });
+    await page.selectOption('#d-repeat', 'day');
+    await until('never repeats', async () => (await api('/tasks/' + daily.id)).repeat_after === 86400);
+    if ((await api('/tasks/' + daily.id)).done) throw new Error('done after its repeat was set');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    // Under Checklists, when it's due; on Today, with no tick, and tapping it opens Start.
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.waitForSelector(`${dailyRow} .cl-when:has-text("Due now, since"):has-text("then every day")`, { timeout: 15000 });
+    await page.evaluate(() => { location.hash = '#/today'; });
+    const row = `#view .row:has(> .body .title:has-text("${DAILY}"))`;
+    await page.waitForSelector(`${row} .meta:has-text("Checklist: tap to start")`, { timeout: 15000 });
+    if (await page.$(`${row} button.check`)) throw new Error('it has a tick on Today');
+    // Move all to today leaves it where it is (tried only when it's the only task overdue, so no one's tasks move).
+    const overdue = await page.$$eval('.sec.overdue + .list .row', els => els.length).catch(() => 0);
+    if (overdue === 1 && await page.$('#btn-overdue-today')) {
+      await page.click('#btn-overdue-today');
+      await toast('1 checklist stays');
+      if (!sameTime((await api('/tasks/' + daily.id)).due_date, due.toISOString())) throw new Error('moved by Move all to today');
+    }
+    await page.click(`${row} > .body`);
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    const note = await page.textContent('#start-note');
+    if (!/^This is the .*: starting it moves Daily .* on to /.test(note)) throw new Error('note: ' + note);
+    // For its assignees.
+    if (other) for (const u of [me.username, OTHER]) if (await page.getAttribute(`#start-for .chip[data-user="${u}"]`, 'aria-pressed') !== 'true') throw new Error(`not for ${u}`);
+    const before = new Set(((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).map(t => t.id));
+    await page.click('#start-go');
+    await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+    const id = (((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).find(t => !before.has(t.id)) || {}).id;
+    const run = await api('/tasks/' + id), tpl = await api('/tasks/' + daily.id);
+    // The run: named without "TEMPLATE: ", due when the template was, for its assignees, with nothing that repeats or reminds.
+    if (!run.title.startsWith(`${DAILY} · run `)) throw new Error('run title: ' + run.title);
+    if (!sameTime(run.due_date, due.toISOString())) throw new Error('run due ' + run.due_date);
+    if (run.repeat_after || run.repeat_mode || (run.reminders || []).length) throw new Error(`run repeats ${run.repeat_after}/${run.repeat_mode}, reminders ${run.reminders?.length}`);
+    if (run.labels?.some(l => l.title === 'template') || run.done) throw new Error('the run is a template, or done');
+    const want = other ? [me.id, other.id].sort((a, b) => a - b) : [me.id];
+    if (JSON.stringify(run.assignees?.map(u => u.id).sort((a, b) => a - b)) !== JSON.stringify(want)) throw new Error('run for ' + JSON.stringify(run.assignees?.map(u => u.username)));
+    // The template, moved on a day by Vikunja, and still not done.
+    if (tpl.done || !sameTime(tpl.due_date, new Date(+due + 864e5).toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
+  });
+
+  await step('a-start-before-its-day-leaves-it', async () => {
+    const later = minute(Date.now() + 3 * 864e5);
+    await setDaily({ due_date: later.toISOString() });
+    const { run, tpl, note } = await startDaily();
+    if (!/is next due .*: this run doesn't move it on/.test(note)) throw new Error('note: ' + note);
+    if (tpl.done || !sameTime(tpl.due_date, later.toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
+    if (run.due_date && !run.due_date.startsWith('0001')) throw new Error('run due ' + run.due_date);
+  });
+
+  await step('a-lost-reply-to-the-tick-skips-once', async () => {
+    const due = minute(Date.now() - 3600e3);
+    await setDaily({ due_date: due.toISOString() });
+    // The tick reaches Vikunja, its reply doesn't: the start waits, and carries on without ticking it again.
+    let lost = false;
+    const lose = async r => { if (lost || r.request().method() !== 'PATCH' || !/"done":true/.test(r.request().postData() || '')) return r.fallback(); lost = true; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route(`**/api/v2/tasks/${daily.id}`, lose);
+    await toastGone().catch(() => {});
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`${dailyRow} .cl-start`, { timeout: 15000 });
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    await page.click('#start-go');
+    await toast('starts as soon as Pocket reaches Vikunja');
+    await page.unroute(`**/api/v2/tasks/${daily.id}`, lose);
+    if (!lost) throw new Error('the tick was never sent');
+    await online();
+    await page.waitForSelector('.cl .row.pending', { state: 'detached', timeout: 30000 });
+    const tpl = await api('/tasks/' + daily.id);
+    if (tpl.done || !sameTime(tpl.due_date, new Date(+due + 864e5).toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
+  });
+
+  await step('a-template-left-for-months-moves-past-now', async () => {
+    // Every month: Vikunja moves it one month, still late; Pocket moves it on to the first month after now.
+    const due = minute(Date.now() - 92 * 864e5), months = n => { const d = new Date(due); d.setUTCMonth(d.getUTCMonth() + n); return d; };
+    let n = 1; while (months(n) <= Date.now()) n++;
+    await setDaily({ due_date: due.toISOString(), repeat_after: 0, repeat_mode: 1 });
+    const { tpl, note } = await startDaily();
+    if (!note.includes('the one due')) throw new Error('note: ' + note);
+    if (tpl.done || !sameTime(tpl.due_date, months(n).toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}, wanted ${months(n).toISOString()}`);
+  });
+
+  await step('without-a-repeat-a-start-ends-it', async () => {
+    await setDaily({ due_date: minute(Date.now() - 600e3).toISOString(), repeat_after: 0, repeat_mode: 0 });
+    const { tpl, note } = await startDaily();
+    if (!note.includes("doesn't come round again")) throw new Error('note: ' + note);
+    if (!tpl.done || (tpl.due_date && !tpl.due_date.startsWith('0001'))) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.waitForSelector(dailyRow, { timeout: 15000 });
+    if (await page.$(`${dailyRow} .cl-when`)) throw new Error('it still says when it comes round');
+  });
+
+  await step('taking-its-date-off-leaves-it-done', async () => {
+    const due = minute(Date.now() + 864e5);
+    await setDaily({ done: false, due_date: due.toISOString(), repeat_after: 86400, repeat_mode: 0 });
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.evaluate(() => { location.hash = '#/checklists'; });
+    await page.click(`${dailyRow} .body`, { timeout: 15000 });
+    await page.waitForSelector('#d-due-clear');
+    await page.click('#d-due-clear');
+    await until('never done', async () => (await api('/tasks/' + daily.id)).done, 15000);
+    const t = await api('/tasks/' + daily.id);
+    if (t.due_date !== ZERO || t.repeat_after || t.repeat_mode) throw new Error(`due ${t.due_date}, repeats ${t.repeat_after}/${t.repeat_mode}`);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+
+  await step('make-a-template-with-a-due-date', async () => {
+    // A task with a due date made a template comes round then: not done, its repeat kept.
+    const due = minute(Date.now() + 2 * 864e5);
+    const make = async (title, extra = {}) => api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title, ...extra }) });
+    const t = await make(`Weekly clean ${stamp}`, { due_date: due.toISOString(), repeat_after: 604800 }), a = await make('Descale the kettle');
+    await api(`/tasks/${t.id}/relations`, { method: 'POST', body: JSON.stringify({ other_task_id: a.id, relation_kind: 'subtask' }) });
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
+    await page.click(`.row .body:has(.title:has-text("Weekly clean ${stamp}"))`, { timeout: 15000 });
+    await page.waitForSelector('#d-subtasks .row');
+    await page.click('#d-more');
+    await page.click('#d-make-template');
+    await toast('Made a checklist template that comes round');
+    await until('never made a template', async () => { const x = await api('/tasks/' + t.id); return x.labels?.some(l => l.title === 'template') && x.title === `TEMPLATE: Weekly clean ${stamp}`; });
+    const x = await api('/tasks/' + t.id);
+    if (x.done || !sameTime(x.due_date, due.toISOString()) || x.repeat_after !== 604800) throw new Error(`done ${x.done}, due ${x.due_date}, repeats ${x.repeat_after}`);
+    if (!(await api('/tasks/' + a.id)).done) throw new Error('its step isn\'t done');
+    await page.waitForSelector('#d-comes-round', { timeout: 15000 });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });

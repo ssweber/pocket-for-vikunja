@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global parseCapture, captureLines, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine */
+/* global parseCapture, captureLines, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -359,6 +359,24 @@ const placed = await page.evaluate(() => [placeBefore([3, 9, 12], 20, 9), placeB
 // aren't its notes.
 const addeds = await page.evaluate(() => [addedText(withAdded('<p>Mind the hot plate</p>')), addedText(withAdded(withStepLine('', 'Taste T#5m'))),
   addedText('<p>pocket:step Taste T#5m</p>'), notesOnly(withAdded(withStepLine('<p>Mind the hot plate</p>', 'Taste T#5m')))]);
+// A template: done, or not done with a due date, but not a copy being set up as a run; its name without "TEMPLATE: ";
+// its repeat in words; and where Vikunja moves it when it's ticked, as checked on Vikunja 2.7 (the round-out plan).
+const rounds = await page.evaluate(() => {
+  const L = [{title: 'template'}], due = '2026-09-15T19:09:31Z', now = Date.parse('2026-10-06T18:09:31Z'), at = ms => ms === null ? null : new Date(ms).toISOString();
+  return [isTemplate({labels: L, done: true}), isTemplate({labels: L, done: false, due_date: due}),
+    isTemplate({labels: L, done: false, due_date: '0001-01-01T00:00:00Z'}), isTemplate({labels: L, done: false, due_date: due, related_tasks: {copiedfrom: [{id: 1}]}}),
+    isTemplate({labels: L, done: false, due_date: due, description: '<p>pocket:run</p>'}), isTemplate({labels: L, done: true, related_tasks: {parenttask: [{id: 1}]}}),
+    isTemplate({labels: [], done: true}),
+    templateName('TEMPLATE: Opening up'), templateName('Opening up'), templateTitle('template: Opening up'),
+    ...[{repeat_after: 86400}, {repeat_after: 3 * 86400}, {repeat_after: 604800}, {repeat_after: 1209600}, {repeat_mode: 1}, {repeat_after: 6 * 3600},
+      {repeat_mode: 2, repeat_after: 86400}, {}].map(repeatWords),
+    at(vikunjaNext({due_date: due, repeat_after: 86400}, now)),                          // every day, 3 weeks late: the next 19:09 after now
+    at(vikunjaNext({due_date: '2026-10-07T18:09:31Z', repeat_after: 86400}, now)),       // ticked early: a day on all the same
+    at(vikunjaNext({due_date: due, repeat_mode: 1}, now)),                               // every month: one month
+    at(vikunjaNext({due_date: '2026-07-06T18:09:31Z', repeat_mode: 1}, now)),            // ...still late
+    at(nextAfter({repeat_mode: 1}, Date.parse('2026-08-06T18:09:31Z'), now)),            // which Pocket moves past now
+    at(vikunjaNext({due_date: due, repeat_after: 86400, repeat_mode: 2}, now)), at(vikunjaNext({due_date: due}, now))];
+});
 await browser.close();
 http.close();
 
@@ -420,6 +438,11 @@ lates.forEach(([due, now, want], i) => {
 if (!same(runOrder, [[3, 9], [9, 3], [9, 12, 3, 20]])) { failed++; console.log(`FAIL a run's steps by its order line then id, a task's as they are: ${JSON.stringify(runOrder)}`); }
 if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
 if (!same(addeds, ['Inserted', 'Repeated', '', '<p>Mind the hot plate</p>'])) { failed++; console.log(`FAIL steps added during a run: ${JSON.stringify(addeds)}`); }
-const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 1, total = cases.length + lists.length + wf;
+const roundsWant = [true, true, false, false, false, false, false, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
+  'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a run starts', '',
+  '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
+  '2026-10-07T18:09:31.000Z', null];
+if (!same(rounds, roundsWant)) { failed++; console.log(`FAIL templates that come round: ${JSON.stringify(rounds)}`); }
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 2, total = cases.length + lists.length + wf;
 console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;

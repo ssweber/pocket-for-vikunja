@@ -1,7 +1,8 @@
 // Sending to Vikunja: what's waiting, kept on the phone, and the steps each kind of change is sent in.
 import {app, ZERO} from './util.js';
 import {api, passing, patchTask} from './api.js';
-import {DONE_MARK, isTemplateLabel, notesOnly, placeBefore, SKIP_MARK, stepOrder, stepsOf, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
+import {DONE_MARK, isTemplateLabel, nextAfter, notesOnly, placeBefore, SKIP_MARK, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
+import {repeats} from './dates.js';
 import {removeAssignee} from './quickadd.js';
 
 /* Everything waiting to go to Vikunja: tasks added without a connection (or whose sending was cut off), and photos and
@@ -245,7 +246,9 @@ export const RUN_STEPS = [
     j.desc = withRunMark(notesOnly(t.description));
   }},
   // Named after its template, the name typed when it was started or else which run of it this is, and the day:
-  // "Startup · Night shift · Oct 3", or "Startup · run 3 · Oct 3". Without a due date of its own: its steps have theirs.
+  // "Startup · Night shift · Oct 3", or "Startup · run 3 · Oct 3". Without a due date of its own (its steps have theirs),
+  // except the time its template was due, when this start ticks it (tick), so a run left open shows on Today. Nothing
+  // that repeats or reminds: those are the template's, and the copy has them.
   {name: 'name', done: j => !!j.named, async run(j){
     let name = j.name;
     if (!name) {
@@ -253,7 +256,7 @@ export const RUN_STEPS = [
       name = 'run ' + (runs.indexOf(j.runId) + 1 || runs.length);
     }
     j.title = runTitle(j.template.title, name, new Date(j.at));
-    await patchTask(j.runId, {title: j.title, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, ...j.desc && {description: j.desc}});
+    await patchTask(j.runId, {title: j.title, done: false, due_date: j.tick || ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], ...j.desc && {description: j.desc}});
     j.named = true;
   }},
   // Each step, in the template's order: a copy of the template's step, linked under the run, then named, without its
@@ -287,7 +290,7 @@ export const RUN_STEPS = [
   // Who it's for, and only them. Pocket assigns only the run: Vikunja tells them about it once, not once per step. (A
   // step assigned in the template, say to QA, stays assigned: the copy keeps it.)
   {name: 'assign', done: j => !!j.assigned, async run(j){
-    await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: [{id: j.for.id}]}});
+    await api(`/tasks/${j.runId}/assignees/bulk`, {method: 'PUT', body: {assignees: j.for.map(u => ({id: u.id}))}});
     j.assigned = true;
   }},
   // The copy has the template's labels, "template" too: that one comes off last, so until the run is whole it isn't a
@@ -296,9 +299,23 @@ export const RUN_STEPS = [
     for (const l of (await api('/tasks/' + j.runId)).labels || []) if (isTemplateLabel(l)) await api(`/tasks/${j.runId}/labels/${l.id}`, {method: 'DELETE'});
     j.unlabeled = true;
   }},
+  /* Last, so a start called off ticks nothing: the template ticked, when this start is for the time it was due (tick).
+     Only while it's still not done at that time, so one sent again after a lost reply doesn't skip a second time.
+     Vikunja moves it on by its repeat; without one, it's done, its date taken off: that schedule's over. Every month
+     moves one month only, so one left for months is moved on again, to the first time after now on its beat: only from
+     where this tick put it, so a change made since stays. `ticked` keeps where it went, for Undo, if this tick moved it. */
+  {name: 'tick', done: j => !!j.ticked, async run(j){
+    if (!j.tick) { j.ticked = {}; return; }
+    let t = await api('/tasks/' + j.template.id).catch(e => { if (e.status === 404) return null; throw e; }), mine = false;
+    if (t && !t.done && Date.parse(t.due_date) === Date.parse(j.tick)) { t = await patchTask(t.id, repeats(t) ? {done: true} : {done: true, due_date: ZERO}); mine = true; }
+    const due = t && Date.parse(t.due_date);
+    if (t && !t.done && t.repeat_mode === 1 && due <= Date.now() && due === vikunjaNext({...t, due_date: j.tick}))
+      t = await patchTask(t.id, {due_date: new Date(nextAfter(t, due)).toISOString()});
+    j.ticked = {from: j.tick, to: mine ? t.due_date : null, done: !!t?.done};
+  }},
 ];
-// How much of a run is set up, of 5 + 3 per step.
-export const runProgress = j => [j.runId, j.unlabeled, j.named, j.ordered, j.assigned, ...j.steps.flatMap(s => [s.taskId, s.linked, s.ready])].filter(Boolean).length;
+// How much of a run is set up, of 6 + 3 per step.
+export const runProgress = j => [j.runId, j.unlabeled, j.named, j.ordered, j.assigned, j.ticked, ...j.steps.flatMap(s => [s.taskId, s.linked, s.ready])].filter(Boolean).length;
 /* A step inserted in a run, or repeated, in the same way: the entry (`j`) keeps how far it got. Inserted: a new task under
    the run. Repeated: a copy of the template step the repeated one was copied from (`from`), as a start makes one, so it
    has that step's notes and photos but none of this run's, found again through "copied to" if its reply was lost.

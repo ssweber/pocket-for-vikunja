@@ -1,5 +1,7 @@
 # Handover: checklists that come round again (part 4)
 
+Built 2026-10-06: the plan's part 2 now says how. This note is kept as it was.
+
 For the agent building part 2 of `docs/design/checklist-round-out-plan.md`, "Checklists that come round again" (the
 last part of the user's round-out PRD to build). Read that section first: it's the agreed spec, and this note doesn't
 repeat it. Then `AGENTS.md`, `docs/development.md`, and the code below.
