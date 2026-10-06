@@ -218,7 +218,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
-    if (!keep) this.runInsert = null;
+    if (!keep) this.runInsert = {text: '', repeat: null};
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
     this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null, last: keep?.last || null};
     this.saveRun();
@@ -403,7 +403,7 @@ export default {
   showStep(i, scroll){
     if (!this.view.run) return;
     this.view.run.at = i;
-    this.closeInsert();                                                     // a step being inserted was for the step left
+    if (this.runInsert.repeat) this.runInsert = {text: '', repeat: null};   // the step before is another one now
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
@@ -574,22 +574,15 @@ export default {
   /* ---------- steps inserted during a run ---------- */
   /* Insert a step before the one on screen, or repeat the one before it (repeatStep). Through the outbox, as a tick is:
      offline it waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
-  /* The box for a step to insert opens in its place in Steps, with a history entry of its own, as a sheet has, so the
-     phone's Back closes it; so do its ×, Escape, Enter or leaving it empty, and showing another step. */
-  openInsert(){
-    this.runInsert = {text: ''};
-    if (!history.state?.insert) history.pushState({...(history.state || {}), insert: true}, '');
-  },
-  closeInsert(){
-    if (!this.runInsert) return;
-    this.runInsert = null;
-    if (history.state?.insert) { shared.skipPop = true; history.back(); }
-  },
+  /* The box in Steps, above the step on screen (runInsert): what's typed is inserted. 🔁 puts the step before it in the
+     box (armRepeat): left as it is, + repeats that step; changed, it's a new step with those words. */
+  armRepeat(s){ this.runInsert = {text: s.title, repeat: s}; },
   async insertStep(){
-    const v = this.runView, title = this.runInsert?.text.trim();
+    const v = this.runView, {text, repeat} = this.runInsert, title = text.trim();
     if (!v?.step || !title) return;
-    this.closeInsert();
-    await this.addStep({title, before: v.step.id});
+    this.runInsert = {text: '', repeat: null};
+    if (repeat && title === repeat.title) await this.repeatStep(repeat);
+    else await this.addStep({title, before: v.step.id});
   },
   async repeatStep(s){
     const v = this.runView;

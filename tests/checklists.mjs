@@ -820,18 +820,9 @@ try {
     const titles = async () => (await subtasks(id)).map(s => s.title).join(' | ');
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    // The box for it closes again: with its ×, and when it's left empty.
-    await page.click('#step-insert');
-    await page.click('#step-insert-cancel');
-    await page.waitForSelector('#step-insert-form', { state: 'detached' });
-    await page.click('#step-insert');
-    await page.click('#step-title');
-    await page.waitForSelector('#step-insert-form', { state: 'detached' });
-    await page.click('#step-insert');                                         // and with the phone's Back, staying on the run
-    await page.evaluate(() => history.back());
-    await page.waitForSelector('#step-insert-form', { state: 'detached' });
-    if (!(await page.evaluate(() => location.hash)).startsWith('#/run/')) throw new Error('Back left the run');
-    await page.click('#step-insert');
+    // A box for it is always there, above the step on screen, and + is off while it's empty.
+    await page.waitForSelector('#step-gap #step-insert-in');
+    if (!await page.isDisabled('#step-insert')) throw new Error('+ works with nothing in the box');
     await page.fill('#step-insert-in', 'Wipe the oil off the floor');
     await page.press('#step-insert-in', 'Enter');
     await page.waitForSelector('#step-title:text-is("Wipe the oil off the floor")');            // on screen: it's next
@@ -841,8 +832,18 @@ try {
     if (!/pocket:added/.test(inserted.description) || inserted.related_tasks?.copiedfrom?.length || inserted.done) throw new Error('inserted: ' + JSON.stringify(inserted.description));
     // The step after it still counts from the template's step before it.
     await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .due:text-matches("^Due in (30|29)m$")');
-    // Repeat the step before the one on screen: a copy of its template step, not done, right after it.
-    await page.click('#step-repeat:has-text("Repeat “Check the guards at 3pm”")');
+    // 🔁 puts the step before the one on screen in the box; changed, it would be a new step, and Escape empties it.
+    await page.click('#step-repeat[aria-label^="Repeat “Check the guards at 3pm”"]');
+    if (await page.inputValue('#step-insert-in') !== 'Check the guards at 3pm') throw new Error('box: ' + await page.inputValue('#step-insert-in'));
+    await page.waitForSelector('#step-repeat-note');
+    await page.press('#step-insert-in', 'End');
+    await page.type('#step-insert-in', ' again');
+    await page.waitForSelector('#step-repeat-note', { state: 'detached' });
+    await page.press('#step-insert-in', 'Escape');
+    if (await page.inputValue('#step-insert-in') !== '') throw new Error('Escape left: ' + await page.inputValue('#step-insert-in'));
+    // Left as it is, + repeats it: a copy of its template step, not done, right after it.
+    await page.click('#step-repeat');
+    await page.click('#step-insert');
     await page.waitForSelector('#step-added:text-is("Repeated")', { timeout: 15000 });
     await until('not repeated after the first step', async () => await titles() === 'Check the guards at 3pm | Check the guards at 3pm | Wipe the oil off the floor | Warm up the press | First article check');
     const [orig, copy] = await Promise.all([0, 1].map(async i => task((await runStep(id, i)).id)));
@@ -862,7 +863,6 @@ try {
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
     await page.route('**/api/v2/projects/*/tasks', lose);
-    await page.click('#step-insert');
     await page.fill('#step-insert-in', 'Sweep up');
     await page.press('#step-insert-in', 'Enter');
     await online();
@@ -872,7 +872,6 @@ try {
     // Offline: shown in its place, waiting, and ticked meanwhile; both reach Vikunja once it's back.
     await page.waitForSelector('#step-added:text-is("Inserted")', { timeout: 15000 });
     await context.setOffline(true);
-    await page.click('#step-insert');
     await page.fill('#step-insert-in', 'Offline step');
     await page.press('#step-insert-in', 'Enter');
     await page.waitForSelector('#step-added:text-is("Inserted · waiting to send")');

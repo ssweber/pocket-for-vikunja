@@ -8,7 +8,7 @@ import {saved} from '../lists.js';
    kept as properties of one object.)
      onClosedSheet: the history entry Pocket is on is a sheet's, closed now, at this address (closedAt).
      saveChain: changes to a task are saved one after another, in the order they were made. */
-export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.resolve(), skipPop: false};
+export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.resolve()};
 // An add box: its text, whether it has focus and where the cursor is (for suggestions), the chips tapped off, whether a
 // pasted list goes under its first line, whether the 🔔 chip is on, and whether it's sending.
 const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
@@ -57,7 +57,7 @@ export default () => ({
   flushing: false,
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
-  runInsert: null,                             // a step being written to insert before the one on screen: {text}
+  runInsert: {text: '', repeat: null},         // the box above the step on screen: what's typed, and the step it repeats
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
@@ -73,8 +73,6 @@ export default () => ({
        the screen under it. A sheet closed another way leaves its entry marked closed; Back from there would show the same
        screen, so it goes back once more, to the screen before. */
     window.addEventListener('popstate', () => {
-      if (shared.skipPop) { shared.skipPop = false; return; }                // closeInsert's own step back
-      if (this.runInsert && !history.state?.insert) { this.runInsert = null; return; }   // Back closes a step being inserted
       if (this.sheet.open && this.sheet.show && !history.state?.sheet) { this.closeSheet(); return; }
       // Back from a closed sheet's entry lands on the same screen, at the same address: once more. (A new address is a
       // screen opened another way, a link say, which also comes here.)
