@@ -47,5 +47,5 @@ each step, + between steps, swipe a step, one closed link):
 - A slide is measured against the room left, ending 48px short of the screen's edge, so 100% can be reached from a
   hold on the right of a row. Held past 100% on a run's screen, the line went: the screen redraws every second and
   put --pct back. The slide is drawn from --slide now.
-- Open, for the user: a step slid to 100% is done, its progress as it was (60%), so unticked it's back at 60%. A task
-  slid to 100% saves 100%, so unticked it shows a full bar, not done.
+- Slid to 100%, a step or a task is done with its progress as it was (60%), so marked not done it's back at 60% (the
+  user's pick). A task used to save 100%, and unticked showed a full bar while not done. Done, it shows as 100%.

@@ -423,7 +423,7 @@ export default {
   },
   // Progress as shown: a run's steps done (ticks waiting to be sent too), any other task's as set.
   shownPct(t){
-    if (!this.isRunTask(t)) return pctOf(t);
+    if (!this.isRunTask(t)) return t.done ? 100 : pctOf(t);
     const steps = t.related_tasks?.subtask || [];
     return steps.length ? Math.round(100 * steps.filter(x => this.stepDone(x.id, x.done)).length / steps.length) : 0;
   },

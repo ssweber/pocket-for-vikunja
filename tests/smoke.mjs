@@ -128,6 +128,10 @@ try {
   await step('progress-100-marks-done-and-undo', async () => {
     await slideProgress(row, 6, null, 40);                                 // from 40%, to the edge: 100%
     await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
+    // Done, with its progress as it was, so marked not done it's back at 40%.
+    for (let i = 0; i < 40 && !(await apiTask()).done; i++) await page.waitForTimeout(250);
+    if (!(await apiTask()).done) throw new Error('100% never marked it done');
+    if (Math.round((await apiTask()).percent_done * 100) !== 40) throw new Error('done saved percent_done ' + (await apiTask()).percent_done);
     await page.click('#toast-act:has-text("Undo")');
     await page.waitForSelector(row, { timeout: 15000 });
     const t = await apiTask();
@@ -259,7 +263,7 @@ try {
     };
     if (await page.getAttribute('#d-progress', 'aria-valuenow') !== '40') throw new Error('sheet shows ' + await page.getAttribute('#d-progress', 'aria-valuenow'));
     await page.locator('#d-progress').scrollIntoViewIfNeeded();
-    const bar = await page.locator('#d-progress .track').boundingBox(), head = await page.locator('.d-head').boundingBox();
+    const bar = await page.locator('#d-progress .track').boundingBox();
     await page.mouse.move(bar.x + 20, bar.y + bar.height / 2);              // hold the bar, then slide two steps
     await page.mouse.down();
     await page.waitForSelector('.d-head.setting', { timeout: 2000 });
