@@ -1,7 +1,7 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
 import {cache, collapse, colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError} from '../api.js';
-import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
+import {addDays, dueInfo, isLate, isSet, repeats, startOfDay} from '../dates.js';
 import {doneText, openSubtasks, pctOf, undoing} from '../progress.js';
 import {CHECKLIST_MARK} from '../checklists.js';
 import {currentRoute} from '../routing.js';
@@ -157,24 +157,19 @@ export default {
   },
   async loadToday(seq){
     const end = addDays(startOfDay(), 8);
-    const t0 = startOfDay(), t1 = addDays(t0, 1);
+    const t0 = startOfDay();
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
     const [all, allAdded, {index: runs, mine}] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex()]);
     if (seq !== renderSeq) return;
     const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
     for (const t of [...tasks, ...added, ...mine]) cache.set(t.id, t);
-    const groups = todayGroups(), [overdue, today, inRuns, nodate, week] = groups;
+    const groups = todayGroups(), [, , inRuns, nodate] = groups;
     // Your runs in progress: a run has no due date, its timed steps have theirs.
     for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push({...t});
-    for (const t of tasks) {
-      if (!isSet(t.due_date)) continue;
-      const d = new Date(t.due_date);
-      (d < t0 ? overdue : d < t1 ? today : week).tasks.push({...t});
-    }
+    this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(t => ({...t})));
     // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
     for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push({...t});
-    overdue.tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
     this.view.groups = groups;
     saved.set('today', {groups, at: new Date().toISOString()});
   },
@@ -340,12 +335,14 @@ export default {
     if (!tasks.length || this.movingOverdue) return;
     this.movingOverdue = true;
     const now = new Date();
-    // Each at the time of day it had, or, if that time's gone today, the next whole hour, so it isn't overdue again.
+    // Each at the time of day it had, or, if that time's gone today, the next whole hour (in the day's last hour, 11:59
+    // PM), so it isn't overdue again.
     const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
+    if (next.getDate() !== now.getDate()) next.setTime(new Date(now).setHours(23, 59, 0, 0));
     const moves = tasks.map(t => {
       const d = new Date(t.due_date);
       d.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
-      return {t, was: t.due_date, due: (d < now && next.getDate() === now.getDate() ? next : d).toISOString()};
+      return {t, was: t.due_date, due: (isLate(d.toISOString(), now, this.dueTime) ? next : d).toISOString()};
     });
     const moved = await this.saveEach(moves.map(m => [m.t, {due_date: m.due}]));
     this.movingOverdue = false;

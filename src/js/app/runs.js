@@ -46,11 +46,12 @@ export default {
   async startRun(){
     const st = this.sheet.start;
     if (!st?.template || st.busy) return;
+    this.unlockSound();                                                      // a tap: so a countdown can chime later
     const problems = stepProblems(st.steps.map(s => s.title));
     if (problems.length) { this.notify('Not started: ' + problemText(problems)); return; }
     const start = new Date(), steps = st.steps.map((s, i) => {
       const {title, offset} = parseStep(s.title);
-      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, taskId: null, tried: false, linked: false, ready: false};
+      return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, taskId: null, tried: false, linked: false, ready: false};
     });
     const who = st.people.find(u => u.id === st.forId) || this.user;
     const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template, name: st.name.trim(),
@@ -347,6 +348,7 @@ export default {
     let html = '';
     // The note being written on this step goes with it: for Skip as the reason, for Done as a note. (Each step keeps
     // its own note being written.)
+    if (op !== 'undone') this.unlockSound();
     const typed = op === 'undone' ? '' : (this.runDrafts[s.id] || '').trim();
     if (typed) this.runDrafts[s.id] = '';
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));

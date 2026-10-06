@@ -142,10 +142,11 @@ try {
     await page.waitForSelector(`.sec.today + .list ${lateRow}`, { timeout: 15000 });
     const msg = await page.textContent('#toast-msg');
     if (!/^Moved \d+ tasks? to today$/.test(msg)) throw new Error('toast: ' + msg);
-    // At 9:00 as it was, or, once 9:00 has gone today, the next whole hour.
+    // At 9:00 as it was, or, once 9:00 has gone today, the next whole hour (in the day's last hour, 11:59 PM).
     const now = new Date(), want = new Date(); want.setHours(9, 0, 0, 0);
     const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
-    if (want < now && next.getDate() === now.getDate()) want.setTime(next.getTime());
+    if (next.getDate() !== now.getDate()) next.setTime(new Date(now).setHours(23, 59, 0, 0));
+    if (want < now) want.setTime(next.getTime());
     const moved = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (moved.getTime() !== want.getTime()) throw new Error('moved to ' + moved);
     await page.click('#toast-act:has-text("Undo")');
@@ -588,6 +589,85 @@ try {
     await page.click('#toast-act:has-text("Undo")');
     for (let i = 0; i < 40 && ((await get(a.id)).done || (await get(b.id)).done); i++) await page.waitForTimeout(250);
     if ((await get(a.id)).done || (await get(b.id)).done) throw new Error('Undo didn\'t open both');
+  });
+
+  await step('today-moves-a-task-to-overdue-as-its-time-passes', async () => {
+    // Left open on Today: once a minute it regroups, without asking Vikunja, and a task whose time passes says so.
+    const t = `Pocket smoke due soon ${stamp}`, due = new Date(Date.now() + 6000);
+    if (due.getDate() !== new Date().getDate() || [0, 12].includes(due.getHours()) && !due.getMinutes()) return;   // a time Today reads as "no time"
+    const made = await make(t, { due_date: due.toISOString() });
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.waitForSelector(`.sec.today + .list ${rowOf(t)}`, { timeout: 15000 });
+      await page.waitForTimeout(Math.max(0, due - Date.now()) + 1000);
+      await page.evaluate(() => Alpine.$data(document.body).tickToday());     // what the minute's timer does
+      await page.waitForSelector(`.sec.overdue + .list ${rowOf(t)}`, { timeout: 5000 });
+      await page.waitForSelector(`#toast.show #toast-msg:text-is("“${t}” is due now")`, { timeout: 5000 });
+    } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
+  });
+
+  await step('reminders-in-the-sheet', async () => {
+    const t = `Pocket smoke remind ${stamp}`, made = await make(t, { due_date: todayAt(23) });
+    const rems = async () => ((await get(made.id)).reminders || []).map(r => r.relative_to ? `${r.relative_to}${r.relative_period}` : 'at');
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+      await page.selectOption('#d-remind-add', { label: 'At due' });
+      await page.waitForSelector('#d-reminders .chip.rem:has-text("At due")');
+      await page.selectOption('#d-remind-add', { label: '1 hour before due' });
+      for (let i = 0; i < 40 && (await rems()).length < 2; i++) await page.waitForTimeout(250);
+      if (JSON.stringify((await rems()).sort()) !== JSON.stringify(['due_date-3600', 'due_date0'])) throw new Error('reminders: ' + JSON.stringify(await rems()));
+      // Taken off a preset once it's there; a set date and time too.
+      if (await page.$('#d-remind-add option:text-is("At due")')) throw new Error('At due offered twice');
+      await page.selectOption('#d-remind-add', { label: 'At a set date and time…' });
+      const at = new Date(Date.now() + 2 * 864e5), p = n => String(n).padStart(2, '0');
+      await page.fill('#d-remind-at', `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}T09:30`);
+      for (let i = 0; i < 40 && (await rems()).length < 3; i++) await page.waitForTimeout(250);
+      if (!(await rems()).includes('at')) throw new Error('no reminder at a set time: ' + JSON.stringify(await rems()));
+      // Removed with its ×.
+      await page.click('#d-reminders .chip.rem:has-text("At due") .chip-x');
+      for (let i = 0; i < 40 && (await rems()).includes('due_date0'); i++) await page.waitForTimeout(250);
+      if ((await rems()).includes('due_date0')) throw new Error('not removed: ' + JSON.stringify(await rems()));
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
+  });
+
+  await step('remind-chip-in-quick-add', async () => {
+    // Only when reminders reach you: the server sends reminder emails, and you have them on.
+    const info = await (await fetch(SERVER + '/api/v2/info')).json(), me = await (await api('/user')).json();
+    if (!info.email_reminders_enabled) return;
+    const setReminders = on => api('/user/settings/general', { method: 'PATCH', headers: json, body: JSON.stringify({ ...me.settings, email_reminders_enabled: on }) });
+    const t = `Pocket smoke call the plumber ${stamp}`;
+    try {
+      await setReminders(false);
+      await page.reload(); await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+      await page.fill('#in-capture', `${t} at 4pm`);
+      await page.waitForSelector('#cap-chips .chip[data-kind=due]');
+      if (await page.$('#cap-chips .chip[data-kind=remind]')) throw new Error('a 🔔 chip with your reminder emails off');
+      await setReminders(true);
+      await page.fill('#in-capture', '');
+      await page.reload(); await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+      // A date without a time: none. A time: there, off until tapped.
+      await page.fill('#in-capture', `${t} friday`);
+      await page.waitForSelector('#cap-chips .chip[data-kind=due]');
+      if (await page.$('#cap-chips .chip[data-kind=remind]')) throw new Error('a 🔔 chip for a day without a time');
+      await page.fill('#in-capture', `${t} at 4pm`);
+      await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=false]:has-text("🔔 Remind me at 4:00")');
+      await page.click('#cap-chips .chip[data-kind=remind]');
+      await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=true]');
+      await page.press('#in-capture', 'Enter');
+      await page.waitForSelector('#toast.show #toast-msg:has-text("Added to")', { timeout: 20000 });
+      const made = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
+      try {
+        if (JSON.stringify((made?.reminders || []).map(r => [r.relative_to, r.relative_period])) !== JSON.stringify([['due_date', 0]])) throw new Error('reminders: ' + JSON.stringify(made?.reminders));
+      } finally { if (made) await api('/tasks/' + made.id, { method: 'DELETE' }); }
+    } finally {
+      await api('/user/settings/general', { method: 'PATCH', headers: json, body: JSON.stringify(me.settings) });
+      await page.evaluate(() => document.activeElement?.blur());
+    }
   });
 
   await step('search-moves-a-ticked-task-to-done', async () => {

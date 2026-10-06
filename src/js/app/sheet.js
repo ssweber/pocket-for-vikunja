@@ -1,7 +1,7 @@
 // A task's sheet: its details, labels and people, comments and attachments, and deleting.
 import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts} from '../util.js';
 import {api, errText, items, NetError, patchTask} from '../api.js';
-import {addDays, isSet} from '../dates.js';
+import {addDays, dueInfo, isSet} from '../dates.js';
 import {pctOf, progressPatch} from '../progress.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
 import {patiently, stepInfos, stepOrder, stepsOf, withOrder} from '../checklists.js';
@@ -146,7 +146,7 @@ export default {
     const parent = this.sheet.task, b = this.sheet.sub, lines = this.boxLines('sub'), parsed = this.boxParsedLines('sub');
     if (!parent || b.busy || !parsed.some(p => p.title)) return;
     const items = lines.map((raw, i) => ({raw, p: parsed[i]})).filter(x => x.p.title)
-      .map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, done: false, linked: false}));
+      .map(x => ({raw: x.raw, p: packParsed({...x.p, remind: this.remindOn('sub', lines)}), taskId: null, done: false, linked: false}));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
     const here = () => this.sheet.task?.id === parent.id;
@@ -268,6 +268,38 @@ export default {
     taskDrafts.set('desc:' + t.id, v);
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true});
   },
+
+  /* ---------- reminders ---------- */
+  // Whether Vikunja's reminders reach you: it sends them by email, if the server has that on and so do you.
+  get remindersReach(){ return !!this.info?.email_reminders_enabled && !!this.user?.settings?.email_reminders_enabled; },
+  get remindersNote(){
+    if (this.remindersReach) return '';
+    return 'Vikunja sends reminders by email, and ' + (this.info?.email_reminders_enabled ? 'yours are turned off in your Vikunja settings.' : 'this server doesn\'t send them.');
+  },
+  // A reminder in words: "At due", "15 min before due", or when it goes off. One counted from a date the task doesn't have says so.
+  reminderText(r){
+    if (!r.relative_to) return dueInfo(r.reminder)?.label || '';
+    const s = Math.abs(r.relative_period || 0), from = {due_date: 'due', start_date: 'the start', end_date: 'the end'}[r.relative_to] || r.relative_to;
+    const unset = !isSet(this.sheet.task?.[r.relative_to]) ? ' (no date: it won\'t go off)' : '';
+    if (!s) return (r.relative_to === 'due_date' ? 'At due' : 'At ' + from) + unset;
+    const [n, unit] = [[86400, 'day'], [3600, 'hour'], [60, 'min']].find(([n]) => s % n === 0 && s >= n) || [1, 'sec'];
+    const k = s / n;
+    return `${k} ${unit}${k === 1 || unit === 'min' || unit === 'sec' ? '' : 's'} ${r.relative_period < 0 ? 'before' : 'after'} ${from}${unset}`;
+  },
+  // What can be added: counted back from the due date, so it moves with it, when there is one; or a set date and time.
+  get reminderPresets(){
+    const t = this.sheet.task, have = new Set((t?.reminders || []).filter(r => r.relative_to === 'due_date').map(r => r.relative_period || 0));
+    const before = isSet(t?.due_date) ? [[0, 'At due'], [-900, '15 min before due'], [-3600, '1 hour before due'], [-86400, '1 day before due']] : [];
+    return [...before.filter(([p]) => !have.has(p)).map(([p, label]) => ({value: String(p), label})), {value: 'at', label: 'At a set date and time…'}];
+  },
+  addReminder(v){
+    if (v === 'at') { this.sheet.remindAt = true; this.$nextTick(() => { const el = document.getElementById('d-remind-at'); el?.focus(); try { el?.showPicker(); } catch {} }); }
+    else if (v) this.save({reminders: [...this.plainReminders(), {relative_to: 'due_date', relative_period: +v}]});
+  },
+  addReminderAt(v){ this.sheet.remindAt = false; if (v) this.save({reminders: [...this.plainReminders(), {reminder: new Date(v).toISOString()}]}); },
+  removeReminder(k){ this.save({reminders: this.plainReminders().filter((_, i) => i !== k)}); },
+  // The reminders as Vikunja takes them back: a relative one by what it counts from, so it keeps moving with that date.
+  plainReminders(){ return (this.sheet.task?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder}); },
 
   /* ---------- labels ---------- */
   async toggleLabelPicker(){

@@ -14,9 +14,10 @@
 //
 //   - By default, nothing. It only reads the files in app/ and serves them.
 //   - With step times turned on, one thing: when a step of a checklist run is marked done, it sets the due date of the
-//     steps in that run timed from it (T#40m in their template step: 40 minutes after). It writes only due_date, only
-//     on steps of that run in the same project that aren't done, and nothing else, not even the time a task was last
-//     changed. All of it is in setStepDueDates.
+//     steps in that run timed from it (T#40m in their template step: 40 minutes after). It writes only due_date, and
+//     the time of those steps' reminders counted from their due date (Vikunja works those out only when a task is
+//     saved through it), only on steps of that run in the same project that aren't done, and nothing else, not even
+//     the time a task was last changed. All of it is in setStepDueDates.
 //     Turn it on in config.yml, or with the environment variable VIKUNJA_PLUGINS_POCKET_STEPTIMES=true:
 //
 //	plugins:
@@ -258,8 +259,8 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 // setStepDueDates is the only place the plugin writes to Vikunja's data. Given a task marked done at doneAt that is a
 // step of a checklist run, it sets the due date of each step of the same run timed from it: its done time plus the
 // offset in the title of the template step that step was copied from. It writes only due_date (not even "updated"),
-// only on steps of that run in its project that aren't done, and only when the date changes. handled: whether the task
-// was still done at doneAt, so this tick is dealt with.
+// and the time of the step's reminders counted from its due date, only on steps of that run in its project that aren't
+// done, and only when the date changes. handled: whether the task was still done at doneAt, so this tick is dealt with.
 //
 // Vikunja lets anyone link a task they can edit to one they can only see, so the run is taken only as Pocket makes
 // one: the run, its steps and its template all in the done step's project, the template labelled "template", and each
@@ -368,6 +369,20 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 		if _, err := s.ID(dep.ID).Cols("due_date").NoAutoTime().Update(&models.Task{DueDate: due}); err != nil {
 			_ = s.Rollback()
 			return err
+		}
+		// A reminder counted from the due date (Pocket gives timed steps one at it) moves with it, as Vikunja would
+		// move it if the date were saved through Vikunja.
+		reminders := []*models.TaskReminder{}
+		if err := s.Where("task_id = ? AND relative_to = ?", dep.ID, "due_date").Find(&reminders); err != nil {
+			_ = s.Rollback()
+			return err
+		}
+		for _, r := range reminders {
+			at := due.Add(time.Duration(r.RelativePeriod) * time.Second)
+			if _, err := s.ID(r.ID).Cols("reminder").Update(&models.TaskReminder{Reminder: at}); err != nil {
+				_ = s.Rollback()
+				return err
+			}
 		}
 		wrote = true
 	}

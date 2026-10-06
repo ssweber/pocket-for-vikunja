@@ -300,6 +300,8 @@ body.sheet-open{overflow:hidden}
 .prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:6px 0;outline:0}
+.chip.rem{cursor:default;padding-right:6px}
+.prop-note{margin:0;padding:0 14px 12px}
 .assign-pick{flex:1 1 100%;min-width:0}
 .assign-pick .chips{margin-top:6px}
 .assign-form{flex:1;min-width:120px;display:flex;gap:6px}

@@ -1,7 +1,8 @@
 # Pocket guide
 
 The [README](../README.md) says what Pocket is for and how to install it. This is everything else: each screen in full,
-quick add's shortcuts, checklists and timed steps, working offline, API tokens, troubleshooting, and privacy.
+quick add's shortcuts, checklists and timed steps, reminders, working offline, API tokens, troubleshooting, and
+privacy.
 
 The examples follow a small café: Alex owns it, and Priya is the shift lead who opens up.
 
@@ -12,6 +13,7 @@ The examples follow a small café: Alex owns it, and Priya is the shift lead who
 - [Checklists](#checklists)
 - [Timed steps](#timed-steps)
 - [Step times](#step-times)
+- [Reminders and alerts](#reminders-and-alerts)
 - [Offline](#offline)
 - [Signing in with an API token](#signing-in-with-an-api-token)
 - [Troubleshooting](#troubleshooting)
@@ -42,8 +44,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
 ## Tasks
 
 - **Today** groups tasks into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task added without a
-  date stays in view until tonight instead of vanishing into a project. **Move all to today** brings every overdue task
-  to today, each at the time of day it had, or the next whole hour if that time has gone today.
+  date stays in view until tonight instead of vanishing into a project. A task is overdue once its time has passed; one
+  due on a day without a time ("friday") once that day is over. Left open, Today moves tasks to Overdue as their time
+  passes. **Move all to today** brings every overdue task to today, each at the time of day it had, or the next whole
+  hour if that time has gone today.
 - **Ticking off:** a ticked task slides away, with an Undo. Ticks in a row add up into one message, "3 done", whose Undo
   opens them all again. A task's open subtasks are ticked off with it. A repeating task moves to its next date, and Undo
   puts its date back. An Undo leaves alone a task that was changed elsewhere since.
@@ -212,13 +216,42 @@ screen.
 
 What it does: when a step of a checklist run is marked done (in Pocket, in Vikunja's web app, or through the API), the
 plugin sets the due date of each step of the same run timed from it: the time it was marked done, plus that step's
-time. It writes only due dates (not even when a task was last changed), only on steps of that run that aren't done, and
-only when the date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one
+time. It writes only due dates (not even when a task was last changed), and the time of a reminder counted from the
+due date, only on steps of that run that aren't done, and only when the date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one
 project, the template labelled `template`, and each step copied from one of the template's steps. It doesn't act on
 templates, on a done step saved again, or on a step marked not done. All of it is in one function, `setStepDueDates` in
 [`pocket/main.go`](../pocket/main.go). It can also be turned on with `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`.
 
 A step ticked offline counts, in Vikunja, from when the tick reaches it. Pocket counts down from when you ticked it.
+
+## Reminders and alerts
+
+Pocket promises only what always works: **timers ring while Pocket is open, and reminders arrive by email when it's
+closed.** It shows no system notifications and asks for no permission.
+
+**While Pocket is open:**
+
+- A run's countdown that reaches zero chimes, says so, and vibrates on Android, once per step. The sound is made ready
+  when you tap Start or Done, as phones only allow sound after a tap. On an iPhone with the silent switch on, it may not
+  sound.
+- While a run with a countdown is on screen, the screen stays on, where the phone allows.
+- Today moves tasks to Overdue as their time passes, and says when a task's due time or reminder passes while you're
+  looking.
+- The app's icon shows how many tasks are overdue, on phones that allow it.
+
+**While it's closed, Vikunja emails reminders** to the task's creator and the people it's assigned to. That needs mail
+set up on the server (`mailer` and `service.enableemailreminders` in Vikunja's config; on Cloudron, it's set up for
+apps already), and reminder emails turned on in your own Vikunja settings. Pocket sets reminders in three places:
+
+- **Reminders** in a task's sheet: at the due time, 15 minutes, an hour or a day before it, which move with the due
+  date, or at a set date and time.
+- **🔔 in quick add:** type a time ("at 4pm", "in 2 hours") and a 🔔 chip offers a reminder at it. It's off until you tap
+  it. A day without a time ("friday") gets none, and it only shows when Vikunja's reminder emails reach you.
+- **Timed steps** of a run get a reminder at their due time, which goes to whoever started the run and anyone who's
+  claimed the step. It goes off once the plugin's [step times](#step-times) give the step its due date.
+
+Vikunja's web push, being worked on in [go-vikunja/vikunja#4020](https://github.com/go-vikunja/vikunja/pull/4020), would
+let reminders ring the phone too.
 
 ## Offline
 

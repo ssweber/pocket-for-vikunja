@@ -42,8 +42,8 @@ const STEPS = ['Put the roast in {#roast}', 'Peel the potatoes T#20m', 'Baste th
 const TITLES = ['Put the roast in', 'Peel the potatoes', 'Baste the roast', 'Take the roast out', 'Carve', 'Wash up'];
 let project;
 
-// A run, set up as Pocket does: a copy of the template without its label, and a copy of each step under it. `backwards`
-// links the copies last to first.
+// A run, set up as Pocket does: a copy of the template without its label, and a copy of each step under it, a timed one
+// with a reminder at its due time. `backwards` links the copies last to first.
 async function startRun(template, tplSteps, label, backwards = false){
   const run = (await api(`/tasks/${template}/duplicate`, { method: 'POST' })).duplicated_task;
   await api(`/tasks/${run.id}/labels/${label}`, { method: 'DELETE' });
@@ -52,7 +52,7 @@ async function startRun(template, tplSteps, label, backwards = false){
   for (const [i, s] of tplSteps.entries()) {
     const c = (await api(`/tasks/${s}/duplicate`, { method: 'POST' })).duplicated_task;
     if (!backwards) await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: c.id, relation_kind: 'subtask' } });
-    await patch(c.id, { title: TITLES[i], done: false, due_date: ZERO });
+    await patch(c.id, { title: TITLES[i], done: false, due_date: ZERO, ...STEPS[i].includes('T#') && { reminders: [{ relative_to: 'due_date', relative_period: 0 }] } });
     ids.push(c.id);
   }
   if (backwards) for (const id of [...ids].reverse()) await api(`/tasks/${run.id}/relations`, { method: 'POST', body: { other_task_id: id, relation_kind: 'subtask' } });
@@ -93,9 +93,13 @@ try {
     await until('no due dates were set', async () => isSet((await get(a.steps[3])).due_date));
     const d = await dues(a), mins = d.map(x => after(x, tick0.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
-    // Only due_date: not when the task was last changed.
+    // Only due_date, and the reminder at it: not when the task was last changed.
     const t = await get(a.steps[1]);
     if (t.updated !== updatedBefore) throw new Error(`"updated" went from ${updatedBefore} to ${t.updated}`);
+    for (const id of a.steps.slice(1, 4)) {
+      const s = await get(id), at = s.reminders?.[0]?.reminder;
+      if (!at || new Date(at).getTime() !== new Date(s.due_date).getTime()) throw new Error(`${s.title}: due ${s.due_date}, reminder ${at}`);
+    }
   });
 
   await step('the-other-run-is-untouched', async () => {

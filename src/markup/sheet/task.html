@@ -39,6 +39,16 @@
           <input type="datetime-local" id="d-due" aria-label="Due date" :disabled="!canEdit" :value="toLocalInput(sheet.task.due_date)" @change="save({due_date: fromLocalInput($event.target.value)})">
           <template x-if="isSet(sheet.task.due_date) && canEdit"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="save({due_date: ZERO})"><svg class="i"><use href="#i-close"/></svg></button></template>
         </span></div>
+        <!-- Reminders, which Vikunja sends by email: counted back from the due date when there is one, or at a set time -->
+        <div class="prop" id="d-reminders"><span class="k">Reminders</span><span class="v">
+          <template x-for="(r, k) in sheet.task.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
+            <template x-if="canEdit"><button class="chip-x" :aria-label="'Remove the reminder ' + reminderText(r)" @click="removeReminder(k)"><svg class="i"><use href="#i-close"/></svg></button></template></span></template>
+          <template x-if="canEdit && !sheet.remindAt"><select id="d-remind-add" aria-label="Add a reminder" @change="addReminder($event.target.value); $event.target.value = ''">
+            <option value="">Add a reminder</option><template x-for="o in reminderPresets" :key="o.value"><option :value="o.value" x-text="o.label"></option></template></select></template>
+          <template x-if="sheet.remindAt"><span class="v"><input type="datetime-local" id="d-remind-at" aria-label="Remind me at" @change="addReminderAt($event.target.value)">
+            <button class="icon-btn plain" aria-label="Don't add a reminder" @click="sheet.remindAt = false"><svg class="i"><use href="#i-close"/></svg></button></span></template>
+        </span></div>
+        <template x-if="remindersNote && (sheet.task.reminders || []).length"><p class="note prop-note" x-text="remindersNote"></p></template>
       </div>
 
       <div class="h3">Notes</div>
@@ -119,7 +129,7 @@
           </form>
           <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text && !Object.keys(boxBase('sub')).length)">
             <template x-if="sheet.sub.focus && !sheet.sub.text && !Object.keys(boxBase('sub')).length"><span class="hint" x-text="captureHint"></span></template>
-            <template x-for="c in chips('sub')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+            <template x-for="c in chips('sub')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
               :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
               @mousedown.prevent @click="tapChip('sub', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
           </div>

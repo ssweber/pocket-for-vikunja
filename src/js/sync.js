@@ -147,7 +147,7 @@ const plain = o => JSON.parse(JSON.stringify(o));
 export const NO_ROOM = 'There\'s no room left on this phone to keep this until there\'s a connection. Keep Pocket open until it\'s sent.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
 export const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
-  labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null});
+  labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind});
 export const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
 export const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
 export const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
@@ -179,6 +179,7 @@ export const LINE_STEPS = [
       if (seen === true) body.title = removeAssignee(body.title, app.prefixes.assignee, name);
     }
     if (parsed.due) body.due_date = parsed.due.toISOString();
+    if (parsed.due && parsed.remind) body.reminders = [{relative_to: 'due_date', relative_period: 0}];   // the 🔔 chip: at the due time
     if (parsed.priority) body.priority = parsed.priority;
     if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
     // Kept, so a later try sends the same, and looks for the title as sent (without the @usernames).
@@ -252,7 +253,9 @@ export const RUN_STEPS = [
     j.named = true;
   }},
   // Each step, in the template's order: a copy of the template's step, linked under the run, then named, without its
-  // T# and {#name}, and given its due time if it counts from the start. One part per run, so progress is kept after each.
+  // T# and {#name}, and given its due time if it counts from the start. A timed step gets a reminder at its due time,
+  // which Vikunja emails to whoever started the run and anyone on the step; Pocket's plugin moves it with the due date
+  // it sets. One part per run, so progress is kept after each.
   {name: 'step', done: j => j.steps.every(s => s.ready), async run(j, c){
     const s = j.steps.find(s => !s.ready);
     if (!s.taskId) {
@@ -262,7 +265,8 @@ export const RUN_STEPS = [
       try { await app.linkSubtask(j.runId, s.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
       s.linked = true;
     } else {
-      await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO, repeat_after: 0, repeat_mode: 0});
+      await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO, repeat_after: 0, repeat_mode: 0,
+        ...s.timed && {reminders: [{relative_to: 'due_date', relative_period: 0}]}});
       s.ready = true;
     }
   }},

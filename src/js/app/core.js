@@ -2,6 +2,7 @@
 import {setApp, store, taskDrafts} from '../util.js';
 import {sharedToken} from '../api.js';
 import {currentRoute} from '../routing.js';
+import {setDefaultTime} from '../dates.js';
 import {saved} from '../lists.js';
 
 /* What more than one part of the app changes. (A module can't assign to a variable of another module, so these are
@@ -10,11 +11,11 @@ import {saved} from '../lists.js';
      saveChain: changes to a task are saved one after another, in the order they were made. */
 export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.resolve()};
 // An add box: its text, whether it has focus and where the cursor is (for suggestions), the chips tapped off, whether a
-// pasted list goes under its first line, and whether it's sending.
-const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, busy: false});
+// pasted list goes under its first line, whether the 🔔 chip is on, and whether it's sending.
+const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
+  project: null, start: null, subPeople: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
 
 export default () => ({
   // session
@@ -59,6 +60,7 @@ export default () => ({
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
   clock: Date.now(),                           // now, every second while a run is on screen, for its countdowns
+  todayDay: 0,                                 // the day Today's groups are for (alerts.js)
   avatars: saved.get('avatars') || {},         // username -> {url, at}: people's pictures (claims.js)
 
   init(){
@@ -92,12 +94,15 @@ export default () => ({
     window.addEventListener('online', () => this.flush());
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
     setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
-    setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now(); }, 1000);
+    setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now(); this.tickRun(); }, 1000);
+    setInterval(() => this.tickToday(), 60000);
     // A run on screen is fetched again every 20 seconds, so a step a teammate ticked shows as done, by them.
     setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible' && !this.sheet.open && !this.offline && !this.view.loading) this.render(); }, 20000);
+    // A date without a time is late only once its day is over; quick add gives it the user's default due time.
+    this.$watch('dueTime', setDefaultTime);
     // An emptied add box starts afresh: no chips tapped off.
-    this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; } });
-    this.$watch('sheet.sub.text', v => { if (!v.trim()) this.sheet.sub.ignore = {}; });
+    this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.remind = false; } });
+    this.$watch('sheet.sub.text', v => { if (!v.trim()) { this.sheet.sub.ignore = {}; this.sheet.sub.remind = false; } });
     // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])

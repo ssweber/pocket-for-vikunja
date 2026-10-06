@@ -67,7 +67,7 @@ export default {
     // Parse every line now, so dates mean what they meant when typed.
     const list = this.parseList(lines, parsed);
     const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
-      .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed(x.p), taskId: null, done: false, linked: false}));
+      .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed({...x.p, remind: this.remindOn('cap', lines)}), taskId: null, done: false, linked: false}));
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
     this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.capPhotos = [];

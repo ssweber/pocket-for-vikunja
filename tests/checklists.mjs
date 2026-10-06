@@ -224,6 +224,9 @@ try {
     // Nothing is due yet: every timed step counts from a step being done, and the run has no due date of its own.
     const dated = [run, ...steps].filter(t => t.due_date && !t.due_date.startsWith('0001'));
     if (dated.length) throw new Error('due dates: ' + dated.map(t => `${t.title} ${t.due_date}`).join(', '));
+    // A timed step has a reminder at its due time, for when it gets one; an untimed one has none.
+    const rems = steps.map(s => (s.reminders || []).map(r => `${r.relative_to}${r.relative_period}`).join());
+    if (JSON.stringify(rems) !== JSON.stringify(['', 'due_date0', 'due_date0'])) throw new Error('reminders: ' + JSON.stringify(rems));
     await page.waitForSelector(`#run-steps .row:nth-of-type(2) .meta:has-text("Due 30m after ${GUARDS}")`);
     await page.waitForSelector(`#run-steps .row:nth-of-type(3) .meta:has-text("Due 2h after ${GUARDS}")`);
     if (await page.textContent('#step-title') !== 'Check the guards at 3pm') throw new Error('on step ' + await page.textContent('#step-title'));
@@ -253,6 +256,25 @@ try {
     await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(Date.now() + 3 * 36e5).toISOString() }) });
     await page.reload();
     await page.waitForSelector('#step-card .step-due:text-is("Due in 3h")', { timeout: 15000 });
+  });
+
+  await step('countdown-alerts-at-zero', async () => {
+    // A countdown on screen that reaches zero says so, once: not again after a reload.
+    const warm = (await runStep(first.id, 1)).id, back = (await task(warm)).due_date;
+    await toastGone().catch(() => {});
+    await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(Date.now() + 5000).toISOString() }) });
+    try {
+      await page.reload();
+      await page.waitForSelector('#step-title:text-is("Warm up the press")', { timeout: 15000 });
+      await toast('“Warm up the press” is due now');
+      await toastGone();
+      await page.reload();
+      await page.waitForSelector('#step-title:text-is("Warm up the press")', { timeout: 15000 });
+      await page.waitForTimeout(3000);
+      if (await page.$('#toast.show #toast-msg:has-text("is due now")')) throw new Error('it said so again');
+    } finally { await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: back }) }); }
+    await page.reload();
+    await page.waitForSelector('#step-card .step-due:text-matches("^Due in (3h|2h 5[0-9]m)$")', { timeout: 15000 });
   });
 
   await step('skip-with-a-reason', async () => {

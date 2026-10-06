@@ -46,6 +46,8 @@ step at a time, with a note or a photo where it helps. Timed steps count down, a
 <img src="docs/screenshots/pocket-run.png" width="300" alt="A run of Opening up, 2 of 4 steps done: 'Dial in the grinder' is due in 20 minutes, and 'Take the croissants out' counts down above it">
 
 Pocket works offline, and keeps whatever you're writing until it's sent. It follows the phone's light or dark mode.
+Timers ring while Pocket is open; reminders arrive by email when it's closed, so the server needs mail set up (see
+[reminders](docs/guide.md#reminders-and-alerts)).
 
 ## Install
 
