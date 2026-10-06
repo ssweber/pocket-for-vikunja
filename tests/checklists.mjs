@@ -26,6 +26,8 @@ const call = async (token, path, init = {}) => {
   return r.status === 204 ? null : r.json();
 };
 const api = (path, init) => call(TOKEN, path, init);
+// Vikunja on SQLite answers 500 "database is locked" now and then: tried again, as Pocket does.
+const retry = async fn => { for (let i = 0; ; i++) { try { return await fn(); } catch (e) { if (i >= 4 || !/HTTP 500/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } };
 const task = id => api(`/tasks/${id}?expand=reactions&expand=comments`);
 // A task's steps in the order Pocket shows them: a template's by the line "pocket:order …" in its description (steps it
 // doesn't list after, by id), a run's by id.
@@ -418,8 +420,6 @@ try {
     if (!other) return;
     // Skipped by someone else, then unticked and done here: done, not skipped, though their ⏭️ stays (only they can
     // take it back).
-    // (Vikunja on SQLite answers 500 "database is locked" now and then: tried again, as Pocket does.)
-    const retry = async fn => { for (let i = 0; ; i++) { try { return await fn(); } catch (e) { if (i >= 4 || !/HTTP 500/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } };
     const row1 = '#run-steps .row:nth-of-type(1)', as = (path, body, method = 'POST') => retry(() => call(otherToken, path, { method, body: JSON.stringify(body) }));
     await page.click(`${row1} .check`);
     await until('never undone for their skip', async () => !(await task(id)).done);
@@ -554,7 +554,7 @@ try {
     // A step of your run they've claimed is on their Today, though it has no due date. (It's done by now: not done for this.)
     const guards = (await runStep(first.id, 0)).id;
     await api('/tasks/' + guards, { method: 'PATCH', body: JSON.stringify({ done: false }) });
-    await call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
+    await retry(() => call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) }));
     try {
       await signIn(p, otherToken);
       await p.waitForSelector(`.row .title:has-text("${run.title}")`, { timeout: 15000 });
