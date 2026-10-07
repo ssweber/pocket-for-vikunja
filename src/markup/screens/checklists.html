@@ -11,11 +11,11 @@
         <template x-if="gettingStarted(cl.project.id)"><div class="card getting-started" :id="'getting-started-' + cl.project.id">
           <h3>Getting started</h3>
           <ol>
-            <li><b>Share it</b> with the people who'll run its checklists. That's done in Vikunja's web app: pick <b>Read &amp; write</b>, so they can tick steps.
+            <li><b>Share with your team.</b> In Vikunja, give them <i>Read &amp; write</i> so they can check off steps.
               <a class="gs-act" :href="shareUrl(cl.project.id)" target="_blank" rel="noopener">Share it in Vikunja ↗</a></li>
-            <li><b>Write a template</b>: the list each run copies, a step a line. “@priya” in a step gives it to Priya, and “in 18 min” makes it due 18 minutes after the step before.
+            <li><b>Create a checklist template.</b> One step per line. “@priya” assigns a step; “in 18 min” sets it due 18 minutes after the step before.
               <button type="button" class="linkish gs-act" @click="openNewTemplate(cl.project)">New template</button></li>
-            <li><b>Have it come round</b>, if it should: in the template's sheet, under When it's due, give it a date and pick Repeats. It shows on Today then.</li>
+            <li><b>Make it recurring (optional).</b> Set a date and choose <i>Repeats</i>. It'll appear on Today when due.</li>
           </ol>
           <button type="button" class="linkish gs-hide" @click="hideGettingStarted(cl.project.id)">Hide this</button>
         </div></template>
