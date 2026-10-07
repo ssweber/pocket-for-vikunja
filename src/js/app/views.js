@@ -214,6 +214,7 @@ export default {
   async updateIfNew(){
     if (!LOADED || !this.signedIn || this.screen !== 'app') return;
     let res;
+    // eslint-disable-next-line no-restricted-globals -- Pocket's own page, not Vikunja's API
     try { res = await fetch(new URL('.', location.href), {cache: 'no-store', headers: {'If-Modified-Since': LOADED.toUTCString()}}); }
     catch { return; }                                                          // offline: no news
     if (res.status !== 200) return;

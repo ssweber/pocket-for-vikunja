@@ -109,6 +109,7 @@ export default {
     saved.clear();
     if (this.mode === 'session') {
       const t = sharedToken.get();
+      // eslint-disable-next-line no-restricted-globals -- not through api(): signing out, it mustn't renew the session or sign out again
       if (tellServer && t) fetch(this.server + '/api/v2/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
       sharedToken.del();
     }
