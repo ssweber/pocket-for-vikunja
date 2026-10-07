@@ -6,7 +6,10 @@
 //
 // Both build Pocket's page from src/ first. npm run dev then keeps building it as src/ changes, so edits show up on
 // reload, until it's stopped with Ctrl+C; Vikunja keeps running. After changing pocket/main.go, run it again. The data lives only as long as
-// the containers. Stop them with: docker rm -f pocket-dev pocket-dev-sso
+// the containers. Stop them with: docker rm -f pocket-dev pocket-dev-sso pocket-dev-db
+//
+// Vikunja keeps its data in Postgres, as most servers do: SQLite answers "database is locked" when a request comes
+// while it's still writing the one before. DB=sqlite uses SQLite instead, inside Vikunja's container.
 import { spawn, spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 const VERSION = process.env.VIKUNJA_VERSION || '2.7.0';
 const PORT = process.env.PORT || '3456', SSO_PORT = process.env.SSO_PORT || '8080';
-const NAME = 'pocket-dev', SSO = 'pocket-dev-sso';
+const NAME = 'pocket-dev', SSO = 'pocket-dev-sso', DB = 'pocket-dev-db';
+const SQLITE = process.env.DB === 'sqlite';
 const BASE = `http://127.0.0.1:${PORT}`;
 const PLUGIN = fileURLToPath(new URL('../pocket', import.meta.url));
 
@@ -37,7 +41,7 @@ async function waitFor(url, what){
 }
 
 run(process.execPath, [fileURLToPath(new URL('build.mjs', import.meta.url))], { stdio: 'inherit' });
-run('docker', ['rm', '-f', NAME, SSO], { allowFail: true });
+run('docker', ['rm', '-f', NAME, SSO, DB], { allowFail: true });
 
 // The mock provider signs anyone in as "sso". Vikunja joins its network, so both the browser and Vikunja reach the
 // provider at the same 127.0.0.1 address, which OpenID Connect needs.
@@ -46,7 +50,17 @@ run('docker', ['run', '-d', '--name', SSO, '-p', `127.0.0.1:${PORT}:3456`, '-p',
   '-e', 'JSON_CONFIG=' + JSON.stringify({ interactiveLogin: false, tokenCallbacks: [{ issuerId: 'default', tokenExpiry: 3600,
     requestMappings: [{ requestParam: 'grant_type', match: '*', claims }] }] }),
   'ghcr.io/navikt/mock-oauth2-server:2.1.10']);
+// Postgres joins the same network, so Vikunja reaches it at 127.0.0.1. Its data is thrown away with the container, so
+// it's kept in memory and never waits for the disk. It starts while the provider does.
+if (!SQLITE) run('docker', ['run', '-d', '--name', DB, '--network', `container:${SSO}`, '--tmpfs', '/var/lib/postgresql/data',
+  '-e', 'POSTGRES_USER=vikunja', '-e', 'POSTGRES_PASSWORD=vikunja', '-e', 'POSTGRES_DB=vikunja',
+  'postgres:16-alpine', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']);
 await waitFor(`http://127.0.0.1:${SSO_PORT}/default/.well-known/openid-configuration`, 'The mock sign-on provider');
+// Over TCP: while the image sets the database up, a first Postgres listens only on its socket, then restarts.
+for (let i = 0; !SQLITE && run('docker', ['exec', DB, 'pg_isready', '-h', '127.0.0.1', '-U', 'vikunja', '-d', 'vikunja'], { allowFail: true }).status; i++) {
+  if (i > 60) throw new Error('Postgres did not start; see: docker logs ' + DB);
+  await new Promise(r => setTimeout(r, 500));
+}
 
 const config = join(tmpdir(), 'pocket-dev-vikunja.yml');
 // Vikunja allows 10 sign-in requests a minute per address, which the tests' many Vikunja page loads use up.
@@ -65,7 +79,9 @@ auth:
 run('docker', ['run', '-d', '--name', NAME, '--network', `container:${SSO}`,
   '-v', `${PLUGIN}:/app/vikunja/plugins/pocket:ro`, '-v', `${config}:/etc/vikunja/config.yml:ro`,
   '-e', `VIKUNJA_SERVICE_PUBLICURL=${BASE}/`, '-e', 'VIKUNJA_SERVICE_SECRET=pocket-dev-only', '-e', 'VIKUNJA_SERVICE_ENABLEREGISTRATION=true',
-  '-e', 'VIKUNJA_DATABASE_PATH=/tmp/vikunja.db', '-e', 'VIKUNJA_FILES_BASEPATH=/tmp/files',
+  ...(SQLITE ? ['-e', 'VIKUNJA_DATABASE_PATH=/tmp/vikunja.db'] : ['-e', 'VIKUNJA_DATABASE_TYPE=postgres', '-e', 'VIKUNJA_DATABASE_HOST=127.0.0.1',
+    '-e', 'VIKUNJA_DATABASE_USER=vikunja', '-e', 'VIKUNJA_DATABASE_PASSWORD=vikunja', '-e', 'VIKUNJA_DATABASE_DATABASE=vikunja']),
+  '-e', 'VIKUNJA_FILES_BASEPATH=/tmp/files',
   '-e', 'VIKUNJA_PLUGINS_ENABLED=true', '-e', 'VIKUNJA_PLUGINS_LOADER=yaegi', '-e', 'VIKUNJA_PLUGINS_POCKET_STEPTIMES=true',
   `vikunja/vikunja:${VERSION}`]);
 await waitFor(BASE + '/api/v2/info', 'Vikunja');
@@ -81,9 +97,9 @@ const { token } = await call('POST', '/login', { username: 'dev', password: 'dev
 const team = await call('POST', '/projects', { title: 'Team' }, token);
 await call('POST', `/projects/${team.id}/users`, { username: 'bob', permission: 1 }, token);
 
-console.log(`Vikunja ${VERSION}: ${BASE}  (sign in as dev / dev-password, or with Mock SSO)`);
+console.log(`Vikunja ${VERSION}: ${BASE}  (on ${SQLITE ? 'SQLite' : 'Postgres'}; sign in as dev / dev-password, or with Mock SSO)`);
 console.log(`Pocket:        ${BASE}/api/v1/plugins/pocket/`);
-console.log(`Stop with:     docker rm -f ${NAME} ${SSO}`);
+console.log(`Stop with:     docker rm -f ${NAME} ${SSO}${SQLITE ? '' : ' ' + DB}`);
 
 if (process.argv.includes('--test')) {
   const env = { ...process.env, VIKUNJA_URL: BASE, VIKUNJA_TOKEN: token, ASSIGNEE: 'bob', ASSIGNEE_PROJECT: 'Team',
