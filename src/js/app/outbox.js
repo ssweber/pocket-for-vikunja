@@ -67,7 +67,8 @@ export default {
     const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title + (this.isRepeat(a.task) ? ' (repeated)' : '');
     const why = a.op === 'skip' && htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
     return {done: `Done: ${t}`, doneNote: `Done, with a note: ${t}`, skip: `Skipped: ${t}` + (why ? ` (${why})` : ''), undone: `Not done: ${t}`, note: `A note on “${t}”`,
-      progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `You'll do “${t}”`, unclaim: `Letting go of “${t}”`}[a.op] || t;
+      progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `You'll do “${t}”`, unclaim: `Letting go of “${t}”`,
+      delete: `Deleting “${t}”` + (a.ids?.length > 1 ? `, with ${a.ids.length - 1} subtask${a.ids.length === 2 ? '' : 's'}` : '')}[a.op] || t;
   },
   // Whether a run's step is one repeated during the run, as last loaded.
   isRepeat(id){
@@ -87,7 +88,7 @@ export default {
       undone: part ? `${t} stays not done in Vikunja, without the rest.` : `${t} stays done in Vikunja.`,
       finish: 'The run stays open in Vikunja.', reopen: 'The run stays finished in Vikunja.',
       claim: `${t} stays without you on it.`, unclaim: `You stay on ${t}.`, progress: `${t} keeps the progress it has in Vikunja.`,
-      note: 'The note isn\'t posted: its words go back where you wrote them.'}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
+      note: 'The note isn\'t posted: its words go back where you wrote them.', delete: `${t} stays in Vikunja.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
   },
   // Send one Vikunja turned down again, and what waited behind it.
   async retryAct(id){

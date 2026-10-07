@@ -55,6 +55,9 @@ export default () => ({
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
+  deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
+  lines: {},                                   // task id -> the message in its row's place (lines.js)
+  said: '',                                    // the last of those, for a screen reader
   waitShown: false,                            // something has waited a moment: the header's button says so
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
@@ -98,6 +101,11 @@ export default () => ({
     window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     window.addEventListener('online', () => this.flush());
+    // A deletion offering its Undo is sent as Pocket is put away or closed, so it isn't left waiting meanwhile.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this.foldLines(); this.sendHeld(); } });
+    addEventListener('pagehide', () => { this.foldLines(); this.sendHeld(); });
+    // A message going, by its own timer or anything else, ends its Undo: a deletion waiting for it is sent then.
+    this.$watch('toast.show', v => { if (!v) this.toastGone(this.toast); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
     setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
     setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now(); this.tickRun(); }, 1000);

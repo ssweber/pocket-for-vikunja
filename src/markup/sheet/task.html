@@ -23,7 +23,7 @@
         <template x-if="!ofTemplate && canEdit"><div class="d-progress" id="d-progress" :role="isRunTask(sheet.task) ? 'progressbar' : 'slider'" tabindex="0" :aria-label="isRunTask(sheet.task) ? 'Steps done' : 'Progress'" aria-valuemin="0" aria-valuemax="100"
              :aria-valuenow="sheet.pct ?? shownPct(sheet.task)" :aria-valuetext="(sheet.pct ?? shownPct(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
              :style="{'--pct': (sheet.pct ?? shownPct(sheet.task)) / 100}"
-             @keydown.right.prevent="nudgeProgress(10)" @keydown.left.prevent="nudgeProgress(-10)">
+             @keydown.right.prevent="nudgeProgress(1)" @keydown.left.prevent="nudgeProgress(-1)">
           <span class="track"><i></i></span><span class="num" x-text="(sheet.pct ?? shownPct(sheet.task)) + '%'"></span>
         </div></template>
       </div>

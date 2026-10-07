@@ -8,11 +8,12 @@
 import {cache, collapse} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {dueInfo, isLate, isSet, repeats} from '../dates.js';
-import {doneText, openSubtasks, pctOf, progressPatch, undoing} from '../progress.js';
+import {doneText, isSubtask, openSubtasks, pctOf, progressPatch, undoing} from '../progress.js';
 import {htmlToText} from '../html.js';
 import {hasTemplateLabel, patiently} from '../checklists.js';
 import {NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
+import {UNDO_MS} from './toast.js';
 
 // Saves to each task: how many have begun or ended, and how many haven't ended. A copy read while one was under way can
 // be older than Vikunja's, so it isn't shown (readTask).
@@ -79,7 +80,9 @@ export default {
   },
 
   /* ---------- done, and not done again ---------- */
-  // `extra` is saved along with it, and `undoExtra` with the Undo: progress uses these to mark a task done at 100%.
+  /* `extra` is saved along with it, and `undoExtra` with the Undo: progress uses these to mark a task done at 100%. A
+     subtask (`extra.sub`, or one with a parent) shows its tick on its row only, which stays where it is, done: no
+     message, unless it closed subtasks of its own, whose Undo opens them again. */
   async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl);
@@ -91,10 +94,11 @@ export default {
     if ((t.reminders || []).some(r => !r.relative_to)) back.reminders = plainReminders(t);
     t.done = !was;
     try {
-      const {quiet, ...patch} = extra;
+      const {quiet, sub: inSheet, ...patch} = extra, sub = inSheet || isSubtask(t);
       const saved = await this.saveTask(t.id, {done: !was, ...patch});
       Object.assign(t, saved);
       if (!was && !saved.done) {                 // repeating task rolled forward: Undo puts its date back
+        if (sub) { this.render(); return; }
         const d = dueInfo(saved.due_date);
         this.notify(d ? 'Repeats · next ' + d.label : 'Done — repeats', {label: 'Undo', fn: async () => {
           try {
@@ -106,10 +110,20 @@ export default {
         this.render(); return;
       }
       // Its open subtasks are done with it, and Undo opens them again too.
-      const closed = was ? [] : await this.closeSubtasks(subs);
-      if (!was) this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, says: closed.length < subs.length, fn: async () => { await this.toggleDone(t, null, {...undoExtra, quiet: true}); await this.reopen(closed); this.render(); }});
-      else if (!extra.quiet && !undoing(extra)) this.notify('Marked not done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null, {quiet: true}); this.render(); }});
-      this.afterTick(t, rowEl, was, [t.id, ...closed]);
+      const closed = was ? [] : await this.closeSubtasks(subs), ids = [t.id, ...closed];
+      const undo = async () => { await this.toggleDone(t, null, {...undoExtra, quiet: true}); await this.reopen(closed); this.render(); };
+      /* Ticked off a list it leaves: its Undo is a line in its row's place, with the subtasks ticked with it, which go
+         when it folds. Anywhere else (search, which keeps it under Done; a sheet's subtask that closed its own), a
+         message. Some subtasks not saved: a message says so, as well. */
+      const leaves = !was && rowEl && !sub && this.route.name !== 'search' && t.done !== this.viewWantsDone();
+      if (leaves && this.rowLine(t.id, {text: 'Done:', title: t.title, more: closed.length ? `+ ${closed.length} subtask${closed.length === 1 ? '' : 's'}` : '', hide: closed, action: {label: 'Undo', fn: undo},
+        gone: () => { if (t.done !== this.viewWantsDone()) ids.forEach(id => this.removeRow(id)); }})) {
+        if (closed.length < subs.length) this.notify(doneText(closed.length, subs.length, t.title));
+        return;
+      }
+      if (!was && (!sub || closed.length)) this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', fn: undo});
+      else if (was && !sub && !extra.quiet && !undoing(extra)) this.notify('Marked not done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null, {quiet: true}); this.render(); }});
+      this.afterTick(t, rowEl, was, ids, sub);
     } catch (e) {
       t.done = was;
       this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
@@ -137,13 +151,14 @@ export default {
     navigator.vibrate?.(10);
     const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
     if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
-    if (!was) this.notify(r.status === 'offline' ? `Done: ${t.title}. It's sent once Pocket reaches Vikunja.` : doneText(0, 0, t.title),
-      {label: 'Undo', done: true, says: r.status === 'offline', fn: async () => { await this.act({op: 'undone', task: t.id, run}); t.done = false; this.render(); }});
-    this.afterTick(t, rowEl, was);
+    // A step of a run is a subtask: its tick shows on its row, which stays, done. Offline, it says when it's sent.
+    if (!was && r.status === 'offline') this.notify(`Done: ${t.title}. It's sent once Pocket reaches Vikunja.`);
+    this.afterTick(t, rowEl, was, [t.id], true);
   },
   /* After a tick in a list, once it has registered: the row slides away if the list doesn't show tasks done (or not
-     done) now, with the subtasks ticked with it. In search, which shows both, it moves between Open and Done. */
-  afterTick(t, rowEl, was, ids = [t.id]){
+     done) now, with the subtasks ticked with it; a subtask's stays, done, so it can be ticked back. In search, which
+     shows both, it moves between Open and Done. */
+  afterTick(t, rowEl, was, ids = [t.id], sub = false){
     if (!rowEl) return;
     setTimeout(async () => {
       if (this.route.name === 'search') {
@@ -156,7 +171,7 @@ export default {
         }
         return;
       }
-      if (t.done === this.viewWantsDone()) return;
+      if (sub || t.done === this.viewWantsDone()) return;
       await collapse(rowEl);
       if (t.done !== this.viewWantsDone()) ids.forEach(id => this.removeRow(id));
     }, was ? 0 : 700);
@@ -195,40 +210,37 @@ export default {
       this.render();
     }});
   },
-  // A subtask ticked in its parent's sheet: as in a list, with Undo; a run's step as on the run's screen.
+  // A subtask ticked in its parent's sheet: as in a list; a run's step as on the run's screen.
   async toggleSubtask(st){
     if (this.checklistRole === 'run') await this.tickRunStep(st, this.sheet.task.id, null);
-    else await this.toggleDone(st, null);
+    else await this.toggleDone(st, null, {sub: true});
     this.sheet.dirty = true;
   },
 
   /* ---------- progress ---------- */
-  // Progress set in the list. At 100% the task is done and slides away, as when it's ticked off.
-  // `undoing`: putting back what it was, exactly, without marking it done.
-  async setProgress(t, pct, rowEl, undoing = false){
+  /* Progress set in a list, or on a subtask's row in its parent's sheet. At 100% the task is done and slides away, as
+     when it's ticked off. A subtask's (`sub`) shows on its row only, as its tick does. `undoing`: putting back what it
+     was, exactly, without marking it done. */
+  async setProgress(t, pct, rowEl, {undoing = false, sub = isSubtask(t)} = {}){
     const was = pctOf(t), patch = undoing ? {percent_done: pct / 100} : progressPatch(t, pct);
-    if (patch.done) return this.toggleDone(t, rowEl, patch, {percent_done: was / 100});
+    if (patch.done) return this.toggleDone(t, rowEl, {...patch, sub}, {percent_done: was / 100});
     t.percent_done = patch.percent_done;
     try {
       await this.saveTask(t.id, patch);
-      if (!undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.setProgress(t, was, null, true)});
+      if (!undoing && !sub) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.setProgress(t, was, null, {undoing: true})});
     } catch (e) {
       t.percent_done = was / 100;
       this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
     }
   },
-  // Progress set in the sheet: as in the list, 100% is done, and anything else says so, with Undo.
+  // Progress set in the sheet: as in the list, 100% is done, and anything else says so, with Undo (but a subtask's, as
+  // in the list, only on its bar).
   async sheetProgress(t, pct){
     const was = pctOf(t), patch = progressPatch(t, pct);
     if (patch.done) return this.sheetDone(patch);
     await this.save(patch);
-    if (cache.get(t.id)?.percent_done === patch.percent_done)
+    if (cache.get(t.id)?.percent_done === patch.percent_done && !isSubtask(t))
       this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.sheet.task?.id === t.id ? this.save({percent_done: was / 100}) : this.saveTask(t.id, {percent_done: was / 100}).catch(() => {})});
-  },
-  nudgeProgress(step){                           // the arrow keys, on the focused bar
-    if (this.isRunTask(this.sheet.task)) return;
-    const t = this.sheet.task, was = pctOf(t), pct = Math.max(0, Math.min(100, Math.round(was / 10) * 10 + step));
-    if (pct !== was) this.sheetProgress(t, pct);
   },
 
   /* ---------- moving ---------- */
@@ -291,7 +303,8 @@ export default {
   /* ---------- adding subtasks ---------- */
   /* The subtask box's lines, as subtasks of the open task, through the outbox like quick add: without a connection they
      wait, shown in the sheet and the lists, and are sent once Pocket reaches Vikunja. (A template's steps are added with
-     addTemplateSteps.) The box keeps the focus, to type the next one. */
+     addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show in the sheet, with no message
+     unless there's a problem: one added by mistake is deleted from its row, which has an Undo. */
   async addSubtasks(){
     const parent = this.sheet.task, b = this.sheet.sub, lines = this.boxLines('sub'), parsed = this.boxParsedLines('sub');
     if (!parent || b.busy || !parsed.some(p => p.title)) return;
@@ -319,14 +332,7 @@ export default {
       } else if (r.status === 'error') {
         if (here()) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');      // keep what wasn't added
         this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message);
-      } else if (r.ids?.length) {
-        const n = r.ids.length;
-        this.notify(`Added ${n} subtask${n === 1 ? '' : 's'}${but}`, {label: 'Undo', fn: async () => {
-          await this.deleteTasks(r.ids);
-          const t = await this.readTask(parent.id).catch(() => null);
-          if (t && here()) { cache.set(t.id, t); this.showTask(t); }
-        }});
-      }
+      } else if (r.ids?.length && but) this.notify(`Added ${r.ids.length === 1 ? '1 subtask' : r.ids.length + ' subtasks'}${but}`);
     } finally { b.busy = false; this.refreshPending(); }
   },
 
@@ -348,23 +354,84 @@ export default {
   async deleteTask(){
     const t = this.sheet.task, role = this.checklistRole;
     if (role === 'run') return this.confirmDeleteRun({id: t.id, title: t.title, steps: this.subtasks});
+    // Opened from its parent's sheet: back to the parent afterwards.
+    const back = this.sheet.from && (t.related_tasks?.parenttask || []).some(x => x.id === this.sheet.from) ? this.sheet.from : null;
+    const leave = async () => {
+      Object.assign(this.sheet, {dirty: false, editingDesc: false, commentDraft: ''}); this.sheet.sub.text = '';
+      if (back) { await this.openTask(back); this.sheet.dirty = true; } else this.closeSheet();
+    };
+    if (role !== 'template') { if (await this.removeTask(t)) await leave(); return; }
+    // A template's steps are its runs' to come: it's deleted at once, after asking.
     let tree;
     try { tree = await this.taskTree(t.id); } catch (e) { this.notify('Not deleted: ' + e.message); return; }
     const n = tree.length - 1;
-    const direct = this.subtasks.length, deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
-    const what = role === 'template' ? `the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Runs already started keep theirs.` : '?')
-      : `“${t.title}”` + (n ? ` and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?` : '?');
-    if (!confirm(`Delete ${what} This can't be undone here.`)) return;
+    if (!confirm(`Delete the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Runs already started keep theirs.` : '?') + ' This can\'t be undone here.')) return;
     await shared.saveChain;
-    // Opened from its parent's sheet: back to the parent afterwards.
-    const back = this.sheet.from && (t.related_tasks?.parenttask || []).some(x => x.id === this.sheet.from) ? this.sheet.from : null;
     try {
       await this.deleteTree(tree);
-      Object.assign(this.sheet, {dirty: false, editingDesc: false, commentDraft: ''}); this.sheet.sub.text = '';
-      if (back) { await this.openTask(back); this.sheet.dirty = true; } else this.closeSheet();
+      await leave();
       this.render();
-      this.notify(n ? `Deleted, with ${n} ${role === 'template' ? 'step' : 'subtask'}${n === 1 ? '' : 's'}` : 'Deleted');
+      this.notify(n ? `Deleted, with ${n} step${n === 1 ? '' : 's'}` : 'Deleted');
     } catch (e) { this.notify(`Stopped after deleting ${e.deleted} of ${tree.length}: ${e.message}`); this.render(); }
+  },
+  // Whether a row can be swiped to its Delete: not a run, a step of one, a template, a task waiting to be sent, or one
+  // in a project shared with you to read; in a sheet (`sheet`), not a run's or a template's steps.
+  canDelete(t, sheet){
+    return !t.pending && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t) && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t))
+      && !(sheet && ['run', 'template'].includes(this.checklistRole));
+  },
+  /* Deleting a task, from its row's Delete or its sheet's ⋯: its subtasks go with it, all the way down (taskTree), and
+     with any it asks first. It's off the screen at once, with an Undo in its row's place, and it's sent once the Undo has
+     gone: its line folds, the screen is left, or Pocket is put away or closed. Meanwhile it waits in the outbox, kept on the phone,
+     held back (sync.held): so it's sent even if Pocket is closed before then, the next time it opens, and without a
+     connection, once there's one. Undo takes it out of the outbox: nothing was sent, so nothing has to be made again.
+     Resolves to whether it's deleted (not if it was called off). */
+  async removeTask(t){
+    // Its line, in its row's place (in the list, or in its parent's sheet), shown before the row is hidden; with no row
+    // on screen, a message.
+    let shown = false;
+    const d = await this.holdDelete(t, d => {
+      const more = d.n ? `+ ${d.n} subtask${d.n === 1 ? '' : 's'}` : '', action = {label: 'Undo', fn: () => this.undoDelete(d.id)}, gone = () => this.sendHeld(d.id);
+      shown = this.rowLine(t.id, {text: 'Deleted', title: t.title, more, action, gone}) || {more, action, gone};
+    });
+    if (!d) return false;
+    if (shown !== true) {
+      const title = t.title.length > 40 ? t.title.slice(0, 38) + '…' : t.title;
+      this.notify(`Deleted “${title}”` + (shown.more && ' ' + shown.more), {...shown.action, gone: shown.gone});
+    }
+    return true;
+  },
+  /* The deletion itself, apart from how its Undo is shown (`show`, given {id, n: its subtasks} just before the rows go):
+     asked first if it has subtasks, then off the lists at once, and kept in the outbox, held back (sync.held), until
+     sendHeld or undoDelete. Resolves to {id, n}, or null if it was called off. */
+  async holdDelete(t, show){
+    let tree;
+    try { tree = await this.taskTree(t.id); } catch (e) { this.notify('Not deleted: ' + e.message); return null; }
+    const n = tree.length - 1, direct = (t.related_tasks?.subtask || []).filter(s => tree.includes(s.id)).length;
+    const deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
+    if (n && !confirm(`Delete “${t.title}” and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?`)) return null;
+    const entry = {id: randomId(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), items: [], files: [], stage: 0, fails: 0,
+      run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + UNDO_MS};
+    sync.held.add(entry.id);
+    const added = sync.add(entry, []);
+    show?.({id: entry.id, n});
+    this.refreshPending();                                                  // off the lists at once
+    await added;
+    setTimeout(() => this.sendHeld(entry.id), UNDO_MS * 2);                // whatever became of its Undo
+    return {id: entry.id, n};
+  },
+  // Undo: the deletion isn't sent, and the rows are back.
+  async undoDelete(id){
+    if (!sync.held.delete(id)) return;
+    await sync.lock(() => sync.remove(id));
+    this.refreshPending();
+  },
+  // Send a deletion whose Undo has gone (`id`), or, with none, every one still held: Pocket is being put away.
+  async sendHeld(id){
+    if (!id) { await Promise.all([...sync.held].map(h => this.sendHeld(h))); return; }
+    if (!sync.held.delete(id)) return;                                      // undone, or sent already
+    await sync.lock(async () => { const e = await sync.fresh(id); if (e?.until) { delete e.until; await sync.save(e); } });
+    await this.sendActs(id);
   },
   /* A task and its subtasks, all the way down, deepest first. A subtask that's also under another task stays, with
      what's under it. */
@@ -373,7 +440,8 @@ export default {
     const walk = async (tid, from) => {
       if (seen.has(tid)) return;
       seen.add(tid);
-      const t = tid === this.sheet.task?.id ? this.sheet.task : await api('/tasks/' + tid);
+      // Without a connection: as last loaded, so a task with subtasks Pocket hasn't seen goes without them.
+      const t = tid === this.sheet.task?.id ? this.sheet.task : await api('/tasks/' + tid).catch(e => { if (e instanceof NetError) return cache.get(tid) || {id: tid}; throw e; });
       if (from && (t.related_tasks?.parenttask || []).some(p => p.id !== from)) return;
       for (const sub of t.related_tasks?.subtask || []) await walk(sub.id, tid);
       out.push(tid);

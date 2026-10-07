@@ -1,8 +1,10 @@
 <!-- A task's row, `t`, in the list `g`. In a list of tasks, with its depth under the task above it (g.depth): Today, a
      project, search, and a run's row under Checklists, so a run looks the same, with its progress line, wherever it's
-     listed. And a subtask in its parent's sheet (g.sheet), which so far has its own tick (toggleSubtask), its words
-     alone for a title, its due date only under them, who's doing it, and no progress line. -->
-<div class="row" :class="{done: t.done, pending: t.pending, fresh: !g.sheet && fresh.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t)}" :data-id="t.id" :style="g.sheet ? {} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id], 3)}">
+     listed. And a subtask in its parent's sheet (g.sheet), which has its own tick (toggleSubtask), its words alone for a
+     title, and its due date only under them. Every one has who's doing it at its end (rowSlot), and, swiped left, its
+     Delete (canDelete; also in the task's ⋯, the way for a keyboard or a screen reader). Ticked off its list, or
+     deleted, it's a line with its Undo for a while (lines.js). -->
+<div class="row" :class="{done: t.done, pending: t.pending, fresh: !g.sheet && fresh.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id]}" :data-id="t.id" :style="{'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}">
   <template x-if="g.sheet || canTick(t)"><button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="g.sheet ? toggleSubtask(t) : toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button></template>
   <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->
   <template x-if="!g.sheet && !canTick(t)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Shared with you to read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
@@ -15,8 +17,13 @@
     <!-- A step of a run, in the run's sheet: added during the run, on a line of its own -->
     <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta step-added-meta"><span x-text="addedText(t.description)"></span></div></template>
   </button>
-  <template x-for="slot in g.sheet && subSlots[t.id] ? [subSlots[t.id]] : []" :key="0">
+  <template x-for="slot in [rowSlot(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/claim-slot.html -->
   </template>
   <template x-if="t.pending"><button class="icon-btn plain" :aria-label="'Cancel ' + t.title + (t.index === 0 && pendingNested(t.entry) ? ': the lines under it become tasks of their own' : '')" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
+  <template x-for="line in lines[t.id] ? [lines[t.id]] : []" :key="0">
+    <!-- include markup/row-line.html -->
+  </template>
+  <!-- Off the row's end, shown only by a swipe (progress.js) -->
+  <template x-if="canDelete(t, g.sheet)"><button class="row-del" :aria-label="'Delete ' + t.title" @click="swipeDelete(t, g.sheet)">Delete</button></template>
 </div>

@@ -22,4 +22,12 @@ export default {
   },
   // A task deleted: off the list on screen, and forgotten.
   forget(id){ cache.delete(id); delete this.tasks[id]; this.removeRow(id); },
+  // Tasks deleted: forgotten, and off the subtasks of those on screen and of the task in the sheet.
+  forgetTree(ids){
+    for (const id of ids) this.forget(id);
+    for (const t of [this.sheet.task, ...Object.values(this.tasks)]) {
+      const subs = t?.related_tasks?.subtask;
+      if (subs?.some(s => ids.includes(s.id))) t.related_tasks.subtask = subs.filter(s => !ids.includes(s.id));
+    }
+  },
 };

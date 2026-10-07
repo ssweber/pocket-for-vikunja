@@ -19,6 +19,7 @@ export const sync = {
   volatile: new Set(),                           // ids of entries kept in memory only
   bytes: new Map(),                              // key -> File, for files kept in memory only
   claimed: new Map(),                            // task id -> {key, at}: see claim()
+  held: new Set(),                               // ids of deletions offering their Undo in this tab: not sent yet
   db: null, asked: false,
   channel: 'BroadcastChannel' in self ? new BroadcastChannel('pocket-sync') : null,
 
@@ -360,10 +361,13 @@ export const INSERT_STEPS = [
    connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
    and mark, someone is assigned once, and a note whose reply was lost is looked for before it's posted again. Claiming
    a subtask or a step (assigning yourself) goes the same way, from anywhere. */
+/* A deletion waiting for its Undo to go (removeTask): in this tab, until its message goes (sync.held); in another, or
+   after a reload, until the time its Undo would have gone (`until`). */
+export const held = e => sync.held.has(e.id) || e.until > Date.now();
 // The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
 export const ACTS = {progress: ['progress'], done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
-  claim: ['claim'], unclaim: ['unclaim']};
+  claim: ['claim'], unclaim: ['unclaim'], delete: ['delete']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),
   undone: a => patchTask(a.task, {done: false}),
@@ -383,6 +387,8 @@ export const ACT_STEPS = {
     if (after.length) { await api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(() => {}); throw taken(after); }
   },
   unclaim: a => api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }),
+  // A task and its subtasks (a.ids, deepest first): one gone already, by a try cut off, say, is fine.
+  delete: async a => { for (const id of a.ids) await api('/tasks/' + id, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }); },
   unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },
   note: async (a, save) => {
     if (a.tried && await app.findNote(a.task, a.html, a.triedAt, a.at)) return;

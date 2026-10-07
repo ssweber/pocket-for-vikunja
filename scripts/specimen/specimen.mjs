@@ -41,6 +41,12 @@ function sections(){
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
     {title: 'A checklist run', depth: {}, tasks: [run]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
+    // Held and slid (progress.js), swiped to its Delete, and a line in a row's place (lines.js): shown by `state`.
+    {title: 'Held at 50%, held at 100%, and swiped to its Delete', depth: {}, tasks: [
+      task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
+      task({title: 'Order more cups', state: {swiped: true}})]},
+    {title: 'A line in a row\'s place: ticked off, and deleted', depth: {}, tasks: [
+      task({title: 'Pack the van', state: {line: {text: 'Done:', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}})]},
   ]};
 }
 
@@ -57,6 +63,15 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     // A task's sheet, open on a task with subtasks, for its rows' slots: who's doing each.
     this.sheet = {...blankSheet('task'), task: s.parent, subPeople: {801: [], 802: [me], 803: [priya], 804: [priya, sam]}};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, tasks: subs}];
+    // The states a finger makes, put on the rows as the app does.
+    const all = s.list.flatMap(g => g.tasks).filter(t => t.state);
+    for (const t of all) if (t.state.line) this.lines[t.id] = {title: t.title, more: '', hide: [], action: {label: 'Undo', fn(){}}, ...t.state.line};
+    this.$nextTick(() => {
+      for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
+        if (t.state.held) { row.classList.add('held'); this.showSlide(row, t.state.held, 0); }
+        if (t.state.swiped) { row.classList.add('swiped'); row.style.setProperty('--swipe', '-88px'); }
+      }
+    });
   };
   c.loadPerms = () => {};                                  // nothing to ask Vikunja
   return c;

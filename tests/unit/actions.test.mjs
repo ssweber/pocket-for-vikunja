@@ -4,7 +4,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
 import tasks from '../../src/js/app/tasks.js';
+import sending from '../../src/js/app/sending.js';
+import runs from '../../src/js/app/runs.js';
 import { cache } from '../../src/js/util.js';
+import { sync } from '../../src/js/sync.js';
 
 const DAY = 86400;
 const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
@@ -40,7 +43,6 @@ test('a subtask that fails to close stops the rest, and the message says so', as
   assert.equal(v.task(10).done, true);
   assert.equal(v.task(14).done, false, 'stopped at the first that failed');
   assert.equal(app.toast.msg, 'Done: Pack the van, with 0 of its 2 open subtasks. The rest couldn\'t be saved.');
-  assert.equal(app.toast.action.says, true, 'its Undo isn\'t added up with other ticks');
 });
 
 test('a tick not saved goes back, and says why', async () => {
@@ -133,4 +135,90 @@ test('Move all to today: each overdue task to today at its own time, or the next
   await app.toast.action.fn();
   assert.equal(v.task(1).due_date, at(5, 9));
   assert.equal(v.task(2).due_date, at(6, 18, 30));
+});
+
+test('a subtask\'s tick and progress show on its row only: no message, and its row stays where it is', async () => {
+  const kid = { id: 2, title: 'Pack the cups', done: false, percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } };
+  const v = fakeVikunja([kid]), app = component(tasks, actions), t = app.keep(kid);
+  await app.setProgress(t, 50, null);
+  assert.equal(v.task(2).percent_done, 0.5);
+  await app.toggleDone(t, null);
+  assert.equal(v.task(2).done, true);
+  await app.toggleDone(t, null);
+  assert.equal(v.task(2).done, false);
+  assert.deepEqual(app.toasts, [], 'no messages');
+  // In its parent's sheet, a subtask's copy has no parent of its own: it's said to be one.
+  const inSheet = { id: 3, title: 'Wash them', done: false };
+  v.tasks.set(3, structuredClone(inSheet));
+  await app.toggleDone(inSheet, null, { sub: true });
+  assert.deepEqual(app.toasts, []);
+});
+
+// The parts a deletion is sent with: what's waiting, and the outbox's acts (runs.js), on the pretend component.
+const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
+// Its timers are the test's, so the ones still to come (the Undo's own, say) don't keep Node waiting.
+const deleting = t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'sendEntry'),
+    pick(runs, 'sendActs', 'sendAct', 'applyAct', 'actWhat', 'actTitle', 'wordsBack', 'giveBack', 'refreshRunTask'));
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], canWrite: () => true });
+  globalThis.confirm = () => true;
+  return app;
+};
+const deletes = v => v.requests.filter(r => r.method === 'DELETE').map(r => +r.path.split('/')[2]);
+
+test('a deletion waits for its Undo: off the list at once, nothing sent, and Undo brings it back', async t => {
+  const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }] } }, { id: 2, title: 'Pack the cups', related_tasks: { parenttask: [{ id: 1 }] } }]);
+  const app = deleting(t);
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
+  const d = await app.holdDelete(app.tasks[1]);
+  assert.equal(d.n, 1, 'with its subtask');
+  assert.deepEqual(app.deleting.sort(), [1, 2], 'off the list');
+  assert.deepEqual(deletes(v), [], 'not sent while its Undo shows');
+  assert.equal(app.pending.length, 0, 'nor said to be waiting to send');
+  await app.undoDelete(d.id);
+  assert.deepEqual(app.deleting, [], 'back on the list');
+  await app.sendHeld();                                                       // Pocket put away: nothing left to send
+  assert.deepEqual(deletes(v), []);
+  assert.equal(sync.all(1).length, 0);
+});
+
+test('a deletion is sent once its Undo has gone, deepest first, and its rows are forgotten', async t => {
+  const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }] } }, { id: 2, title: 'Pack the cups', related_tasks: { parenttask: [{ id: 1 }] } }]);
+  const app = deleting(t);
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
+  const d = await app.holdDelete(app.tasks[1]);
+  await app.sendHeld(d.id);
+  assert.deepEqual(deletes(v), [2, 1]);
+  assert.deepEqual(app.view.groups[0].tasks, []);
+  assert.deepEqual(app.deleting, []);
+  assert.equal(sync.all(1).length, 0, 'nothing left waiting');
+  await app.undoDelete(d.id);                                                 // too late for Undo: nothing happens
+  assert.deepEqual(deletes(v), [2, 1]);
+});
+
+test('a deletion without a connection waits in the outbox, off the list, and goes once there is one', async t => {
+  const v = fakeVikunja([{ id: 5, title: 'Call Jo' }]), app = deleting(t);
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(5))] }];
+  await app.holdDelete(app.tasks[5]);
+  v.trouble = r => r.method === 'DELETE' ? 'offline' : null;
+  await app.sendHeld();                                                       // put away while offline
+  assert.deepEqual(app.deleting, [5], 'still off the list');
+  assert.equal(app.pending.length, 1, 'shown as waiting to send');
+  v.trouble = () => null;
+  await app.sendActs(app.pending[0].id);
+  assert.ok(!v.task(5), 'deleted in Vikunja');
+  assert.deepEqual(app.deleting, []);
+});
+
+test('a deletion Vikunja turns down brings the row back, kept to try again', async t => {
+  const v = fakeVikunja([{ id: 6, title: 'Order cups' }]), app = deleting(t);
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(6))] }];
+  const d = await app.holdDelete(app.tasks[6]);
+  v.trouble = r => r.method === 'DELETE' ? 403 : null;
+  await app.sendHeld(d.id);
+  assert.deepEqual(app.deleting, [], 'back on the list');
+  assert.equal(app.failed.length, 1);
+  assert.match(app.toast.msg, /^Deleting “Order cups” couldn't be saved/);
+  await sync.remove(app.failed[0].id);
 });

@@ -583,12 +583,16 @@ try {
     await page.waitForSelector(`${runRow} > button.check`, { timeout: 15000 });
     await page.click('#btn-back');
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
-    // A step ticked on Today is ticked as on the run's screen: with a ✅ from you. Undo takes both back.
-    const check = (await runStep(first.id, 2)).id;
-    await page.click('.row:has(> .body .title:has-text("First article check")) > .check', { timeout: 15000 });
+    // A step ticked on Today is ticked as on the run's screen: with a ✅ from you. A step is a subtask: no message, and
+    // its row stays, done, so ticking it again takes both back.
+    const check = (await runStep(first.id, 2)).id, stepRow = '.row:has(> .body .title:has-text("First article check"))';
+    await toastGone().catch(() => {});
+    await page.click(`${stepRow} > .check`, { timeout: 15000 });
     await until('the tick from Today has no ✅', async () => { const t = await task(check); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
-    await page.click('#toast-act:has-text("Undo")');
-    await until('Undo left the step done', async () => { const t = await task(check); return !t.done && !t.reactions?.['✅']?.some(u => u.id === me.id); });
+    await page.waitForSelector(`${stepRow}.done`);
+    if (await page.$('#toast.show')) throw new Error('a step ticked on Today said: ' + await page.textContent('#toast-msg'));
+    await page.click(`${stepRow} > .check`);
+    await until('ticked again, the step stayed done', async () => { const t = await task(check); return !t.done && !t.reactions?.['✅']?.some(u => u.id === me.id); });
     await page.waitForSelector('.row .title:has-text("First article check")', { timeout: 15000 });
     // The run's sheet, from its ⋯: a step there opens its own sheet, to hand it over with Assigned (no Repeats), and
     // that opens the run on that step.
@@ -1052,11 +1056,11 @@ try {
   });
 
   await step('hold-a-step-to-set-its-progress', async () => {
-    // As on a task's row: hold, then slide. Sent like a tick, with Undo; 100% is Done, with its ✅.
+    // As on a task's row: hold, then slide, in snaps of 25%. Sent like a tick, with Undo; 100% is Done, with its ✅.
     const { id } = await startRun();
     const row = '#run-steps .row:nth-of-type(2)', step2 = (await runStep(id, 1)).id;
     const slide = async (n, check) => {
-      // From 0%: the room to 48px short of the screen's edge is the way to 100% (holdToSlide's EDGE).
+      // The room to 48px short of the screen's edge is the rest of the way to 100% (EDGE): n tenths of it.
       const box = await page.locator(row).boundingBox(), x = box.x + box.width * .45, y = box.y + box.height / 2;
       await page.mouse.move(x, y); await page.mouse.down();
       await page.waitForSelector(`${row}.setting`, { timeout: 2000 });
@@ -1067,11 +1071,11 @@ try {
     // The row's bar shows it, as a task's does.
     const bar = () => page.$eval(row, el => [getComputedStyle(el).getPropertyValue('--pct').trim(), parseFloat(getComputedStyle(el, '::after').width)]);
     await toastGone().catch(() => {});
-    await slide(3);
-    await toast('Progress set to 30%');
-    await until('its progress never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 30);
+    await slide(2.2);                                                        // 22%: the snap nearest is 25%
+    await toast('Progress set to 25%');
+    await until('its progress never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 25);
     const [pct, width] = await bar();
-    if (pct !== '0.3' || !(width > 0)) throw new Error(`its bar: --pct ${pct}, ${width}px`);
+    if (pct !== '0.25' || !(width > 0)) throw new Error(`its bar: --pct ${pct}, ${width}px`);
     if (await page.textContent('#step-title') !== 'Check the guards at 3pm') throw new Error('letting go opened the step');
     await page.click('#toast-act:has-text("Undo")');
     await until('Undo never put it back', async () => !(await api('/tasks/' + step2)).percent_done);
@@ -1088,22 +1092,22 @@ try {
     await page.waitForFunction(() => document.activeElement?.id === 'step-insert-in', null, { timeout: 5000 });
     if ((await api('/tasks/' + step2)).percent_done) throw new Error('holding › saved progress');
     // With a box open, a step's row still slides.
-    await slide(2);
-    await toast('Progress set to 20%');
-    await until('its progress never reached Vikunja with a box open', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 20);
+    await slide(5);
+    await toast('Progress set to 50%');
+    await until('its progress never reached Vikunja with a box open', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 50);
     await page.press('#step-insert-in', 'Escape');
     await page.waitForSelector('#step-gap', { state: 'detached' });
     await toastGone().catch(() => {});
     // Offline, Waiting to send says what it is.
     await context.setOffline(true);
-    await slide(5);
+    await slide(5);                                                          // from 50%, half the rest: 75%
     await page.waitForSelector('#btn-refresh.waits', { timeout: 5000 });
     await page.click('#btn-refresh');
-    await page.waitForSelector('#outbox-rows .ob-row:has-text("Progress: 60% on “Warm up the press”")');
+    await page.waitForSelector('#outbox-rows .ob-row:has-text("Progress: 75% on “Warm up the press”")');
     await page.click('#btn-sheet-close');
     await context.setOffline(false);
     await online();
-    await until('the progress set offline never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 60);
+    await until('the progress set offline never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 75);
     await toastGone().catch(() => {});
     // Pulled past 100% and held while the run's screen redraws (every second, for countdowns): it says 100%, and its
     // line stays full.

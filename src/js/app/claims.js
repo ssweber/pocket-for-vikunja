@@ -1,7 +1,7 @@
 // Who's doing a subtask or a step: claiming one assigns it to you, and people's pictures.
 import {cache} from '../util.js';
 import {allPages, api, ApiError, NetError} from '../api.js';
-import {parseStep} from '../checklists.js';
+import {hasTemplateLabel, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 
 const loading = new Set();                       // usernames whose picture is being fetched
@@ -59,6 +59,13 @@ export default {
       for (const id of ids) if (cache.get(id)?.assignees) this.sheet.subPeople[id] ??= cache.get(id).assignees;
     }
   },
+  /* A row's slot for who's doing it: in a sheet (g.sheet), its subtask's; in a list, the task's own, from its assignees.
+     None on a row waiting to be sent, a run (its row says who it's for), or a template that comes round. */
+  rowSlot(t, g){
+    if (g.sheet) return this.subSlots[t.id] || null;
+    if (t.pending || this.isRunTask(t) || (this.checklistIds.has(t.project_id) && hasTemplateLabel(t))) return null;
+    return this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t));
+  },
   // The open task's subtasks' slots, by id.
   get subSlots(){
     const out = {};
@@ -73,6 +80,7 @@ export default {
     if (was !== null) this.sheet.subPeople[a.task] = set(was);
     if (step) step.assignees = set(step.assignees);
     const c = cache.get(a.task); if (c) c.assignees = set(c.assignees);
+    if (this.tasks[a.task]) this.syncTask({id: a.task, assignees: set(this.tasks[a.task].assignees)});
   },
 
   /* ---------- people's pictures ---------- */

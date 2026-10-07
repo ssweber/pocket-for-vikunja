@@ -6,7 +6,7 @@ import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
-import {ACT_STEPS, ACTS, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
+import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
@@ -525,21 +525,25 @@ export default {
     const entry = {id: randomId(), kind: 'act', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], stage: 0, fails: 0,
       run: this.view.run?.run.id, label: this.actTitle(fields.task), ...fields};
     const {kept, full} = await sync.add(entry, []);
+    return this.sendActs(entry.id, kept, full);
+  },
+  // Send the acts waiting, up to and with this one (`id`), in order; a deletion still offering its Undo waits (held).
+  async sendActs(id, kept = true, full = false){
     this.refreshPending();
     let last = {status: 'gone'};
     await sync.lock(async () => {
-      const all = sync.all(this.user?.id).filter(e => e.kind === 'act'), held = heldTasks(all);
+      const all = sync.all(this.user?.id).filter(e => e.kind === 'act' && (e.id === id || !held(e))), stopped = heldTasks(all);
       for (const e of all) {
-        if (e.failed || held.has(e.task)) {                                  // waits behind one turned down
-          if (e.id !== entry.id) continue;
-          this.notify(`Waiting: something done before it on “${parseStep(entry.label || 'it').title}” was turned down. Tap the warning sign at the top to try that again.`);
+        if (e.failed || stopped.has(e.task)) {                               // waits behind one turned down
+          if (e.id !== id) continue;
+          this.notify(`Waiting: something done before it on “${parseStep(e.label || 'it').title}” was turned down. Tap the warning sign at the top to try that again.`);
           last = {status: 'offline', reached: true};
           break;
         }
         last = await this.sendEntry(e.id);
-        if (last.kept) held.add(e.task);
+        if (last.kept) stopped.add(e.task);
         if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)));
-        if (last.status === 'offline' || e.id === entry.id) break;
+        if (last.status === 'offline' || e.id === id) break;
       }
     });
     this.refreshPending();
@@ -604,7 +608,8 @@ export default {
     const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '';
     return {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
       done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
-      claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it')}[a.op] || 'Something done offline';
+      claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it'),
+      delete: 'Deleting' + (title ? ` “${parseStep(title).title}”` : ' a task')}[a.op] || 'Something done offline';
   },
   /* An action on a run, or a comment, that won't be sent: its words go back where they were written, and `error.back`
      says so. If what they were written on is gone (a run deleted meanwhile, say), there's nowhere to put them back:
@@ -641,6 +646,7 @@ export default {
   // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
   applyAct(a, comment){
     if (a.op === 'claim' || a.op === 'unclaim') { this.claimSent(a); return; }
+    if (a.op === 'delete') { this.forgetTree(a.ids); return; }
     const r = this.view.run;
     if (!r || r.run.id !== a.run) return;
     if (a.op === 'finish' || a.op === 'reopen') { r.run.done = a.op === 'finish'; return; }

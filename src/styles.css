@@ -5,6 +5,7 @@
   /* shadows, and the shade behind a sheet: the same in dark mode, whose block below redefines any that should differ */
   --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-pct:0 2px 10px rgba(0,0,0,.18); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
   --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
+  --shadow-lift:0 1px 3px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.2); --danger-ink:#FFFFFF;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
   --pad:16px; --cap-h:64px; --kb:0px;
   color-scheme:light;
@@ -12,7 +13,7 @@
 @media (prefers-color-scheme:dark){:root{
   --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
   --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#2C3833;
-  --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B;
+  --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B; --danger-ink:#1A080C;
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
@@ -114,7 +115,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 /* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too */
 .row.sub{padding-left:calc(14px + var(--depth) * 38px);border-top-color:transparent}
 .row.sub::after{left:calc(14px + var(--depth) * 38px);width:calc(var(--pct,0) * (100% - 14px - var(--depth) * 38px))}
-.row.sub .check::before{content:"";position:absolute;top:-1px;right:0;left:calc(14px + var(--depth) * 38px);height:1px;background:var(--line);pointer-events:none}
+.row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:calc(14px + var(--depth) * 38px);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
 .row .title{font-size:16.5px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
@@ -123,6 +124,10 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .meta .due.today{color:var(--today);font-weight:600}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
 .check{width:26px;height:26px;border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:1px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
+/* a tick's touch target is 48px, past its circle (a run's step has its › close on the left) */
+button.check{position:relative}
+button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
+#run-steps button.check::after{left:-4px}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
 .check.p3,.check.p4,.check.p5{border-color:var(--overdue)}
 .row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
@@ -143,7 +148,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .check.no-tick svg{opacity:1;stroke:currentColor;stroke-width:2;width:22px;height:22px}
 .check.no-tick.ro{border:2px dotted var(--line)}
 /* Who's doing a subtask or a step, at the end of its row: "+ me" when no one is, else their pictures or initials */
-.claim{flex:none;display:flex;align-items:center;gap:2px;min-width:44px;height:44px;margin:-8px -6px -8px 0;padding:0 6px;border:0;background:transparent;color:var(--muted);justify-content:center}
+.claim{flex:none;display:flex;align-items:center;gap:2px;min-width:48px;height:48px;margin:-10px -8px -10px 0;padding:0 6px;border:0;background:transparent;color:var(--muted);justify-content:center}
 .claim[aria-disabled=true]{cursor:default}
 /* People's pictures on a row (pics.html): one size everywhere, two at most, a little overlapped, yours ringed; a done
    step's doer has a ✓ on the corner of theirs */
@@ -179,6 +184,32 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
 /* held on the right half, the percentage moves to the left, clear of the thumb */
 .row.setting[data-side=left]::before,.d-head.setting[data-side=left]::before{right:auto;left:12px}
+/* Held, the row lifts. At each snap the percentage pulses (the tick, seen), and at 100% the tick fills */
+.row{transition:box-shadow .15s,transform .2s ease}
+.row.held{z-index:2;box-shadow:var(--shadow-lift)}
+.row.setting[data-tick=a]::before,.d-head.setting[data-tick=a]::before{animation:pct-a .22s ease-out}
+.row.setting[data-tick=b]::before,.d-head.setting[data-tick=b]::before{animation:pct-b .22s ease-out}
+@keyframes pct-a{40%{scale:1.15}}
+@keyframes pct-b{40%{scale:1.15}}
+.setting.full button.check{background:var(--accent);border-color:var(--accent);animation:check-pop .32s ease-out}
+.setting.full button.check svg{opacity:1}
+@keyframes check-pop{0%{scale:.7}55%{scale:1.2}100%{scale:1}}
+@media (prefers-reduced-motion:reduce){.setting::before,.setting button.check{animation:none!important}}
+/* Swiped left, the row moves aside for its Delete, which comes in from its end. A row can be swiped sideways without
+   the page taking the move for a scroll. */
+.list:not(.tree) > .row,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
+.row.swiping,.row.swiped{transform:translateX(var(--swipe,0px))}
+.row.swiping{transition:none}
+#d-subtasks:has(> .swiping,> .swiped){overflow-x:clip}
+.row-del{display:none;position:absolute;top:0;bottom:0;left:100%;width:88px;border:0;background:var(--danger);color:var(--danger-ink);font-size:15px;font-weight:700;align-items:center;justify-content:center}
+.row-del:focus-visible{outline-color:var(--danger-ink);outline-offset:-6px}
+.row.swiping .row-del,.row.swiped .row-del{display:flex}
+/* A message in a row's place (lines.js): the row shrinks to a line, the task's title struck through, its action at the end */
+.row.lined{min-height:48px;padding-top:0;padding-bottom:0;align-items:center}
+.row.lined > :not(.row-line),.row.lined::after{display:none}
+.row-line{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:48px;color:var(--muted);font-size:14.5px}
+.row-line .what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.line-act{flex:none;min-width:64px;height:48px;margin-right:-8px;padding:0 8px;border:0;background:transparent;color:var(--accent);font-size:15px;font-weight:700}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}

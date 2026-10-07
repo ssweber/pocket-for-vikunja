@@ -48,7 +48,7 @@ export default {
     shared.onClosedSheet = false;
     this.navigated();
   },
-  navigated(){ this.headerTucked = false; if (!this.signedIn) return; this.closeSheet(true); this.render(); },
+  navigated(){ this.headerTucked = false; this.foldLines(); if (!this.signedIn) return; this.closeSheet(true); this.render(); },
   // Pocket's own Back: the phone's Back when the screen before is that one, so the history doesn't grow; else go there.
   back(to){
     if (history.state?.from !== to || history.state?.sheet === true) { this.go(to); return; }
@@ -107,9 +107,9 @@ export default {
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
-    // A run: who it's for, as its screen says ("For you and Jo"). Any other task: who else it's assigned to.
-    if (this.isRunTask(t)) { if ((t.assignees || []).length) out.push({key: 'for', text: this.forText(t)}); }
-    else for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: u.name || '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
+    // A run: who it's for, as its screen says ("For you and Jo"). Any other task shows who's doing it in its slot, at the
+    // end of the row (rowSlot).
+    if (this.isRunTask(t) && (t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     const subs = t.related_tasks?.subtask || [];
     // A run's steps done, ticks waiting to be sent too, and the next one.

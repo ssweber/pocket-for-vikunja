@@ -159,7 +159,7 @@ export default {
   },
   // The template a step is in, by name.
   get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },
-  get subtasks(){ return stepsOf(this.sheet.task); },
+  get subtasks(){ const hidden = this.hiddenRows; return stepsOf(this.sheet.task).filter(s => !hidden.has(s.id)); },   // not those being deleted
   // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },

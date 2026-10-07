@@ -4,7 +4,7 @@ import {api, ApiError, items, passing, seenToken, sharedToken, TRANSIENT, triedS
 import {addDays, dueInfo, isLate, isSet, startOfDay} from '../dates.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
-import {entryDone, fileEntry, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
+import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
 
 let freshTimer, waitTimer;
@@ -233,12 +233,12 @@ export default {
     try {
       await sync.lock(async () => {
         let actsWait = false;                                                 // an act kept: the later ones wait behind it
-        const all = sync.all(this.user?.id), held = heldTasks(all);           // and behind one turned down, those on its task
+        const all = sync.all(this.user?.id), stopped = heldTasks(all);        // and behind one turned down, those on its task
         for (const e of all) {
-          if (e.failed || (e.kind === 'act' && (actsWait || held.has(e.task)))) continue;
+          if (e.failed || held(e) || (e.kind === 'act' && (actsWait || stopped.has(e.task)))) continue;
           const r = await this.sendEntry(e.id);
           if (e.kind === 'act' && r.status === 'offline') actsWait = true;
-          if (r.kept) held.add(e.task);
+          if (r.kept) stopped.add(e.task);
           tasks.push(...(r.tasks || [])); problems.push(...(r.problems || []));
           if (r.status === 'offline' && !r.reached) break;                    // no connection: the rest can wait too
           if (r.status === 'sent') sent += r.ids.length + r.uploaded + (r.changed || 0);
@@ -279,7 +279,9 @@ export default {
   // waiting only once it has for a moment: a tick sent at once doesn't make it flicker.
   refreshPending(){
     const all = this.user ? sync.all(this.user.id) : [];
-    this.pending = all.filter(e => !e.failed); this.failed = all.filter(e => e.failed);
+    this.pending = all.filter(e => !e.failed && !sync.held.has(e.id)); this.failed = all.filter(e => e.failed);
+    // Tasks being deleted, unless Vikunja turned it down: off every list until they're gone, or back with Undo.
+    this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
     clearTimeout(waitTimer);
     if (!this.pending.length) this.waitShown = false;
     else if (!this.waitShown) waitTimer = setTimeout(() => { this.waitShown = !!this.pending.length; }, 1500);
@@ -322,7 +324,8 @@ export default {
   },
   // The current list, with waiting tasks added where they belong, and subtasks under their parents.
   get listGroups(){
-    return this.listBase.map(g => ({...g, ...nestSubtasks(g.tasks)}));
+    const hidden = this.hiddenRows;
+    return this.listBase.map(g => ({...g, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)))}));
   },
   get listBase(){
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);

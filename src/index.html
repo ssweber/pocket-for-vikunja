@@ -27,6 +27,8 @@
 
 <!-- include markup/sheet.html -->
 
+<!-- What a row's line says (lines.js), for a screen reader: a line appearing isn't reliably read out by itself -->
+<div id="said" class="sr" aria-live="polite" x-text="said"></div>
 <div id="toasts">
   <div id="toast" role="status" :class="{show: toast.show}"><span id="toast-msg" x-text="toast.msg"></span><button id="toast-act" :hidden="!toast.action" x-text="toast.action?.label" @click="runToastAction()" hidden></button><button id="toast-act2" :hidden="!toast.more" x-text="toast.more?.label" @click="runToastAction(true)" hidden></button></div>
 </div>

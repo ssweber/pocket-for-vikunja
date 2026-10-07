@@ -111,59 +111,74 @@ try {
     await old.close();
   });
   await step('tick-in-list-and-undo', async () => {
+    // Ticked off the list, its row is a line saying so, with its Undo, in its place.
     await page.click(`${row} .check`);
-    await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
-    await page.click('#toast-act:has-text("Undo")');
-    await page.waitForSelector(row, { timeout: 15000 });
+    await page.waitForSelector(`${row}.lined .row-line:has-text("Done:")`, { timeout: 10000 });
+    if (await page.$('#toast.show #toast-msg:has-text("Done")')) throw new Error('a tick in a list said: ' + await page.textContent('#toast-msg'));
+    if (!(await page.textContent('#said')).startsWith('Done: ' + title)) throw new Error('a screen reader hears: ' + await page.textContent('#said'));
+    await page.click(`${row} .line-act`);
+    await page.waitForSelector(`${row}:not(.lined)`, { timeout: 15000 });
     if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after undo');
   });
   /* How far right a finger at x slides to go from `from`% to `to`%: the room to the screen's edge is the rest of the way
      to 100%, 48px short of it (holdToSlide's EDGE). */
   const slideBy = (x, from, to) => (page.viewportSize().width - 48 - x) * (to - from) / (100 - from);
-  // Hold a row, then slide it sideways from `from`% by `steps` tens of percent, as with a finger.
-  async function slideProgress(sel, steps, check, from = 0){
+  // Hold a row, then slide it sideways from `from`% to `to`%, as with a finger.
+  async function slideProgress(sel, to, check, from = 0){
     const box = await page.locator(sel).boundingBox();
     const x = box.x + box.width * .2, y = box.y + box.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.waitForSelector(`${sel}.setting`, { timeout: 2000 });
-    await page.mouse.move(x + slideBy(x, from, from + steps * 10), y, { steps: 10 });
+    await page.waitForSelector(`${sel}.setting.held`, { timeout: 2000 });
+    await page.mouse.move(x + slideBy(x, from, to), y, { steps: 10 });
     await check?.();
     await page.mouse.up();
   }
   const apiTask = async () => (await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items.find(t => t.title === title);
   await step('progress-hold-and-slide', async () => {
-    await slideProgress(row, 4, async () => {
+    // Snaps to the quarters: slid to 45%, it's 50%.
+    await slideProgress(row, 45, async () => {
       const shown = await page.getAttribute(row, 'data-pct');
-      if (shown !== '40%') throw new Error('showed ' + shown + ' while sliding');
+      if (shown !== '50%') throw new Error('showed ' + shown + ' while sliding');
     });
-    await page.waitForSelector('#toast-msg:text("Progress set to 40%")', { timeout: 10000 });
+    await page.waitForSelector('#toast-msg:text("Progress set to 50%")', { timeout: 10000 });
     if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+    if (await page.$(`${row}.held, ${row}.setting`)) throw new Error('the row is still held');
     const t = await apiTask();
-    if (Math.round(t.percent_done * 100) !== 40) throw new Error('saved percent_done ' + t.percent_done);
+    if (Math.round(t.percent_done * 100) !== 50) throw new Error('saved percent_done ' + t.percent_done);
     // Held in the right tenth of the row, 100% is still within reach before the screen's edge, its percentage on the
     // left, clear of the thumb. Slid back to where it was, nothing changes.
     const box = await page.locator(row).boundingBox(), x = box.x + box.width * .9, y = box.y + box.height / 2;
     await page.mouse.move(x, y); await page.mouse.down();
     await page.waitForSelector(`${row}.setting[data-side=left]`, { timeout: 2000 });
-    await page.mouse.move(page.viewportSize().width - 4, y, { steps: 8 });
-    const shown = await page.getAttribute(row, 'data-pct');
+    await page.mouse.move(page.viewportSize().width - 4, y + 3, { steps: 8 });
+    const shown = await page.getAttribute(row, 'data-pct'), full = await page.$(`${row}.setting.full`);
     await page.mouse.move(x, y, { steps: 8 });
     await page.mouse.up();
-    if (shown !== '100%') throw new Error('from the right of the row, at most ' + shown);
-    if (Math.round((await apiTask()).percent_done * 100) !== 40) throw new Error('slid back, it saved ' + (await apiTask()).percent_done);
+    if (shown !== '100%' || !full) throw new Error('from the right of the row, at most ' + shown + (full ? '' : ", and the tick didn't fill"));
+    if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('slid back, it saved ' + (await apiTask()).percent_done);
+    // Moved up or down after the hold, it's let go: nothing changes, and the task doesn't open.
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.waitForSelector(`${row}.held`, { timeout: 2000 });
+    await page.mouse.move(x + 3, y + 30, { steps: 5 });
+    await page.waitForSelector(`${row}.held`, { state: 'detached', timeout: 2000 });
+    await page.mouse.move(x + 150, y + 30, { steps: 5 });
+    await page.mouse.up();
+    if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+    if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('moved down, it saved ' + (await apiTask()).percent_done);
   });
   await step('progress-100-marks-done-and-undo', async () => {
-    await slideProgress(row, 6, null, 40);                                 // from 40%, to the edge: 100%
-    await page.waitForSelector(row, { state: 'detached', timeout: 10000 });
-    // Done, with its progress as it was, so marked not done it's back at 40%.
+    await slideProgress(row, 100, null, 50);                               // from 50%, to the edge: 100%
+    await page.waitForSelector(`${row}.lined`, { timeout: 10000 });
+    // Done, with its progress as it was, so marked not done it's back at 50%.
     for (let i = 0; i < 40 && !(await apiTask()).done; i++) await page.waitForTimeout(250);
     if (!(await apiTask()).done) throw new Error('100% never marked it done');
-    if (Math.round((await apiTask()).percent_done * 100) !== 40) throw new Error('done saved percent_done ' + (await apiTask()).percent_done);
-    await page.click('#toast-act:has-text("Undo")');
-    await page.waitForSelector(row, { timeout: 15000 });
+    if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('done saved percent_done ' + (await apiTask()).percent_done);
+    await page.click(`${row} .line-act`);
+    await page.waitForSelector(`${row}:not(.lined)`, { timeout: 15000 });
+    for (let i = 0; i < 40 && (await apiTask()).done; i++) await page.waitForTimeout(250);
     const t = await apiTask();
-    if (t.done || Math.round(t.percent_done * 100) !== 40) throw new Error(`after undo: done ${t.done}, percent_done ${t.percent_done}`);
+    if (t.done || Math.round(t.percent_done * 100) !== 50) throw new Error(`after undo: done ${t.done}, percent_done ${t.percent_done}`);
   });
   // This moves every overdue task of the test account to today, then puts them back with Undo.
   await step('move-overdue-to-today-and-undo', async () => {
@@ -289,19 +304,19 @@ try {
       const got = Math.round((await apiTask()).percent_done * 100);
       if (got !== want) throw new Error(`saved ${got}%, not ${want}%`);
     };
-    if (await page.getAttribute('#d-progress', 'aria-valuenow') !== '40') throw new Error('sheet shows ' + await page.getAttribute('#d-progress', 'aria-valuenow'));
+    if (await page.getAttribute('#d-progress', 'aria-valuenow') !== '50') throw new Error('sheet shows ' + await page.getAttribute('#d-progress', 'aria-valuenow'));
     await page.locator('#d-progress').scrollIntoViewIfNeeded();
     const bar = await page.locator('#d-progress .track').boundingBox();
-    await page.mouse.move(bar.x + 20, bar.y + bar.height / 2);              // hold the bar, then slide two steps
+    await page.mouse.move(bar.x + 20, bar.y + bar.height / 2);              // hold the bar, then slide to the next snap
     await page.mouse.down();
     await page.waitForSelector('.d-head.setting', { timeout: 2000 });
-    await page.mouse.move(bar.x + 20 + slideBy(bar.x + 20, 40, 60), bar.y + bar.height / 2, { steps: 6 });
-    if (await page.getAttribute('.d-head', 'data-pct') !== '60%') throw new Error('showed ' + await page.getAttribute('.d-head', 'data-pct') + ' while sliding');
+    await page.mouse.move(bar.x + 20 + slideBy(bar.x + 20, 50, 75), bar.y + bar.height / 2, { steps: 6 });
+    if (await page.getAttribute('.d-head', 'data-pct') !== '75%') throw new Error('showed ' + await page.getAttribute('.d-head', 'data-pct') + ' while sliding');
     await page.mouse.up();
-    await savedPct(60);
-    await page.focus('#d-progress');                                          // and one more with the arrow key
-    await page.keyboard.press('ArrowRight');
-    await savedPct(70);
+    await savedPct(75);
+    await page.focus('#d-progress');                                          // and back a snap with the arrow key
+    await page.keyboard.press('ArrowLeft');
+    await savedPct(50);
   });
   await step('attach-from-sheet', async () => {
     const before = (await apiTask()).attachments?.length || 0;
@@ -529,10 +544,11 @@ try {
     const subs = async () => (await (await api('/tasks/' + parent.id)).json()).related_tasks?.subtask || [];
     const open = (await subs()).filter(s => !s.done).map(s => s.id);
     if (open.length !== 3) throw new Error('open subtasks before: ' + open.length);
-    await page.click(`.row:has(> .body .title:has-text("${parentTitle}")) > .check`);
-    await page.waitForSelector('#toast.show #toast-msg:has-text("with 3 subtasks")', { timeout: 20000 });
+    const parentRow = `.row:has(> .body .title:has-text("${parentTitle}"))`;
+    await page.click(`${parentRow} > .check`);
+    await page.waitForSelector(`${parentRow}.lined .row-line:has-text("+ 3 subtasks")`, { timeout: 20000 });
     if ((await subs()).some(s => !s.done)) throw new Error('a subtask is still open');
-    await page.click('#toast-act:has-text("Undo")');
+    await page.click(`${parentRow} .line-act`);
     for (let i = 0; i < 40 && (await subs()).filter(s => !s.done).length !== 3; i++) await page.waitForTimeout(250);
     const after = await subs();
     if (JSON.stringify(after.filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify([...open].sort())) throw new Error('open after undo: ' + JSON.stringify(after.map(s => [s.title, s.done])));
@@ -648,18 +664,128 @@ try {
     await page.evaluate(() => document.activeElement?.blur());
   });
 
-  await step('quick-ticks-add-up', async () => {
+  await step('two-ticks-each-keep-their-undo', async () => {
     const a = await make(`Pocket smoke tick A ${stamp}`, { due_date: todayAt(23) }), b = await make(`Pocket smoke tick B ${stamp}`, { due_date: todayAt(23) });
+    const A = rowOf(a.title), B = rowOf(b.title);
     await toastGone();
     await refreshToday();
-    await page.click(`${rowOf(a.title)} > .check`, { timeout: 15000 });
-    await page.waitForSelector(`#toast.show #toast-msg:text-is("Done: ${a.title}")`);
-    await page.click(`${rowOf(b.title)} > .check`);
-    // The two add up: one message, whose Undo opens both again.
-    await page.waitForSelector('#toast.show #toast-msg:text-is("2 done")');
-    await page.click('#toast-act:has-text("Undo")');
-    for (let i = 0; i < 40 && ((await get(a.id)).done || (await get(b.id)).done); i++) await page.waitForTimeout(250);
-    if ((await get(a.id)).done || (await get(b.id)).done) throw new Error('Undo didn\'t open both');
+    await page.click(`${A} > .check`, { timeout: 15000 });
+    await page.waitForSelector(`${A}.lined`);
+    await page.click(`${B} > .check`);
+    await page.waitForSelector(`${B}.lined`);
+    // Each its own line: A's Undo opens A only.
+    await page.click(`${A} .line-act`);
+    await page.waitForSelector(`${A}:not(.lined)`);
+    for (let i = 0; i < 40 && (await get(a.id)).done; i++) await page.waitForTimeout(250);
+    if ((await get(a.id)).done || !(await get(b.id)).done) throw new Error(`after A's Undo: A done ${(await get(a.id)).done}, B done ${(await get(b.id)).done}`);
+    // B's folds away once its time is up.
+    await later(5000);
+    await page.waitForSelector(B, { state: 'detached', timeout: 5000 });
+    if (!await page.$(`${A}:not(.lined)`)) throw new Error('A went too');
+  });
+
+  /* Every row has who's doing it at its end, as a subtask in a sheet does; a subtask's tick shows on its row, which stays;
+     a row swiped left shows its Delete, which deletes with an Undo, and only once the Undo has gone. */
+  const swipe = async (sel, from = 200, by = -100) => {
+    await page.locator(sel).scrollIntoViewIfNeeded();                       // once a sheet has slid in
+    await page.$eval(sel, el => el.scrollIntoView({ block: 'center' }));    // and clear of the header
+    await page.waitForTimeout(100);
+    const box = await page.locator(sel).boundingBox(), y = box.y + box.height / 2;
+    await page.mouse.move(from, y); await page.mouse.down();
+    await page.mouse.move(from + by, y + 4, { steps: 8 });
+    await page.mouse.up();
+  };
+  // Its Delete, once the row has moved aside for it: tapped where it is, as a finger would.
+  const tapDelete = async sel => {
+    await page.waitForSelector(`${sel}.swiped > .row-del`);
+    await page.waitForTimeout(300);
+    const b = await page.locator(`${sel} > .row-del`).boundingBox();
+    await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  };
+  await step('a-rows-slot-tick-and-swipe-to-delete', async () => {
+    const me = await (await api('/user')).json();
+    const p = await make(`Pocket smoke row parent ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke row kid ${stamp}`, { due_date: todayAt(23) });
+    await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    const people = async id => ((await get(id)).assignees || []).map(u => u.id), P = rowOf(p.title), K = rowOf(k.title);
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.waitForSelector(`${K}.sub`, { timeout: 15000 });
+      // Claimed from its row, and let go again.
+      await page.click(`${P} > .claim:has(.me)`);
+      await page.waitForSelector(`${P} > .claim.mine .av`);
+      for (let i = 0; JSON.stringify(await people(p.id)) !== JSON.stringify([me.id]); i++) { if (i > 40) throw new Error('never assigned'); await page.waitForTimeout(250); }
+      await page.click(`${P} > .claim`);
+      await page.waitForSelector(`${P} > .claim .me`);
+      for (let i = 0; (await people(p.id)).length; i++) { if (i > 40) throw new Error('never let go'); await page.waitForTimeout(250); }
+      // A subtask ticked: no message, and its row stays, done, to tick back.
+      await toastGone();
+      await page.click(`${K} > .check`);
+      await page.waitForSelector(`${K}.done`);
+      for (let i = 0; !(await get(k.id)).done; i++) { if (i > 40) throw new Error('never done'); await page.waitForTimeout(250); }
+      await page.waitForTimeout(900);                                        // when a row would have slid away
+      if (!await page.$(`${K}.done`)) throw new Error('the subtask left the list');
+      if (await page.$('#toast.show')) throw new Error('a subtask\'s tick said: ' + await page.textContent('#toast-msg'));
+      await page.click(`${K} > .check`);
+      await page.waitForSelector(`${K}:not(.done)`);
+      // Not from the screen's edge, where the phone's Back starts; tapped elsewhere, an open row shuts.
+      await swipe(K, 370);
+      if (await page.$(`${K}.swiped`)) throw new Error('a swipe from the edge opened the row');
+      await swipe(P);
+      await page.waitForSelector(`${P}.swiped > .row-del`);
+      await page.click('#view .sec .n >> nth=0');                              // anything else, tapped
+      await page.waitForSelector(`${P}.swiped`, { state: 'detached' });
+      if (await page.isVisible('#sheet')) throw new Error('shutting the row opened a task');
+      // Delete: a line in its place at once, with its Undo, and nothing sent until it folds.
+      await swipe(K);
+      await tapDelete(K);
+      await page.waitForSelector(`${K}.lined .row-line:has-text("Deleted")`);
+      if (await page.$('#toast.show')) throw new Error('deleting said: ' + await page.textContent('#toast-msg'));
+      await page.click(`${K} .line-act`);
+      await page.waitForSelector(`${K}:not(.lined)`);
+      if (!await get(k.id)) throw new Error('Undo didn\'t keep it');
+      // Then for good, once its line has folded.
+      await swipe(K);
+      await tapDelete(K);
+      await page.waitForSelector(`${K}.lined`);
+      if (!await get(k.id)) throw new Error('deleted while its Undo showed');
+      await later(5000);
+      await page.waitForSelector(K, { state: 'detached', timeout: 5000 });
+      for (let i = 0; await get(k.id); i++) { if (i > 40) throw new Error('never deleted'); await page.waitForTimeout(250); }
+      if (await page.$(K)) throw new Error('the row came back');
+    } finally {
+      for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+  await step('a-subtask-swiped-in-its-sheet-deletes-with-an-undo', async () => {
+    const p = await make(`Pocket smoke sheet parent ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke sheet kid ${stamp}`);
+    await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    const K = `#d-subtasks > .row:has(.title:text-is("${k.title}"))`;
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.click(`${rowOf(p.title)} > .body`, { timeout: 15000 });
+      await page.waitForSelector(K, { timeout: 10000 });
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // slid in
+      await swipe(K);
+      await tapDelete(K);
+      await page.waitForSelector(`${K}.lined`);
+      if (!await page.isVisible('#sheet')) throw new Error('the sheet closed');
+      await page.click(`${K} .line-act`);
+      await page.waitForSelector(`${K}:not(.lined)`);
+      if (!await get(k.id)) throw new Error('Undo didn\'t keep it');
+      // Its ⋯ deletes the task, with its subtask, after asking: the line is in its row's place in the list.
+      await page.click('#d-more');
+      await page.click('#d-delete');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+      await page.waitForSelector(`${rowOf(p.title)}.lined .row-line:has-text("+ 1 subtask")`);
+      await later(5000);
+      await page.waitForSelector(rowOf(p.title), { state: 'detached', timeout: 5000 });
+      for (let i = 0; await get(k.id) || await get(p.id); i++) { if (i > 40) throw new Error('never deleted'); await page.waitForTimeout(250); }
+    } finally {
+      if (await page.isVisible('#sheet')) await page.click('#btn-sheet-close');
+      for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
   });
 
   // A phone's keyboard covers the bottom of the page without making it shorter: here visualViewport says it's h tall.
@@ -668,8 +794,9 @@ try {
     visualViewport.dispatchEvent(new Event('resize'));
   }, h);
   const subsOf = async id => (await get(id))?.related_tasks?.subtask || [];
-  await step('a-toast-for-each-subtask-added-shows-above-the-keyboard', async () => {
-    // The subtask box keeps the focus after an add, so the keyboard stays open: each add's toast shows above it.
+  await step('a-subtask-added-keeps-the-keyboard-and-a-toast-shows-above-it', async () => {
+    // The subtask box keeps the focus after an add, so the keyboard stays open. An added subtask shows in the sheet,
+    // with no message; a message shown meanwhile is above the keyboard.
     const p = await make(`Pocket smoke toasts ${stamp}`, { due_date: todayAt(23) }), vh = page.viewportSize().height;
     const toastBottom = async () => { await page.waitForTimeout(300); return page.$eval('#toast', el => el.getBoundingClientRect().bottom); };
     try {
@@ -679,15 +806,15 @@ try {
       await page.focus('#d-subin');
       await keyboard(300);
       for (const n of [1, 2]) {
-        const before = await page.evaluate(() => Alpine.$data(document.body).toast.until);
         await page.fill('#d-subin', `Pocket smoke toast sub ${n} ${stamp}`);
         await page.press('#d-subin', 'Enter');
-        await page.waitForFunction(b => { const t = Alpine.$data(document.body).toast; return t.show && t.until !== b; }, before, { timeout: 15000 });
-        await page.waitForSelector('#toast.show #toast-msg:text-is("Added 1 subtask")');
+        await page.waitForFunction(n => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === n, n, { timeout: 15000 });
+        if (await page.$('#toast.show')) throw new Error(`adding subtask ${n} said: ${await page.textContent('#toast-msg')}`);
         if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error(`the box lost the focus after add ${n}`);
-        const bottom = await toastBottom();
-        if (bottom > vh - 300) throw new Error(`toast ${n} is under the keyboard: its bottom is at ${bottom} of ${vh}`);
       }
+      await page.evaluate(() => Alpine.$data(document.body).notify('Saved'));
+      const bottom = await toastBottom();
+      if (bottom > vh - 300) throw new Error(`the toast is under the keyboard: its bottom is at ${bottom} of ${vh}`);
       await keyboard(0);
       if (await toastBottom() < vh - 100) throw new Error('the toast stayed up after the keyboard closed');
     } finally {
@@ -994,7 +1121,7 @@ try {
       await toastGone();
       await refreshToday();
       await page.click(`${rowOf(parent.title)} > .check`, { timeout: 15000 });
-      await page.waitForSelector('#toast.show #toast-msg:has-text("Done: Pocket smoke parent")', { timeout: 20000 });
+      await page.waitForSelector(`${rowOf(parent.title)}.lined`, { timeout: 20000 });
       const s = await get(sub.id);
       if (s.done || new Date(s.due_date).getTime() !== new Date(sub.due_date).getTime()) throw new Error(`subtask done ${s.done}, due ${s.due_date}`);
     } finally { for (const id of [sub.id, parent.id]) await api('/tasks/' + id, { method: 'DELETE' }); }
@@ -1033,6 +1160,7 @@ try {
     if (await page.textContent('#d-delete') !== 'Delete task and its 2 subtasks') throw new Error('button: ' + await page.textContent('#d-delete'));
     await page.click('#d-delete');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 15000 });
+    await later(5000);                                                       // sent once its Undo has gone
     for (let i = 0; i < 40 && await get(kids[1].id); i++) await page.waitForTimeout(250);
     if ((await Promise.all([parent, ...kids].map(t => get(t.id)))).some(Boolean)) throw new Error('something is left');
   });
