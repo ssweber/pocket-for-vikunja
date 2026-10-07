@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
 import { andList, colorOf, esc, fmtSize, sizeLimit, taskDrafts } from '../../src/js/util.js';
-import { entryDone, heldTasks, isChild, itemDone, packParsed, unpackParsed } from '../../src/js/sync.js';
+import { entryDone, heldTasks, isChild, itemDone, packParsed, sendState, unpackParsed } from '../../src/js/sync.js';
 
 test('the screen in the address', () => {
   assert.deepEqual(routeOf(''), { name: 'today' });
@@ -68,6 +68,14 @@ test('what\'s waiting: a line is done once its task is made, and a subtask once 
 test('a step whose act Vikunja turned down holds the acts behind it', () => {
   const held = heldTasks([{ kind: 'act', task: 5, failed: true }, { kind: 'act', task: 6 }, { kind: 'capture', task: 7, failed: true }]);
   assert.deepEqual([...held], [5]);
+});
+
+test('where sending stands: sending beats waiting, and an outbox not read yet isn\'t idle', () => {
+  assert.equal(sendState({ busy: false, unsent: 0 }), 'idle');
+  assert.equal(sendState({ busy: true, unsent: 0 }), 'sending');
+  assert.equal(sendState({ busy: true, unsent: 2 }), 'sending');
+  assert.equal(sendState({ busy: false, unsent: 1 }), 'waiting');
+  assert.equal(sendState({ busy: false, unsent: null }), 'waiting');
 });
 
 test('a parsed line kept on the phone keeps its date', () => {

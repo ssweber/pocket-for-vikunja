@@ -41,7 +41,7 @@ export function fakeVikunja(tasks = []){
    change isn't checked against the shared session first. */
 export function component(...parts){
   const c = {
-    server: 'http://vikunja.test', mode: 'token', token: 'tk_test', signedIn: true, offline: false,
+    server: 'http://vikunja.test', mode: 'token', token: 'tk_test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { task: null }, route: { name: 'today' }, toasts: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
     get toast(){ return this.toasts.at(-1); },

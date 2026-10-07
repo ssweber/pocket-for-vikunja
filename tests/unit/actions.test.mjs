@@ -6,6 +6,7 @@ import actions from '../../src/js/app/actions.js';
 import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
+import outbox from '../../src/js/app/outbox.js';
 import { cache } from '../../src/js/util.js';
 import { sync } from '../../src/js/sync.js';
 
@@ -161,7 +162,8 @@ const deleting = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'sendEntry'),
     pick(runs, 'sendActs', 'sendAct', 'applyAct', 'actWhat', 'actTitle', 'wordsBack', 'giveBack', 'refreshRunTask'));
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], canWrite: () => true });
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], canWrite: () => true, flushing: false, cap: {}, sheet: { task: null, sub: {} } });
+  Object.defineProperty(app, 'syncState', Object.getOwnPropertyDescriptor(outbox, 'syncState'));
   globalThis.confirm = () => true;
   return app;
 };
@@ -221,4 +223,24 @@ test('a deletion Vikunja turns down brings the row back, kept to try again', asy
   assert.equal(app.failed.length, 1);
   assert.match(app.toast.msg, /^Deleting “Order cups” couldn't be saved/);
   await sync.remove(app.failed[0].id);
+});
+
+test('the page says where sending stands: waiting while an Undo shows or offline, sending, then idle', async t => {
+  const v = fakeVikunja([{ id: 7, title: 'Wipe the till' }, { id: 8, title: 'Sweep up' }]), app = deleting(t), seen = [];
+  app.refreshPending();
+  assert.equal(app.syncState, 'idle');
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(7)), app.keep(v.task(8))] }];
+  const d = await app.holdDelete(app.tasks[7]);
+  assert.equal(app.syncState, 'waiting', 'held for its Undo');
+  v.trouble = r => { if (r.method === 'DELETE') seen.push(app.syncState); return null; };
+  await app.sendHeld(d.id);
+  assert.deepEqual(seen, ['sending']);
+  assert.equal(app.syncState, 'idle', 'all there');
+  await app.holdDelete(app.tasks[8]);
+  v.trouble = r => r.method === 'DELETE' ? 'offline' : null;
+  await app.sendHeld();
+  assert.equal(app.syncState, 'waiting', 'no connection');
+  v.trouble = () => null;
+  await app.sendActs(app.pending[0].id);
+  assert.equal(app.syncState, 'idle');
 });

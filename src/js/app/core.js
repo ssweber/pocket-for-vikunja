@@ -61,6 +61,8 @@ export default () => ({
   waitShown: false,                            // something has waited a moment: the header's button says so
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
+  writing: 0,                                  // changes on their way to Vikunja (api.js, saveTask)
+  unsent: null,                                // this user's outbox entries, held and turned down too; null until read
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
   runInsert: {...newBox(), repeat: null, after: null},   // a run's insert box (quick add's 'ins'): the step it's open under, and the step it repeats
@@ -101,6 +103,8 @@ export default () => ({
     window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     window.addEventListener('online', () => this.flush());
+    // Where sending stands, on the page itself, so a test can wait until everything has reached Vikunja.
+    Alpine.effect(() => { document.documentElement.dataset.sync = this.syncState; });
     // A deletion offering its Undo is sent as Pocket is put away or closed, so it isn't left waiting meanwhile.
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this.foldLines(); this.sendHeld(); } });
     addEventListener('pagehide', () => { this.foldLines(); this.sendHeld(); });

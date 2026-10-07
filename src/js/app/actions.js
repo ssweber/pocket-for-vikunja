@@ -41,7 +41,7 @@ export default {
   // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
   // Resolves to Vikunja's copy; rejects if not saved.
   saveTask(id, patch, rebase){
-    saveMark(id, 1);
+    saveMark(id, 1); this.writing++;                                        // from its read first to its reply
     const run = shared.saveChain.then(async () => {
       // Only the change is sent, so anything changed elsewhere since Pocket loaded the task (notes edited on the web,
       // say) stays as it is. A field holding a list, or a template's order line in its notes, is sent whole: `rebase`
@@ -60,7 +60,7 @@ export default {
       }
       cache.set(id, saved); this.syncTask(saved);
       return saved;
-    }).finally(() => saveMark(id, -1));
+    }).finally(() => { saveMark(id, -1); this.writing--; });
     shared.saveChain = run.catch(() => {});
     return run;
   },

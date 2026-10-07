@@ -364,6 +364,10 @@ export const INSERT_STEPS = [
 /* A deletion waiting for its Undo to go (removeTask): in this tab, until its message goes (sync.held); in another, or
    after a reload, until the time its Undo would have gone (`until`). */
 export const held = e => sync.held.has(e.id) || e.until > Date.now();
+/* Where sending stands, for <html data-sync>, which the tests wait on: 'sending' while a change is on its way to
+   Vikunja; 'waiting' while something is kept that can't go now (no connection, a deletion's Undo still showing, turned
+   down, or Vikunja busy and tried again later), or the outbox isn't read yet (`unsent` null); else 'idle'. */
+export const sendState = ({busy, unsent}) => busy ? 'sending' : unsent === 0 ? 'idle' : 'waiting';
 // The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
 export const ACTS = {progress: ['progress'], done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],

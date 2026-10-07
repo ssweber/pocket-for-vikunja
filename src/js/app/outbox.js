@@ -2,7 +2,7 @@
 import {cache, fmtSize} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {htmlToText} from '../html.js';
-import {isChild, itemDone, sync} from '../sync.js';
+import {isChild, itemDone, sendState, sync} from '../sync.js';
 
 const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 const whenText = at => {
@@ -53,6 +53,8 @@ export default {
     if (this.failed.length) return 'Vikunja turned these down. Try again once what it said is put right, or don\'t send them.';
     return 'Everything has reached Vikunja.';
   },
+  // <html data-sync> (core.js): sending, waiting, or idle. A box being sent from counts as sending from the start.
+  get syncState(){ return sendState({busy: this.flushing || this.writing > 0 || this.cap.busy || this.sheet.sub.busy, unsent: this.unsent}); },
   openOutbox(){ this.openSheet('outbox'); },
   tapRefresh(){ if (this.outboxShown) this.openOutbox(); else this.refresh(); },
   // Offline it says so, rather than the browser's own words for a failed request.

@@ -280,6 +280,7 @@ export default {
   refreshPending(){
     const all = this.user ? sync.all(this.user.id) : [];
     this.pending = all.filter(e => !e.failed && !sync.held.has(e.id)); this.failed = all.filter(e => e.failed);
+    this.unsent = this.user ? all.length : null;
     // Tasks being deleted, unless Vikunja turned it down: off every list until they're gone, or back with Undo.
     this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
     clearTimeout(waitTimer);

@@ -62,7 +62,13 @@ function refreshSession(){
   return refreshing;
 }
 const timeoutSignal = ms => { if (AbortSignal.timeout) return AbortSignal.timeout(ms); const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
-export async function api(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
+// Changes on their way to Vikunja are counted (app.writing), so <html data-sync> says when they're all there.
+export async function api(path, opts = {}){
+  const write = (opts.method || 'GET') !== 'GET';
+  if (write) app.writing = (app.writing || 0) + 1;
+  try { return await request(path, opts); } finally { if (write) app.writing--; }
+}
+async function request(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
   // A change is only sent once Pocket knows the shared session is still this person's: another tab may have signed
   // someone else in. (Reading is fine.) The token is read after that, so it's the one that was checked.
   if (auth && method !== 'GET' && app?.mode === 'session' && app.signedIn && app.user && sharedToken.get() !== seenToken
