@@ -11,6 +11,7 @@
 // Every task it creates has the run's stamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright';   // BROWSER=webkit runs it on Safari's engine, as on an iPhone
+import { expect, signIn, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -52,9 +53,6 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const photo = name => ({ name, mimeType: 'image/png', buffer: PNG });
 // The names of the files on a task in Vikunja.
 const attached = async n => { const [t] = await byTitle(T(n)); return t ? ((await (await api('/tasks/' + t.id)).json()).attachments || []).map(a => a.file.name) : []; };
-async function until(what, fn, ms = 20000){
-  for (const end = Date.now() + ms; ; await new Promise(r => setTimeout(r, 300))) { if (await fn()) return; if (Date.now() > end) throw new Error(what); }
-}
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));   // try again now
 
 try {
@@ -65,11 +63,7 @@ try {
   if (!seeded.ok) throw new Error('could not create the seed task: HTTP ' + seeded.status);
 
   await step('online-first-visit', async () => {
-    await page.goto(POCKET);
-    await page.waitForSelector('#auth-step:not([hidden])');
-    if (await page.isVisible('.seg button[data-mode=token]')) await page.click('.seg button[data-mode=token]');
-    await page.fill('#in-token', TOKEN);
-    await page.click('#f-token button[type=submit]');
+    await signIn(page, POCKET, TOKEN);
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
     await page.evaluate(() => navigator.serviceWorker.ready);                // Pocket is now saved for offline use
     await page.reload();                                                     // and this page is served by the service worker
@@ -82,12 +76,7 @@ try {
     // answers "Vary: Origin" and the page asks for it with an Origin.
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } }), p = await ctx.newPage();
     try {
-      await p.goto(POCKET);
-      await p.waitForSelector('#auth-step:not([hidden])');
-      if (await p.isVisible('.seg button[data-mode=token]')) await p.click('.seg button[data-mode=token]');
-      await p.fill('#in-token', TOKEN);
-      await p.click('#f-token button[type=submit]');
-      await p.waitForSelector('#app:not([hidden])');
+      await signIn(p, POCKET, TOKEN);
       await p.evaluate(() => navigator.serviceWorker.ready);
       await ctx.setOffline(true);
       await p.reload();
@@ -133,6 +122,7 @@ try {
   await step('the-header-says-what-is-waiting', async () => {
     // Refresh becomes what's waiting, with how many; tapping it lists them, and one can be dropped from there.
     await page.waitForSelector('#btn-refresh.waits[aria-label$="waiting to send"] #outbox-count');
+    await expect(page.locator('html')).toHaveAttribute('data-sync', 'waiting');   // what the tests' synced() waits on
     await capture(`${T('Y')} tomorrow`);
     await page.waitForSelector(pendingRow(T('Y')));
     await page.click('#btn-refresh');
@@ -171,7 +161,8 @@ try {
 
   await step('back-online-sends-everything', async () => {
     await context.setOffline(false);                                         // fires the browser's "online" event
-    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    await synced(page);
+    await expect(page.locator('.row.pending')).toHaveCount(0);
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('A')}"))`);   // now a normal task
     await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('U')}"))`);   // added today, no date
     for (const n of ['A', 'P', 'P1', 'P2', 'U', 'F']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
@@ -181,8 +172,8 @@ try {
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
     if (await page.isVisible('.offline')) throw new Error('still says offline');
     // Kept on the phone across the reload, then uploaded.
-    await until('the photo added offline never reached the task', async () => (await attached('F')).join() === 'offline.png');
-    await page.waitForSelector('#btn-refresh[aria-label="Refresh"]:not(.waits)');   // nothing waiting: Refresh again
+    if ((await attached('F')).join() !== 'offline.png') throw new Error('the photo added offline never reached the task');
+    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveClass(/waits/);   // nothing waiting
   });
 
   await step('lost-reply-is-not-added-twice', async () => {
@@ -313,7 +304,8 @@ try {
     await capture(`${T('L')} tomorrow *${LABEL}`);
     await page.waitForSelector(`.row:has(.title:has-text("${T('L')}"))`);     // shown straight away, as it's in Vikunja
     await online();
-    await until('the label never reached the task', async () => { const [t] = await byTitle(T('L')); return t?.labels?.some(l => l.title === LABEL); });
+    await synced(page);
+    if (!(await byTitle(T('L')))[0]?.labels?.some(l => l.title === LABEL)) throw new Error('the label never reached the task');
     if ((await byTitle(T('L'))).length !== 1) throw new Error((await byTitle(T('L'))).length + ' copies');
     await page.unroute('**/api/v2/tasks/*/labels', drop);
   });
@@ -326,8 +318,9 @@ try {
     await page.route('**/api/v2/projects/*/tasks', lose);
     await capture(`${T('B')} tomorrow @${who}${where}`);
     await online();
-    await until('the task was never assigned', async () => { const [t] = await byTitle(T('B')); return t?.assignees?.some(u => u.username === who); });
-    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    await synced(page);
+    if (!(await byTitle(T('B')))[0]?.assignees?.some(u => u.username === who)) throw new Error('the task was never assigned');
+    await expect(page.locator('.row.pending')).toHaveCount(0);
     if ((await byTitle(T('B'))).length !== 1) throw new Error((await byTitle(T('B'))).length + ' copies');
     await page.unroute('**/api/v2/projects/*/tasks', lose);
   });
@@ -349,7 +342,8 @@ try {
     await page.waitForSelector(`.row:has(.title:has-text("${T('S')}")) [aria-label="Attachments, 1 waiting to upload"]`);
     cut = false;
     await online();
-    await until('the photo never reached the task', async () => (await attached('S')).join() === 'full.png');
+    await synced(page);
+    if ((await attached('S')).join() !== 'full.png') throw new Error('the photo never reached the task');
     if ((await byTitle(T('S'))).length !== 1) throw new Error((await byTitle(T('S'))).length + ' copies');
     await page.unroute('**/api/v2/tasks/*/attachments', cutOff);
     await page.evaluate(() => { IDBObjectStore.prototype.put = window.realPut; });
@@ -365,7 +359,7 @@ try {
     await page.waitForSelector(pendingRow(T('M')));
     await page.unroute('**/api/v2/projects/*/tasks', drop);
     await online();
-    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    await synced(page);
     if ((await byTitle(T('M'))).length !== 2) throw new Error((await byTitle(T('M'))).length + ' copies');
   });
 
@@ -380,7 +374,7 @@ try {
     await page.waitForSelector(pendingRow(T('E')));
     await page.unroute('**/api/v2/projects/*/tasks', drop);
     await online();
-    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    await synced(page);
     if ((await byTitle(T('E'))).length !== 2) throw new Error((await byTitle(T('E'))).length + ' copies');
   });
 
@@ -393,8 +387,8 @@ try {
     await page.click('#cap-nest');
     await page.click('#f-capture .go');
     await online();
-    await until('the list was never finished', async () => (await byTitle(T('K2'))).length === 1);
-    await page.waitForSelector('.row.pending', { state: 'detached', timeout: 20000 });
+    await synced(page);
+    if ((await byTitle(T('K2'))).length !== 1) throw new Error('the list was never finished');
     const [parent] = await byTitle(T('K'));
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);

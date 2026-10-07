@@ -12,6 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { expect, signIn as signInAt, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -68,23 +69,8 @@ async function step(name, fn){
     await context.setOffline(false); await page.unrouteAll();                // so one failure doesn't take the rest down with it
   }
 }
-const signIn = async (p, token) => {
-  await p.goto(APP);
-  await p.waitForSelector('#auth-step:not([hidden])', { timeout: 10000 });
-  if (await p.isVisible('.seg button[data-mode=token]')) await p.click('.seg button[data-mode=token]');
-  await p.fill('#in-token', token);
-  await p.click('#f-token button[type=submit]');
-  await p.waitForSelector('#app:not([hidden])');
-  await p.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
-};
-// A hidden toast keeps its words, only see-through: so only one showing counts.
-const toast = text => page.waitForSelector(`#toast.show #toast-msg:has-text("${text}")`, { timeout: 20000 });
-// So the next one is new: the one showing goes now, as its own timer would make it. (Not by moving the page's clock on,
-// which would also bring the run's screen's reload every 20 seconds round sooner, under a finger.)
-const toastGone = async () => {
-  await page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; if (t) t.show = false; });
-  await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
-};
+const signIn = (p, token) => signInAt(p, APP, token);
+const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));
 
 const stamp = Date.now();
@@ -154,7 +140,7 @@ try {
     } finally {
       // The last tick's ✅ may still be on its way: deleting the project under it would leave it turned down, waiting
       // in the outbox, and the ticks after it would wait behind it.
-      await until('the ticks never reached Vikunja', () => page.evaluate(() => !Alpine.$data(document.body).pending.length)).catch(() => {});
+      await synced(page).catch(() => {});
       if (made) await api('/projects/' + made.id, { method: 'DELETE' }).catch(() => {});
     }
     await page.click('#btn-refresh');
@@ -702,9 +688,10 @@ try {
     third = await startRun();
     await page.waitForSelector('#run-last .comment:has-text("Press 2 is down")', { timeout: 15000 });
     for (const note of ['Looks good', 'Line 2 ran slow today']) await page.waitForSelector(`#run-last .comment:has-text("${note}")`);
-    await page.click('#toast-act:has-text("Undo")');
-    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
-    await until('the run is still in Vikunja', async () => !((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).some(t => t.id === third.id));
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect(page).toHaveURL(/#\/checklists$/, { timeout: 15000 });
+    await synced(page);
+    if (((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).some(t => t.id === third.id)) throw new Error('the run is still in Vikunja');
     runs.splice(runs.indexOf(third.id), 1);
   });
 
@@ -763,9 +750,10 @@ try {
     await page.click('#btn-run-more');
     await page.click('#r-delete');
     await toast('Run deleted');
-    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
+    await expect(page).toHaveURL(/#\/checklists$/, { timeout: 15000 });
+    await synced(page);
     const gone = async tid => { const r = await fetch(SERVER + '/api/v2/tasks/' + tid, { headers: { Authorization: 'Bearer ' + TOKEN } }); return r.status === 404 || r.status === 403; };
-    await until('the run or a step is still in Vikunja', async () => (await Promise.all([id, ...steps].map(gone))).every(Boolean));
+    if (!(await Promise.all([id, ...steps].map(gone))).every(Boolean)) throw new Error('the run or a step is still in Vikunja');
   });
 
   await step('a-run-ticked-in-its-project', async () => {
@@ -1021,7 +1009,7 @@ try {
     await page.click('#btn-sheet-close');
     await context.setOffline(false);
     await online();
-    await until('the step called off is still waiting', async () => !await page.evaluate(() => Alpine.$data(document.body).pending.some(e => e.kind === 'step')));
+    await synced(page);                                                      // nothing left waiting: the step called off too
     if ((await titles()).includes('Not after all')) throw new Error('inserted after all: ' + await titles());
     if ((await api('/tasks?q=' + encodeURIComponent('Not after all'))).items.some(t => t.title === 'Not after all')) throw new Error('left as a task of its own');
     // Quick add, as in the subtask box: its chips and marks, no date (a step's time is its template's), and a pasted
@@ -1201,9 +1189,10 @@ try {
     await page.click('#d-more');
     await page.waitForSelector('#d-delete:text-is("Delete template and its 1 step")', { timeout: 10000 });
     await page.click('#d-delete');
-    await page.waitForSelector('#sheet', { state: 'hidden', timeout: 15000 });
+    await expect(page.locator('#sheet')).toBeHidden({ timeout: 15000 });
+    await synced(page);
     const gone = async tid => { const r = await fetch(SERVER + '/api/v2/tasks/' + tid, { headers: { Authorization: 'Bearer ' + TOKEN } }); return r.status === 404 || r.status === 403; };
-    await until('the template or a step is still there', async () => (await Promise.all([tpl.id, a.id, b.id].map(gone))).every(Boolean));
+    if (!(await Promise.all([tpl.id, a.id, b.id].map(gone))).every(Boolean)) throw new Error('the template or a step is still there');
   });
 
   await step('make-a-template-from-the-menu', async () => {
@@ -1571,6 +1560,7 @@ try {
   });
   if (errors.length) { failed++; console.log('FAIL page errors:', errors); }
 } finally {
+  await synced(page, { timeout: 5000 }).catch(() => {});                  // what Pocket was still sending, first
   await browser.close();
   // The project, with every task in it. A few tries: a Vikunja on SQLite can answer 500 "database is locked" while busy.
   if (project) for (let i = 0; i < 5; i++) { try { await api('/projects/' + project.id, { method: 'DELETE' }); break; } catch { await new Promise(r => setTimeout(r, 500)); } }
