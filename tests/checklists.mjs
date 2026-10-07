@@ -248,7 +248,8 @@ try {
   });
 
   await step('reorder-steps', async () => {
-    const links = (await api('/tasks/' + template.id)).related_tasks.subtask.map(s => s.id);
+    // Its steps by id, the order they were made in (Vikunja on Postgres gives them in no set order).
+    const links = (await api('/tasks/' + template.id)).related_tasks.subtask.map(s => s.id).sort((a, b) => a - b);
     // Held and moved up, as a finger moves it: the third step to second.
     await dragStep(3, 2);
     await until('the step never moved up in Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
@@ -256,7 +257,7 @@ try {
     // Only the order line is written: the steps are linked as they were, and the line isn't shown in the notes.
     const t = await api('/tasks/' + template.id);
     if (JSON.stringify(stepOrder(t.description)) !== JSON.stringify([links[0], links[2], links[1]])) throw new Error('description: ' + t.description);
-    if (JSON.stringify(t.related_tasks.subtask.map(s => s.id)) !== JSON.stringify(links)) throw new Error('the steps were linked again');
+    if (JSON.stringify(t.related_tasks.subtask.map(s => s.id).sort((a, b) => a - b)) !== JSON.stringify(links)) throw new Error('the steps were linked again');
     if (/pocket:order/.test(await page.textContent('#d-desc'))) throw new Error('the notes show the order line');
     // Tapped open, a step has no ↑ ↓ any more: its ⋯ has Move up and Move down.
     await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
@@ -1084,9 +1085,13 @@ try {
     // As on a task's row: hold, then slide, in snaps of 25%. Sent like a tick, with Undo; 100% is Done, with its ✅.
     const { id } = await startRun();
     const row = '#run-steps .row:nth-of-type(2)', step2 = (await runStep(id, 1)).id;
+    // Last time's notes come after the run's screen, a step's on its card, pushing the steps down: under a finger put
+    // where a step was before they came, the hold never began. So the notes are waited for first.
+    await expect(page.locator('#run-last')).toBeVisible();
+    await expect(page.locator('#run-last .loading')).toHaveCount(0);
     const slide = async (n, check) => {
       // The room to 48px short of the screen's edge is the rest of the way to 100% (EDGE): n tenths of it.
-      const box = await page.locator(row).boundingBox(), x = box.x + box.width * .45, y = box.y + box.height / 2;
+      const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
       await page.mouse.move(x, y); await page.mouse.down();
       // The hold's own timer is the page's, which follows its clock: an earlier step set that back, and it could wait
       // seconds. So the clock is moved on through the hold (HOLD_MS, 450ms), and the row looked for from here.
