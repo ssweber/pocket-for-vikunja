@@ -297,6 +297,38 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
+  await step('a-subtask-from-the-add-box-waits-offline', async () => {
+    // On its project's list, the add box adds subtasks to the task whose sheet was opened: offline, one waits under it.
+    const [g] = await byTitle(T('G'));
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, g.project_id);
+    const row = page.locator(`#view .row[data-id="${g.id}"]`);
+    await row.evaluate(el => el.scrollIntoView({ block: 'center' }), null, { timeout: 15000 });
+    await row.locator('> .body').click();
+    await page.waitForSelector('#d-title');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}`);
+    await context.setOffline(true);
+    await page.fill('#in-capture', T('G2'));
+    await page.press('#in-capture', 'Enter');
+    // Waiting, under it, after its other subtask; nothing said, and the box keeps the focus.
+    const waiting = page.locator(`#view .row.pending:has-text("${T('G2')}")`);
+    await expect(waiting).toBeVisible();
+    const order = await page.locator('#view .row').evaluateAll(els => els.map(el => el.querySelector('.title')?.textContent || ''));
+    const at = order.findIndex(t => t.includes(T('G')) && !t.includes(T('G1')) && !t.includes(T('G2')));
+    if (!order[at + 1]?.includes(T('G1')) || !order[at + 2]?.includes(T('G2'))) throw new Error('rows: ' + order.slice(at, at + 3).join(' | '));
+    if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
+    await expect(page.locator('.place-line[data-place="cap"]')).toHaveCount(0);
+    await context.setOffline(false);
+    await online();
+    await expect(page.locator(`#view .row:not(.pending):has-text("${T('G2')}")`)).toBeVisible({ timeout: 20000 });
+    await synced(page);
+    const subs = (await (await api('/tasks/' + g.id)).json()).related_tasks?.subtask || [];
+    if (subs.filter(s => s.title === T('G2')).length !== 1) throw new Error('subtasks: ' + subs.map(s => s.title).join(' | '));
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+  });
+
   await step('cut-off-label-is-still-added', async () => {
     // The task reaches Vikunja, then the connection drops before its label is on it.
     let cut = true;

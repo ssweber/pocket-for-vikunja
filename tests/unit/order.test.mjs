@@ -2,8 +2,11 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { between, dragPlace, listViewOf, placeMove, positionOrder, siblingBlocks, SPACING } from '../../src/js/order.js';
+import { between, dragPlace, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks, SPACING } from '../../src/js/order.js';
 import { nestSubtasks } from '../../src/js/lists.js';
+import { component } from './fake.mjs';
+import tasks from '../../src/js/app/tasks.js';
+import quickadd from '../../src/js/app/quickadd.js';
 
 const ids = list => list.map(t => t.id);
 
@@ -42,6 +45,86 @@ test('siblings in their List view order: by position, those with none after, by 
   const pos = { 1: 300, 2: 100, 3: 0, 4: 200 };
   const list = [{ id: 5 }, { id: 1 }, { id: 'pending-x', pending: true }, { id: 3 }, { id: 2 }, { id: 4 }];
   assert.deepEqual(ids([...list].sort(positionOrder(pos))), [2, 4, 1, 3, 5, 'pending-x']);
+  // One waiting that was given its place (a subtask added after another) is in it already.
+  list.push({ id: 'pending-y', pending: true, position: 150 });
+  assert.deepEqual(ids([...list].sort(positionOrder(pos))), [2, 'pending-y', 4, 1, 3, 5, 'pending-x']);
+});
+
+test('new subtasks go after the one given, before the next, each after the one before', () => {
+  const sibs = [300, 100, 200];
+  assert.deepEqual(placeAfter(sibs, 100), [150], 'between it and the next');
+  assert.deepEqual(placeAfter(sibs, 100, 3), [150, 175, 187.5], 'several: each after the one before, all before the next');
+  assert.deepEqual(placeAfter(sibs, null, 2), [300 + SPACING, 300 + 2 * SPACING], 'none given: after the last');
+  assert.deepEqual(placeAfter(sibs, 300), [300 + SPACING], 'after the last');
+  assert.deepEqual(placeAfter([], null, 2), [SPACING, 2 * SPACING], 'the first subtasks');
+  // One with no position is after the others: after it means after the last that has one.
+  assert.deepEqual(placeAfter([100, 0, 200], 0), [200 + SPACING]);
+});
+
+/* Quick add's box on a project's list: the task touched last is the cursor, and the box adds subtasks after it. A
+   project's list here: Pack the van (Load chairs, Tables), Lights. */
+function projectList(){
+  const app = component(tasks, quickadd);
+  Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, deleting: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
+  const van = app.keep({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
+  const sub = (id, title) => app.keep({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
+  const chairs = sub(11, 'Load chairs'), tables = sub(12, 'Tables'), lights = app.keep({ id: 20, title: 'Lights', project_id: 1, done: false });
+  app.view = { groups: [{ key: 'open', tasks: [van, chairs, tables, lights] }, { key: 'done', tasks: [] }], listView: 5, project: { id: 1, title: 'Move' } };
+  app.positions = { 10: 1000, 11: 100, 12: 200, 20: 2000 };
+  return { app, van, chairs, tables, lights };
+}
+
+test('the cursor on a task: subtasks go after its last; on a subtask, after it, under its parent', () => {
+  const { app, van, chairs } = projectList();
+  assert.equal(app.capW, 'cap');
+  assert.equal(app.capPlaceholder, 'Add a task to Move');
+  app.aim(van);
+  assert.equal(app.capW, 'under');
+  assert.deepEqual(app.capTarget, { to: 'Pack the van', after: '' });
+  assert.deepEqual(app.cursorPlaces(1), [200 + SPACING]);
+  app.aim(chairs);
+  assert.equal(app.cursorParent, van);
+  assert.deepEqual(app.capTarget, { to: 'Pack the van', after: 'Load chairs' });
+  assert.deepEqual(app.cursorPlaces(2), [150, 175], 'between Load chairs and Tables');
+  // Added one after another, each goes after the one before: the box keeps where the last went.
+  app.cursor.after = { pos: 150, title: 'Rope' };
+  assert.deepEqual(app.cursorPlaces(1), [175]);
+  assert.equal(app.capTargetText, 'Add a subtask to Pack the van, after Rope');
+  // No List view: no place to give, so Vikunja's own.
+  app.view.listView = null;
+  assert.equal(app.cursorPlaces(1), null);
+});
+
+test('a tick moves the cursor: to the task while it\'s open, to its parent once it\'s done, and a done task is never one', () => {
+  const { app, van, chairs, lights } = projectList();
+  app.aimAfterTick(chairs);
+  assert.equal(app.cursorTask, chairs);
+  chairs.done = true;
+  app.aimAfterTick(chairs);
+  assert.equal(app.cursorTask, van, 'a subtask done: its parent');
+  lights.done = true;
+  app.aimAfterTick(lights);
+  assert.equal(app.cursor, null, 'a task done with no parent on the list: none');
+  app.aim(van);
+  van.done = true;
+  assert.equal(app.capW, 'cap', 'done since: the box adds a task again');
+});
+
+test('only a task on this project\'s open list that you can change can be the cursor', () => {
+  const { app, van } = projectList();
+  app.route = { name: 'today' };
+  app.aim(van);
+  assert.equal(app.cursor, null, 'not on Today');
+  app.route = { name: 'project', id: 1 };
+  app.canWrite = () => false;
+  app.aim(van);
+  assert.equal(app.cursor, null, 'not read only');
+  app.canWrite = () => true;
+  app.aim({ id: 99, title: 'Elsewhere', project_id: 1, done: false });
+  assert.equal(app.cursor, null, 'not one off the list');
+  app.isRunTask = t => t.id === 10;
+  app.aim(van);
+  assert.equal(app.cursor, null, 'not a run');
 });
 
 test('a project\'s list: top-level tasks and each parent\'s subtasks in position order, a run\'s steps in its own order', () => {

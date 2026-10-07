@@ -1376,6 +1376,139 @@ try {
     await expect(page.getByRole('button', { name: 'Done (1)' })).toBeVisible();
   });
 
+  /* On a project's list, quick add's box adds a task to the project, until a task is touched (its sheet opened, ticked):
+     then it adds subtasks to that task, after its last, or after the subtask touched, each after the one before. */
+  const foot = { project: null, view: null, tasks: {} };
+  const footRows = () => page.locator('#view .list').first().locator('.row > .body .title');
+  const footName = n => `${n} ${stamp}`;
+  const box = page.locator('#in-capture'), target = page.locator('#cap-target');
+  const footPositions = async () => Object.fromEntries((await (await api(`/projects/${foot.project.id}/views/${foot.view}/tasks?expand=subtasks`)).json()).items
+    .map(t => [t.title.replace(` ${stamp}`, ''), t])); // by name: {position, related_tasks}
+  const openAndClose = async id => {
+    await page.click(`${rowById(id)} > .body`);
+    await page.waitForSelector('#d-title');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  };
+  await step('the-add-box-adds-subtasks-to-the-task-touched', async () => {
+    foot.project = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeFoot${stamp}` }) })).json();
+    createdProjects.push(foot.project.id);
+    foot.view = foot.project.views.filter(v => v.view_kind === 'list').sort((a, b) => a.position - b.position || a.id - b.id)[0].id;
+    const mk = async name => foot.tasks[name] = await (await api(`/projects/${foot.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: footName(name) }) })).json();
+    for (const name of ['Van', 'Chairs', 'Tables', 'Lights']) await mk(name);
+    const T = foot.tasks;
+    for (const s of ['Chairs', 'Tables']) await api(`/tasks/${T.Van.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: T[s].id, relation_kind: 'subtask' }) });
+    for (const [name, position] of Object.entries({ Van: 1000, Lights: 2000, Chairs: 100, Tables: 200 }))
+      await api(`/tasks/${T[name].id}/position`, { method: 'PUT', headers: json, body: JSON.stringify({ project_view_id: foot.view, position }) });
+    await page.click('#btn-refresh');                                           // so Pocket knows the project
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, foot.project.id);
+    await expect(footRows()).toHaveText(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Lights'].map(footName), { timeout: 15000 });
+    // Nothing touched yet: a task for the project.
+    await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
+    await expect(target).toHaveCount(0);
+    // Its sheet opened and closed: the box names it, and its row is lit up.
+    await openAndClose(T.Van.id);
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await expect(page.locator(rowById(T.Van.id))).toHaveClass(/aimed/);
+    await expect(page.getByRole('textbox', { name: `New subtask of ${footName('Van')}` })).toBeVisible();
+    await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
+    // Two typed with Enter: the box keeps the focus, and they go after its last subtask, in the order typed.
+    await box.click();
+    await box.fill(footName('Rope'));
+    await box.press('Enter');
+    await expect(box).toHaveValue('');
+    await box.fill(footName('Straps'));
+    await box.press('Enter');
+    await expect(footRows()).toHaveText(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Subtask: Rope', 'Subtask: Straps', 'Lights'].map(footName));
+    if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Straps')}`);
+    await noToast(page);
+    await synced(page);
+    const p = await footPositions();
+    for (const s of ['Rope', 'Straps']) if (!p[s].related_tasks?.parenttask?.some(x => x.id === T.Van.id)) throw new Error(s + ' is not under Van');
+    if (!(p.Tables.position < p.Rope.position && p.Rope.position < p.Straps.position)) throw new Error('positions: ' + ['Tables', 'Rope', 'Straps'].map(s => p[s].position));
+    foot.tasks.Rope = p.Rope; foot.tasks.Straps = p.Straps;
+    await page.reload();
+    await expect(footRows()).toHaveText(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Subtask: Rope', 'Subtask: Straps', 'Lights'].map(footName), { timeout: 15000 });
+    await expect(target).toHaveCount(0);                                      // a reload starts afresh
+  });
+  await step('the-add-box-adds-right-after-a-subtask-touched', async () => {
+    const T = foot.tasks;
+    await openAndClose(T.Chairs.id);
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Chairs')}`);
+    // A pasted list is several subtasks, and the next one goes after them.
+    await box.fill(`${footName('Ladder')}
+${footName('Hooks')}`);
+    await expect(page.locator('#cap-chips')).toContainText('2 subtasks');
+    await box.press('Enter');
+    await box.fill(`${footName('Tarp')} +Elsewhere`);                            // +project stays in its title
+    await expect(page.locator('#cap-chips')).toContainText('+project stays as words: a subtask goes in its task\'s project');
+    await box.press('Enter');
+    const want = [footName('Van'), ...['Chairs', 'Ladder', 'Hooks'].map(n => 'Subtask: ' + footName(n)), `Subtask: Tarp ${stamp} +Elsewhere`,
+      ...['Tables', 'Rope', 'Straps'].map(n => 'Subtask: ' + footName(n)), footName('Lights')];
+    await expect(footRows()).toHaveText(want);
+    await synced(page);
+    const p = await footPositions(), tarp = Object.keys(p).find(k => k.startsWith('Tarp'));
+    const order = ['Chairs', 'Ladder', 'Hooks', tarp, 'Tables'].map(s => p[s].position);
+    if (order.some((x, i) => i && x <= order[i - 1])) throw new Error('positions: ' + order);
+    if (p[tarp].project_id !== foot.project.id) throw new Error('the subtask went to another project');
+    await page.reload();
+    await expect(footRows()).toHaveCount(want.length, { timeout: 15000 });
+    await expect(footRows().nth(4)).toHaveText(`Subtask: Tarp ${stamp} +Elsewhere`);
+  });
+  await step('the-add-boxs-x-goes-back-to-adding-a-task', async () => {
+    const T = foot.tasks;
+    await openAndClose(T.Van.id);
+    const x = page.getByRole('button', { name: `Add a task to PocketSmokeFoot${stamp} instead` });
+    const size = await x.boundingBox();
+    if (size.width < 48 || size.height < 48) throw new Error('× is ' + size.width + '×' + size.height);
+    await x.click();
+    await expect(target).toHaveCount(0);
+    await expect(page.locator(rowById(T.Van.id))).not.toHaveClass(/aimed/);
+    await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
+    await box.fill(footName('Fuel'));
+    await box.press('Enter');
+    await expect(footRows().first()).toHaveText(footName('Fuel'));            // a task of its own, first, where Vikunja puts it
+    await synced(page);
+    const p = await footPositions();
+    if (p.Fuel?.related_tasks?.parenttask?.length) throw new Error('Fuel was added as a subtask');
+  });
+  await step('a-tick-moves-what-the-add-box-adds-to', async () => {
+    const T = foot.tasks;
+    // A subtask ticked done: its parent, to add more beside it. Ticked open again: the subtask itself.
+    await page.getByRole('button', { name: 'Mark done: ' + footName('Rope'), exact: true }).click();
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await expect(page.locator(rowById(T.Van.id))).toHaveClass(/aimed/);
+    await page.getByRole('button', { name: 'Mark not done: ' + footName('Rope'), exact: true }).click();
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Rope')}`);
+    await expect(page.locator(rowById(T.Rope.id))).toHaveClass(/aimed/);
+    await synced(page);
+  });
+  await step('the-add-box-forgets-a-task-scrolled-away-or-left', async () => {
+    const T = foot.tasks;
+    await openAndClose(T.Lights.id);
+    await expect(target).toHaveText(`Add a subtask to ${footName('Lights')}`);
+    // Scrolled off the screen: a task again, and scrolling back doesn't bring it back.
+    await page.evaluate(() => { document.getElementById('view').style.paddingBottom = '3000px'; });
+    await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+    await expect(target).toHaveCount(0);
+    await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
+    await page.evaluate(() => scrollTo(0, 0));
+    await expect(page.locator(rowById(T.Lights.id))).toBeInViewport();
+    await expect(target).toHaveCount(0);
+    await page.evaluate(() => { document.getElementById('view').style.paddingBottom = ''; });
+    // Another screen, and back: a task again.
+    await openAndClose(T.Lights.id);
+    await expect(target).toHaveCount(1);
+    await page.click('nav.tabs a[data-tab=today]');
+    await expect(box).toHaveAttribute('placeholder', 'Add a task');
+    await page.goBack();
+    await expect(footRows().first()).toBeVisible({ timeout: 15000 });
+    await expect(target).toHaveCount(0);
+    await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
+  });
+
   await step('project-sheet-renames-and-deletes', async () => {
     const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeSheet${stamp}` }) })).json();
     createdProjects.push(proj.id);
