@@ -92,10 +92,33 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
-  project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks, and an Undo in its
-  row's place. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
+  project takes its subtasks along. The **⋯** at the top of the sheet shares its progress (see **Sharing progress**,
+  below), and deletes it, with its subtasks, and an Undo in its row's place. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
   on its row only, with no message. A change that isn't saved goes back, and the sheet says so under what it's about
   (at its top, under its notes, under its subtasks), with **Try again** where that helps.
+- **Sharing progress:** a task's **⋯**, a project's **⋯** and a run's **⋯** have **Share progress as a text**. It opens
+  the phone's share sheet, to send it in a message, as a few plain lines:
+
+  ```
+  Pack the van  ▰▰▰▱▱ 60%
+  ✓ Load chairs
+  ◐ Tables 50%
+  ○ Sound system · Priya
+  ○ Lights
+  ```
+
+  The bar is the task's own progress, or, when it has none, how many of its subtasks are done: "1 of 4 done". Each
+  subtask is ✓ done, ◐ under way (with how far), or ○ not begun, with its own subtasks under it, two spaces in. A person
+  is the first word of their name in Vikunja, or their username, and a due date is a few words: "due Fri", "overdue
+  since Mon". On a long list, more than 10 lines with more than 5 done, the done ones are one line: "✓ 8 done". A
+  project's is its open tasks in its list's order, each with its open subtasks, under its counts: "Café  12 open · 5
+  done". A run's says who did each step, "✓ Load chairs · Priya", who skipped one, and who's on the rest. Notes aren't
+  included. Where there's no share sheet (on most computers), the text is copied instead, and the sheet says "Copied:
+  paste it into a message".
+- **Copying:** beside it, **Copy as a Markdown list** copies the same as a list to paste into notes or a document, with
+  nothing collapsed: `## Pack the van (60%)`, then `- [x] Load chairs`, `- [ ] Tables (50%)`, `- [ ] Sound system
+  @priya`. **Open in Vikunja ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
+  copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done.
 - **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
@@ -124,7 +147,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   open its sheet; tick it to open it again where it is, with an Undo. It can't be moved, nor be what the bottom box
   adds to; its subtasks are like any others. A finished run with steps not done shows the same way. On Today and in
   search, a subtask whose task isn't above it there says which task it's under: "↳ Pack the van". **New project** makes one, inside
-  another if you like. A project's **⋯** renames or archives it if it's shared with you to write, and deletes it if
+  another if you like. A project's **⋯** shares its progress, and renames or archives it if it's shared with you to write, and deletes it if
   you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
 - **Signing in:** sign in once, with your usual Vikunja login, and Pocket and Vikunja's web app are both signed in on
   that device.
@@ -278,8 +301,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   done, the next one, and its progress line. A run has no tick on Today: it's finished on its screen. Tapping a
   run opens it; tapping a step opens its run on that step.
 - **The run on screen** updates by itself as teammates tick steps.
-- **A run's ⋯** changes its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its
-  steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
+- **A run's ⋯** shares its progress as a text, with who did each step (see **Sharing progress**, under Tasks), changes
+  its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
 - **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them. A
   **Not done** made offline isn't sent if the run was finished meanwhile. A step inserted offline can be called off from
   Waiting to send; whatever of it reached Vikunja is taken out.

@@ -33,7 +33,9 @@ and its row says so, with an Undo, then folds away. Swipe a row left to delete i
 ## Hand it off
 
 Add `@priya` and the task is Priya's, in a project Priya can see. A checklist run can be for anyone on the team, and
-Vikunja tells them about it once, not once per step.
+Vikunja tells them about it once, not once per step. To keep someone posted, **Share progress as a text**, in a task's,
+a project's or a run's ⋯, sends a few plain lines through the phone's share sheet: "Pack the van ▰▰▰▱▱ 60%", then a
+line for each subtask and who's on it.
 
 <img src="docs/screenshots/pocket-assign.png" width="320" alt="'Clean the milk steamer tomorrow @priya', with chips showing Café, Tomorrow and @priya">
 

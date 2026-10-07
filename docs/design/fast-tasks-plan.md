@@ -156,6 +156,27 @@ The server is on Vikunja 2.7.0, which checks that a position's view belongs to t
 - **Open in Vikunja** in each ⋯ (#180).
 - **Copy** buttons on a task's notes and on each comment.
 
+Settled while building it (part 8):
+
+- The bar is a task's own progress; with none, its subtasks done of all of them, said as "1 of 4 done" rather than a
+  percentage. A run's is its steps, as its screen says: "3 of 5 done · 1 skipped", the bar counting skipped ones too.
+  One segment once begun, and the fifth only at 100%.
+- A skipped step is "– Warm up the press · skipped by Priya". A done subtask of a task names no one; a run's done step
+  names who did it.
+- Collapsing: in a text over 10 lines, a list with more than 5 done collapses them into "✓ 8 done", where the first of
+  them was (on a run, "· Priya, Sam": who did them). The Markdown list collapses nothing.
+- A project's text lists its open tasks and their open subtasks, as the Project tab shows them: done ones are counted
+  only, in its first line and a last "✓ 5 done", so nothing is counted twice. A top-level task has the bar when it has
+  progress or subtasks; a subtask has its percentage, or "(1 of 2 done)".
+- Due dates: "due today", "due tomorrow", "due Fri" within the week, "due Oct 12", "overdue since Mon"; none on what's
+  done, and none on a run's steps (their countdowns don't read as a date).
+- Markdown: the title as `## Pack the van (60%)`, due date and @people on the line under it; a project as `# Café`,
+  its counts, then its tasks.
+- Labels: "Share progress as a text", "Copy as a Markdown list", "Open in Vikunja ↗". A task's ⋯ shows for read-only
+  tasks too, with only these. A project's and a run's ⋯ are sheets, so they're a card under the name there.
+- The share sheet gets the title too (an email's subject). Put away without sharing, nothing happens; any other
+  refusal copies instead.
+
 ### 8. Instant feel (#179)
 
 - A tab opens straight away with the last copy Pocket kept of it, then updates in place without a flash. The other
