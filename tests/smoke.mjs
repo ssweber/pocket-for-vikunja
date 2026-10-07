@@ -1574,6 +1574,80 @@ ${footName('Hooks')}`);
     await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
   });
 
+  await step('share-progress-copy-it-and-open-it-in-vikunja', async () => {
+    // A project of its own: Pack the van at 60%, its subtasks in this order (one done, one half way, one yours), with
+    // notes and a comment; and Order milk after it.
+    const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeShare${stamp}` }) })).json();
+    createdProjects.push(proj.id);
+    const view = proj.views.filter(v => v.view_kind === 'list').sort((a, b) => a.position - b.position || a.id - b.id)[0].id;
+    const me = await (await api('/user')).json(), my = (me.name || '').trim().split(/\s+/)[0] || me.username;
+    const mk = async (name, extra = {}, position) => {
+      const t = await (await api(`/projects/${proj.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: name, ...extra }) })).json();
+      await api(`/tasks/${t.id}/position`, { method: 'PUT', headers: json, body: JSON.stringify({ project_view_id: view, position }) });
+      return t;
+    };
+    const van = await mk(`Pack the van ${stamp}`, { percent_done: .6, description: '<p>Bring the long cable</p><p>Keys in the office</p>' }, 1000);
+    await mk(`Order milk ${stamp}`, {}, 2000);
+    const subs = [await mk('Load chairs', { done: true }, 100), await mk('Tables', { percent_done: .5 }, 200), await mk('Sound system', {}, 300), await mk('Lights', {}, 400)];
+    for (const s of subs) await api(`/tasks/${van.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: s.id, relation_kind: 'subtask' }) });
+    await api(`/tasks/${subs[2].id}/assignees/bulk`, { method: 'PUT', headers: json, body: JSON.stringify({ assignees: [{ id: me.id }] }) });
+    await api(`/tasks/${van.id}/comments`, { method: 'POST', headers: json, body: JSON.stringify({ comment: '<p>Van keys are <b>in the office</b></p>' }) });
+    await page.click('#btn-refresh');                                           // so Pocket knows the project
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
+    await page.click(`${rowById(van.id)} .body`, { timeout: 15000 });
+    await expect(page.locator('#d-subtasks .row .title')).toHaveText(['Load chairs', 'Tables', 'Sound system', 'Lights']);
+    await expect(page.locator('#d-subtasks').getByRole('button', { name: 'You\'re doing Sound system. Tap to let it go' })).toBeVisible();
+    await expect(page.locator('#d-comments .comment')).toHaveCount(1);
+
+    // Through the phone's share sheet: plain text, with the task's name as its title.
+    const text = [`Pack the van ${stamp}  ▰▰▰▱▱ 60%`, '✓ Load chairs', '◐ Tables 50%', `○ Sound system · ${my}`, '○ Lights'].join('\n');
+    await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
+    const menu = async () => { if (!await page.locator('#d-menu').isVisible()) await page.click('#d-more'); return page.locator('#d-menu'); };
+    await (await menu()).getByRole('menuitem', { name: 'Share progress as a text' }).click();
+    await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: `Pack the van ${stamp}`, text }]);
+    await expect(page.locator('#d-menu')).toHaveCount(0);
+    // Without one, copied, and said so where it was shared from.
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(APP).origin });
+    // (Windows' clipboard gives the lines back with \r\n.)
+    const clip = () => page.evaluate(() => navigator.clipboard.readText()).then(t => t.replace(/\r\n/g, '\n'));
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    await page.evaluate(() => { navigator.share = undefined; });
+    await (await menu()).getByRole('menuitem', { name: 'Share progress as a text' }).click();
+    await placeSays(page, 'sheet:top', 'Copied: paste it into a message');
+    await expect.poll(clip).toBe(text);
+    // As a Markdown list.
+    await (await menu()).getByRole('menuitem', { name: 'Copy as a Markdown list' }).click();
+    await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
+    await expect.poll(clip).toBe([`## Pack the van ${stamp} (60%)`, '', '- [x] Load chairs', '- [ ] Tables (50%)', `- [ ] Sound system @${me.username}`, '- [ ] Lights'].join('\n'));
+    // Its page in Vikunja, in the browser.
+    const open = (await menu()).getByRole('menuitem', { name: 'Open in Vikunja' });
+    await expect(open).toHaveAttribute('href', `${SERVER}/tasks/${van.id}`);
+    await expect(open).toHaveAttribute('target', '_blank');
+    await page.click('#d-more');
+    // Its notes, and a comment, as plain text.
+    await page.getByRole('button', { name: 'Copy the notes' }).click();
+    await placeSays(page, 'sheet:notes', 'Copied the notes');
+    await expect.poll(clip).toBe('Bring the long cable\n\nKeys in the office');
+    await page.getByRole('button', { name: 'Copy this comment' }).click();
+    await placeSays(page, 'sheet:comments', 'Copied the comment');
+    await expect.poll(clip).toBe('Van keys are in the office');
+
+    // The project, from its ⋯: its open tasks in its list's order, with their open subtasks, and how many are done.
+    await page.click('#btn-sheet-close');
+    await page.click('#btn-project');
+    await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
+    await page.click('#p-share-text');
+    await expect.poll(() => page.evaluate(() => window.shared[0]?.text)).toBe([`PocketSmokeShare${stamp}  5 open · 1 done`, `◐ Pack the van ${stamp}  ▰▰▰▱▱ 60%`, '  ◐ Tables 50%',
+      `  ○ Sound system · ${my}`, '  ○ Lights', `○ Order milk ${stamp}`, '✓ 1 done'].join('\n'));
+    await page.click('#p-copy-md');
+    await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
+    await expect.poll(clip).toBe([`# PocketSmokeShare${stamp}`, '', '5 open · 1 done', '', `- [ ] Pack the van ${stamp} (60%)`, '  - [ ] Tables (50%)',
+      `  - [ ] Sound system @${me.username}`, '  - [ ] Lights', `- [ ] Order milk ${stamp}`].join('\n'));
+    await expect(page.locator('#p-open-vikunja')).toHaveAttribute('href', `${SERVER}/projects/${proj.id}`);
+    await page.click('#btn-sheet-close');
+  });
+
   await step('project-sheet-renames-and-deletes', async () => {
     const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeSheet${stamp}` }) })).json();
     createdProjects.push(proj.id);

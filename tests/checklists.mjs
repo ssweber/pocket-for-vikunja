@@ -478,6 +478,23 @@ try {
     if (!(run.comments || []).some(c => c.comment.includes('Line 2 ran slow today'))) throw new Error('no note on the run');
   });
 
+  await step('share-a-runs-progress', async () => {
+    // From the run's ⋯: who did each step, who skipped one, and who's on the one left (you, claimed for this).
+    const run = await api('/tasks/' + first.id), my = (me.name || '').trim().split(/\s+/)[0] || me.username, row = '#run-steps .row:nth-of-type(3)';
+    await page.click(`${row} .claim:has(.me)`);
+    await page.waitForSelector(`${row} .claim.mine .av`);
+    await page.click('#btn-run-more');
+    await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
+    await page.click('#r-share-text');
+    await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: run.title, text: [`${run.title}  ▰▰▰▱▱ 1 of 3 done · 1 skipped`,
+      `✓ Check the guards at 3pm · ${my}`, `– Warm up the press · skipped by ${my}`, `○ First article check · ${my}`].join('\n') }]);
+    await expect(page.locator('#r-open-vikunja')).toHaveAttribute('href', `${SERVER}/tasks/${first.id}`);
+    await page.click('#btn-sheet-close');
+    await page.click(`${row} .claim`);                                       // let go again
+    await page.waitForSelector(`${row} .claim .me`);
+    await synced(page);
+  });
+
   await step('untick-and-tick-again', async () => {
     const id = (await runStep(first.id, 0)).id;
     await page.click('#run-steps .row:nth-of-type(1) .check');
