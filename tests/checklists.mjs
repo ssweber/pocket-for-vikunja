@@ -140,7 +140,12 @@ try {
       await page.click('nav.tabs a[data-tab=projects]');
       await page.waitForSelector('.tree');
       if (await page.$('#btn-setup-checklists')) throw new Error('Set up checklists is still offered');
-    } finally { if (made) await api('/projects/' + made.id, { method: 'DELETE' }).catch(() => {}); }
+    } finally {
+      // The last tick's ✅ may still be on its way: deleting the project under it would leave it turned down, waiting
+      // in the outbox, and the ticks after it would wait behind it.
+      await until('the ticks never reached Vikunja', () => page.evaluate(() => !Alpine.$data(document.body).pending.length)).catch(() => {});
+      if (made) await api('/projects/' + made.id, { method: 'DELETE' }).catch(() => {});
+    }
     await page.click('#btn-refresh');
     await page.waitForSelector('nav.tabs a[data-tab=checklists]', { state: 'detached', timeout: 15000 });
   });
