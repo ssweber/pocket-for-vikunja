@@ -15,7 +15,8 @@
           <!-- include markup/sheet/draft-steps.html -->
           <button type="button" class="draft-add" id="new-add-step" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
       </div>
-      <p class="note">“in 20 min”, “after an hour” or “20 minutes later” in a step makes it due that long after the step before it is done. Pick another step in its chip to count from that one.</p>
+      <p class="note">“in 20 min”, “after an hour” or “20 minutes later” in a step makes it due that long after the step before it is done. To count from another step, pick it in the step's ⏱ chip.</p>
+      <p class="note">Once it's made, its sheet sets when it comes round, if it should: a date, and Repeats.</p>
       <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.box.text.trim() || !draft('new').added.length || draft('new').problem"
               @click="createTemplate()" x-text="sheet.newTpl.busy ? 'Making the template…' : 'Make template'"></button>
     </div></template>

@@ -1,8 +1,24 @@
     <!-- Checklists: each checklist project's templates, to start a run from, and its runs in progress -->
     <template x-if="!view.loading && !view.error && route.name === 'checklists'"><div id="checklists">
-      <template x-if="!view.checklists.length"><div class="empty"><b>No checklists here.</b>Open a project, tap ⋯ and choose Use for checklists, or make one with New project.</div></template>
+      <template x-if="!view.checklists.length"><div class="card cl-card setup-card" id="setup-checklists">
+        <p><b>Checklists</b> are step-by-step lists people run again and again, like opening up or a weekly clean: each run is ticked off step by step, with who did what.</p>
+        <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
+        <p class="note" style="margin:8px 0 0">Makes a project called Checklists, with an example template to try. Or use a project of yours: its ⋯ has Use for checklists.</p>
+      </div></template>
       <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
         <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
+        <!-- For its owner, until hidden: what tripped everyone setting one up (docs/design/checklist-setup-plan.md) -->
+        <template x-if="gettingStarted(cl.project.id)"><div class="card getting-started" :id="'getting-started-' + cl.project.id">
+          <h3>Getting started</h3>
+          <ol>
+            <li><b>Share it</b> with the people who'll run its checklists. That's done in Vikunja's web app: pick <b>Read &amp; write</b>, so they can tick steps.
+              <a class="gs-act" :href="shareUrl(cl.project.id)" target="_blank" rel="noopener">Share it in Vikunja ↗</a></li>
+            <li><b>Write a template</b>: the list each run copies, a step a line. “@priya” in a step gives it to Priya, and “in 18 min” makes it due 18 minutes after the step before.
+              <button type="button" class="linkish gs-act" @click="openNewTemplate(cl.project)">New template</button></li>
+            <li><b>Have it come round</b>, if it should: in the template's sheet, under When it's due, give it a date and pick Repeats. It shows on Today then.</li>
+          </ol>
+          <button type="button" class="linkish gs-hide" @click="hideGettingStarted(cl.project.id)">Hide this</button>
+        </div></template>
         <div class="list">
           <template x-for="t in cl.templates" :key="t.id"><div class="row cl-tpl" :data-id="t.id">
             <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-checklist"/></svg>

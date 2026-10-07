@@ -35,7 +35,9 @@ self.addEventListener('fetch', event => {
     }).catch(() => caches.match(PAGE)));
     return;
   }
-  event.respondWith(caches.match(event.request).then(hit => hit || fetch(event.request).then(res => {
+  // ignoreVary: Vikunja answers with "Vary: Origin", and the chrono import is asked for with an Origin the saved copy's
+  // request didn't have, so it would be missed offline (and quick add would read no dates).
+  event.respondWith(caches.match(event.request, {ignoreVary: true}).then(hit => hit || fetch(event.request).then(res => {
     if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(event.request, copy)); }
     return res;
   })));

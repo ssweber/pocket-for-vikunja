@@ -1,6 +1,7 @@
 // What's waiting to send: the header's button, which says so, and the sheet listing it.
 import {cache, fmtSize} from '../util.js';
-import {parseStep} from '../checklists.js';
+import {addedText, parseStep} from '../checklists.js';
+import {htmlToText} from '../html.js';
 import {isChild, itemDone, sync} from '../sync.js';
 
 const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
@@ -21,8 +22,8 @@ export default {
         const what = (e.cancelled ? 'Calling off the start of ' : 'Starting ') + e.template.title;
         rows.push({key: e.id, text: what, when, drop: e.cancelled ? null : ['cancelStart', e.id]});
       } else if (e.kind === 'step') {
-        const text = `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
-        rows.push({key: e.id, text, when, drop: e.taskId || e.tried || e.job?.tried ? null : ['dropStep', e.id]});
+        const text = e.cancelled ? `Taking out ${quoted(e.title)}, not inserted after all` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
+        rows.push({key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id]});
       } else if (e.kind === 'act') {
         rows.push({key: e.id, text: this.actText(e), when, failed: e.failed?.message || '', retry: !!e.failed,
           drop: e.failed || (!e.stage && !e.tried) ? ['dropAct', e.id] : null});
@@ -54,12 +55,25 @@ export default {
   },
   openOutbox(){ this.openSheet('outbox'); },
   tapRefresh(){ if (this.outboxShown) this.openOutbox(); else this.refresh(); },
-  async tryNow(){ await this.flush(); this.refresh(); },
-  // A run's act in words: "Done: Check the milk fridge".
+  // Offline it says so, rather than the browser's own words for a failed request.
+  async tryNow(){
+    await this.flush();
+    if (this.pending.length && this.offline) { this.notify('Still no connection to Vikunja: it\'s all kept, and sent once Pocket reaches it.'); return; }
+    this.refresh();
+  },
+  /* A run's act in words: "Done: Check the milk fridge". A skip with its reason, and a step repeated in the run told
+     apart from the one it repeats. */
   actText(a){
-    const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title;
-    return {done: `Done: ${t}`, doneNote: `Done, with a note: ${t}`, skip: `Skipped: ${t}`, undone: `Not done: ${t}`, note: `A note on “${t}”`,
-      finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `You'll do “${t}”`, unclaim: `Letting go of “${t}”`}[a.op] || t;
+    const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title + (this.isRepeat(a.task) ? ' (repeated)' : '');
+    const why = a.op === 'skip' && htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
+    return {done: `Done: ${t}`, doneNote: `Done, with a note: ${t}`, skip: `Skipped: ${t}` + (why ? ` (${why})` : ''), undone: `Not done: ${t}`, note: `A note on “${t}”`,
+      progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `You'll do “${t}”`, unclaim: `Letting go of “${t}”`}[a.op] || t;
+  },
+  // Whether a run's step is one repeated during the run, as last loaded.
+  isRepeat(id){
+    if (typeof id === 'string') return !!this.pending.find(e => 'pending-' + e.id === id && (e.from || e.tpl != null));
+    const s = this.view.run?.steps.find(x => x.id === id) || cache.get(id);
+    return !!s && /repeated/i.test(addedText(s.description) || '');
   },
   actTitle(id){
     const r = this.view.run;
@@ -72,7 +86,7 @@ export default {
     return {done: part ? `${t} stays marked done in Vikunja, without the rest.` : `${t} stays not done in Vikunja.`,
       undone: part ? `${t} stays not done in Vikunja, without the rest.` : `${t} stays done in Vikunja.`,
       finish: 'The run stays open in Vikunja.', reopen: 'The run stays finished in Vikunja.',
-      claim: `${t} stays without you on it.`, unclaim: `You stay on ${t}.`,
+      claim: `${t} stays without you on it.`, unclaim: `You stay on ${t}.`, progress: `${t} keeps the progress it has in Vikunja.`,
       note: 'The note isn\'t posted: its words go back where you wrote them.'}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
   },
   // Send one Vikunja turned down again, and what waited behind it.

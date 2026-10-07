@@ -14,13 +14,24 @@
         <template x-if="isChecklistProject(sheet.project)"><div>
           <p>This project is for checklists: its templates and runs are under Checklists.</p>
           <a class="btn ghost block" href="#/checklists" style="text-decoration:none;margin-bottom:10px">Go to Checklists</a>
+          <template x-if="sheet.projEdit.perm >= 2 && startedHidden[sheet.project.id]"><button type="button" class="btn ghost block" id="p-show-started" style="margin-bottom:10px"
+            @click="hideGettingStarted(sheet.project.id, false); go('#/checklists')">Show Getting started again</button></template>
           <button class="btn danger block" id="p-stop-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, false)">Stop using for checklists</button>
         </div></template>
+      </div></template>
+      <!-- Sharing is done in Vikunja's web app: its share page, for whoever can share -->
+      <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-share-card">
+        <template x-if="sheet.projEdit.perm >= 2"><div>
+          <p>Sharing it is done in Vikunja's web app. Pick <b>Read &amp; write</b> for anyone who'll tick its tasks or run its checklists.</p>
+          <a class="btn ghost block" id="p-share" :href="shareUrl(sheet.project.id)" target="_blank" rel="noopener" style="text-decoration:none">Share it in Vikunja ↗</a>
+        </div></template>
+        <template x-if="sheet.projEdit.perm < 2"><p style="margin:0">Only its owner, or someone it's shared with as admin, can share it, in Vikunja's web app.</p></template>
       </div></template>
       <template x-if="sheet.projEdit?.perm >= 1"><div class="danger-zone">
         <button class="btn ghost block" id="p-archive" @click="archiveProject()">Archive project</button>
         <template x-if="sheet.projEdit.perm >= 2"><button class="btn danger block" id="p-delete" style="margin-top:10px" @click="deleteProject()"
           x-text="sheet.projEdit.tasks === null ? 'Delete project' : 'Delete project and its ' + sheet.projEdit.tasks + (sheet.projEdit.tasks === 1 ? ' task' : ' tasks')"></button></template>
+        <template x-if="sheet.projEdit.perm >= 2 && isChecklistProject(sheet.project) && sheet.projEdit.tasks"><p class="note" id="p-delete-note">Its tasks are its checklists' templates and runs, with each one's steps.</p></template>
         <template x-if="sheet.projEdit.perm < 2"><p class="note">Only the project's owner, or someone it's shared with as admin, can delete it.</p></template>
       </div></template>
     </div></template>
@@ -29,7 +40,7 @@
     <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
       <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="view.run.run.title"></h2></div>
       <template x-if="sheet.runEdit"><div>
-        <label class="field"><span x-text="sheet.runEdit.prefix ? 'Name, between the template\'s and the day' : 'Name'"></span>
+        <label class="field"><span x-text="sheet.runEdit.prefix ? 'This run\'s own name, between the template\'s and the day' : 'Name'"></span>
           <input id="r-name" x-model="sheet.runEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="saveRunName()"></label>
         <div class="h3">For</div>
         <div class="card who-pick" id="r-for" role="group" aria-label="Who the run is for">

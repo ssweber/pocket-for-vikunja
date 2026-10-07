@@ -33,7 +33,7 @@ export default {
       if (isSet(t.due_date) && passed(+new Date(t.due_date)) && isLate(t.due_date, new Date(now))) due.push(t);
       else if ((t.reminders || []).some(r => isSet(r.reminder) && passed(+new Date(r.reminder)))) reminded.push(t);
     }
-    const name = t => `“${t.title}”`, list = [...due, ...reminded];
+    const name = t => `“${this.rowTitle(t)}”`, list = [...due, ...reminded];
     if (list.length === 1) this.notifyAfterUndo(due.length ? `${name(list[0])} is due now` : `Reminder: ${name(list[0])}`);
     else if (list.length) this.notifyAfterUndo(`${list.length} tasks are due ${reminded.length ? 'or have a reminder ' : ''}now: ${name(list[0])} and ${list.length - 1} more`);
   },

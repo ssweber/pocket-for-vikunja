@@ -1,7 +1,7 @@
 // Checklists, their projects and templates, and writing steps.
-import {cache, taskDrafts, TZ} from '../util.js';
+import {andList, cache, store, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask, why} from '../api.js';
-import {fmtTime, isSet, startOfDay} from '../dates.js';
+import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
 import {CHECKLIST_MARK, comesRound, draftSteps, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
@@ -16,9 +16,19 @@ import {newBox} from './core.js';
 let templatesKept = {};
 const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, labels: t.labels, done: t.done, due_date: t.due_date,
   repeat_after: t.repeat_after, repeat_mode: t.repeat_mode, assignees: t.assignees || [], related_tasks: {subtask: stepsOf(t).map(s => ({id: s.id, title: s.title}))}}; };
-// A time as a template's line says it: "6:00 PM" today, else "Wed, Oct 7, 8:00 AM".
-const whenText = (d, today) => +startOfDay(d) === +startOfDay() ? fmtTime(d) + (today ? ' ' + today : '')
-  : d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+// A time as a template's line says it, as Today does: "6:00 PM" today, "tomorrow 8:00 AM", "yesterday 6:00 PM", else
+// "Wed, Oct 7, 8:00 AM".
+const whenText = (d, today) => {
+  const days = Math.round((startOfDay(d) - startOfDay()) / 864e5);
+  if (!days) return fmtTime(d) + (today ? ' ' + today : '');
+  if (days === 1 || days === -1) return (days === 1 ? 'tomorrow ' : 'yesterday ') + fmtTime(d);
+  return d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+};
+// The same in a sentence: "today at 6:00 PM", "tomorrow at 8:00 AM", "on Wed, Oct 7 at 8:00 AM".
+const onText = d => {
+  const days = Math.round((startOfDay(d) - startOfDay()) / 864e5);
+  return (!days ? 'today' : days === 1 ? 'tomorrow' : days === -1 ? 'yesterday' : 'on ' + d.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'})) + ' at ' + fmtTime(d);
+};
 
 export default {
   // A template as its sheet shows it now, kept for starting a run offline: so a step just moved, added or removed is
@@ -44,6 +54,8 @@ export default {
     if (p) return isRunStepTask(t) ? 'step' : hasTemplateLabel(cache.get(p.id)) || templatesKept[p.id] ? 'tplstep' : null;
     return (r.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t) ? 'run' : 'candidate';
   },
+  // A template's "template" label stays: it's what makes it one. (Deleting the template is in its ⋯.)
+  keepsLabel(l){ return this.checklistRole === 'template' && isTemplateLabel(l); },
   // A template and its steps are never done or not done: their sheets have no tick, progress, priority or due date.
   get ofTemplate(){ return ['template', 'tplstep'].includes(this.checklistRole); },
   /* A project's ⋯. What's offered depends on your access to it (Vikunja's max_permission: 0 read, 1 write, 2 admin):
@@ -118,6 +130,46 @@ export default {
     } catch (e) { this.notify('Not changed: ' + e.message); }
     finally { this.sheet.checklistBusy = false; }
   },
+  /* ---------- setting checklists up ---------- */
+  /* Set up checklists: a project "Checklists", for checklists, with an example template to try, as New project and New
+     template make them. Then Checklists, with Getting started. */
+  async setUpChecklists(){
+    if (this.settingUp) return;
+    this.settingUp = true;
+    try {
+      const p = await api('/projects', {method: 'POST', body: {title: 'Checklists', description: `<p>${CHECKLIST_MARK}</p>`}});
+      this.setProjects([...this.projects, p]); saved.set('projects', this.projects);
+      this.perms[p.id] = 2; saved.set('perms', this.perms);
+      let made = true;
+      try { await this.addExample(p); } catch { made = false; }
+      this.go('#/checklists');
+      this.notify(made ? 'Set up Checklists, with an example template to try.' : 'Set up Checklists, but the example template couldn\'t be made: write one with New template.');
+    } catch (e) { this.notify(e instanceof NetError ? 'Setting up checklists needs a connection to Vikunja.' : 'Not set up: ' + e.message); }
+    finally { this.settingUp = false; }
+  },
+  /* The example: a template with four steps, the first for you, the third due 18 minutes after the second. Written as
+     they're saved, so it doesn't depend on quick add's settings. */
+  async addExample(p){
+    const title = templateTitle('Example: Opening up'), steps = ['Turn on the espresso machine', 'Put the croissants in the oven', 'Take the croissants out T#18m', 'Wipe down the tables'];
+    const made = await this.createLines([title], {pid: p.id, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
+    if (made.error) throw made.error;
+    const t = {id: made.ids[0], title, project_id: p.id, labels: [], due_date: null};
+    await patiently(() => patchTask(t.id, {description: '<p>An example to try: tap Start, tick its steps off, then change it into a checklist of your own, or delete it from its ⋯.</p>'}));
+    const r = await this.createLines(steps, {parent: t, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
+    if (r.error) throw r.error;
+    await patiently(() => api(`/tasks/${r.ids[0]}/assignees`, {method: 'POST', body: {user_id: this.user.id}})).catch(() => {});
+    await patiently(() => patchTask(r.ids[2], {description: '<p>Due 18 minutes after the croissants go in. Notes and photos on a step show on it in every run.</p>'})).catch(() => {});
+    await this.markTemplate(t, r.ids);
+  },
+  // Getting started, on Checklists: for a project's owner (or admin: they can share it), until they hide it.
+  gettingStarted(pid){ return this.perms[pid] >= 2 && !this.startedHidden[pid]; },
+  // Hidden, or shown again from the project's ⋯.
+  hideGettingStarted(pid, hide = true){
+    this.startedHidden = {...this.startedHidden, [pid]: hide};
+    store.set('started.hidden', JSON.stringify(this.startedHidden));
+  },
+  // Vikunja's share page for a project, in its web app: sharing is done there.
+  shareUrl(pid){ return `${this.server}/projects/${pid}/settings/share`; },
   openTasks(pid){ return allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ})); },
   // Each checklist project, with its templates and the runs still open in it.
   async loadChecklists(seq){
@@ -150,14 +202,26 @@ export default {
     const d = new Date(t.due_date), then = repeatWords(t) ? ', then ' + repeatWords(t) : ', just once';
     return (d <= new Date() ? 'Due now, since ' + whenText(d, 'today') : 'Next: ' + (+startOfDay(d) === +startOfDay() ? 'today, ' : '') + whenText(d)) + then;
   },
+  // Under a template's When it's due: what its date and repeat do, in words.
+  get comesRoundNote(){
+    const t = this.sheet.task;
+    if (!t || this.checklistRole !== 'template') return '';
+    if (t.done || !isSet(t.due_date)) return repeats(t) ? `Give it a date to have it come round ${repeatWords(t)}, on Today. Until then, start it from Checklists.`
+      : 'Without a date, start it from Checklists whenever it\'s needed. Give it one to have it show on Today then.';
+    const on = onText(new Date(t.due_date));
+    return repeats(t) ? `It shows on Today ${on}, then ${repeatWords(t)}. Starting a run moves it on to the next time.`
+      : `It shows on Today ${on}, just once: starting a run ends it. Pick Repeats to have it come round.`;
+  },
   // Whether a template that's due shows on your Today: for its assignees, or, with none, for anyone who can start it.
   templateFor(t){
     const who = t.assignees || [];
     return who.length ? who.some(u => u.id === this.user?.id) : this.canWrite(t.project_id);
   },
+  // "For you and Jo": you first.
   forText(t){
-    const who = (t.assignees || []).map(u => u.id === this.user?.id ? 'you' : u.name || u.username);
-    return who.length ? 'For ' + who.join(', ') : '';
+    const all = t.assignees || [], me = this.user?.id;
+    const who = [...all.filter(u => u.id === me).map(() => 'you'), ...all.filter(u => u.id !== me).map(u => u.name || u.username)];
+    return who.length ? 'For ' + andList(who) : '';
   },
   /* Don't start a run that's waiting to be set up after all. What reached Vikunja already is deleted (sendRun), now or,
      without a connection, once Pocket reaches it: until then the entry stays, so a half-made copy isn't left behind. */
@@ -218,8 +282,9 @@ export default {
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
-      this.notify(comesRound(full) ? `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a run moves it on.`
-        : 'Made a checklist template. Start runs from it here or under Checklists.');
+      this.notify(!comesRound(full) ? 'Made a checklist template. Start runs from it here or under Checklists.'
+        : `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a run `
+          + (repeats(full) ? 'moves it on to the next time.' : 'ends it, as it doesn\'t repeat.'));
     } catch (e) { this.notify('Not made a template: ' + e.message); }
     finally { this.sheet.checklistBusy = false; }
   },
@@ -248,10 +313,21 @@ export default {
   addDraftRow(which, at){
     // A phone only opens its keyboard for a field focused during the tap, and the new row is there only after it: an
     // unseen field takes the focus now, so the keyboard opens, and passes it on.
-    document.getElementById('focus-keeper')?.focus({preventScroll: true});
-    const rows = this.draftRows(which), k = at ?? rows.length;
-    rows.splice(k, 0, {key: randomId(), text: '', keep: false, from: null});
-    this.$nextTick(() => document.getElementById(`${which}-step-${k}`)?.focus());
+    this.keepFocus();
+    const rows = this.draftRows(which), k = at ?? rows.length, key = randomId();
+    rows.splice(k, 0, {key, text: '', keep: false, from: null});
+    this.$nextTick(() => this.passFocus(document.getElementById(`${which}-step-${k}`), t => { const r = rows.find(x => x.key === key); if (r) r.text = t + r.text; }));
+  },
+  /* The unseen field that holds the focus while a box appears, so the phone's keyboard stays open; then the box gets it,
+     with anything typed meanwhile (a fast typist's first letters), which would otherwise be lost. */
+  keepFocus(){ const k = document.getElementById('focus-keeper'); if (k) { k.value = ''; k.focus({preventScroll: true}); } },
+  passFocus(el, add, atEnd = false){
+    const k = document.getElementById('focus-keeper'), typed = k?.value || '';
+    if (k) k.value = '';
+    if (!el) return;
+    if (typed) { add(typed); el.value = atEnd ? el.value + typed : typed + el.value; }
+    el.focus();
+    if (typed) { const at = atEnd ? el.value.length : typed.length; el.setSelectionRange(at, at); }
   },
   moveDraftRow(which, k, dir){
     const rows = this.draftRows(which), j = k + dir;
@@ -320,6 +396,12 @@ export default {
       Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
       for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
     } catch (e) { r.error = e; }
+    /* A step made but not put under the template, Vikunja having turned that down: deleted, so it isn't left as a task of
+       its own (on someone's Today, if it has their @name). Add makes it again. Without a connection it stays, for Add to
+       carry on with. */
+    if (r.error && !(r.error instanceof NetError)) for (const x of rows) if (x.job?.taskId && !x.job.linked && !r.ids.includes(x.job.taskId)) {
+      await api('/tasks/' + x.job.taskId, {method: 'DELETE'}).then(() => { x.job = null; }, () => {});
+    }
     if (this.sheet.task?.id === t.id) {
       this.sheet.subBusy = false;
       if (r.error) {
@@ -344,8 +426,17 @@ export default {
   editStep(st){
     const e = this.sheet.stepEdit, k = e ? this.subtasks.findIndex(s => s.id === e.id) : -1;
     if (k >= 0 && e.id !== st.id) this.saveStepEdit(k);                       // one still open, its box no longer focused
-    document.getElementById('focus-keeper')?.focus({preventScroll: true});
-    this.sheet.stepEdit = {id: st.id, text: stepWords(st.title, this.subtasks.map(s => s.title)), keep: false, from: null};
+    this.keepFocus();
+    // Words quick add would read that are still in its title were kept as words when it was written (a chip tapped
+    // off): changed, it reads them the same way, not as a priority or a person after all.
+    const text = stepWords(st.title, this.subtasks.map(s => s.title)), kept = this.stepParsed(text);
+    const ignore = Object.fromEntries([['assignees', kept.assignees.length], ['labels', kept.labels.length], ['priority', kept.priority]].filter(([, n]) => n).map(([k]) => [k, true]));
+    this.sheet.stepEdit = {id: st.id, text, keep: false, from: null, ignore};
+    // Its box takes the focus as it appears (x-init); if a redraw beat that to it, once it's there.
+    setTimeout(() => {
+      const el = document.getElementById('step-edit-' + st.id);
+      if (el && document.activeElement?.id === 'focus-keeper') this.passFocus(el, t => { if (this.sheet.stepEdit?.id === st.id) this.sheet.stepEdit.text += t; }, true);
+    }, 50);
   },
   /* The step being changed, read as a row after the steps before it: how it reads (draftSteps), with every step's title
      once it's saved, since a step it now counts from may get a name. Null while it's empty. */
@@ -357,12 +448,22 @@ export default {
     const titles = this.subtasks.map((s, k) => k === i ? info.saved : d.renames.find(r => r.key === 'task:' + s.id)?.title ?? s.title);
     return {...info, titles, problem: stepProblems(titles).filter(p => p.i === i).map(p => p.text).join('; ') || info.problem};
   },
+  /* The people and labels the step being changed has, as chips: tapped, they're struck through (stepEdit.drop), and taken
+     off it when it's saved. */
+  stepHasChips(){
+    const e = this.sheet.stepEdit, st = e && this.subtasks.find(s => s.id === e.id), P = this.prefixes;
+    if (!st || !P) return [];
+    const drop = e.drop || {}, people = this.sheet.subPeople[st.id] || st.assignees || [], labels = this.sheet.subLabels[st.id] || st.labels || [];
+    const chip = (k, text) => ({key: 'had-' + k, kind: 'had', text, off: !!drop[k], hint: drop[k] ? `Tap to keep ${text} on this step` : `Tap to take ${text} off this step`,
+      action: () => { e.drop = {...e.drop, [k]: !e.drop?.[k]}; }});
+    return [...people.map(u => chip('u' + u.id, P.assignee + u.username)), ...labels.filter(l => !isTemplateLabel(l)).map(l => chip('l' + l.id, P.label + l.title))];
+  },
   async saveStepEdit(i){
     const e = this.sheet.stepEdit, st = this.subtasks[i];
     if (!e || !st || st.id !== e.id) return;
-    const d = this.stepEditDraft(i);
+    const d = this.stepEditDraft(i), drops = Object.keys(e.drop || {}).filter(k => e.drop[k]);
     const todo = d ? this.subtasks.map((s, k) => ({s, was: s.title, title: d.titles[k]})).filter(x => x.title !== x.was) : [];
-    if (!todo.length) { this.sheet.stepEdit = null; return; }
+    if (!todo.length && !drops.length) { this.sheet.stepEdit = null; return; }
     // Refused, or not saved: what was typed stays in the box, to put right or try again.
     if (stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not changed: ' + problemText(stepProblems(d.titles))); return; }
     this.sheet.stepEdit = null;
@@ -378,8 +479,18 @@ export default {
         const job = {taskId: e.id, done: false}, t = await this.createTask(p, this.sheet.task?.project_id, {job});
         if (job.body.title !== p.title || p.priority) await this.saveTask(e.id, {title: job.body.title, ...p.priority && {priority: p.priority}});
         if (t.problems.length) this.notify('Changed, but ' + t.problems.join('; '));
+      }
+      // The people and labels tapped off it.
+      for (const k of drops) {
+        const id = +k.slice(1);
+        await patiently(() => api(`/tasks/${e.id}/${k[0] === 'u' ? 'assignees' : 'labels'}/${id}`, {method: 'DELETE'})).catch(err => { if (err.status !== 404) throw err; });
+        const had = k[0] === 'u' ? this.sheet.subPeople : this.sheet.subLabels;
+        if (had[e.id]) had[e.id] = had[e.id].filter(x => x.id !== id);
+        this.sheet.dirty = true;
+      }
+      if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
         const full = await this.readTask(this.sheet.task.id).catch(() => null);
-        if (full && this.sheet.task?.id === full.id) this.showTask(full);
+        if (full && this.sheet.task?.id === full.id) { this.showTask(full); this.loadSubPeople(full); }
       }
     } catch (err) {
       for (const x of todo) if (!x.saved) x.s.title = x.was;

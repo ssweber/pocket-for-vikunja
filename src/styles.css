@@ -1,6 +1,6 @@
 :root{
   --bg:#EEF1EF; --surface:#FFFFFF; --sunk:#E3E8E5; --ink:#17201C; --muted:#5B6863; --line:#D6DDD9;
-  --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3;
+  --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#E3E8E5;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
   --pad:16px; --cap-h:64px;
@@ -8,7 +8,7 @@
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
-  --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F;
+  --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#2C3833;
   --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B;
   color-scheme:dark;
 }}
@@ -36,7 +36,9 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 .btn.block{width:100%}
 .btn.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--line)}
 .btn.danger{background:transparent;color:var(--danger);border:1.5px solid var(--line)}
-.btn[disabled]{opacity:.55}
+/* Not ready to tap: grey, not a faded green, which in the dark still looks ready */
+.btn[disabled]{background:var(--sunk);color:var(--muted)}
+.btn.ghost[disabled]{background:transparent;opacity:.55}
 .seg{display:flex;background:var(--sunk);border-radius:12px;padding:3px;margin-bottom:16px}
 .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-size:15px;color:var(--muted);font-weight:600}
 .seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
@@ -81,9 +83,12 @@ header.top .search .linkish{font-weight:600;padding:8px 10px}
 nav.tabs a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 11px;border-radius:var(--r-chip);color:var(--muted);text-decoration:none;font-size:15px;font-weight:650}
 nav.tabs a svg{width:20px;height:20px}
 nav.tabs a[aria-current=page]{background:var(--surface);color:var(--accent)}
-/* with Checklists as a third tab, the tabs are icons only, so the row still fits a phone; the names stay for screen readers */
-nav.tabs.icons a{padding:0 14px}
-nav.tabs.icons .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* with Checklists as a third tab, only the tab you're on keeps its name, so the row still fits a phone; the others' names
+   stay for screen readers */
+nav.tabs.icons{gap:2px}
+nav.tabs.icons a{padding:0 11px}
+nav.tabs.icons a[aria-current=page]{padding:0 12px 0 10px}
+nav.tabs.icons a:not([aria-current=page]) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* a project's name, under the header, scrolling with its list */
 .page-title{display:flex;align-items:center;gap:6px;margin:6px 0 0 -8px}
 .page-title .t{flex:1;min-width:0}
@@ -142,6 +147,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .pics{display:flex;align-items:center}
 .pic{position:relative;flex:none}
 .pic + .pic{margin-left:-4px}
+.pic:has(> .badge) + .pic{margin-left:5px}                  /* the ✓ clear of the next picture, so it's plainly the doer's */
 .pic.mine{z-index:1}
 .pic .av{position:relative;width:28px;height:28px;border-radius:50%;background:var(--sunk);color:var(--ink);display:grid;place-items:center;font-size:11.5px;font-weight:700;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}
 .pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -152,7 +158,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .badge svg.i{width:10px;height:10px;stroke-width:3.4;color:var(--accent-ink)}
 .badge.skip,.badge.wait{background:var(--muted)}
 .pics .more{padding-left:3px;font-size:12px;color:var(--muted)}
-.claim .me{height:28px;padding:0 9px;border-radius:14px;border:1.5px dashed var(--line);font-size:12.5px;font-weight:600;line-height:25px;white-space:nowrap}
+.claim .me{height:28px;padding:0 9px;border-radius:14px;border:1.5px dashed color-mix(in srgb,var(--accent) 50%,var(--line));color:var(--accent);font-size:12.5px;font-weight:650;line-height:25px;white-space:nowrap}
 .row.done .pic .av{opacity:.7}
 /* A done step: who did it and who had it, not tappable, so no ring for yours: the ✓ says it */
 .did .pic.mine .av{box-shadow:0 0 0 2px var(--surface)}
@@ -163,10 +169,13 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .row::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:calc(var(--pct,0) * 100%);background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
 .row.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--slide) * 100%),var(--surface) 0)}
+.row.current.setting{background:linear-gradient(to right,var(--accent-fill) calc(var(--slide) * 100%),var(--accent-soft) 0)}
 /* While it's being set, from --slide, which the screen's redraws don't touch (progress.js) */
 .row.setting::after{width:calc(var(--slide) * 100%)}
 .row.sub.setting::after{width:calc(var(--slide) * (100% - 14px - var(--depth) * 38px))}
 .row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none}
+/* held on the right half, the percentage moves to the left, clear of the thumb */
+.row.setting[data-side=left]::before,.d-head.setting[data-side=left]::before{right:auto;left:12px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
@@ -178,7 +187,14 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .cl-tpl .body{display:flex;align-items:center;gap:10px}
 .cl-tpl .body .t{flex:1;min-width:0}
 .cl-start{flex:none;min-height:38px;padding:0 14px;font-size:15px}
-.cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:13.5px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+/* Getting started, on Checklists, for a project's owner */
+.getting-started{padding:14px 16px;margin-bottom:10px}
+.getting-started h3{margin:0 0 8px;font-size:17px}
+.getting-started ol{margin:0;padding-left:20px;display:grid;gap:10px;font-size:15px;line-height:1.4}
+.getting-started .gs-act{display:inline-block;margin-top:2px;padding:4px 0;font-size:15px;font-weight:650;color:var(--accent);text-decoration:none}
+.getting-started .gs-hide{margin-top:10px;font-size:14px;color:var(--muted)}
+.setup-card p{margin:0 0 12px}
+.cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:14.5px;font-weight:650}
 .cl-hint{padding:14px;color:var(--muted);font-size:15px}
 a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
@@ -212,6 +228,8 @@ a.sec-act{text-decoration:none}
 .draft-line .icon-btn[disabled],.step-edit .icon-btn[disabled]{opacity:.35}
 .row .step-in{padding:0}
 .step-edit{display:flex;gap:4px;align-self:flex-start}
+.step-in-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
+.step-in-foot .step-edit .icon-btn{margin-top:0}
 .step-notes{display:inline-block;margin-top:6px;padding:4px 0;font-size:15px;font-weight:650}
 .draft-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 0 38px;font-size:14px;color:var(--muted)}
 .step-in .draft-meta{margin-left:0}
@@ -220,8 +238,9 @@ a.sec-act{text-decoration:none}
 .chip-x{display:inline-flex;border:0;background:none;padding:0 0 0 2px;color:var(--muted);cursor:pointer}
 .draft-add{display:flex;align-items:center;gap:8px;width:100%;min-height:50px;padding:0 14px;border:0;border-top:1px solid var(--line);background:none;color:var(--accent);font:inherit;font-weight:650;cursor:pointer}
 .run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
-.run-bar{display:flex;align-items:center;gap:10px;margin:0 0 14px}
-.run-bar .track{flex:1;height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
+/* Under the header, and at the top once the header slides away on a long run */
+.run-bar{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;width:calc(100% + 2 * var(--pad));margin:0 calc(-1 * var(--pad)) 6px;padding:8px var(--pad);border:0;background:var(--bg);font:inherit;color:inherit;cursor:pointer}
+.run-bar .track{flex:1;height:8px;border-radius:4px;background:var(--track);overflow:hidden}
 .run-bar .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent);transition:width .2s}
 .run-bar .num{color:var(--muted);font-size:14px;font-weight:650}
 .timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:16px;color:var(--ink);text-align:left;cursor:pointer}
@@ -239,6 +258,10 @@ a.sec-act{text-decoration:none}
 .step-due{font-size:15px;color:var(--muted)}
 .step-due.late{color:var(--overdue);font-weight:650}
 .step-who{margin-top:8px;font-size:15px;color:var(--accent);font-weight:650}
+.step-extra .comment.last .who{color:var(--today)}
+.note-mark{display:inline-flex;align-items:center;gap:3px;color:var(--muted)}
+.note-mark svg.i{width:14px;height:14px}
+.start-who{color:var(--muted);font-size:14px;white-space:nowrap}
 .step-who.waiting{color:var(--muted)}
 .step-acts{display:flex;gap:10px;margin-top:16px}
 .step-acts .btn{min-height:60px;font-size:19px}
@@ -263,6 +286,7 @@ a.sec-act{text-decoration:none}
 .step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
 .step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
 .step-extra .comment-form{padding:10px 0 0}
+.step-note-with{margin:6px 2px 0;font-size:14px}
 .row.current{background:var(--accent-soft)}
 .row .skipped{color:var(--muted);font-style:italic}
 .finish-card{padding:16px}
@@ -301,6 +325,9 @@ a.sec-act{text-decoration:none}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
 .chip:not(.tap){cursor:default}
+/* Words a box doesn't read, said so; and what @ and * suggest, outlined, unlike what was read */
+.chip.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);white-space:normal}
+.chip.suggest{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);border:0;color:var(--ink)}
 .chip.off{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--muted);text-decoration:line-through}
 .chip.create{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent);font-weight:600}
 .chip.toggle{background:var(--sunk);color:var(--muted);font-weight:600}
@@ -312,6 +339,8 @@ a.sec-act{text-decoration:none}
 /* ---------- sheet ---------- */
 #scrim{position:fixed;inset:0;background:rgba(10,16,13,.42);z-index:20;opacity:0;transition:opacity .2s}
 #scrim.show{opacity:1}
+/* Closing, it lets taps through at once, rather than catching them while it fades */
+#scrim:not(.show),#sheet:not(.show){pointer-events:none}
 #sheet{position:fixed;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 28px);z-index:21;background:var(--bg);border-radius:var(--r-sheet) var(--r-sheet) 0 0;display:flex;flex-direction:column;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:720px;margin:0 auto}
 #sheet.show{transform:none}
 @media (prefers-reduced-motion:reduce){#sheet,#scrim,header.top{transition:none}}
@@ -356,7 +385,7 @@ body.sheet-open{overflow:hidden}
 .d-head.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--slide) * 100%),transparent 0)}
 .d-path,.d-progress{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .d-progress{display:flex;align-items:center;gap:10px;height:40px;margin:0 0 2px 42px}
-.d-progress .track{flex:1;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;transition:height .12s}
+.d-progress .track{flex:1;height:6px;border-radius:3px;background:var(--track);overflow:hidden;transition:height .12s}
 .d-progress .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent)}
 .d-progress .num{width:44px;text-align:right;color:var(--muted);font-size:13px;font-weight:650}
 .d-progress.setting .track{height:12px}
@@ -372,6 +401,7 @@ body.sheet-open{overflow:hidden}
 .prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:6px 0;outline:0}
+.prop input[type=datetime-local]::-webkit-calendar-picker-indicator{margin-left:8px}
 .chip.rem{cursor:default;padding-right:6px}
 .prop-note{margin:0;padding:0 14px 12px}
 .assign-pick{flex:1 1 100%;min-width:0}

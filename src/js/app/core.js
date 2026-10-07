@@ -14,7 +14,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
+  project: null, start: null, subPeople: {}, subLabels: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
 
 export default () => ({
   // session
@@ -47,6 +47,8 @@ export default () => ({
   toast: {show: false, msg: '', action: null, more: null, until: 0},
   offline: false,                              // the last request couldn't reach Vikunja
   creatingProject: false,
+  settingUp: false,                            // Set up checklists is making the project and its example
+  startedHidden: (() => { try { return JSON.parse(store.get('started.hidden')) || {}; } catch { return {}; } })(),   // project id -> Getting started hidden
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
   fresh: [],                                   // tasks just added: their rows light up briefly, to show where they went
   movingOverdue: false,                        // "Move all to today" is saving
@@ -118,7 +120,8 @@ export default () => ({
     // Search once typing pauses.
     let searchTimer;
     this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });
-    for (const w of ['cap', 'sub']) {
+    // And the boxes that aren't in a list of rows: a run's insert box, a template's name and a step being changed.
+    for (const w of ['cap', 'sub', 'ins', 'tname', 'edit']) {
       // Once typing pauses, find out whether each @username can see the task's project.
       let accessTimer;
       this.$watch(`accessQuery('${w}')`, q => { clearTimeout(accessTimer); if (q) accessTimer = setTimeout(() => this.checkAccess(w), 500); });

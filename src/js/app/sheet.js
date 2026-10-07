@@ -67,10 +67,11 @@ export default {
     if (history.state?.sheet === true) { history.replaceState({...history.state, sheet: 'closed'}, ''); shared.onClosedSheet = true; shared.closedAt = location.href; }
   },
   /* Leaving a task's sheet, closed or for another task: notes being changed are saved, and a comment or subtasks being
-     written are kept for when it's opened again. */
+     written are kept for when it's opened again. Not again for a sheet already closing (a task opened again within its
+     slide down): that was done as it closed. */
   leaveTask(){
     const sh = this.sheet, t = sh.task;
-    if (!sh.open || sh.kind !== 'task' || !t) return;
+    if (!sh.open || !sh.show || sh.kind !== 'task' || !t) return;
     if (sh.editingDesc && sh.descDraft.trim() !== this.notesText(t).trim()) {
       const v = sh.descDraft, base = sh.descConflict ?? sh.descBase;
       sh.editingDesc = false; sh.dirty = true;
@@ -162,20 +163,25 @@ export default {
       const d = atTime(new Date(), this.dueTime);
       patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString();
       if (tpl) patch.done = false;
+      // Said, so it isn't a surprise: the date is the next time of day you have as Vikunja's default due time.
+      const label = dueInfo(patch.due_date).label, when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(patch.due_date));
+      this.notify(`It repeats from ${when}: change the date above if that's not when.`);
     }
     this.save(patch);
   },
   // The due date the sheet shows: a template's is when it next comes round, so a done one has none.
   get dueShown(){ const t = this.sheet.task; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
   /* The due date set in the sheet. A template's is when it comes round: given one, it's left not done; taken off, it's
-     done again, its repeat first, then the date and done, in two saves: in one, Vikunja would move it on to its next
-     time and leave it not done. */
+     done again. Its repeat is taken off first, then the date and done, in two saves (in one, Vikunja would move it on to
+     its next time and leave it not done), then put back, so a date given again comes round as it did. */
   async setDue(v){
     const t = this.sheet.task;
     if (this.checklistRole !== 'template') return this.save({due_date: v});
     if (isSet(v)) return this.save({due_date: v, ...t.done && {done: false}});
-    if (repeats(t) && await this.save({repeat_after: 0, repeat_mode: 0}) === false) return;
-    return this.save({due_date: ZERO, done: true});
+    const rep = repeats(t) && {repeat_after: t.repeat_after, repeat_mode: t.repeat_mode};
+    if (rep && await this.save({repeat_after: 0, repeat_mode: 0}) === false) return;
+    if (await this.save({due_date: ZERO, done: true}) === false || !rep) return;
+    return this.save(rep);
   },
   // The template a step is in, by name.
   get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },

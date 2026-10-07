@@ -88,6 +88,8 @@ export default {
   showLogin(err){
     this.screen = 'login';
     this.login.err = err || '';
+    // Password when Vikunja takes one, as on a fresh start (probe), also after a sign-out with /info loaded already.
+    if (this.info) this.login.method = this.passwordAllowed ? 'session' : 'token';
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, {tellServer = true} = {}){

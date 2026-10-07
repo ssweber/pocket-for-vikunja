@@ -1,6 +1,6 @@
 <section id="login" :hidden="screen !== 'login'" hidden>
   <h1>Pocket</h1>
-  <p class="lead">Today's tasks and quick capture for your Vikunja.</p>
+  <p class="lead">Today's tasks, quick capture and checklists for your Vikunja.</p>
   <div id="login-err" class="err" :hidden="!login.err" x-html="login.err" hidden></div>
 
   <template x-if="!info && !login.err"><p class="note">Connecting…</p></template>
@@ -21,7 +21,7 @@
     <form id="f-pass" :hidden="login.method !== 'session'" @submit.prevent="submitPassword()">
       <label class="field"><span>Username or email</span><input id="in-user" x-ref="inUser" x-model="login.user" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label class="field"><span>Password</span><input id="in-pass" x-model="login.pass" type="password" autocomplete="current-password" required></label>
-      <label class="field" id="totp-field" :hidden="!login.showTotp" hidden><span>Two-factor code</span><input id="in-totp" x-ref="inTotp" x-model="login.totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"></label>
+      <label class="field" id="totp-field" :hidden="!login.showTotp" hidden><span>Two-factor code, if you use one</span><input id="in-totp" x-ref="inTotp" x-model="login.totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"></label>
       <button class="btn block" type="submit" :disabled="login.busy">Sign in</button>
     </form>
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>

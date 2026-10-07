@@ -353,8 +353,10 @@ const lateResults = await page.evaluate(ls => ls.map(([due, now]) => isLate(new 
 const runOrder = await page.evaluate(() => [stepsOf({related_tasks: {copiedfrom: [{id: 1}], subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
   stepsOf({related_tasks: {subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
   stepsOf({description: '<p>pocket:run</p><p>pocket:order 9 12 3</p>', related_tasks: {subtask: [{id: 3}, {id: 12}, {id: 9}, {id: 20}]}}).map(s => s.id)]);
-// Inserting a step: before the one given, at the end if that's gone, and not twice.
-const placed = await page.evaluate(() => [placeBefore([3, 9, 12], 20, 9), placeBefore([3, 9, 12], 20, 99), placeBefore([3, 20, 9], 20, 12)]);
+// Inserting a step: before the one given; if that's gone, after the one it was inserted under, and if that's gone too, at
+// the end; and not twice.
+const placed = await page.evaluate(() => [placeBefore([3, 9, 12], 20, 9), placeBefore([3, 9, 12], 20, 99), placeBefore([3, 20, 9], 20, 12),
+  placeBefore([3, 9, 12], 20, 99, 3), placeBefore([3, 9, 12], 20, 99, 98)]);
 // A step added during its run: "Inserted", or "Repeated" when it keeps the line of the one it repeats; Pocket's lines
 // aren't its notes.
 const addeds = await page.evaluate(() => [addedText(withAdded('<p>Mind the hot plate</p>')), addedText(withAdded(withStepLine('', 'Taste T#5m'))),
@@ -436,7 +438,7 @@ lates.forEach(([due, now, want], i) => {
   if (lateResults[i] !== want) { failed++; console.log(`FAIL late ${JSON.stringify([due, now])}: ${lateResults[i]}`); }
 });
 if (!same(runOrder, [[3, 9], [9, 3], [9, 12, 3, 20]])) { failed++; console.log(`FAIL a run's steps by its order line then id, a task's as they are: ${JSON.stringify(runOrder)}`); }
-if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
+if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9], [3, 20, 9, 12], [3, 9, 12, 20]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
 if (!same(addeds, ['Inserted', 'Repeated', '', '<p>Mind the hot plate</p>'])) { failed++; console.log(`FAIL steps added during a run: ${JSON.stringify(addeds)}`); }
 const roundsWant = [true, true, false, false, false, false, false, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
   'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a run starts', '',

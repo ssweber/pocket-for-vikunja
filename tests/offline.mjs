@@ -68,6 +68,26 @@ try {
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
   });
 
+  await step('reads-dates-offline-straight-after-install', async () => {
+    // The first page wasn't the service worker's: its saved copy of chrono must still be found offline, though Vikunja
+    // answers "Vary: Origin" and the page asks for it with an Origin.
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } }), p = await ctx.newPage();
+    try {
+      await p.goto(POCKET);
+      await p.waitForSelector('#auth-step:not([hidden])');
+      if (await p.isVisible('.seg button[data-mode=token]')) await p.click('.seg button[data-mode=token]');
+      await p.fill('#in-token', TOKEN);
+      await p.click('#f-token button[type=submit]');
+      await p.waitForSelector('#app:not([hidden])');
+      await p.evaluate(() => navigator.serviceWorker.ready);
+      await ctx.setOffline(true);
+      await p.reload();
+      await p.waitForSelector('#app:not([hidden])', { timeout: 15000 });
+      await p.fill('#in-capture', 'Order milk fri at 9');
+      await p.waitForSelector('#cap-chips .chip[data-kind=due]:has-text("9:00")', { timeout: 5000 });
+    } finally { await ctx.close(); }
+  });
+
   await step('opens-offline-with-last-list', async () => {
     await context.setOffline(true);
     await page.reload();

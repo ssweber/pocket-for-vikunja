@@ -44,7 +44,7 @@
 
       <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Shared with you to read only: you can see this task, but not change it.</p></template>
       <!-- A template's: when it comes round, as Vikunja's repeating task, and the reminders Vikunja emails before then -->
-      <template x-if="checklistRole === 'template'"><div class="h3">Comes round</div></template>
+      <template x-if="checklistRole === 'template'"><div class="h3">When it's due</div></template>
       <div class="card" id="d-due-card" x-show="!ofTemplate || checklistRole === 'template'">
         <div class="prop"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
           <input type="datetime-local" id="d-due" :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
@@ -65,9 +65,9 @@
           <template x-if="sheet.remindAt"><span class="v"><input type="datetime-local" id="d-remind-at" aria-label="Remind me at" @change="addReminderAt($event.target.value)">
             <button class="icon-btn plain" aria-label="Don't add a reminder" @click="sheet.remindAt = false"><svg class="i"><use href="#i-close"/></svg></button></span></template>
         </span></div>
-        <template x-if="remindersNote && (sheet.task.reminders || []).length"><p class="note prop-note" x-text="remindersNote"></p></template>
+        <template x-if="remindersNote && (sheet.task.reminders || []).length && (checklistRole !== 'template' || isSet(dueShown))"><p class="note prop-note" x-text="remindersNote"></p></template>
       </div>
-      <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round">With a date, it shows on Today then, and starting a run moves it on. Without one, start it from Checklists.</p></template>
+      <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
 
       <div class="h3">Notes</div>
       <div class="card" id="d-desc-card">
@@ -115,7 +115,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             <template x-if="checklistRole === 'template' && sheet.stepEdit?.id === st.id"><div class="body step-in" x-data="{bw: 'edit'}">
               <!-- Quick add's box ('edit'): @people assign the step, *labels label it, as when it was written -->
               <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
-                        x-init="$nextTick(() => { $el.focus(); grow($el); })" x-effect="sheet.stepEdit?.text; $nextTick(() => grow($el))"
+                        x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })" x-effect="sheet.stepEdit?.text; $nextTick(() => grow($el))"
                         @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); boxEnter('edit'); }" @keydown.escape.stop="sheet.stepEdit = null"
                         @input="sheet.stepEdit.caret = $el.selectionStart" @click="sheet.stepEdit.caret = $el.selectionStart" @keyup="sheet.stepEdit.caret = $el.selectionStart"
            @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="sheet.stepEdit.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="setTimeout(() => { if (sheet.stepEdit) sheet.stepEdit.focus = document.activeElement === $el; }, 150)"></textarea></div></div>
@@ -125,24 +125,26 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
                 </template>
               </div></template>
               <!-- include markup/sheet/box-chips.html -->
-              <button type="button" class="linkish step-notes" :id="'step-notes-' + st.id" @mousedown.prevent @click="openStep(i)">Notes and photos ›</button>
+              <!-- Under the box, so it has the row's width: its own sheet, and ↑ ↓ ×, which keep the keyboard up -->
+              <div class="step-in-foot">
+                <button type="button" class="linkish step-notes" :id="'step-notes-' + st.id" @mousedown.prevent @click="openStep(i)">Notes and photos ›</button>
+                <span class="step-edit">
+                  <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.checklistBusy" @mousedown.prevent @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
+                  <button class="icon-btn" :aria-label="'Move down: ' + st.title" :disabled="i === subtasks.length - 1 || sheet.checklistBusy" @mousedown.prevent @click="moveStep(i, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+                  <button class="icon-btn" :aria-label="'Remove step: ' + st.title" :disabled="sheet.checklistBusy" @mousedown.prevent @click="removeStep(i)"><svg class="i"><use href="#i-close"/></svg></button>
+                </span>
+              </div>
             </div></template>
-            <button class="body" x-show="!(checklistRole === 'template' && sheet.stepEdit?.id === st.id)" @click="checklistRole === 'run' ? openRun(sheet.task.id, st.id) : checklistRole === 'template' ? editStep(st) : openTask(st.id)"><div class="title" x-text="checklistRole === 'template' ? templateSteps[i]?.title : st.title"></div>
+            <button class="body" x-show="!(checklistRole === 'template' && sheet.stepEdit?.id === st.id)" @click="checklistRole === 'template' ? editStep(st) : openTask(st.id)"><div class="title" x-text="checklistRole === 'template' ? templateSteps[i]?.title : st.title"></div>
               <template x-if="checklistRole === 'template' && (templateSteps[i]?.text || templateSteps[i]?.problem)"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
               <template x-if="checklistRole === 'template' && stepNote(st)"><div class="step-note" x-text="stepNote(st)"></div></template>
               <template x-if="checklistRole !== 'template' && dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template>
               <template x-if="checklistRole === 'run' && addedText(st.description)"><div class="meta step-added-meta"><span x-text="addedText(st.description)"></span></div></template></button>
             <!-- Who's doing it: "+ me" claims it, your picture lets it go, anyone else's just shows who -->
-            <template x-if="subSlots[st.id]"><button class="claim" :class="{free: !subSlots[st.id].users.length, mine: subSlots[st.id].mine}" :aria-disabled="!subSlots[st.id].can" :aria-label="subSlots[st.id].label" @click="toggleClaim(st, subSlots[st.id], checklistRole === 'run' ? sheet.task.id : null)">
+            <template x-if="subSlots[st.id] && !(checklistRole === 'template' && sheet.stepEdit?.id === st.id)"><button class="claim" :class="{free: !subSlots[st.id].users.length, mine: subSlots[st.id].mine}" :aria-disabled="!subSlots[st.id].can" :aria-label="subSlots[st.id].label" @click="toggleClaim(st, subSlots[st.id], checklistRole === 'run' ? sheet.task.id : null)">
               <template x-if="!subSlots[st.id].users.length"><span class="me">+ me</span></template><template x-for="slot in [subSlots[st.id]]" :key="0"><span class="pics">
                 <!-- include markup/pics.html -->
               </span></template></button></template>
-            <!-- Only on the step tapped; the keyboard stays up while it's moved -->
-            <template x-if="checklistRole === 'template' && sheet.stepEdit?.id === st.id"><span class="step-edit">
-              <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.checklistBusy" @mousedown.prevent @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
-              <button class="icon-btn" :aria-label="'Move down: ' + st.title" :disabled="i === subtasks.length - 1 || sheet.checklistBusy" @mousedown.prevent @click="moveStep(i, 1)"><svg class="i"><use href="#i-down"/></svg></button>
-              <button class="icon-btn" :aria-label="'Remove step: ' + st.title" :disabled="sheet.checklistBusy" @mousedown.prevent @click="removeStep(i)"><svg class="i"><use href="#i-close"/></svg></button>
-            </span></template>
           </div>
         </template>
         <!-- Subtasks still waiting to be sent -->
@@ -152,7 +154,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <button class="icon-btn plain" :aria-label="'Cancel ' + t.title" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button>
         </div></template>
         <!-- The same box as quick add: what it read is marked, with chips to undo it, and @ and * suggest people and labels -->
-        <template x-if="checklistRole !== 'template' && canEdit"><div class="addbox sub" id="d-subbox">
+        <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
+        <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the › beside a step on the run's screen: it's marked as added during the run.</p></template>
+        <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox">
           <form id="d-subform" autocomplete="off" @submit.prevent="addSubtasks()">
             <div class="cap-field">
               <div class="cap-marks" aria-hidden="true" x-html="marksHtml('sub')"></div>
@@ -165,8 +169,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             </div>
             <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="sheet.sub.busy || !boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
           </form>
-          <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text && !boxBase('sub').due)">
-            <template x-if="sheet.sub.focus && !sheet.sub.text && !boxBase('sub').due"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>
+          <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text)">
+            <template x-if="sheet.sub.focus && !sheet.sub.text"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>
             <template x-for="c in chips('sub')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
               :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
               @mousedown.prevent @click="tapChip('sub', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
@@ -207,7 +211,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           </select>
         </span></div>
         <div class="prop"><span class="k">Labels</span><span class="v">
-          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
+          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">The “template” label is what makes it a template.</span></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button></template>
         </span></div>
         <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
@@ -224,7 +229,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             </template></div>
           </div></template>
         </span></div>
-        <template x-if="checklistRole !== 'template'"><div class="prop"><span class="k">Repeats</span><span class="v">
+        <!-- Not for a step: a template's steps and a run's are copied, not repeated -->
+        <template x-if="!['template', 'tplstep', 'step'].includes(checklistRole)"><div class="prop"><span class="k">Repeats</span><span class="v">
           <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
           </select>

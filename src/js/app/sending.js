@@ -2,6 +2,7 @@
 import {cache, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, dueInfo, isLate, isSet, startOfDay} from '../dates.js';
+import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
@@ -21,7 +22,8 @@ export default {
     job.key ||= randomId();                      // this line, for the record of which task was added for it
     const c = {parsed, pid, save, made, at, skip, parent};
     if (!itemDone(job, !!parent)) {
-      for (const step of LINE_STEPS) while (!step.done(job, c)) { await step.run(job, c); await save(); }
+      // A busy Vikunja (on SQLite, "database is locked") is tried again a few times at once: each step keeps how far it got.
+      for (const step of LINE_STEPS) while (!step.done(job, c)) { await patiently(() => step.run(job, c)); await save(); }
       job.done = true; await save();
     }
     return Object.assign(c.task || {id: job.taskId, project_id: job.projectId}, {problems: job.problems});
@@ -274,7 +276,7 @@ export default {
         + (f.unsent.length ? ` Not added: ${f.unsent.join('; ')}.` : ''));
     } else if (failed.length) {
       this.notify(`${subs.length ? 'A subtask' : 'A task'} added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
-    } else if (other.length) this.notify(`${other[0].error.what || 'Something done offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : other[0].error.back ? ' Its words are back in the box.' : ''));
+    } else if (other.length) this.notify(`${other[0].error.what || 'Something done offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : this.wordsBack(other[0].error)));
     else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length || other.length) this.render();
   },

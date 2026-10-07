@@ -17,6 +17,8 @@ export function sizeLimit(text){
   return m ? +m[1] * {'': 1, K: 1024, M: 1048576, G: 1073741824}[m[2].toUpperCase()] : null;
 }
 export const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
+// Words in a list as a sentence has them: "you", "you and Jo", "you, Jo and Priya".
+export const andList = words => words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
 export const PRIOS = [{n:0,label:'No priority'},{n:1,label:'Low'},{n:2,label:'Medium'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Do now'}];
 // Fit a text box to its text. A hidden box measures 0, so leave its height alone until it can be measured.
 export const grow = ta => { ta.style.height = 'auto'; if (ta.scrollHeight) ta.style.height = ta.scrollHeight + 'px'; };

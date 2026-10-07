@@ -1,5 +1,5 @@
 <!-- Who's on a subtask or a step (`slot`): up to two pictures, yours first and ringed, then +N. On a done step, whoever
      did it has ✓ on the corner of theirs (⏭ for a skip, grey while it waits to be sent). -->
 <template x-for="u in slot.users" :key="u.id"><span class="pic" :class="{mine: u.id === user?.id}"><span class="av"><span x-text="initials(u)"></span><img x-show="avatarUrl(u)" :src="avatarUrl(u)" alt=""></span>
-  <template x-if="u.badge"><i class="badge" :class="u.badge"><svg class="i"><use :href="u.badge === 'skip' ? '#i-send' : '#i-check'"/></svg></i></template></span></template>
+  <template x-if="u.badge"><i class="badge" :class="u.badge"><svg class="i"><use :href="u.badge === 'skip' ? '#i-skip' : '#i-check'"/></svg></i></template></span></template>
 <template x-if="slot.more"><span class="more num" x-text="'+' + slot.more"></span></template>

@@ -1,7 +1,7 @@
 // Sending to Vikunja: what's waiting, kept on the phone, and the steps each kind of change is sent in.
-import {app, ZERO} from './util.js';
-import {api, passing, patchTask} from './api.js';
-import {DONE_MARK, isTemplateLabel, nextAfter, notesOnly, placeBefore, SKIP_MARK, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
+import {andList, app, ZERO} from './util.js';
+import {api, ApiError, passing, patchTask} from './api.js';
+import {DONE_MARK, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, SKIP_MARK, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
 import {repeats} from './dates.js';
 import {removeAssignee} from './quickadd.js';
 
@@ -203,7 +203,7 @@ export const LINE_STEPS = [
       const all = await app.loadLabels(j.newLabel);                         // a cut-off try may have created it
       let l = all.find(x => x.title.toLowerCase() === name.toLowerCase());
       if (!l) { j.newLabel = true; l = await api('/labels', {method:'POST', body:{title: name}}); all.push(l); }
-      await api(`/tasks/${j.taskId}/labels`, {method:'POST', body:{label_id: l.id}});
+      await patiently(() => api(`/tasks/${j.taskId}/labels`, {method:'POST', body:{label_id: l.id}}));
     } catch (e) { settle(e, 'label', m => j.problems.push(`label ${name}: ${m}`)); }
     j.labels.shift();
   }},
@@ -213,7 +213,7 @@ export const LINE_STEPS = [
     try {
       const u = await app.findUser(name);
       if (!u) j.problems.push(`no user @${name}`);
-      else await api(`/tasks/${j.taskId}/assignees`, {method:'POST', body:{user_id: u.id}});
+      else await patiently(() => api(`/tasks/${j.taskId}/assignees`, {method:'POST', body:{user_id: u.id}}));
     } catch (e) { settle(e, 'assignee', m => j.problems.push(`@${name}: ${m}`)); }
     j.assign.shift();
   }},
@@ -345,11 +345,13 @@ export const INSERT_STEPS = [
     await patchTask(j.taskId, {...(j.from || j.tpl != null) && {title: j.title}, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], description: desc});
     j.marked = true;
   }},
-  // Before the step it was inserted at, read from the run as it is now, so another step inserted meanwhile stays.
+  // Before the step it was inserted at, read from the run as it is now, so another step inserted meanwhile stays. If that
+  // step was deleted meanwhile, after the one it was inserted under.
   {name: 'order', done: j => !!j.ordered, async run(j){
+    const after = typeof j.after === 'string' ? sync.taskOf(j.after.replace(/^pending-/, '')) : j.after ?? null;
     await app.saveTask(j.run, null, now => {
       if (stepOrder(now.description)?.includes(j.taskId)) return null;
-      return {description: withOrder(now.description, placeBefore(stepsOf(now).map(s => s.id).filter(id => id !== j.taskId), j.taskId, j.before))};
+      return {description: withOrder(now.description, placeBefore(stepsOf(now).map(s => s.id).filter(id => id !== j.taskId), j.taskId, j.before, after))};
     });
     j.ordered = true;
   }},
@@ -368,7 +370,18 @@ export const ACT_STEPS = {
   progress: a => patchTask(a.task, {percent_done: a.pct / 100}),
   mark: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: DONE_MARK}}),
   markSkip: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: SKIP_MARK}}),
-  claim: a => api(`/tasks/${a.task}/assignees`, {method: 'POST', body: {user_id: a.user}}).catch(e => { if (e.code !== ALREADY.assignee) throw e; }),
+  /* Someone else who said they'd do it meanwhile keeps it: two people tapping at once, or a claim that waited offline.
+     It's looked at before, and after (for two at the same moment: the one who signed up to Vikunja first keeps it, as
+     both phones work out the same). */
+  claim: async a => {
+    const others = async () => ((await api('/tasks/' + a.task)).assignees || []).filter(u => u.id !== a.user);
+    const taken = list => Object.assign(new ApiError(409, `${andList(list.map(u => u.name || u.username))} said they'd do it just now`), {drop: true});
+    const before = await others();
+    if (before.length) throw taken(before);
+    await api(`/tasks/${a.task}/assignees`, {method: 'POST', body: {user_id: a.user}}).catch(e => { if (e.code !== ALREADY.assignee) throw e; });
+    const after = (await others()).filter(u => u.id < a.user);
+    if (after.length) { await api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(() => {}); throw taken(after); }
+  },
   unclaim: a => api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }),
   unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },
   note: async (a, save) => {

@@ -13,7 +13,8 @@
       </label>
     </div></template></div>
     <div class="grab"><i></i></div>
-    <template x-if="sheet.kind === 'task' && sheet.task?.identifier"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
+    <!-- Its number in Vikunja; not for a checklist's template, run or step, which are found by name -->
+    <template x-if="sheet.kind === 'task' && sheet.task?.identifier && !checklistRole?.match(/template|tplstep|run|step/)"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
     <!-- What's done to the task as a whole: making it a checklist template, deleting it -->
     <template x-if="sheet.kind === 'task' && sheet.task && canEdit"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>

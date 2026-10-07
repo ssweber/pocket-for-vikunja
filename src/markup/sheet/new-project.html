@@ -7,7 +7,7 @@
         <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" x-text="'\u00a0\u00a0\u00a0'.repeat(r.depth) + r.p.title"></option></template>
       </select></label></template>
       <div class="card"><label class="prop" style="cursor:pointer"><span class="v" style="display:block"><b style="font-weight:600">Use for checklists</b>
-        <span class="note" style="display:block;margin:2px 0 0">Templates people start, and work through step by step, under Checklists.</span></span>
+        <span class="note" style="display:block;margin:2px 0 0">Its templates and runs show under a Checklists tab, for everyone it's shared with.</span></span>
         <input type="checkbox" id="np-checklists" x-model="sheet.newProj.checklists" style="width:22px;height:22px;accent-color:var(--accent)"></label></div>
       <button class="btn block" id="np-create" style="margin-top:16px" :disabled="sheet.newProj.busy || !sheet.newProj.name.trim()" @click="makeProject()"
               x-text="sheet.newProj.busy ? 'Making the project…' : 'Make project'"></button>

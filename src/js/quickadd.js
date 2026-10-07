@@ -251,4 +251,5 @@ const TICKED = /^(?:>\s*)*(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}
 export function captureLines(text){
   return String(text || '').split(/\r?\n/).map(l => l.trim()).filter(l => !TICKED.test(l)).map(l => l.replace(LIST_MARKER, '').trim()).filter(Boolean);
 }
-export const tickedLines = text => String(text || '').split(/\r?\n/).filter(l => TICKED.test(l.trim())).length;
+export const isTicked = line => TICKED.test(line.trim());
+export const tickedLines = text => String(text || '').split(/\r?\n/).filter(isTicked).length;

@@ -30,9 +30,11 @@ export default {
      steps of 10%, like a volume bar. The room the finger has is the rest of the way: from 60% held on the right of a
      row, 100% is still within reach. It ends a touch target (EDGE) short of the screen's edge, clear of the phone's own
      edge gestures and easy for a thumb; past it stays at 100% (or 0%). At least a quarter of the row's width, so a
-     little room isn't jumpy. Moving before the hold ends
+     little room isn't jumpy, but never more than the finger has before the edge: held near it, 100% (or 0%) is still
+     reached, closer to the edge. Moving before the hold ends
      is a scroll, a swipe or a tap as usual; once it has ended, nothing scrolls or swipes until the finger lifts.
-     find(target) says what was held: {start, width, show(pct), finish(pct, or null if nothing changed)}, or null. */
+     find(target) says what was held: {start, width, show(pct, x: where the finger is), finish(pct, or null if nothing
+     changed)}, or null. */
   holdToSlide(area, find){
     let g = null, swallowClick = false;
     const stop = commit => {
@@ -45,15 +47,15 @@ export default {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       const s = find(e.target); if (!s) return;
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, on: false, pct: s.start};
-      g.timer = setTimeout(() => { g.on = true; sliding = true; s.show(g.pct); navigator.vibrate?.(10); }, HOLD_MS);
+      g.timer = setTimeout(() => { g.on = true; sliding = true; s.show(g.pct, g.x); navigator.vibrate?.(10); }, HOLD_MS);
     });
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
       if (!g || e.pointerId !== g.id) return;
       if (!g.on) { if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 8) stop(false); else g.x = e.clientX; return; }
-      const dx = e.clientX - g.x, room = Math.max(dx > 0 ? innerWidth - EDGE - g.x : g.x - EDGE, g.s.width * .25);
+      const dx = e.clientX - g.x, edge = dx > 0 ? innerWidth - g.x : g.x, room = Math.max(edge - EDGE, Math.min(g.s.width * .25, edge * .75), 1);
       const pct = Math.max(0, Math.min(100, g.s.start + Math.round(dx / room * (dx > 0 ? 100 - g.s.start : g.s.start) / 10) * 10));
-      if (pct !== g.pct) { g.pct = pct; g.s.show(pct); navigator.vibrate?.(5); }
+      if (pct !== g.pct) { g.pct = pct; g.s.show(pct, e.clientX); navigator.vibrate?.(5); }
     });
     addEventListener('pointerup', e => {
       if (!g || e.pointerId !== g.id) return;
@@ -66,6 +68,12 @@ export default {
     area.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
     area.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
   },
+  // What's being set, filled to `pct`, with its percentage on the side away from the finger (at `x`).
+  showSlide(el, pct, x){
+    el.classList.add('setting'); el.style.setProperty('--slide', pct / 100); el.dataset.pct = pct + '%';
+    const r = el.getBoundingClientRect();
+    el.dataset.side = x > r.left + r.width / 2 ? 'left' : 'right';
+  },
   // In the list: the row fills, and at 100% the task is done and slides away. A run's step the same, through the outbox.
   initProgressDrag(){
     this.holdToSlide(document.getElementById('view'), target => {
@@ -74,7 +82,7 @@ export default {
       const t = row && this.rowTask(+row.dataset.id);
       if (!t || t.pending || t.done || !this.canTick(t) || this.isRunTask(t)) return null;
       return {start: Math.round(pctOf(t) / 10) * 10, width: row.clientWidth,
-        show: pct => { row.classList.add('setting'); row.style.setProperty('--slide', pct / 100); row.dataset.pct = pct + '%'; },
+        show: (pct, x) => this.showSlide(row, pct, x),
         finish: pct => {
           if (pct !== null) this.setProgress(t, pct, row);
           row.classList.remove('setting');
@@ -87,7 +95,7 @@ export default {
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
     if (!s || s.done || s.pending || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('button:not(.body)')) return null;
     return {start: Math.round(s.pct / 10) * 10, width: row.clientWidth,
-      show: pct => { row.classList.add('setting'); row.style.setProperty('--slide', pct / 100); row.dataset.pct = pct + '%'; },
+      show: (pct, x) => this.showSlide(row, pct, x),
       finish: pct => { row.classList.remove('setting'); if (pct !== null) this.stepProgress(s, pct); }};
   },
   // In a task's sheet: hold the progress bar, or around the title (not its text, where a long press selects).
@@ -96,7 +104,7 @@ export default {
       const head = target.closest('.d-head'), t = this.sheet.task;
       if (!head || !t || this.isRunTask(t) || this.ofTemplate || target.closest('textarea, button, a, select')) return null;
       return {start: Math.round(this.shownPct(t) / 10) * 10, width: head.clientWidth,
-        show: pct => { this.sheet.pct = pct; head.classList.add('setting'); head.style.setProperty('--slide', pct / 100); head.dataset.pct = pct + '%'; },
+        show: (pct, x) => { this.sheet.pct = pct; this.showSlide(head, pct, x); },
         finish: pct => {
           head.classList.remove('setting'); this.sheet.pct = null;
           if (pct !== null && this.sheet.task === t) this.sheetProgress(t, pct);

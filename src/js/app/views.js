@@ -97,10 +97,13 @@ export default {
     const out = [], due = dueInfo(t.due_date);
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
-    // A template that comes round: what tapping it does, and who it's for, instead of its project, label and steps.
+    /* A template that comes round: what tapping it does (starting it moves it on only once it's due today), its project,
+       so two projects' "Opening up" can be told apart, and who it's for, instead of its label and steps. */
     if (comesRound(t) && this.checklistIds.has(t.project_id)) {
-      out.push({key: 'tpl', text: this.canWrite(t.project_id) ? 'Checklist: tap to start' : 'Checklist'});
-      for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: u.name || '@' + u.username, label: 'For ' + (u.name || u.username)});
+      out.push({key: 'tpl', text: !this.canWrite(t.project_id) ? 'Checklist' : this.tickOf(t) ? 'Checklist: tap to start' : 'Checklist, for then'});
+      const tp = this.projById.get(t.project_id);
+      if (tp && this.route.name !== 'project') out.push({key: 'p', color: colorOf(tp.hex_color), text: tp.title});
+      if ((t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
       return out;
     }
     const p = (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
@@ -110,7 +113,9 @@ export default {
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
-    for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: u.name || '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
+    // A run: who it's for, as its screen says ("For you and Jo"). Any other task: who else it's assigned to.
+    if (this.isRunTask(t)) { if ((t.assignees || []).length) out.push({key: 'for', text: this.forText(t)}); }
+    else for (const u of t.assignees || []) if (u.id !== this.user?.id) out.push({key: 'u' + u.id, text: u.name || '@' + u.username, label: 'Assigned to ' + (u.name || u.username)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     const subs = t.related_tasks?.subtask || [];
     // A run's steps done, ticks waiting to be sent too, and the next one.
@@ -378,6 +383,8 @@ export default {
   },
 
   /* ---------- overdue ---------- */
+  // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
+  get overdueMovable(){ return (this.view.groups.find(g => g.key === 'overdue')?.tasks || []).some(t => !repeats(t) && !hasTemplateLabel(t)); },
   /* "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back. Not a
      repeating task: moved, its next times would follow the new date; ticked, it moves on to its next date. */
   async moveOverdueToToday(){
@@ -439,8 +446,10 @@ export default {
       this.setProjects([...this.projects, p]);
       saved.set('projects', this.projects);
       if (this.sheet.newProj === np) this.closeSheet(true);
-      this.go('#/project/' + p.id);
-      this.notify(np.checklists ? `Made ${p.title}. Its templates and runs are under Checklists.` : `Made ${p.title}`);
+      // For checklists: on Checklists, where Getting started says what's next.
+      if (np.checklists) { this.perms[p.id] = 2; saved.set('perms', this.perms); }
+      this.go(np.checklists ? '#/checklists' : '#/project/' + p.id);
+      this.notify(np.checklists ? `Made ${p.title}, for checklists.` : `Made ${p.title}`);
     } catch (e) {
       np.busy = false;
       this.notify(e instanceof NetError ? 'Offline. A project can be made once you\'re back online.' : 'Not made: ' + e.message);

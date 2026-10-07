@@ -124,6 +124,17 @@ try {
     if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
     const t = await apiTask();
     if (Math.round(t.percent_done * 100) !== 40) throw new Error('saved percent_done ' + t.percent_done);
+    // Held in the right tenth of the row, 100% is still within reach before the screen's edge, its percentage on the
+    // left, clear of the thumb. Slid back to where it was, nothing changes.
+    const box = await page.locator(row).boundingBox(), x = box.x + box.width * .9, y = box.y + box.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.waitForSelector(`${row}.setting[data-side=left]`, { timeout: 2000 });
+    await page.mouse.move(page.viewportSize().width - 4, y, { steps: 8 });
+    const shown = await page.getAttribute(row, 'data-pct');
+    await page.mouse.move(x, y, { steps: 8 });
+    await page.mouse.up();
+    if (shown !== '100%') throw new Error('from the right of the row, at most ' + shown);
+    if (Math.round((await apiTask()).percent_done * 100) !== 40) throw new Error('slid back, it saved ' + (await apiTask()).percent_done);
   });
   await step('progress-100-marks-done-and-undo', async () => {
     await slideProgress(row, 6, null, 40);                                 // from 40%, to the edge: 100%
@@ -343,6 +354,15 @@ try {
     const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
   });
+  await step('pasted-list-says-who-cant-get-it', async () => {
+    // Someone named in a pasted list who isn't a user is said before it's sent, as for a single task. A line ticked off
+    // already is left out, and so are its marks: the next line's are on its own words.
+    await page.fill('#in-capture', `- [x] Pocket smoke napkins\n- Pocket smoke list tomorrow @nobody${stamp}\n- Pocket smoke cups`);
+    await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody${stamp}")`, { timeout: 10000 });
+    const marked = await page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
+    if (!marked.includes('due:tomorrow')) throw new Error('marks: ' + JSON.stringify(marked));
+    await page.fill('#in-capture', '');
+  });
   await step('pasted-list-goes-to-one-project', async () => {
     // The first +project anywhere in a list applies to every line; a later, different one stays in its line's text.
     const name = `PocketList${stamp}`, line = x => `Pocket smoke list line ${x} ${stamp}`;
@@ -443,6 +463,7 @@ try {
     await page.fill('#d-subin', `Pocket smoke sub E +Elsewhere ${stamp}`);
     await page.waitForTimeout(300);
     if (await page.$('#d-subchips .chip[data-kind=project], #d-subchips .chip[data-kind=new-project]')) throw new Error('+project was read in a subtask');
+    await page.waitForSelector('#d-subchips .chip.quiet:has-text("stays as words")');            // and says so
     await page.fill('#d-subin', '');
     const t = ((await (await api('/tasks?q=' + encodeURIComponent('sub D'))).json()).items || []).find(x => x.title.includes('sub D tomorrow') && x.title.endsWith(String(stamp)));
     if (!t || t.priority !== 2 || (t.due_date && !t.due_date.startsWith('0001'))) throw new Error('saved as ' + JSON.stringify(t && { title: t.title, priority: t.priority, due: t.due_date }));

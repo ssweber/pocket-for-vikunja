@@ -46,11 +46,12 @@ export function inOrder(steps, order){
   const at = new Map((order || []).map((id, k) => [id, k]));
   return [...steps].sort((a, b) => (at.get(a.id) ?? Infinity) - (at.get(b.id) ?? Infinity) || a.id - b.id);
 }
-// The ids with `id` put just before `before` (at the end if that's gone); as they are if it's in them already.
-export const placeBefore = (ids, id, before) => {
+// The ids with `id` put just before `before`; if that's gone, just after `after` (the step it was inserted under), and if
+// that's gone too, at the end. As they are if it's in them already.
+export const placeBefore = (ids, id, before, after = null) => {
   if (ids.includes(id)) return ids;
-  const out = [...ids], at = out.indexOf(before);
-  out.splice(at < 0 ? out.length : at, 0, id);
+  const out = [...ids], at = out.indexOf(before), prev = out.indexOf(after);
+  out.splice(at >= 0 ? at : prev >= 0 ? prev + 1 : out.length, 0, id);
   return out;
 };
 // The description with its line matching `re` set to `text` (taken out, for null), the rest as it was.

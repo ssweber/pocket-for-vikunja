@@ -1,7 +1,7 @@
 // Starting a run, and working through one.
-import {cache, store, taskDrafts, ZERO} from '../util.js';
-import {api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
-import {addDays, dueInfo, isSet, startOfDay} from '../dates.js';
+import {andList, cache, store, taskDrafts, ZERO} from '../util.js';
+import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
+import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext} from '../checklists.js';
@@ -43,14 +43,20 @@ export default {
       const forIds = (t.assignees || []).map(u => u.id).filter(id => people.some(u => u.id === id));
       Object.assign(this.sheet.start, {template: {id: t.id, title: templateName(t.title), project_id: t.project_id, labels: t.labels, done: t.done,
         due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}, steps: stepsOf(t), people, forIds: forIds.length ? forIds : [me.id],
-        next: (t.related_tasks?.copiedto || []).length + 1});
+        next: (t.related_tasks?.copiedto || []).length + 1, who: {}});
+      // Who each step is for: Vikunja leaves a task's subtasks' assignees out, so they're asked for (not offline).
+      const ids = stepsOf(t).map(s => s.id);
+      if (ids.length) allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`})).then(list => {
+        if (this.sheet !== mine) return;
+        this.sheet.start.who = Object.fromEntries(list.map(s => [s.id, andList((s.assignees || []).map(u => u.id === me.id ? 'you' : u.name || u.username))]));
+      }, () => {});
     } catch (e) { if (this.sheet === mine) this.sheet.error = errText(e); }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
   // Who a run is for: any number of people, at least one.
   toggleFor(st, u){
     const on = st.forIds.includes(u.id);
-    if (on && st.forIds.length === 1) return;
+    if (on && st.forIds.length === 1) { this.notify('A run is for at least one person: tap someone else first.'); return; }
     st.forIds = on ? st.forIds.filter(id => id !== u.id) : [...st.forIds, u.id];
   },
   /* The due date a start ticks: a template that comes round and is due by the end of today. Started at 7:55, it's the
@@ -96,7 +102,7 @@ export default {
     if (r.status === 'sent' || r.status === 'gone') {
       this.closeSheet(true);
       if (r.runId) this.openRun(r.runId);
-      this.notify('Started ' + st.template.title, r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }});
+      this.notify('Started ' + (r.title || st.template.title), r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }});
       this.toast.startOf = r.runId;                                          // gone once anything's done in the run (act)
     } else if (r.status === 'offline') {
       sync.keep();
@@ -116,7 +122,7 @@ export default {
         if (this.starting?.id === j.id) this.starting.done = runProgress(j);
       }
       await sync.remove(j.id);
-      return {...none, status: 'sent', runId: j.runId, ticked: j.ticked?.to ? {id: j.template.id, ...j.ticked} : null, changed: 1};
+      return {...none, status: 'sent', runId: j.runId, title: j.title, ticked: j.ticked?.to ? {id: j.template.id, ...j.ticked} : null, changed: 1};
     } catch (error) {
       // No connection or signed out: kept for later. Vikunja still answering 500 after a few tries: kept too, a few times.
       if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++j.fails < 5)))) {
@@ -206,7 +212,7 @@ export default {
     const e = this.sheet.runEdit, run = this.view.run?.run;
     if (!run) return;
     const was = e.forIds, on = was.includes(u.id);
-    if (on && was.length === 1) return;
+    if (on && was.length === 1) { this.notify('A run is for at least one person: tap someone else first.'); return; }
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
     const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
@@ -280,8 +286,10 @@ export default {
       this.view.run.last = {id: prev.id, title: prev.title, notes: null};
       const full = await allComments(await api(`/tasks/${prev.id}?expand=comments`));
       const steps = await inBatches(stepsOf(full), 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
-      const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run'})),
-        ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title + (addedText(s.description) ? ` (${addedText(s.description).toLowerCase()})` : '')})))];
+      // Each with the template step it was on (tpl), so it shows on that step's card this time too.
+      const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run', tpl: null})),
+        ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title + (addedText(s.description) ? ` (${addedText(s.description).toLowerCase()})` : ''),
+          tpl: addedText(s.description) ? null : plainStep(s).tpl})))];
       if (here()) { this.view.run.last = {id: prev.id, title: prev.title, notes}; this.saveRun(); }
     } catch { if (here() && !this.view.run.last?.notes) this.view.run.last = null; }
   },
@@ -292,18 +300,20 @@ export default {
     const me = this.user, myName = me?.name || me?.username || 'You';
     const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.run.id);
     const waitingNote = a => ({id: a.id, comment: a.html, author: myName, when: 'Waiting to send'});
-    // Steps inserted or repeated that are still waiting to be sent, in their place: before the step they were inserted at.
+    // Steps inserted or repeated that are still waiting to be sent, in their place: before the step they were inserted at,
+    // or after the one they were inserted under if that one's gone. Not one called off.
     const base = [...r.steps];
-    for (const e of this.pending) if (e.kind === 'step' && e.run === r.run.id && !base.some(s => s.id === e.taskId)) {
-      const k = base.findIndex(s => s.id === e.before);
-      base.splice(k < 0 ? base.length : k, 0, {id: 'pending-' + e.id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
+    for (const e of this.pending) if (e.kind === 'step' && !e.cancelled && e.run === r.run.id && !base.some(s => s.id === e.taskId)) {
+      const k = base.findIndex(s => s.id === e.before), a = k < 0 ? base.findIndex(s => s.id === e.after) : -1;
+      base.splice(k >= 0 ? k : a >= 0 ? a + 1 : base.length, 0, {id: 'pending-' + e.id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
         assignees: [], attachments: [], reactions: {}, comments: [], tpl: e.tpl ?? null, from: e.from, added: e.from || e.tpl != null ? 'Repeated' : 'Inserted', pending: e.id});
     }
     const steps = base.map((s, i) => {
       const skipper = skippedBy(s);
       let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at, pct = Math.round((s.percent_done || 0) * 100);
       const kept = keptTicks()[s.id];
-      if (done && kept && Date.parse(kept.there) === Date.parse(s.done_at)) doneAt = kept.here;
+      // To the second: Vikunja's reply to the tick has its done time to the nanosecond, its copy since then whole seconds.
+      if (done && kept && Math.floor(Date.parse(kept.there) / 1000) === Math.floor(Date.parse(s.done_at) / 1000)) doneAt = kept.here;
       let by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
       const doers = () => by.map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
@@ -317,9 +327,12 @@ export default {
       const slot = done ? this.doneSlot(by, people, waiting ? 'wait' : skipped ? 'skip' : 'done')
         : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done);
       // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
+      // "Done by Priya at 4:46 PM" (and the day, if it wasn't today).
+      const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))
+        : new Date(doneAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'})) : '';
       return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by, pct,
         added: s.added || '', pending: s.pending || null, from: s.from || null, tpl: s.tpl,
-        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : by.length ? ' by ' + doers().join(', ') : '')};
+        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at)};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
        Vikunja's done time of it, or, while that tick waits to be sent, from when it was ticked here. Vikunja's due date
@@ -348,26 +361,32 @@ export default {
       const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
       s.counting = !s.done && t.offset !== null && !!due && soon;      // a countdown: pinned at the top while it runs
+      s.waitsFor = from && !from.done && t.offset ? from.id : null;    // a time after a step not done yet: its id
       s.dueAt = due ? +due : Infinity;
       s.countText = !s.counting ? '' : left >= 0 ? 'in ' + durText(left < 6e4 ? Math.ceil(left / 1e3) * 1e3 : Math.ceil(left / 6e4) * 6e4) : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
       s.dueText = waitsOn ? 'Due ' + waitsOn : s.counting ? (left >= 0 ? 'Due ' : '') + s.countText : due ? 'Due ' + dueInfo(due.toISOString()).label : '';
     });
     const total = steps.length, doneCount = steps.filter(s => s.done).length, first = steps.findIndex(s => !s.done);
     const allDone = total > 0 && doneCount === total, at = r.at ?? (first >= 0 ? first : total - 1);
-    const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length;
+    // Skipped steps are out of the way (doneCount, for the bar), but not done (didCount, in words).
+    const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length, didCount = doneCount - skippedN;
     const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
-    const step = allDone && r.at === null ? null : steps[at] || null;
+    const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish';
+    // Finished, or every step done, no step is on screen until one is tapped.
+    const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
     /* Where the insert box is open: under the step whose › was tapped (`after`), so what's added goes before the step
        after it, or at the end after the last. That step can be repeated there, done or not, once it's been sent. */
     const k = steps.findIndex(s => s.id === this.runInsert.after), under = k >= 0 ? steps[k] : null;
     const insert = !under ? null : {at: k, after: under, before: steps[k + 1]?.id ?? null, repeatable: under.pending ? null : under};
-    return {steps, total, doneCount, allDone, at, step, insert, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
-      finished: (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish',
-      summary: [`${total} step${total === 1 ? '' : 's'}`, skippedN && `${skippedN} skipped`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
+    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, insert, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+      countText: `${didCount} of ${total} done` + (skippedN ? ` · ${skippedN} skipped` : ''),
+      summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
       forText: forText && forText[0].toUpperCase() + forText.slice(1)};
   },
+  // What was noted on this step last time, from the last finished run of the same template.
+  lastNotes(s){ return s?.tpl ? (this.view.run?.last?.notes || []).filter(n => n.tpl === s.tpl) : []; },
   /* A run opens on its own screen, a step of one on that step. Back goes to the screen before: Today, a project, search
      or Checklists (runFrom, kept by render). */
   openRun(id, step = null){
@@ -456,13 +475,25 @@ export default {
     // The note being written on this step goes with it: for Skip as the reason, for Done as a note. (Each step keeps
     // its own note being written.)
     if (op !== 'undone') this.unlockSound();
+    // Someone else's ✅ can't be taken off: Vikunja lets each person take back only their own.
+    const others = op === 'undone' ? (s.by || []).filter(u => u.id !== this.user?.id).map(u => this.nameOf(u)) : [];
+    if (others.length && !confirm(`${others.join(' and ')} marked “${s.title}” done. Their ✅ stays on it in Vikunja, as only they can take it off. Mark it not done?`)) return;
     const typed = op === 'undone' ? '' : (this.runDrafts[s.id] || '').trim();
     if (typed) this.runDrafts[s.id] = '';
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));
     if (op === 'done' && typed) { op = 'doneNote'; html = textToHtml(typed); }
-    if (current && op !== 'undone') r.at = null;
+    if (current && op !== 'undone') r.at = this.nextStep(s);
     navigator.vibrate?.(10);
     await this.act({op, task: s.id, html});
+  },
+  /* Where the run goes after a step is done or skipped on screen: the next step after it that can be done now, not one
+     still counting down, nor one that starts counting down with this tick; then one before it; then any not done. Null
+     once every other step is done: the finish card. */
+  nextStep(s){
+    const v = this.runView, open = v ? v.steps.filter(x => !x.done && x.id !== s.id) : [];
+    if (!open.length) return null;
+    const ready = x => !(x.counting && x.dueAt > serverTime(this.clock)) && x.waitsFor !== s.id;
+    return (open.find(x => x.i > s.i && ready(x)) || open.find(ready) || open[0]).i;
   },
   async addNote(task){
     const text = this.runDrafts[task]?.trim();
@@ -507,7 +538,7 @@ export default {
         }
         last = await this.sendEntry(e.id);
         if (last.kept) held.add(e.task);
-        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : last.error.back ? ' Its words are back in the box.' : ''));
+        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)));
         if (last.status === 'offline' || e.id === entry.id) break;
       }
     });
@@ -526,6 +557,9 @@ export default {
         if (!id) throw new ApiError(404, 'the step it was for couldn\'t be added');
         a.task = id; await save();
       }
+      // "Not done" made offline on a step of a run someone finished meanwhile: not sent, so the run stays as they left it.
+      if (a.op === 'undone' && a.run && a.task !== a.run && !a.stage && (await api('/tasks/' + a.run)).done)
+        throw Object.assign(new ApiError(409, 'the run was finished meanwhile, so the step stays done'), {drop: true});
       while (a.stage < stages.length) {
         const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
         if (stages[a.stage] === 'note' && out?.id) comment = out;
@@ -550,6 +584,13 @@ export default {
       if (a.stage > 0 && ['done', 'undone'].includes(stages[0])) error.saved = stages[0] === 'done' ? 'it\'s marked done' : 'it\'s marked not done';
       if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
       error.what = this.actWhat(a);
+      // Turned down for good, with nothing kept to try again: the screen shows how it is now.
+      if (error.drop) {
+        await sync.remove(a.id);
+        if (this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
+        if (this.sheet.task && this.sheet.kind === 'task') this.loadSubPeople(this.sheet.task);
+        return {...none, status: 'error', error};
+      }
       // A note's words go back where they were written. Anything else is kept, under Waiting to send, to try again or
       // drop: a tick has no words to give back, and a toast is easily missed.
       if (a.op === 'note') { await sync.remove(a.id); this.giveBack(a, error); return {...none, status: 'error', error}; }
@@ -566,10 +607,12 @@ export default {
       claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it')}[a.op] || 'Something done offline';
   },
   /* An action on a run, or a comment, that won't be sent: its words go back where they were written, and `error.back`
-     says so. */
+     says so. If what they were written on is gone (a run deleted meanwhile, say), there's nowhere to put them back:
+     `error.words` has them, for the message (wordsBack). */
   giveBack(a, error){
     const text = a.html ? htmlToText(a.html).replace(/^Skipped:?\s*/, '').trim() : '';
     if (!text) return;
+    if (error.status === 404) { error.words = text; return; }
     const add = (was = '') => [was.trim(), text].filter(Boolean).join('\n');
     if (!a.run) {
       taskDrafts.set('comment:' + a.task, add(taskDrafts.get('comment:' + a.task)));
@@ -577,6 +620,7 @@ export default {
     } else this.runDrafts[a.task] = add(this.runDrafts[a.task]);
     error.back = true;
   },
+  wordsBack(e){ return e.back ? ' Its words are back in the box.' : e.words ? ` It said: “${e.words}”` : ''; },
   // A note whose reply was lost, if it got there: the same text, by you, since that try.
   async findNote(task, html, triedAt, at){
     const since = triedSince(triedAt, at), text = htmlToText(html);
@@ -619,36 +663,48 @@ export default {
   /* The box opens under a step from the › at its left (openInsert), one at a time, out of the way otherwise. It's quick
      add's 'ins' box, so it reads labels, people and priority as the subtask box does (not dates: a step's time is its
      template's), and each line of a pasted list is a step, in order. 🔁 puts the step it's under in the box (armRepeat):
-     left as it is, + repeats that step; changed, it's a new step. */
+     left as it is, + repeats that step; changed, it's a new step; tapped again, it puts back what was typed before.
+     What's typed stays in the box when it's closed or moved under another step, until it's inserted (keep: false). */
   openInsert(s){
-    const open = this.runInsert.after === s?.id ? null : s?.id ?? null;
-    this.runInsert = {...newBox(), repeat: null, after: open};
+    const open = this.runInsert.after === s?.id ? null : s?.id ?? null, text = this.insertKept();
+    this.runInsert = {...newBox(), text, repeat: null, after: open};
     if (open) this.$nextTick(() => document.getElementById('step-insert-in')?.focus());
   },
-  closeInsert(){ this.runInsert = {...newBox(), repeat: null, after: null}; },
-  armRepeat(s){ this.runInsert = {...newBox(), text: s.title, repeat: s, after: this.runInsert.after}; },
+  insertKept(){ const b = this.runInsert; return b.repeat ? b.typed || '' : b.text; },
+  closeInsert(keep = true){ this.runInsert = {...newBox(), text: keep ? this.insertKept() : '', repeat: null, after: null}; },
+  armRepeat(s){
+    const b = this.runInsert;
+    if (b.repeat) { this.runInsert = {...b, text: b.typed || '', repeat: null, typed: ''}; return; }
+    this.runInsert = {...newBox(), text: s.title, repeat: s, after: b.after, typed: b.text};
+  },
   async insertStep(){
     const v = this.runView, b = this.runInsert;
     if (!v?.insert || b.busy) return;
-    const before = v.insert.before;
+    // Each goes before the step after the box; if that one's deleted meanwhile, after the one before it.
+    const before = v.insert.before, under = v.insert.after.id;
     if (b.repeat && b.text.trim() === b.repeat.title) {
-      this.closeInsert();
-      await this.repeatStep(b.repeat, before);
+      this.closeInsert(false);
+      await this.repeatStep(b.repeat, before, under);
       return;
     }
     const lines = this.boxParsedLines('ins').filter(p => p.title);
     if (!lines.length) return;
-    this.closeInsert();
-    for (const p of lines) await this.addStep({title: p.title, p: packParsed(p), before});
+    this.closeInsert(false);
+    let after = under;
+    for (const p of lines) after = 'pending-' + await this.addStep({title: p.title, p: packParsed(p), before, after});
   },
-  async repeatStep(s, before){
+  async repeatStep(s, before, after = null){
     if (!s) return;
-    await this.addStep({title: s.title, before, from: s.from, tpl: s.tpl ?? null});
+    await this.addStep({title: s.title, before, after, from: s.from, tpl: s.tpl ?? null});
   },
   /* A step's progress, held and slid on its row as on a task's: through the outbox, as a tick is. 100% is done, with its
      ✅, as Done is. `undoing`: putting back what it was. */
   async stepProgress(s, pct, undoing = false){
-    if (pct >= 100 && !undoing) { await this.tickStep(s, 'done'); return; }
+    if (pct >= 100 && !undoing) {
+      await this.tickStep(s, 'done');
+      this.notify(`Done: ${s.title}`, {label: 'Undo', fn: () => this.tickStep(s, 'undone')});
+      return;
+    }
     const was = s.pct, r = await this.act({op: 'progress', task: s.id, pct});
     if (r.status !== 'error' && !undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.stepProgress(s, was, true)});
   },
@@ -666,9 +722,11 @@ export default {
     if (res.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
     if (res.status === 'error') this.notify(`${res.error.what} couldn't be done: ${res.error.message}.`);
     if (res.status === 'sent' && this.view.run?.run.id === entry.run) this.render();
+    return entry.id;
   },
   async sendStep(j){
     const save = () => sync.save(j), c = {save, taken: new Set()}, none = {ids: [], tasks: [], problems: [], uploaded: 0};
+    if (j.cancelled) return this.unsendStep(j, c, none);
     try {
       for (const step of INSERT_STEPS) while (!step.done(j)) { await patiently(() => step.run(j, c)); await save(); }
       await sync.remove(j.id);
@@ -678,8 +736,10 @@ export default {
         await save();
         return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
       }
-      // Turned down for good (the run deleted meanwhile, say): what it made goes again.
-      if (j.taskId) await api('/tasks/' + j.taskId, {method: 'DELETE'}).catch(() => {});
+      // Turned down for good (the run deleted meanwhile, say): what it made goes again, a step made but not put under the
+      // run too.
+      const made = j.taskId || j.job?.taskId;
+      if (made) await api('/tasks/' + made, {method: 'DELETE'}).catch(() => {});
       await sync.remove(j.id);
       error.what = (j.from || j.tpl != null ? 'Repeating' : 'Inserting') + ` “${j.title}”`;
       return {...none, status: 'error', error};
@@ -699,18 +759,38 @@ export default {
       this.render();
     } catch (e) { this.notify(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message); }
   },
-  // Don't send a step waiting to be inserted, nor what was done on it; one being sent already can't be stopped.
+  /* Don't send a step waiting to be inserted, nor what was done on it. One that may have reached Vikunja already (tried
+     when the connection went) is called off: whatever reached it is deleted once Pocket reaches it again (unsendStep). */
   async dropStep(id){
-    let started = false;
+    let tried = false, gone = false;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
-      if (!e) return;
-      if (e.taskId || e.tried || e.job?.tried) { started = true; return; }
-      await sync.remove(id);
+      if (!e) { gone = true; return; }
+      tried = !!(e.taskId || e.tried || e.job?.tried);
+      if (tried) await sync.save({...e, cancelled: true}); else await sync.remove(id);
       for (const a of sync.all(this.user?.id)) if (a.kind === 'act' && a.task === 'pending-' + id) await sync.remove(a.id);
     });
+    if (tried) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
-    this.notify(started ? 'It\'s being sent: delete it once it\'s there.' : 'Not sent.');
+    this.notify(gone ? 'It was sent already: delete it on the run if it isn\'t needed.'
+      : tried && this.pending.some(e => e.id === id) ? 'Not inserted. What reached Vikunja of it is taken out once Pocket reaches it.' : 'Not sent.');
+    if (this.route.name === 'run') this.render();
+  },
+  // A step called off that may have reached Vikunja: found, if it got there, and deleted.
+  async unsendStep(j, c, none){
+    try {
+      let id = j.taskId || j.job?.taskId || null;
+      if (!id && j.from && j.tried) id = (await this.findCopy(j.from, j, j.at, c.taken, j.id, j.run))?.id ?? null;
+      if (!id && j.job?.tried && j.job.body) id = (await this.findSent(j.job.body.title, j.job.to, j.job.triedAt, j.at, new Set(), j.job.key))?.id ?? null;
+      if (id) await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
+      await sync.remove(j.id);
+      return {...none, status: 'sent', changed: 0};
+    } catch (error) {
+      if (passing(error) || error.status === 401 || error.status >= 500) { await sync.save(j); return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401}; }
+      await sync.remove(j.id);
+      error.what = `Taking out “${j.title}”`;
+      return {...none, status: 'error', error};
+    }
   },
   async refreshRunTask(id){
     try {

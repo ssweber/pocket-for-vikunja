@@ -102,6 +102,45 @@ try {
 
   await step('sign-in', () => signIn(page, TOKEN));
 
+  // With no project for checklists yet, Projects offers to set one up: a project "Checklists", with an example template,
+  // then Checklists, with Getting started. (Skipped when the account has one already.)
+  if (!checklistsBefore) await step('set-up-checklists', async () => {
+    await page.click('nav.tabs a[data-tab=projects]');
+    await page.click('#btn-setup-checklists', { timeout: 15000 });
+    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 30000 });
+    await toast('Set up Checklists, with an example template');
+    const made = (await api('/projects')).items.filter(p => p.title === 'Checklists' && /pocket:checklists/i.test(p.description || '')).pop();
+    try {
+      if (!made) throw new Error('no project Checklists, for checklists');
+      await page.waitForSelector(`.cl[data-project="${made.id}"] .cl-tpl .title:text-is("Example: Opening up")`, { timeout: 15000 });
+      await page.waitForSelector(`#getting-started-${made.id} a[href$="/projects/${made.id}/settings/share"]`);
+      const tpl = (await api(`/projects/${made.id}/tasks?filter=${encodeURIComponent('done = true')}`)).items.find(t => t.title === 'TEMPLATE: Example: Opening up');
+      const steps = await Promise.all((await subtasks(tpl.id)).map(s => api('/tasks/' + s.id)));
+      if (JSON.stringify(steps.map(s => s.title)) !== JSON.stringify(['Turn on the espresso machine', 'Put the croissants in the oven', 'Take the croissants out T#18m', 'Wipe down the tables']))
+        throw new Error('steps: ' + steps.map(s => s.title).join(' | '));
+      if (!steps[0].assignees?.some(u => u.id === me.id)) throw new Error('the first step isn\'t for you');
+      if (!steps.every(s => s.done) || !tpl.labels?.some(l => l.title === 'template')) throw new Error('not made a template');
+      // Started, the Start sheet says who each step is for.
+      await page.click(`.cl[data-project="${made.id}"] .cl-start`);
+      await page.waitForSelector('#start-steps .prop:nth-of-type(1) .start-who:text-is("For you")', { timeout: 15000 });
+      await page.click('#start-go');
+      await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+      await page.waitForSelector('#step-title:text-is("Turn on the espresso machine")');
+      await page.click('#step-done');
+      await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")');
+      // Done: the next step counts down for 18 minutes, so the one after it, which can be done now, is on screen.
+      await page.click('#step-done');
+      await page.waitForSelector('#step-title:text-is("Wipe down the tables")');
+      await page.waitForSelector('#run-timers .timer:has-text("Take the croissants out")');
+      // The card is gone once there's a project for checklists.
+      await page.click('nav.tabs a[data-tab=projects]');
+      await page.waitForSelector('.tree');
+      if (await page.$('#btn-setup-checklists')) throw new Error('Set up checklists is still offered');
+    } finally { if (made) await api('/projects/' + made.id, { method: 'DELETE' }).catch(() => {}); }
+    await page.click('#btn-refresh');
+    await page.waitForSelector('nav.tabs a[data-tab=checklists]', { state: 'detached', timeout: 15000 });
+  });
+
   await step('use-for-checklists', async () => {
     if (!checklistsBefore && await page.isVisible('nav.tabs a[data-tab=checklists]')) throw new Error('a Checklists tab without any checklist project');
     if (!checklistsBefore && await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('the tab names are hidden');
@@ -111,6 +150,7 @@ try {
     await toast('Now for checklists');
     await page.waitForSelector('nav.tabs.icons a[data-tab=checklists]');
     if (!await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('three tabs, but with their names showing');
+    if (await page.$eval('nav.tabs a[aria-current=page] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('the tab you\'re on lost its name');
     if (!/<p>pocket:checklists<\/p>/.test((await api('/projects/' + project.id)).description)) throw new Error('no marker in the description');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -312,7 +352,7 @@ try {
     const id = (await runStep(first.id, 0)).id;
     // Done, then the ✅: sent one after the other, so wait for both.
     await until('the step was never done with a ✅ from you', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
-    await page.waitForSelector('#run-steps .row:nth-of-type(1).done .did[aria-label^="Done by"]');
+    await page.waitForSelector('#run-steps .row:nth-of-type(1).done .did[aria-label^="Done by"][aria-label*=" at "]');   // and when
     if (await page.textContent('#run-count') !== '1 of 3 done') throw new Error('count: ' + await page.textContent('#run-count'));
     // Both timed steps count down now: the next one on its card, the other pinned above it.
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');
@@ -351,7 +391,8 @@ try {
 
   await step('skip-with-a-reason', async () => {
     await page.fill('#step-note', 'Press 2 is down');
-    if (await page.textContent('#step-skip') !== 'Skip with the note') throw new Error('skip says ' + await page.textContent('#step-skip'));
+    await page.waitForSelector('#step-note-with:has-text("for Skip, as the reason")');           // Skip stays Skip, the same size
+    if (await page.textContent('#step-skip') !== 'Skip') throw new Error('skip says ' + await page.textContent('#step-skip'));
     await page.click('#step-skip');
     await page.waitForSelector('#step-title:text-is("First article check")');
     const id = (await runStep(first.id, 1)).id;
@@ -383,7 +424,7 @@ try {
     await page.click('#run-steps .row:nth-of-type(1) .body');
     await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")');
     await page.fill('#step-note', 'Guard 3 tightened');
-    await page.waitForSelector('#step-done:has-text("Done, with the note")');
+    await page.waitForSelector('#step-note-with');
     await page.click('#step-done');
     await until('the note never reached the step', async () => { const t = await task(id); return t.done && (t.comments || []).some(c => c.comment.includes('Guard 3 tightened')); });
     await page.reload();
@@ -394,6 +435,7 @@ try {
     await page.fill('#step-note', 'Looks good');
     await page.click('#step-note-form button');
     await page.waitForSelector('#step-extra .comment:has-text("Looks good")');
+    await page.waitForSelector('#run-steps .row:nth-of-type(3) .note-mark');                 // its row says it has a note
     await page.fill('#run-note', 'Line 2 ran slow today');
     await page.click('#run-note-form button');
     await page.waitForSelector('#run-notes .comment:has-text("Line 2 ran slow today")');
@@ -446,7 +488,7 @@ try {
     await as(`/tasks/${id}/comments`, { comment: '<p>Skipped: it was done already</p>' });
     try {
       await page.reload();
-      await page.waitForSelector(`${row1} .did[aria-label="Skipped by ${other.name || other.username}"]`, { timeout: 15000 })
+      await page.waitForSelector(`${row1} .did[aria-label^="Skipped by ${other.name || other.username} at "]`, { timeout: 15000 })
         .catch(async () => { throw new Error('not shown as skipped by them: ' + await page.$eval(`${row1} .did`, e => e.getAttribute('aria-label')).catch(() => 'no ✅ or ⏭️')); });
       await new Promise(r => setTimeout(r, 1100));                            // Vikunja's times have whole seconds
       await page.click(`${row1} .check`);
@@ -504,7 +546,7 @@ try {
   await step('today-shows-your-run', async () => {
     await page.click('nav.tabs a[data-tab=today]');
     // The run, without a due date of its own, and its open step, by its due date.
-    await page.waitForSelector(`.sec:has-text("Checklist runs") + .list .row:has(.title:has-text("${TEMPLATE} · run"))`, { timeout: 15000 });
+    await page.waitForSelector(`.sec:has-text("Checklist runs") + .list .row:has(.title:has-text("${TEMPLATE} · run")) .meta:has-text("For you")`, { timeout: 15000 });
     await page.waitForSelector('.row .title:has-text("First article check")');
   });
 
@@ -524,7 +566,8 @@ try {
     await page.click('#toast-act:has-text("Undo")');
     await until('Undo left the step done', async () => { const t = await task(check); return !t.done && !t.reactions?.['✅']?.some(u => u.id === me.id); });
     await page.waitForSelector('.row .title:has-text("First article check")', { timeout: 15000 });
-    // The run's sheet, from its ⋯: a step there opens the run on that step.
+    // The run's sheet, from its ⋯: a step there opens its own sheet, to hand it over with Assigned (no Repeats), and
+    // that opens the run on that step.
     await page.click(`${runRow} > .body`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
     await page.waitForSelector('#step-title');
@@ -532,6 +575,9 @@ try {
     await page.click('#r-open-task');
     await page.waitForSelector('#d-subtasks .row');
     await page.click('#d-subtasks .row:nth-of-type(2) .body');
+    await page.waitForSelector('#d-assignees');
+    if (await page.$('#d-repeat')) throw new Error('Repeats on a run\'s step');
+    await page.click('#d-open-run');
     await page.waitForFunction(id => location.hash.startsWith(`#/run/${id}?step=`), first.id, { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("Warm up the press")', { timeout: 15000 });
     await page.click('#btn-back');
@@ -606,7 +652,9 @@ try {
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#step-done');
     await page.waitForSelector('#finish-card');
-    if (!(await page.textContent('#finish-card')).includes('3 steps · 1 skipped')) throw new Error('summary: ' + await page.textContent('#finish-card'));
+    // A skip isn't counted as done.
+    const card = await page.textContent('#finish-card');
+    if (!card.includes('Every step done or skipped') || !card.includes('2 of 3 done · 1 skipped')) throw new Error('summary: ' + card);
     await page.click('#run-finish');
     await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
     await until('the run was never finished', async () => (await api('/tasks/' + first.id)).done);
@@ -703,6 +751,11 @@ try {
       await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
       await page.click('#btn-refresh');                                       // its rows from Vikunja, not the copy shown first
       await page.waitForSelector('#btn-refresh:not([disabled])');
+      // Its steps under it in the run's order, not newest first.
+      await page.waitForSelector(`.row:has(> .body .title:has-text("${title}"))`, { timeout: 15000 });
+      const rows = await page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.replace(/^Subtask: /, '').trim()));
+      const at = rows.findIndex(t => t.includes(title)), want = (await subtasks(id)).map(s => s.title);
+      if (JSON.stringify(rows.slice(at + 1, at + 1 + want.length)) !== JSON.stringify(want)) throw new Error('its steps: ' + rows.slice(at + 1, at + 1 + want.length).join(' | '));
       await toastGone().catch(() => {});
       await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`, { timeout: 15000 });
       await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
@@ -805,10 +858,16 @@ try {
     await page.reload();                                                     // e.g. the phone closed the app
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait', { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    await page.waitForTimeout(6000);                                         // so Vikunja gets the tick well after it was made
     await context.setOffline(false);
     await page.waitForSelector('#run-steps .row:nth-of-type(1):not(:has(.check.wait))', { timeout: 20000 });
     const id = (await runStep(run, 0)).id, step2 = (await runStep(run, 1)).id;
     await until('the tick never reached Vikunja', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
+    // Sent, the steps timed from it still count from the tick here, not from when Vikunja got it.
+    await until('the countdown jumped to when Vikunja got the tick', async () => {
+      const shown = await page.evaluate(() => Alpine.$data(document.body).runView?.steps[0].doneAt), t = await task(id);
+      return !!shown && Date.parse(t.done_at) - Date.parse(shown) > 4000;
+    });
     await until('the note never reached Vikunja', async () => ((await task(step2)).comments || []).filter(c => c.comment.includes('Written offline')).length === 1);
   });
 
@@ -861,9 +920,15 @@ try {
     await page.waitForSelector('#step-repeat-note', { state: 'detached' });
     await page.press('#step-insert-in', 'Escape');
     await page.waitForSelector('#step-gap', { state: 'detached' });
-    // Left as it is, + repeats it: a copy of its template step, not done, right after it.
+    // What was typed stays in the box when it's closed; 🔁 tapped twice puts it back.
     await openUnder(1);
-    if (await page.inputValue('#step-insert-in') !== '') throw new Error('opened with: ' + await page.inputValue('#step-insert-in'));
+    const typed = 'Check the guards at 3pm again', box = async () => page.inputValue('#step-insert-in');
+    if (await box() !== typed) throw new Error('opened with: ' + await box());
+    await page.click('#step-repeat');
+    if (await box() !== 'Check the guards at 3pm') throw new Error('🔁 put in: ' + await box());
+    await page.click('#step-repeat');
+    if (await box() !== typed) throw new Error('🔁 again left: ' + await box());
+    // Left as it is, + repeats it: a copy of its template step, not done, right after it.
     await page.click('#step-repeat');
     await page.click('#step-insert');
     await page.waitForSelector('#step-added:text-is("Repeated")', { timeout: 15000 });
@@ -913,6 +978,22 @@ try {
     }, 30000);
     const order = (await titles()).split(' | ');
     if (order.indexOf('Offline step') !== order.indexOf('Sweep up') - 1) throw new Error('not where it was inserted: ' + order.join(' | '));
+    // Called off from Waiting to send, though it was tried before the connection went: nothing of it is left.
+    await context.setOffline(true);
+    await openUnder(1);
+    await page.fill('#step-insert-in', 'Not after all');
+    await page.press('#step-insert-in', 'Enter');
+    await page.waitForSelector('#run-steps .row:has-text("Not after all")');
+    await page.waitForSelector('#btn-refresh.waits', { timeout: 5000 });
+    await page.click('#btn-refresh');
+    await page.click('#outbox-rows .ob-row:has-text("Not after all") .ob-drop');
+    await page.waitForSelector('#run-steps .row:has-text("Not after all")', { state: 'detached' });
+    await page.click('#btn-sheet-close');
+    await context.setOffline(false);
+    await online();
+    await until('the step called off is still waiting', async () => !await page.evaluate(() => Alpine.$data(document.body).pending.some(e => e.kind === 'step')));
+    if ((await titles()).includes('Not after all')) throw new Error('inserted after all: ' + await titles());
+    if ((await api('/tasks?q=' + encodeURIComponent('Not after all'))).items.some(t => t.title === 'Not after all')) throw new Error('left as a task of its own');
     // Quick add, as in the subtask box: its chips and marks, no date (a step's time is its template's), and a pasted
     // list is a step a line, in order.
     await openUnder(1);
@@ -985,6 +1066,17 @@ try {
     await page.press('#step-insert-in', 'Escape');
     await page.waitForSelector('#step-gap', { state: 'detached' });
     await toastGone().catch(() => {});
+    // Offline, Waiting to send says what it is.
+    await context.setOffline(true);
+    await slide(5);
+    await page.waitForSelector('#btn-refresh.waits', { timeout: 5000 });
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#outbox-rows .ob-row:has-text("Progress: 60% on “Warm up the press”")');
+    await page.click('#btn-sheet-close');
+    await context.setOffline(false);
+    await online();
+    await until('the progress set offline never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 60);
+    await toastGone().catch(() => {});
     // Pulled past 100% and held while the run's screen redraws (every second, for countdowns): it says 100%, and its
     // line stays full.
     await slide(12, async () => {
@@ -993,6 +1085,9 @@ try {
       if (shown !== '100%' || line < width - 1) throw new Error(`held past 100%: says ${shown}, line ${line} of ${width}px`);
     });
     await until('100% never made it done', async () => { const t = await task(step2); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
+    // As for a task slid to 100%, Undo.
+    await page.click('#toast-act:has-text("Undo")');
+    await until('Undo never made it not done', async () => !(await task(step2)).done);
   });
 
   await step('a-time-after-a-step-named-in-words', async () => {
@@ -1101,13 +1196,27 @@ try {
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');
+    // Empty, each box says what it reads: in the name, @user is who its runs are for.
+    await page.waitForSelector('.nt-name .box-chips .hint:has-text("who its runs are for")');
+    // A date isn't read in the name, and a chip says so.
+    await page.keyboard.type(`${name} every day at 7`);
+    await page.waitForSelector('.nt-name .box-chips .chip.quiet:has-text("Dates stay in its name")');
+    await page.fill('#nt-name', '');
     await page.keyboard.type(other ? `${name} @${OTHER}` : `${name} !2`);
     await page.waitForSelector(`.nt-name .box-chips .chip:has-text("${other ? '@' + OTHER : 'Priority 2'}")`);
+    await page.focus('#new-step-0');
+    await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .hint:has-text("who does it")');
     await page.fill('#new-step-0', 'Unlock the door !3');
     await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .chip:has-text("Priority 3")');
     await page.press('#new-step-0', 'Enter');
     await page.waitForFunction(() => document.activeElement?.id === 'new-step-1');
-    await page.keyboard.type('Turn the sign 5 min later');
+    // Typed straight away, as a fast typist does: no letter is lost while the new row appears.
+    await page.keyboard.type(`Turn the sign 5 min later${other ? ' @' + OTHER : ''}`);
+    await page.waitForSelector('#new-steps .draft-step:nth-of-type(2) .cap-marks mark[data-kind="due"]:text-is("5 min later")', { state: 'attached' });
+    await page.press('#new-step-1', 'Enter');
+    await page.waitForFunction(() => document.activeElement?.id === 'new-step-2');
+    await page.keyboard.type('Count the till !4');                       // its priority tapped off: "!4" stays in its name
+    await page.click('#new-steps .draft-step:nth-of-type(3) .box-chips .chip:has-text("Priority 4")');
     await page.click('#nt-create');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 });
     let tpl;
@@ -1115,7 +1224,7 @@ try {
     tpl = await api('/tasks/' + tpl.id);
     if (other ? !tpl.assignees?.some(u => u.id === other.id) : tpl.priority !== 2) throw new Error(`template: assignees ${JSON.stringify(tpl.assignees?.map(u => u.username))}, priority ${tpl.priority}`);
     const steps = await Promise.all((await subtasks(tpl.id)).map(s => api('/tasks/' + s.id)));
-    if (JSON.stringify(steps.map(s => [s.title, s.priority])) !== JSON.stringify([['Unlock the door', 3], ['Turn the sign T#5m', 0]])) throw new Error('steps: ' + JSON.stringify(steps.map(s => [s.title, s.priority])));
+    if (JSON.stringify(steps.map(s => [s.title, s.priority])) !== JSON.stringify([['Unlock the door', 3], ['Turn the sign T#5m', 0], ['Count the till !4', 0]])) throw new Error('steps: ' + JSON.stringify(steps.map(s => [s.title, s.priority])));
     // Changed in place: !1 sets its priority, and leaves its name as it was.
     await page.click(`.cl-tpl:has(.title:text-is("${name}")) .body`, { timeout: 15000 });
     await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
@@ -1125,10 +1234,25 @@ try {
     await page.press(`#step-edit-${steps[0].id}`, 'Enter');
     await until('its priority never changed', async () => (await api('/tasks/' + steps[0].id)).priority === 1);
     if ((await api('/tasks/' + steps[0].id)).title !== 'Unlock the door') throw new Error('title: ' + (await api('/tasks/' + steps[0].id)).title);
+    // Words kept as words when it was written stay so when it's changed: "!4" isn't read as a priority now.
+    await page.click('#d-subtasks .row:nth-of-type(3) > button.body');
+    await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, steps[2].id, { timeout: 5000 });
+    await page.fill(`#step-edit-${steps[2].id}`, 'Count the till !4 twice');
+    await page.press(`#step-edit-${steps[2].id}`, 'Enter');
+    await until('the step never changed', async () => (await api('/tasks/' + steps[2].id)).title === 'Count the till !4 twice');
+    if ((await api('/tasks/' + steps[2].id)).priority) throw new Error('"!4" was read as a priority');
+    // Who a step is for, tapped off it while it's changed.
+    if (other) {
+      await page.click('#d-subtasks .row:nth-of-type(2) > button.body');
+      await page.click(`.step-in .box-chips .chip:has-text("@${OTHER}")`);
+      await page.waitForSelector(`.step-in .box-chips .chip.off:has-text("@${OTHER}")`);
+      await page.press(`#step-edit-${steps[1].id}`, 'Enter');
+      await until('they were never taken off the step', async () => !(await api('/tasks/' + steps[1].id)).assignees?.length);
+    }
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    for (const st of steps) await api('/tasks/' + st.id, { method: 'DELETE' });
-    await api('/tasks/' + tpl.id, { method: 'DELETE' });
+    for (const st of steps) await retry(() => api('/tasks/' + st.id, { method: 'DELETE' }));
+    await retry(() => api('/tasks/' + tpl.id, { method: 'DELETE' }));
   });
 
   await step('add-steps-to-a-template', async () => {
@@ -1158,8 +1282,16 @@ try {
     await page.click('#add-steps-go:has-text("Add 2 steps")');
     await toast('Added 0 of 2');
     await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    // Vikunja on SQLite busy for a moment ("database is locked") as a step is put under the template: tried again.
+    let locked = 0;
+    const lock = r => r.request().method() === 'POST' && ++locked === 1 ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' }) : r.fallback();
+    await page.route('**/api/v2/tasks/*/relations', lock);
+    await toastGone().catch(() => {});
     await page.click('#add-steps-go:has-text("Add 2 steps")');
     await until('the steps were never added', async () => (await subtasks(template.id)).length === 5);
+    await page.unroute('**/api/v2/tasks/*/relations', lock);
+    if (!locked) throw new Error('no step was put under the template');
+    if (await page.isVisible('#toast.show #toast-msg:has-text("Added")')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
     const sample = (await api('/tasks?q=' + encodeURIComponent('Pull a sample'))).items.filter(t => t.project_id === project.id);
     if (sample.length !== 1) throw new Error(`${sample.length} tasks “Pull a sample”`);
     const titles = (await subtasks(template.id)).map(s => s.title);
@@ -1167,6 +1299,16 @@ try {
     if (JSON.stringify(titles) !== JSON.stringify(want)) throw new Error('steps: ' + titles.join(' | '));
     if (!(await subtasks(template.id)).every(s => s.done)) throw new Error('a new step isn\'t done');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(4) .meta:has-text("Due 5m after “Warm up the press”")');
+    // Still busy after a few tries: the step made isn't left behind as a task of its own.
+    const stray = `Stray step ${stamp}`, busy = r => r.request().method() === 'POST' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' }) : r.fallback();
+    await page.click('#add-add-step');
+    await row(0).locator('.draft-in').fill(stray);
+    await page.route('**/api/v2/tasks/*/relations', busy);
+    await page.click('#add-steps-go:has-text("Add 1 step")');
+    await toast('Added 0 of 1');
+    await page.unroute('**/api/v2/tasks/*/relations', busy);
+    await until('the step was left as a task of its own', async () => !(await api('/tasks?q=' + encodeURIComponent(stray))).items.some(t => t.title === stray));
+    await row(0).locator('button[aria-label^="Remove"]').click();
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -1218,6 +1360,7 @@ try {
     await page.selectOption('#d-repeat', 'day');
     await until('never repeats', async () => (await api('/tasks/' + daily.id)).repeat_after === 86400);
     if ((await api('/tasks/' + daily.id)).done) throw new Error('done after its repeat was set');
+    await page.waitForSelector('#d-comes-round:has-text("then every day")');             // what its date and repeat do
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     // Under Checklists, when it's due; on Today, with no tick, and tapping it opens Start.
@@ -1228,13 +1371,9 @@ try {
     const row = `#view .row:has(> .body .title:has-text("${DAILY}"))`;
     await page.waitForSelector(`${row} .meta:has-text("Checklist: tap to start")`, { timeout: 15000 });
     if (await page.$(`${row} button.check`)) throw new Error('it has a tick on Today');
-    // Move all to today leaves it where it is (tried only when it's the only task overdue, so no one's tasks move).
+    // With only it overdue, there's no Move all to today: it would move nothing.
     const overdue = await page.$$eval('.sec.overdue + .list .row', els => els.length).catch(() => 0);
-    if (overdue === 1 && await page.$('#btn-overdue-today')) {
-      await page.click('#btn-overdue-today');
-      await toast('1 checklist stays');
-      if (!sameTime((await api('/tasks/' + daily.id)).due_date, due.toISOString())) throw new Error('moved by Move all to today');
-    }
+    if (overdue === 1 && await page.$('#btn-overdue-today')) throw new Error('Move all to today, with only a checklist overdue');
     await page.click(`${row} > .body`);
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
     const note = await page.textContent('#start-note');
@@ -1315,9 +1454,23 @@ try {
     await page.click(`${dailyRow} .body`, { timeout: 15000 });
     await page.waitForSelector('#d-due-clear');
     await page.click('#d-due-clear');
-    await until('never done', async () => (await api('/tasks/' + daily.id)).done, 15000);
+    // Its repeat is kept, so a date given again comes round as it did.
+    await until('never done, with its repeat', async () => { const t = await api('/tasks/' + daily.id); return t.done && t.repeat_after === 86400; }, 15000);
     const t = await api('/tasks/' + daily.id);
-    if (t.due_date !== ZERO || t.repeat_after || t.repeat_mode) throw new Error(`due ${t.due_date}, repeats ${t.repeat_after}/${t.repeat_mode}`);
+    if (t.due_date !== ZERO || t.repeat_mode) throw new Error(`due ${t.due_date}, repeats ${t.repeat_after}/${t.repeat_mode}`);
+    if (await page.inputValue('#d-repeat') !== 'day') throw new Error('Repeats: ' + await page.inputValue('#d-repeat'));
+    if (await page.isVisible('#d-reminders')) throw new Error('reminders shown for a template that doesn\'t come round');
+    await page.fill('#d-due', local(due));
+    await until('not coming round again', async () => { const t = await api('/tasks/' + daily.id); return !t.done && sameTime(t.due_date, due.toISOString()) && t.repeat_after === 86400; }, 15000);
+    await page.click('#d-due-clear');
+    await until('never done again', async () => (await api('/tasks/' + daily.id)).done, 15000);
+    // Repeats picked with no date gives it one, and says which.
+    await toastGone().catch(() => {});
+    await page.selectOption('#d-repeat', 'week');
+    await toast('It repeats from');
+    await until('a repeat with no date never came round', async () => { const t = await api('/tasks/' + daily.id); return !t.done && t.repeat_after === 604800; }, 15000);
+    await page.click('#d-due-clear');
+    await until('never done once more', async () => (await api('/tasks/' + daily.id)).done, 15000);
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -1359,12 +1512,26 @@ try {
     await page.selectOption('#np-parent', String(project.id));
     await page.check('#np-checklists');
     await page.click('#np-create');
-    await page.waitForFunction(() => /^#\/project\/\d+$/.test(location.hash), null, { timeout: 15000 });
-    const id = +(await page.evaluate(() => location.hash)).split('/').pop(), made = await api('/projects/' + id);
+    // It opens on Checklists, where Getting started says what's next: sharing it, in Vikunja's web app.
+    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
+    let id;
+    await until('the project was never made', async () => (id = (await api('/projects')).items.find(p => p.title === `Front of house ${stamp}`)?.id));
+    const made = await api('/projects/' + id);
     try {
-      if (made.title !== `Front of house ${stamp}` || made.parent_project_id !== project.id) throw new Error(`made ${made.title} in ${made.parent_project_id}`);
+      if (made.parent_project_id !== project.id) throw new Error(`made in ${made.parent_project_id}`);
       if (!/<p>pocket:checklists<\/p>/.test(made.description || '')) throw new Error('not for checklists: ' + made.description);
       await page.waitForSelector('nav.tabs a[data-tab=checklists]');
+      await page.waitForSelector(`#getting-started-${id} a[href$="/projects/${id}/settings/share"]`, { timeout: 15000 });
+      await page.click(`#getting-started-${id} .gs-hide`);
+      await page.waitForSelector(`#getting-started-${id}`, { state: 'detached' });
+      await page.reload();
+      await page.waitForSelector(`.cl[data-project="${id}"]`, { timeout: 15000 });
+      if (await page.$(`#getting-started-${id}`)) throw new Error('Getting started came back after it was hidden');
+      // The project's ⋯ shows it again.
+      await page.evaluate(pid => { location.hash = '#/project/' + pid; }, id);
+      await page.click('#btn-project');
+      await page.click('#p-show-started', { timeout: 15000 });
+      await page.waitForSelector(`#getting-started-${id}`, { timeout: 15000 });
     } finally { await api('/projects/' + id, { method: 'DELETE' }).catch(() => {}); }
   });
   if (errors.length) { failed++; console.log('FAIL page errors:', errors); }

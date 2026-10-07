@@ -1,6 +1,7 @@
 // The lists Pocket shows, and the copies it keeps for opening without a connection.
 import {store} from './util.js';
 import {isSet} from './dates.js';
+import {stepsOf} from './checklists.js';
 
 // The lists Pocket last loaded, shown when it opens without a connection. Cleared on sign-out.
 export const saved = {
@@ -11,13 +12,18 @@ export const saved = {
 // Open tasks in a list: dated first, soonest first, then undated, by priority and then newest first.
 export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date)),
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
-/* A list with each subtask straight after its parent, when the parent is in the same list, and depth: task id -> how
-   many parents up it has there. The others stay where they were. A task waiting to be sent names its parent in `parent`. */
+/* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's
+   steps as on its screen), and depth: task id -> how many parents up it has there. The others stay where they were. A
+   task waiting to be sent names its parent in `parent`, and goes after the rest. */
 export const nestSubtasks = tasks => {
-  const ids = new Set(tasks.map(t => t.id)), kids = new Map(), top = [];
+  const ids = new Map(tasks.map(t => [t.id, t])), kids = new Map(), top = [];
   for (const t of tasks) {
     const p = (t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id)).find(id => id !== t.id && ids.has(id));
     if (p === undefined) top.push(t); else kids.set(p, [...(kids.get(p) || []), t]);
+  }
+  for (const [p, list] of kids) {
+    const order = stepsOf(ids.get(p)).map(s => s.id), at = t => { const i = order.indexOf(t.id); return i < 0 ? order.length : i; };
+    list.sort((a, b) => at(a) - at(b));
   }
   const out = [], depth = {};
   const walk = (t, d) => { if (t.id in depth) return; depth[t.id] = d; out.push(t); for (const k of kids.get(t.id) || []) walk(k, d + 1); };

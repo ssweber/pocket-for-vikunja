@@ -122,6 +122,7 @@ try {
     await vikunja.evaluate(() => localStorage.removeItem('token'));             // what Vikunja's logout does in the browser
     await pocket.waitForSelector('#login:not([hidden])', { timeout: 10000 });   // after the 2-second check
     if (!(await pocket.textContent('#login-err')).includes('signed out in Vikunja')) throw new Error('no message');
+    if (!await pocket.isVisible('#f-pass')) throw new Error('the sign-in screen opened on API token, not Password');
     // Signed in again as the same person: what was being written is still there.
     await vikunjaSignIn();
     await pocketInApp();

@@ -52,7 +52,7 @@ export default {
     try {
       const list = await allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`}));
       if (this.sheet !== mine) return;
-      for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; if (cache.has(s.id)) cache.get(s.id).assignees = s.assignees; }
+      for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; this.sheet.subLabels[s.id] = s.labels || []; if (cache.has(s.id)) cache.get(s.id).assignees = s.assignees; }
     } catch (e) {
       if (!(e instanceof NetError) || this.sheet !== mine) return;
       for (const id of ids) if (cache.get(id)?.assignees) this.sheet.subPeople[id] ??= cache.get(id).assignees;
