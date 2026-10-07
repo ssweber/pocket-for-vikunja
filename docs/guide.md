@@ -61,11 +61,24 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   far along it is. It stops at 0, 25, 50, 75 and 100%, with a tick at each; progress set elsewhere (40%, say) stays as it
   is until you slide it, then goes to the nearest of those. Sliding to 100% fills the tick and marks the task done;
   100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. Moving up or down
-  after the hold lets go, changing nothing. The same works on the bar in a task's sheet (the arrow keys move it a stop
+  after the hold moves the task instead, on a project's list and in a task's sheet (see **Order**, below); anywhere
+  else it lets go, changing nothing. The same works on the bar in a task's sheet (the arrow keys move it a stop
   at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
   run's steps are held and slid the same way. The bar is all that shows it, with no message: to take it back, slide it
   back. On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
   trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
+- **Order:** a project's list is in the order of its **List view** in Vikunja's web app, each subtask under its
+  parent in its own order, so both show the same order; a task's subtasks in its sheet are in that order too. To move
+  a task, hold it until it lifts, then move it up or down: it follows your finger, with its subtasks, the tasks it
+  passes move aside to make room, with a tick at each, and near the top or bottom of the screen the list scrolls on.
+  Let go, and it's there, in Vikunja too. A task moves only among the tasks at its level: a top-level task among the
+  top-level ones, a subtask among its parent's subtasks (moving one to another parent is for later). Today and search
+  keep their own order, and a done task, one waiting to be sent, or one in a project shared with you to read stays
+  where it is. Without a connection, a move is kept and sent later; one Vikunja turns down goes back, and its row says
+  why. The task's **⋯** has **Move up** and **Move down**, and **Alt+↑** and **Alt+↓** move the row that has the focus:
+  the ways for a keyboard or a screen reader. A project whose List view was deleted in Vikunja is in the order its
+  tasks were made, and can't be reordered. A checklist's steps keep an order of their own (see **In Vikunja's web
+  app**, under Checklists).
 - **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
   past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. Back under half
   before you let go, it's only left open. Its row becomes a line, "Deleted Load chairs", with **Undo**; it's deleted in Vikunja once the line folds away, or as soon as
@@ -89,7 +102,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   where, "Added to Orders, due Friday", with **Open**. The bottom of the screen is left for what has no place of its
   own: a countdown reaching zero, a screen that couldn't load, and what's done once its sheet has closed. A screen
   reader hears each message.
-- **Projects:** your project tree with favorites, and the open or done tasks in each. **New project** makes one, inside
+- **Projects:** your project tree with favorites, and the tasks in each: its open tasks, in order, then its done tasks
+  in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. Tick
+  one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
+  its Done section open. **New project** makes one, inside
   another if you like. A project's **⋯** renames or archives it if it's shared with you to write, and deletes it if
   you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
 - **Signing in:** sign in once, with your usual Vikunja login, and Pocket and Vikunja's web app are both signed in on
@@ -195,8 +211,9 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    **Add a step** starts the next one, and a pasted list becomes a row a line. The name and each step are read as quick
    add reads a task, with the same chips: `@priya` assigns it, `*front` labels it, `!3` sets its priority. Dates aren't
    read there: a step's time is its own, and a chip says so. Each box, empty, says what it reads. Move steps up or
-   down, then tap **Make template**. When it comes round, if it should, is set in its sheet once it's made. In a template's sheet, tap a step to change it, move it with ↑ and ↓, or remove it with ×; runs already
-   started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
+   down, then tap **Make template**. When it comes round, if it should, is set in its sheet once it's made. In a template's sheet, tap a step to change it, or remove it with ×; hold a step, then move it
+   up or down, to move it (or tap it, and its **⋯** has **Move up** and **Move down**, as **Alt+↑** and **Alt+↓** do in its
+   box). Runs already started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
    comes with its notes, so that's the place for how to do it.
    A task with its steps as subtasks can also be made one, with **Use as checklist template** in its sheet's **⋯**.
    Its **template** label is what makes it one, so its sheet doesn't offer to take that off; delete it from its **⋯**.
@@ -252,7 +269,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   deleted by mistake, with its steps as done subtasks. It's done, unless it comes round: then it's a repeating task
   there, and ticking it there skips that time without a run. Pocket shows the name without "TEMPLATE: ". A run is a
   copy of it, named like "Opening up · run 3 · Oct 4", which Vikunja links to the template as "copied from". The web app
-  can't reorder steps, so reorder them in Pocket: it keeps the order in a line like `pocket:order 12 15 13` in the
+  can't reorder steps, so reorder them in Pocket. A template is done, and Vikunja's List view leaves done tasks out, so
+  a step's place there can't be read back: Pocket keeps the order in a line like `pocket:order 12 15 13` in the
   template's description (the steps' task numbers). Leave that line be; steps it doesn't list, like one added in the
   web app, come last. A run gets a line of its own when it starts, so it keeps the order it was started with, and a step
   inserted in it goes in its line. A step added during a run has a line `pocket:added`. Everyone with *Write* access can
@@ -379,6 +397,9 @@ Tokens*, choose the **Task Management** preset, and also tick:
 - **Create**, **Update** and **Delete** under *Projects*: to create projects from quick add, to rename, archive and use
   them for checklists, and to delete them.
 - **Reactions**: for checklists, to record who did each step.
+
+The preset already includes what moving tasks needs: **Position** under *Tasks*, and reading a project's views. A token
+made without them shows each project in the order its tasks were made, and a move says which permission is missing.
 
 A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn't affect it.
 
