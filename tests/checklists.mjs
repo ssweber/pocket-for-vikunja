@@ -20,14 +20,17 @@ const OTHER = process.env.OTHER_USER, OTHER_PASSWORD = process.env.OTHER_PASSWOR
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
 const APP = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 
+// Vikunja on SQLite answers 500 "database is locked" now and then, when a request comes while it's still writing what
+// the one before changed: the test's own requests try again, as Pocket's do.
 const call = async (token, path, init = {}) => {
-  const r = await fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + token, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } });
-  if (!r.ok) throw new Error(`${init.method || 'GET'} ${path}: HTTP ${r.status}`);
-  return r.status === 204 ? null : r.json();
+  for (let i = 0; ; i++) {
+    const r = await fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + token, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } });
+    if (r.status === 500 && i < 4) { await new Promise(res => setTimeout(res, 300 * (i + 1))); continue; }
+    if (!r.ok) throw new Error(`${init.method || 'GET'} ${path}: HTTP ${r.status}`);
+    return r.status === 204 ? null : r.json();
+  }
 };
 const api = (path, init) => call(TOKEN, path, init);
-// Vikunja on SQLite answers 500 "database is locked" now and then: tried again, as Pocket does.
-const retry = async fn => { for (let i = 0; ; i++) { try { return await fn(); } catch (e) { if (i >= 4 || !/HTTP 500/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); } } };
 const task = id => api(`/tasks/${id}?expand=reactions&expand=comments`);
 // A task's steps in the order Pocket shows them, a template's or a run's: by the line "pocket:order …" in its
 // description, then steps it doesn't list, by id.
@@ -481,7 +484,7 @@ try {
     if (!other) return;
     // Skipped by someone else, then unticked and done here: done, not skipped, though their ⏭️ stays (only they can
     // take it back).
-    const row1 = '#run-steps .row:nth-of-type(1)', as = (path, body, method = 'POST') => retry(() => call(otherToken, path, { method, body: JSON.stringify(body) }));
+    const row1 = '#run-steps .row:nth-of-type(1)', as = (path, body, method = 'POST') => call(otherToken, path, { method, body: JSON.stringify(body) });
     await page.click(`${row1} .check`);
     await until('never undone for their skip', async () => !(await task(id)).done);
     await as('/tasks/' + id, { done: true }, 'PATCH');
@@ -619,7 +622,7 @@ try {
     // A step of your run they've claimed is on their Today, though it has no due date. (It's done by now: not done for this.)
     const guards = (await runStep(first.id, 0)).id;
     await api('/tasks/' + guards, { method: 'PATCH', body: JSON.stringify({ done: false }) });
-    await retry(() => call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) }));
+    await call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
     try {
       await signIn(p, otherToken);
       await p.waitForSelector(`.row .title:has-text("${run.title}")`, { timeout: 15000 });
@@ -1252,8 +1255,8 @@ try {
     }
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    for (const st of steps) await retry(() => api('/tasks/' + st.id, { method: 'DELETE' }));
-    await retry(() => api('/tasks/' + tpl.id, { method: 'DELETE' }));
+    for (const st of steps) await api('/tasks/' + st.id, { method: 'DELETE' });
+    await api('/tasks/' + tpl.id, { method: 'DELETE' });
   });
 
   await step('add-steps-to-a-template', async () => {

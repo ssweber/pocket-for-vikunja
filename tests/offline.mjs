@@ -17,7 +17,15 @@ const TOKEN = process.env.VIKUNJA_TOKEN;
 const OUT = process.env.OUT || 'test-results';
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
 const POCKET = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
-const api = (path, init = {}) => fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...init.headers } });
+// Vikunja on SQLite answers 500 "database is locked" now and then, when a request comes while it's still writing what
+// the one before changed: the test's own requests try again, as Pocket's do.
+const api = async (path, init = {}) => {
+  for (let i = 0; ; i++) {
+    const r = await fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...init.headers } });
+    if (r.status !== 500 || i >= 4) return r;
+    await new Promise(res => setTimeout(res, 300 * (i + 1)));
+  }
+};
 const byTitle = async title => ((await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items || []).filter(t => t.title === title);
 
 await mkdir(OUT, { recursive: true });
