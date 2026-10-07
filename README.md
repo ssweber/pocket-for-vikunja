@@ -26,7 +26,7 @@ Vikunja.</sub>
 
 Type a task the way you'd say it: "Order 6 bags of house blend fri at 9 +orders !3". Pocket highlights what it read and
 shows it in chips before you send. **Today** has what's overdue, what's due today and the week ahead. Tick a task off
-and it slides away, with an Undo.
+and its row says so, with an Undo, then folds away. Swipe a row left to delete it, with an Undo too.
 
 <img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, 'Call the plumber about the dishwasher', 'Post next week's rota' and 'Pick up change from the bank' due today, and the café's week ahead">
 

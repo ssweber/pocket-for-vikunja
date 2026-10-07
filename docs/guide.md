@@ -49,17 +49,31 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   web app sets a day without a time, is overdue once that day is over. Left open, Today moves tasks to Overdue as their
   time passes. **Move all to today** brings every overdue task to today, each at the time of day it had, or the next
   whole hour if that time has gone today. A repeating task stays where it is: tick it to move it on to its next date.
-- **Ticking off:** a ticked task slides away, with an Undo. Ticks in a row add up into one message, "3 done", whose Undo
-  opens them all again. A task's open subtasks are ticked off with it. A repeating task moves to its next date, and Undo
-  puts its date back. An Undo leaves alone a task that was changed elsewhere since.
-- **Progress:** hold a task, then slide sideways to set how far along it is, in steps of 10%. Sliding to 100% marks it
-  done; 100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. A checklist
-  run's bar shows how many of its steps are done instead, and a run's steps are held and slid the same way.
+- **Ticking off:** a ticked task's row becomes a slim line saying so, "Done: Pack the van + 4 subtasks", with **Undo** at
+  its end; after a few seconds it folds away. Each tick has its own line, so ticking a few in a row leaves each its
+  Undo. A task's open subtasks are ticked off with it. A ticked subtask stays where it is, ticked, with no message: tick
+  it again to take it back. A repeating task moves to its next date, with an Undo at the bottom that puts its date back.
+  An Undo leaves alone a task that was changed elsewhere since. In search, a ticked task moves from Open to Done instead.
+- **Progress:** hold a task until it lifts (and, on a phone that can, you feel a tick), then slide sideways to set how
+  far along it is. It stops at 0, 25, 50, 75 and 100%, with a tick at each; progress set elsewhere (40%, say) stays as it
+  is until you slide it, then goes to the nearest of those. Sliding to 100% fills the tick and marks the task done;
+  100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. Moving up or down
+  after the hold lets go, changing nothing. The same works on the bar in a task's sheet (the arrow keys move it a stop
+  at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
+  run's steps are held and slid the same way. On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
+  trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
+- **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**. Its row
+  becomes a line, "Deleted Load chairs", with **Undo**; it's deleted in Vikunja once the line folds away, or as soon as
+  you leave the screen or put Pocket away. A task with subtasks asks first, and they go with it. Swipe back, or tap
+  anywhere else, to leave it. The task's **⋯** deletes it too, the way for a keyboard or a screen reader. Without a
+  connection, it's deleted once Pocket reaches Vikunja.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
   comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
-  project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks. Tap the project above the title to open it.
+  project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks, and an Undo in its
+  row's place. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
+  on its row only, with no message.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done.
 - **Projects:** your project tree with favorites, and the open or done tasks in each. **New project** makes one, inside
@@ -141,8 +155,8 @@ in a project they can see.
 - A checklist run is for one person, picked when it's started or later from its **⋯**. Vikunja tells them about it once,
   not once per step.
 
-**Who's doing a subtask or a step:** every subtask in a task's sheet, and every step of a run, has a slot at the end of
-its row. **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
+**Who's doing a task, a subtask or a step:** every task's row, every subtask in a task's sheet, and every step of a
+run, has a slot at the end of its row (not a checklist run or a template, whose row says who they're for). **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
 shows who has it; to hand it over, open it and use **Assigned** (a run's step: the run's **⋯** → **Open as a task**,
 then tap the step). Two people who say they'll do a step
 at the same moment don't both get it: the first keeps it, and the other is told. Done or skipped is still recorded for whoever taps it,
