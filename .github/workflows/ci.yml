@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   check:
-    name: Build, lint and quick add
+    name: Build, lint, unit tests and quick add
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -30,6 +30,7 @@ jobs:
             exit 1
           fi
       - run: npm run lint
+      - run: npm run test:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:parse
 
