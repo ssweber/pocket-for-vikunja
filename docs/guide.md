@@ -47,20 +47,24 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   date stays in view until tonight instead of vanishing into a project. A task is overdue once its time has passed, as
   in Vikunja: "friday" is due at your default due time, noon unless you changed it. One due at midnight, as Vikunja's
   web app sets a day without a time, is overdue once that day is over. Left open, Today moves tasks to Overdue as their
-  time passes. **Move all to today** brings every overdue task to today, each at the time of day it had, or the next
-  whole hour if that time has gone today. A repeating task stays where it is: tick it to move it on to its next date.
+  time passes, each lighting up for a moment as it moves. **Move all to today** brings every overdue task to today, each
+  at the time of day it had, or the next whole hour if that time has gone today; a line under the Overdue heading says
+  how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
+  next date.
 - **Ticking off:** a ticked task's row becomes a slim line saying so, "Done: Pack the van + 4 subtasks", with **Undo** at
   its end; after a few seconds it folds away. Each tick has its own line, so ticking a few in a row leaves each its
   Undo. A task's open subtasks are ticked off with it. A ticked subtask stays where it is, ticked, with no message: tick
-  it again to take it back. A repeating task moves to its next date, with an Undo at the bottom that puts its date back.
-  An Undo leaves alone a task that was changed elsewhere since. In search, a ticked task moves from Open to Done instead.
+  it again to take it back. A repeating task stays, at its next date: its line says "Repeats · next Friday", with an
+  Undo that puts its date back. An Undo leaves alone a task that was changed elsewhere since. In search, a ticked task
+  moves from Open to Done once its line folds; unticked in a list of done tasks, it says "Not done", with Undo.
 - **Progress:** hold a task until it lifts (and, on a phone that can, you feel a tick), then slide sideways to set how
   far along it is. It stops at 0, 25, 50, 75 and 100%, with a tick at each; progress set elsewhere (40%, say) stays as it
   is until you slide it, then goes to the nearest of those. Sliding to 100% fills the tick and marks the task done;
   100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. Moving up or down
   after the hold lets go, changing nothing. The same works on the bar in a task's sheet (the arrow keys move it a stop
   at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
-  run's steps are held and slid the same way. On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
+  run's steps are held and slid the same way. The bar is all that shows it, with no message: to take it back, slide it
+  back. On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
   trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
 - **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
   past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. Back under half
@@ -74,9 +78,17 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks, and an Undo in its
   row's place. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
-  on its row only, with no message.
+  on its row only, with no message. A change that isn't saved goes back, and the sheet says so under what it's about
+  (at its top, under its notes, under its subtasks), with **Try again** where that helps.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done.
+- **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
+  is a line in the task's row, with its Undo; a tick that couldn't be saved goes back, and its row says why, "Not saved:
+  no connection", with **Try again**. A task added from quick add lights up where it went; if that's not on the screen
+  you're looking at (a task due next month, added on Today, or one for another project), a note by the add box says
+  where, "Added to Orders, due Friday", with **Open**. The bottom of the screen is left for what has no place of its
+  own: a countdown reaching zero, a screen that couldn't load, and what's done once its sheet has closed. A screen
+  reader hears each message.
 - **Projects:** your project tree with favorites, and the open or done tasks in each. **New project** makes one, inside
   another if you like. A project's **⋯** renames or archives it if it's shared with you to write, and deletes it if
   you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
@@ -197,9 +209,10 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    still counting down. Add a photo or a note to a step, or a note to the whole run; a step with notes has a mark on its
    row. **Last time** shows the notes from the last finished run of the same template, as a handover, and each step's
    card shows the ones left on it. ‹ and › beside the step's number show the step before and after. On a long run,
-   the bar with the count stays at the top: tap it to go back up. A skipped step counts as skipped, not done. After the last step, **Finish run**,
-   with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
-   first, and they stay not done.
+   the bar with the count stays at the top: tap it to go back up. A skipped step counts as skipped, not done. A run
+   just started says so at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
+   with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, with an Undo in its row's place;
+   with steps not done, it asks first, and they stay not done.
 
 - **A checklist that comes round:** give the template a date in its sheet, under **When it's due**, and how it
   **Repeats**: every day at 8:00, say. It's then Vikunja's repeating task: at its time it shows on Today, without a tick,
