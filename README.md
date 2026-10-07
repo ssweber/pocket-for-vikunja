@@ -97,9 +97,11 @@ Tap a chip to keep its words in the title instead. A pasted list becomes a task 
 
 **Checklists:**
 
-1. Open a project, tap **⋯** and choose **Use for checklists**. Everyone it's shared with gets a **Checklists** tab.
-2. Under Checklists, tap **New template** and write its steps, a row each. To time a step, write it in the step:
-   "in 18 min", or "20 minutes after Turn on the espresso machine".
+1. Under Projects, tap **Set up checklists**: a project called Checklists, with an example to try. Or use a project of
+   yours: its **⋯** has **Use for checklists**, and **New project** has the same checkbox. Everyone it's shared with
+   gets a **Checklists** tab. Sharing is done in Vikunja's web app: pick **Read & write**, so they can tick steps.
+2. Under Checklists, tap **New template** and write its steps, a row each. `@priya` in a step gives it to Priya. To
+   time a step, write it in the step: "in 18 min", or "20 minutes after Turn on the espresso machine".
 3. Tap **Start** and choose who the run is for.
 4. Work through it: **Done**, or **Skip**. A note typed on the step goes with it.
 

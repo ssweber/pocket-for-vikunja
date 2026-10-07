@@ -57,7 +57,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   run's bar shows how many of its steps are done instead, and a run's steps are held and slid the same way.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
   comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
-  subtask stays in its task's project. Moving a task to another
+  subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
+  there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks. Tap the project above the title to open it.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done.
@@ -142,7 +143,9 @@ in a project they can see.
 
 **Who's doing a subtask or a step:** every subtask in a task's sheet, and every step of a run, has a slot at the end of
 its row. **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
-shows who has it; to hand it over, open it and use **Assigned**. Done or skipped is still recorded for whoever taps it,
+shows who has it; to hand it over, open it and use **Assigned** (a run's step: the run's **⋯** → **Open as a task**,
+then tap the step). Two people who say they'll do a step
+at the same moment don't both get it: the first keeps it, and the other is told. Done or skipped is still recorded for whoever taps it,
 whoever has the step, and claiming never ticks anything. A step you claim in someone else's run shows on your Today.
 Vikunja tells the task's creator (for a step, whoever started the run) when you claim it.
 
@@ -153,46 +156,59 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
 
 <p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a run of the café's Opening up template. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' and 'Take the croissants out' count down, pinned at the top."></p>
 
-1. **Use a project for checklists.** Open it, tap **⋯** and choose **Use for checklists**, or tick **Use for
-   checklists** in **New project**. Everyone it's shared with gets a **Checklists** tab. Share it in Vikunja with the
-   people who'll run it, at *Write*.
+1. **Use a project for checklists.** Under Projects, **Set up checklists** makes a project called Checklists with an
+   example template to try, "Example: Opening up": start it, then change it into your own or delete it. Or open a
+   project of yours, tap **⋯** and choose **Use for checklists**, or tick **Use for checklists** in **New project**.
+   Everyone it's shared with gets a **Checklists** tab. Under Checklists, **Getting started** says what's next, for the
+   project's owner, until it's hidden; the project's **⋯** shows it again.
+   **Share it** with the people who'll run it. That's done in Vikunja's web app, not in Pocket: the link in Getting
+   started, or **Share it in Vikunja** in the project's **⋯**, opens its share page. Pick **Read & write**: Vikunja
+   starts on *Read only*, which lets them see runs but not tick steps.
 2. **Make a template.** Under Checklists, tap **New template**, name it, and write its steps, a row each: **Enter** or
    **Add a step** starts the next one, and a pasted list becomes a row a line. The name and each step are read as quick
    add reads a task, with the same chips: `@priya` assigns it, `*front` labels it, `!3` sets its priority. Dates aren't
-   read there: a step's time is its own. Move steps up or down, then tap **Make template**. In a template's sheet, tap a step to change it, move it with ↑ and ↓, or remove it with ×; runs already
+   read there: a step's time is its own, and a chip says so. Each box, empty, says what it reads. Move steps up or
+   down, then tap **Make template**. When it comes round, if it should, is set in its sheet once it's made. In a template's sheet, tap a step to change it, move it with ↑ and ↓, or remove it with ×; runs already
    started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
    comes with its notes, so that's the place for how to do it.
    A task with its steps as subtasks can also be made one, with **Use as checklist template** in its sheet's **⋯**.
-3. **Start a run.** Tap **Start** and choose who it's for: one or more people who can work on the project, the
-   template's assignees to start with. A name, like "Saturday", takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
+   Its **template** label is what makes it one, so its sheet doesn't offer to take that off; delete it from its **⋯**.
+3. **Start a run.** Tap **Start** and choose who it's for: tap everyone it's for, one or more people who can work on
+   the project, the template's assignees to start with. The steps say who each is for. A name, like "Saturday", takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
    seen under Checklists, and is set up once Pocket reaches Vikunja. A step assigned to someone in the template stays
    assigned to them in every run.
-4. **Work through it.** One step at a time: **Done**, or **Skip**. A note typed on the step goes with either: **Done,
-   with the note** saves it on the step, and **Skip with the note** makes it the reason. Add a photo or a note to a step,
-   or a note to the whole run. **Last time** shows the notes from the last finished run of the same template, as a
-   handover. ‹ and › beside the step's number show the step before and after. After the last step, **Finish run**,
+4. **Work through it.** One step at a time: **Done**, or **Skip**. A note typed on the step goes with either: Done
+   saves it on the step, and Skip makes it the reason. After Done, the next step that can be done is on screen, not one
+   still counting down. Add a photo or a note to a step, or a note to the whole run; a step with notes has a mark on its
+   row. **Last time** shows the notes from the last finished run of the same template, as a handover, and each step's
+   card shows the ones left on it. ‹ and › beside the step's number show the step before and after. On a long run,
+   the bar with the count stays at the top: tap it to go back up. A skipped step counts as skipped, not done. After the last step, **Finish run**,
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too; with steps not done, it asks
    first, and they stay not done.
 
-- **A checklist that comes round:** give the template a date in its sheet, under **Comes round**, and how it
+- **A checklist that comes round:** give the template a date in its sheet, under **When it's due**, and how it
   **Repeats**: every day at 8:00, say. It's then Vikunja's repeating task: at its time it shows on Today, without a tick,
   to its assignees (or, with none, everyone who can work on the project), and Vikunja emails its reminders. Tapping it
   opens Start. Starting a run of it on the day it's due moves it on to its next time, and the run is due at the time
   the template was, so one left open shows as overdue; the Start sheet says which time it's for. A start at 7:55 is the
   8:00 one. One left for weeks moves on to its next time after now: missed times aren't made up. Under Checklists, its
-  line says when it's next due. Without a repeat, starting it ends the schedule; taking its date off does too. **Move
-  all to today** leaves it where it is. Runs of the same template can be open at once. A task with a due date made a
+  line says when it's next due. Without a repeat, starting it ends the schedule; taking its date off does too, and
+  keeps its repeat for a date given again. On Today before its day, it says **Checklist, for then**: starting it early
+  doesn't move it on. **Move all to today** leaves it where it is, and isn't offered when it's all that's overdue. Runs of the same template can be open at once. A task with a due date made a
   template comes round at that date.
 - **A step the template doesn't have:** in **Steps**, the **›** at the left of any step opens a box under it, like the
   subtask box: what's typed in it and added with **+** is a step after that one, for this run only (a pasted list, a
   step a line). The last step's › adds one at the end. Quick add reads labels, people and priority there, but not
   dates. **🔁** beside it puts that step in the box: left as it is, **+** does that step again, as a fresh copy, not
   done, with the template's notes and photos for it but none of this run's; changed, it's a new step. Escape, or its ›
-  again, closes the box. Either says **Inserted** or **Repeated** under its title, here, in the
-  run's sheet and in Last time, and works like any step, offline too. One that isn't done yet can be deleted with the ×
+  again, closes the box, keeping what was typed for next time; 🔁 tapped again puts that back. Either says
+  **Inserted** or **Repeated** under its title, here, in the run's sheet and in Last time, and works like any step,
+  offline too. A run's sheet has no subtask box: steps are added on its screen, so they're marked. One that isn't done yet can be deleted with the ×
   on its row while it's on screen. The template never changes; a step from the template can't be taken out of a run,
   only skipped.
-- **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too. A step ticked on
+- **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too, with when:
+  "Done by Priya at 4:46 PM". Vikunja lets each person take off only their own ✅, so marking someone else's step not
+  done asks first: theirs stays on it. A step ticked on
   Today counts the same.
 - **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the
   person who started the run and the person it's for. A run's row is the same there and under Checklists: its steps
@@ -201,7 +217,9 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
 - **The run on screen** updates by itself as teammates tick steps.
 - **A run's ⋯** changes its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its
   steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
-- **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them.
+- **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them. A
+  **Not done** made offline isn't sent if the run was finished meanwhile. A step inserted offline can be called off from
+  Waiting to send; whatever of it reached Vikunja is taken out.
 - **In Vikunja's web app**, a template is a task labelled `template`, its title starting "TEMPLATE: " so it isn't
   deleted by mistake, with its steps as done subtasks. It's done, unless it comes round: then it's a repeating task
   there, and ticking it there skips that time without a run. Pocket shows the name without "TEMPLATE: ". A run is a
