@@ -64,10 +64,20 @@ The progress drag already works well. Keep how it feels, and change only what's 
   tick instead: a pulse on the % label.
 - **On hold:** a haptic tick, and the row lifts (a shadow or a slight scale). The first ~10px of movement after the
   hold decide the direction: sideways sets progress, up or down reorders (part 6).
-- **A plain swipe left, with no hold,** shows a Delete button on the row. It doesn't delete straight away. Deleting
-  gives an Undo.
-- **Toasts:** a subtask's tick and progress show only on its row: no toast. Top-level tasks keep their tick Undo,
+- **A plain swipe left, with no hold,** shows a Delete button on the row, as in iOS's apps. A "full swipe" deletes
+  without the tap: carrying on left past about half the row, from rest or from where Delete shows. A haptic marks the
+  moment it's past that point, and moving back before letting go cancels. Deleting either way leaves the Undo line
+  (user, 2026-10-07; the Undo line is what makes a delete without a tap safe).
+- **Toasts:** a subtask's tick, progress and adding show only on its row: no toast (the handoff's "no toasts for
+  subtask actions except the delete Undo"). An added subtask is taken back by deleting it, which has its Undo. This
+  also ends the "Added 1 subtask" toast replacing itself unseen when two are added in a row. Top-level tasks keep their tick Undo,
   since their row slides away. Deleting, and a parent closing its subtasks, keep their Undo everywhere.
+- **An Undo for one row is a line where the row was, not a toast** (user, 2026-10-07). It's used both when a row is
+  deleted and when a top-level task is ticked done and leaves the list. The row shrinks to a 48px line, "Deleted
+  “Load chairs” · Undo" or "Done: Pack the van + 4 subtasks · Undo", for about 5 seconds. A delete is sent when the
+  line folds away, or when Pocket leaves the screen or is closed. Each action keeps its own line, so quick ticks no
+  longer merge into "3 done". Toasts are left for what isn't about one row: Move all to today, offline and error
+  messages, and a task coming due.
 - Every gesture is also in the task's ⋯ menu.
 
 ### 6. Order, from Vikunja's List view (before part 4, which needs it)
@@ -84,11 +94,27 @@ The server is on Vikunja 2.7.0, which checks that a position's view belongs to t
 - A subtask in another project has no position in this view: those go after the others, by id.
 - **Done tasks** go in a collapsed "Done (24)" section below the open ones. It's loaded when opened, with the most
   recently done first, and can't be reordered. It replaces the Show done tasks link.
-- **`pocket:order`:** find out whether List view positions can replace the order line in a template's and a run's
-  description. Check that the plugin can read positions when it times a step; that steps copied one after another get
-  positions in that order; that an inserted step can be given a position between two others; and that a reorder made
-  in Vikunja's web app works too. If positions can do it, back the order line out and use them. Then drag-to-reorder
-  replaces the ↑ ↓ buttons on a template's steps.
+- **`pocket:order` stays, for a template's and a run's steps.** We looked into whether List view positions could do
+  its job (evidence in the 2026-10-07 positions report), and they can't:
+  - The List view always applies its own `done = false` filter, so a template, its steps and a finished run, all done,
+    can't be read back through it.
+  - A new or copied task gets half the lowest position, so it goes to the top: a run copied step by step would come
+    out reversed unless every step's position was written again.
+  - Vikunja's web app never sorts or drags subtasks by position, so a step's position would show nowhere but Pocket.
+
+  Drag-to-reorder still replaces the ↑ ↓ buttons on a template's steps, by writing the order line, as the buttons do.
+- **How positions are used on the Project tab:**
+  - **Reading:** `GET /api/v2/projects/{id}/views/{list}/tasks?expand=subtasks`, every page. Top-level tasks are in
+    the order it returns them. Each parent's subtasks come unsorted (done ones too), so sort them by their own
+    position. A task with position 0 (moved in from another project, say) goes after the others, by id.
+  - **Which List view:** the project's first List view, by its position and then id. Pocket remembers it, and looks it
+    up again on a 404 or 403. With no List view, the order is by id and dragging is off.
+  - **Writing a move:** `PUT /api/v2/tasks/{id}/position {project_view_id, position}`, at the midpoint of the
+    neighbours' positions, as the web app does it (`calculateItemPosition`). Vikunja renumbers the whole view itself
+    once a position falls below 0.01, so Pocket doesn't renumber. If the reply's position isn't the one sent, reload.
+  - **Placing a new task** (part 4's subtask after the cursor): send the midpoint `position` in the create request
+    itself, which Vikunja keeps.
+  - **Permissions:** a move needs Read & write. An API token needs Tasks → position.
 - **#173** (a table of our own) is closed: Vikunja has the field.
 
 ### 4. The add footer follows what you touched (Project tab)
@@ -147,10 +173,20 @@ A subtask with no date shows under "Added today, no date" only if it's assigned 
 |---|---|---|
 | 1 | Copy (0) and bugs (1) | #7 (#175), #8 (#174), #16 (#158) |
 | 2 | Actions, store, one row, tokens, guardrails, specimen | |
-| 3 | `pocket:order` and positions: findings, decided before part 5 | #9 (#173) |
+| 3 | `pocket:order` and positions: looked into; the order line stays for steps | #9 (#173) |
+| 3b | Faster tests: pure logic (actions, order helpers) under `node --test`, no browser or server; Playwright's clock fast-forwarded where tests wait for real time | |
 | 4 | Rows (3) | #14 (#168), #6 (#176) |
+| 4a | Test setup: Postgres in the local Vikunja (`DB=sqlite` keeps SQLite); an idle signal for what's waiting to be sent (`<html data-sync>`) that tests wait on; new and touched tests find things by role and name (`getByRole`) with assertions that retry; a Gotchas section in docs/development.md with what earlier parts tripped on | |
+| 4b | Messages where they belong: every `notify()` call gets a place (a line on the row, under a heading, in the sheet); a toast only where there's truly none (user, 2026-10-07: "those suck") | |
 | 5 | Order (6) | #11 (#171) |
 | 6 | Add footer (4) | #13 (#169), #10 (#172), #4 (#178) |
 | 7 | Completing a parent (5) | |
 | 8 | Sharing (7) | #12 (#170), #5 (#177), #2 (#180) |
 | 9 | Instant feel (8) and #167 | #3 (#179), #15 (#167) |
+
+## Later, after this round
+
+- **Playwright's test runner** (`@playwright/test`): traces on failure, parallel workers each with a user of their own,
+  fixtures. The tests move over a file at a time.
+- **Timers that wait for the next change:** one timer set for when the next task comes due (worked out again when the
+  list changes or the phone wakes), instead of Today's once-a-minute check and the run screen's 20-second reload.
