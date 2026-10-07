@@ -11,7 +11,7 @@
 // Every task it creates has the run's stamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright';   // BROWSER=webkit runs it on Safari's engine, as on an iPhone
-import { expect, signIn, synced } from './helpers.mjs';
+import { expect, placeSays, signIn, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -113,8 +113,9 @@ try {
     await page.waitForSelector(pendingRow(T('X')));
     await page.click(`${pendingRow(T('X'))} button[aria-label^="Cancel"]`);
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
-    // Its words are back in the box, to change or add again.
+    // Its words are back in the box, to change or add again, and the box says so.
     if (await page.inputValue('#in-capture') !== `${T('X')} tomorrow`) throw new Error('box: ' + await page.inputValue('#in-capture'));
+    await placeSays(page, 'cap', 'Cancelled. It\'s back in the box.');
     await page.fill('#in-capture', '');
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
   });
@@ -148,7 +149,7 @@ try {
     await page.setInputFiles('#in-photo', photo('offline.png'));
     await capture(T('F'));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('F'))} [aria-label="Attachments, 1 waiting to upload"]`);
-    await page.waitForSelector('#toast-msg:has-text("Saved offline, with the photo. Both go to Vikunja")');
+    await placeSays(page, 'cap', 'Saved offline, with the photo. Both go to Vikunja');                // by the add box
   });
 
   await step('still-waiting-after-reopening', async () => {
@@ -203,7 +204,7 @@ try {
     await page.route(lists, cutOff);
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
-    await page.waitForSelector('#toast-msg:has-text("The photo uploads when the connection")');
+    await placeSays(page, 'cap', 'The photo uploads when the connection');
     // The task is in Vikunja, so it's a normal row, with its photo counted.
     await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) [aria-label="Attachments, 1 waiting to upload"]`);
     await page.click(`.row .body:has-text("${T('G')}")`);
@@ -338,7 +339,7 @@ try {
     await page.route('**/api/v2/tasks/*/attachments', cutOff);
     await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
-    await page.waitForSelector('#toast-msg:has-text("no room left on this phone to keep this until there\'s a connection. Keep Pocket open")');
+    await placeSays(page, 'cap', 'no room left on this phone to keep this until there\'s a connection. Keep Pocket open');
     await page.waitForSelector(`.row:has(.title:has-text("${T('S')}")) [aria-label="Attachments, 1 waiting to upload"]`);
     cut = false;
     await online();

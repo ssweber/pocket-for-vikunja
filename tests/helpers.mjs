@@ -30,6 +30,14 @@ export async function signIn(page, url, token){
   await expect(page.locator('#view .loading')).toHaveCount(0, { timeout: 15000 });
 }
 
+/* A message in its place (lines.js): under a heading ("overdue"), by the add box ("cap"), in a sheet ("sheet:notes"), on
+   a run ("step", "run"), as Pocket asked for it (data-place). Its action is a button with its name: line.getByRole(…). */
+export const placeLine = (page, where) => page.locator(`.place-line[data-place="${where}"]`);
+export const placeSays = (page, where, text, timeout = 20000) => expect(placeLine(page, where)).toContainText(text, { timeout, ignoreCase: true });
+// A line in a row's place: what it says, and its action.
+export const rowLine = (page, text) => page.locator('.row-line', { hasText: text });
+// No message at the bottom of the screen.
+export const noToast = async page => { if (await page.locator('#toast.show').count()) throw new Error('the toast said: ' + await page.textContent('#toast-msg')); };
 // A message showing in the toast (a hidden one keeps its words, only see-through: so only one showing counts).
 export const toast = (page, text, timeout = 20000) => expect(page.locator('#toast.show #toast-msg')).toContainText(text, { timeout, ignoreCase: true });
 // So the next one is new: the one showing goes now, as its own timer would make it. (Not by moving the page's clock on,

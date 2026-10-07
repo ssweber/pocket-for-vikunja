@@ -13,7 +13,7 @@
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, signIn, synced, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, noToast, placeLine, placeSays, rowLine, signIn, synced, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -43,8 +43,6 @@ const errors = [];
 /* Time passing on the page only, `ms` of it at once: its timers due meanwhile run (a toast going, Today's minute), then
    its clock is put back on the real time, which Vikunja's dates are on. */
 const later = async ms => { await page.clock.fastForward(Math.max(0, Math.round(ms))); await page.clock.setSystemTime(Date.now()); };
-// How long the toast showing has left, on the page's clock (0 if none is showing).
-const toastLeft = () => page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; return t?.show ? Math.max(0, t.until - Date.now()) : 0; });
 // A token without some permission gets 401s, which Pocket handles; the browser still logs them, so they're left out here,
 // with the reply a test cuts off on purpose.
 page.on('console', m => m.type() === 'error' && !/status of 401|ERR_CONNECTION_RESET/.test(m.text()) && errors.push(m.text()));
@@ -132,7 +130,9 @@ try {
       const shown = await page.getAttribute(row, 'data-pct');
       if (shown !== '50%') throw new Error('showed ' + shown + ' while sliding');
     });
-    await page.waitForSelector('#toast-msg:text("Progress set to 50%")', { timeout: 10000 });
+    // On its bar only: sliding it back is the undo. A screen reader hears it.
+    await expect(page.locator('#said')).toHaveText(`Progress of ${title} set to 50%`);
+    await noToast(page);
     if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
     if (await page.$(`${row}.held, ${row}.setting`)) throw new Error('the row is still held');
     const t = await apiTask();
@@ -181,11 +181,13 @@ try {
     const daily = await (await api(`/projects/${me.settings.default_project_id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Pocket smoke repeats ' + stamp, due_date: due.toISOString(), repeat_after: 86400 }) })).json();
     const lateRow = `.row:has(.title:has-text("${late}"))`;
     await page.click('#btn-refresh');
-    await page.waitForSelector(`.sec.overdue + .list ${lateRow}`, { timeout: 15000 });
+    await page.waitForSelector(`.sec.overdue ~ .list ${lateRow}`, { timeout: 15000 });
     await page.click('#btn-overdue-today');
-    await page.waitForSelector(`.sec.today + .list ${lateRow}`, { timeout: 15000 });
-    const msg = await page.textContent('#toast-msg');
-    if (!/^Moved \d+ tasks? to today\. \d+ repeating tasks? stays?: tick/.test(msg)) throw new Error('toast: ' + msg);
+    await page.waitForSelector(`.sec.today ~ .list ${lateRow}`, { timeout: 15000 });
+    // Said under the Overdue heading, which stays meanwhile, with its Undo.
+    await expect(placeLine(page, 'overdue')).toContainText(/^Moved \d+ to today\. \d+ repeating tasks? stays?: tick/);
+    await expect(placeLine(page, 'overdue').getByRole('button', { name: 'Undo' })).toBeVisible();
+    await noToast(page);
     if (new Date((await (await api('/tasks/' + daily.id)).json()).due_date).getTime() !== due.getTime()) throw new Error('the repeating task was moved');
     await api('/tasks/' + daily.id, { method: 'DELETE' });
     // At 9:00 as it was, or, once 9:00 has gone today, the next whole hour (in the day's last hour, 11:59 PM).
@@ -195,8 +197,8 @@ try {
     if (want < now) want.setTime(next.getTime());
     const moved = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (moved.getTime() !== want.getTime()) throw new Error('moved to ' + moved);
-    await page.click('#toast-act:has-text("Undo")');
-    await page.waitForSelector(`.sec.overdue + .list ${lateRow}`, { timeout: 15000 });
+    await placeLine(page, 'overdue').getByRole('button', { name: 'Undo' }).click();
+    await page.waitForSelector(`.sec.overdue ~ .list ${lateRow}`, { timeout: 15000 });
     const back = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (back.getTime() !== due.getTime()) throw new Error('undo put it at ' + back);
   });
@@ -205,7 +207,7 @@ try {
     if (!await page.evaluate(() => document.activeElement?.id === 'in-search')) throw new Error('the search box isn\'t focused');
     await page.waitForSelector('#capture', { state: 'hidden', timeout: 5000 }).catch(() => { throw new Error('the add box still shows'); });
     await page.fill('#in-search', String(stamp));
-    await page.waitForSelector(`#view .sec:has-text("Open") + .list ${row}`, { timeout: 10000 });
+    await page.waitForSelector(`#view .sec:has-text("Open") ~ .list ${row}`, { timeout: 10000 });
     await page.click('#btn-search-cancel');
     await page.waitForSelector('#capture:not([hidden])');
     if (await page.getAttribute('nav.tabs a[data-tab=today]', 'aria-current') !== 'page') throw new Error('Cancel didn\'t go back to Today');
@@ -356,7 +358,9 @@ try {
     if (await page.getAttribute('#in-capture', 'placeholder') !== 'What\'s this photo for?') throw new Error('placeholder: ' + await page.getAttribute('#in-capture', 'placeholder'));
     await page.fill('#in-capture', t);
     await page.click('#f-capture .go');
-    await page.waitForSelector('#toast-msg:has-text("with the photo")', { timeout: 15000 });
+    await expect(page.locator(`.row.fresh:has(.title:has-text("${t}"))`)).toBeVisible({ timeout: 15000 });   // where it went
+    await synced(page);
+    await noToast(page);
     const made = (await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items[0];
     if (made?.attachments?.[0]?.file?.name !== 'receipt.png') throw new Error('attachments: ' + JSON.stringify(made?.attachments));
   });
@@ -366,14 +370,15 @@ try {
     await page.click('#cap-chips .chip[data-kind=new-project]');
     const made = await Promise.race([
       page.waitForSelector(`#cap-chips .chip[data-kind=project]:has-text("${name}")`, { timeout: 15000 }).then(() => true),
-      page.waitForSelector('#toast-msg:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
+      page.waitForSelector('#capture .place-line:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
     ]);
     if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
     const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     if (!project) throw new Error('project not found in Vikunja');
     createdProjects.push(project.id);
     await page.click('#f-capture .go');
-    await page.waitForSelector(`#toast-msg:has-text("Added to ${name}")`, { timeout: 15000 });
+    await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 15000 });
+    await synced(page);
     const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
   });
@@ -393,13 +398,14 @@ try {
     await page.click('#cap-chips .chip[data-kind=new-project]');
     const made = await Promise.race([
       page.waitForSelector(`#cap-chips .chip:not([data-kind]):has-text("${name}")`, { timeout: 15000 }).then(() => true),
-      page.waitForSelector('#toast-msg:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
+      page.waitForSelector('#capture .place-line:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
     ]);
     if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
     const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     createdProjects.push(project.id);
     await page.click('#f-capture .go');
-    await page.waitForSelector('#toast-msg:has-text("Added 3 tasks")', { timeout: 20000 });
+    await page.waitForSelector(`.row .title:has-text("${line('B')}")`, { timeout: 20000 });
+    await synced(page);
     const find = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     for (const t of [line('A'), line('B'), `Pocket smoke list line C +Other ${stamp}`]) {
       const task = await find(t);
@@ -452,8 +458,8 @@ try {
     await page.click('#cap-nest');
     if (!(await page.textContent('#cap-chips')).includes('1 task + 2 subtasks')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
     await page.click('#f-capture .go');
-    await page.waitForSelector('#toast-msg:has-text("Added 1 task with 2 subtasks")', { timeout: 20000 });
-    await page.waitForSelector(`.row .title:has-text("${parentTitle}")`, { timeout: 15000 });
+    await page.waitForSelector(`.row.fresh .title:has-text("${parentTitle}")`, { timeout: 15000 });
+    await noToast(page);
   });
   await step('subtasks-in-sheet', async () => {
     await page.click(`.row .body:has-text("${parentTitle}")`);
@@ -493,9 +499,10 @@ try {
   });
   await step('claim-a-subtask', async () => {
     // "+ me" on an open subtask assigns it to you, and your picture there lets it go. A done one has no slot.
-    const me = await (await api('/user')).json(), row = '#d-subtasks .row:nth-of-type(2)';
-    const id = +await page.getAttribute(row, 'data-id'), people = async () => ((await (await api('/tasks/' + id)).json()).assignees || []).map(u => u.id);
-    if (await page.$('#d-subtasks .row:first-of-type .claim')) throw new Error('a done subtask with no one on it has a slot');
+    // Found by its id: the order Vikunja gives a task's subtasks in can differ from one reading to the next.
+    const me = await (await api('/user')).json(), id = +await page.getAttribute('#d-subtasks .row:not(.done) >> nth=0', 'data-id');
+    const row = `#d-subtasks .row[data-id="${id}"]`, people = async () => ((await (await api('/tasks/' + id)).json()).assignees || []).map(u => u.id);
+    if (await page.$('#d-subtasks .row.done .claim')) throw new Error('a done subtask with no one on it has a slot');
     await page.click(`${row} .claim:has(.me)`);
     await page.waitForSelector(`${row} .claim.mine .av`);
     for (let i = 0; JSON.stringify(await people()) !== JSON.stringify([me.id]); i++) { if (i > 40) throw new Error('never assigned'); await new Promise(r => setTimeout(r, 250)); }
@@ -548,22 +555,23 @@ try {
     await page.click(`.row .body:has-text("${parentTitle}")`);
     await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 10000 });
     await page.click('#d-done');
-    await page.waitForSelector('#toast.show #toast-msg:has-text("with 3 subtasks")', { timeout: 20000 });
+    await placeSays(page, 'sheet:subtasks', 'with 3 subtasks');
     await page.waitForSelector('#d-subcount:text("4/4")', { timeout: 5000 });
-    await page.click('#toast-act:has-text("Undo")');
+    await placeLine(page, 'sheet:subtasks').getByRole('button', { name: 'Undo' }).click();
     await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 15000 });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
-  await step('paste-list-undo', async () => {
-    const a = `Pocket smoke undo 1 ${stamp}`, b = `Pocket smoke undo 2 ${stamp}`;
+  await step('a-pasted-list-on-screen-says-nothing', async () => {
+    // Its rows light up where they went; one added by mistake is deleted from its row, which has its Undo.
+    const a = `Pocket smoke paste 1 ${stamp}`, b = `Pocket smoke paste 2 ${stamp}`;
     await page.fill('#in-capture', `1. ${a} tomorrow\n2. ${b} tomorrow`);
     await page.click('#f-capture .go');
-    await page.waitForSelector('#toast-msg:has-text("Added 2 tasks")', { timeout: 20000 });
-    await page.waitForSelector(`.row .title:has-text("${b}")`, { timeout: 15000 });
-    await page.click('#toast-act:has-text("Undo")');
-    await page.waitForSelector(`.row .title:has-text("${a}")`, { state: 'detached', timeout: 15000 });
-    await page.waitForSelector(`.row .title:has-text("${b}")`, { state: 'detached', timeout: 15000 });
+    await page.waitForSelector(`.row.fresh .title:has-text("${b}")`, { timeout: 15000 });
+    await page.waitForSelector(`.row.fresh .title:has-text("${a}")`, { timeout: 15000 });
+    await synced(page);
+    await noToast(page);
+    if (await placeLine(page, 'cap').count()) throw new Error('the add box said: ' + await placeLine(page, 'cap').textContent());
   });
   if (ASSIGNEE) await step('assign-from-quick-add', async () => {
     const t = `Pocket smoke assign ${stamp}`;
@@ -574,7 +582,7 @@ try {
     if (!chips.includes('@' + ASSIGNEE)) throw new Error('chips: ' + chips);
     if (canLook) await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody-${stamp}")`, { timeout: 15000 });   // said before sending
     await page.click('#f-capture .go');
-    await page.waitForSelector(`#toast-msg:has-text("no user @nobody-${stamp}")`, { timeout: 20000 });
+    await placeSays(page, 'cap', `no user @nobody-${stamp}`);               // what didn't go as asked, by the add box
     // The assigned person leaves the title, as in Vikunja, when Pocket could check; the unknown one stays.
     const saved = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title.startsWith(t));
     const want = canLook ? `${t} @nobody-${stamp}` : `${t} @${ASSIGNEE} @nobody-${stamp}`;
@@ -607,7 +615,8 @@ try {
     await page.click(auto);
     await page.waitForSelector(`#cap-chips .chip.warn`, { state: 'detached' });
     await page.click('#f-capture .go');
-    await page.waitForSelector(`#toast-msg:text-is("Added to ${to.title}")`, { timeout: 20000 });   // not the last step's toast
+    await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 20000 });   // tomorrow: on Today, so nothing's said
+    await synced(page);
     const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== to.id) throw new Error('project ' + task?.project_id);
     if (!task.assignees?.some(u => u.username === ASSIGNEE)) throw new Error('not assigned');
@@ -637,19 +646,28 @@ try {
   const tick = title => page.getByRole('button', { name: 'Mark done: ' + title, exact: true }).click({ timeout: 15000 });
   const toastGone = () => toastGoneOn(page).catch(() => {});
 
-  await step('quick-add-keeps-focus-with-undo-and-open', async () => {
-    const t = `Pocket smoke focus ${stamp}`;
+  await step('quick-add-keeps-focus-and-says-where-a-task-went', async () => {
+    // On this screen, its row lights up and nothing's said; off it (due next month, on Today), the add box says where it
+    // went, with Open. The box keeps the focus for the next one either way.
+    const t = `Pocket smoke focus ${stamp}`, far = `Pocket smoke far ${stamp}`, home = projects2.find(p => p.id === home2)?.title;
     await toastGone();
     await page.focus('#in-capture');
     await page.fill('#in-capture', t);
     await page.click('#f-capture .go');
-    await page.waitForSelector('#toast.show #toast-msg:has-text("Added to")', { timeout: 20000 });
+    await expect(page.locator(`.row.fresh:has(.title:has-text("${t}"))`)).toBeVisible({ timeout: 20000 });
     if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
-    if (await page.textContent('#toast-act') !== 'Undo' || await page.textContent('#toast-act2') !== 'Open') throw new Error('actions: ' + await page.textContent('#toast'));
-    const [made2] = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).filter(x => x.title === t);
-    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
     await synced(page);
-    if (await get(made2.id)) throw new Error('Undo left the task');
+    await noToast(page);
+    await page.fill('#in-capture', `${far} in 5 weeks`);
+    await page.click('#f-capture .go');
+    await placeSays(page, 'cap', `Added to ${home}, due `);
+    await noToast(page);
+    if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
+    if (!(await page.textContent('#said')).startsWith(`Added to ${home}`)) throw new Error('a screen reader hears: ' + await page.textContent('#said'));
+    await placeLine(page, 'cap').getByRole('button', { name: 'Open' }).click();
+    await expect(page.locator('#d-title')).toHaveValue(far);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.evaluate(() => document.activeElement?.blur());
   });
 
@@ -882,28 +900,23 @@ try {
   });
 
   await step('today-moves-a-task-to-overdue-as-its-time-passes', async () => {
-    // Left open on Today: once a minute it regroups, without asking Vikunja, and a task whose time passes says so.
+    // Left open on Today: once a minute it regroups, without asking Vikunja, and a task whose time passes lights up as it
+    // moves to Overdue, with no message at the bottom; a screen reader hears it.
     const t = `Pocket smoke due soon ${stamp}`, due = new Date(Date.now() + 6000);
     if (due.getDate() !== new Date().getDate() || !due.getHours() && !due.getMinutes()) return;   // midnight: a day without a time
     const made = await make(t, { due_date: due.toISOString() });
     try {
       await toastGone();
       await refreshToday();
-      await page.waitForSelector(`.sec.today + .list ${rowOf(t)}`, { timeout: 15000 });
-      // An Undo showing (a tick's, say) isn't replaced: the message waits for it to go. It's put up just before the time
-      // passes: the minute's own timer, should it come between, then waits for it too, rather than say it first. The
-      // page's clock is moved on, not waited for, and kept there until the message is said.
-      // As Vikunja keeps the time: in whole seconds, so it's due up to a second before `due`.
-      await page.clock.fastForward(Math.max(0, Math.floor(due / 1000) * 1000 - await page.evaluate(() => Date.now()) - 500));
-      await page.evaluate(() => Alpine.$data(document.body).notify('Done: something', { label: 'Undo', done: true, fn(){} }));
-      await page.clock.fastForward(1500);
+      await page.waitForSelector(`.sec.today ~ .list ${rowOf(t)}`, { timeout: 15000 });
+      // The page's clock is moved on past its time, not waited for. As Vikunja keeps the time: in whole seconds, so it's
+      // due up to a second before `due`.
+      await page.clock.fastForward(Math.max(0, Math.floor(due / 1000) * 1000 - await page.evaluate(() => Date.now()) + 1000));
       await page.evaluate(() => Alpine.$data(document.body).tickToday());     // what the minute's timer does
-      await page.waitForSelector(`.sec.overdue + .list ${rowOf(t)}`, { timeout: 5000 });
-      if (!await page.$('#toast.show #toast-msg:text-is("Done: something")')) throw new Error('the Undo was replaced');
-      await later(await toastLeft() + 200);
-      // Looked for every 100ms, not every frame: the page's frames follow its clock, which later() has just set back.
-      await page.waitForFunction(m => document.querySelector('#toast.show #toast-msg')?.textContent === m, `“${t}” is due now`, { timeout: 10000, polling: 100 });
-    } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
+      await expect(page.locator(`.sec.overdue ~ .list ${rowOf(t)}`)).toHaveClass(/came-due/, { timeout: 5000 });
+      await expect(page.locator('#said')).toHaveText(`“${t}” is due now`);
+      await noToast(page);
+    } finally { await page.clock.setSystemTime(Date.now()); await api('/tasks/' + made.id, { method: 'DELETE' }); }
   });
 
   await step('reminders-in-the-sheet', async () => {
@@ -981,7 +994,8 @@ try {
       await page.click('#cap-chips .chip[data-kind=remind]');
       await page.waitForSelector('#cap-chips .chip[data-kind=remind][aria-pressed=true]');
       await page.press('#in-capture', 'Enter');
-      await page.waitForSelector('#toast.show #toast-msg:has-text("Added to")', { timeout: 20000 });
+      await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 20000 });   // today at 4pm: on Today
+      await synced(page);
       const made = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
       try {
         if (JSON.stringify((made?.reminders || []).map(r => [r.relative_to, r.relative_period])) !== JSON.stringify([['due_date', 0]])) throw new Error('reminders: ' + JSON.stringify(made?.reminders));
@@ -998,11 +1012,16 @@ try {
     await page.fill('#in-search', t);
     const open = `#view div:has(> .sec:has-text("Open")) ${rowOf(t)}`, done = `#view div:has(> .sec:has-text("Done")) ${rowOf(t)}`;
     await page.waitForSelector(open, { timeout: 10000 });
+    // A line where it was, with its Undo, as in a list; when it folds, the task is under Done.
     await page.click(`${open} > .check`);
+    await expect(page.locator(`${open}.lined .row-line`)).toContainText('Done:');
+    await noToast(page);
+    await later(5000);
     await page.waitForSelector(done, { timeout: 10000 });
     await page.click(`${done} > .check`);                                   // and back
+    await expect(page.locator(`${done}.lined .row-line`)).toContainText('Not done:');
+    await later(5000);
     await page.waitForSelector(open, { timeout: 10000 });
-    await page.waitForSelector('#toast.show #toast-msg:text-is("Marked not done")');
     await page.click('#btn-search-cancel');
   });
 
@@ -1038,9 +1057,12 @@ try {
     await page.fill('#d-desc-in', 'Mine again');
     await elsewhere('Theirs again');
     await page.click('#btn-sheet-close');
-    await page.waitForSelector('#toast.show #toast-msg:has-text("changed elsewhere")', { timeout: 15000 });
+    // Said on its row, with Open, to see both.
+    const seeBoth = rowLine(page, 'changed elsewhere').getByRole('button', { name: 'Open' });
+    await expect(seeBoth).toBeVisible({ timeout: 15000 });
+    await noToast(page);
     if (!(await notes()).includes('Theirs again')) throw new Error('written over on close: ' + await notes());
-    await page.click(`${rowOf(t)} > .body`);
+    await seeBoth.click();
     await page.waitForSelector('#d-desc-conflict:has-text("Theirs again")', { timeout: 15000 });
     if (await page.inputValue('#d-desc-in') !== 'Mine again') throw new Error('kept: ' + await page.inputValue('#d-desc-in'));
     await page.click('#d-desc-cancel');
@@ -1118,8 +1140,9 @@ try {
     await toastGone();
     await refreshToday();
     await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
-    await page.waitForSelector('#toast.show #toast-msg:has-text("Repeats")');
-    await page.click('#toast-act:has-text("Undo")');
+    // On its row, which stays, with its next date.
+    await rowLine(page, 'Repeats · next').getByRole('button', { name: 'Undo' }).click();
+    await noToast(page);
     const want = new Date(r.due_date).getTime();
     await synced(page);
     if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
@@ -1149,10 +1172,53 @@ try {
       await refreshToday();
       await page.route(`**/api/v2/tasks/${r.id}`, lose);
       await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
-      await page.waitForSelector('#toast.show #toast-msg:has-text("Repeats")', { timeout: 20000 });
+      await expect(rowLine(page, 'Repeats · next')).toBeVisible({ timeout: 20000 });
       const due = new Date((await get(r.id)).due_date).getTime();
       if (due !== new Date(r.due_date).getTime() + 864e5) throw new Error('due ' + (await get(r.id)).due_date);
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, lose); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+  });
+
+  await step('a-tick-not-saved-says-so-on-its-row-with-try-again', async () => {
+    // The tick goes back, and a line on its row says why, with Try again, which ticks it.
+    const r = await make(`Pocket smoke not saved ${stamp}`, { due_date: todayAt(23) });
+    const cut = x => x.request().method() === 'PATCH' ? x.abort('connectionreset') : x.fallback();
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.route(`**/api/v2/tasks/${r.id}`, cut);
+      await tick(r.title);
+      const line = rowLine(page, 'Not saved: no connection');
+      await expect(line).toBeVisible({ timeout: 20000 });
+      await noToast(page);
+      await page.unroute(`**/api/v2/tasks/${r.id}`, cut);
+      await line.getByRole('button', { name: 'Try again' }).click();
+      await expect(rowLine(page, 'Done:')).toContainText(r.title);
+      await synced(page);
+      if (!(await get(r.id)).done) throw new Error('Try again did not tick it');
+    } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+  });
+  await step('a-sheet-save-not-made-says-so-in-the-sheet', async () => {
+    // At the top of the sheet, with Try again; once saved, it goes.
+    const r = await make(`Pocket smoke sheet not saved ${stamp}`, { due_date: todayAt(23) });
+    const refuse = x => x.request().method() === 'PATCH' ? x.abort('connectionreset') : x.fallback();
+    try {
+      await refreshToday();
+      await page.click(`${rowOf(r.title)} > .body`, { timeout: 15000 });
+      await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
+      await page.route(`**/api/v2/tasks/${r.id}`, refuse);
+      await page.selectOption('#d-prio', '3');
+      const line = placeLine(page, 'sheet:top');
+      await expect(line).toContainText('Not saved: no connection', { timeout: 20000 });
+      await expect(line).toHaveClass(/failed/);
+      await noToast(page);
+      await page.unroute(`**/api/v2/tasks/${r.id}`, refuse);
+      await line.getByRole('button', { name: 'Try again' }).click();
+      await expect(line).toHaveCount(0);
+      await synced(page);
+      if ((await get(r.id)).priority !== 3) throw new Error('Try again did not save it');
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, refuse); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
 
   await step('a-task-moves-and-goes-with-its-subtasks', async () => {
