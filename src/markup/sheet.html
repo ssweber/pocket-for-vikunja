@@ -15,18 +15,22 @@
     <div class="grab"><i></i></div>
     <!-- Its number in Vikunja; not for a checklist's template, run or step, which are found by name -->
     <template x-if="sheet.kind === 'task' && sheet.task?.identifier && !checklistRole?.match(/template|tplstep|run|step/)"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
-    <!-- What's done to the task as a whole: moving it up or down its list, making it a checklist template, deleting it -->
-    <template x-if="sheet.kind === 'task' && sheet.task && canEdit"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
+    <!-- What's done to the task as a whole: sharing its progress, opening it in Vikunja, and, with write access, moving it
+         up or down its list, making it a checklist template, deleting it -->
+    <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
     <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)" @keydown.escape.stop="sheet.menu = false">
+      <button role="menuitem" id="d-share-text" @click="sheet.menu = false; shareProgress('task')">Share progress as a text</button>
+      <button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button>
+      <a role="menuitem" id="d-open-vikunja" :href="vikunjaUrl('task')" target="_blank" rel="noopener" @click="sheet.menu = false">Open in Vikunja ↗</a>
       <!-- The way to move it for a keyboard or a screen reader, as a finger does by holding its row and moving it -->
-      <template x-for="m in sheetMoves ? [sheetMoves] : []" :key="0"><div class="menu-pair">
+      <template x-for="m in canEdit && sheetMoves ? [sheetMoves] : []" :key="0"><div class="menu-pair">
         <button role="menuitem" id="d-move-up" :disabled="!m.up" @click="moveBy(sheet.task, -1, 'own')">Move up</button>
         <button role="menuitem" id="d-move-down" :disabled="!m.down" @click="moveBy(sheet.task, 1, 'own')">Move down</button>
       </div></template>
-      <template x-if="checklistRole === 'candidate' && subtasks.length"><button role="menuitem" id="d-make-template" :disabled="sheet.checklistBusy" @click="sheet.menu = false; makeTemplate()">
+      <template x-if="canEdit && checklistRole === 'candidate' && subtasks.length"><button role="menuitem" id="d-make-template" :disabled="sheet.checklistBusy" @click="sheet.menu = false; makeTemplate()">
         <span>Use as checklist template</span><small>Its subtasks become the steps of every run, in this order.</small></button></template>
-      <button role="menuitem" class="danger" id="d-delete" @click="sheet.menu = false; deleteTask()" x-text="deleteLabel"></button>
+      <template x-if="canEdit"><button role="menuitem" class="danger" id="d-delete" @click="sheet.menu = false; deleteTask()" x-text="deleteLabel"></button></template>
     </div></template>
   </div>
   <div class="scroll" id="sheet-body">

@@ -47,3 +47,8 @@ export const headText = n => n ? `Done, but ${n === 1 ? '1 subtask is' : n + ' s
 
 // A run's step done or skipped without a connection: when it goes.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
+
+// Something copied, said where it was copied from: progress as a text (where there's no share sheet), a Markdown list, a
+// task's notes, a comment; or that the browser wouldn't allow it.
+export const COPIED = {text: 'Copied: paste it into a message', markdown: 'Copied as a Markdown list: paste it into your notes', notes: 'Copied the notes',
+  comment: 'Copied the comment', failed: 'Not copied: this browser didn\'t allow it'};

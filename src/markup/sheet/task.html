@@ -74,7 +74,8 @@
       </div></template>
       <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
 
-      <div class="h3">Notes</div>
+      <!-- Copy: the notes as plain text, to paste anywhere -->
+      <div class="h3">Notes<template x-if="!sheet.editingDesc && notesText(sheet.task).trim()"><button class="icon-btn plain copy-btn" id="d-desc-copy" aria-label="Copy the notes" @click="copyNotes()"><svg class="i"><use href="#i-copy"/></svg></button></template></div>
       <div class="card" id="d-desc-card">
         <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || (canEdit && editDesc())" @keydown.enter="canEdit && editDesc()"></div></template>
         <template x-if="sheet.editingDesc"><div class="desc-edit">
@@ -213,7 +214,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         <template x-if="sheet.commentsNote"><p class="note" style="padding:12px 14px;margin:0" x-html="sheet.commentsNote"></p></template>
         <template x-if="!sheet.comments && !sheet.commentsNote"><div class="loading" style="padding:16px">Loading…</div></template>
         <template x-for="c in sheet.comments || []" :key="c.id">
-          <div class="comment"><div class="who"><b x-text="c.author?.name || c.author?.username || 'Someone'"></b> · <span class="num" x-text="new Date(c.created).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+          <div class="comment"><div class="who"><b x-text="c.author?.name || c.author?.username || 'Someone'"></b> · <span class="num" x-text="new Date(c.created).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div>
+            <button class="icon-btn plain copy-btn" aria-label="Copy this comment" @click="copyComment(c)"><svg class="i"><use href="#i-copy"/></svg></button></div>
         </template>
         <template x-for="c in pendingComments" :key="c.id">
           <div class="comment waiting"><div class="who"><b x-text="user?.name || user?.username || 'You'"></b> · <span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.html)"></div></div>
