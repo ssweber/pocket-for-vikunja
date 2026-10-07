@@ -33,8 +33,9 @@ const after = (due, doneAt) => isSet(due) ? Math.round((new Date(due) - new Date
 
 let failed = 0;
 async function step(name, fn){
-  try { await fn(); console.log('PASS', name); }
-  catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); }
+  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
+  try { await fn(); console.log('PASS', name + secs()); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); }
 }
 
 const stamp = Date.now();

@@ -28,8 +28,9 @@ async function fresh(){                                   // a new browser profi
   for (const p of [vikunja, pocket]) p.on('pageerror', e => errors.push(String(e)));
 }
 async function step(name, fn){
-  try { await fn(); console.log('PASS', name); }
-  catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await pocket?.screenshot({ path: `${OUT}/session-fail-${name}.png` }).catch(() => {}); }
+  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
+  try { await fn(); console.log('PASS', name + secs()); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await pocket?.screenshot({ path: `${OUT}/session-fail-${name}.png` }).catch(() => {}); }
 }
 const vikunjaSignedIn = async () => { await vikunja.goto(SERVER + '/'); await vikunja.waitForLoadState('networkidle'); return !new URL(vikunja.url()).pathname.startsWith('/login'); };
 async function vikunjaSignIn(){

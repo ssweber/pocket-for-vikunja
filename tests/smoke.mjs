@@ -36,8 +36,9 @@ page.on('dialog', d => d.accept());
 
 let failed = 0;
 async function step(name, fn){
-  try { await fn(); console.log('PASS', name); }
-  catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/fail-${name}.png` }); }
+  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
+  try { await fn(); console.log('PASS', name + secs()); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/fail-${name}.png` }); }
 }
 
 const stamp = Date.now();

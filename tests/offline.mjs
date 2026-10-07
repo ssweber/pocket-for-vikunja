@@ -32,8 +32,9 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 let failed = 0;
 async function step(name, fn){
-  try { await fn(); console.log('PASS', name); }
-  catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {}); }
+  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
+  try { await fn(); console.log('PASS', name + secs()); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {}); }
 }
 const capture = async text => { await page.fill('#in-capture', text); await page.click('#f-capture .go'); };
 // A task added offline sits in the normal list, tinted, until it's sent.
