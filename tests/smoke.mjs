@@ -678,6 +678,50 @@ try {
     }
   });
 
+  await step('turning-the-phone-keeps-the-boxes-working', async () => {
+    // Portrait, landscape and back while typing (#158): the box keeps the focus and what's typed, and quick add's marks
+    // stay over the words they mark: the layer behind the box is the same size, scrolled the same, with the same text
+    // (and a zero-width space at its end).
+    const p = await make(`Pocket smoke turn ${stamp}`, { due_date: todayAt(23) });
+    const check = async (id, when) => {
+      const s = await page.$eval('#' + id, ta => {
+        const m = ta.previousElementSibling, a = ta.getBoundingClientRect(), b = m.getBoundingClientRect();
+        return { focus: document.activeElement === ta, value: ta.value, text: m.textContent.slice(0, -1), marks: m.querySelectorAll('mark').length,
+          box: [a.x, a.y, a.width, a.height, ta.clientWidth, ta.scrollTop].map(Math.round), layer: [b.x, b.y, b.width, b.height, m.clientWidth, m.scrollTop].map(Math.round) };
+      });
+      if (!s.focus) throw new Error(`${id} lost the focus ${when}`);
+      if (s.text !== s.value || s.marks < 2) throw new Error(`${id}'s marks don't match its text ${when}: ${s.marks} marks`);
+      if (JSON.stringify(s.box) !== JSON.stringify(s.layer)) throw new Error(`${id}'s marks moved off its words ${when}: box ${s.box}, marks ${s.layer}`);
+      return s.value;
+    };
+    const turn = async id => {
+      // Long enough to scroll once the phone is turned, with marks at the end
+      await page.focus('#' + id);
+      await page.fill('#' + id, 'Pocket smoke turn ' + 'some words to fill the box up '.repeat(14));
+      await page.keyboard.type('tomorrow !2', { delay: 5 });
+      for (const [width, height, name] of [[844, 390, 'in landscape'], [390, 844, 'back in portrait']]) {
+        await page.setViewportSize({ width, height });
+        await page.waitForTimeout(400);
+        const was = await check(id, name);
+        await page.keyboard.type(' *x', { delay: 5 });
+        if (await check(id, name + ', typing') !== was + ' *x') throw new Error(`typing ${name} didn't reach ${id}`);
+      }
+      await page.fill('#' + id, '');
+    };
+    try {
+      await toastGone();
+      await refreshToday();
+      await turn('in-capture');
+      await page.click(`${rowOf(p.title)} > .body`, { timeout: 15000 });
+      await turn('d-subin');
+    } finally {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.fill('#d-subin', '').catch(() => {});
+      await page.fill('#in-capture', '').catch(() => {});
+      if (await page.isVisible('#sheet')) { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); }
+      await api('/tasks/' + p.id, { method: 'DELETE' });
+    }
+  });
 
   await step('today-moves-a-task-to-overdue-as-its-time-passes', async () => {
     // Left open on Today: once a minute it regroups, without asking Vikunja, and a task whose time passes says so.
