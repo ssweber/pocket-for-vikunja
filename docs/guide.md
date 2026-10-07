@@ -102,6 +102,16 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   where, "Added to Orders, due Friday", with **Open**. The bottom of the screen is left for what has no place of its
   own: a countdown reaching zero, a screen that couldn't load, and what's done once its sheet has closed. A screen
   reader hears each message.
+- **Adding subtasks from the bottom box:** on a project's list, the box at the bottom says "Add a task to Moving
+  day" and adds tasks to that project. Touch a task (open its sheet and close it, tick it, or slide its progress) and
+  its row lights up, and the box says "Add a subtask to Pack the van": what you type there now goes under that task,
+  after its last subtask. Touch a subtask instead, and they go right after it, under its parent: "Add a subtask to
+  Pack the van, after Load chairs". Press Enter and type the next: the keyboard stays open, and each goes after the one
+  before. A subtask ticked done hands the box to its parent, so you can add more beside it. The box reads them as the
+  sheet's subtask box does (no `+project`; a pasted list is a subtask a line), with no message: they show on their rows
+  at once, and without a connection they wait there and are sent later. The **×** beside the task's name goes back to
+  adding a task, and so does scrolling the task off the screen, or leaving the project. A run, a template, a done task
+  and a project shared with you to read only can't be added to this way. Today's box always adds a task.
 - **Projects:** your project tree with favorites, and the tasks in each: its open tasks, in order, then its done tasks
   in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. Tick
   one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
