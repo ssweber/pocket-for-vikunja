@@ -1171,8 +1171,9 @@ try {
     await page.fill(`#step-edit-${a.id}`, 'Stir in 2 min');
     await page.press(`#step-edit-${a.id}`, 'Enter');
     await until('the step never changed', async () => (await api('/tasks/' + a.id)).title === 'Stir T#2m');
-    // Refused: what was typed stays in the box, to put right.
+    // Refused: what was typed stays in the box, to put right. (Typed once the box has the focus, as a finger would.)
     await page.click('#d-subtasks .row:nth-of-type(1) .body');
+    await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, a.id, { timeout: 5000 });
     await page.fill(`#step-edit-${a.id}`, 'Stir T#2m:nope');
     await page.press(`#step-edit-${a.id}`, 'Enter');
     await toast('Not changed: step 1, “Stir”');
