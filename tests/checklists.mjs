@@ -1051,8 +1051,9 @@ try {
       // The room to 48px short of the screen's edge is the rest of the way to 100% (EDGE): n tenths of it.
       const box = await page.locator(row).boundingBox(), x = box.x + box.width * .45, y = box.y + box.height / 2;
       await page.mouse.move(x, y); await page.mouse.down();
-      // Looked for from here, not by the page's own frames or timers: those follow its clock, which an earlier step set
-      // back, and can wait seconds.
+      // The hold's own timer is the page's, which follows its clock: an earlier step set that back, and it could wait
+      // seconds. So the clock is moved on through the hold (HOLD_MS, 450ms), and the row looked for from here.
+      await later(450);
       for (let i = 0; !await page.$(`${row}.setting`); i++) { if (i > 40) throw new Error('the hold never began'); await new Promise(r => setTimeout(r, 50)); }
       await page.mouse.move(x + (page.viewportSize().width - 48 - x) * n / 10, y, { steps: 10 });
       await check?.();
