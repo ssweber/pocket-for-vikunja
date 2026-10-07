@@ -1214,7 +1214,7 @@ try {
   // Delete anything this run left behind (every title it creates ends with the run's stamp).
   const tasks = await (await api('/tasks?q=' + stamp)).json().then(d => d.items).catch(() => []);
   for (const t of tasks || []) if (t.title.endsWith(String(stamp))) {
-    // A few tries: a Vikunja on SQLite (like the local one) can answer 500 "database is locked" while busy.
+    // A few tries: a Vikunja on SQLite (the local one with DB=sqlite) can answer 500 "database is locked" while busy.
     let r;
     for (let i = 0; i < 5 && !(r = await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++) await new Promise(ok => setTimeout(ok, 500));
     if (!r.ok) console.log(`Could not delete leftover task ${t.id} (HTTP ${r.status})`);

@@ -188,5 +188,7 @@ A subtask with no date shows under "Added today, no date" only if it's assigned 
 
 - **Playwright's test runner** (`@playwright/test`): traces on failure, parallel workers each with a user of their own,
   fixtures. The tests move over a file at a time.
+- **The rest of the tests on `synced` and `getByRole`:** checklists.mjs still asks Vikunja again and again (`until`)
+  after most changes, and most steps find things by CSS and check them once. They move over as they're touched.
 - **Timers that wait for the next change:** one timer set for when the next task comes due (worked out again when the
   list changes or the phone wakes), instead of Today's once-a-minute check and the run screen's 20-second reload.

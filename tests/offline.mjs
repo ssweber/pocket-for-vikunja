@@ -453,7 +453,7 @@ try {
 } finally {
   await browser.close();
   const left = ((await (await api('/tasks?q=' + stamp)).json()).items || []).filter(t => t.title.endsWith(String(stamp)));
-  // A few tries: a Vikunja on SQLite (like the local one) can answer 500 "database is locked" while busy.
+  // A few tries: a Vikunja on SQLite (the local one with DB=sqlite) can answer 500 "database is locked" while busy.
   for (const t of left) for (let i = 0; i < 5 && !(await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++) await new Promise(ok => setTimeout(ok, 500));
 }
 console.log(failed ? `${failed} failed` : 'All passed');

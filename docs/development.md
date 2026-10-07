@@ -12,7 +12,8 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
 pocket/        the plugin, as it's installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
   app/         the built app, the libraries it uses, and sw.js, which lets it open offline
-tests/         the test files described below, and unit/, the tests that need no browser
+tests/         the test files described below, helpers.mjs (what the end-to-end ones share), and unit/, the tests
+               that need no browser
 scripts/       build.mjs: the build; dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and
                screenshots; check.mjs: what npm run lint checks besides ESLint; specimen.mjs and specimen/: a page
                showing the task row in every state
@@ -45,7 +46,7 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugin loaded straight from `pocket/`, its step times on, and a mock single sign-on provider, and prints Pocket's address. Sign in as `dev` / `dev-password`, or with **Mock SSO**. It keeps building the page as `src/` changes, so edits show up when you reload, until you stop it with Ctrl+C (Vikunja keeps running). After changing `main.go`, run `npm run dev` again.
+This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, with the plugin loaded straight from `pocket/`, its step times on, and a mock single sign-on provider, and prints Pocket's address. `DB=sqlite npm run dev` (or `test:local`) puts Vikunja on SQLite instead. Its containers are `pocket-dev`, `pocket-dev-sso` and `pocket-dev-db`; the next run replaces them. Sign in as `dev` / `dev-password`, or with **Mock SSO**. It keeps building the page as `src/` changes, so edits show up when you reload, until you stop it with Ctrl+C (Vikunja keeps running). After changing `main.go`, run `npm run dev` again.
 
 ## Tests
 
@@ -94,10 +95,45 @@ second after another (its times have whole seconds), a task made on the web befo
 why. Moving the clock on runs everything due meanwhile at once, and what that starts (a request, a redraw) lands after,
 so it's for a wait that's about time, not one that lets the page settle.
 
-Vikunja on SQLite (the local one) now and then answers 500, "database is locked", when a request comes while it's
-still writing the one before: the tests' own requests to Vikunja try again, a few times, as Pocket's do.
+**Waiting for Pocket to send.** `<html data-sync>` says where sending stands: `sending`, `waiting` (something is kept
+that can't go now: no connection, a deletion whose Undo still shows, one Vikunja turned down), or `idle`. `synced(page)`,
+in `tests/helpers.mjs`, waits for `idle`, so a test checks Vikunja once, after it, rather than asking it again and again.
+The helpers also have Playwright's own `expect`, used without its test runner: `await expect(locator).toBeVisible()`
+tries again until it passes, so new tests find things by their role and name (`page.getByRole('button', {name:
+'Mark done: ' + title})`) and use it, rather than `waitForSelector` and a check.
+
+Vikunja on SQLite (the local one, with `DB=sqlite`) now and then answers 500, "database is locked", when a request
+comes while it's still writing the one before: the tests' own requests to Vikunja try again, a few times, as Pocket's do.
 
 The tests delete what they create, except a `pocket-smoke` label that the end-to-end test reuses on later runs, and the `template` label of the checklists test, since Task Management tokens can't delete labels. The checklists test needs a token that can create and update projects and add reactions. With a token that can't create projects, the project step is skipped.
+
+## Gotchas
+
+What tripped up earlier work, for whoever starts next.
+
+- **The page's own timers.** Today checks the time once a minute, a run's screen reloads every 20 seconds, countdowns
+  tick every second, and lines and toasts fold after 5. A test that waits in real time collides with them: move the
+  page's clock with `later(ms)` instead. `later()` puts the clock back on the real time after, and the page's frames
+  follow its clock, so for a moment after it `waitForSelector` (which looks every frame) can stall: use `expect`, or
+  `waitForFunction` with `polling: 100`.
+- **The outbox sends in the background.** A tick, a claim or a deletion is still on its way when the screen has
+  changed. `await synced(page)` before checking Vikunja or deleting what the test made. It knows of changes being
+  written and of what's in the outbox: after a tap whose handler reads first (a deletion asks Vikunja for the
+  subtasks), wait for what the screen shows first. A deletion waits for its Undo to go: `later(5000)` folds its line.
+- **Alpine applies `x-if` and `x-show` a frame apart,** so one part of a change can be on screen before the other.
+  `$nextTick` runs on a timer, which Playwright's clock owns: with the clock moved, it runs when the clock says.
+- **`:text-is()` matches the innermost element** with that text, which is often not the one meant. Prefer
+  `getByRole` with a name, or `:has-text`.
+- **Vikunja keeps times in whole seconds.** Two changes less than a second apart can carry the same `updated`, and a
+  due time set by the test comes back rounded down. The few waits for this say so.
+- **"database is locked"** comes only with `DB=sqlite` now; the tests' requests try again.
+- **`toContainText` is case-sensitive**; `:has-text` isn't. Pass `ignoreCase: true` where it matters.
+- **This Windows machine.** Git Bash eats backslashes in a heredoc: write code with backslashes through Python raw
+  strings in a file, or the Edit tool. A checkout can have CRLF line endings. Without Playwright's own Chromium
+  installed, `BROWSER_CHANNEL=chrome` uses the installed Chrome, for `test:parse` too.
+- **Never stop processes by name** (`taskkill /IM`, `pkill`): that closes the person's own Chrome and Node. Stop only
+  what you started, by its PID, or the `pocket-dev` containers.
+- **Never run `npm run build` while tests run.** A changed page makes the open copies reload in the middle of a test.
 
 ## The README's GIF and screenshots
 
