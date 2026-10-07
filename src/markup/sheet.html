@@ -4,13 +4,13 @@
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
-      <label class="prio-pick" x-show="!ofTemplate" :class="'p' + (sheet.task.priority || 0)">
+      <template x-if="!ofTemplate"><label class="prio-pick" :class="'p' + (sheet.task.priority || 0)">
         <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
         <span x-text="sheet.task.priority ? PRIOS[sheet.task.priority].label : 'Priority'"></span>
         <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
           <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
         </select>
-      </label>
+      </label></template>
     </div></template></div>
     <div class="grab"><i></i></div>
     <!-- Its number in Vikunja; not for a checklist's template, run or step, which are found by name -->

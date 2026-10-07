@@ -464,13 +464,13 @@
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
       <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
-      <label class="prio-pick" x-show="!ofTemplate" :class="'p' + (sheet.task.priority || 0)">
+      <template x-if="!ofTemplate"><label class="prio-pick" :class="'p' + (sheet.task.priority || 0)">
         <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
         <span x-text="sheet.task.priority ? PRIOS[sheet.task.priority].label : 'Priority'"></span>
         <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
           <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
         </select>
-      </label>
+      </label></template>
     </div></template></div>
     <div class="grab"><i></i></div>
     <!-- Its number in Vikunja; not for a checklist's template, run or step, which are found by name -->
@@ -530,9 +530,11 @@
       </div></template>
 
       <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Shared with you to read only: you can see this task, but not change it.</p></template>
+      <!-- What a sheet has or not by its kind is x-if, never x-show: x-show changes a frame later, so a template's step
+           opened from its template would show for a frame with the template's date and steps under its own name -->
       <!-- A template's: when it comes round, as Vikunja's repeating task, and the reminders Vikunja emails before then -->
       <template x-if="checklistRole === 'template'"><div class="h3">When it's due</div></template>
-      <div class="card" id="d-due-card" x-show="!ofTemplate || checklistRole === 'template'">
+      <template x-if="!ofTemplate || checklistRole === 'template'"><div class="card" id="d-due-card">
         <div class="prop"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
           <input type="datetime-local" id="d-due" :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
           <template x-if="isSet(dueShown) && canEdit"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="setDue(ZERO)"><svg class="i"><use href="#i-close"/></svg></button></template>
@@ -544,16 +546,16 @@
         </span></div></template>
         <!-- Reminders, which Vikunja sends by email: counted back from the due date when there is one, or at a set time.
              Only while a task isn't done, so a template's only while it comes round. -->
-        <div class="prop" id="d-reminders" x-show="checklistRole !== 'template' || isSet(dueShown)"><span class="k">Reminders</span><span class="v">
+        <template x-if="checklistRole !== 'template' || isSet(dueShown)"><div class="prop" id="d-reminders"><span class="k">Reminders</span><span class="v">
           <template x-for="(r, k) in sheet.task.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
             <template x-if="canEdit"><button class="chip-x" :aria-label="'Remove the reminder ' + reminderText(r)" @click="removeReminder(k)"><svg class="i"><use href="#i-close"/></svg></button></template></span></template>
           <template x-if="canEdit && !sheet.remindAt"><select id="d-remind-add" aria-label="Add a reminder" @change="addReminder($event.target.value); $event.target.value = ''">
             <option value="">Add a reminder</option><template x-for="o in reminderPresets" :key="o.value"><option :value="o.value" x-text="o.label"></option></template></select></template>
           <template x-if="sheet.remindAt"><span class="v"><input type="datetime-local" id="d-remind-at" aria-label="Remind me at" @change="addReminderAt($event.target.value)">
             <button class="icon-btn plain" aria-label="Don't add a reminder" @click="sheet.remindAt = false"><svg class="i"><use href="#i-close"/></svg></button></span></template>
-        </span></div>
+        </span></div></template>
         <template x-if="remindersNote && (sheet.task.reminders || []).length && (checklistRole !== 'template' || isSet(dueShown))"><p class="note prop-note" x-text="remindersNote"></p></template>
-      </div>
+      </div></template>
       <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
 
       <div class="h3">Notes</div>
@@ -590,8 +592,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
       </div></template>
 
       <!-- A template's subtasks are its steps: in order, with when each is due in a run; tapped, changed, moved or removed -->
-      <div class="h3" x-show="checklistRole !== 'tplstep'"><span x-text="checklistRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="checklistRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
-      <div class="card" id="d-subtasks" x-show="checklistRole !== 'tplstep'">
+      <template x-if="checklistRole !== 'tplstep'"><div class="h3"><span x-text="checklistRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="checklistRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div></template>
+      <template x-if="checklistRole !== 'tplstep'"><div class="card" id="d-subtasks">
         <!-- A subtask: the same row as in a list, as a sheet has it (g.sheet) -->
         <template x-for="g in [{depth: {}, sheet: true}]" :key="0"><template x-for="t in checklistRole === 'template' ? [] : subtasks" :key="t.id">
 <!-- A task's row, `t`, in the list `g`. In a list of tasks, with its depth under the task above it (g.depth): Today, a
@@ -768,7 +770,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
                     x-text="sheet.subBusy ? 'Adding…' : 'Add ' + draft('add').added.length + (draft('add').added.length === 1 ? ' step' : ' steps')"></button>
           </div></template>
         </div></template>
-      </div>
+      </div></template>
 
       <div class="h3">Comments<span class="n num" id="d-ccount" x-text="(sheet.comments?.length || 0) + pendingComments.length || ''"></span></div>
       <div class="card" id="d-comments">
