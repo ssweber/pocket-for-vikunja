@@ -48,7 +48,7 @@ export function component(...parts){
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; },
     get toast(){ return this.toasts.at(-1); },
-    render(){}, flush(){}, stepRun(){ return null; }, isRunTask(){ return false; }, viewWantsDone(){ return false; },
+    render(){}, flush(){}, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   cache.clear();

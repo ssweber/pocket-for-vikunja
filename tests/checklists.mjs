@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, noToast, placeLine, placeSays, rowLine, signIn as signInAt, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, noToast, placeLine, placeSays, rowLine, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -83,11 +83,26 @@ const STEPS = ['Check the guards at 3pm {#check-the-guards}', 'Warm up the press
 const GUARDS = '“Check the guards at 3pm”';
 const tplRow = `.cl-tpl:has(.title:text-is("${TEMPLATE}"))`;
 // A template's step shows its ↑ ↓ × once it's tapped: the button on the nth step, which is tapped first if it isn't open.
+// A step's button, once it's tapped open: its × (Remove step), or Move up and Move down, in its ⋯.
 const stepButton = async (n, label) => {
   const row = `#d-subtasks .row:nth-of-type(${n})`;
   if (!await page.$(`${row} .step-edit`)) await page.click(`${row} > button.body`);
-  return `${row} [aria-label^="${label}"]`;
+  if (!/^Move/.test(label)) return `${row} [aria-label^="${label}"]`;
+  if (!await page.$(`${row} .step-menu`)) await page.click(`${row} [aria-label^="More for step"]`);
+  return `${row} .step-menu button:has-text("${label}")`;
 };
+// Hold a step's row, move it up or down past the first few pixels (so it's a move), on to the middle of step `to`'s
+// row, and let go there.
+async function dragStep(n, to){
+  await page.locator('#d-subtasks').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));   // clear of the edges, where it scrolls
+  const row = page.locator(`#d-subtasks .row:nth-of-type(${n})`), box = await steady(row), x = box.x + box.width / 2, y0 = box.y + box.height / 2;
+  const b = await page.locator(`#d-subtasks .row:nth-of-type(${to})`).boundingBox(), y = b.y + b.height / 2 + Math.sign(b.y - box.y) * 4;
+  await page.mouse.move(x, y0); await page.mouse.down();
+  await expect(row).toHaveClass(/held/);
+  await page.mouse.move(x, y0 + Math.sign(y - y0) * 14, { steps: 3 });
+  await page.mouse.move(x, y, { steps: 10 });
+  await page.mouse.up();
+}
 // Tapped, and the step closed again after, as tapping elsewhere would.
 const tapStep = async (n, label) => { await page.click(await stepButton(n, label)); await page.press('#d-subtasks .step-box textarea', 'Escape'); };
 let project, template, me, other, otherToken;
@@ -234,7 +249,8 @@ try {
 
   await step('reorder-steps', async () => {
     const links = (await api('/tasks/' + template.id)).related_tasks.subtask.map(s => s.id);
-    await tapStep(3, 'Move up');
+    // Held and moved up, as a finger moves it: the third step to second.
+    await dragStep(3, 2);
     await until('the step never moved up in Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
     // Only the order line is written: the steps are linked as they were, and the line isn't shown in the notes.
@@ -242,6 +258,11 @@ try {
     if (JSON.stringify(stepOrder(t.description)) !== JSON.stringify([links[0], links[2], links[1]])) throw new Error('description: ' + t.description);
     if (JSON.stringify(t.related_tasks.subtask.map(s => s.id)) !== JSON.stringify(links)) throw new Error('the steps were linked again');
     if (/pocket:order/.test(await page.textContent('#d-desc'))) throw new Error('the notes show the order line');
+    // Tapped open, a step has no ↑ ↓ any more: its ⋯ has Move up and Move down.
+    await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
+    await expect(page.locator('#d-subtasks .row:nth-of-type(1) [aria-label^="Remove step"]')).toBeVisible();
+    await expect(page.locator('#d-subtasks [aria-label^="Move up"], #d-subtasks [aria-label^="Move down"]')).toHaveCount(0);
+    await page.press('#d-subtasks .step-box textarea', 'Escape');
     // The order stays after a reload.
     await page.reload();
     await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });

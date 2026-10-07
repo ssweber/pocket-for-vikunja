@@ -13,7 +13,7 @@
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, noToast, placeLine, placeSays, rowLine, signIn, synced, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, noToast, placeLine, placeSays, rowLine, signIn, steady, synced, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -695,7 +695,7 @@ try {
      a row swiped left shows its Delete, which deletes with an Undo, and only once the Undo has gone. */
   const swipe = async (sel, from = 200, by = -100) => {
     await page.locator(sel).scrollIntoViewIfNeeded();                       // once a sheet has slid in
-    await page.$eval(sel, el => el.scrollIntoView({ block: 'center' }));    // and clear of the header
+    await page.$eval(sel, el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));    // and clear of the header
     await page.waitForTimeout(100);
     const box = await page.locator(sel).boundingBox(), y = box.y + box.height / 2;
     await page.mouse.move(from, y); await page.mouse.down();
@@ -758,7 +758,7 @@ try {
       if (!await get(k.id)) throw new Error('Undo didn\'t keep it');
       // A full swipe: past half the row, the Delete fills it; back under half before letting go, it's only open.
       await page.locator(K).scrollIntoViewIfNeeded();
-      await page.$eval(K, el => el.scrollIntoView({ block: 'center' }));
+      await page.$eval(K, el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       await page.waitForTimeout(100);
       const kb = await page.locator(K).boundingBox(), ky = kb.y + kb.height / 2;
       await page.mouse.move(330, ky); await page.mouse.down();
@@ -1244,6 +1244,138 @@ try {
     if ((await Promise.all([parent, ...kids].map(t => get(t.id)))).some(Boolean)) throw new Error('something is left');
   });
 
+  /* A project's list is in the order of its List view in Vikunja, each subtask under its parent in its own order: the
+     same order as the web app's. Held and moved up or down, a task moves among its siblings, and its new place is
+     written to that view. */
+  const order = { project: null, view: null, tasks: {} };
+  const viewOrder = async () => (await (await api(`/projects/${order.project.id}/views/${order.view}/tasks?expand=subtasks`)).json()).items;
+  // The rows on the project's open list, by title, its subtasks marked "Subtask: " as a screen reader hears them.
+  const openRows = () => page.locator('#view .list').first().locator('.row > .body .title');
+  // Hold a row, move it past the first few pixels (so it's a move, not progress), then to the top or the bottom of the
+  // row `to`, and let go.
+  async function dragTo(sel, to, edge = 'top'){
+    await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));   // clear of the edges, where it scrolls
+    const box = await steady(page.locator(sel)), x = box.x + box.width / 2, y0 = box.y + box.height / 2;
+    const b = await page.locator(to).boundingBox(), y = edge === 'top' ? b.y + 4 : b.y + b.height - 4;
+    await page.mouse.move(x, y0); await page.mouse.down();
+    await expect(page.locator(sel)).toHaveClass(/held/);
+    await page.mouse.move(x, y0 + Math.sign(y - y0) * 14, { steps: 3 });
+    await page.mouse.move(x, y, { steps: 12 });
+    await page.mouse.up();
+  }
+  const rowById = id => `#view .row[data-id="${id}"]`;
+  await step('project-in-list-view-order', async () => {
+    order.project = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeOrder${stamp}` }) })).json();
+    createdProjects.push(order.project.id);
+    order.view = order.project.views.filter(v => v.view_kind === 'list').sort((a, b) => a.position - b.position || a.id - b.id)[0].id;
+    const mk = async (name, extra = {}) => order.tasks[name] = await (await api(`/projects/${order.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: `${name} ${stamp}`, ...extra }) })).json();
+    for (const name of ['Alpha', 'Bravo', 'Charlie', 'sub one', 'sub two', 'sub three']) await mk(name);
+    await mk('Delta', { done: true });
+    const T = order.tasks;
+    for (const s of ['sub one', 'sub two', 'sub three']) await api(`/tasks/${T.Alpha.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: T[s].id, relation_kind: 'subtask' }) });
+    // Put in an order of their own on the web: Bravo, Alpha (sub three, sub one, sub two), Charlie.
+    const at = { Bravo: 1000, Alpha: 2000, Charlie: 3000, 'sub three': 100, 'sub one': 200, 'sub two': 300 };
+    for (const [name, position] of Object.entries(at)) await api(`/tasks/${T[name].id}/position`, { method: 'PUT', headers: json, body: JSON.stringify({ project_view_id: order.view, position }) });
+    await page.click('#btn-refresh');                                           // so Pocket knows the project
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, order.project.id);
+    const want = ['Bravo', 'Alpha', 'Subtask: sub three', 'Subtask: sub one', 'Subtask: sub two', 'Charlie'].map(n => `${n} ${stamp}`);
+    await expect(openRows()).toHaveText(want);
+    // Vikunja's own order, the same.
+    const roots = (await viewOrder()).filter(t => !t.done && !t.related_tasks?.parenttask?.length).map(t => t.title);
+    if (JSON.stringify(roots) !== JSON.stringify(['Bravo', 'Alpha', 'Charlie'].map(n => `${n} ${stamp}`))) throw new Error('Vikunja has ' + roots);
+    // Its done task is in the Done section, folded, with how many.
+    await expect(page.getByRole('button', { name: 'Done (1)' })).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#view .row', { hasText: `Delta ${stamp}` })).toHaveCount(0);
+  });
+  await step('drag-a-task-and-a-subtask', async () => {
+    const T = order.tasks;
+    // Bravo, from the top to the bottom: under Charlie, past Alpha and its subtasks, which go with Alpha.
+    await dragTo(rowById(T.Bravo.id), rowById(T.Charlie.id), 'bottom');
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub three', 'Subtask: sub one', 'Subtask: sub two', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
+    await synced(page);
+    const pos = async () => Object.fromEntries((await viewOrder()).map(t => [t.title.replace(` ${stamp}`, ''), t.position]));
+    let p = await pos();
+    if (!(p.Alpha < p.Charlie && p.Charlie < p.Bravo)) throw new Error('positions in Vikunja: ' + JSON.stringify(p));
+    // A subtask, among its parent's subtasks only: sub two to the top of them.
+    await dragTo(rowById(T['sub two'].id), rowById(T['sub three'].id));
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub two', 'Subtask: sub three', 'Subtask: sub one', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
+    await synced(page);
+    p = await pos();
+    if (!(p['sub two'] < p['sub three'] && p['sub three'] < p['sub one'])) throw new Error('positions in Vikunja: ' + JSON.stringify(p));
+    // Read again, the same; and in Alpha's sheet, its subtasks in that order too.
+    await page.reload();
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub two', 'Subtask: sub three', 'Subtask: sub one', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`), { timeout: 15000 });
+    await page.click(`${rowById(T.Alpha.id)} > .body`);
+    await expect(page.locator('#d-subtasks .row .title')).toHaveText(['sub two', 'sub three', 'sub one'].map(n => `${n} ${stamp}`));
+    // In the sheet, moved the same way: sub one to the top, written to Vikunja's List view too.
+    await dragTo(`#d-subtasks .row[data-id="${T['sub one'].id}"]`, `#d-subtasks .row[data-id="${T['sub two'].id}"]`);
+    await expect(page.locator('#d-subtasks .row .title')).toHaveText(['sub one', 'sub two', 'sub three'].map(n => `${n} ${stamp}`));
+    await synced(page);
+    p = await pos();
+    if (!(p['sub one'] < p['sub two'] && p['sub two'] < p['sub three'])) throw new Error('positions in Vikunja: ' + JSON.stringify(p));
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
+  });
+  await step('a-move-turned-down-goes-back-and-says-why', async () => {
+    // Vikunja turns it down, as for an API token without Tasks → Position: back where it was, its row saying so.
+    const T = order.tasks, refuse = r => r.request().method() === 'PUT' ? r.fulfill({ status: 401, contentType: 'application/json', body: '{"message":"missing permission"}' }) : r.fallback();
+    await page.route('**/api/v2/tasks/*/position', refuse);
+    await dragTo(rowById(T.Charlie.id), rowById(T.Bravo.id), 'bottom');
+    await expect(rowLine(page, 'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.')).toBeVisible();
+    await page.unroute('**/api/v2/tasks/*/position', refuse);
+    await later(5000);                                                     // its line folds, giving the row back
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
+    await synced(page);
+    const roots = (await viewOrder()).filter(t => !t.related_tasks?.parenttask?.length && !t.done).map(t => t.title.replace(` ${stamp}`, ''));
+    if (JSON.stringify(roots) !== JSON.stringify(['Alpha', 'Charlie', 'Bravo'])) throw new Error('Vikunja has ' + roots);
+  });
+  await step('move-up-from-the-tasks-menu', async () => {
+    // The way for a keyboard or a screen reader: the task's ⋯, Move up; and Alt+↓ on its row.
+    const T = order.tasks;
+    await page.click(`${rowById(T.Bravo.id)} > .body`);
+    await page.click('#d-more');
+    await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
+    await page.getByRole('menuitem', { name: 'Move up' }).click();
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Bravo', 'Charlie'].map(n => `${n} ${stamp}`));
+    await page.focus(`${rowById(T['sub one'].id)} > .body`);
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub two', 'Subtask: sub one', 'Subtask: sub three', 'Bravo', 'Charlie'].map(n => `${n} ${stamp}`));
+    await synced(page);
+    const roots = (await viewOrder()).filter(t => !t.related_tasks?.parenttask?.length && !t.done).map(t => t.title.replace(` ${stamp}`, ''));
+    if (JSON.stringify(roots) !== JSON.stringify(['Alpha', 'Bravo', 'Charlie'])) throw new Error('Vikunja has ' + roots);
+  });
+  await step('the-done-section-opens-loads-and-reopens', async () => {
+    const T = order.tasks, done = page.getByRole('button', { name: /^Done/ }), delta = page.locator('#view .row', { hasText: `Delta ${stamp}` });
+    // An old link to a project's done tasks opens its list with the Done section open.
+    await page.evaluate(id => { location.hash = `#/project/${id}?done=1`; }, order.project.id);
+    await expect(delta).toBeVisible({ timeout: 15000 });
+    await expect(done).toHaveAttribute('aria-expanded', 'true');
+    if (await page.evaluate(() => location.hash) !== '#/project/' + order.project.id) throw new Error('address: ' + await page.evaluate(() => location.hash));
+    // Folded, and open again, as it was left, after a reload.
+    await done.click();
+    await expect(delta).toBeHidden();
+    await done.click();
+    await expect(delta).toBeVisible();
+    await page.reload();
+    await expect(delta).toBeVisible({ timeout: 15000 });
+    // Ticked to reopen it: back in the open list, and not done in Vikunja.
+    await page.getByRole('button', { name: `Mark not done: Delta ${stamp}` }).click();
+    await expect(rowLine(page, 'Not done:')).toBeVisible();
+    await later(5000);
+    await expect(page.locator('#view .list').first().locator(`.row[data-id="${T.Delta.id}"]`)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /^Done/ })).toHaveCount(0);           // nothing done any more
+    await synced(page);
+    if ((await (await api('/tasks/' + T.Delta.id)).json()).done) throw new Error('still done in Vikunja');
+    // Ticked done again: off the open list, and counted in Done.
+    await page.getByRole('button', { name: `Mark done: Delta ${stamp}` }).click();
+    await later(5000);
+    await expect(page.getByRole('button', { name: 'Done (1)' })).toBeVisible();
+  });
+
   await step('project-sheet-renames-and-deletes', async () => {
     const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeSheet${stamp}` }) })).json();
     createdProjects.push(proj.id);
@@ -1265,7 +1397,7 @@ try {
   await step('projects', async () => {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.click('.tree .row .body');
-    await page.waitForSelector('.toggle-done');
+    await expect(page.locator('#btn-project')).toBeVisible();
   });
   await page.screenshot({ path: `${OUT}/project.png` });
   await step('deep-link-add', async () => {

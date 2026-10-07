@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, movedText, notSaved, sentLater } from '../../src/js/messages.js';
+import { addedWhere, movedText, notMoved, notSaved, sentLater } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import { blankSheet } from '../../src/js/app/core.js';
@@ -10,6 +10,13 @@ import { blankSheet } from '../../src/js/app/core.js';
 test('a change not saved says why in a few words', () => {
   assert.equal(notSaved(new NetError('Failed to fetch')), 'Not saved: no connection');
   assert.equal(notSaved(new Error('Forbidden')), 'Not saved: Forbidden');
+});
+
+test('a move turned down says why, and for an API token without it, the permission it needs', () => {
+  assert.equal(notMoved(Object.assign(new Error('Your API token doesn\'t allow this.'), { status: 403, code: 'token' })),
+    'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.');
+  assert.equal(notMoved(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not moved: Forbidden');
+  assert.equal(notMoved(new NetError('Failed to fetch')), 'Not moved: no connection');
 });
 
 test('where tasks just added went, said by the add box', () => {

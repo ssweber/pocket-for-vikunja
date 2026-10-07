@@ -46,3 +46,14 @@ export async function toastGone(page){
   await page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; if (t) t.show = false; });
   await expect(page.locator('#toast.show')).toHaveCount(0);
 }
+
+// Where an element is once it has stopped moving (a sheet sliding in, a list scrolling): to put a finger on it.
+export async function steady(locator, timeout = 5000){
+  let was = null;
+  for (const end = Date.now() + timeout; Date.now() < end; await new Promise(r => setTimeout(r, 80))) {
+    const box = await locator.boundingBox();
+    if (box && was && Math.abs(box.x - was.x) < 0.5 && Math.abs(box.y - was.y) < 0.5) return box;
+    was = box;
+  }
+  throw new Error('it never stopped moving');
+}
