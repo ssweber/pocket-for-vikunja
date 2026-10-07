@@ -15,7 +15,8 @@
     "test:checklists": "node tests/checklists.mjs",
     "test:steptimes": "node tests/steptimes.mjs",
     "test:local": "node scripts/dev.mjs --test",
-    "demo": "node scripts/demo.mjs"
+    "demo": "node scripts/demo.mjs",
+    "specimen": "node scripts/specimen.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

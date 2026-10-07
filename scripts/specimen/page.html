@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket · the task row in every state</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* The page around the rows: light and dark side by side, each a phone's width */
+  body{background:#888}
+  .specimen{display:flex;flex-wrap:wrap;gap:24px;padding:24px;align-items:flex-start}
+  .theme{width:390px;padding:4px 16px 24px;background:var(--bg);color:var(--ink);border-radius:24px}
+  .theme h1{font-size:20px;margin:16px 0 0}
+</style>
+</head>
+<body x-data="specimen">
+
+<!-- include markup/icons.html -->
+
+<div class="specimen">
+  <template x-for="theme in ['light', 'dark']" :key="theme">
+    <section class="theme" :class="'theme-' + theme" inert>
+      <h1 x-text="theme === 'light' ? 'Light' : 'Dark'"></h1>
+      <template x-for="g in specimen" :key="g.title"><div>
+        <div class="sec" x-text="g.title"></div>
+        <div :class="g.sheet ? 'card' : 'list'">
+          <template x-for="t in g.tasks" :key="t.id">
+            <!-- include markup/task-row.html -->
+          </template>
+        </div>
+      </div></template>
+    </section>
+  </template>
+</div>
+
+<script type="module" src="specimen.js"></script>
+<script defer src="alpine.js"></script>
+</body>
+</html>

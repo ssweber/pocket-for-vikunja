@@ -29,7 +29,7 @@ const inSrc = (from, path) => {
   return file.startsWith(SRC + sep) && existsSync(file) ? file : null;
 };
 
-function include(file, seen = []){
+export function include(file, seen = []){
   if (seen.includes(file)) throw new Error(`${relative(ROOT, file)} includes itself`);
   return read(file).replace(/^([ \t]*)<!-- include (\S+) -->\n?/gm, (_, indent, path) => {
     const part = inSrc(join(SRC, 'index.html'), path);                         // always from src/, wherever it's written
@@ -38,7 +38,7 @@ function include(file, seen = []){
   });
 }
 
-async function css(file){
+export async function css(file){
   const r = await esbuild.build({ entryPoints: [file], bundle: true, minify: true, write: false, logLevel: 'silent' });
   return r.outputFiles[0].text.trim();
 }
@@ -85,19 +85,22 @@ function write(file, text){
   if (!existsSync(file) || read(file) !== text) writeFileSync(file, text);
 }
 
-try {
-  await build();
-  console.log('Built pocket/app/index.html from src/');
-} catch (e) {
-  console.error(e.message || e);
-  if (!process.argv.includes('--watch')) process.exit(1);
-}
+// Run as a script, it builds; imported (by the specimen page), it only lends its functions.
+if (resolve(process.argv[1] || '').toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
+  try {
+    await build();
+    console.log('Built pocket/app/index.html from src/');
+  } catch (e) {
+    console.error(e.message || e);
+    if (!process.argv.includes('--watch')) process.exit(1);
+  }
 
-if (process.argv.includes('--watch')) {
-  let timer;
-  watch(SRC, { recursive: true }, () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => build().then(() => console.log(new Date().toLocaleTimeString(), 'rebuilt'), e => console.error(e.message || e)), 100);
-  });
-  console.log('Watching src/ for changes');
+  if (process.argv.includes('--watch')) {
+    let timer;
+    watch(SRC, { recursive: true }, () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => build().then(() => console.log(new Date().toLocaleTimeString(), 'rebuilt'), e => console.error(e.message || e)), 100);
+    });
+    console.log('Watching src/ for changes');
+  }
 }
