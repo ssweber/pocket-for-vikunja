@@ -20,13 +20,13 @@
       <template x-if="favorites.length"><div>
         <div class="sec">Favorites</div>
         <div class="list tree"><template x-for="p in favorites" :key="p.id">
-          <div class="row"><button class="body" @click="go('#/project/' + p.id)"><i class="dot" style="width:10px;height:10px;margin:0" :style="{background: colorOf(p.hex_color)}"></i><span style="flex:1" x-text="p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
+          <div class="row"><button class="body" @click="go('#/project/' + p.id)"><i class="dot" style="width:10px;height:10px;margin:0" x-style="{background: colorOf(p.hex_color)}"></i><span style="flex:1" x-text="p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
         </template></div>
       </div></template>
       <template x-if="projects.length"><div>
         <div class="sec">All projects</div>
         <div class="list tree"><template x-for="r in tree" :key="r.p.id">
-          <div class="row"><button class="body" :style="{paddingLeft: r.depth * 18 + 'px'}" @click="go('#/project/' + r.p.id)"><i class="dot" style="width:10px;height:10px;margin:0" :style="{background: colorOf(r.p.hex_color)}"></i><span style="flex:1" x-text="r.p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
+          <div class="row"><button class="body" x-style="{paddingLeft: r.depth * 18 + 'px'}" @click="go('#/project/' + r.p.id)"><i class="dot" style="width:10px;height:10px;margin:0" x-style="{background: colorOf(r.p.hex_color)}"></i><span style="flex:1" x-text="r.p.title"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
         </template><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div>
       </div></template>
       <!-- No project for checklists yet: one to set up, with an example -->

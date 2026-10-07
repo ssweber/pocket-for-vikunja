@@ -5,7 +5,7 @@
       <div class="d-head">
         <!-- Where the task lives: its project, and the task it's part of -->
         <div class="d-path" id="d-path">
-          <i class="dot" :style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheet.task.project_id)" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
+          <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheet.task.project_id)" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
           <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTitle"></button></span></template>
         </div>
         <div class="d-title">
@@ -22,7 +22,7 @@
         <!-- Progress, as in the list: hold the bar, or around the title, then slide (initSheetProgress). A run's is its steps done. -->
         <template x-if="!ofTemplate && canEdit"><div class="d-progress" id="d-progress" :role="isRunTask(sheet.task) ? 'progressbar' : 'slider'" tabindex="0" :aria-label="isRunTask(sheet.task) ? 'Steps done' : 'Progress'" aria-valuemin="0" aria-valuemax="100"
              :aria-valuenow="sheet.pct ?? shownPct(sheet.task)" :aria-valuetext="(sheet.pct ?? shownPct(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
-             :style="{'--pct': (sheet.pct ?? shownPct(sheet.task)) / 100}"
+             x-style="{'--pct': (sheet.pct ?? shownPct(sheet.task)) / 100}"
              @keydown.right.prevent="nudgeProgress(1)" @keydown.left.prevent="nudgeProgress(-1)">
           <span class="track"><i></i></span><span class="num" x-text="(sheet.pct ?? shownPct(sheet.task)) + '%'"></span>
         </div></template>
@@ -176,7 +176,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             <template x-if="sheet.sub.focus && !sheet.sub.text"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>
             <template x-for="c in chips('sub')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
               :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-              @mousedown.prevent @click="tapChip('sub', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+              @mousedown.prevent @click="tapChip('sub', c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
           </div>
         </div></template>
         <!-- Under a template: new steps a row each, with their times, added together -->
@@ -214,7 +214,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           </select>
         </span></div>
         <div class="prop"><span class="k">Labels</span><span class="v">
-          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
+          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
           <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">The “template” label is what makes it a template.</span></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button></template>
         </span></div>
@@ -246,7 +246,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <input id="lp-q" placeholder="Find or create a label" aria-label="Label" x-model="picker.q" x-init="$nextTick(() => $el.focus())" enterkeyhint="done"
                  @keydown.enter.prevent="labelEnter()" @keydown.escape.stop="picker.open = false">
           <div id="lp-list">
-            <template x-for="l in pickerMatches" :key="l.id"><button @click="addLabel(l)"><i class="dot" style="margin:0" :style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span></button></template>
+            <template x-for="l in pickerMatches" :key="l.id"><button @click="addLabel(l)"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span></button></template>
             <template x-if="pickerCanCreate"><button @click="addLabel(null)" x-text="'Create “' + picker.q.trim() + '”'"></button></template>
             <template x-if="!pickerMatches.length && !picker.q.trim()"><p class="note" style="padding:0 14px 10px">No other labels. Type to create one.</p></template>
           </div>

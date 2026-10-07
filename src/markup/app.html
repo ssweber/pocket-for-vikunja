@@ -66,7 +66,7 @@
       <template x-if="cap.focus && !cap.text"><span class="hint" x-text="captureHint"></span></template>
       <template x-for="c in chips('cap')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
         :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-        @mousedown.prevent @click="tapChip('cap', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+        @mousedown.prevent @click="tapChip('cap', c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
     </div>
   </div>
 </div>

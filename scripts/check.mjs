@@ -1,6 +1,7 @@
 // What ESLint can't check, run with it by npm run lint: no colour is written out (#hex, rgb(), rgba(), hsl(), hsla())
 // in src/styles.css outside its :root blocks, nor anywhere in src/markup/. Colours are the custom properties set in
 // :root, with their dark mode values beside them, so a colour written anywhere else would be the same in dark mode.
+// And no :style given an object in the markup: x-style does that (component.js says why).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +26,7 @@ const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isD
 for (const file of walk(join(ROOT, 'src', 'markup'))) {
   const html = readFileSync(file, 'utf8');
   for (const m of html.matchAll(COLOUR)) report(file, html, m.index, `${m[0]} is a colour: use a custom property from src/styles.css`);
+  for (const m of html.matchAll(/(?:\s:|x-bind:)style="\s*\{/g)) report(file, html, m.index, ':style with an object starts a timer each time: use x-style');
 }
 
 if (problems.length) {

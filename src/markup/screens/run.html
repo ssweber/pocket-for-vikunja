@@ -3,7 +3,7 @@
       <p class="run-for" id="run-for" x-text="runView.forText"></p>
       <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">This run's project is shared with you to read only: you can follow it, but not tick its steps or add notes. Ask its owner for write access.</p></template>
       <!-- Stays at the top on a long run: tapped, back up to the step on screen -->
-      <button type="button" class="run-bar" id="run-bar" :aria-label="runView.countText + ': back to the step'" @click="scrollTo({top: 0, behavior: 'smooth'})"><span class="track"><i :style="{'--pct': runView.total ? runView.doneCount / runView.total : 0}"></i></span><span class="num" id="run-count" x-text="runView.countText"></span></button>
+      <button type="button" class="run-bar" id="run-bar" :aria-label="runView.countText + ': back to the step'" @click="scrollTo({top: 0, behavior: 'smooth'})"><span class="track"><i x-style="{'--pct': runView.total ? runView.doneCount / runView.total : 0}"></i></span><span class="num" id="run-count" x-text="runView.countText"></span></button>
 
       <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
       <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
@@ -64,7 +64,7 @@
 
       <div class="h3">Steps</div>
       <div class="list" id="run-steps">
-        <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at, 'ins-on': runView.insert?.at === i}" :data-id="s.id" :style="{order: i * 2, '--pct': s.done ? 0 : s.pct / 100}">
+        <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at, 'ins-on': runView.insert?.at === i}" :data-id="s.id" x-style="{order: i * 2, '--pct': s.done ? 0 : s.pct / 100}">
           <!-- › opens the box under this step, to insert a step after it or repeat it -->
           <template x-if="!runView.finished && canWrite(view.run.run.project_id)"><button class="ins-open" :aria-expanded="String(runView.insert?.at === i)" :aria-label="'Insert a step after “' + s.title + '”'" @click="openInsert(s)"><svg class="i"><use href="#i-chev"/></svg></button></template>
           <button class="check" :class="{wait: s.waiting, skip: s.skipped}" :disabled="runView.finished || !canWrite(view.run.run.project_id)" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use :href="s.skipped ? '#i-skip' : '#i-check'"/></svg></button>
@@ -85,7 +85,7 @@
         </div></template>
         <!-- The box under the step whose › was tapped, for a step the template didn't have: 🔁 puts that step in the box, to do
              again; + adds what's in the box after it. Last in the page, put in its place by order, so it isn't a row. -->
-        <template x-if="runView.insert && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" :style="{order: runView.insert.at * 2 + 1}">
+        <template x-if="runView.insert && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" x-style="{order: runView.insert.at * 2 + 1}">
           <p class="gap-where" id="step-gap-where" x-text="'After “' + runView.insert.after.title + '”'"></p>
           <div class="addbox sub" id="step-insbox">
             <form id="step-insert-form" autocomplete="off" @submit.prevent="insertStep()">
@@ -108,7 +108,7 @@
               <template x-if="runInsert.focus && !runInsert.text"><span class="hint" x-text="boxHint('ins')"></span></template>
               <template x-for="c in chips('ins')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
                 :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-                @mousedown.prevent @click="tapChip('ins', c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+                @mousedown.prevent @click="tapChip('ins', c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
             </div>
           </div>
         </div></template>

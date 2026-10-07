@@ -1,6 +1,6 @@
 // The specimen page's code: Pocket's own Alpine component, as the app has it, given made-up tasks instead of signing in,
 // so the task row can be seen in every state. Nothing here is sent anywhere: the rows can't be tapped (inert).
-import {globals, pocket} from '../../src/js/component.js';
+import {directives, globals, pocket} from '../../src/js/component.js';
 import {setApp} from '../../src/js/util.js';
 import {CHECKLIST_MARK} from '../../src/js/checklists.js';
 import {blankSheet} from '../../src/js/app/core.js';
@@ -50,6 +50,7 @@ function sections(){
   ]};
 }
 
+document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
   c.specimen = [];

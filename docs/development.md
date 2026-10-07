@@ -35,7 +35,7 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
 - What a finger does on a row is `app/progress.js`: held, then slid sideways, progress, in snaps of 25% (the sums are in `progress.js`, beside `app/`, so the unit tests can check them); moved up or down after the hold, the place left for reordering (`reorder`, in `holdToSlide`'s comment); swiped left, the row's Delete, or past half the row, deleted. `haptics.js` is the tick felt at each snap.
 - A message about one row goes in the row's place, not at the bottom: `rowLine(id, {text, title, action, ms, gone})` (`app/lines.js`, shown by `markup/row-line.html`). A tick that takes a task off its list, and a deletion, put their Undo there. A deletion is apart from how it's shown: `holdDelete` puts it in the outbox, held back (`sync.held`), and `sendHeld` sends it when its line folds, the screen is left, or Pocket is put away; `undoDelete` takes it out.
 - Colours are custom properties, in `styles.css`'s `:root`, with dark mode's in the block after it.
-- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. It also fails on `fetch()` anywhere but `api.js`, which signs the request and renews the session (the two other requests, signing out and looking for a new version of Pocket, say why where they are), and, with `scripts/check.mjs`, on a colour written out (`#hex`, `rgb()`, `hsl()`) in `styles.css` outside `:root`, or anywhere in `markup/`. CI runs it.
+- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. It also fails on `fetch()` anywhere but `api.js`, which signs the request and renews the session (the two other requests, signing out and looking for a new version of Pocket, say why where they are), and, with `scripts/check.mjs`, on a colour written out (`#hex`, `rgb()`, `hsl()`) in `styles.css` outside `:root`, or anywhere in `markup/`, and on `:style` given an object in `markup/` (`x-style`, in `component.js`, does that). CI runs it.
 
 ## Running it locally
 
@@ -115,9 +115,13 @@ What tripped up earlier work, for whoever starts next.
   tick every second, and lines and toasts fold after 5. A test that waits in real time collides with them: move the
   page's clock with `later(ms)` instead. `later()` puts the clock back on the real time after, and the page's frames
   follow its clock, so for a moment after it `waitForSelector` (which looks every frame) can stall: use `expect`, or
-  `waitForFunction` with `polling: 100`. Late in `smoke.mjs`, the page's timers have been seen to run up to 20 seconds
-  late, even `setTimeout(0)`, so a sheet's slide-in (a `$nextTick`) or a hold waits that long; the cause isn't found yet
-  (it doesn't happen with the clock moved the same way on an empty page). A step that takes about 30 seconds is this.
+  `waitForFunction` with `polling: 100`.
+- **Many timers at once are slow under Playwright's clock.** It runs the page's timers one at a time, with a real
+  `setTimeout` between each, and looks through all of them each time: 1,000 `setTimeout(0)`s take 15 seconds, where a
+  browser takes 5ms. Alpine's `:style` with an object starts one each time it's worked out, so on every row of a list,
+  on every change, late in `smoke.mjs` it left the page's timers up to 20 seconds behind. `x-style` does the same
+  without the timer, and `npm run lint` keeps `:style` to strings. Something else that starts a timer per row would
+  bring it back: `window.__pwClock.controller._timers` lists the page's timers, to look.
 - **The outbox sends in the background.** A tick, a claim or a deletion is still on its way when the screen has
   changed. `await synced(page)` before checking Vikunja or deleting what the test made. It knows of changes being
   written and of what's in the outbox: after a tap whose handler reads first (a deletion asks Vikunja for the

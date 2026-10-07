@@ -28,6 +28,15 @@ import lines from './app/lines.js';
 export const globals = {addedText, andList, colorOf, durText, dueInfo, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, RICH, runTitle, sanitize, taskDrafts,
   toLocalInput, ZERO};
 
+/* x-style="{'--pct': .5, paddingLeft: '18px'}": what :style does with an object, without the timer Alpine starts each
+   time it works one out (to drop a style attribute left empty). A list's rows are worked out again on every change to
+   it, so that was hundreds of timers at once: nothing to a browser, but seconds under the tests' clock, which runs
+   timers one at a time. npm run lint keeps :style to strings. */
+export const directives = Alpine => Alpine.directive('style', (el, {expression}, {evaluateLater, effect}) => {
+  const get = evaluateLater(expression);
+  effect(() => get(o => { for (const [k, v] of Object.entries(o || {})) el.style.setProperty(k.startsWith('--') ? k : k.replace(/[A-Z]/g, c => '-' + c.toLowerCase()), v); }));
+});
+
 // Alpine's component is one object: the data from core.js, with the methods of each part of the app. Getters are
 // copied as getters (a spread, {...auth}, would read each one once and keep the value), so they still work out what
 // they show each time they're read.

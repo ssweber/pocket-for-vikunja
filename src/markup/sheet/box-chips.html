@@ -2,4 +2,4 @@
      or what @ and * suggest; while it's empty and focused, what it reads. -->
 <div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template><template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" :style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>
