@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DELETE_W, doneText, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeOffset, swipeOpens, swipeStarts, undoing } from '../../src/js/progress.js';
+import { DELETE_W, doneText, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -82,17 +82,26 @@ test('after a hold, the first few pixels decide the way: sideways for progress, 
   assert.equal(lockDirection(7, 7.5), 'y');
 });
 
-test('a swipe to Delete: left and mostly sideways, not from the screen\'s edges, and it stays open past a third of the button', () => {
+test('a swipe to Delete: left and mostly sideways, not from the screen\'s edges; on an open row, either way', () => {
   assert.equal(swipeStarts(-9, 2, 200, 390), true);
   assert.equal(swipeStarts(9, 2, 200, 390), false, 'to the right');
   assert.equal(swipeStarts(-9, 12, 200, 390), false, 'more up or down: a scroll');
   assert.equal(swipeStarts(-9, 2, EDGE_GUARD, 390), false, 'from the left edge: the phone\'s Back');
   assert.equal(swipeStarts(-9, 2, 390 - 10, 390), false, 'from the right edge: the phone\'s too');
-  assert.equal(swipeOffset(20), 0);
-  assert.equal(swipeOffset(-40), -40);
-  assert.equal(swipeOffset(-DELETE_W - 30), -DELETE_W - 10, 'past the button, it follows more slowly');
-  assert.equal(swipeOpens(-DELETE_W / 3 - 1), true);
-  assert.equal(swipeOpens(-DELETE_W / 3 + 1), false);
+  assert.equal(swipeStarts(9, 2, 200, 390, true), true, 'an open row, swiped back');
+  assert.equal(swipeStarts(-9, 2, 380, 390, true), true, 'an open row, swiped on');
+});
+
+test('let go, a swiped row goes back, stays open on its Delete, or past half its width is deleted', () => {
+  const w = 358;
+  assert.equal(swipeOffset(20, w), 0, 'not to the right');
+  assert.equal(swipeOffset(-40, w), -40, 'with the finger');
+  assert.equal(swipeOffset(-500, w), -w, 'no further than the row');
+  assert.equal(swipeEnd(-DELETE_W / 3 + 1, w), 'shut');
+  assert.equal(swipeEnd(-DELETE_W / 3 - 1, w), 'open');
+  assert.equal(swipeEnd(-w / 2 + 1, w), 'open', 'just under half: still only open');
+  assert.equal(swipeEnd(-w / 2 - 1, w), 'delete', 'past half: a full swipe');
+  assert.equal(swipeEnd(swipeOffset(-DELETE_W - 100, w), w), 'delete', 'carried on from the open row');
 });
 
 test('a subtask is a task with a parent', () => {

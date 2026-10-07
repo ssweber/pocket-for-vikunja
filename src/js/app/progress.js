@@ -1,6 +1,6 @@
 // What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar); swiped left, it
 // shows the row's Delete.
-import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pctOf, slidePct, SWIPE_PX, swipeOffset, swipeOpens, swipeStarts} from '../progress.js';
+import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pctOf, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
 import {haptic} from '../haptics.js';
 
 export let sliding = false;                             // a row is held or swiped: the sheet doesn't swipe away meanwhile
@@ -13,23 +13,27 @@ let swallowClick = false;
 const swallow = () => { swallowClick = true; setTimeout(() => swallowClick = false, 400); };
 const shut = (row = opened) => {
   if (!row) return;
-  row.classList.remove('swiping', 'swiped'); row.style.removeProperty('--swipe');
+  row.classList.remove('swiping', 'swiped', 'swipe-full'); row.style.removeProperty('--swipe');
   if (opened === row) opened = null;
 };
-/* A row swiped left: it moves with the finger, and, let go a third of the way across the Delete button, stays open on
-   it, like a phone's mail app. The Delete isn't in the page's tab order until then (it isn't shown): a keyboard or a
-   screen reader deletes from the task's ⋯ instead. */
-const swipeOf = row => ({
-  begin(){ shut(); row.classList.add('swiping'); },
+/* A row swiped left, as on a phone's mail: it moves with the finger, from where it rests or, open, from its Delete. Let
+   go a third of the way across the Delete button, it stays open on it; past half the row, the Delete fills it, a tick
+   is felt, and letting go there deletes it (`remove`); back under half, it doesn't. The Delete isn't in the page's tab
+   order until it's shown: a keyboard or a screen reader deletes from the task's ⋯ instead. */
+const swipeOf = (row, remove) => ({
+  base: opened === row ? -DELETE_W : 0,
+  begin(){ if (opened !== row) shut(); row.classList.add('swiping'); },
   move(dx){
-    const off = swipeOffset(dx), past = swipeOpens(off);
-    row.style.setProperty('--swipe', off + 'px');
-    if (past && !this.past) haptic('tick');
-    this.past = past;
+    const w = row.clientWidth, to = swipeEnd(swipeOffset(this.base + dx, w), w);
+    row.style.setProperty('--swipe', swipeOffset(this.base + dx, w) + 'px');
+    row.classList.toggle('swipe-full', to === 'delete');
+    if (to !== this.to && this.to !== undefined && to !== 'shut') haptic(to === 'delete' ? 'done' : 'tick');
+    this.to = to;
   },
   end(dx){
-    row.classList.remove('swiping');
-    if (dx === null || !swipeOpens(swipeOffset(dx))) { shut(row); return; }
+    row.classList.remove('swiping', 'swipe-full');
+    const to = dx === null ? 'shut' : swipeEnd(swipeOffset(this.base + dx, row.clientWidth), row.clientWidth);
+    if (to !== 'open') { shut(row); if (to === 'delete') remove(); return; }
     row.classList.add('swiped'); row.style.setProperty('--swipe', -DELETE_W + 'px'); opened = row; openAt = scrolled();
   },
 });
@@ -57,8 +61,9 @@ export default {
       if (mode !== 'wait') s.finish(commit && mode === 'slide' && pct !== s.start ? pct : null);
     };
     area.addEventListener('pointerdown', e => {
-      if (g || e.shut || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       const s = find(e.target); if (!s) return;
+      if (s.swipe?.base) delete s.show;                 // an open row is swiped on, or tapped shut: not held
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, dx: 0, mode: 'wait', pct: s.start};
       if (s.show) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; s.el?.classList.add('held'); s.show(g.pct, g.x); haptic('hold'); }, HOLD_MS);
     });
@@ -69,7 +74,7 @@ export default {
       if (g.mode === 'wait') {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
-        if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth)) { stop(false); return; }
+        if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { stop(false); return; }
         clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin();
       }
       if (g.mode === 'swipe') { g.dx = e.clientX - g.x0; s.swipe.move(g.dx); return; }
@@ -86,7 +91,8 @@ export default {
     });
     addEventListener('pointerup', e => {
       if (!g || e.pointerId !== g.id) return;
-      if (g.mode !== 'wait') swallow();
+      if (g.mode === 'wait' && g.s.swipe?.base) shut();   // an open row tapped: it only shuts
+      if (g.mode !== 'wait' || g.s.swipe?.base) swallow();
       stop(true);
     });
     addEventListener('pointercancel', e => { if (g && e.pointerId === g.id) stop(false); });
@@ -107,12 +113,9 @@ export default {
   endSlide(el){ el.classList.remove('setting', 'full'); delete el.dataset.tick; delete el.dataset.pct; },
   // In the list: the row fills, and at 100% the task is done. A run's step the same, through the outbox.
   initProgressDrag(){
-    // A row swiped open shuts again when anything else is touched, or anything scrolls; touched itself, it only shuts.
-    document.addEventListener('pointerdown', e => {
-      if (!opened || e.target.closest?.('.row-del')) return;
-      if (opened.contains(e.target)) { e.shut = true; swallow(); }
-      shut();
-    }, true);
+    // A row swiped open shuts again when anything else is touched, or anything scrolls. (Touched itself, it's swiped on,
+    // or tapped shut: holdToSlide.)
+    document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
       const row = target.closest('.list:not(.tree) > .row');
@@ -127,7 +130,7 @@ export default {
   rowGesture(t, row, sheet){
     if (this.lines[t.id]) return null;                    // a line in its place: only its Undo
     const slides = !t.pending && !t.done && (sheet ? this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.canTick(t) && !this.isRunTask(t));
-    const swipe = this.canDelete(t, sheet) ? swipeOf(row) : null;
+    const swipe = this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null;
     if (!slides) return swipe && {swipe};
     return {el: row, swipe, start: pctOf(t), width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),

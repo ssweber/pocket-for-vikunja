@@ -42,9 +42,9 @@ function sections(){
     {title: 'A checklist run', depth: {}, tasks: [run]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
     // Held and slid (progress.js), swiped to its Delete, and a line in a row's place (lines.js): shown by `state`.
-    {title: 'Held at 50%, held at 100%, and swiped to its Delete', depth: {}, tasks: [
+    {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, tasks: [
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
-      task({title: 'Order more cups', state: {swiped: true}})]},
+      task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
     {title: 'A line in a row\'s place: ticked off, and deleted', depth: {}, tasks: [
       task({title: 'Pack the van', state: {line: {text: 'Done:', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}})]},
   ]};
@@ -70,6 +70,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
         if (t.state.held) { row.classList.add('held'); this.showSlide(row, t.state.held, 0); }
         if (t.state.swiped) { row.classList.add('swiped'); row.style.setProperty('--swipe', '-88px'); }
+        if (t.state.full) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', '-240px'); }
       }
     });
   };

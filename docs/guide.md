@@ -62,8 +62,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
   run's steps are held and slid the same way. On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
   trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
-- **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**. Its row
-  becomes a line, "Deleted Load chairs", with **Undo**; it's deleted in Vikunja once the line folds away, or as soon as
+- **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
+  past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. Back under half
+  before you let go, it's only left open. Its row becomes a line, "Deleted Load chairs", with **Undo**; it's deleted in Vikunja once the line folds away, or as soon as
   you leave the screen or put Pocket away. A task with subtasks asks first, and they go with it. Swipe back, or tap
   anywhere else, to leave it. The task's **⋯** deletes it too, the way for a keyboard or a screen reader. Without a
   connection, it's deleted once Pocket reaches Vikunja.

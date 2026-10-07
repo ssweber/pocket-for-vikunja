@@ -42,12 +42,15 @@ export const lockDirection = (dx, dy) => Math.hypot(dx, dy) < LOCK_PX ? null : M
 export const DELETE_W = 88;                             // px: the Delete button a row slides aside for
 export const SWIPE_PX = 8;                              // moved this far before the hold, a finger is scrolling or swiping
 export const EDGE_GUARD = 24;                           // a swipe starting this close to the screen's edge is the phone's (Back)
-/* Whether a finger that has moved (dx, dy) from x0, before the hold, is swiping the row left to show its Delete: mostly
-   sideways, and not from the screen's edges, where the phone's own Back and forward gestures start. */
-export const swipeStarts = (dx, dy, x0, screen) => dx <= -SWIPE_PX && Math.abs(dx) > Math.abs(dy) && x0 > EDGE_GUARD && x0 < screen - EDGE_GUARD;
-// How far the row is moved aside, swiped dx: with the finger, up to the button's width, then slower, like a rubber band.
-export const swipeOffset = dx => dx >= 0 ? 0 : dx > -DELETE_W ? dx : -DELETE_W + (dx + DELETE_W) / 3;
-// Let go at `offset`: it stays open (true) once it's been moved past a third of the button's width.
-export const swipeOpens = offset => offset < -DELETE_W / 3;
+/* Whether a finger that has moved (dx, dy) from x0, before the hold, is swiping the row: from rest, to the left, mostly
+   sideways, and not from the screen's edges, where the phone's own Back and forward gestures start; on a row already
+   open, either way, to carry on or to close it. */
+export const swipeStarts = (dx, dy, x0, screen, open = false) => Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy)
+  && (open || (dx < 0 && x0 > EDGE_GUARD && x0 < screen - EDGE_GUARD));
+// How far a row `width` wide is moved aside, `dx` from where it rests: with the finger, to the left only.
+export const swipeOffset = (dx, width) => Math.max(-width, Math.min(0, dx));
+/* Let go at `offset`: past half the row's width, it's deleted straight away (a full swipe, as on a phone's mail);
+   past a third of the Delete button, it stays open on it; else it goes back. */
+export const swipeEnd = (offset, width) => offset < -width / 2 ? 'delete' : offset < -DELETE_W / 3 ? 'open' : 'shut';
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.
 export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;

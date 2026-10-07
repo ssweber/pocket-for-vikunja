@@ -744,10 +744,24 @@ try {
       await page.click(`${K} .line-act`);
       await page.waitForSelector(`${K}:not(.lined)`);
       if (!await get(k.id)) throw new Error('Undo didn\'t keep it');
-      // Then for good, once its line has folded.
-      await swipe(K);
-      await tapDelete(K);
-      await page.waitForSelector(`${K}.lined`);
+      // A full swipe: past half the row, the Delete fills it; back under half before letting go, it's only open.
+      await page.locator(K).scrollIntoViewIfNeeded();
+      await page.$eval(K, el => el.scrollIntoView({ block: 'center' }));
+      await page.waitForTimeout(100);
+      const kb = await page.locator(K).boundingBox(), ky = kb.y + kb.height / 2;
+      await page.mouse.move(330, ky); await page.mouse.down();
+      await page.mouse.move(80, ky + 3, { steps: 10 });
+      if (!await page.$(`${K}.swipe-full`)) throw new Error("past half, the Delete didn't fill the row");
+      await page.mouse.move(260, ky + 3, { steps: 6 });
+      if (await page.$(`${K}.swipe-full`)) throw new Error('back under half, the Delete still filled the row');
+      await page.mouse.up();
+      await page.waitForSelector(`${K}.swiped`);
+      if (await page.$(`${K}.lined`)) throw new Error('backed off, it was deleted');
+      // Carried on from there past half, and let go: deleted, for good once its line has folded.
+      await page.mouse.move(250, ky); await page.mouse.down();
+      await page.mouse.move(90, ky + 3, { steps: 10 });
+      await page.mouse.up();
+      await page.waitForSelector(`${K}.lined .row-line:has-text("Deleted")`);
       if (!await get(k.id)) throw new Error('deleted while its Undo showed');
       await later(5000);
       await page.waitForSelector(K, { state: 'detached', timeout: 5000 });

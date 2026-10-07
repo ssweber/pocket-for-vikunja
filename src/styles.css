@@ -201,9 +201,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.swiping,.row.swiped{transform:translateX(var(--swipe,0px))}
 .row.swiping{transition:none}
 #d-subtasks:has(> .swiping,> .swiped){overflow-x:clip}
-.row-del{display:none;position:absolute;top:0;bottom:0;left:100%;width:88px;border:0;background:var(--danger);color:var(--danger-ink);font-size:15px;font-weight:700;align-items:center;justify-content:center}
+.row-del{display:none;position:absolute;top:0;bottom:0;left:100%;width:max(88px,calc(-1 * var(--swipe,0px)));border:0;background:var(--danger);color:var(--danger-ink);font-size:15px;font-weight:700;align-items:center;justify-content:center}
 .row-del:focus-visible{outline-color:var(--danger-ink);outline-offset:-6px}
 .row.swiping .row-del,.row.swiped .row-del{display:flex}
+/* past half the row, a full swipe: let go, it's deleted; the Delete fills what the row left, its word by the finger */
+.row.swipe-full .row-del{justify-content:flex-start;padding-left:28px}
 /* A message in a row's place (lines.js): the row shrinks to a line, the task's title struck through, its action at the end */
 .row.lined{min-height:48px;padding-top:0;padding-bottom:0;align-items:center}
 .row.lined > :not(.row-line),.row.lined::after{display:none}
