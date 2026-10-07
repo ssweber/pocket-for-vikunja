@@ -641,6 +641,44 @@ try {
     if ((await get(a.id)).done || (await get(b.id)).done) throw new Error('Undo didn\'t open both');
   });
 
+  // A phone's keyboard covers the bottom of the page without making it shorter: here visualViewport says it's h tall.
+  const keyboard = h => page.evaluate(h => {
+    if (h) Object.defineProperty(visualViewport, 'height', { configurable: true, get: () => innerHeight - h }); else delete visualViewport.height;
+    visualViewport.dispatchEvent(new Event('resize'));
+  }, h);
+  const subsOf = async id => (await get(id))?.related_tasks?.subtask || [];
+  await step('a-toast-for-each-subtask-added-shows-above-the-keyboard', async () => {
+    // The subtask box keeps the focus after an add, so the keyboard stays open: each add's toast shows above it.
+    const p = await make(`Pocket smoke toasts ${stamp}`, { due_date: todayAt(23) }), vh = page.viewportSize().height;
+    const toastBottom = async () => { await page.waitForTimeout(300); return page.$eval('#toast', el => el.getBoundingClientRect().bottom); };
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.click(`${rowOf(p.title)} > .body`, { timeout: 15000 });
+      await page.focus('#d-subin');
+      await keyboard(300);
+      for (const n of [1, 2]) {
+        const before = await page.evaluate(() => Alpine.$data(document.body).toast.until);
+        await page.fill('#d-subin', `Pocket smoke toast sub ${n} ${stamp}`);
+        await page.press('#d-subin', 'Enter');
+        await page.waitForFunction(b => { const t = Alpine.$data(document.body).toast; return t.show && t.until !== b; }, before, { timeout: 15000 });
+        await page.waitForSelector('#toast.show #toast-msg:text-is("Added 1 subtask")');
+        if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error(`the box lost the focus after add ${n}`);
+        const bottom = await toastBottom();
+        if (bottom > vh - 300) throw new Error(`toast ${n} is under the keyboard: its bottom is at ${bottom} of ${vh}`);
+      }
+      await keyboard(0);
+      if (await toastBottom() < vh - 100) throw new Error('the toast stayed up after the keyboard closed');
+    } finally {
+      await keyboard(0);
+      await page.fill('#d-subin', '').catch(() => {});
+      if (await page.isVisible('#sheet')) { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); }
+      for (const s of await subsOf(p.id)) await api('/tasks/' + s.id, { method: 'DELETE' });
+      await api('/tasks/' + p.id, { method: 'DELETE' });
+    }
+  });
+
+
   await step('today-moves-a-task-to-overdue-as-its-time-passes', async () => {
     // Left open on Today: once a minute it regroups, without asking Vikunja, and a task whose time passes says so.
     const t = `Pocket smoke due soon ${stamp}`, due = new Date(Date.now() + 6000);
@@ -650,9 +688,11 @@ try {
       await toastGone();
       await refreshToday();
       await page.waitForSelector(`.sec.today + .list ${rowOf(t)}`, { timeout: 15000 });
-      await page.waitForTimeout(Math.max(0, due - Date.now()) + 1000);
-      // An Undo showing (a tick's, say) isn't replaced: the message waits for it to go.
+      // An Undo showing (a tick's, say) isn't replaced: the message waits for it to go. It's put up just before the time
+      // passes: the minute's own timer, should it come between, then waits for it too, rather than say it first.
+      await page.waitForTimeout(Math.max(0, due - Date.now() - 500));
       await page.evaluate(() => Alpine.$data(document.body).notify('Done: something', { label: 'Undo', done: true, fn(){} }));
+      await page.waitForTimeout(Math.max(0, due - Date.now()) + 1000);
       await page.evaluate(() => Alpine.$data(document.body).tickToday());     // what the minute's timer does
       await page.waitForSelector(`.sec.overdue + .list ${rowOf(t)}`, { timeout: 5000 });
       if (!await page.$('#toast.show #toast-msg:text-is("Done: something")')) throw new Error('the Undo was replaced');

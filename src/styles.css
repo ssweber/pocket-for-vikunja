@@ -3,7 +3,7 @@
   --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#E3E8E5;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
-  --pad:16px; --cap-h:64px;
+  --pad:16px; --cap-h:64px; --kb:0px;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
@@ -453,10 +453,11 @@ body.sheet-open{overflow:hidden}
 .saved{font-size:13px;color:var(--muted);text-align:right;min-height:18px;margin-top:-8px;margin-bottom:6px}
 
 /* ---------- toast ---------- */
-#toasts{position:fixed;left:50%;bottom:calc(var(--cap-h) + 14px);transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:calc(100% - 32px);pointer-events:none}
+/* Just above the add box, or above the keyboard (--kb) when that's higher: a toast under the keyboard isn't seen */
+#toasts{position:fixed;left:50%;bottom:calc(max(var(--cap-h), var(--kb)) + 14px);transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:calc(100% - 32px);pointer-events:none}
 #toast{background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;box-shadow:0 8px 28px rgba(0,0,0,.25);max-width:100%}
 #toast{opacity:0;transform:translateY(20px);transition:opacity .18s,transform .18s}
 #toast.show{opacity:1;transform:none;pointer-events:auto}
 #toast button{border:0;background:transparent;color:var(--accent-soft);font-weight:700;padding:6px 8px}
 @media (prefers-color-scheme:dark){#toast button{color:var(--accent)}}
-body.sheet-open #toasts{bottom:calc(env(safe-area-inset-bottom) + 20px)}
+body.sheet-open #toasts{bottom:calc(max(env(safe-area-inset-bottom), var(--kb)) + 20px)}

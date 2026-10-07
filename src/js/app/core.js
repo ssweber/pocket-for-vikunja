@@ -143,6 +143,13 @@ export default () => ({
       const refit = () => { for (const id of ['in-capture', 'd-subin']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
       (window.visualViewport || window).addEventListener('resize', refit);
       addEventListener('orientationchange', () => setTimeout(refit, 300));
+      /* The keyboard covers the bottom of the page without making it shorter (Chrome on Android and Safari on iPhone
+         both do this), so what's fixed to the bottom, like the toasts, would be under it: --kb is how much it hides. */
+      const vv = window.visualViewport;
+      if (vv) {
+        const kb = () => document.documentElement.style.setProperty('--kb', Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + 'px');
+        vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); kb();
+      }
     });
     if (store.get('mode') === 'token' && store.get('token')) { this.mode = 'token'; this.token = store.get('token'); }
     if (this.mode === 'token' || sharedToken.get()) this.boot();
