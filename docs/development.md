@@ -115,7 +115,9 @@ What tripped up earlier work, for whoever starts next.
   tick every second, and lines and toasts fold after 5. A test that waits in real time collides with them: move the
   page's clock with `later(ms)` instead. `later()` puts the clock back on the real time after, and the page's frames
   follow its clock, so for a moment after it `waitForSelector` (which looks every frame) can stall: use `expect`, or
-  `waitForFunction` with `polling: 100`.
+  `waitForFunction` with `polling: 100`. Late in `smoke.mjs`, the page's timers have been seen to run up to 20 seconds
+  late, even `setTimeout(0)`, so a sheet's slide-in (a `$nextTick`) or a hold waits that long; the cause isn't found yet
+  (it doesn't happen with the clock moved the same way on an empty page). A step that takes about 30 seconds is this.
 - **The outbox sends in the background.** A tick, a claim or a deletion is still on its way when the screen has
   changed. `await synced(page)` before checking Vikunja or deleting what the test made. It knows of changes being
   written and of what's in the outbox: after a tap whose handler reads first (a deletion asks Vikunja for the
