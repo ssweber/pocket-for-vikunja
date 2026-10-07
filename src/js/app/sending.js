@@ -211,6 +211,8 @@ export default {
       // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again.
       if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
         this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
+      // A subtask was sent with its place among its siblings, which Vikunja keeps.
+      else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
       if (g) g.tasks.push(this.keep(t));
       else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
       placed = true;
@@ -302,7 +304,7 @@ export default {
         if (x.taskId) return;
         const p = x.p;
         const child = isChild(e, i);
-        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: false, priority: p.priority || 0,
+        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: false, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
           waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});

@@ -54,7 +54,7 @@ export default {
     return 'Everything has reached Vikunja.';
   },
   // <html data-sync> (core.js): sending, waiting, or idle. A box being sent from counts as sending from the start.
-  get syncState(){ return sendState({busy: this.flushing || this.writing > 0 || this.cap.busy || this.sheet.sub.busy, unsent: this.unsent}); },
+  get syncState(){ return sendState({busy: this.flushing || this.writing > 0 || this.cap.busy || this.cap.adding > 0 || this.sheet.sub.adding > 0, unsent: this.unsent}); },
   openOutbox(){ this.openSheet('outbox'); },
   tapRefresh(){ if (this.outboxShown) this.openOutbox(); else this.refresh(); },
   // Offline it says so, rather than the browser's own words for a failed request.

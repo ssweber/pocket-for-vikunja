@@ -12,7 +12,7 @@ import {doneText, isSubtask, openSubtasks, pctOf, progressPatch, undoing} from '
 import {movedText, notMoved, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {hasOwnOrder, hasTemplateLabel, patiently} from '../checklists.js';
-import {listViewOf, placeMove, positionOrder, siblingBlocks, SPACING} from '../order.js';
+import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
@@ -399,41 +399,52 @@ export default {
   },
 
   /* ---------- adding subtasks ---------- */
-  /* The subtask box's lines, as subtasks of the open task, through the outbox like quick add: without a connection they
-     wait, shown in the sheet and the lists, and are sent once Pocket reaches Vikunja. (A template's steps are added with
-     addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show in the sheet, with no message
+  /* A subtask box's lines, as subtasks, through the outbox like quick add: without a connection they wait, shown in the
+     sheet and the lists, and are sent once Pocket reaches Vikunja. The sheet's box ('sub') adds them to the open task,
+     after its subtasks; the add box on a project's list ('under'), to the task it's on (the cursor, quickadd.js), after
+     the cursor's subtask or the last one added from there, each after the one before. Each is sent with its place in its
+     project's List view, once where they are is known (Vikunja would put each first). (A template's steps are added with
+     addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show on their rows, with no message
      unless there's a problem: one added by mistake is deleted from its row, which has an Undo. */
-  async addSubtasks(){
-    const parent = this.sheet.task, b = this.sheet.sub, lines = this.boxLines('sub'), parsed = this.boxParsedLines('sub');
-    if (!parent || b.busy || !parsed.some(p => p.title)) return;
-    // After the subtasks there, in its project's List view, once where they are is known (Vikunja would put each first).
-    const last = this.sheet.subView || !this.subtasks.length ? Math.max(0, ...this.subtasks.map(s => this.positions[s.id] || 0)) : null;
+  async addSubtasks(w = 'sub'){
+    const foot = w === 'under', parent = this.boxParent(w), b = this.box(w), lines = this.boxLines(w), parsed = this.boxParsedLines(w);
+    if (!parent || !parsed.some(p => p.title)) return;
+    const n = parsed.filter(p => p.title).length;
+    const at = foot ? this.cursorPlaces(n) : this.sheet.subView || !this.subtasks.length ? placeAfter(this.subtasks.map(s => this.positions[s.id] || 0), null, n) : null;
     const items = lines.map((raw, i) => ({raw, p: parsed[i]})).filter(x => x.p.title)
-      .map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn('sub', lines)}), ...last !== null && {position: last + (k + 1) * SPACING}}, taskId: null, done: false, linked: false}));
+      .map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn(w, lines)}), ...at && {position: at[k]}}, taskId: null, done: false, linked: false}));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
-    const here = () => this.sheet.task?.id === parent.id;
-    b.busy = true; b.text = '';
-    this.$nextTick(() => document.getElementById('d-subin')?.focus());
+    // The next ones from the add box go after these.
+    if (foot) this.cursor.after = {pos: at?.at(-1) ?? null, title: items.at(-1).p.title};
+    const here = () => foot || this.sheet.task?.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
+    // The next can be sent while this one is on its way (the outbox sends them in turn): `adding` counts them.
+    b.adding++; b.text = '';
+    if (!foot || b.focus) this.$nextTick(() => this.boxEl(w)?.focus());
     try {
       const {kept, full} = await sync.add(entry, []);
       const slow = setTimeout(() => this.refreshPending(), 400);           // on a slow connection, shown as waiting meanwhile
       const r = await sync.lock(() => this.sendEntry(entry.id));
       clearTimeout(slow);
       this.placeSent(r.tasks || []);
-      const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
-      if (r.ids?.length && here()) {
+      const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
+      if (r.ids?.length && foot) {
+        this.flash(r.ids);
+        // Its row's count of subtasks, with these.
+        this.readTask(parent.id).then(t => { if (t) { cache.set(t.id, t); this.keep(t); } }).catch(() => {});
+      } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;
         try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
       }
       if (r.status === 'offline') {
         sync.keep();
-        this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {place: 'sheet:subtasks', cls: kept ? '' : 'failed'});
+        // From the add box, their rows say they're waiting.
+        if (!foot || !kept) this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {place, cls: kept ? '' : 'failed'});
       } else if (r.status === 'error') {
         if (here()) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');      // keep what wasn't added
-        this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {place: 'sheet:subtasks', cls: 'failed'});
-      } else if (r.ids?.length && but) this.say(`Added ${r.ids.length === 1 ? '1 subtask' : r.ids.length + ' subtasks'}${but}`, {place: 'sheet:subtasks', cls: 'failed'});
-    } finally { b.busy = false; this.refreshPending(); }
+        this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {place, cls: 'failed'});
+      } else if (r.ids?.length && but) this.say(`Added ${r.ids.length === 1 ? '1 subtask' : r.ids.length + ' subtasks'}${but}`, {place, cls: 'failed'});
+    } finally { b.adding--; this.refreshPending(); }
   },
 
   /* ---------- deleting ---------- */

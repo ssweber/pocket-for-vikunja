@@ -188,7 +188,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
                         @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
                         @focus="sheet.sub.focus = true" @blur="setTimeout(() => sheet.sub.focus = document.activeElement === $el, 150)"></textarea>
             </div>
-            <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="sheet.sub.busy || !boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
+            <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="!boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
           </form>
           <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text)">
             <template x-if="sheet.sub.focus && !sheet.sub.text"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>

@@ -26,6 +26,8 @@ function sections(){
   const steps = [{id: 901, title: 'Turn on the espresso machine', done: true}, {id: 902, title: 'Put the croissants in the oven', done: true},
     {id: 903, title: 'Take the croissants out', done: false}, {id: 904, title: 'Wipe down the tables', done: false}];
   const tables = task({title: 'Set out the tables', state: {drag: 70}});
+  const hall = task({title: 'Book the hall', state: {aimed: true}}), van = task({title: 'Pack the van'});
+  const load = task({title: 'Load chairs', state: {aimed: true}, related_tasks: {parenttask: [{id: van.id}]}});
   const chairs = task({title: 'Wipe the chairs', state: {drag: 70, with: true}, related_tasks: {parenttask: [{id: tables.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
@@ -51,6 +53,8 @@ function sections(){
       task({title: 'Pack the van', state: {line: {text: 'Done:', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}}),
       task({title: 'Water the plants', state: {line: {text: 'Repeats · next Friday 9:00 AM', title: '', stays: true}}}),
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
+    // The task quick add's box adds subtasks to (quickadd.js: the cursor), lit up: a task, and a subtask.
+    {title: 'What the add box adds subtasks to, lit up: a task, and a subtask', depth: {[van.id]: 0, [load.id]: 1}, tasks: [hall, van, load]},
     // Held and moved down (progress.js: dragOf): it follows the finger, with its subtask, and the row it has passed the
     // middle of has moved up to make room.
     {title: 'Held and moved down, with its subtask, past the row below', depth: {[tables.id]: 0, [chairs.id]: 1}, tasks: [task({title: 'Sweep the yard'}),
@@ -74,6 +78,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     {key: 3, place: 'sheet:top', text: 'Not saved: no connection', cls: 'failed', action: {label: 'Try again', fn(){}}},
     {key: 4, place: 'sheet:subtasks', text: 'Done: Deep clean, with 3 subtasks', action: undo},
     {key: 5, place: 'step', text: 'Done: Take the croissants out', action: undo}];
+  c.specimenTargets = [{to: 'Pack the van', after: ''}, {to: 'Pack the van', after: 'Load chairs'}];
   // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.
   c.init = function(){
     setApp(this);
@@ -95,6 +100,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         if (t.state.full) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', '-240px'); }
         if (t.state.drag) { row.classList.add('dragged', ...t.state.with ? [] : ['held']); row.style.transform = `translateY(${t.state.drag}px)`; row.parentElement.classList.add('reordering'); }
         if (t.state.shift) row.style.transform = `translateY(${t.state.shift}px)`;
+        if (t.state.aimed) row.classList.add('aimed');
       }
     });
   };

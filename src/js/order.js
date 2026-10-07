@@ -30,12 +30,23 @@ export function placeMove(sibs, from, to){
   writes.push([sibs[from].id, between(rest[to - 1]?.pos ?? null, rest[to]?.pos ?? null)]);
   return writes;
 }
+/* Where `n` new subtasks go, one after another: after the sibling at position `after` (null: after the last of them),
+   and before the sibling after that. `sibs` are the siblings' positions. One with none (0) is after the others, so
+   after one of those they go after the last that has one. */
+export function placeAfter(sibs, after, n = 1){
+  const known = sibs.filter(p => p > 0);
+  let prev = after > 0 ? after : Math.max(0, ...known);
+  const next = Math.min(...known.filter(p => p > prev)), out = [];
+  for (let k = 0; k < n; k++) out.push(prev = between(prev, next === Infinity ? null : next));
+  return out;
+}
 /* Siblings in their List view order (`pos`: id -> position): smaller first, and those with none (0) after the others,
-   by id, as Vikunja sorts them; a task still waiting to be sent after all of those. */
+   by id, as Vikunja sorts them. A task still waiting to be sent goes where its position says, if it was given one (a
+   subtask added after another), else after all of those. */
 export const positionOrder = pos => (a, b) => {
-  if (a.pending || b.pending) return !!a.pending - !!b.pending;
-  const p = pos[a.id] || 0, q = pos[b.id] || 0;
-  return (!p) - (!q) || p - q || a.id - b.id;
+  const p = (a.pending ? a.position : pos[a.id]) || 0, q = (b.pending ? b.position : pos[b.id]) || 0;
+  const last = t => !!t.pending && !t.position;
+  return last(a) - last(b) || (!p) - (!q) || p - q || (a.pending || b.pending ? 0 : a.id - b.id);
 };
 /* A task's siblings in a list with each subtask under its parent (nestSubtasks: `tasks` in order, `depth` by id): the
    tasks under the same parent, at the same depth, each with the rows that go with it when it moves (its subtasks, all

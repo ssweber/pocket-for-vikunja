@@ -1,0 +1,6 @@
+<!-- Above quick add's box on a project's list, while it adds subtasks to the task touched last (`target`, from
+     capTarget in quickadd.js): to which task, and after which subtask when that isn't the last. × goes back to adding a
+     task to the project. -->
+<div class="cap-target" id="cap-target"><svg class="i"><use href="#i-subtasks"/></svg>
+  <span class="what">Add a subtask to <b x-text="target.to"></b><template x-if="target.after"><span>, after <b x-text="target.after"></b></span></template></span>
+  <button type="button" class="icon-btn plain" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="cursor = null"><svg class="i"><use href="#i-close"/></svg></button></div>

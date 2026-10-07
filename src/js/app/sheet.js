@@ -89,6 +89,7 @@ export default {
 
   async openTask(id){
     const from = this.sheet.open && this.sheet.kind === 'task' ? this.sheet.task?.id : null;
+    this.aim(this.tasks[id]);                    // quick add's box adds subtasks to it, once the sheet is closed
     this.openSheet('task');
     this.sheet.from = from;
     this.sheet.commentDraft = taskDrafts.get('comment:' + id) || '';

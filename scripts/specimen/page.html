@@ -34,6 +34,12 @@
           </template>
         </div>
       </div></template>
+      <!-- Above quick add's box on a project's list (cap-target.html): adding subtasks to the task touched last, after its
+           last subtask, and after the subtask touched -->
+      <div class="sec">Above the add box: what it adds subtasks to</div>
+      <template x-for="target in specimenTargets" :key="target.after">
+        <!-- include markup/cap-target.html -->
+      </template>
       <div class="sec">A message in its place: under Overdue, by the add box, in a sheet, on a run's step</div>
       <template x-for="line in specimenLines" :key="line.key">
         <!-- include markup/place-line.html -->

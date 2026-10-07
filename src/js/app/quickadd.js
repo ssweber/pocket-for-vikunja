@@ -1,19 +1,23 @@
 // The add box: what it read, who can see the project, suggestions for @username and *label, and the marks behind the words.
 import {colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError} from '../api.js';
-import {readStepPhrase, STEP_IGNORE} from '../checklists.js';
+import {hasTemplateLabel, readStepPhrase, STEP_IGNORE} from '../checklists.js';
+import {placeAfter} from '../order.js';
 import {captureLines, isTicked, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES, tickedLines} from '../quickadd.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
+let cursorIO = null, watched = null;           // what tells when the cursor's row is out of sight, and that row
 
 export default {
   /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
      ('cap'), the subtask box in a task's sheet ('sub'), whose lines become subtasks of the open task, in its project,
+     quick add's box again on a project's list while it adds subtasks to the task touched last ('under', the cursor),
      the box above the step on screen in a run ('ins'), whose lines are inserted as steps before it, and the boxes a
      template is written in: its name in New template ('tname'), each step being written ('new:<row key>' there,
      'add:<row key>' under a template) and a step being changed ('edit'). The methods below take which box. */
   box(w){
     if (w === 'sub') return this.sheet.sub;
+    if (w === 'under') return this.cap;
     if (w === 'ins') return this.runInsert;
     if (w === 'tname') return this.sheet.newTpl?.box || {text: ''};
     if (w === 'edit') return this.sheet.stepEdit || {text: ''};
@@ -23,6 +27,7 @@ export default {
   },
   boxEl(w){
     if (w === 'sub') return document.getElementById('d-subin');
+    if (w === 'under') return this.$refs.capture;
     if (w === 'ins') return document.getElementById('step-insert-in');
     if (w === 'tname') return document.getElementById('nt-name');
     if (w === 'edit') return document.getElementById('step-edit-' + this.sheet.stepEdit?.id);
@@ -34,11 +39,15 @@ export default {
      project a step's time is its T#30m, so "Check at 3pm" stays as it is. */
   boxBase(w){
     if (w === 'cap') return {};
-    return w === 'sub' && !this.checklistIds.has(this.sheet.task?.project_id) ? {project: true} : STEP_IGNORE;
+    return this.isSubBox(w) && !this.checklistIds.has(this.boxParent(w)?.project_id) ? {project: true} : STEP_IGNORE;
   },
+  // The boxes whose lines are subtasks, and the task they go under: the open sheet's, or the cursor's.
+  isSubBox(w){ return w === 'sub' || w === 'under'; },
+  boxParent(w){ return w === 'under' ? this.cursorParent : this.sheet.task; },
   // Where a line without a +project goes: the default project, the open task's, the run's, or the template's.
   boxHome(w){
     if (w === 'sub' || w === 'edit' || w.startsWith('add:')) return this.sheet.task?.project_id;
+    if (w === 'under') return this.cursorParent?.project_id;
     if (w === 'ins') return this.view.run?.run.project_id;
     if (w === 'tname' || w.startsWith('new:')) return this.sheet.newTpl?.project.id;
     return this.defaultProjectId();
@@ -75,7 +84,6 @@ export default {
     const project = owner >= 0 ? parsed[owner].project : null, miss = owner >= 0 ? parsed[owner].projectMiss : null;
     return {parsed: lines.length > 1 ? parsed.map(p => ({...p, project})) : parsed, project, miss};
   },
-  get captureHint(){ return this.boxHint('cap'); },
   // Whether a box is one of a template's steps: being written ('new:', 'add:') or changed ('edit').
   isStepBox(w){ return w === 'edit' || /^(new|add):/.test(w); },
   /* What a box reads, under it while it's empty. In a template's name, @user is who its runs are for; in a step, who
@@ -100,9 +108,9 @@ export default {
     const ph = this.isStepBox(w) && readStepPhrase(line), rest = ph ? line.slice(0, ph.index) + line.slice(ph.index + ph.length) : line;
     const raw = parseCapture(rest, this.projects, {...this.parseOpts, ignore: {}});
     if (base.due && (raw.due || raw.repeat)) out.push({key: 'ign-d', cls: 'quiet', text: w === 'tname' ? 'Dates stay in its name: when it comes round is set in its sheet'
-      : w === 'ins' ? 'Dates stay as words: a step added to a run has no time' : w === 'sub' ? 'Dates stay as words here: a subtask in a checklist project may become a step'
+      : w === 'ins' ? 'Dates stay as words: a step added to a run has no time' : this.isSubBox(w) ? 'Dates stay as words here: a subtask in a checklist project may become a step'
       : 'Dates stay as words: a step is due a time after the one before, like “in 20 min”'});
-    if (base.project && (raw.project || raw.projectMiss)) out.push({key: 'ign-p', cls: 'quiet', text: w === 'sub' ? `${this.prefixes.project}project stays as words: a subtask goes in its task's project`
+    if (base.project && (raw.project || raw.projectMiss)) out.push({key: 'ign-p', cls: 'quiet', text: this.isSubBox(w) ? `${this.prefixes.project}project stays as words: a subtask goes in its task's project`
       : `${this.prefixes.project}project stays as words: a checklist's steps are in its project`});
     return out;
   },
@@ -118,7 +126,8 @@ export default {
   },
   // What checkAccess looks up: the project and the @usernames. Empty when there's nothing to check.
   accessQuery(w){
-    if (!this.boxLines(w).length || this.accessBlocked || !this.prefixes) return '';
+    // ('under' is quick add's box too: only while it adds subtasks to a task.)
+    if (!this.boxLines(w).length || this.accessBlocked || !this.prefixes || (w === 'under' && !this.cursorTask)) return '';
     const {target, names} = this.boxPeople(w);
     return names.length ? [target, ...names.map(n => n.toLowerCase())].join('|') : '';
   },
@@ -258,7 +267,7 @@ export default {
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
-    if (w === 'cap') this.submitCapture(); else if (w === 'ins') this.insertStep(); else if (w === 'sub') this.addSubtasks();
+    if (w === 'cap') this.submitCapture(); else if (w === 'ins') this.insertStep(); else if (this.isSubBox(w)) this.addSubtasks(w);
     else if (w === 'tname') document.getElementById('new-step-0')?.focus();
     else if (w === 'edit') this.boxEl(w)?.blur();
     else { const [which, key] = w.split(':'); this.addDraftRow(which, this.draftRows(which).findIndex(r => r.key === key) + 1); }
@@ -288,7 +297,7 @@ export default {
     out.push(...photos);
     // A pasted list: how many, where they go, and anyone in it who can't see that project, before it's sent.
     const listWarn = () => this.accessHints(w).warn.map((text, i) => ({key: 'w' + i, cls: 'warn', text}));
-    if (n > 1 && !cap) { out.push({key: 'n', text: `${n} ${w === 'sub' ? 'subtasks' : 'steps'}`}, ...listWarn()); return out; }
+    if (n > 1 && !cap) { out.push({key: 'n', text: `${n} ${this.isSubBox(w) ? 'subtasks' : 'steps'}`}, ...listWarn()); return out; }
     if (n > 1) {
       out.push({key: 'n', text: this.cap.nest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
       const {project, miss} = this.parseList(this.capLines);
@@ -327,6 +336,64 @@ export default {
     const to = this.boxPid(w);
     if (to && !this.canWrite(to)) out.push({key: 'ro', cls: 'warn', text: `${this.projById.get(to)?.title || 'This project'} is shared with you to read only: it can't be added to`});
     return out;
+  },
+
+  /* ---------- what quick add's box adds to, on a project's list ---------- */
+  /* On a project's list, quick add's box adds a task to the project, until a task is touched: its sheet opened, ticked,
+     or its progress slid. That task is then the cursor, lit up, and the box adds subtasks to it (the box 'under'); one
+     on a subtask adds them after it, under its parent. A task ticked done can't be one: its parent is, if it's on the
+     list. The box goes back to adding a task with its ×, when the cursor's row is out of sight (scrolling back doesn't
+     bring it back), or when the screen is left. */
+  // A task that can be the cursor: open, on this project's list, one you can change, and not a run, a step of one or a
+  // template, which add steps their own way.
+  canAim(t){
+    return !!t && this.route.name === 'project' && !t.pending && !t.done && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
+      && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) && !this.deleting.includes(t.id) && this.onList(t);
+  },
+  onList(t){ return this.view.groups.some(g => g.key === 'open' && g.tasks.includes(t)); },
+  // The task touched last, or none if it can't be the cursor. `after` is the last subtask added from the box, which the
+  // next go after.
+  aim(t){
+    if (this.canAim(t)) { if (this.cursor?.id !== t.id) this.cursor = {id: t.id, after: null}; }
+    else this.cursor = null;
+  },
+  // A tick or a slide: the task, still open; done, the task it's under, to add more beside it.
+  aimAfterTick(t){ this.aim(t.done ? this.listParent(t) : t); },
+  // The task a row is under on this list, if it's there.
+  listParent(t){
+    const ids = t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
+    return ids.map(id => this.tasks[id]).find(p => p && this.onList(p)) || null;
+  },
+  get cursorTask(){ const t = this.cursor && this.tasks[this.cursor.id]; return this.canAim(t) ? t : null; },
+  // The task the box's subtasks go under: the cursor's, or the cursor itself.
+  get cursorParent(){ const t = this.cursorTask; return t && (this.listParent(t) || t); },
+  // Which box quick add's is: adding a task, or subtasks to the cursor.
+  get capW(){ return this.cursorTask ? 'under' : 'cap'; },
+  // What the box adds to, said above it: the task, and the subtask they go after, unless that's the last.
+  get capTarget(){
+    const t = this.cursorTask, p = this.cursorParent;
+    return t && {to: p.title, after: this.cursor.after?.title || (t !== p ? t.title : '')};
+  },
+  get capPlaceholder(){
+    if (this.cursorTask) return 'Add a subtask';                     // photos wait for a task: none show meanwhile
+    if (this.capPhotos.length) return 'What\'s this photo for?';
+    return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
+  },
+  // The same, to a screen reader, said as it changes.
+  get capTargetText(){ const c = this.capTarget; return c ? `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}` : ''; },
+  // Where the next `n` subtasks from the box go in the project's List view: after the cursor's subtask, or the last one
+  // added from the box, else after the parent's last subtask; null if the project has no List view.
+  cursorPlaces(n){
+    const t = this.cursorTask, p = this.cursorParent;
+    if (!this.view.listView) return null;
+    const after = this.cursor.after ? this.cursor.after.pos : t !== p ? this.positions[t.id] || 0 : null;
+    return placeAfter((p.related_tasks?.subtask || []).map(s => this.positions[s.id] || 0), after, n);
+  },
+  // The cursor's row, as it's drawn: watched, so the box goes back to adding a task once it's out of sight.
+  watchCursor(el){
+    if (watched === el || !window.IntersectionObserver) return;
+    cursorIO ||= new IntersectionObserver(es => { for (const e of es) if (!e.isIntersecting && e.target === watched && +watched.dataset.id === this.cursor?.id) this.cursor = null; });
+    cursorIO.disconnect(); watched = el; cursorIO.observe(el);
   },
 
   /* ---------- the words quick add read, marked in the box ---------- */

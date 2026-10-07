@@ -185,7 +185,7 @@ export default {
     return {el: row, swipe, reorder, start: pctOf(t), width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),
       finish: pct => {
-        if (pct !== null) { this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined}); if (sheet) this.sheet.dirty = true; }
+        if (pct !== null) { this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined}); if (sheet) this.sheet.dirty = true; else this.aimAfterTick(t); }
         this.endSlide(row);
         row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
       }};

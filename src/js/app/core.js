@@ -10,8 +10,9 @@ import {saved} from '../lists.js';
      saveChain: changes to a task are saved one after another, in the order they were made. */
 export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.resolve()};
 // An add box: its text, whether it has focus and where the cursor is (for suggestions), the chips tapped off, whether a
-// pasted list goes under its first line, whether the 🔔 chip is on, and whether it's sending.
-export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
+// pasted list goes under its first line, whether the 🔔 chip is on, whether it's sending, and how many lots of subtasks
+// from it are on their way (addSubtasks).
+export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false, adding: 0});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
   project: null, start: null, subPeople: {}, subLabels: {}, subView: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null,
@@ -42,6 +43,7 @@ export default () => ({
   // The quick add box at the bottom: its text, and what's been tapped off (chips) or picked (under the first line). The
   // subtask box in a task's sheet is the same kind of box: sheet.sub. Both are read by the box methods (quick add).
   cap: newBox(),
+  cursor: null,                                // on a project's list, the task quick add adds subtasks to: {id, after} (quickadd.js)
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → Users search.
   access: {}, userKnown: {}, accessBlocked: false,
@@ -124,6 +126,9 @@ export default () => ({
     // An emptied add box starts afresh: no chips tapped off.
     this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.remind = false; } });
     this.$watch('sheet.sub.text', v => { if (!v.trim()) { this.sheet.sub.ignore = {}; this.sheet.sub.remind = false; } });
+    // What quick add's box adds to, said to a screen reader as it changes on a project's list: not behind a sheet, but
+    // as the sheet that changed it closes.
+    this.$watch(() => !this.sheet.open && this.capTargetText, (v, was) => { if (this.route.name === 'project' && v !== false && (v || was)) this.said = v || this.capPlaceholder; });
     // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])
@@ -138,7 +143,7 @@ export default () => ({
     let searchTimer;
     this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });
     // And the boxes that aren't in a list of rows: a run's insert box, a template's name and a step being changed.
-    for (const w of ['cap', 'sub', 'ins', 'tname', 'edit']) {
+    for (const w of ['cap', 'sub', 'under', 'ins', 'tname', 'edit']) {
       // Once typing pauses, find out whether each @username can see the task's project.
       let accessTimer;
       this.$watch(`accessQuery('${w}')`, q => { clearTimeout(accessTimer); if (q) accessTimer = setTimeout(() => this.checkAccess(w), 500); });

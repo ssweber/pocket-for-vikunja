@@ -56,7 +56,7 @@ export default {
     shared.onClosedSheet = false;
     this.navigated();
   },
-  navigated(){ this.headerTucked = false; this.foldLines(); if (!this.signedIn) return; this.closeSheet(true); this.render(); },
+  navigated(){ this.headerTucked = false; this.cursor = null; this.foldLines(); if (!this.signedIn) return; this.closeSheet(true); this.render(); },
   // Pocket's own Back: the phone's Back when the screen before is that one, so the history doesn't grow; else go there.
   back(to){
     if (history.state?.from !== to || history.state?.sheet === true) { this.go(to); return; }
