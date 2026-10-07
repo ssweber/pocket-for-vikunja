@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nestSubtasks, soonestFirst, todayGroups, viewKey } from '../../src/js/lists.js';
+import { doneParentIds, nestSubtasks, soonestFirst, todayGroups, viewKey } from '../../src/js/lists.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z';                        // Vikunja's "no date"
@@ -34,6 +34,18 @@ test('a subtask whose parent isn\'t in the list stays where it was, at the top',
   const { tasks, depth } = nestSubtasks([{ id: 1 }, parentOf(2, 99), { id: 3 }]);
   assert.deepEqual(ids(tasks), [1, 2, 3]);
   assert.equal(depth[2], 0);
+});
+
+test('a done parent with open subtasks is found, and shown over them, not left out with them at the top', () => {
+  const sub = (id, parent, more = {}) => ({ id, done: false, related_tasks: { parenttask: [{ id: parent, done: true, project_id: 1 }] }, ...more });
+  // As a project's List view gives it: its open tasks, and their subtasks, done ones too (8, under 6, and done).
+  const view = [{ id: 1 }, sub(2, 9), sub(3, 9), sub(4, 7, { related_tasks: { parenttask: [{ id: 7, done: true, project_id: 2 }] } }),
+    { id: 6, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, done: true, related_tasks: { parenttask: [{ id: 6, done: false, project_id: 1 }] } }, sub(5, 8)];
+  assert.deepEqual(doneParentIds(view, 1), [9, 8], 'not a parent in another project; one the view gave, under an open task, too');
+  const head = { id: 9, done: true, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } };
+  const { tasks, depth } = nestSubtasks([...view.filter(t => !t.done), head, view[5]]);
+  assert.deepEqual(ids(tasks), [1, 4, 6, 8, 5, 9, 2, 3]);
+  assert.deepEqual([depth[9], depth[2], depth[3], depth[8], depth[5]], [0, 1, 1, 1, 2]);
 });
 
 test('a task waiting to be sent goes under the parent it names', () => {

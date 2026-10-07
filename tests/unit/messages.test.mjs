@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, movedText, notMoved, notSaved, sentLater } from '../../src/js/messages.js';
+import { addedWhere, doneLine, doneText, headText, movedText, notMoved, notSaved, sentLater } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import { blankSheet } from '../../src/js/app/core.js';
@@ -17,6 +17,24 @@ test('a move turned down says why, and for an API token without it, the permissi
     'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.');
   assert.equal(notMoved(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not moved: Forbidden');
   assert.equal(notMoved(new NetError('Failed to fetch')), 'Not moved: no connection');
+});
+
+test('what a tick says: a parent that closed its open subtasks, "Closed", with how many; none, "Done:"', () => {
+  assert.equal(doneText(0, 0, 'Call Jo'), 'Done: Call Jo');
+  assert.equal(doneText(4, 4, 'Pack the van'), 'Closed Pack the van + 4 subtasks');
+  assert.equal(doneText(1, 1, 'Pack the van'), 'Closed Pack the van + 1 subtask');
+  assert.equal(doneText(1, 3, 'Pack'), "Closed Pack + 1 of 3 subtasks: the rest couldn't be closed");
+  assert.equal(doneText(0, 2, 'Pack'), "Done: Pack — its 2 subtasks couldn't be closed");
+  assert.equal(doneText(0, 0, 'x'.repeat(50)), 'Done: ' + 'x'.repeat(38) + '…', 'a long title is cut short');
+  // On its row: the title on its own, struck through, with what's before and after it.
+  assert.deepEqual(doneLine(2, 2, 'Pack the van'), { text: 'Closed', title: 'Pack the van', more: '+ 2 subtasks' });
+  assert.deepEqual(doneLine(0, 0, 'Pack the van'), { text: 'Done:', title: 'Pack the van', more: '' });
+});
+
+test('a done task over its open subtasks says why it\'s on the open list', () => {
+  assert.equal(headText(1), 'Done, but 1 subtask is still open');
+  assert.equal(headText(3), 'Done, but 3 subtasks are still open');
+  assert.equal(headText(0), 'Done');
 });
 
 test('where tasks just added went, said by the add box', () => {

@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DELETE_W, doneText, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
+import { DELETE_W, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -29,15 +29,6 @@ test('an Undo putting progress back says nothing of its own', () => {
   assert.equal(undoing({ percent_done: 0.4 }), true);
   assert.equal(undoing({ percent_done: 0.4, done: true }), false);
   assert.equal(undoing({}), false);
-});
-
-test('what a tick says', () => {
-  assert.equal(doneText(0, 0, 'Call Jo'), 'Done: Call Jo');
-  assert.equal(doneText(0, 0), 'Done');
-  assert.equal(doneText(2, 2, 'Pack'), 'Done: Pack, with 2 subtasks');
-  assert.equal(doneText(1, 1, 'Pack'), 'Done: Pack, with 1 subtask');
-  assert.equal(doneText(1, 3, 'Pack'), 'Done: Pack, with 1 of its 3 open subtasks. The rest couldn\'t be saved.');
-  assert.equal(doneText(0, 0, 'x'.repeat(50)), 'Done: ' + 'x'.repeat(38) + '…', 'a long title is cut short');
 });
 
 test('a slide snaps to the quarters, and progress set elsewhere stays until it\'s slid nearer a snap', () => {

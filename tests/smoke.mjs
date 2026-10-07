@@ -544,7 +544,7 @@ try {
     if (open.length !== 3) throw new Error('open subtasks before: ' + open.length);
     const parentRow = `.row:has(> .body .title:has-text("${parentTitle}"))`;
     await page.click(`${parentRow} > .check`);
-    await page.waitForSelector(`${parentRow}.lined .row-line:has-text("+ 3 subtasks")`, { timeout: 20000 });
+    await expect(page.locator(`${parentRow}.lined .row-line`)).toContainText(`Closed ${parentTitle} + 3 subtasks`, { timeout: 20000 });
     if ((await subs()).some(s => !s.done)) throw new Error('a subtask is still open');
     await page.click(`${parentRow} .line-act`);
     await synced(page);
@@ -555,7 +555,7 @@ try {
     await page.click(`.row .body:has-text("${parentTitle}")`);
     await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 10000 });
     await page.click('#d-done');
-    await placeSays(page, 'sheet:subtasks', 'with 3 subtasks');
+    await placeSays(page, 'sheet:subtasks', `Closed ${parentTitle} + 3 subtasks`);
     await page.waitForSelector('#d-subcount:text("4/4")', { timeout: 5000 });
     await placeLine(page, 'sheet:subtasks').getByRole('button', { name: 'Undo' }).click();
     await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 15000 });
@@ -1374,6 +1374,71 @@ try {
     await page.getByRole('button', { name: `Mark done: Delta ${stamp}` }).click();
     await later(5000);
     await expect(page.getByRole('button', { name: 'Done (1)' })).toBeVisible();
+  });
+  /* A parent ticked closes its open subtasks with it, and says so: "Closed Echo + 2 subtasks". Its Undo opens those two
+     again, and not the one done before. */
+  const openList = () => page.locator('#view .list').first();
+  const doneIn = async (...names) => Promise.all(names.map(async n => (await (await api('/tasks/' + order.tasks[n].id)).json()).done));
+  await step('a-parent-ticked-closes-its-open-subtasks-and-undo-opens-only-those', async () => {
+    const T = order.tasks, mk = async (name, extra = {}) => T[name] = await (await api(`/projects/${order.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: `${name} ${stamp}`, ...extra }) })).json();
+    await mk('Echo');
+    for (const s of ['echo one', 'echo two']) await mk(s);
+    await mk('echo done', { done: true });
+    for (const s of ['echo one', 'echo two', 'echo done']) await api(`/tasks/${T.Echo.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: T[s].id, relation_kind: 'subtask' }) });
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await expect(page.locator(rowById(T['echo two'].id))).toBeVisible();
+    await openList().getByRole('button', { name: `Mark done: Echo ${stamp}`, exact: true }).click();
+    const line = rowLine(page, `Echo ${stamp}`);
+    await expect(line).toContainText(`Closed Echo ${stamp} + 2 subtasks`);
+    await expect(page.locator('#said')).toContainText(`Closed Echo ${stamp} + 2 subtasks`);
+    await synced(page);
+    if (JSON.stringify(await doneIn('Echo', 'echo one', 'echo two')) !== '[true,true,true]') throw new Error('not all closed in Vikunja');
+    await line.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator(rowById(T['echo one'].id))).toBeVisible();
+    await synced(page);
+    const now = await doneIn('Echo', 'echo one', 'echo two', 'echo done');
+    if (JSON.stringify(now) !== '[false,false,false,true]') throw new Error('after Undo, done: ' + now);
+  });
+  /* A parent done with subtasks still open (ticked done on the web, which leaves them): struck through over them, not
+     left out with them on their own at the top. It can't be moved, nor be what the add box adds to; tapped, its sheet
+     opens; its tick opens it again, where it is. */
+  await step('a-done-parent-shows-over-its-open-subtasks', async () => {
+    const T = order.tasks, head = page.locator(rowById(T.Echo.id)).first();
+    await api('/tasks/' + T.Echo.id, { method: 'PATCH', headers: json, body: JSON.stringify({ done: true }) });
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await expect(head).toHaveClass(/head/);
+    await expect(head).toHaveClass(/done/);
+    await expect(head.locator('.meta')).toContainText('Done, but 2 subtasks are still open');
+    const rows = await openList().locator('.row > .body .title').allTextContents(), at = rows.indexOf(`Echo ${stamp}`);
+    if (at < 0 || !rows.slice(at + 1, at + 3).every(r => /^Subtask: echo (one|two) /.test(r))) throw new Error('rows: ' + JSON.stringify(rows));
+    if (rows.some(r => /^echo/.test(r))) throw new Error('a subtask on its own at the top: ' + JSON.stringify(rows));
+    // Held, it isn't lifted to be moved; Alt+↓ leaves it where it is.
+    await head.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const box = await steady(head);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await later(800);
+    await expect(head).not.toHaveClass(/held/);
+    await page.mouse.up();                                                      // a tap, then: its sheet
+    await expect(page.locator('#d-done.on')).toBeVisible();
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await expect(page.locator('#cap-target')).toHaveCount(0);                   // the add box adds a task, not to it
+    await head.locator(':scope > .body').focus();
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(openList().locator('.row > .body .title')).toHaveText(rows);
+    // Its tick opens it again, where it is, with its subtasks under it, and out of Done.
+    const count = +(await page.getByRole('button', { name: /^Done \(/ }).textContent()).match(/\d+/)[0];
+    await openList().getByRole('button', { name: `Mark not done: Echo ${stamp}`, exact: true }).click();
+    await expect(rowLine(page, 'Not done:')).toContainText(`Echo ${stamp}`);
+    await later(5000);
+    await expect(head).not.toHaveClass(/done/);
+    await expect(openList().locator('.row > .body .title')).toHaveText(rows);
+    await expect(page.getByRole('button', { name: `Done (${count - 1})` })).toBeVisible();
+    await synced(page);
+    if (JSON.stringify(await doneIn('Echo', 'echo one', 'echo two')) !== '[false,false,false]') throw new Error('done in Vikunja: ' + await doneIn('Echo', 'echo one', 'echo two'));
   });
 
   /* On a project's list, quick add's box adds a task to the project, until a task is touched (its sheet opened, ticked):

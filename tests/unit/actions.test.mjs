@@ -12,28 +12,34 @@ import { sync } from '../../src/js/sync.js';
 
 const DAY = 86400;
 const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
-// A parent with three subtasks: one open, one done already, and one that repeats (which a parent's tick leaves alone).
+// A parent with four subtasks: two open (one half done), one done already, and one that repeats (which a parent's tick
+// leaves alone).
 const family = () => {
-  const subs = [sub(11), sub(12, { done: true }), sub(13, { repeat_after: DAY, due_date: '2026-10-07T09:00:00Z' })];
-  const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0, related_tasks: { subtask: subs } };
+  const subs = [sub(11), sub(12, { done: true }), sub(13, { repeat_after: DAY, due_date: '2026-10-07T09:00:00Z' }), sub(14, { percent_done: 0.5 })];
+  const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0.25, related_tasks: { subtask: subs } };
   return { parent, subs };
 };
 const patches = v => v.requests.filter(r => r.method === 'PATCH').map(r => [+r.path.split('/')[2], r.body]);
 
-test('ticking a parent closes its open subtasks, and Undo opens exactly those again', async () => {
+test('ticking a parent closes its open subtasks, says "Closed", and Undo opens exactly those again, progress as it was', async () => {
   const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = component(tasks, actions);
   const t = app.keep(parent);
   await app.toggleDone(t, null);
-  assert.deepEqual(patches(v), [[10, { done: true }], [11, { done: true }]]);
+  assert.deepEqual(patches(v), [[10, { done: true }], [11, { done: true }], [14, { done: true }]]);
   assert.equal(t.done, true);
-  assert.equal(app.toast.msg, 'Done: Pack the van, with 1 subtask');
+  assert.equal(app.toast.msg, 'Closed Pack the van + 2 subtasks');
+  assert.deepEqual([app.toast.row.text, app.toast.row.title, app.toast.row.more], ['Closed', 'Pack the van', '+ 2 subtasks'], 'its row\'s line');
+  assert.deepEqual(app.toast.row.hide, [11, 14], 'the subtasks closed go with its row');
   assert.equal(v.task(13).done, false, 'a repeating subtask is left alone');
+  assert.deepEqual(t.related_tasks.subtask.map(s => s.done), [true, true, false, true], 'its row counts them done');
 
   v.requests.length = 0;
   await app.toast.action.fn();
-  assert.deepEqual(patches(v), [[10, { done: false }], [11, { done: false }]]);
+  assert.deepEqual(patches(v), [[10, { done: false }], [11, { done: false }], [14, { done: false }]]);
   assert.equal(v.task(12).done, true, 'the subtask done before stays done');
   assert.equal(t.done, false);
+  assert.deepEqual([v.task(10).percent_done, v.task(14).percent_done], [0.25, 0.5], 'progress as it was');
+  assert.deepEqual(t.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
 });
 
 test('a subtask that fails to close stops the rest, and the message says so', async () => {
@@ -43,7 +49,55 @@ test('a subtask that fails to close stops the rest, and the message says so', as
   await app.toggleDone(app.keep(parent), null);
   assert.equal(v.task(10).done, true);
   assert.equal(v.task(14).done, false, 'stopped at the first that failed');
-  assert.equal(app.toast.msg, 'Done: Pack the van, with 0 of its 2 open subtasks. The rest couldn\'t be saved.');
+  assert.equal(app.toast.msg, 'Done: Pack the van — its 2 subtasks couldn\'t be closed');
+});
+
+test('the sheet\'s tick goes the same way: its subtasks closed, said under them, and Undo opens them again', async () => {
+  const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = component(tasks, actions);
+  app.sheet = { task: structuredClone(parent) };
+  await app.sheetDone();
+  assert.deepEqual(patches(v), [[10, { done: true }], [11, { done: true }], [14, { done: true }]]);
+  assert.deepEqual([app.toast.msg, app.toast.place], ['Closed Pack the van + 2 subtasks', 'sheet:subtasks']);
+  assert.deepEqual(app.sheet.task.related_tasks.subtask.map(s => s.done), [true, true, false, true], 'the sheet shows them done');
+  assert.equal(app.sheet.dirty, true, 'the list is read again once the sheet closes');
+  await app.toast.action.fn();
+  assert.deepEqual([10, 11, 12, 14].map(id => v.task(id).done), [false, false, true, false]);
+  assert.deepEqual(app.sheet.task.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
+  // A task with none: its tick says nothing, it shows on the tick; ticked again, it's not done.
+  const n = app.toasts.length;
+  app.sheet.task = structuredClone(v.task(12));
+  await app.sheetDone();
+  assert.equal(v.task(12).done, false);
+  assert.equal(app.toasts.length, n);
+});
+
+test('a done parent over its open subtasks on a project\'s list, ticked, is open again where it is, out of Done', async () => {
+  const v = fakeVikunja([{ id: 10, title: 'Pack the van', done: true, related_tasks: { subtask: [sub(11)] } }, sub(11)]), app = component(tasks, actions);
+  const head = app.keep(v.task(10)), kid = app.keep(v.task(11));
+  app.route = { name: 'project', id: 1 };
+  app.view.groups = [{ key: 'open', tasks: [kid, head], heads: [10] }, { key: 'done', loaded: false, count: 3, tasks: [] }];
+  assert.equal(app.isHead(head), true);
+  await app.toggleDone(head, null);
+  assert.equal(v.task(10).done, false);
+  assert.deepEqual(app.view.groups[0].tasks.map(t => t.id), [11, 10], 'still on the open list');
+  assert.equal(app.view.groups[1].count, 2, 'no longer counted as done');
+  assert.deepEqual([app.toast.row.text, app.toast.row.stays], ['Not done:', true], 'its line gives the row back');
+  assert.equal(v.task(11).done, false, 'its subtask as it was');
+  await app.toast.action.fn();
+  assert.equal(v.task(10).done, true, 'Undo: done again');
+});
+test('a parent ticked on a project\'s list with a subtask left open (one that repeats) stays over it, done', async () => {
+  const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = component(tasks, actions);
+  app.route = { name: 'project', id: 1 };
+  const t = app.keep(parent), kids = [11, 13, 14].map(id => app.keep({ ...v.task(id), related_tasks: { parenttask: [{ id: 10 }] } }));
+  app.view.groups = [{ key: 'open', tasks: [t, ...kids] }, { key: 'done', loaded: false, count: 1, tasks: [] }];
+  await app.toggleDone(t, null);
+  assert.deepEqual(app.view.groups[0].heads, [10], 'a head over the repeating one');
+  assert.equal(app.view.groups[1].count, 2, 'counted done');
+  assert.deepEqual([app.toast.row.stays, app.toast.row.hide], [true, [11, 14]], 'its row comes back when its line goes; those closed go with it');
+  await app.toast.action.fn();
+  assert.deepEqual([10, 11, 14].map(id => v.task(id).done), [false, false, false], 'Undo: all open again');
+  assert.equal(app.view.groups[1].count, 1);
 });
 
 test('a tick not saved goes back, and its row says why, with Try again', async () => {
@@ -86,6 +140,13 @@ test('progress taken to 100% marks the task done, and Undo puts back the progres
   assert.equal(v.task(1).done, true);
   await app.toast.action.fn();
   assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.4 }]);
+  // From the sheet's bar, the same, shown by its tick: ticked again, it's back with the progress it had.
+  const n = app.toasts.length;
+  app.sheet = { task: structuredClone(v.task(1)) };
+  await app.sheetProgress(app.sheet.task, 100);
+  assert.deepEqual([v.task(1).done, v.task(1).percent_done, app.toasts.length], [true, 0.4, n]);
+  await app.sheetDone();
+  assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.4]);
 });
 
 test('progress below 100% is saved as it is, shown on its bar alone; not saved, it goes back and its row says so', async () => {

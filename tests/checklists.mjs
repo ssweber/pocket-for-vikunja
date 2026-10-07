@@ -804,6 +804,18 @@ try {
       // Its Undo is in its row's place, as a task's tick is.
       await rowLine(page, 'Finished:').getByRole('button', { name: 'Undo' }).click();
       await until('Undo never opened it again', async () => !(await api('/tasks/' + id)).done);
+      // Finished again, once its line has gone it stays over its steps not done, struck through, rather than leave them
+      // on their own; its tick opens it again.
+      await synced(page);
+      await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
+      await until('the run was never finished again', async () => (await api('/tasks/' + id)).done);
+      await later(5000);
+      await expect(page.locator(`#view .row.head:has(> .body .title:has-text("${title}"))`).first()).toBeVisible();
+      const now = await page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.replace(/^Subtask: /, '').trim()));
+      const head = now.findIndex(t => t.includes(title));
+      if (JSON.stringify(now.slice(head + 1, head + 1 + want.length)) !== JSON.stringify(want)) throw new Error('under it: ' + now.slice(head + 1, head + 1 + want.length).join(' | '));
+      await page.click(`.row.head:has(> .body .title:has-text("${title}")) > .check`);
+      await until('its tick never opened it again', async () => !(await api('/tasks/' + id)).done);
     } finally {
       page.off('dialog', record);
       for (const x of await subtasks(id)) await api('/tasks/' + x.id, { method: 'DELETE' }).catch(() => {});
