@@ -325,7 +325,7 @@ export default {
       }
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
       const slot = done ? this.doneSlot(by, people, waiting ? 'wait' : skipped ? 'skip' : 'done')
-        : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done);
+        : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done, r.run.id);
       // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
       // "Done by Priya at 4:46 PM" (and the day, if it wasn't today).
       const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))

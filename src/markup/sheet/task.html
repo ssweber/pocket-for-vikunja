@@ -105,14 +105,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
       <!-- A template's subtasks are its steps: in order, with when each is due in a run; tapped, changed, moved or removed -->
       <div class="h3" x-show="checklistRole !== 'tplstep'"><span x-text="checklistRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="checklistRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
       <div class="card" id="d-subtasks" x-show="checklistRole !== 'tplstep'">
-        <template x-for="(st, i) in subtasks" :key="st.id">
+        <!-- A subtask: the same row as in a list, as a sheet has it (g.sheet) -->
+        <template x-for="g in [{depth: {}, sheet: true}]" :key="0"><template x-for="t in checklistRole === 'template' ? [] : subtasks" :key="t.id">
+          <!-- include markup/task-row.html -->
+        </template></template>
+        <!-- A template's step has a row of its own, not the task row: its number where a task has its tick, when it's due in
+             a run and its notes' first line under it, and, tapped, quick add's box in its place, with ↑ ↓ ×. Who's doing it
+             is the same slot as on a subtask. -->
+        <template x-for="(st, i) in checklistRole === 'template' ? subtasks : []" :key="st.id">
           <!-- A step being changed is saved once the focus leaves its row: its time chip and buttons are part of it -->
-          <div class="row" :class="{done: st.done && checklistRole !== 'template', editing: checklistRole === 'template' && sheet.stepEdit?.id === st.id}" :data-id="st.id"
-               @focusout="checklistRole === 'template' && sheet.stepEdit?.id === st.id && setTimeout(() => $el.contains(document.activeElement) || saveStepEdit(i))">
-            <template x-if="checklistRole !== 'template'"><button class="check" :class="'p' + (st.priority || 0)" :aria-label="(st.done ? 'Mark not done: ' : 'Mark done: ') + st.title" @click="toggleSubtask(st)"><svg class="i"><use href="#i-check"/></svg></button></template>
-            <!-- A template's step has its number where a subtask has its tick -->
-            <template x-if="checklistRole === 'template'"><span class="check step-n num" aria-hidden="true" x-text="i + 1"></span></template>
-            <template x-if="checklistRole === 'template' && sheet.stepEdit?.id === st.id"><div class="body step-in" x-data="{bw: 'edit'}">
+          <div class="row" :class="{editing: sheet.stepEdit?.id === st.id}" :data-id="st.id"
+               @focusout="sheet.stepEdit?.id === st.id && setTimeout(() => $el.contains(document.activeElement) || saveStepEdit(i))">
+            <span class="check step-n num" aria-hidden="true" x-text="i + 1"></span>
+            <template x-if="sheet.stepEdit?.id === st.id"><div class="body step-in" x-data="{bw: 'edit'}">
               <!-- Quick add's box ('edit'): @people assign the step, *labels label it, as when it was written -->
               <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
                         x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })" x-effect="sheet.stepEdit?.text; $nextTick(() => grow($el))"
@@ -135,16 +140,12 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
                 </span>
               </div>
             </div></template>
-            <button class="body" x-show="!(checklistRole === 'template' && sheet.stepEdit?.id === st.id)" @click="checklistRole === 'template' ? editStep(st) : openTask(st.id)"><div class="title" x-text="checklistRole === 'template' ? templateSteps[i]?.title : st.title"></div>
-              <template x-if="checklistRole === 'template' && (templateSteps[i]?.text || templateSteps[i]?.problem)"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
-              <template x-if="checklistRole === 'template' && stepNote(st)"><div class="step-note" x-text="stepNote(st)"></div></template>
-              <template x-if="checklistRole !== 'template' && dueInfo(st.due_date)"><div class="meta"><span class="due num" :class="dueInfo(st.due_date).cls" x-text="dueInfo(st.due_date).label"></span></div></template>
-              <template x-if="checklistRole === 'run' && addedText(st.description)"><div class="meta step-added-meta"><span x-text="addedText(st.description)"></span></div></template></button>
-            <!-- Who's doing it: "+ me" claims it, your picture lets it go, anyone else's just shows who -->
-            <template x-if="subSlots[st.id] && !(checklistRole === 'template' && sheet.stepEdit?.id === st.id)"><button class="claim" :class="{free: !subSlots[st.id].users.length, mine: subSlots[st.id].mine}" :aria-disabled="!subSlots[st.id].can" :aria-label="subSlots[st.id].label" @click="toggleClaim(st, subSlots[st.id], checklistRole === 'run' ? sheet.task.id : null)">
-              <template x-if="!subSlots[st.id].users.length"><span class="me">+ me</span></template><template x-for="slot in [subSlots[st.id]]" :key="0"><span class="pics">
-                <!-- include markup/pics.html -->
-              </span></template></button></template>
+            <button class="body" x-show="sheet.stepEdit?.id !== st.id" @click="editStep(st)"><div class="title" x-text="templateSteps[i]?.title"></div>
+              <template x-if="templateSteps[i]?.text || templateSteps[i]?.problem"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
+              <template x-if="stepNote(st)"><div class="step-note" x-text="stepNote(st)"></div></template></button>
+            <template x-for="slot in subSlots[st.id] && sheet.stepEdit?.id !== st.id ? [subSlots[st.id]] : []" :key="0">
+              <!-- include markup/claim-slot.html -->
+            </template>
           </div>
         </template>
         <!-- Subtasks still waiting to be sent -->

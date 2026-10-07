@@ -1,0 +1,6 @@
+<!-- Who's doing a subtask or a step (`slot`, from claimSlot): "+ me" claims it, your picture lets it go, anyone else's
+     just shows who. The same on a subtask in its parent's sheet, a template's step, and a run's step on its screen. -->
+<button class="claim" :class="{free: !slot.users.length, mine: slot.mine}" :aria-disabled="!slot.can" :aria-label="slot.label" @click="toggleClaim(slot)">
+  <template x-if="!slot.users.length"><span class="me">+ me</span></template><span class="pics">
+    <!-- include markup/pics.html -->
+  </span></button>

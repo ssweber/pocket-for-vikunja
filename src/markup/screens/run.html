@@ -77,10 +77,9 @@
             <!-- include markup/pics.html -->
           </span></template></span></template>
           <!-- Not done: who's doing it; "+ me" claims it, your picture lets it go -->
-          <template x-if="!s.done && s.slot"><button class="claim" :class="{free: !s.slot.users.length, mine: s.slot.mine}" :aria-disabled="!s.slot.can" :aria-label="s.slot.label" @click="toggleClaim(s, s.slot, view.run.run.id)">
-            <template x-if="!s.slot.users.length"><span class="me">+ me</span></template><template x-for="slot in [s.slot]" :key="0"><span class="pics">
-              <!-- include markup/pics.html -->
-            </span></template></button></template>
+          <template x-for="slot in !s.done && s.slot ? [s.slot] : []" :key="0">
+            <!-- include markup/claim-slot.html -->
+          </template>
           <!-- A step added during the run, on screen and not done: likely a mistake, so it can go -->
           <template x-if="s.added && !s.done && i === runView.at && !runView.finished && canWrite(view.run.run.project_id)"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + s.title" @click="deleteAddedStep(s)"><svg class="i"><use href="#i-close"/></svg></button></template>
         </div></template>

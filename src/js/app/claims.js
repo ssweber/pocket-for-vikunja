@@ -13,16 +13,17 @@ export default {
      it to you. Yours: a tap lets it go. Someone else's shows who has it and does nothing: handing it over is done with
      Assign in its sheet. Done, it shows who had it and can't be tapped. Claiming never ticks anything: Done and Skip
      work for anyone, whoever has the step. `people`: its assignees, with claims waiting to be sent (peopleOf). Up to two
-     pictures show (`users`), yours first, then how many more. */
-  claimSlot(t, people, done){
-    const me = this.user, mine = people.some(u => u.id === me?.id), title = parseStep(t.title).title;
+     pictures show (`users`), yours first, then how many more. A tap on it (toggleClaim) is for its task (`id`), a step of
+     the run `run` if it's one. */
+  claimSlot(t, people, done, run = null){
+    const me = this.user, mine = people.some(u => u.id === me?.id), title = parseStep(t.title).title, id = t.id;
     const all = mine ? [me, ...people.filter(u => u.id !== me.id)] : people, users = all.slice(0, 2), more = all.length - users.length;
     const names = all.map(u => u.id === me?.id ? 'you' : this.nameOf(u)).join(', ');
-    if (done || !this.canWrite(t.project_id)) return all.length ? {users, more, can: false, label: `Assigned to ${names}: ${title}`} : null;
+    if (done || !this.canWrite(t.project_id)) return all.length ? {id, run, users, more, can: false, label: `Assigned to ${names}: ${title}`} : null;
     const others = all.filter(u => u.id !== me?.id).map(u => this.nameOf(u)).join(', ');
-    if (mine) return {users, more, can: true, mine: true, label: `You're doing ${title}${others ? ', with ' + others : ''}. Tap to let it go`};
-    if (all.length) return {users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
-    return {users: [], more: 0, can: true, label: `Tap to say you'll do ${title}`};
+    if (mine) return {id, run, users, more, can: true, mine: true, label: `You're doing ${title}${others ? ', with ' + others : ''}. Tap to let it go`};
+    if (all.length) return {id, run, users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
+    return {id, run, users: [], more: 0, can: true, label: `Tap to say you'll do ${title}`};
   },
   /* A done step's pictures: whoever did it, with a ✓ (⏭ for a skip, grey while it waits to be sent), then the others
      it's assigned to, all one size. Null when there's no one to show. */
@@ -38,10 +39,10 @@ export default {
     return list;
   },
   // Claim it, or let it go. Through the outbox, like a tick on a run: without a connection it waits, shown as done.
-  async toggleClaim(t, slot, run = null){
+  async toggleClaim(slot){
     if (!slot?.can) return;
     navigator.vibrate?.(10);
-    await this.act({op: slot.mine ? 'unclaim' : 'claim', task: t.id, run});
+    await this.act({op: slot.mine ? 'unclaim' : 'claim', task: slot.id, run: slot.run});
     if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true;   // Today shows what's assigned to you
   },
   /* The open task's subtasks' assignees: Vikunja doesn't include them in a task's subtasks, so one request for all of
@@ -61,7 +62,8 @@ export default {
   // The open task's subtasks' slots, by id.
   get subSlots(){
     const out = {};
-    for (const st of this.subtasks) out[st.id] = this.claimSlot(st, this.peopleOf(st.id, this.sheet.subPeople[st.id]), st.done);
+    const run = this.checklistRole === 'run' ? this.sheet.task.id : null;
+    for (const st of this.subtasks) out[st.id] = this.claimSlot(st, this.peopleOf(st.id, this.sheet.subPeople[st.id]), st.done, run);
     return out;
   },
   // A claim or a let-go that reached Vikunja, on the screen at once.

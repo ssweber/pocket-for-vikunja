@@ -85,9 +85,11 @@ export default {
   },
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
-  rowMeta(t){
+  // What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet.
+  rowMeta(t, g){
     const out = [], due = dueInfo(t.due_date);
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
+    if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     /* A template that comes round: what tapping it does (starting it moves it on only once it's due today), its project,
        so two projects' "Opening up" can be told apart, and who it's for, instead of its label and steps. */
