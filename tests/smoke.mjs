@@ -34,8 +34,16 @@ const api = async (path, init = {}) => {
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
-const page = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+// The page's clock is Playwright's: it keeps the real time, and later() moves it on instead of waiting.
+await context.clock.install();
+const page = await context.newPage();
 const errors = [];
+/* Time passing on the page only, `ms` of it at once: its timers due meanwhile run (a toast going, Today's minute), then
+   its clock is put back on the real time, which Vikunja's dates are on. */
+const later = async ms => { await page.clock.fastForward(Math.max(0, Math.round(ms))); await page.clock.setSystemTime(Date.now()); };
+// How long the toast showing has left, on the page's clock (0 if none is showing).
+const toastLeft = () => page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; return t?.show ? Math.max(0, t.until - Date.now()) : 0; });
 // A token without some permission gets 401s, which Pocket handles; the browser still logs them, so they're left out here,
 // with the reply a test cuts off on purpose.
 page.on('console', m => m.type() === 'error' && !/status of 401|ERR_CONNECTION_RESET/.test(m.text()) && errors.push(m.text()));
@@ -618,7 +626,11 @@ try {
   const todayAt = h => { const d = new Date(); d.setHours(h, 0, 0, 0); return d.toISOString(); };
   const refreshToday = async () => { await page.evaluate(() => { location.hash = '#/today'; }); await page.click('#btn-refresh'); await page.waitForSelector('#btn-refresh:not([disabled])'); };
   const rowOf = t => `.row:has(> .body .title:has-text("${t}"))`;
-  const toastGone = () => page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 }).catch(() => {});
+  // So the next one is new: the one showing goes now, as its own timer would make it.
+  const toastGone = async () => {
+    await page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; if (t) t.show = false; });
+    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 }).catch(() => {});
+  };
 
   await step('quick-add-keeps-focus-with-undo-and-open', async () => {
     const t = `Pocket smoke focus ${stamp}`;
@@ -742,13 +754,15 @@ try {
       await refreshToday();
       await page.waitForSelector(`.sec.today + .list ${rowOf(t)}`, { timeout: 15000 });
       // An Undo showing (a tick's, say) isn't replaced: the message waits for it to go. It's put up just before the time
-      // passes: the minute's own timer, should it come between, then waits for it too, rather than say it first.
-      await page.waitForTimeout(Math.max(0, due - Date.now() - 500));
+      // passes: the minute's own timer, should it come between, then waits for it too, rather than say it first. The
+      // page's clock is moved on, not waited for, and kept there until the message is said.
+      await page.clock.fastForward(Math.max(0, due - await page.evaluate(() => Date.now()) - 500));
       await page.evaluate(() => Alpine.$data(document.body).notify('Done: something', { label: 'Undo', done: true, fn(){} }));
-      await page.waitForTimeout(Math.max(0, due - Date.now()) + 1000);
+      await page.clock.fastForward(1500);
       await page.evaluate(() => Alpine.$data(document.body).tickToday());     // what the minute's timer does
       await page.waitForSelector(`.sec.overdue + .list ${rowOf(t)}`, { timeout: 5000 });
       if (!await page.$('#toast.show #toast-msg:text-is("Done: something")')) throw new Error('the Undo was replaced');
+      await later(await toastLeft() + 200);
       await page.waitForSelector(`#toast.show #toast-msg:text-is("“${t}” is due now")`, { timeout: 10000 });
     } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
   });

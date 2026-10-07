@@ -47,8 +47,14 @@ async function until(what, fn, ms = 20000){
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+// The page's clock is Playwright's: it keeps the real time, and later() moves it on instead of waiting.
+await context.clock.install();
 const page = await context.newPage();
 const errors = [];
+/* Time passing on the page only, `ms` of it at once: its timers due meanwhile run (a toast going, a countdown's second),
+   then its clock is put back on the real time, which Vikunja's dates are on. */
+const later = async ms => { await page.clock.fastForward(Math.max(0, Math.round(ms))); await page.clock.setSystemTime(Date.now()); };
+const pageNow = () => page.evaluate(() => Date.now());
 page.on('console', m => m.type() === 'error' && !/status of (401|404)|ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(m.text()) && errors.push(m.text()));
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
@@ -73,7 +79,12 @@ const signIn = async (p, token) => {
 };
 // A hidden toast keeps its words, only see-through: so only one showing counts.
 const toast = text => page.waitForSelector(`#toast.show #toast-msg:has-text("${text}")`, { timeout: 20000 });
-const toastGone = () => page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // so the next one is new
+// So the next one is new: the one showing goes now, as its own timer would make it. (Not by moving the page's clock on,
+// which would also bring the run's screen's reload every 20 seconds round sooner, under a finger.)
+const toastGone = async () => {
+  await page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; if (t) t.show = false; });
+  await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
+};
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));
 
 const stamp = Date.now();
@@ -380,18 +391,22 @@ try {
   });
 
   await step('countdown-alerts-at-zero', async () => {
-    // A countdown on screen that reaches zero says so, once: not again after a reload.
-    const warm = (await runStep(first.id, 1)).id, back = (await task(warm)).due_date;
+    // A countdown on screen that reaches zero says so, once: not again after a reload. The page's clock is moved on to
+    // its time (and a second over, for the Date header's whole seconds), not waited for.
+    const warm = (await runStep(first.id, 1)).id, back = (await task(warm)).due_date, due = Date.now() + 5000;
     await toastGone().catch(() => {});
-    await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(Date.now() + 5000).toISOString() }) });
+    await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(due).toISOString() }) });
     try {
       await page.reload();
       await page.waitForSelector('#step-title:text-is("Warm up the press")', { timeout: 15000 });
+      await page.clock.fastForward(due + 1500 - await pageNow());
       await toast('“Warm up the press” is due now');
+      await page.clock.setSystemTime(Date.now());
       await toastGone();
       await page.reload();
       await page.waitForSelector('#step-title:text-is("Warm up the press")', { timeout: 15000 });
-      await page.waitForTimeout(3000);
+      await page.clock.fastForward(due + 1500 - await pageNow());
+      await later(2000);
       if (await page.$('#toast.show #toast-msg:has-text("is due now")')) throw new Error('it said so again');
     } finally { await api('/tasks/' + warm, { method: 'PATCH', body: JSON.stringify({ due_date: back }) }); }
     await page.reload();
@@ -857,6 +872,8 @@ try {
     await page.evaluate(id => { location.hash = '#/run/' + id; }, run);
     await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")', { timeout: 15000 });
     await context.setOffline(true);
+    // Ticked 8 seconds ago, as the page's clock has it, so Vikunja gets the tick well after it was made.
+    await page.clock.setSystemTime(Date.now() - 8000);
     await page.click('#step-done');
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait');
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .did.waiting[aria-label$="waiting to send"]');
@@ -867,7 +884,7 @@ try {
     await page.reload();                                                     // e.g. the phone closed the app
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait', { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    await page.waitForTimeout(6000);                                         // so Vikunja gets the tick well after it was made
+    await page.clock.setSystemTime(Date.now());
     await context.setOffline(false);
     await page.waitForSelector('#run-steps .row:nth-of-type(1):not(:has(.check.wait))', { timeout: 20000 });
     const id = (await runStep(run, 0)).id, step2 = (await runStep(run, 1)).id;
@@ -1067,6 +1084,8 @@ try {
     if (await page.$(`${row}.setting`)) throw new Error('holding › set progress');
     await page.mouse.up();
     await page.waitForSelector('#step-gap-where:text-is("After “Warm up the press”")', { timeout: 5000 });
+    // Its box takes the focus, which scrolls it into view: only then are the rows where they stay.
+    await page.waitForFunction(() => document.activeElement?.id === 'step-insert-in', null, { timeout: 5000 });
     if ((await api('/tasks/' + step2)).percent_done) throw new Error('holding › saved progress');
     // With a box open, a step's row still slides.
     await slide(2);
