@@ -5,7 +5,8 @@ import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
 import {shared} from './core.js';
 import {pendingSaves} from './sheet.js';
@@ -96,6 +97,8 @@ export default {
   // What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet.
   rowMeta(t, g){
     const out = [], due = dueInfo(t.due_date);
+    // A done task over its open subtasks: why it's on the open list.
+    if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
@@ -114,6 +117,9 @@ export default {
     const run = (this.route.name === 'today' || this.route.name === 'search') && this.stepRun(t) && t.related_tasks.parenttask[0];
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
+    // A subtask with its parent not above it here (not due this week, say, or done): the parent's name, to know it by.
+    const up = !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
+    if (up) out.push({key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
     // A run: who it's for, as its screen says ("For you and Jo"). Any other task shows who's doing it in its slot, at the
     // end of the row (rowSlot).
@@ -227,18 +233,30 @@ export default {
       }
     }
     if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})); }
+    /* A done parent with subtasks still open is shown over them, struck through (doneParentIds): as the view gave it,
+       under an open task, or else read, all of them in one request; not read, as its subtasks name it. */
+    const headIds = doneParentIds(tasks, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
+    const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).catch(() => []) : [];
+    const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
+    const heads = headIds.map(id => given.get(id) || read.find(t => t.id === id) || named(id));
     const [n, finished] = await Promise.all([count, done]);
     if (seq !== renderSeq) return;
     // The view gives each open task's subtasks, done ones too: those are in the Done section.
-    const list = tasks.filter(t => !t.done);
-    for (const t of tasks) cache.set(t.id, t);
+    const list = [...tasks.filter(t => !t.done), ...heads];
+    for (const t of [...tasks, ...read]) cache.set(t.id, t);
     if (lv) {
       for (const t of tasks) this.positions[t.id] = t.position || 0;
+      // A head the view didn't give has no position Pocket can read (the view leaves out what's done): it goes where
+      // its first open subtask is, where Vikunja's web app shows that subtask.
+      for (const h of heads.filter(h => !given.has(h.id))) {
+        const at = Math.min(...list.filter(t => !t.done && (t.related_tasks?.parenttask || []).some(x => x.id === h.id)).map(t => this.positions[t.id] || Infinity));
+        this.positions[h.id] = at < Infinity ? at : 0;
+      }
       // Moves still waiting to be sent, as they'll be.
       for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;
     }
     this.view.listView = lv?.id || null;
-    this.view.groups = [{key: 'open', cls: '', title: 'Open', tasks: list.map(t => this.keep(t))}, this.doneGroup(finished, n, open)];
+    this.view.groups = [{key: 'open', cls: '', title: 'Open', tasks: list.map(t => this.keep(t)), heads: headIds}, this.doneGroup(finished, n, open)];
     this.saveProject();
     if (open && !finished) this.loadDoneSection(this.view.groups[1]);
   },

@@ -10,8 +10,6 @@ export const pctOf = t => Math.round((t?.percent_done || 0) * 100);
 export const openSubtasks = t => repeats(t) ? [] : (t.related_tasks?.subtask || []).filter(s => !s.done && !repeats(s));
 // An Undo putting back what was there: no message of its own.
 export const undoing = extra => 'percent_done' in extra && !extra.done;
-export const doneText = (closed, open, title) => (title ? `Done: ${title.length > 40 ? title.slice(0, 38) + '…' : title}` : 'Done')
-  + (!open ? '' : closed === open ? `, with ${open} subtask${open === 1 ? '' : 's'}` : `, with ${closed} of its ${open} open subtasks. The rest couldn't be saved.`);
 export const progressPatch = (t, pct) => pct >= 100 ? {done: true, ...repeats(t) && {percent_done: 0}} : {percent_done: pct / 100};
 export const HOLD_MS = 450;                             // hold this long to start setting progress
 

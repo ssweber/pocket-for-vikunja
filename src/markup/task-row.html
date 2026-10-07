@@ -4,8 +4,10 @@
      title, and its due date only under them. Every one has who's doing it at its end (rowSlot), and, swiped left, its
      Delete (canDelete; also in the task's ⋯, the way for a keyboard or a screen reader). Ticked off its list, or
      deleted, it's a line with its Undo for a while (lines.js). On a project's list it's lit up (aimed) while quick add's
-     box adds subtasks to it, and watched meanwhile, so the box forgets it once it's out of sight (quickadd.js). -->
-<div class="row" :class="{done: t.done, pending: t.pending, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under'}" :data-id="t.id" x-style="{'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
+     box adds subtasks to it, and watched meanwhile, so the box forgets it once it's out of sight (quickadd.js). A done
+     task over its subtasks still open (g.heads, on a project's list) is a head: struck through, and its tick opens it
+     again. -->
+<div class="row" :class="{done: t.done, head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under'}" :data-id="t.id" x-style="{'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && cursor?.id === t.id && watchCursor($el)">
   <template x-if="g.sheet || canTick(t)"><button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="g.sheet ? toggleSubtask(t) : (toggleDone(t, $el.closest('.row')), aimAfterTick(t))"><svg class="i"><use href="#i-check"/></svg></button></template>
   <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->

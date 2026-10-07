@@ -29,5 +29,21 @@ export function movedText(n, left, stays){
     + (stays ? (left ? ' ' : '. ') + stays : '');
 }
 
+/* A task ticked done, with the open subtasks it closed (`closed` of the `open` it had), as its row's line says it:
+   {text, title, more}. None: "Done: Pack the van"; all of them: "Closed Pack the van + 4 subtasks"; some not saved,
+   how many were. */
+export function doneLine(closed, open, title){
+  if (!open) return {text: 'Done:', title, more: ''};
+  if (!closed) return {text: 'Done:', title, more: `— its ${plural(open, 'subtask')} couldn't be closed`};
+  return {text: 'Closed', title, more: closed === open ? '+ ' + plural(open, 'subtask') : `+ ${closed} of ${plural(open, 'subtask')}: the rest couldn't be closed`};
+}
+// The same in one line, for a place that isn't the row's (the sheet's subtasks), a long title cut short.
+export const doneText = (closed, open, title) => {
+  const l = doneLine(closed, open, title.length > 40 ? title.slice(0, 38) + '…' : title);
+  return [l.text, l.title, l.more].filter(Boolean).join(' ');
+};
+// A done task shown over its open subtasks on a project's list: why it's there.
+export const headText = n => n ? `Done, but ${n === 1 ? '1 subtask is' : n + ' subtasks are'} still open` : 'Done';
+
 // A run's step done or skipped without a connection: when it goes.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;

@@ -29,6 +29,9 @@ function sections(){
   const hall = task({title: 'Book the hall', state: {aimed: true}}), van = task({title: 'Pack the van'});
   const load = task({title: 'Load chairs', state: {aimed: true}, related_tasks: {parenttask: [{id: van.id}]}});
   const chairs = task({title: 'Wipe the chairs', state: {drag: 70, with: true}, related_tasks: {parenttask: [{id: tables.id}]}});
+  // A done task with subtasks still open (ticked done on the web, say): over them, struck through, on a project's list.
+  const party = task({title: 'Plan the staff party', done: true}), cake = task({title: 'Order the cake', related_tasks: {parenttask: [{id: party.id}]}});
+  const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
@@ -43,6 +46,7 @@ function sections(){
       task({title: 'Prep the specials board', due_date: at(2 * HOUR), labels: [label(1, 'Front', 'e07a5f'), label(2, 'Daily', '3d85c6')]}),
       task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, priya], comment_count: 3, repeat_after: 86400}),
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
+    {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
     {title: 'A checklist run', depth: {}, tasks: [run]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
     // Held and slid (progress.js), swiped to its Delete, and a line in a row's place (lines.js): shown by `state`.
@@ -50,7 +54,7 @@ function sections(){
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
     {title: 'A line in a row\'s place: ticked off, deleted, a repeating task ticked, and a tick not saved', depth: {}, tasks: [
-      task({title: 'Pack the van', state: {line: {text: 'Done:', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}}),
+      task({title: 'Pack the van', state: {line: {text: 'Closed', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}}),
       task({title: 'Water the plants', state: {line: {text: 'Repeats · next Friday 9:00 AM', title: '', stays: true}}}),
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
     // The task quick add's box adds subtasks to (quickadd.js: the cursor), lit up: a task, and a subtask.
@@ -76,7 +80,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
     {key: 2, place: 'cap', text: 'Added to Head office, due Friday', action: {label: 'Open', fn(){}}},
     {key: 3, place: 'sheet:top', text: 'Not saved: no connection', cls: 'failed', action: {label: 'Try again', fn(){}}},
-    {key: 4, place: 'sheet:subtasks', text: 'Done: Deep clean, with 3 subtasks', action: undo},
+    {key: 4, place: 'sheet:subtasks', text: 'Closed Deep clean + 3 subtasks', action: undo},
     {key: 5, place: 'step', text: 'Done: Take the croissants out', action: undo}];
   c.specimenTargets = [{to: 'Pack the van', after: ''}, {to: 'Pack the van', after: 'Load chairs'}];
   // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.

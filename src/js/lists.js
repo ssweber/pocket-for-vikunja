@@ -12,6 +12,8 @@ export const saved = {
 // Open tasks in a list: dated first, soonest first, then undated, by priority and then newest first.
 export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date)),
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
+// The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
+export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
 /* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's
    steps as on its screen), and depth: task id -> how many parents up it has there. The others stay where they were, or,
    given `order` (a project's List view: positionOrder, in order.js), are put in it, and so are an ordinary task's
@@ -19,7 +21,7 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
 export const nestSubtasks = (tasks, order = null) => {
   const ids = new Map(tasks.map(t => [t.id, t])), kids = new Map(), top = [];
   for (const t of tasks) {
-    const p = (t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id)).find(id => id !== t.id && ids.has(id));
+    const p = parentIds(t).find(id => id !== t.id && ids.has(id));
     if (p === undefined) top.push(t); else kids.set(p, [...(kids.get(p) || []), t]);
   }
   for (const [p, list] of kids) {
@@ -33,6 +35,15 @@ export const nestSubtasks = (tasks, order = null) => {
   for (const t of top) walk(t, 0);
   for (const t of tasks) walk(t, 0);             // tasks that are each other's subtasks: nothing above them to go under
   return {tasks: out, depth};
+};
+/* The parents a project's open list shows though they're done: a task done with subtasks still open (ticked done in
+   Vikunja's web app, say, or a subtask opened again under it). Each is shown struck through, over those subtasks, so
+   they aren't left at the top level as if they had none. `tasks`: what its List view gave, open tasks and the subtasks
+   of those, done ones too. The ids of those parents, in project `pid`, that aren't open on it. */
+export const doneParentIds = (tasks, pid) => {
+  const open = new Set(tasks.filter(t => !t.done).map(t => t.id)), out = new Set();
+  for (const t of tasks) if (!t.done) for (const p of t.related_tasks?.parenttask || []) if (p.done && p.project_id === pid && !open.has(p.id)) out.add(p.id);
+  return [...out];
 };
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
