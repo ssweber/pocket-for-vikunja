@@ -79,6 +79,41 @@ to bundle the JavaScript and minify it and the CSS, and puts them and the markup
 
 ESLint came with step 4, to catch names the split left undefined. It also found a test check that could never fail.
 
+## One owner for each thing (October 2026)
+
+Part 2 of `design/fast-tasks-plan.md`, so that the features after it each change one place: a refactor, in its own
+commits, with the tests passing before and after.
+
+1. `app/actions.js`: what's done to a task, a method for each thing (ticking, progress, deleting, moving, adding
+   subtasks, people and labels, saving a change). Each makes the request, takes the subtasks along, changes the screen
+   and offers the Undo; the lists and the sheet call them. Ticking a run or a step in a list or a sheet goes through
+   the same tick, which hands it to the outbox and keeps a run's rule: finished with steps not done, it asks first
+   and leaves them.
+2. One copy of each task on screen: `tasks`, by id (`app/tasks.js`), which every list's rows are, so a change is on all
+   of a task's rows at once.
+3. One row: `markup/task-row.html` is also the subtasks in a task's sheet. A template's step keeps a row of its own:
+   its number where a task has its tick, its time and first line of notes, and quick add's box in its place when it's
+   tapped, with ↑ ↓ ×; none of that is a task's, and in the task row it would be in every list's markup. A run's step
+   keeps its own too, on the run's screen (its ›, Skip, and who did it). Both share the slot for who's doing it,
+   `markup/claim-slot.html`, with the sheet's subtasks.
+4. The colours written out in `styles.css` (its shadows and the scrim) are custom properties.
+5. Checks in `npm run lint`: `fetch()` only in `api.js`, and no colour written out of `:root` or in `markup/`. And a
+   specimen page, `npm run specimen`, with the row in every state, in light and dark.
+
+What's left of one copy of each task, for when a feature needs it:
+
+- A task's sheet has its own copy (`sheet.task`). It shows a change at once and puts it back if it isn't saved
+  (`save`), and while saves are under way it doesn't show the replies in between. As the store's copy, the rows would
+  show those too: the changes waiting need keeping apart from Vikunja's copy first, which the plan's Instant feel does.
+- The subtasks in a task's sheet are Vikunja's copies inside the task's own (`related_tasks.subtask`), without their
+  people or labels, so they can't be the store's either. Their row differs from a list's in a few ways (its tick,
+  title and meta, no progress line), marked `g.sheet` in `task-row.html`, until the plan's Rows make every row the same.
+- A run's screen has its own run and steps (`view.run`), and Checklists its templates and the runs finished lately,
+  as summaries. The runs in progress under Checklists are the store's.
+- `cache` stays Vikunja's last copy of each task.
+- Projects (new, rename, archive, delete, use for checklists), templates (`app/checklists.js`) and runs (`app/runs.js`,
+  through the outbox) still call `api()` themselves.
+
 ## Next, only if needed
 
 - **Separate Alpine components** for the parts that stand alone (the sheet, the toast, the add box), with what they

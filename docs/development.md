@@ -3,15 +3,18 @@
 ```
 src/           the app's code, which npm run build makes into pocket/app/index.html
   index.html   the page, with the markup's pieces included from markup/
-  markup/      the sign-in screen, the app and its screens, the sheet and each kind of sheet
+  markup/      the sign-in screen, the app and its screens, the sheet and each kind of sheet, a task's row
+               (task-row.html) and who's doing a subtask or a step (claim-slot.html)
   styles.css   all of the CSS
-  js/          main.js, where the code starts; the helpers; and app/, the parts of the Alpine component
+  js/          main.js, where the code starts; component.js, which puts the Alpine component together; the helpers;
+               and app/, the parts of the component
 pocket/        the plugin, as it's installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
   app/         the built app, the libraries it uses, and sw.js, which lets it open offline
 tests/         the six test files described below
 scripts/       build.mjs: the build; dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and
-               screenshots
+               screenshots; check.mjs: what npm run lint checks besides ESLint; specimen.mjs and specimen/: a page
+               showing the task row in every state
 .github/       CI on pull requests and main, and the zip attached to each release
 docs/          this file, guide.md (everything the README leaves out), the screenshots, design/ (feature plans) and
                roadmap.md: how the code and the way we work on it will change
@@ -20,11 +23,15 @@ docs/          this file, guide.md (everything the README leaves out), the scree
 
 The app is plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. It's written in `src/`, and `npm run build` puts it all into one file, `pocket/app/index.html` (with `pocket.js.map` next to it, so the browser's developer tools show the code as it's written in `src/`). Both are committed, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/`'s copy: CI checks that it's the build of `src/`. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
 
-The JavaScript is ES modules, each importing what it uses. The helpers in `src/js/` know nothing of the screen. The Alpine component, `pocket`, is one object: `app/core.js` has its data and what happens when Pocket opens, and each other file in `app/` adds its methods, put together in `main.js`. In those methods, `this` is the component, so any of them can call any other. A few things to know:
+The JavaScript is ES modules, each importing what it uses. The helpers in `src/js/` know nothing of the screen. The Alpine component, `pocket`, is one object: `app/core.js` has its data and what happens when Pocket opens, and each other file in `app/` adds its methods, put together in `component.js`. In those methods, `this` is the component, so any of them can call any other. A few things to know:
 
 - A module can't assign to another module's variable. A variable lives in the module that changes it; the few that several parts change are properties of `shared`, in `app/core.js`.
-- The markup's Alpine expressions see the component's data and methods, and the few helpers `main.js` makes globals. A helper used in the markup has to be added there.
-- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. CI runs it.
+- The markup's Alpine expressions see the component's data and methods, and the few helpers `component.js` lists as globals. A helper used in the markup has to be added there.
+- What's done to a task is in `app/actions.js`, a method for each thing: ticking it (and its subtasks with it), its progress, deleting it, moving it, adding subtasks, its people and labels, and saving a change. Each one makes the request, changes what's on screen and offers the Undo, so the lists and the sheet call these rather than `api()`. A run and its steps go through the outbox instead (`act`, in `app/runs.js`), and a template's steps are moved by `moveStep` (`app/checklists.js`).
+- Each task on screen is one object, in `tasks`, by id (`app/tasks.js`): every list's rows are those objects, so a change shows on all of a task's rows at once. A list loaded from Vikunja puts its tasks there with `keep`. `cache` (`util.js`) is apart from it: Vikunja's last copy of each task, as it said it, for an Undo to compare with and a failed save to put back. A task's sheet still has a copy of its own, and a run's screen its own steps (see `roadmap.md`).
+- A task's row is `markup/task-row.html`, in every list of tasks and for the subtasks in a task's sheet (`g.sheet`, where it differs in the few ways its comment lists). A template's steps and a run's steps have rows of their own, with the same slot for who's doing them, `markup/claim-slot.html`.
+- Colours are custom properties, in `styles.css`'s `:root`, with dark mode's in the block after it.
+- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. It also fails on `fetch()` anywhere but `api.js`, which signs the request and renews the session (the two other requests, signing out and looking for a new version of Pocket, say why where they are), and, with `scripts/check.mjs`, on a colour written out (`#hex`, `rgb()`, `hsl()`) in `styles.css` outside `:root`, or anywhere in `markup/`. CI runs it.
 
 ## Running it locally
 
@@ -48,7 +55,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugi
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
-npm run lint                       # mistakes ESLint can see
+npm run lint                       # mistakes ESLint can see, and colours written out
 npm run test:parse                 # phrases only
 npm run test:local                 # starts the local Vikunja and runs all six
 
@@ -62,6 +69,10 @@ The tests delete what they create, except a `pocket-smoke` label that the end-to
 ## The README's GIF and screenshots
 
 With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo.gif`, `pocket-checklist.gif` and the screenshots of Pocket and of Vikunja's web app. It drives the real app in a phone-sized browser, with a small café's made-up tasks and checklists for two users of its own, `alex`, who owns it, and `priya`, the shift lead, and the page's clock fixed at Wednesday 30 September 2026, 10:05, so the dates in the pictures always match the README. New examples in the README and the guide follow the same café. Run it after changing how Pocket looks. `FRAMES=<folder>` also saves the GIFs' frames as images, to check them one by one.
+
+## The task row's specimen
+
+`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
 
 ## Upgrading the libraries
 
