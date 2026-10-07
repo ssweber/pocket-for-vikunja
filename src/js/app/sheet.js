@@ -5,6 +5,7 @@ import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
 import {hasTemplateLabel, notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
 import {atTime} from '../quickadd.js';
+import {notSaved} from '../messages.js';
 import {fileEntry, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
@@ -57,9 +58,12 @@ export default {
       const v = sh.descDraft, base = sh.descConflict ?? sh.descBase;
       sh.editingDesc = false; sh.dirty = true;
       taskDrafts.set('desc:' + t.id, {text: v, base});                       // kept until it's saved
-      this.saveTask(t.id, null, now => this.notesPatch(now, v, base)).then(() => { taskDrafts.delete('desc:' + t.id); this.notify('Notes saved'); },
-        e => this.notify(e.notes !== undefined ? 'Notes not saved: they were changed elsewhere while you wrote. Yours are kept: open the task to see both.'
-          : e instanceof NetError ? 'Offline: the notes are kept on this phone. Open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.'));
+      // Said on the task's row, once the sheet has gone; not saved, with Open, to see them.
+      const row = {id: t.id, stays: true}, open = {label: 'Open', fn: () => this.openTask(t.id)};
+      this.saveTask(t.id, null, now => this.notesPatch(now, v, base)).then(() => { taskDrafts.delete('desc:' + t.id); this.say('Notes saved', {row}); },
+        e => this.say(e.notes !== undefined ? 'Notes not saved: they were changed elsewhere while you wrote. Yours are kept: open the task to see both.'
+          : e instanceof NetError ? 'Notes not saved: no connection. They\'re kept on this phone: open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.',
+          {row: {...row, cls: 'failed'}, action: open}));
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
   },
@@ -139,7 +143,7 @@ export default {
       if (tpl) patch.done = false;
       // Said, so it isn't a surprise: the date is the next time of day you have as Vikunja's default due time.
       const label = dueInfo(patch.due_date).label, when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(patch.due_date));
-      this.notify(`It repeats from ${when}: change the date above if that's not when.`);
+      this.say(`It repeats from ${when}: change the date above if that's not when.`, {place: 'sheet:due', ms: 8000});
     }
     this.save(patch);
   },
@@ -171,7 +175,8 @@ export default {
     return d ? sanitize(d) : '<span class="ph">Add notes</span>';
   },
 
-  /* Save a change to the open task. The sheet updates right away; the server's copy is applied once no other saves are queued. */
+  /* Save a change to the open task. The sheet updates right away; the server's copy is applied once no other saves are
+     queued. Not saved, it goes back, and the top of the sheet says so, with Try again. Resolves to false then. */
   save(patch, rebase){
     const id = this.sheet.task?.id; if (!id) return;
     Object.assign(this.sheet.task, patch);
@@ -180,13 +185,15 @@ export default {
     return this.saveTask(id, patch, rebase).then(saved => {
       if (--pendingSaves || this.sheet.task?.id !== id) return;
       const repeated = patch.done === true && !saved.done;
-      this.showTask(saved); this.sheet.dirty = true;
+      this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // a save that failed before is done now
       this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
       setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
     }, e => {
       pendingSaves--;
-      if (this.sheet.task?.id === id) { this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id)); }
-      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+      if (this.sheet.task?.id === id) {
+        this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id));
+        this.say(notSaved(e), {place: 'sheet:top', cls: 'failed', ms: null, action: {label: 'Try again', fn: () => this.save(patch, rebase)}});
+      } else this.notify(notSaved(e));                                        // its sheet has gone
       return false;
     });
   },
@@ -240,8 +247,9 @@ export default {
         if (e.now) { cache.set(t.id, e.now); this.showTask(e.now); }
         Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
       }
-      this.notify(seen !== null ? 'Not saved: the notes were changed elsewhere while you wrote. Both are shown: save again to replace them with yours.'
-        : e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
+      // Said under them, as they're kept in the box.
+      this.say(seen !== null ? 'Not saved: the notes were changed elsewhere while you wrote. Both are shown: save again to replace them with yours.'
+        : notSaved(e), {place: 'sheet:notes', cls: 'failed', ms: null});
     }
   },
 
@@ -323,29 +331,29 @@ export default {
     if (!name) { this.sheet.assigning = false; return; }
     try {
       const u = pick || await this.findUser(name);
-      if (!u) { this.notify(`No user @${name}`); return; }
+      if (!u) { this.say(`No user @${name}`, {place: 'sheet:props', cls: 'failed'}); return; }
       await this.addAssignee(t, u);
       if (this.sheet.task?.id === t.id) { this.sheet.assignName = ''; document.getElementById('d-assign-in')?.focus(); }
-    } catch (e) { this.notify('Not assigned: ' + e.message); }
+    } catch (e) { this.say('Not assigned: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async unassign(uid){
     const t = this.sheet.task;                                                // the task it started on
     try {
       await this.removeAssignee(t, uid);
-    } catch (e) { this.notify('Not unassigned: ' + e.message); }
+    } catch (e) { this.say('Not unassigned: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async addLabel(l){
     const t = this.sheet.task;                                                // the task it started on
     try {
       await this.addLabelTo(t, l, this.picker.q.trim());
       if (this.sheet.task?.id === t.id) this.picker.q = '';
-    } catch (err) { this.notify('Label not added: ' + err.message); }
+    } catch (err) { this.say('Label not added: ' + err.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async removeLabel(lid){
     const t = this.sheet.task;                                                // the task it started on
     try {
       await this.removeLabelFrom(t, lid);
-    } catch (e) { this.notify('Label not removed: ' + e.message); }
+    } catch (e) { this.say('Label not removed: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
 
   /* ---------- comments, attachments, delete ---------- */
@@ -365,7 +373,7 @@ export default {
     const id = this.sheet.task.id, v = this.sheet.commentDraft.trim(); if (!v) return;
     this.sheet.commentDraft = ''; taskDrafts.delete('comment:' + id);
     const r = await this.act({op: 'note', task: id, html: textToHtml(v), run: null});
-    if (r.status === 'offline') this.notify(r.reached ? 'Vikunja had a problem with the comment. Pocket tries again shortly.' : 'Saved offline. The comment is posted when you\'re back online.');
+    if (r.status === 'offline') this.say(r.reached ? 'Vikunja had a problem with the comment. Pocket tries again shortly.' : 'Saved offline. The comment is posted when you\'re back online.', {place: 'sheet:comments'});
     if (r.status === 'error' && this.sheet.task?.id === id) this.sheet.commentDraft = v;
   },
   // Comments on the open task still waiting to be posted.
@@ -384,18 +392,19 @@ export default {
   async addFiles(list, t = this.sheet.task){
     const files = [...list];
     if (!files.length || !t) return;
-    const big = this.tooBig(files); if (big) { this.notify(big); return; }
+    const at = ['sheet:files', 'step'], big = this.tooBig(files);                // in a task's sheet, or on a run's step card
+    if (big) { this.say(big, {place: at, cls: 'failed'}); return; }
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
     const {kept, full} = await sync.add(entry, files); this.refreshPending();
     const r = await sync.lock(() => this.sendEntry(entry.id));
     this.refreshPending();
-    if (r.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
-    if (r.problems?.length) this.notify(r.problems.join('; '));
+    if (r.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: at, cls: 'failed'}); }
+    if (r.problems?.length) this.say(r.problems.join('; '), {place: at, cls: 'failed'});
   },
   // From the add box's camera button.
   addCapPhotos(list){
     const files = [...list], big = this.tooBig(files);
-    if (big) this.notify(big);
+    if (big) this.say(big, {place: 'cap', cls: 'failed'});
     const max = sizeLimit(this.info?.max_file_size);
     this.capPhotos.push(...files.filter(f => !max || f.size <= max));
     this.$refs.capture.focus();
@@ -416,6 +425,6 @@ export default {
       const url = URL.createObjectURL(new Blob([blob], {type: 'application/octet-stream'}));
       Object.assign(document.createElement('a'), {href: url, download: a.file?.name || 'attachment'}).click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (e) { w?.close(); this.notify('Couldn\'t open: ' + e.message); }
+    } catch (e) { w?.close(); this.say('Couldn\'t open: ' + e.message, {place: ['sheet:files', 'step'], cls: 'failed'}); }
   },
 };

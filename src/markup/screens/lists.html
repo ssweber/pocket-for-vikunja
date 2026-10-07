@@ -1,9 +1,13 @@
     <!-- Today and a single project share the task-list markup -->
     <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div>
-      <template x-for="g in listGroups.filter(g => g.tasks.length)" :key="g.key"><div>
-        <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length"></span>
+      <template x-for="g in listGroups.filter(g => g.tasks.length || placeLines(g.key).length)" :key="g.key"><div>
+        <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length || ''"></span>
           <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
           <template x-if="g.key === 'overdue' && overdueMovable"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div>
+        <!-- What was done to the list as a whole, under its heading: Move all to today -->
+        <template x-for="line in placeLines(g.key)" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
         <div class="list">
           <template x-for="t in g.tasks" :key="t.id">
             <!-- include markup/task-row.html -->
@@ -15,6 +19,9 @@
     </div></template>
 
     <template x-if="!view.loading && !view.error && route.name === 'projects'"><div>
+      <template x-for="line in placeLines('projects')" :key="line.n">
+        <!-- include markup/place-line.html -->
+      </template>
       <template x-if="!projects.length"><div><div class="empty"><b>No projects yet.</b>Make one here, or in Vikunja on the web.</div>
         <div class="list"><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div></div></template>
       <template x-if="favorites.length"><div>
@@ -33,6 +40,9 @@
       <template x-if="!checklistProjects.length"><div style="margin-top:18px"><div class="card cl-card setup-card" id="setup-checklists">
         <p><b>Checklists</b> are step-by-step lists people run again and again, like opening up or a weekly clean: each run is ticked off step by step, with who did what.</p>
         <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
+        <template x-for="line in placeLines('setup')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
         <p class="note" style="margin:8px 0 0">Makes a project called Checklists, with an example template to try. Or use a project of yours: its ⋯ has Use for checklists.</p>
       </div></div></template>
     </div></template>

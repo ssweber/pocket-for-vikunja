@@ -83,8 +83,8 @@ export default {
     if (!p || !title || title === p.title) { if (e && p) e.name = p.title; return; }
     try {
       const got = await api('/projects/' + p.id, {method: 'PATCH', body: {title}}) || {title};
-      this.projectChanged({...p, ...got}); this.notify('Renamed');
-    } catch (err) { e.name = p.title; this.notify('Not renamed: ' + err.message); }
+      this.projectChanged({...p, ...got}); this.say('Renamed', {place: 'sheet:top'});
+    } catch (err) { e.name = p.title; this.say('Not renamed: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   async archiveProject(){
     const p = this.sheet.project;
@@ -92,8 +92,8 @@ export default {
     try {
       await api('/projects/' + p.id, {method: 'PATCH', body: {is_archived: true}});
       this.setProjects(this.projects.filter(x => x.id !== p.id)); saved.set('projects', this.projects);
-      this.closeSheet(true); this.go('#/projects'); this.notify('Archived ' + p.title);
-    } catch (err) { this.notify('Not archived: ' + err.message); }
+      this.closeSheet(true); this.go('#/projects'); this.say('Archived ' + p.title, {place: 'projects'});
+    } catch (err) { this.say('Not archived: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   async deleteProject(){
     const p = this.sheet.project, e = this.sheet.projEdit;
@@ -104,8 +104,8 @@ export default {
     try {
       await api('/projects/' + p.id, {method: 'DELETE'});
       await this.loadProjects();
-      this.closeSheet(true); this.go('#/projects'); this.notify('Deleted ' + p.title);
-    } catch (err) { this.notify('Not deleted: ' + err.message); }
+      this.closeSheet(true); this.go('#/projects'); this.say('Deleted ' + p.title, {place: 'projects'});
+    } catch (err) { this.say('Not deleted: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   /* Use a project for checklists, or not: a paragraph "pocket:checklists" added to its description, or taken out. The rest
      of the description stays as it was. */
@@ -126,8 +126,8 @@ export default {
       this.setProjects(this.projects.map(x => x.id === p.id ? next : x)); saved.set('projects', this.projects);
       if (this.view.project?.id === p.id) this.view.project = next;
       if (this.sheet.project?.id === p.id) this.sheet.project = next;
-      this.notify(on ? 'Now for checklists. Its templates and runs are under Checklists.' : 'No longer for checklists');
-    } catch (e) { this.notify('Not changed: ' + e.message); }
+      this.say(on ? 'Now for checklists. Its templates and runs are under Checklists.' : 'No longer for checklists', {place: 'sheet:top'});
+    } catch (e) { this.say('Not changed: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
   /* ---------- setting checklists up ---------- */
@@ -143,8 +143,8 @@ export default {
       let made = true;
       try { await this.addExample(p); } catch { made = false; }
       this.go('#/checklists');
-      this.notify(made ? 'Set up Checklists, with an example template to try.' : 'Set up Checklists, but the example template couldn\'t be made: write one with New template.');
-    } catch (e) { this.notify(e instanceof NetError ? 'Setting up checklists needs a connection to Vikunja.' : 'Not set up: ' + e.message); }
+      this.say(made ? 'Set up Checklists, with an example template to try.' : 'Set up Checklists, but the example template couldn\'t be made: write one with New template.', {place: 'checklists', cls: made ? '' : 'failed'});
+    } catch (e) { this.say(e instanceof NetError ? 'Setting up checklists needs a connection to Vikunja.' : 'Not set up: ' + e.message, {place: 'setup', cls: 'failed'}); }
     finally { this.settingUp = false; }
   },
   /* The example: a template with four steps, the first for you, the third due 18 minutes after the second. Written as
@@ -234,9 +234,9 @@ export default {
       if (made) await sync.save({...e, cancelled: true}); else await sync.remove(id);
     });
     this.refreshPending();
-    if (gone) { this.notify('It had started already. Delete it from its ⋯ if it isn\'t needed.'); this.render(); return; }
+    if (gone) { this.say('It had started already. Delete it from its ⋯ if it isn\'t needed.', {place: ['sheet:top', 'checklists']}); this.render(); return; }
     if (made) { await sync.lock(() => this.sendEntry(id)); this.refreshPending(); }
-    this.notify('Not started');
+    this.say('Not started', {place: ['sheet:top', 'checklists']});
     this.render();
   },
   // Runs being set up, waiting for a connection or under way, in a project.
@@ -275,17 +275,17 @@ export default {
     const t = this.sheet.task;
     if (!t || this.sheet.checklistBusy) return;
     const problems = stepProblems(this.subtasks.map(s => s.title));
-    if (problems.length) { this.notify('Not made a template: ' + problemText(problems)); return; }
+    if (problems.length) { this.say('Not made a template: ' + problemText(problems), {place: 'sheet:top', cls: 'failed'}); return; }
     this.sheet.checklistBusy = true;
     try {
       await this.markTemplate(t, this.subtasks.filter(s => !s.done).map(s => s.id));
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
-      this.notify(!comesRound(full) ? 'Made a checklist template. Start runs from it here or under Checklists.'
+      this.say(!comesRound(full) ? 'Made a checklist template. Start runs from it here or under Checklists.'
         : `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a run `
-          + (repeats(full) ? 'moves it on to the next time.' : 'ends it, as it doesn\'t repeat.'));
-    } catch (e) { this.notify('Not made a template: ' + e.message); }
+          + (repeats(full) ? 'moves it on to the next time.' : 'ends it, as it doesn\'t repeat.'), {place: 'sheet:top'});
+    } catch (e) { this.say('Not made a template: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
   async markTemplate(t, stepIds){
@@ -375,11 +375,11 @@ export default {
       await this.markTemplate(t, r.ids);
       nt.made = true; taskDrafts.delete('newtpl:' + nt.project.id);
       if (this.sheet.newTpl === nt) this.closeSheet(true);
-      this.notify(`Made ${shown}. Start a run of it here.`);
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
+      this.say(`Made ${shown}. Start a run of it here.`, {place: 'checklists'});
     } catch (e) {
       nt.busy = false;
-      this.notify(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${shown}”.` : 'Not made: ' + why(e));
+      this.say(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${shown}”.` : 'Not made: ' + why(e), {place: 'sheet:top', cls: 'failed'});
     }
   },
   // Steps added under a template: made, marked done like the rest, and any step they count from given its name.
@@ -414,8 +414,9 @@ export default {
       try { const full = await this.readTask(t.id); if (full) { cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } } catch {}
     }
     const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
-    if (r.error) this.notify(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`);
-    else if (but) this.notify(`Added ${r.ids.length}${but}`);
+    if (r.error) this.say(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`, {place: 'sheet:subtasks', cls: 'failed'});
+    else if (but) this.say(`Added ${r.ids.length}${but}`, {place: 'sheet:subtasks', cls: 'failed'});
+    else this.unsay('sheet:subtasks');                                       // a try that failed before is done now
   },
   // A row's time chip, when there's something to show in it: as a list, for x-for.
   draftShown(d){ return d && (d.problem || d.offset !== null || d.kept || d.name) ? [d] : []; },
@@ -465,7 +466,7 @@ export default {
     const todo = d ? this.subtasks.map((s, k) => ({s, was: s.title, title: d.titles[k]})).filter(x => x.title !== x.was) : [];
     if (!todo.length && !drops.length) { this.sheet.stepEdit = null; return; }
     // Refused, or not saved: what was typed stays in the box, to put right or try again.
-    if (stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not changed: ' + problemText(stepProblems(d.titles))); return; }
+    if (stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) { this.say('Not changed: ' + problemText(stepProblems(d.titles)), {place: 'sheet:subtasks', cls: 'failed'}); return; }
     this.sheet.stepEdit = null;
     // Read as quick add reads a step: @people assign it, *labels label it, !priority sets it. Its title without them.
     const own = todo.find(x => x.s.id === e.id), p = own && this.stepParsed(own.title, e.ignore);
@@ -478,7 +479,7 @@ export default {
         // As a line of quick add is sent, on the step that's there: someone who can't see the project stays in its title.
         const job = {taskId: e.id, done: false}, t = await this.createTask(p, this.sheet.task?.project_id, {job});
         if (job.body.title !== p.title || p.priority) await this.saveTask(e.id, {title: job.body.title, ...p.priority && {priority: p.priority}});
-        if (t.problems.length) this.notify('Changed, but ' + t.problems.join('; '));
+        if (t.problems.length) this.say('Changed, but ' + t.problems.join('; '), {place: 'sheet:subtasks', cls: 'failed'});
       }
       // The people and labels tapped off it.
       for (const k of drops) {
@@ -494,7 +495,7 @@ export default {
       }
     } catch (err) {
       for (const x of todo) if (!x.saved) x.s.title = x.was;
-      this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message);
+      this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:subtasks', cls: 'failed'});
       if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = {...e};
     }
   },
@@ -518,7 +519,7 @@ export default {
     if (!t || !st || this.sheet.checklistBusy) return;
     const rest = this.subtasks.filter((_, k) => k !== i).map(s => s.title), problems = stepProblems(rest);
     // Said by their number on screen, before the step comes out.
-    if (problems.length > stepProblems(this.subtasks.map(s => s.title)).length) { this.notify('Not removed: ' + problemText(problems.map(p => ({...p, i: p.i >= i ? p.i + 1 : p.i})))); return; }
+    if (problems.length > stepProblems(this.subtasks.map(s => s.title)).length) { this.say('Not removed: ' + problemText(problems.map(p => ({...p, i: p.i >= i ? p.i + 1 : p.i}))), {place: 'sheet:subtasks', cls: 'failed'}); return; }
     if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Runs already started keep it.`)) return;
     this.sheet.checklistBusy = true;
     try {
@@ -530,8 +531,8 @@ export default {
       t.related_tasks = {...t.related_tasks, subtask: this.subtasks.filter(s => s.id !== st.id)};
       this.keepTemplate(t);
       this.sheet.dirty = true;
-      this.notify('Step removed');
-    } catch (err) { this.notify('Not removed: ' + why(err)); }
+      this.say('Step removed', {place: 'sheet:subtasks'});
+    } catch (err) { this.say('Not removed: ' + why(err), {place: 'sheet:subtasks', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
   /* Move a template's step up or down: its order line is written with every step in the new order. Not when that would
@@ -552,7 +553,7 @@ export default {
       return out;
     };
     let steps;
-    try { steps = moved(this.subtasks); } catch (e) { this.notify('Not moved: ' + e.message); return; }
+    try { steps = moved(this.subtasks); } catch (e) { this.say('Not moved: ' + e.message, {place: 'sheet:subtasks', cls: 'failed'}); return; }
     if (!steps) return;
     const was = stepOrder(t.description), box = document.getElementById('step-edit-' + st.id);
     t.description = withOrder(t.description, steps.map(s => s.id));          // shown in the new order straight away
@@ -562,9 +563,9 @@ export default {
     this.sheet.checklistBusy = true;
     try {
       const got = await patiently(() => this.saveTask(t.id, null, now => { const s = moved(stepsOf(now)); return s && {description: withOrder(now.description, s.map(x => x.id))}; }));
-      if (this.sheet.task?.id === t.id) this.showTask(got);
+      if (this.sheet.task?.id === t.id) { this.showTask(got); this.unsay('sheet:subtasks'); }   // one that failed before is moved now
       this.sheet.dirty = true;
-    } catch (e) { if (this.sheet.task?.id === t.id) t.description = withOrder(t.description, was); this.notify('Not moved: ' + why(e)); }
+    } catch (e) { if (this.sheet.task?.id === t.id) t.description = withOrder(t.description, was); this.say('Not moved: ' + why(e), {place: 'sheet:subtasks', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
 };

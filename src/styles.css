@@ -142,6 +142,10 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.fresh{animation:fresh 1.6s ease-out}
 @keyframes fresh{0%,35%{background:var(--accent-soft)}100%{background:transparent}}
 @media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
+/* a task whose time has just passed lights up as it moves to Overdue */
+.row.came-due{animation:came-due 2s ease-out}
+@keyframes came-due{0%,40%{background:color-mix(in srgb,var(--overdue) 16%,transparent)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.row.came-due{animation:none;background:color-mix(in srgb,var(--overdue) 16%,transparent)}}
 .check.wait{border-style:dashed;opacity:.8}
 .row.done .check.skip{background:var(--muted);border-color:var(--muted)}
 .check.no-tick{border:0;color:var(--muted)}
@@ -212,6 +216,19 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row-line{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:48px;color:var(--muted);font-size:14.5px}
 .row-line .what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .line-act{flex:none;min-width:64px;height:48px;margin-right:-8px;padding:0 8px;border:0;background:transparent;color:var(--accent);font-size:15px;font-weight:700}
+/* a line saying something went wrong: a tick or a save not made */
+.row-line.failed,.place-line.failed{color:var(--danger)}
+/* a message in its place: under a heading, by the add box, in a sheet under what it's about, on a run's step card */
+.place-line{display:flex;align-items:center;gap:8px;min-height:44px;margin:6px 0;padding:0 14px;border-radius:12px;background:var(--sunk);color:var(--ink);font-size:14.5px}
+.place-line .what{flex:1;min-width:0;padding:11px 0;overflow-wrap:anywhere}
+.place-line .line-act{height:44px}
+.place-line.failed{background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.card > .place-line{margin:8px 10px 10px}
+.cl-card > .place-line{margin:12px 0 0}
+#capture > .place-line{margin:0 0 8px;box-shadow:var(--shadow-low)}
+.step-card .place-line{margin:0 0 10px}
+.finish-card .place-line{margin:12px 0 0}
+#sheet-body > .place-line{margin:0 0 12px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}

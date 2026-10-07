@@ -1,13 +1,14 @@
 // Sending what was added to Vikunja, through the outbox, and the "Waiting to send" rows.
 import {cache, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
-import {addDays, dueInfo, isLate, isSet, startOfDay} from '../dates.js';
+import {addDays, isLate, isSet, startOfDay} from '../dates.js';
+import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
 
-let freshTimer, waitTimer;
+let waitTimer;
 // What createLines keeps of each line: an earlier try's, for a line that's the same, or a new one.
 export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
 
@@ -63,8 +64,8 @@ export default {
     // A single task can go to the project picked for its @usernames; a pasted list goes where it always does.
     const pid = lines.length === 1 ? this.boxPid('cap') : this.defaultProjectId();
     const first = parsed.project?.id || pid;
-    if (!first) { this.notify('Create a project in Vikunja first'); return; }
-    if (!this.canWrite(first)) { this.notify(`${this.projById.get(first)?.title || 'That project'} is shared with you to read only: pick another with +project.`); return; }
+    if (!first) { this.say('Create a project in Vikunja first', {place: 'cap', cls: 'failed'}); return; }
+    if (!this.canWrite(first)) { this.say(`${this.projById.get(first)?.title || 'That project'} is shared with you to read only: pick another with +project.`, {place: 'cap', cls: 'failed'}); return; }
     const nest = this.cap.nest && lines.length > 1;
     // Parse every line now, so dates mean what they meant when typed.
     const list = this.parseList(lines, parsed);
@@ -80,37 +81,34 @@ export default {
       const slow = setTimeout(() => this.refreshPending(), 400);           // on a slow connection, shown as waiting meanwhile
       const r = await sync.lock(() => this.sendEntry(entry.id));
       clearTimeout(slow);
-      if (r.ids?.length) { this.fresh = r.ids; clearTimeout(freshTimer); freshTimer = setTimeout(() => this.fresh = [], 2000); }
+      if (r.ids?.length) this.flash(r.ids);
       this.placeSent(r.tasks || []);
-      const n = items.length, np = photos.length;
+      /* Added, the new rows light up in the list, and nothing more is said: unless they aren't on this screen (a task due
+         next month, added on Today; one for another project), when the add box says where they went, with Open. What
+         didn't go as asked, or couldn't be added, is said there too. */
+      const n = items.length, np = photos.length, cap = {place: 'cap'}, err = {place: 'cap', cls: 'failed'};
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
+      const open = {label: 'Open', fn: () => this.openTask(r.ids[0])};
       if (r.status === 'offline') {
         // It shows up in the list, tinted, unless this list wouldn't include it (say, a task due next month on Today).
         this.refreshPending();
         sync.keep();
-        if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT);
+        if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, err);
         else if (np && r.ids.length === n)            // the task got there; its photos are still to go
-          this.notify(`Added to ${this.projById.get(r.projectId)?.title || 'project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`, {label: 'Open', fn: () => this.openTask(r.ids[0])});
-        else if (np) this.notify(`Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`);
+          this.say(`Added to ${this.projById.get(r.projectId)?.title || 'its project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`, {...cap, action: open});
+        else if (np) this.say(`Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`, cap);
         else if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
-          this.notify(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`);
+          this.say(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, cap);
       } else if (r.status === 'error') {
         this.cap.text = r.unsent.join('\n');                                // keep what wasn't added
         this.capPhotos = r.photos;
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
-        this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, undo);
-      } else if (r.status === 'gone') {
-        this.notify('Added');                                              // another tab sent it first
-      } else if (n === 1) {
-        // A date past next week keeps it off Today, so say which, in case quick add read it wrong.
-        const due = items[0].p.due, later = due && new Date(due) >= addDays(startOfDay(), 8) ? ', due ' + dueInfo(due).label : '';
-        const withPhotos = r.uploaded ? (r.uploaded === 1 ? ', with the photo' : `, with ${r.uploaded} photos`) : '';
-        const where = 'Added to ' + (this.projById.get(r.projectId)?.title || 'project') + later + withPhotos;
-        this.notify(where + but, {label: 'Undo', fn: () => this.deleteTasks(r.ids)}, {label: 'Open', fn: () => this.openTask(r.ids[0])});
-      } else {
-        this.notify((nest ? `Added 1 task with ${n - 1} subtask${n === 2 ? '' : 's'}` : `Added ${n} tasks`) + but, {label: 'Undo', fn: () => this.deleteTasks(r.ids)},
-          {label: 'Open', fn: () => this.openTask(r.ids[0])});
-      }
+        this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {...err, action: undo});
+      } else if (r.status === 'sent') {
+        const away = (r.tasks || []).filter(t => !this.pendingPlace(t));
+        if (away.length || but) this.say(addedWhere({n, nest, project: this.projById.get(r.projectId)?.title, due: items[0].p.due, photos: r.uploaded, but}),
+          {...(but ? err : cap), action: away.length ? {label: 'Open', fn: () => this.openTask(away[0].id)} : null});
+      }                                                                     // gone: another tab sent it, and its rows show
     } finally {
       this.cap.busy = false;
       this.refreshPending();
@@ -268,7 +266,8 @@ export default {
         + (loose.length ? ` ${loose.join(', ')} ${loose.length === 1 ? 'was' : 'were'} added as tasks of their own.` : '')
         + (f.unsent.length ? ` Not added: ${f.unsent.join('; ')}.` : ''));
     } else if (failed.length) {
-      this.notify(`${subs.length ? 'A subtask' : 'A task'} added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`);
+      // Said by the box it's back in: quick add's, or the subtask box in its task's sheet.
+      this.say(`${subs.length ? 'A subtask' : 'A task'} added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
     } else if (other.length) this.notify(`${other[0].error.what || 'Something done offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : this.wordsBack(other[0].error)));
     else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length || other.length) this.render();
@@ -358,10 +357,12 @@ export default {
       if (entryDone(e)) await sync.remove(e.id);
     });
     this.refreshPending();
-    if (sent) { this.notify('It was sent before it could be cancelled.'); this.render(); return; }
+    // Said by the box its words went back to: quick add's, or the subtask box in its parent's sheet.
+    const place = !parent ? 'cap' : this.sheet.task?.id === parent.id ? 'sheet:subtasks' : null;
+    if (sent) { this.say('It was sent before it could be cancelled.', {place}); this.render(); return; }
     const box = parent ? (this.sheet.task?.id === parent.id ? this.sheet.sub : null) : this.cap;
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
-    this.notify(['Cancelled.', raw && box && 'It\'s back in the box.', rest && `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now ${rest === 1 ? 'a task' : 'tasks'} of ${rest === 1 ? 'its' : 'their'} own.`].filter(Boolean).join(' '));
+    this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now ${rest === 1 ? 'a task' : 'tasks'} of ${rest === 1 ? 'its' : 'their'} own.`].filter(Boolean).join(' '), {place});
   },
   // Don't upload a waiting photo or file after all. Its row goes at once; one already uploading finishes first.
   async cancelFile(entryId, key){

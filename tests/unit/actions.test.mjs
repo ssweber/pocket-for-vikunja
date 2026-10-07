@@ -46,13 +46,18 @@ test('a subtask that fails to close stops the rest, and the message says so', as
   assert.equal(app.toast.msg, 'Done: Pack the van, with 0 of its 2 open subtasks. The rest couldn\'t be saved.');
 });
 
-test('a tick not saved goes back, and says why', async () => {
+test('a tick not saved goes back, and its row says why, with Try again', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Call Jo', done: false }]), app = component(tasks, actions);
   v.trouble = () => 'offline';
   const t = app.keep(v.task(1));
   await app.toggleDone(t, null);
   assert.equal(t.done, false);
-  assert.equal(app.toast.msg, 'Offline — not saved');
+  assert.equal(app.toast.msg, 'Not saved: no connection');
+  assert.deepEqual([app.toast.row.id, app.toast.row.stays, app.toast.cls], [1, true, 'failed'], 'on its row, which stays');
+  assert.equal(app.toast.action.label, 'Try again');
+  v.trouble = () => null;
+  await app.toast.action.fn();
+  assert.equal(v.task(1).done, true, 'Try again ticks it');
 });
 
 test('a repeating task whose tick lost its reply is ticked once, not twice', async () => {
@@ -66,6 +71,7 @@ test('a repeating task whose tick lost its reply is ticked once, not twice', asy
   assert.equal(Date.parse(v.task(1).due_date) - Date.parse(due), DAY * 1000);
   assert.equal(t.due_date, v.task(1).due_date, 'its row shows the next date');
   assert.match(app.toast.msg, /^Repeats · next /);
+  assert.deepEqual([app.toast.row.id, app.toast.row.stays], [1, true], 'on its row, which stays, with its next date');
   // Undo puts its date back.
   v.trouble = () => null;
   await app.toast.action.fn();
@@ -82,19 +88,22 @@ test('progress taken to 100% marks the task done, and Undo puts back the progres
   assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.4 }]);
 });
 
-test('progress below 100% is saved as it is, with an Undo; not saved, it goes back', async () => {
+test('progress below 100% is saved as it is, shown on its bar alone; not saved, it goes back and its row says so', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]), app = component(tasks, actions);
   const t = app.keep(v.task(1));
   await app.setProgress(t, 70, null);
   assert.equal(v.task(1).percent_done, 0.7);
-  assert.equal(app.toast.msg, 'Progress set to 70%');
-  await app.toast.action.fn();
-  assert.equal(v.task(1).percent_done, 0.4);
+  assert.deepEqual(app.toasts, [], 'no message: sliding it back is the undo');
+  assert.equal(app.said, 'Progress of Paint the fence set to 70%', 'a screen reader hears it');
 
   v.trouble = () => 500;
   await app.setProgress(t, 90, null);
-  assert.equal(t.percent_done, 0.4);
+  assert.equal(t.percent_done, 0.7);
   assert.match(app.toast.msg, /^Not saved: /);
+  assert.equal(app.toast.row.id, 1);
+  v.trouble = () => null;
+  await app.toast.action.fn();
+  assert.equal(v.task(1).percent_done, 0.9, 'Try again sets it');
 });
 
 test('saves to a task go one after another, in the order they were made', async () => {
@@ -132,7 +141,8 @@ test('Move all to today: each overdue task to today at its own time, or the next
   assert.equal(v.task(1).due_date, at(7, 15), 'its time has passed today: the next whole hour');
   assert.equal(v.task(2).due_date, at(7, 18, 30));
   assert.equal(v.task(3).due_date, at(6, 8), 'a repeating task stays');
-  assert.equal(app.toasts.at(-1).msg, 'Moved 2 tasks to today. 1 repeating task stays: tick it to move on to the next date.');
+  assert.equal(app.toasts.at(-1).msg, 'Moved 2 to today. 1 repeating task stays: tick it to move on to the next date.');
+  assert.equal(app.toast.place, 'overdue', 'said under the Overdue heading');
   await app.toast.action.fn();
   assert.equal(v.task(1).due_date, at(5, 9));
   assert.equal(v.task(2).due_date, at(6, 18, 30));

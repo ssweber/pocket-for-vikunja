@@ -45,8 +45,13 @@ function sections(){
     {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, tasks: [
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
-    {title: 'A line in a row\'s place: ticked off, and deleted', depth: {}, tasks: [
-      task({title: 'Pack the van', state: {line: {text: 'Done:', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}})]},
+    {title: 'A line in a row\'s place: ticked off, deleted, a repeating task ticked, and a tick not saved', depth: {}, tasks: [
+      task({title: 'Pack the van', state: {line: {text: 'Done:', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}}),
+      task({title: 'Water the plants', state: {line: {text: 'Repeats · next Friday 9:00 AM', title: '', stays: true}}}),
+      task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
+    // Lit up as its time passes, moving to Overdue (alerts.js), and just added (the page holds both at their start).
+    {title: 'Just come due, and just added', depth: {}, tasks: [task({title: 'Collect the cake order', due_date: at(-60e3), state: {flash: 'due'}}),
+      task({title: 'Order more cups', state: {flash: 'fresh'}})]},
   ]};
 }
 
@@ -54,6 +59,13 @@ document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
   c.specimen = [];
+  // A message in its place (lines.js: sayAt), each as the app shows it.
+  const undo = {label: 'Undo', fn(){}};
+  c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
+    {key: 2, place: 'cap', text: 'Added to Head office, due Friday', action: {label: 'Open', fn(){}}},
+    {key: 3, place: 'sheet:top', text: 'Not saved: no connection', cls: 'failed', action: {label: 'Try again', fn(){}}},
+    {key: 4, place: 'sheet:subtasks', text: 'Done: Deep clean, with 3 subtasks', action: undo},
+    {key: 5, place: 'step', text: 'Done: Take the croissants out', action: undo}];
   // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.
   c.init = function(){
     setApp(this);
@@ -66,7 +78,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, tasks: subs}];
     // The states a finger makes, put on the rows as the app does.
     const all = s.list.flatMap(g => g.tasks).filter(t => t.state);
-    for (const t of all) if (t.state.line) this.lines[t.id] = {title: t.title, more: '', hide: [], action: {label: 'Undo', fn(){}}, ...t.state.line};
+    for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', hide: [], action: {label: 'Undo', fn(){}}, ...t.state.line};
+    for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
     this.$nextTick(() => {
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
         if (t.state.held) { row.classList.add('held'); this.showSlide(row, t.state.held, 0); }

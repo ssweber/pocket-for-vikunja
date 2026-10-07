@@ -1,0 +1,5 @@
+<!-- A message in its place (`line`, from lines.js): under a list's heading, by the add box, in a sheet under what it's
+     about, on a run's step card. What happened, and its action (Undo, Open, Try again). A screen reader hears it from
+     #said. -->
+<div class="place-line" :class="line.cls" :data-place="line.place"><span class="what" x-text="line.text"></span>
+  <template x-if="line.action"><button class="line-act" @click="runPlaceAction(line)" x-text="line.action.label"></button></template></div>

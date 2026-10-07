@@ -8,6 +8,7 @@ import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
+import {sentLater} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 
@@ -56,7 +57,7 @@ export default {
   // Who a run is for: any number of people, at least one.
   toggleFor(st, u){
     const on = st.forIds.includes(u.id);
-    if (on && st.forIds.length === 1) { this.notify('A run is for at least one person: tap someone else first.'); return; }
+    if (on && st.forIds.length === 1) { this.say('A run is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
     st.forIds = on ? st.forIds.filter(id => id !== u.id) : [...st.forIds, u.id];
   },
   /* The due date a start ticks: a template that comes round and is due by the end of today. Started at 7:55, it's the
@@ -83,7 +84,7 @@ export default {
     if (!st?.template || st.busy) return;
     this.unlockSound();                                                      // a tap: so a countdown can chime later
     const problems = stepProblems(st.steps.map(s => s.title));
-    if (problems.length) { this.notify('Not started: ' + problemText(problems)); return; }
+    if (problems.length) { this.say('Not started: ' + problemText(problems), {place: 'sheet:top', cls: 'failed'}); return; }
     const start = new Date(), steps = st.steps.map((s, i) => {
       const {title, offset} = parseStep(s.title);
       return {from: s.id, title, due: i === 0 && offset !== null ? new Date(serverTime(+start) + offset).toISOString() : null, timed: offset !== null, remind: offset >= 6e4, tpl: s.title,
@@ -102,14 +103,16 @@ export default {
     if (r.status === 'sent' || r.status === 'gone') {
       this.closeSheet(true);
       if (r.runId) this.openRun(r.runId);
-      this.notify('Started ' + (r.title || st.template.title), r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }});
-      this.toast.startOf = r.runId;                                          // gone once anything's done in the run (act)
+      // Said at the top of the run, with its Undo, until anything's done in it (act) or its screen is left: not on a
+      // timer, so the step card doesn't move up under the thumb while it's being read.
+      this.say('Started ' + (r.title || st.template.title), {place: 'run', ms: null, action: r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }}});
+      if (this.places.run) this.places.run.startOf = r.runId; else this.toast.startOf = r.runId;
     } else if (r.status === 'offline') {
       sync.keep();
       this.closeSheet(true);
-      this.notify(!kept ? (full ? NO_ROOM : NOT_KEPT) : `${st.template.title} starts as soon as Pocket reaches Vikunja.`);
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
-    } else this.notify('Not started: ' + r.error.message);
+      this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `${st.template.title} starts as soon as Pocket reaches Vikunja.`, {place: 'checklists', cls: kept ? '' : 'failed'});
+    } else this.say('Not started: ' + r.error.message, {place: 'sheet:top', cls: 'failed'});
   },
   async sendRun(j){
     const save = () => sync.save(j), c = {save, taken: new Set([j.runId, ...j.steps.map(s => s.taskId)].filter(Boolean))};
@@ -204,15 +207,15 @@ export default {
     if (!run || !name) { if (e) e.name = run.title.split(' · ').slice(1, -1).join(' · ') || run.title; return; }
     const title = e.prefix ? [e.prefix, name, e.day].join(' · ') : name;
     if (title === run.title) return;
-    try { const t = await this.saveTask(run.id, {title}); run.title = t.title; this.saveRun(); this.notify('Renamed'); }
-    catch (err) { this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message); }
+    try { const t = await this.saveTask(run.id, {title}); run.title = t.title; this.saveRun(); this.say('Renamed', {place: 'sheet:top'}); }
+    catch (err) { this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   // Someone added to or taken off who the run is for: at least one stays.
   async setRunFor(u){
     const e = this.sheet.runEdit, run = this.view.run?.run;
     if (!run) return;
     const was = e.forIds, on = was.includes(u.id);
-    if (on && was.length === 1) { this.notify('A run is for at least one person: tap someone else first.'); return; }
+    if (on && was.length === 1) { this.say('A run is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
     const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
@@ -221,8 +224,8 @@ export default {
       shared.saveChain = put.catch(() => {});
       await put;
       run.assignees = who; this.saveRun();
-      this.notify(this.forText({assignees: who}).replace(/^For/, 'Now for'));
-    } catch (err) { e.forIds = was; this.notify(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message); }
+      this.say(this.forText({assignees: who}).replace(/^For/, 'Now for'), {place: 'sheet:top'});
+    } catch (err) { e.forIds = was; this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   // Delete a run, from its ⋯ or its sheet: its steps go too, so none is left behind as a task of its own.
   async confirmDeleteRun(run){
@@ -248,7 +251,7 @@ export default {
         this.notify(deleted ? 'Run deleted' : 'Run removed');
       }
       if (this.route.name === 'run' && this.route.id === id) this.leaveRun(); else if (!quiet) this.render();
-    } catch (e) { if (!quiet) this.notify('Not removed: ' + e.message); }
+    } catch (e) { if (!quiet) this.say('Not removed: ' + e.message, {place: ['sheet:top', 'run'], cls: 'failed'}); }
   },
 
   /* ---------- a run ---------- */
@@ -506,8 +509,9 @@ export default {
     if (!run) return;
     const r = await this.act({op: 'finish', task: run.id});
     if (r.status === 'error') return;
-    this.notify(r.status === 'offline' ? `Finished. It's sent once Pocket reaches Vikunja.` : 'Finished ' + run.title,
-      {label: 'Undo', fn: () => this.reopenRun(run.id)});
+    // Off the run's screen, back where it was opened from (by the phone's Back, which takes a moment): the toast goes
+    // along, as nothing on the screen it lands on is the run's.
+    this.notify(r.status === 'offline' ? sentLater('Finished') : 'Finished ' + run.title, {label: 'Undo', fn: () => this.reopenRun(run.id)});
     this.leaveRun();
   },
   // A finished run back in progress: from Finish run's Undo, or Reopen run in its ⋯.
@@ -520,7 +524,9 @@ export default {
   /* Everything done on a run goes through the outbox. Anything done before it that's still waiting goes first, so it
      all reaches Vikunja in the order it was done. */
   async act(fields){
-    if (this.toast.show && this.toast.startOf && this.toast.startOf === (fields.run ?? this.view.run?.run.id)) this.toast.show = false;
+    const run = fields.run ?? this.view.run?.run.id;
+    if (this.toast.show && this.toast.startOf && this.toast.startOf === run) this.toast.show = false;
+    if (this.places.run?.startOf === run) this.endPlace('run', this.places.run, false);
     // Its task's title, so Waiting to send can say what it is after a reload too.
     const entry = {id: randomId(), kind: 'act', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], stage: 0, fails: 0,
       run: this.view.run?.run.id, label: this.actTitle(fields.task), ...fields};
@@ -536,18 +542,18 @@ export default {
       for (const e of all) {
         if (e.failed || stopped.has(e.task)) {                               // waits behind one turned down
           if (e.id !== id) continue;
-          this.notify(`Waiting: something done before it on “${parseStep(e.label || 'it').title}” was turned down. Tap the warning sign at the top to try that again.`);
+          this.say(`Waiting: something done before it on “${parseStep(e.label || 'it').title}” was turned down. Tap the warning sign at the top to try that again.`, {place: 'step', cls: 'failed'});
           last = {status: 'offline', reached: true};
           break;
         }
         last = await this.sendEntry(e.id);
         if (last.kept) stopped.add(e.task);
-        if (last.status === 'error') this.notify(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)));
+        if (last.status === 'error') this.say(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)), {place: 'step', cls: 'failed'});
         if (last.status === 'offline' || e.id === id) break;
       }
     });
     this.refreshPending();
-    if (last.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
+    if (last.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: 'step', cls: 'failed'}); }
     return last;
   },
   async sendAct(a){
@@ -708,11 +714,12 @@ export default {
   async stepProgress(s, pct, undoing = false){
     if (pct >= 100 && !undoing) {
       await this.tickStep(s, 'done');
-      this.notify(`Done: ${s.title}`, {label: 'Undo', fn: () => this.tickStep(s, 'undone')});
+      this.say(`Done: ${s.title}`, {place: 'step', action: {label: 'Undo', fn: () => this.tickStep(s, 'undone')}});
       return;
     }
-    const was = s.pct, r = await this.act({op: 'progress', task: s.id, pct});
-    if (r.status !== 'error' && !undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.stepProgress(s, was, true)});
+    // Below 100%, on its row only, as a task's: its bar is what was set, and sliding it back is the undo.
+    const r = await this.act({op: 'progress', task: s.id, pct});
+    if (r.status !== 'error' && !undoing) this.said = `Progress of ${s.title} set to ${pct}%`;
   },
   async addStep(fields){
     const r = this.view.run;
@@ -725,8 +732,8 @@ export default {
     this.refreshPending();
     const res = await sync.lock(() => this.sendEntry(entry.id));
     this.refreshPending();
-    if (res.status === 'offline') { sync.keep(); if (!kept) this.notify(full ? NO_ROOM : NOT_KEPT); }
-    if (res.status === 'error') this.notify(`${res.error.what} couldn't be done: ${res.error.message}.`);
+    if (res.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: 'step', cls: 'failed'}); }
+    if (res.status === 'error') this.say(`${res.error.what} couldn't be done: ${res.error.message}.`, {place: 'step', cls: 'failed'});
     if (res.status === 'sent' && this.view.run?.run.id === entry.run) this.render();
     return entry.id;
   },
@@ -761,9 +768,9 @@ export default {
       cache.delete(s.id);
       await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
       this.refreshPending();
-      this.notify('Step deleted');
+      this.say('Step deleted', {place: ['sheet:top', 'step']});
       this.render();
-    } catch (e) { this.notify(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message); }
+    } catch (e) { this.say(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message, {place: ['sheet:top', 'step'], cls: 'failed'}); }
   },
   /* Don't send a step waiting to be inserted, nor what was done on it. One that may have reached Vikunja already (tried
      when the connection went) is called off: whatever reached it is deleted once Pocket reaches it again (unsendStep). */
@@ -778,8 +785,8 @@ export default {
     });
     if (tried) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
-    this.notify(gone ? 'It was sent already: delete it on the run if it isn\'t needed.'
-      : tried && this.pending.some(e => e.id === id) ? 'Not inserted. What reached Vikunja of it is taken out once Pocket reaches it.' : 'Not sent.');
+    this.say(gone ? 'It was sent already: delete it on the run if it isn\'t needed.'
+      : tried && this.pending.some(e => e.id === id) ? 'Not inserted. What reached Vikunja of it is taken out once Pocket reaches it.' : 'Not sent.', {place: ['sheet:top', 'step']});
     if (this.route.name === 'run') this.render();
   },
   // A step called off that may have reached Vikunja: found, if it got there, and deleted.

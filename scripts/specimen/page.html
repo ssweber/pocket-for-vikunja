@@ -11,6 +11,8 @@
   .specimen{display:flex;flex-wrap:wrap;gap:24px;padding:24px;align-items:flex-start}
   .theme{width:390px;padding:4px 16px 24px;background:var(--bg);color:var(--ink);border-radius:24px}
   .theme h1{font-size:20px;margin:16px 0 0}
+  /* a row lit up stays lit, to be looked at */
+  .row.fresh,.row.came-due{animation-play-state:paused}
 </style>
 </head>
 <body x-data="specimen">
@@ -29,6 +31,10 @@
           </template>
         </div>
       </div></template>
+      <div class="sec">A message in its place: under Overdue, by the add box, in a sheet, on a run's step</div>
+      <template x-for="line in specimenLines" :key="line.key">
+        <!-- include markup/place-line.html -->
+      </template>
     </section>
   </template>
 </div>

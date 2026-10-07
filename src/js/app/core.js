@@ -14,7 +14,8 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, subLabels: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null});
+  project: null, start: null, subPeople: {}, subLabels: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null,
+  lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
 
 export default () => ({
   // session
@@ -51,12 +52,13 @@ export default () => ({
   settingUp: false,                            // Set up checklists is making the project and its example
   startedHidden: (() => { try { return JSON.parse(store.get('started.hidden')) || {}; } catch { return {}; } })(),   // project id -> Getting started hidden
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
-  fresh: [],                                   // tasks just added: their rows light up briefly, to show where they went
+  flashed: {fresh: [], due: []},               // rows lit up for a moment: tasks just added, and just come due (lines.js)
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
   lines: {},                                   // task id -> the message in its row's place (lines.js)
+  places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
   said: '',                                    // the last of those, for a screen reader
   waitShown: false,                            // something has waited a moment: the header's button says so
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile

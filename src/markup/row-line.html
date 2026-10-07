@@ -1,4 +1,4 @@
 <!-- A message in a row's place (`line`, from lines.js): what happened, the task's title struck through, and its action
-     (Undo). The rest of the row is hidden meanwhile (.row.lined). A screen reader hears it from #said. -->
-<div class="row-line"><span class="what"><span x-text="line.text"></span> <s x-show="line.title" x-text="line.title"></s><span x-show="line.more" x-text="' ' + line.more"></span></span>
-  <template x-if="line.action"><button class="line-act" @click="runLineAction(t.id)" x-text="line.action.label"></button></template></div>
+     (Undo, Try again). The rest of the row is hidden meanwhile (.row.lined). A screen reader hears it from #said. -->
+<div class="row-line" :class="line.cls"><span class="what"><span x-text="line.text"></span> <s x-show="line.title" x-text="line.title"></s><span x-show="line.more" x-text="' ' + line.more"></span></span>
+  <template x-if="line.action"><button class="line-act" @click="runLineAction(line.id)" x-text="line.action.label"></button></template></div>

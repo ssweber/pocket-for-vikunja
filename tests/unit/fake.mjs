@@ -37,13 +37,16 @@ export function fakeVikunja(tasks = []){
 }
 
 /* The component, with the parts of the app given (their methods, as component.js puts them together), what they use
-   from the rest made simple: toasts are kept in `toasts`, and nothing is a run. Signed in with an API token, so a
-   change isn't checked against the shared session first. */
+   from the rest made simple: messages are kept in `toasts`, with where each was said (say: `row`, `place`; there's no
+   screen, so that's where it's asked for), and nothing is a run. Signed in with an API token, so a change isn't checked
+   against the shared session first. */
 export function component(...parts){
   const c = {
     server: 'http://vikunja.test', mode: 'token', token: 'tk_test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { task: null }, route: { name: 'today' }, toasts: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
+    say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
+    said: '', places: {}, rowEl(){ return null; },
     get toast(){ return this.toasts.at(-1); },
     render(){}, flush(){}, stepRun(){ return null; }, isRunTask(){ return false; }, viewWantsDone(){ return false; },
   };

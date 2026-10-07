@@ -25,6 +25,9 @@
     </div></template>
   </div>
   <div class="scroll" id="sheet-body">
+    <template x-for="line in placeLines('sheet:top')" :key="line.n">
+      <!-- include markup/place-line.html -->
+    </template>
     <!-- include markup/sheet/task.html -->
     <!-- include markup/sheet/checklist-options.html -->
     <!-- include markup/sheet/new-project.html -->

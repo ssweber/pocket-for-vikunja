@@ -1,7 +1,7 @@
 /* Alerts while Pocket is on screen: Today keeps itself up to date, and a run's countdown chimes at zero. Pocket promises
-   only what always works, so there are no system notifications: these are toasts, with a chime, vibration (Android),
-   the screen kept on during a countdown and the overdue count on the app's icon wherever the phone allows, each tried
-   and quietly skipped where it doesn't. Reminders while Pocket is closed are Vikunja's, by email. */
+   only what always works, so there are no system notifications: a task come due lights up on Today, and a countdown at
+   zero says so in a toast, with a chime, vibration (Android), the screen kept on during a countdown and the overdue
+   count on the app's icon wherever the phone allows, each tried and quietly skipped where it doesn't. Reminders while Pocket is closed are Vikunja's, by email. */
 import {store} from '../util.js';
 import {serverTime} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
@@ -33,9 +33,12 @@ export default {
       if (isSet(t.due_date) && passed(+new Date(t.due_date)) && isLate(t.due_date, new Date(now))) due.push(t);
       else if ((t.reminders || []).some(r => isSet(r.reminder) && passed(+new Date(r.reminder)))) reminded.push(t);
     }
+    // Their rows light up for a moment, where they are now (one come due, under Overdue), and a screen reader hears it.
     const name = t => `“${this.rowTitle(t)}”`, list = [...due, ...reminded];
-    if (list.length === 1) this.notifyAfterUndo(due.length ? `${name(list[0])} is due now` : `Reminder: ${name(list[0])}`);
-    else if (list.length) this.notifyAfterUndo(`${list.length} tasks are due ${reminded.length ? 'or have a reminder ' : ''}now: ${name(list[0])} and ${list.length - 1} more`);
+    if (!list.length) return;
+    this.flash(list.map(t => t.id), 'due');
+    this.said = list.length === 1 ? (due.length ? `${name(list[0])} is due now` : `Reminder: ${name(list[0])}`)
+      : `${list.length} tasks are due ${reminded.length ? 'or have a reminder ' : ''}now: ${name(list[0])} and ${list.length - 1} more`;
   },
   // Today's dated tasks placed again for the time now, without asking Vikunja: each minute, and offline after midnight.
   // Returns them.

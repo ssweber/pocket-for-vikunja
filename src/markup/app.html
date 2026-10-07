@@ -45,6 +45,10 @@
   </main>
 
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
+    <!-- Where what was just added went, when it isn't on this screen; what couldn't be added, and why -->
+    <template x-for="line in placeLines('cap')" :key="line.n">
+      <!-- include markup/place-line.html -->
+    </template>
     <form id="f-capture" autocomplete="off" @submit.prevent="submitCapture()">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml('cap')"></div>

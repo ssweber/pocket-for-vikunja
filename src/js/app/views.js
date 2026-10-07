@@ -279,11 +279,12 @@ export default {
       if (this.sheet.newProj === np) this.closeSheet(true);
       // For checklists: on Checklists, where Getting started says what's next.
       if (np.checklists) { this.perms[p.id] = 2; saved.set('perms', this.perms); }
+      // Its screen, open, shows it was made; for checklists, Checklists says so too.
       this.go(np.checklists ? '#/checklists' : '#/project/' + p.id);
-      this.notify(np.checklists ? `Made ${p.title}, for checklists.` : `Made ${p.title}`);
+      if (np.checklists) this.say(`Made ${p.title}, for checklists.`, {place: 'checklists'}); else this.said = `Made ${p.title}`;
     } catch (e) {
       np.busy = false;
-      this.notify(e instanceof NetError ? 'Offline. A project can be made once you\'re back online.' : 'Not made: ' + e.message);
+      this.say(e instanceof NetError ? 'Offline. A project can be made once you\'re back online.' : 'Not made: ' + e.message, {place: 'sheet:top', cls: 'failed'});
     }
   },
   async createProject(name){
@@ -294,7 +295,7 @@ export default {
       this.setProjects([...this.projects, p]);
       saved.set('projects', this.projects);
     } catch (e) {
-      this.notify(e instanceof NetError ? 'Offline — you can create the project once you\'re back online' : 'Project not created: ' + e.message);
+      this.say(e instanceof NetError ? 'Offline — you can create the project once you\'re back online' : 'Project not created: ' + e.message, {place: 'cap', cls: 'failed'});
     } finally { this.creatingProject = false; }
   },
 };

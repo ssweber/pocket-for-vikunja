@@ -60,7 +60,7 @@ export default {
   // Offline it says so, rather than the browser's own words for a failed request.
   async tryNow(){
     await this.flush();
-    if (this.pending.length && this.offline) { this.notify('Still no connection to Vikunja: it\'s all kept, and sent once Pocket reaches it.'); return; }
+    if (this.pending.length && this.offline) { this.say('Still no connection to Vikunja: it\'s all kept, and sent once Pocket reaches it.', {place: 'sheet:top', cls: 'failed'}); return; }
     this.refresh();
   },
   /* A run's act in words: "Done: Check the milk fridge". A skip with its reason, and a step repeated in the run told
@@ -115,11 +115,11 @@ export default {
       await sync.remove(id);
     });
     this.refreshPending();
-    if (gone || started) { this.notify(gone ? 'It was sent before it could be stopped.' : 'It\'s being sent: it can\'t be stopped now.'); return; }
+    if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It\'s being sent: it can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
     this.giveBack(a, said);
     if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
-    this.notify('Not sent.' + (said.back ? ' Its words are back where you wrote them.' : ''));
+    this.say('Not sent.' + (said.back ? ' Its words are back where you wrote them.' : ''), {place: 'sheet:top'});
     this.flush();                                                           // what waited behind it
   },
 };

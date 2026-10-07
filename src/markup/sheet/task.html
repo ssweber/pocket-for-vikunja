@@ -68,6 +68,9 @@
             <button class="icon-btn plain" aria-label="Don't add a reminder" @click="sheet.remindAt = false"><svg class="i"><use href="#i-close"/></svg></button></span></template>
         </span></div></template>
         <template x-if="remindersNote && (sheet.task.reminders || []).length && (checklistRole !== 'template' || isSet(dueShown))"><p class="note prop-note" x-text="remindersNote"></p></template>
+        <template x-for="line in placeLines('sheet:due')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
       </div></template>
       <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
 
@@ -83,6 +86,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>
           <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="cancelDesc()">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
         </div></template>
+        <template x-for="line in placeLines('sheet:notes')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
       </div>
 
       <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div>
@@ -101,6 +107,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             <svg class="i"><use href="#i-plus"/></svg><span class="nm">Add a photo or file</span>
             <input type="file" id="d-file" class="sr" multiple aria-label="Add a photo or file" @change="addFiles($event.target.files); $event.target.value = ''">
           </label></template>
+          <template x-for="line in placeLines('sheet:files')" :key="line.n">
+            <!-- include markup/place-line.html -->
+          </template>
         </div>
       </div></template>
 
@@ -156,6 +165,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <div class="body"><div class="title"><span class="sr">Not sent yet: </span><span x-text="t.title"></span></div><div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div></div>
           <button class="icon-btn plain" :aria-label="'Cancel ' + t.title" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button>
         </div></template>
+        <template x-for="line in placeLines('sheet:subtasks')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
         <!-- The same box as quick add: what it read is marked, with chips to undo it, and @ and * suggest people and labels -->
         <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
         <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the › beside a step on the run's screen: it's marked as added during the run.</p></template>
@@ -200,6 +212,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         <template x-for="c in pendingComments" :key="c.id">
           <div class="comment waiting"><div class="who"><b x-text="user?.name || user?.username || 'You'"></b> · <span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.html)"></div></div>
         </template>
+        <template x-for="line in placeLines('sheet:comments')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
         <template x-if="sheet.comments && canEdit"><form class="comment-form" id="d-cform" @submit.prevent="postComment()">
           <textarea id="d-cin" rows="1" placeholder="Write a comment" aria-label="Comment" x-model="sheet.commentDraft" x-effect="sheet.commentDraft; $nextTick(() => grow($el))"></textarea>
           <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
@@ -238,6 +253,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
           </select>
         </span></div></template>
+        <template x-for="line in placeLines('sheet:props')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
       </div>
       <template x-if="picker.open"><div class="card picker">
         <template x-if="picker.loading"><div class="loading" style="padding:16px">Loading labels…</div></template>
