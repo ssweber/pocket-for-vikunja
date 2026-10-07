@@ -2,6 +2,9 @@
   --bg:#EEF1EF; --surface:#FFFFFF; --sunk:#E3E8E5; --ink:#17201C; --muted:#5B6863; --line:#D6DDD9;
   --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#E3E8E5;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
+  /* shadows, and the shade behind a sheet: the same in dark mode, whose block below redefines any that should differ */
+  --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-pct:0 2px 10px rgba(0,0,0,.18); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
+  --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
   --pad:16px; --cap-h:64px; --kb:0px;
   color-scheme:light;
@@ -41,13 +44,13 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
 .btn.ghost[disabled]{background:transparent;opacity:.55}
 .seg{display:flex;background:var(--sunk);border-radius:12px;padding:3px;margin-bottom:16px}
 .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-size:15px;color:var(--muted);font-weight:600}
-.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-low)}
 .note{font-size:14px;color:var(--muted);margin:10px 0 0}
 .sso-btn + .sso-btn{margin-top:10px}
 .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;margin:20px 0 16px}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);border-radius:12px;padding:12px 14px;font-size:15px;margin:0 0 16px;white-space:pre-line}
-.err code{font-size:13px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px;white-space:nowrap}
+.err code{font-size:13px;background:var(--code-bg);padding:1px 4px;border-radius:4px;white-space:nowrap}
 
 /* ---------- shell ---------- */
 #app{min-height:100%}
@@ -173,7 +176,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 /* While it's being set, from --slide, which the screen's redraws don't touch (progress.js) */
 .row.setting::after{width:calc(var(--slide) * 100%)}
 .row.sub.setting::after{width:calc(var(--slide) * (100% - 14px - var(--depth) * 38px))}
-.row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none}
+.row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
 /* held on the right half, the percentage moves to the left, clear of the thumb */
 .row.setting[data-side=left]::before,.d-head.setting[data-side=left]::before{right:auto;left:12px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -338,7 +341,7 @@ a.sec-act{text-decoration:none}
 
 
 /* ---------- sheet ---------- */
-#scrim{position:fixed;inset:0;background:rgba(10,16,13,.42);z-index:20;opacity:0;transition:opacity .2s}
+#scrim{position:fixed;inset:0;background:var(--scrim);z-index:20;opacity:0;transition:opacity .2s}
 #scrim.show{opacity:1}
 /* Closing, it lets taps through at once, rather than catching them while it fades */
 #scrim:not(.show),#sheet:not(.show){pointer-events:none}
@@ -366,7 +369,7 @@ a.sec-act{text-decoration:none}
 .meta .bars.p1 i:nth-child(-n+1),.meta .bars.p2 i:nth-child(-n+2){background:var(--muted)}
 .meta svg.i{width:14px;height:14px;stroke-width:2.2;vertical-align:-2px;margin-right:3px}
 /* The task sheet's ⋯ menu, under the bar on the right */
-#sheet .menu{position:absolute;right:12px;top:calc(100% - 2px);z-index:5;min-width:240px;max-width:calc(100% - 24px);background:var(--surface);border-radius:14px;padding:6px;box-shadow:0 10px 32px rgba(0,0,0,.22)}
+#sheet .menu{position:absolute;right:12px;top:calc(100% - 2px);z-index:5;min-width:240px;max-width:calc(100% - 24px);background:var(--surface);border-radius:14px;padding:6px;box-shadow:var(--shadow-menu)}
 #sheet .menu button{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:0;background:none;padding:12px 14px;border-radius:10px;font-size:16px;font-weight:600;color:var(--ink)}
 #sheet .menu button:hover,#sheet .menu button:focus-visible{background:var(--sunk)}
 #sheet .menu button small{font-size:13px;font-weight:400;color:var(--muted)}
@@ -455,7 +458,7 @@ body.sheet-open{overflow:hidden}
 /* ---------- toast ---------- */
 /* Just above the add box, or above the keyboard (--kb) when that's higher: a toast under the keyboard isn't seen */
 #toasts{position:fixed;left:50%;bottom:calc(max(var(--cap-h), var(--kb)) + 14px);transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:calc(100% - 32px);pointer-events:none}
-#toast{background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;box-shadow:0 8px 28px rgba(0,0,0,.25);max-width:100%}
+#toast{background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;box-shadow:var(--shadow-toast);max-width:100%}
 #toast{opacity:0;transform:translateY(20px);transition:opacity .18s,transform .18s}
 #toast.show{opacity:1;transform:none;pointer-events:auto}
 #toast button{border:0;background:transparent;color:var(--accent-soft);font-weight:700;padding:6px 8px}
