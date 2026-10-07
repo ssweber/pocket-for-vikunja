@@ -207,8 +207,8 @@ export default {
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
       const g = this.view.groups.find(g => g.key === key);
-      if (g) g.tasks.push(t);
-      else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [t]});
+      if (g) g.tasks.push(this.keep(t));
+      else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
       placed = true;
     }
     // And in the copy kept for opening offline.

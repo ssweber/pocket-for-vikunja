@@ -149,7 +149,7 @@ export default {
       const kids = j.runId ? await api('/tasks/' + j.runId).then(t => (t.related_tasks?.subtask || []).map(s => s.id), e => { if (e.status === 404) return []; throw e; }) : [];
       for (const id of [...new Set([...j.steps.map(s => s.taskId).filter(Boolean), ...kids]), j.runId].filter(Boolean)) {
         await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-        cache.delete(id); this.removeRow(id);
+        this.forget(id);
       }
       await sync.remove(j.id);
       return {...none, status: 'sent', changed: 0};
@@ -239,7 +239,7 @@ export default {
       for (const sid of new Set([...(t.related_tasks?.subtask || []).map(s => s.id), ...also]))
         await patiently(() => api('/tasks/' + sid, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       await patiently(() => api('/tasks/' + id, {method: 'DELETE'}));
-      cache.delete(id); this.removeRow(id);
+      this.forget(id);
       if (this.sheet.task?.id === id) Object.assign(this.sheet, {editingDesc: false, commentDraft: ''});
       if (!quiet) {
         const ids = new Set([id, ...(t.related_tasks?.subtask || []).map(s => s.id)]);

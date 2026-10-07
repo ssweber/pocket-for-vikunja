@@ -5,10 +5,6 @@ const EDGE = 48;                                        // px short of the scree
 export let sliding = false;                             // progress is being set: the sheet doesn't swipe away meanwhile
 
 export default {
-  rowTask(id){
-    for (const g of this.view.groups) for (const t of g.tasks) if (t.id === id) return t;
-    return null;
-  },
   /* While sliding, the row is drawn from --slide, not --pct: the screen redraws a row's --pct as it updates (a run's
      steps every second, for their countdowns), which would put the line back to what's saved under the finger. */
   /* Hold, then slide sideways: how progress is set, on a list row and on a task's sheet. It moves from where it was, in

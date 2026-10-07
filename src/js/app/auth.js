@@ -69,7 +69,7 @@ export default {
   },
   forgetPeople(drafts = true){
     if (drafts) { this.runDrafts = {}; taskDrafts.clear(); store.del('drafts.user'); }
-    cache.clear(); userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null;
+    cache.clear(); this.tasks = {}; userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null;
     this.labels = []; this.labelsLoaded = false;
   },
   /* Single sign-on goes through Vikunja: the provider only returns to Vikunja's /auth/openid/<key> page, which finishes

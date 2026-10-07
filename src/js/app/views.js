@@ -36,13 +36,6 @@ export default {
     if (d && this.projById.has(d)) return d;
     return this.projects[0]?.id;
   },
-  /* Push a saved task into every list row showing it. */
-  syncTask(saved){
-    for (const g of this.view.groups) for (const t of g.tasks) if (t.id === saved.id) Object.assign(t, saved);
-  },
-  removeRow(id){
-    for (const g of this.view.groups) { const i = g.tasks.findIndex(t => t.id === id); if (i >= 0) g.tasks.splice(i, 1); }
-  },
   viewWantsDone(){ return this.route.name === 'project' && !!this.route.showDone; },
 
   /* ---------- views ---------- */
@@ -161,8 +154,9 @@ export default {
         if (!fresh && !this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
         const s = saved.get(viewKey(r));
         if (s) {
-          for (const g of s.groups || []) for (const t of g.tasks) cache.set(t.id, t);
-          Object.assign(this.view, {loading: false, groups: s.groups || [], project: s.project || null, checklists: s.checklists || [], run: s.run || null, savedAt: s.at});
+          const groups = (s.groups || []).map(g => ({...g, tasks: g.tasks.map(t => { cache.set(t.id, t); return this.keep(t); })}));
+          const checklists = (s.checklists || []).map(cl => ({...cl, runs: (cl.runs || []).map(t => this.keep(t))}));
+          Object.assign(this.view, {loading: false, groups, project: s.project || null, checklists, run: s.run || null, savedAt: s.at});
           if (r.name === 'today') this.regroupToday();
           return;
         }
@@ -189,12 +183,12 @@ export default {
     for (const t of [...tasks, ...added, ...mine]) cache.set(t.id, t);
     const groups = todayGroups(), [, , inRuns, nodate] = groups;
     // Your runs in progress: a run has no due date, its timed steps have theirs.
-    for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push({...t});
-    for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) { cache.set(t.id, t); inRuns.tasks.push({...t}); }
-    this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(t => ({...t})));
+    for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push(this.keep(t));
+    for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) { cache.set(t.id, t); inRuns.tasks.push(this.keep(t)); }
+    this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(t => this.keep(t)));
     this.todayDay = +startOfDay();
     // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
-    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push({...t});
+    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push(this.keep(t));
     this.view.groups = groups;
     saved.set('today', {groups, at: new Date().toISOString()});
   },
@@ -209,7 +203,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of tasks) cache.set(t.id, t);
     const list = r.showDone ? tasks.sort((a,b) => new Date(b.done_at) - new Date(a.done_at)) : soonestFirst(tasks);
-    this.view.groups = [{key: r.showDone ? 'done' : 'open', cls: '', title: r.showDone ? 'Done' : 'Open', tasks: list.map(t => ({...t}))}];
+    this.view.groups = [{key: r.showDone ? 'done' : 'open', cls: '', title: r.showDone ? 'Done' : 'Open', tasks: list.map(t => this.keep(t))}];
     saved.set(viewKey(r), {groups: this.view.groups, project: p, at: new Date().toISOString()});
   },
   /* Load a newer Pocket if the server has one, when nothing would be lost by reloading; otherwise the next refresh or
@@ -258,8 +252,8 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
     this.view.groups = [
-      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(opened).map(t => ({...t}))},
-      {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: finished.map(t => ({...t}))},
+      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(opened).map(t => this.keep(t))},
+      {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: finished.map(t => this.keep(t))},
     ];
   },
 

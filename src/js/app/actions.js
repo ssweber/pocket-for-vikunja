@@ -387,7 +387,7 @@ export default {
     try {
       for (const id of ids) {
         await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-        cache.delete(id); this.removeRow(id); n++;
+        this.forget(id); n++;
       }
     } catch (e) { e.deleted = n; throw e; }
   },

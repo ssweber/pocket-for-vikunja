@@ -29,6 +29,7 @@ export default () => ({
   // data
   projects: [], projById: new Map(),
   labels: [], labelsLoaded: false,
+  tasks: {},                                   // the tasks on screen, one copy of each, by id (tasks.js)
   // view
   route: currentRoute(),
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null},
