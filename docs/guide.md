@@ -51,10 +51,13 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   at the time of day it had, or the next whole hour if that time has gone today; a line under the Overdue heading says
   how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
   next date.
-- **Ticking off:** a ticked task's row becomes a slim line saying so, "Done: Pack the van + 4 subtasks", with **Undo** at
-  its end; after a few seconds it folds away. Each tick has its own line, so ticking a few in a row leaves each its
-  Undo. A task's open subtasks are ticked off with it. A ticked subtask stays where it is, ticked, with no message: tick
-  it again to take it back. A repeating task stays, at its next date: its line says "Repeats · next Friday", with an
+- **Ticking off:** a ticked task's row becomes a slim line saying so, "Done: Call Ana", with **Undo** at its end;
+  after a few seconds it folds away. Each tick has its own line, so ticking a few in a row leaves each its Undo. A
+  task's open subtasks are closed with it, without asking, and its line says so: "Closed Pack the van + 4 subtasks".
+  Its Undo opens again only those four, not one that was done before, with the progress each had. A subtask that
+  repeats is left alone, since closing it would only move it to its next date. The same goes for the tick in a task's
+  sheet, whose line is under its subtasks. A ticked subtask stays where it is, ticked, with no message: tick it again
+  to take it back. A repeating task stays, at its next date: its line says "Repeats · next Friday", with an
   Undo that puts its date back. An Undo leaves alone a task that was changed elsewhere since. In search, a ticked task
   moves from Open to Done once its line folds; unticked in a list of done tasks, it says "Not done", with Undo.
 - **Progress:** hold a task until it lifts (and, on a phone that can, you feel a tick), then slide sideways to set how
@@ -115,7 +118,12 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
 - **Projects:** your project tree with favorites, and the tasks in each: its open tasks, in order, then its done tasks
   in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. Tick
   one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
-  its Done section open. **New project** makes one, inside
+  its Done section open. A done task with subtasks still open (ticked done in Vikunja's web app, which leaves its
+  subtasks open, or one of them opened again since) stays among the open tasks, struck through, over those subtasks,
+  saying "Done, but 2 subtasks are still open", so they're never left on their own as if they had no parent. Tap it to
+  open its sheet; tick it to open it again where it is, with an Undo. It can't be moved, nor be what the bottom box
+  adds to; its subtasks are like any others. A finished run with steps not done shows the same way. On Today and in
+  search, a subtask whose task isn't above it there says which task it's under: "↳ Pack the van". **New project** makes one, inside
   another if you like. A project's **⋯** renames or archives it if it's shared with you to write, and deletes it if
   you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
 - **Signing in:** sign in once, with your usual Vikunja login, and Pocket and Vikunja's web app are both signed in on
