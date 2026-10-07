@@ -11,7 +11,7 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
 pocket/        the plugin, as it's installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
   app/         the built app, the libraries it uses, and sw.js, which lets it open offline
-tests/         the six test files described below
+tests/         the test files described below, and unit/, the tests that need no browser
 scripts/       build.mjs: the build; dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and
                screenshots; check.mjs: what npm run lint checks besides ESLint; specimen.mjs and specimen/: a page
                showing the task row in every state
@@ -46,6 +46,16 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugi
 
 ## Tests
 
+- `tests/unit/`: the parts of the app that need no browser, under Node's own test runner (`node --test`), in a second
+  and with no server: the order of a list and subtasks under their parents (`lists.test.mjs`), due dates in words
+  (`dates.test.mjs`), progress and what a tick says (`progress.test.mjs`), a checklist's steps, their order and times
+  (`checklists.test.mjs`), the address, util.js and what's waiting to send (`helpers.test.mjs`), the one copy of each
+  task (`tasks.test.mjs`), and what's done to a task (`actions.test.mjs`): ticking a parent closes its open subtasks and
+  Undo opens exactly those, a repeating task whose reply is lost is ticked once, progress at 100%, saves one after
+  another, deleting, and Move all to today. The app's methods run as they are, on a pretend component, with a pretend
+  Vikunja behind `fetch()` (`fake.mjs`). `browser.mjs` gives the modules what they look for in a browser as they load,
+  and nothing more: there's no DOM, so reading a task's notes (Pocket's lines in them) stays in `parse.mjs`. A test file
+  per area: a new one is picked up by its name, `*.test.mjs`.
 - `tests/parse.mjs`: how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests, how pasted lists lose their bullets and checkboxes, how checklist steps are read, a template's order line, and a run's, with steps inserted in it, and what's a template, its name, and where Vikunja moves one that comes round. It loads `src/js/quickadd.js` and `src/js/checklists.js` as they are, so it needs no build and no server, and runs in a few seconds.
 - `tests/smoke.mjs`: Pocket in a headless browser against a Vikunja with the plugin. It signs in with a token, then adds, ticks off, sets the progress of, searches for, edits, comments on and deletes tasks, pastes a list with subtasks, adds subtasks in the sheet with quick add's chips, claims one and lets it go, moves a task to Overdue as its time passes (waiting for an Undo still showing to say so), adds and removes reminders in the sheet (keeping those changed elsewhere meanwhile), offers the 🔔 chip only for a time and only when reminder emails reach you, ticks off a parent and its subtasks with it, adds quick ticks up into one Undo, takes the top suggestion on Enter, reads a bare hour as daytime and warns of a repeat Vikunja can't do, closes a sheet with the phone's Back and keeps the draft through a reload, moves a ticked search result to Done, keeps notes and a comment being written when the sheet closes, doesn't write over notes changed elsewhere meanwhile, adds a label with Enter and a suggested person, undoes a repeating tick (its reminder at a set time too), ticks one whose reply is lost, leaves a repeating subtask alone when its parent is ticked, moves and deletes a task with its subtasks, renames and deletes a project from its ⋯, attaches a file and a photo, creates a project, assigns someone, loads a new version of Pocket on refresh, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side (keeping what was being written when Vikunja signs you out), single sign-on, renewing an expired sign-in from both at once, and following a switch to another account.
@@ -56,13 +66,32 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, with the plugi
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
 npm run lint                       # mistakes ESLint can see, and colours written out
+npm run test:unit                  # the unit tests, in a second
+node --test tests/unit/actions.test.mjs                      # one file of them
+node --test --test-name-pattern="Undo" "tests/unit/*.test.mjs"  # those whose name says Undo
 npm run test:parse                 # phrases only
-npm run test:local                 # starts the local Vikunja and runs all six
+npm run test:local                 # starts the local Vikunja and runs them all
 
 # against a real server with the plugin installed (use a test account)
 VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
 # add ASSIGNEE=sarah ASSIGNEE_PROJECT="Team" to test @assignee: a project shared with that user, and a token with Other → Users
 ```
+
+`npm run test:local` prints how long each file took at the end, and each step of the end-to-end tests its own time,
+so a slow one is seen. CI runs `lint`, `test:unit` and `test:parse` in one job, and `test:local` in another.
+
+**The page's clock.** `smoke.mjs` and `checklists.mjs` install [Playwright's clock](https://playwright.dev/docs/clock) on
+the page, which keeps the real time until a test moves it: `later(ms)` runs what the page would do in that time (a toast
+going, Today's minute, a countdown's second) at once, then puts the page's clock back on the real time. A test moves
+the page's clock, never waits, for what the page decides: a task becoming overdue, a countdown reaching zero, a tick
+made a while before it's sent. A toast is made to go at once (`toastGone`), as its own timer would. Vikunja's clock is
+real, so the page's goes back to the real time after, and what Vikunja dates itself still takes real time: a change a
+second after another (its times have whole seconds), a task made on the web before one from Pocket. Those few waits say
+why. Moving the clock on runs everything due meanwhile at once, and what that starts (a request, a redraw) lands after,
+so it's for a wait that's about time, not one that lets the page settle.
+
+Vikunja on SQLite (the local one) now and then answers 500, "database is locked", when a request comes while it's
+still writing the one before: the tests' own requests to Vikunja try again, a few times, as Pocket's do.
 
 The tests delete what they create, except a `pocket-smoke` label that the end-to-end test reuses on later runs, and the `template` label of the checklists test, since Task Management tokens can't delete labels. The checklists test needs a token that can create and update projects and add reactions. With a token that can't create projects, the project step is skipped.
 
