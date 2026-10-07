@@ -883,14 +883,16 @@ try {
       // An Undo showing (a tick's, say) isn't replaced: the message waits for it to go. It's put up just before the time
       // passes: the minute's own timer, should it come between, then waits for it too, rather than say it first. The
       // page's clock is moved on, not waited for, and kept there until the message is said.
-      await page.clock.fastForward(Math.max(0, due - await page.evaluate(() => Date.now()) - 500));
+      // As Vikunja keeps the time: in whole seconds, so it's due up to a second before `due`.
+      await page.clock.fastForward(Math.max(0, Math.floor(due / 1000) * 1000 - await page.evaluate(() => Date.now()) - 500));
       await page.evaluate(() => Alpine.$data(document.body).notify('Done: something', { label: 'Undo', done: true, fn(){} }));
       await page.clock.fastForward(1500);
       await page.evaluate(() => Alpine.$data(document.body).tickToday());     // what the minute's timer does
       await page.waitForSelector(`.sec.overdue + .list ${rowOf(t)}`, { timeout: 5000 });
       if (!await page.$('#toast.show #toast-msg:text-is("Done: something")')) throw new Error('the Undo was replaced');
       await later(await toastLeft() + 200);
-      await page.waitForSelector(`#toast.show #toast-msg:text-is("“${t}” is due now")`, { timeout: 10000 });
+      // Looked for every 100ms, not every frame: the page's frames follow its clock, which later() has just set back.
+      await page.waitForFunction(m => document.querySelector('#toast.show #toast-msg')?.textContent === m, `“${t}” is due now`, { timeout: 10000, polling: 100 });
     } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
   });
 
@@ -1078,6 +1080,7 @@ try {
     await refreshToday();
     await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
     await page.fill('#d-cin', 'written before Back');
+    await page.waitForSelector('#sheet.show');                                // slid in: Back closes a sheet that's showing
     await page.goBack();                                                      // the phone's Back
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 10000 });
     if (!(await page.evaluate(() => location.hash)).startsWith('#/today')) throw new Error('Back left Today: ' + await page.evaluate(() => location.href));

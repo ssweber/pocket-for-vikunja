@@ -1063,7 +1063,8 @@ try {
       // The room to 48px short of the screen's edge is the rest of the way to 100% (EDGE): n tenths of it.
       const box = await page.locator(row).boundingBox(), x = box.x + box.width * .45, y = box.y + box.height / 2;
       await page.mouse.move(x, y); await page.mouse.down();
-      await page.waitForSelector(`${row}.setting`, { timeout: 2000 });
+      // Looked for every 100ms, not every frame: the page's frames follow its clock, which an earlier step set back.
+      await page.waitForFunction(sel => document.querySelector(sel)?.classList.contains('setting'), row, { timeout: 2000, polling: 100 });
       await page.mouse.move(x + (page.viewportSize().width - 48 - x) * n / 10, y, { steps: 10 });
       await check?.();
       await page.mouse.up();
