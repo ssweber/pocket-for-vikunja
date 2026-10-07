@@ -1,6 +1,7 @@
-// What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar); swiped left, it
-// shows the row's Delete.
+// What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar), or moved up or
+// down, it moves the row among its siblings; swiped left, it shows the row's Delete.
 import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pctOf, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
+import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 
 export let sliding = false;                             // a row is held or swiped: the sheet doesn't swipe away meanwhile
@@ -38,17 +39,64 @@ const swipeOf = (row, remove) => ({
   },
 });
 
+/* A row moved up or down after the hold, among its siblings: `blocks`, each the rows of one sibling (a task and its
+   subtasks under it), in order, the one held `k`. Its rows follow the finger, and the siblings it passes the middle of
+   move aside to make room, a tick felt at each (dragPlace). Near the top or the bottom of the screen, or of the sheet
+   (`scroller`), the page scrolls on by itself. Let go, every row is put back as it was, and `drop(to)` is told where it
+   landed, if it moved, for the list to be drawn in its new order; the held rows then slide into their place. */
+const ZONE = 72;                                        // px from an edge where the page scrolls by itself
+const dragOf = (blocks, k, scroller, drop, begin) => {
+  let boxes, fy = 0, y = 0, at = k, from = 0, frame = null;
+  const all = blocks.flat(), mine = blocks[k], list = mine[0].parentElement;
+  const top = () => scroller ? scroller.scrollTop : scrollY;
+  const view = () => { const r = scroller?.getBoundingClientRect(); return r ? [r.top, r.bottom] : [0, innerHeight - (document.getElementById('capture')?.offsetHeight || 0)]; };
+  const place = () => {
+    const p = dragPlace(boxes, k, fy + top() - from);
+    blocks.forEach((els, i) => { for (const el of els) el.style.transform = i === k ? `translateY(${p.dy}px)` : p.shifts[i] ? `translateY(${p.shifts[i]}px)` : ''; });
+    if (p.at !== at) { at = p.at; haptic('tick'); }
+  };
+  // Held near an edge, the page scrolls, faster the nearer it is, and the rows are placed again.
+  const roll = () => {
+    const [lo, hi] = view(), v = y < lo + ZONE ? -(lo + ZONE - y) / 6 : y > hi - ZONE ? (y - hi + ZONE) / 6 : 0;
+    if (v) { const was = top(); if (scroller) scroller.scrollTop += Math.max(-14, Math.min(14, v)); else scrollBy(0, Math.max(-14, Math.min(14, v))); if (top() !== was) place(); }
+    frame = requestAnimationFrame(roll);
+  };
+  return {
+    start(y0){
+      begin?.();
+      y = y0; from = top();
+      boxes = blocks.map(els => { const a = els[0].getBoundingClientRect(), b = els.at(-1).getBoundingClientRect(); return {top: a.top, height: b.bottom - a.top}; });
+      list.classList.add('reordering'); for (const el of mine) el.classList.add('dragged');
+      frame = requestAnimationFrame(roll);
+    },
+    move(dy, y1){ fy = dy; y = y1; place(); },
+    end(commit){
+      cancelAnimationFrame(frame);
+      const was = mine.map(el => el.getBoundingClientRect().top);
+      for (const el of all) { el.style.transition = 'none'; el.style.transform = ''; }
+      list.classList.remove('reordering'); for (const el of mine) el.classList.remove('dragged');
+      if (commit && at !== k) drop(at);
+      // Drawn in its new order by now: the held rows slide from where they were let go into their place.
+      requestAnimationFrame(() => {
+        const slide = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+        mine.forEach((el, i) => { const d = was[i] - el.getBoundingClientRect().top; if (slide && el.isConnected && Math.abs(d) > 1) el.animate([{transform: `translateY(${d}px)`}, {transform: 'none'}], {duration: 160, easing: 'ease-out'}); });
+        for (const el of all) el.style.transition = '';
+      });
+    },
+  };
+};
+
 export default {
   /* While sliding, the row is drawn from --slide, not --pct: the screen redraws a row's --pct as it updates (a run's
      steps every second, for their countdowns), which would put the line back to what's saved under the finger. */
   /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
-     swiped to its Delete (swipeOf), and if its progress can be set, {el: the row, start, width, show(pct, x: where the
-     finger is), finish(pct, or null if nothing changed)}.
+     swiped to its Delete (swipeOf), `reorder` if it can be moved (dragOf), and if its progress can be set, {el: the row,
+     start, width, show(pct, x: where the finger is), finish(pct, or null if nothing changed)}.
      Moving before the hold ends is a scroll or a tap as usual, or, sideways to the left, the swipe; once the hold has
      ended (a tick is felt, and the row lifts), nothing scrolls or swipes until the finger lifts. The first LOCK_PX it
      moves then decide the way: sideways sets progress, from where it was, in snaps of 25% (slidePct), a tick felt at
-     each and a stronger one at 100%. Up or down is for reordering: find() gives `reorder`, {start(), move(dy),
-     end(commit)}, where a row can be moved (Order, in the plan); anywhere else it lets go, changing nothing. */
+     each and a stronger one at 100%. Up or down moves the row (`reorder`: start(y), move(dy, y), end(commit)). A way the
+     row can't go lets it go, changing nothing. */
   holdToSlide(area, find){
     let g = null;
     const stop = commit => {
@@ -58,14 +106,15 @@ export default {
       s.el?.classList.remove('held');
       if (mode === 'swipe') { s.swipe.end(commit ? dx : null); return; }
       if (mode === 'reorder') s.reorder.end(commit);
-      if (mode !== 'wait') s.finish(commit && mode === 'slide' && pct !== s.start ? pct : null);
+      if (mode !== 'wait') s.finish?.(commit && mode === 'slide' && pct !== s.start ? pct : null);
     };
     area.addEventListener('pointerdown', e => {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      swallowClick = false;                             // a new tap: its click is its own
       const s = find(e.target); if (!s) return;
-      if (s.swipe?.base) delete s.show;                 // an open row is swiped on, or tapped shut: not held
+      if (s.swipe?.base) { delete s.show; delete s.reorder; }   // an open row is swiped on, or tapped shut: not held
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, dx: 0, mode: 'wait', pct: s.start};
-      if (s.show) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; s.el?.classList.add('held'); s.show(g.pct, g.x); haptic('hold'); }, HOLD_MS);
+      if (s.show || s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; s.el?.classList.add('held'); s.show?.(g.pct, g.x); haptic('hold'); }, HOLD_MS);
     });
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
@@ -81,11 +130,11 @@ export default {
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
         if (!way) return;
-        if (way === 'y' && !s.reorder) { swallow(); stop(false); return; }
+        if (!(way === 'x' ? s.show : s.reorder)) { swallow(); stop(false); return; }
         g.mode = way === 'x' ? 'slide' : 'reorder';
-        if (g.mode === 'reorder') s.reorder.start();
+        if (g.mode === 'reorder') s.reorder.start(e.clientY);
       }
-      if (g.mode === 'reorder') { s.reorder.move(e.clientY - g.y); return; }
+      if (g.mode === 'reorder') { s.reorder.move(e.clientY - g.y, e.clientY); return; }
       const pct = slidePct({start: s.start, dx: e.clientX - g.x, x: g.x, width: s.width, screen: innerWidth});
       if (pct !== g.pct) { g.pct = pct; s.show(pct, e.clientX); haptic(pct === 100 ? 'done' : 'tick'); }
     });
@@ -126,19 +175,40 @@ export default {
     });
   },
   /* A task's row, in a list or (sheet) a task's sheet. Held and slid, its progress: not one done, waiting to be sent, or
-     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet. Swiped, its Delete. */
+     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet. Held and moved up or
+     down, its place among its siblings (reorderOf). Swiped, its Delete. */
   rowGesture(t, row, sheet){
     if (this.lines[t.id]) return null;                    // a line in its place: only its Undo
     const slides = !t.pending && !t.done && (sheet ? this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.canTick(t) && !this.isRunTask(t));
-    const swipe = this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null;
-    if (!slides) return swipe && {swipe};
-    return {el: row, swipe, start: pctOf(t), width: row.clientWidth,
+    const swipe = this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null, reorder = this.reorderOf(t, row, sheet);
+    if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
+    return {el: row, swipe, reorder, start: pctOf(t), width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),
       finish: pct => {
         if (pct !== null) { this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined}); if (sheet) this.sheet.dirty = true; }
         this.endSlide(row);
         row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
       }};
+  },
+  /* A task's row moved up or down, among its siblings (orderOf): on a project's list, not Today's or search's, or in a
+     task's sheet. Let go somewhere else, it's moved there (reorder). */
+  reorderOf(t, row, sheet){
+    const o = this.orderOf(t, sheet ? 'sheet' : 'list');
+    if (!o || o.sibs.length < 2) return null;
+    const box = row.parentElement, rows = id => [...box.querySelectorAll(`:scope > .row[data-id="${id}"]`)];
+    const blocks = (o.blocks || o.sibs.map(s => ({ids: [s.id]}))).map(b => b.ids.flatMap(rows));
+    if (blocks.some(b => !b.length)) return null;
+    return dragOf(blocks, o.sibs.findIndex(s => s.id === t.id), sheet ? this.$refs.sheet.querySelector('.scroll') : null,
+      to => this.reorder(t, o.sibs, to, o.view), () => this.endSlide(row));
+  },
+  // A template's step held and moved up or down: its place in the template's order line (moveStep). Not while a step
+  // is being changed, or the template is saving.
+  stepReorder(row, target){
+    const i = this.subtasks.findIndex(s => String(s.id) === row.dataset.id);
+    if (i < 0 || this.subtasks.length < 2 || !this.canEdit || this.sheet.stepEdit || this.sheet.checklistBusy || target.closest('button:not(.body)')) return null;
+    const blocks = this.subtasks.map(s => [...row.parentElement.querySelectorAll(`:scope > .row[data-id="${s.id}"]`)]);
+    if (blocks.some(b => !b.length)) return null;
+    return {el: row, reorder: dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true))};
   },
   // A row's Delete, once it's swiped open: the row closes as its line takes its place.
   async swipeDelete(t, sheet){ shut(); if (await this.removeTask(t) && sheet) this.sheet.dirty = true; },
@@ -156,7 +226,8 @@ export default {
     this.holdToSlide(this.$refs.sheet, target => {
       const t = this.sheet.task, row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');
       if (row) {
-        const st = this.checklistRole !== 'template' && !target.closest('.row-del') && this.subtasks.find(s => String(s.id) === row.dataset.id);
+        if (this.checklistRole === 'template') return this.stepReorder(row, target);
+        const st = !target.closest('.row-del') && this.subtasks.find(s => String(s.id) === row.dataset.id);
         return st ? this.rowGesture(st, row, true) : null;
       }
       const head = target.closest('.d-head');

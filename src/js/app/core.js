@@ -14,7 +14,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, subLabels: {}, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null,
+  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null,
   lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
 
 export default () => ({
@@ -31,9 +31,11 @@ export default () => ({
   projects: [], projById: new Map(),
   labels: [], labelsLoaded: false,
   tasks: {},                                   // the tasks on screen, one copy of each, by id (tasks.js)
+  positions: {},                               // task id -> its position in its project's List view, as last read or moved (order.js)
   // view
   route: currentRoute(),
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null},
+  // listView: the id of the project's List view on screen, which its order is read from and moves are written to
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null},
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to

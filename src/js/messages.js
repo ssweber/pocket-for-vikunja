@@ -7,6 +7,9 @@ const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
 // A change Vikunja didn't save: why, in a few words.
 export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' : 'Not saved: ' + e.message;
+// A move Vikunja turned down; refused for an API token that doesn't allow it (api.js), the permission it needs.
+export const notMoved = e => e?.code === 'token' ? 'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.'
+  : 'Not moved: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja turned it down');
 
 /* Where tasks just added went, said by the add box when they aren't on the screen being looked at (a task due next
    month, added on Today; one for another project). `n` tasks, or with `nest` one with n - 1 subtasks, in `project`, the

@@ -22,6 +22,7 @@ const rowsOf = id => [...document.querySelectorAll(`.row[data-id="${id}"]`)];
 // The places on a screen, and when each is on it. A sheet's ("sheet:notes") are there while it's open.
 const SCREEN = {
   overdue: a => a.route.name === 'today',
+  done: a => a.route.name === 'project',                 // under a project's Done heading
   cap: a => ['today', 'project'].includes(a.route.name),
   checklists: a => a.route.name === 'checklists',
   projects: a => a.route.name === 'projects',

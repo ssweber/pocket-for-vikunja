@@ -535,18 +535,24 @@ export default {
     } catch (err) { this.say('Not removed: ' + why(err), {place: 'sheet:subtasks', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
-  /* Move a template's step up or down: its order line is written with every step in the new order. Not when that would
-     leave a step with a problem it didn't have, such as counting from a later one: a template already wrong that way
-     can still be put right. The step is moved in the order Vikunja has when it's sent, and only the order line changes,
-     so notes and moves saved elsewhere since the sheet opened stay. */
-  async moveStep(i, dir){
-    const t = this.sheet.task, st = this.subtasks[i];
-    if (!t || !st || this.sheet.checklistBusy) return;
-    // The steps in their new order, or null if this step can't go that way in them; throws for a problem it makes.
+  /* Move a template's step `dir` places up (-1) or down: one, from its ⋯ or Alt+↑ ↓, or as far as it's dragged
+     (`dragged`). Its order line is written with every step in the new order. Not when that would leave a step with a
+     problem it didn't have, such as counting from a later one: a template already wrong that way can still be put
+     right. The step is moved in the order Vikunja has when it's sent (one place, or dragged, after the step it's now
+     under on screen, or first), and only the order line changes, so notes and moves saved elsewhere since the sheet
+     opened stay. */
+  async moveStep(i, dir, dragged = false){
+    const t = this.sheet.task, st = this.subtasks[i], to = i + dir, rest = this.subtasks.filter((_, k) => k !== i);
+    if (!t || !st || this.sheet.checklistBusy || to < 0 || to >= this.subtasks.length || !dir) return;
+    const after = to > 0 ? rest[to - 1].id : null;
+    // The steps in their new order, or null if it's where it was in them; throws for a problem it makes.
     const moved = steps => {
-      const k = steps.findIndex(s => s.id === st.id), out = [...steps];
-      if (k < 0 || k + dir < 0 || k + dir >= steps.length) return null;
-      [out[k], out[k + dir]] = [out[k + dir], out[k]];
+      const k = steps.findIndex(s => s.id === st.id), others = steps.filter(s => s.id !== st.id);
+      if (k < 0) return null;
+      const at = after === null ? 0 : others.findIndex(s => s.id === after) + 1;
+      const place = !dragged ? k + dir : at > 0 || after === null ? at : Math.min(to, others.length);
+      if (place === k || place < 0 || place > others.length) return null;
+      const out = [...others.slice(0, place), steps[k], ...others.slice(place)];
       const before = stepProblems(steps.map(s => s.title));
       const fresh = stepProblems(out.map(s => s.title)).filter(p => !before.some(b => b.text === p.text && b.title === p.title));
       if (fresh.length) throw new Error(problemText(fresh.map(p => ({...p, i: steps.indexOf(out[p.i])}))));   // by its number on screen

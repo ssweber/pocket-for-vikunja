@@ -548,7 +548,8 @@ export default {
         }
         last = await this.sendEntry(e.id);
         if (last.kept) stopped.add(e.task);
-        if (last.status === 'error') this.say(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)), {place: 'step', cls: 'failed'});
+        // (A move says so on its row: reorder.)
+        if (last.status === 'error' && e.op !== 'position') this.say(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)), {place: 'step', cls: 'failed'});
         if (last.status === 'offline' || e.id === id) break;
       }
     });
@@ -587,6 +588,8 @@ export default {
         await save();
         return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
       }
+      // A move turned down goes back at once, on the screen, rather than waiting to be tried again.
+      if (a.op === 'position') error.drop = true;
       if (error.status === 403 && /mark/i.test(stages[a.stage] || '') && this.mode === 'token')
         error.message = 'your API token can\'t record who did a step: make one with Reactions ticked, as the guide says';
       // Its first part went through (the tick, say, before the ✅ was refused): that much is in Vikunja, so it's said, and
@@ -615,6 +618,7 @@ export default {
     return {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
       done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
       claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it'),
+      position: 'Moving' + (title ? ` “${title}”` : ' a task'),
       delete: 'Deleting' + (title ? ` “${parseStep(title).title}”` : ' a task')}[a.op] || 'Something done offline';
   },
   /* An action on a run, or a comment, that won't be sent: its words go back where they were written, and `error.back`
@@ -653,6 +657,7 @@ export default {
   applyAct(a, comment){
     if (a.op === 'claim' || a.op === 'unclaim') { this.claimSent(a); return; }
     if (a.op === 'delete') { this.forgetTree(a.ids); return; }
+    if (a.op === 'position') { this.positionSent(a); return; }
     const r = this.view.run;
     if (!r || r.run.id !== a.run) return;
     if (a.op === 'finish' || a.op === 'reopen') { r.run.done = a.op === 'finish'; return; }

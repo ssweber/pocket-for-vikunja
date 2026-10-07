@@ -186,6 +186,7 @@ export const LINE_STEPS = [
     if (parsed.due) body.due_date = parsed.due.toISOString();
     if (parsed.due && parsed.remind) body.reminders = [{relative_to: 'due_date', relative_period: 0}];   // the 🔔 chip: at the due time
     if (parsed.priority) body.priority = parsed.priority;
+    if (parsed.position) body.position = parsed.position;                   // its place in its project's List view
     if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
     // Kept, so a later try sends the same, and looks for the title as sent (without the @usernames).
     Object.assign(j, {to, body, assign, labels: [...parsed.labels]});
@@ -371,7 +372,7 @@ export const sendState = ({busy, unsent}) => busy ? 'sending' : unsent === 0 ? '
 // The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
 export const ACTS = {progress: ['progress'], done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
-  claim: ['claim'], unclaim: ['unclaim'], delete: ['delete']};
+  claim: ['claim'], unclaim: ['unclaim'], delete: ['delete'], position: ['position']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),
   undone: a => patchTask(a.task, {done: false}),
@@ -391,6 +392,9 @@ export const ACT_STEPS = {
     if (after.length) { await api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(() => {}); throw taken(after); }
   },
   unclaim: a => api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }),
+  // A task's place in its project's List view (a.view). Sending it again writes the same. Vikunja's reply has the
+  // position it kept (a.got), which differs when it renumbered the view.
+  position: async a => { a.got = (await api(`/tasks/${a.task}/position`, {method: 'PUT', body: {project_view_id: a.view, position: a.pos}}))?.position; },
   // A task and its subtasks (a.ids, deepest first): one gone already, by a try cut off, say, is fine.
   delete: async a => { for (const id of a.ids) await api('/tasks/' + id, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }); },
   unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },

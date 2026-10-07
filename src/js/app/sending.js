@@ -7,6 +7,7 @@ import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
 import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
+import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
 // What createLines keeps of each line: an earlier try's, for a line that's the same, or a new one.
@@ -69,8 +70,10 @@ export default {
     const nest = this.cap.nest && lines.length > 1;
     // Parse every line now, so dates mean what they meant when typed.
     const list = this.parseList(lines, parsed);
+    // Under the first line, the rest keep their order in its project's List view, each after the one before (Vikunja
+    // would put each new one first).
     const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
-      .filter(x => x.p.title).map(x => ({raw: x.raw, p: packParsed({...x.p, remind: this.remindOn('cap', lines)}), taskId: null, done: false, linked: false}));
+      .filter(x => x.p.title).map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn('cap', lines)}), ...nest && k && {position: k * SPACING}}, taskId: null, done: false, linked: false}));
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
     this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.capPhotos = [];
@@ -205,6 +208,9 @@ export default {
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
       const g = this.view.groups.find(g => g.key === key);
+      // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again.
+      if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
+        this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
       if (g) g.tasks.push(this.keep(t));
       else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
       placed = true;
@@ -316,16 +322,17 @@ export default {
   // Which group of the current list a waiting task belongs in, by the same rules as the lists from Vikunja; null if none.
   pendingPlace(t){
     const r = this.route;
-    if (r.name === 'project') return !r.showDone && t.project_id === r.id ? 'open' : null;
+    if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
     if (r.name !== 'today') return null;
     if (!isSet(t.due_date)) return t.child ? null : 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
     return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
-  // The current list, with waiting tasks added where they belong, and subtasks under their parents.
+  // The current list, with waiting tasks added where they belong, and subtasks under their parents: a project's open
+  // tasks in its List view's order.
   get listGroups(){
-    const hidden = this.hiddenRows;
-    return this.listBase.map(g => ({...g, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)))}));
+    const hidden = this.hiddenRows, order = this.route.name === 'project' ? positionOrder(this.positions) : null;
+    return this.listBase.map(g => ({...g, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null)}));
   },
   get listBase(){
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);

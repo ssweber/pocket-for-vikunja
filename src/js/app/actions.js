@@ -3,15 +3,16 @@
    where they go too, changes what's on screen and offers the Undo, so the lists and the sheet call these, not api().
    A run and a run's step are ticked through the outbox (act, in runs.js): toggleDone and sheetDone hand them to
    tickRunTask and tickRunStep, and tickRunTask keeps a run's own rule, that finishing it with steps not done asks
-   first and leaves them not done. Reordering: a template's steps are moved by moveStep (checklists.js), which writes
-   their order line. */
+   first and leaves them not done. Reordering: a task among its siblings in its project's List view (reorder), and a
+   template's steps by moveStep (checklists.js), which writes their order line. */
 import {cache, collapse} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {dueInfo, isLate, isSet, repeats} from '../dates.js';
 import {doneText, isSubtask, openSubtasks, pctOf, progressPatch, undoing} from '../progress.js';
-import {movedText, notSaved, sentLater} from '../messages.js';
+import {movedText, notMoved, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
-import {hasTemplateLabel, patiently} from '../checklists.js';
+import {hasOwnOrder, hasTemplateLabel, patiently} from '../checklists.js';
+import {listViewOf, placeMove, positionOrder, siblingBlocks, SPACING} from '../order.js';
 import {NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
@@ -124,15 +125,15 @@ export default {
           this.render();
         };
       /* A line in its row's place, with its Undo. Off a list it leaves, with the subtasks ticked with it, which go when it
-         folds; in search, it moves to Done (or back to Open) then. On a row that stays (a sheet's subtask that closed its
-         own), it gives the row back. Some subtasks not saved: the line says so too. */
-      const search = !sub && this.route.name === 'search', leaves = !sub && !search && t.done !== this.viewWantsDone(), stays = !leaves && !search;
+         folds; in search, or a project with its Done section, it moves to Done (or back to Open) then. On a row that stays
+         (a sheet's subtask that closed its own), it gives the row back. Some subtasks not saved: the line says so too. */
+      const both = !sub && this.bothWays, leaves = !sub && !both && t.done, stays = !leaves && !both;
       const more = !closed.length && !subs.length ? '' : `+ ${closed.length === subs.length ? closed.length : `${closed.length} of ${subs.length}`} subtask${subs.length === 1 ? '' : 's'}`
         + (closed.length < subs.length ? ': the rest weren\'t saved' : '');
       const where = this.say(was ? 'Marked not done' : doneText(closed.length, subs.length, t.title), {
         row: {id: t.id, text: was ? 'Not done:' : 'Done:', title: t.title, more, hide: stays ? [] : closed, stays},
         action: {label: 'Undo', fn: undo},
-        gone: () => { if (search) this.moveInSearch(t, ids); else if (leaves && t.done !== this.viewWantsDone()) ids.forEach(id => this.removeRow(id)); }});
+        gone: () => { if (both) this.moveInSearch(t, ids); else if (leaves && t.done) ids.forEach(id => this.removeRow(id)); }});
       if (where !== 'row') this.afterTick(t, rowEl, was, ids, sub);
     } catch (e) {
       t.done = was;
@@ -151,11 +152,11 @@ export default {
     if (this.sheet.task?.id === t.id) this.sheet.task.done = t.done;
     if (was) return this.afterTick(t, rowEl, was);
     // As a task's tick: a line in its row's place (from its sheet, at the sheet's top), its Undo opening it again.
-    const offline = r.status === 'offline', leaves = !!rowEl && this.route.name !== 'search' && t.done !== this.viewWantsDone();
+    const offline = r.status === 'offline', leaves = !!rowEl && this.route.name !== 'search' && t.done;
     const where = this.say(offline ? sentLater('Finished') : 'Finished ' + t.title, {
       row: rowEl && {id: t.id, text: 'Finished:', title: t.title, more: offline ? '· sent once Pocket reaches Vikunja' : '', stays: !leaves},
       place: 'sheet:top', action: {label: 'Undo', fn: async () => { await this.act({op: 'reopen', task: t.id, run: t.id}); t.done = false; this.render(); }},
-      gone: () => { if (leaves && t.done !== this.viewWantsDone()) this.removeRow(t.id); }});
+      gone: () => { if (leaves && t.done) this.moveInSearch(t, [t.id]) || this.removeRow(t.id); }});
     if (where !== 'row') this.afterTick(t, rowEl, was);
   },
   /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
@@ -170,31 +171,41 @@ export default {
     if (!was && r.status === 'offline') this.say(sentLater('Done: ' + t.title), {row: {id: t.id, text: sentLater('Done'), stays: true}, place: 'sheet:top'});
     this.afterTick(t, rowEl, was, [t.id], true);
   },
-  /* After a tick in a list, once it has registered: the row slides away if the list doesn't show tasks done (or not
-     done) now, with the subtasks ticked with it; a subtask's stays, done, so it can be ticked back. In search, which
-     shows both, it moves between Open and Done. */
+  /* After a tick in a list, once it has registered: the row slides away if the list doesn't show tasks done now, with
+     the subtasks ticked with it; a subtask's stays, done, so it can be ticked back. In search, and a project with its
+     Done section, which show both, it moves between Open and Done: in a project, a subtask only out of Done. */
   afterTick(t, rowEl, was, ids = [t.id], sub = false){
     if (!rowEl) return;
     setTimeout(async () => {
-      if (this.route.name === 'search') { if (this.searchGroups(t)) { await collapse(rowEl); this.moveInSearch(t, ids); } return; }
-      if (sub || t.done === this.viewWantsDone()) return;
+      const g = this.searchGroups(t);
+      if (g && (this.route.name === 'search' || !sub || g.from.key === 'done')) { await collapse(rowEl); this.moveInSearch(t, ids); return; }
+      if (sub || !t.done || this.bothWays) return;
       await collapse(rowEl);
-      if (t.done !== this.viewWantsDone()) ids.forEach(id => this.removeRow(id));
+      if (t.done) ids.forEach(id => this.removeRow(id));
     }, was ? 0 : 700);
   },
-  // Search's Open and Done: the one a task is in, and the one its tick moves it to.
+  // Open and Done, in search or a project: the one a task is in, and the one its tick moves it to.
   searchGroups(t){
+    if (!this.bothWays) return null;
     const from = this.view.groups.find(g => g.key === (t.done ? 'open' : 'done')), to = this.view.groups.find(g => g.key === (t.done ? 'done' : 'open'));
     return from && to && from.tasks.some(x => x.id === t.id) ? {from, to} : null;
   },
-  // In search, a task ticked (and the subtasks ticked with it) moves to Done, or back to Open, at the top.
+  /* A task ticked (and the subtasks ticked with it) moves to Done, at the top, or back to Open: in search at its top, in a
+     project to its place in the List view, which is read again. A Done section not loaded yet only counts it. Returns
+     whether it moved. */
   moveInSearch(t, ids){
-    const g = this.route.name === 'search' && this.searchGroups(t);
-    if (!g) return;
+    const g = this.searchGroups(t);
+    if (!g) return false;
     for (const id of ids) {
       const i = g.from.tasks.findIndex(x => x.id === id);
-      if (i >= 0) { const [x] = g.from.tasks.splice(i, 1); x.done = t.done; g.to.tasks.unshift(x); }
+      if (i < 0) continue;
+      const [x] = g.from.tasks.splice(i, 1);
+      x.done = t.done;
+      if (g.to.loaded !== false) g.to.tasks.unshift(x);
+      for (const k of ['from', 'to']) if (typeof g[k].count === 'number') g[k].count += k === 'to' ? 1 : -1;
     }
+    if (this.route.name === 'project' && !t.done) this.render();
+    return true;
   },
   // Mark these subtasks of a task just done, done too, one by one. Returns the ids marked; stops at the first that fails.
   async closeSubtasks(subs){
@@ -323,6 +334,70 @@ export default {
     this.render();
   },
 
+  /* ---------- reordering ---------- */
+  /* Move task `t` to place `to` among its siblings (`sibs`: tasks in their order on screen, it among them) in its
+     project's List view `view`. The screen changes at once, and the positions are written (placeMove) through the
+     outbox, so a move made without a connection waits, and is sent later. Turned down, it goes back, and its row says
+     why. (If Vikunja keeps another position than the one sent, it renumbered the view: applyAct reads it again.)
+     Resolves to whether it moved. */
+  async reorder(t, sibs, to, view){
+    const from = sibs.findIndex(s => s.id === t.id);
+    if (from < 0 || to === from || to < 0 || to >= sibs.length || !view) return false;
+    const writes = placeMove(sibs.map(s => ({id: s.id, pos: this.positions[s.id] || 0})), from, to);
+    const was = Object.fromEntries(writes.map(([id]) => [id, this.positions[id]]));
+    for (const [id, pos] of writes) this.positions[id] = pos;
+    this.said = `Moved ${t.title}: ${to + 1} of ${sibs.length}`;
+    for (const [id, pos] of writes) {
+      const r = await this.act({op: 'position', task: id, view, pos, run: null});
+      if (r.status !== 'error') continue;
+      Object.assign(this.positions, was);
+      this.say(notMoved(r.error), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'});
+      return false;
+    }
+    this.saveProject();
+    return true;
+  },
+  // A move Vikunja has, where it kept it: not where it was sent, it renumbered the view, so the list is read again.
+  positionSent(a){
+    if (typeof a.got !== 'number' || Math.abs(a.got - a.pos) < 1e-6) return;
+    this.positions[a.task] = a.got;
+    if (this.route.name === 'project') this.render();
+    if (this.sheet.subView) this.loadSubOrder(this.sheet.task);
+  },
+  // One place up (-1) or down (1): the ⋯'s Move up and Move down, and Alt+↑ or ↓ on a row (orderOf's `where`).
+  moveBy(t, dir, where){
+    const o = this.orderOf(t, where), i = o ? o.sibs.findIndex(s => s.id === t.id) : -1;
+    return i >= 0 ? this.reorder(t, o.sibs, i + dir, o.view) : false;
+  },
+  /* Where task `t` can be moved: {sibs, view, blocks}, or null. Only among its siblings: on a project's list ('list'),
+     the tasks under the same parent there, each with its subtasks (blocks, siblingBlocks); in a task's sheet ('sheet'),
+     its subtasks, once their order is read (subView); from its own sheet ('own'), on the list under it if it's there,
+     else among its parent's subtasks, when where each of them is is known. Not a task done, waiting to be sent, or read
+     only; nor a step of a template or a run, which keep their order line, nor a subtask in another project than its
+     parent's, which has no place in that project's list. */
+  orderOf(t, where){
+    if (!t || t.pending || t.done || this.lines[t.id] || !this.canWrite(t.project_id)) return null;
+    const under = p => !!p && !hasOwnOrder(p) && p.project_id === t.project_id;
+    if (where === 'sheet') return this.sheet.subView && under(this.sheet.task) ? {sibs: this.subtasks, view: this.sheet.subView} : null;
+    const g = this.route.name === 'project' && this.view.listView && this.view.project?.id === t.project_id && this.listGroups.find(x => x.key === 'open');
+    if (g && g.tasks.some(x => x.id === t.id)) {
+      const blocks = siblingBlocks(g.tasks, g.depth, t.id).filter(b => !b.task.pending);
+      const parent = g.depth[t.id] && g.tasks[g.tasks.findIndex(x => x.id === blocks[0].id) - 1];
+      return !parent || under(parent) ? {sibs: blocks.map(b => b.task), view: this.view.listView, blocks} : null;
+    }
+    if (where !== 'own') return null;
+    // Among its parent's subtasks, as Vikunja last gave them.
+    const pid = t.related_tasks?.parenttask?.[0]?.id, parent = pid && (this.tasks[pid] || cache.get(pid));
+    const subs = under(parent) && parent.related_tasks?.subtask, view = listViewOf(this.projById.get(t.project_id))?.id;
+    if (!subs?.length || !view || subs.some(s => !(s.id in this.positions))) return null;
+    return {sibs: [...subs].sort(positionOrder(this.positions)), view};
+  },
+  // The ⋯'s Move up and Move down for the open task: whether each can be done.
+  get sheetMoves(){
+    const t = this.sheet.task, o = this.sheet.kind === 'task' && this.orderOf(t, 'own'), i = o ? o.sibs.findIndex(s => s.id === t.id) : -1;
+    return i < 0 ? null : {up: i > 0, down: i < o.sibs.length - 1};
+  },
+
   /* ---------- adding subtasks ---------- */
   /* The subtask box's lines, as subtasks of the open task, through the outbox like quick add: without a connection they
      wait, shown in the sheet and the lists, and are sent once Pocket reaches Vikunja. (A template's steps are added with
@@ -331,8 +406,10 @@ export default {
   async addSubtasks(){
     const parent = this.sheet.task, b = this.sheet.sub, lines = this.boxLines('sub'), parsed = this.boxParsedLines('sub');
     if (!parent || b.busy || !parsed.some(p => p.title)) return;
+    // After the subtasks there, in its project's List view, once where they are is known (Vikunja would put each first).
+    const last = this.sheet.subView || !this.subtasks.length ? Math.max(0, ...this.subtasks.map(s => this.positions[s.id] || 0)) : null;
     const items = lines.map((raw, i) => ({raw, p: parsed[i]})).filter(x => x.p.title)
-      .map(x => ({raw: x.raw, p: packParsed({...x.p, remind: this.remindOn('sub', lines)}), taskId: null, done: false, linked: false}));
+      .map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn('sub', lines)}), ...last !== null && {position: last + (k + 1) * SPACING}}, taskId: null, done: false, linked: false}));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
     const here = () => this.sheet.task?.id === parent.id;
@@ -347,7 +424,7 @@ export default {
       const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && here()) {
         this.sheet.dirty = true;
-        try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); } } } catch {}
+        try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
       }
       if (r.status === 'offline') {
         sync.keep();

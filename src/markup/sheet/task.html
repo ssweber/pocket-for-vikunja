@@ -32,7 +32,7 @@
       <!-- In a checklist project: make the task a template, start a run from it, or go to the run it's part of -->
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
         <template x-if="checklistRole === 'template'"><div>
-          <p>A template: every run gets its own copy of these steps. Tap a step to change, move or remove it, or to add notes and photos to it.</p>
+          <p>A template: every run gets its own copy of these steps. Tap a step to change or remove it, or to add notes and photos to it. Hold a step, then move it up or down, to move it.</p>
           <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a run</button>
         </div></template>
         <template x-if="checklistRole === 'tplstep'"><div>
@@ -121,8 +121,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <!-- include markup/task-row.html -->
         </template></template>
         <!-- A template's step has a row of its own, not the task row: its number where a task has its tick, when it's due in
-             a run and its notes' first line under it, and, tapped, quick add's box in its place, with ↑ ↓ ×. Who's doing it
-             is the same slot as on a subtask. -->
+             a run and its notes' first line under it, and, tapped, quick add's box in its place, with × and ⋯ (Move up,
+             Move down). It's moved by holding it and moving it up or down, or with Alt+↑ ↓. Who's doing it is the same
+             slot as on a subtask. -->
         <template x-for="(st, i) in checklistRole === 'template' ? subtasks : []" :key="st.id">
           <!-- A step being changed is saved once the focus leaves its row: its time chip and buttons are part of it -->
           <div class="row" :class="{editing: sheet.stepEdit?.id === st.id}" :data-id="st.id"
@@ -133,6 +134,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
               <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
                         x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })" x-effect="sheet.stepEdit?.text; $nextTick(() => grow($el))"
                         @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); boxEnter('edit'); }" @keydown.escape.stop="sheet.stepEdit = null"
+                        @keydown.alt.up.prevent="moveStep(i, -1)" @keydown.alt.down.prevent="moveStep(i, 1)"
                         @input="sheet.stepEdit.caret = $el.selectionStart" @click="sheet.stepEdit.caret = $el.selectionStart" @keyup="sheet.stepEdit.caret = $el.selectionStart"
            @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="sheet.stepEdit.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="setTimeout(() => { if (sheet.stepEdit) sheet.stepEdit.focus = document.activeElement === $el; }, 150)"></textarea></div></div>
               <template x-for="st in [sheet.stepEdit]" :key="0"><div>
@@ -141,14 +143,18 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
                 </template>
               </div></template>
               <!-- include markup/sheet/box-chips.html -->
-              <!-- Under the box, so it has the row's width: its own sheet, and ↑ ↓ ×, which keep the keyboard up -->
-              <div class="step-in-foot">
+              <!-- Under the box, so it has the row's width: its own sheet, ⋯ and ×, which keep the keyboard up -->
+              <div class="step-in-foot" x-data="{more: false}">
                 <button type="button" class="linkish step-notes" :id="'step-notes-' + st.id" @mousedown.prevent @click="openStep(i)">Notes and photos ›</button>
                 <span class="step-edit">
-                  <button class="icon-btn" :aria-label="'Move up: ' + st.title" :disabled="i === 0 || sheet.checklistBusy" @mousedown.prevent @click="moveStep(i, -1)"><svg class="i"><use href="#i-up"/></svg></button>
-                  <button class="icon-btn" :aria-label="'Move down: ' + st.title" :disabled="i === subtasks.length - 1 || sheet.checklistBusy" @mousedown.prevent @click="moveStep(i, 1)"><svg class="i"><use href="#i-down"/></svg></button>
+                  <button class="icon-btn" :aria-label="'More for step: ' + st.title" :aria-expanded="String(more)" @mousedown.prevent @click="more = !more"><svg class="i"><use href="#i-more"/></svg></button>
                   <button class="icon-btn" :aria-label="'Remove step: ' + st.title" :disabled="sheet.checklistBusy" @mousedown.prevent @click="removeStep(i)"><svg class="i"><use href="#i-close"/></svg></button>
                 </span>
+                <!-- Moving it for a keyboard or a screen reader, as holding it and moving it up or down does -->
+                <template x-if="more"><div class="menu step-menu" role="menu" @keydown.escape.stop="more = false">
+                  <button role="menuitem" :disabled="i === 0 || sheet.checklistBusy" @mousedown.prevent @click="more = false; moveStep(i, -1)">Move up</button>
+                  <button role="menuitem" :disabled="i === subtasks.length - 1 || sheet.checklistBusy" @mousedown.prevent @click="more = false; moveStep(i, 1)">Move down</button>
+                </div></template>
               </div>
             </div></template>
             <button class="body" x-show="sheet.stepEdit?.id !== st.id" @click="editStep(st)"><div class="title" x-text="templateSteps[i]?.title"></div>

@@ -1,21 +1,27 @@
-    <!-- Today and a single project share the task-list markup -->
+    <!-- Today and a single project share the task-list markup. A project's done tasks are a section of their own, under
+         the open ones, folded until it's tapped (loaded then), and kept open or folded for each project. -->
     <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div>
-      <template x-for="g in listGroups.filter(g => g.tasks.length || placeLines(g.key).length)" :key="g.key"><div>
-        <div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length || ''"></span>
+      <template x-for="g in listGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
+        <!-- Nothing open: said above the Done section -->
+        <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
+        <template x-if="!g.fold"><div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length || ''"></span>
           <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
-          <template x-if="g.key === 'overdue' && overdueMovable"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div>
+          <template x-if="g.key === 'overdue' && overdueMovable"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div></template>
+        <template x-if="g.fold"><div class="sec" :class="g.cls"><button type="button" class="sec-fold" :id="'sec-' + g.key" :aria-expanded="String(g.open)" @click="toggleDoneSection()">
+          <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
         <!-- What was done to the list as a whole, under its heading: Move all to today -->
         <template x-for="line in placeLines(g.key)" :key="line.n">
           <!-- include markup/place-line.html -->
         </template>
-        <div class="list">
+        <template x-if="g.fold && g.open && g.loading"><div class="loading">Loading…</div></template>
+        <template x-if="g.fold && g.open && g.loaded && !g.tasks.length"><p class="note sec-note">Nothing done here yet.</p></template>
+        <div class="list" x-show="!g.fold || (g.open && g.tasks.length)">
           <template x-for="t in g.tasks" :key="t.id">
             <!-- include markup/task-row.html -->
           </template>
         </div>
       </div></template>
-      <template x-if="!listGroups.some(g => g.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
-      <template x-if="route.name === 'project' && view.project"><a class="btn ghost toggle-done" :href="'#/project/' + view.project.id + (route.showDone ? '' : '?done=1')" x-text="route.showDone ? 'Show open tasks' : 'Show done tasks'"></a></template>
+      <template x-if="!listGroups.some(g => g.tasks.length || (g.fold && g.count !== 0))"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
     </div></template>
 
     <template x-if="!view.loading && !view.error && route.name === 'projects'"><div>

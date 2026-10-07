@@ -8,7 +8,8 @@
   <template x-if="g.sheet || canTick(t)"><button class="check" :class="'p' + (t.priority || 0) + (t.pending ? ' wait' : '')" :disabled="!!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="g.sheet ? toggleSubtask(t) : toggleDone(t, $el.closest('.row'))"><svg class="i"><use href="#i-check"/></svg></button></template>
   <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->
   <template x-if="!g.sheet && !canTick(t)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Shared with you to read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
-  <button class="body" @click="t.pending || (g.sheet ? openTask(t.id) : openRow(t))">
+  <!-- Alt+↑ and Alt+↓ move it among its siblings, as holding it and moving it up or down does -->
+  <button class="body" @click="t.pending || (g.sheet ? openTask(t.id) : openRow(t))" @keydown.alt.up.prevent="moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
     <template x-if="g.sheet"><div class="title" x-text="t.title"></div></template>
     <template x-if="!g.sheet"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template></div></template>
     <div class="meta" x-show="rowMeta(t, g).length">

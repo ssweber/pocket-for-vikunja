@@ -97,7 +97,7 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
   }
   if (res.status === 401 && auth) {
     // Vikunja also answers 401 when an API token lacks a permission, so check the token before signing out.
-    if (app.mode === 'token' && path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.');
+    if (app.mode === 'token' && path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.', 'token');
     app.signOut('Your session ended. Sign in again.', {tellServer: false}); throw new ApiError(401, 'Signed out');
   }
   if (!res.ok && res.status !== 304) {

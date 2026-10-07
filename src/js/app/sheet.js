@@ -1,9 +1,10 @@
 // A task's sheet: its details, labels and people, comments and attachments. What's done to the task is in actions.js.
 import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO} from '../util.js';
-import {api, errText, items, NetError} from '../api.js';
+import {allPages, api, errText, items, NetError} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
-import {hasTemplateLabel, notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
+import {hasOwnOrder, hasTemplateLabel, notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
+import {listViewOf, positionOrder} from '../order.js';
 import {atTime} from '../quickadd.js';
 import {notSaved} from '../messages.js';
 import {fileEntry, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
@@ -103,7 +104,7 @@ export default {
       const t = await this.readTask(id);
       if (this.sheet !== mine) return;
       if (t) { cache.set(id, t); this.showTask(t); this.checkNotes(t); }
-      this.loadComments(id); this.loadSubPeople(t || cached || {id});
+      this.loadComments(id); this.loadSubPeople(t || cached || {id}); this.loadSubOrder(t || cached);
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
       else if (this.sheet === mine) { this.loadComments(id); this.loadSubPeople(cached); }   // says it can't, offline; a comment can still be written
@@ -163,7 +164,26 @@ export default {
   },
   // The template a step is in, by name.
   get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },
-  get subtasks(){ const hidden = this.hiddenRows; return stepsOf(this.sheet.task).filter(s => !hidden.has(s.id)); },   // not those being deleted
+  /* The open task's subtasks, not those being deleted: a template's or a run's steps in their order line, any other
+     task's in its project's List view, as read (loadSubOrder), or moved; until then, in the order they were made. */
+  get subtasks(){
+    const t = this.sheet.task, hidden = this.hiddenRows;
+    const subs = hasOwnOrder(t) ? stepsOf(t) : [...(t?.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
+    return subs.filter(s => !hidden.has(s.id));
+  },
+  /* Where the open task's subtasks are in its project's List view: the task and its subtasks, read from the view (which
+     gives a task's subtasks, done ones too, while it isn't done itself). Once read, they can be moved (subView). */
+  async loadSubOrder(t){
+    const subs = t?.related_tasks?.subtask || [], lv = listViewOf(this.projById.get(t?.project_id));
+    if (!subs.length || hasOwnOrder(t) || !lv) return;
+    try {
+      const filter = 'id in ' + [t.id, ...subs.map(s => s.id)].join(', ');
+      const got = await allPages(`/projects/${t.project_id}/views/${lv.id}/tasks?` + new URLSearchParams({filter, expand: 'subtasks'}));
+      if (this.sheet.task?.id !== t.id) return;
+      for (const x of got) this.positions[x.id] = x.position || 0;
+      this.sheet.subView = lv.id;
+    } catch {}                                                              // left in the order they were made
+  },
   // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },

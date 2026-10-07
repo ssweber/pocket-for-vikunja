@@ -191,6 +191,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* Held, the row lifts. At each snap the percentage pulses (the tick, seen), and at 100% the tick fills */
 .row{transition:box-shadow .15s,transform .2s ease}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
+/* Moved up or down after the hold: the held row, and its subtasks with it, follow the finger above the rows making room */
+.row.dragged{z-index:3;transition:box-shadow .15s;background:var(--surface)}
 .row.setting[data-tick=a]::before,.d-head.setting[data-tick=a]::before{animation:pct-a .22s ease-out}
 .row.setting[data-tick=b]::before,.d-head.setting[data-tick=b]::before{animation:pct-b .22s ease-out}
 @keyframes pct-a{40%{scale:1.15}}
@@ -234,7 +236,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
 .tree .row .body{display:flex;align-items:center;gap:10px}
 .tree .chev{color:var(--muted)}
-.toggle-done{margin:14px 0 0;width:100%}
+/* A project's done tasks: a heading to tap, which opens them, its arrow turning down */
+.sec-fold{display:flex;align-items:center;gap:4px;border:0;background:transparent;padding:6px 0;font:inherit;color:var(--muted)}
+.sec-fold .chev{width:16px;height:16px;transition:transform .2s}
+.sec-fold[aria-expanded=true] .chev{transform:rotate(90deg)}
+.sec-note{margin:4px 2px}
 
 /* ---------- checklists ---------- */
 .cl-tpl .body{display:flex;align-items:center;gap:10px}
@@ -282,7 +288,7 @@ a.sec-act{text-decoration:none}
 .draft-line .icon-btn[disabled],.step-edit .icon-btn[disabled]{opacity:.35}
 .row .step-in{padding:0}
 .step-edit{display:flex;gap:4px;align-self:flex-start}
-.step-in-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
+.step-in-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;position:relative}
 .step-in-foot .step-edit .icon-btn{margin-top:0}
 .step-notes{display:inline-block;margin-top:6px;padding:4px 0;font-size:15px;font-weight:650}
 .draft-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 0 38px;font-size:14px;color:var(--muted)}
@@ -424,6 +430,8 @@ a.sec-act{text-decoration:none}
 #sheet .menu button:hover,#sheet .menu button:focus-visible{background:var(--sunk)}
 #sheet .menu button small{font-size:13px;font-weight:400;color:var(--muted)}
 #sheet .menu button.danger{color:var(--danger)}
+#sheet .menu button[disabled]{opacity:.4}
+#sheet .step-menu{right:0;min-width:180px}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
 /* While a sheet is open, the page behind it stays put: the sheet keeps its scrolling to itself, even at its ends */
 body.sheet-open{overflow:hidden}

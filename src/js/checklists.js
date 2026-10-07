@@ -131,11 +131,13 @@ const addMonths = (ms, n) => { const d = new Date(ms); d.setUTCMonth(d.getUTCMon
 export const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && (!!t.related_tasks?.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t);
 // A step of a run: under a task, and copied from a template's step, or with its line, or inserted during the run.
 export const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t.related_tasks.copiedfrom?.length || stepLine(t.description) !== null || isAddedDesc(t.description));
+// Whether a task's subtasks are in its own order line: a template's or a run's steps. Any other task's are in its
+// project's List view (order.js).
+export const hasOwnOrder = t => { const r = t?.related_tasks || {}; return hasTemplateLabel(t) || (!!(r.copiedfrom?.length || isRunDesc(t?.description)) && !r.parenttask?.length); };
 // A template's or a run's steps in order (its own order line); any other task's subtasks as Vikunja gives them.
 export function stepsOf(t){
-  const r = t?.related_tasks || {}, subs = r.subtask || [];
-  const ordered = hasTemplateLabel(t) || ((r.copiedfrom?.length || isRunDesc(t?.description)) && !r.parenttask?.length);
-  return ordered ? inOrder(subs, stepOrder(t?.description)) : subs;
+  const subs = t?.related_tasks?.subtask || [];
+  return hasOwnOrder(t) ? inOrder(subs, stepOrder(t?.description)) : subs;
 }
 export const DONE_MARK = '✅', SKIP_MARK = '⏭️';
 /* Who skipped a done step, or null: someone who left a ⏭️ and a "Skipped" note since it was last marked done. Vikunja
