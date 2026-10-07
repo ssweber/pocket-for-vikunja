@@ -162,12 +162,12 @@ try {
     await slideProgress(row, 100, null, 50);                               // from 50%, to the edge: 100%
     await page.waitForSelector(`${row}.lined`, { timeout: 10000 });
     // Done, with its progress as it was, so marked not done it's back at 50%.
-    for (let i = 0; i < 40 && !(await apiTask()).done; i++) await page.waitForTimeout(250);
+    await synced(page);
     if (!(await apiTask()).done) throw new Error('100% never marked it done');
     if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('done saved percent_done ' + (await apiTask()).percent_done);
     await page.click(`${row} .line-act`);
     await page.waitForSelector(`${row}:not(.lined)`, { timeout: 15000 });
-    for (let i = 0; i < 40 && (await apiTask()).done; i++) await page.waitForTimeout(250);
+    await synced(page);
     const t = await apiTask();
     if (t.done || Math.round(t.percent_done * 100) !== 50) throw new Error(`after undo: done ${t.done}, percent_done ${t.percent_done}`);
   });
@@ -291,7 +291,7 @@ try {
   });
   await step('progress-in-sheet', async () => {
     const savedPct = async want => {
-      for (let i = 0; i < 40 && Math.round((await apiTask()).percent_done * 100) !== want; i++) await page.waitForTimeout(250);
+      await synced(page);
       const got = Math.round((await apiTask()).percent_done * 100);
       if (got !== want) throw new Error(`saved ${got}%, not ${want}%`);
     };
@@ -540,7 +540,7 @@ try {
     await page.waitForSelector(`${parentRow}.lined .row-line:has-text("+ 3 subtasks")`, { timeout: 20000 });
     if ((await subs()).some(s => !s.done)) throw new Error('a subtask is still open');
     await page.click(`${parentRow} .line-act`);
-    for (let i = 0; i < 40 && (await subs()).filter(s => !s.done).length !== 3; i++) await page.waitForTimeout(250);
+    await synced(page);
     const after = await subs();
     if (JSON.stringify(after.filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify([...open].sort())) throw new Error('open after undo: ' + JSON.stringify(after.map(s => [s.title, s.done])));
     if ((await (await api('/tasks/' + parent.id)).json()).done) throw new Error('the parent is still done');
@@ -916,36 +916,36 @@ try {
       await page.selectOption('#d-remind-add', { label: 'At due' });
       await page.waitForSelector('#d-reminders .chip.rem:has-text("At due")');
       await page.selectOption('#d-remind-add', { label: '1 hour before due' });
-      for (let i = 0; i < 40 && (await rems()).length < 2; i++) await page.waitForTimeout(250);
+      await synced(page);
       if (JSON.stringify((await rems()).sort()) !== JSON.stringify(['due_date-3600', 'due_date0'])) throw new Error('reminders: ' + JSON.stringify(await rems()));
       // Taken off a preset once it's there; a set date and time too.
       if (await page.$('#d-remind-add option:text-is("At due")')) throw new Error('At due offered twice');
       await page.selectOption('#d-remind-add', { label: 'At a set date and time…' });
       const at = new Date(Date.now() + 2 * 864e5), p = n => String(n).padStart(2, '0');
       await page.fill('#d-remind-at', `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}T09:30`);
-      for (let i = 0; i < 40 && (await rems()).length < 3; i++) await page.waitForTimeout(250);
+      await synced(page);
       if (!(await rems()).includes('at')) throw new Error('no reminder at a set time: ' + JSON.stringify(await rems()));
       await page.waitForSelector('#d-reminders .chip.rem:has-text("9:30")');           // its time shows, not only its day
       // Removed with its ×.
       await page.click('#d-reminders .chip.rem:has-text("At due") .chip-x');
-      for (let i = 0; i < 40 && (await rems()).includes('due_date0'); i++) await page.waitForTimeout(250);
+      await synced(page);
       if ((await rems()).includes('due_date0')) throw new Error('not removed: ' + JSON.stringify(await rems()));
       // A reminder added or removed elsewhere (on the web, say) since the sheet showed them stays that way.
       const elsewhere = async fn => {
         const list = (await get(made.id)).reminders.map(r => r.relative_to ? { relative_to: r.relative_to, relative_period: r.relative_period } : { reminder: r.reminder });
         await api('/tasks/' + made.id, { method: 'PATCH', headers: json, body: JSON.stringify({ reminders: fn(list) }) });
       };
-      const expect = async (want, what) => {
-        for (let i = 0; i < 40 && JSON.stringify((await rems()).sort()) !== JSON.stringify(want); i++) await page.waitForTimeout(250);
+      const remindersAre = async (want, what) => {
+        await synced(page);
         if (JSON.stringify((await rems()).sort()) !== JSON.stringify(want)) throw new Error(what + ': ' + JSON.stringify(await rems()));
       };
       await elsewhere(list => [...list, { relative_to: 'due_date', relative_period: -86400 }]);
       await page.click('#d-reminders .chip.rem:has-text("1 hour before due") .chip-x');
-      await expect(['at', 'due_date-86400'], 'removing one took others with it');
+      await remindersAre(['at', 'due_date-86400'], 'removing one took others with it');
       await page.waitForSelector('#d-reminders .chip.rem:has-text("1 day before due")');
       await elsewhere(list => list.filter(r => r.relative_to));
       await page.selectOption('#d-remind-add', { label: '15 min before due' });
-      await expect(['due_date-86400', 'due_date-900'], 'adding one brought back one removed elsewhere');
+      await remindersAre(['due_date-86400', 'due_date-900'], 'adding one brought back one removed elsewhere');
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });
     } finally { await api('/tasks/' + made.id, { method: 'DELETE' }); }
@@ -1015,7 +1015,7 @@ try {
     await page.fill('#d-cin', 'half a comment');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    for (let i = 0; i < 40 && !(await get(task.id)).description?.includes('Notes saved on close'); i++) await page.waitForTimeout(250);
+    await synced(page);
     if (!(await get(task.id)).description?.includes('Notes saved on close')) throw new Error('notes not saved');
     await page.click(`${rowOf(t)} > .body`);
     await page.waitForSelector('#d-cin');
@@ -1031,7 +1031,7 @@ try {
     await page.waitForSelector('#d-desc-conflict:has-text("Theirs, from the web")', { timeout: 15000 });
     if (!(await notes()).includes('Theirs')) throw new Error('written over: ' + await notes());
     await page.click('#d-desc-save');
-    for (let i = 0; i < 40 && !(await notes()).includes('Mine'); i++) await page.waitForTimeout(250);
+    await synced(page);
     if (!(await notes()).includes('Mine, from Pocket')) throw new Error('not saved again: ' + await notes());
     // The same when the sheet closes: they're kept on the phone instead.
     await page.click('#d-desc');
@@ -1121,7 +1121,7 @@ try {
     await page.waitForSelector('#toast.show #toast-msg:has-text("Repeats")');
     await page.click('#toast-act:has-text("Undo")');
     const want = new Date(r.due_date).getTime();
-    for (let i = 0; i < 40 && new Date((await get(r.id)).due_date).getTime() !== want; i++) await page.waitForTimeout(250);
+    await synced(page);
     if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
     const rem = (await get(r.id)).reminders?.[0]?.reminder;
     if (new Date(rem).getTime() !== new Date(todayAt(8)).getTime()) throw new Error('reminder at ' + rem);
@@ -1165,7 +1165,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 2, null, { timeout: 10000 });
     if (other) {
       await page.selectOption('#d-proj', String(other.id));
-      for (let i = 0; i < 40 && (await get(kids[1].id)).project_id !== other.id; i++) await page.waitForTimeout(250);
+      await synced(page);
       const where = await Promise.all([parent, ...kids].map(async t => (await get(t.id)).project_id));
       if (where.some(id => id !== other.id)) throw new Error('projects: ' + where);
     }
@@ -1174,7 +1174,7 @@ try {
     await page.click('#d-delete');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 15000 });
     await later(5000);                                                       // sent once its Undo has gone
-    for (let i = 0; i < 40 && await get(kids[1].id); i++) await page.waitForTimeout(250);
+    await synced(page);
     if ((await Promise.all([parent, ...kids].map(t => get(t.id)))).some(Boolean)) throw new Error('something is left');
   });
 
@@ -1187,7 +1187,7 @@ try {
     await page.click('#btn-project', { timeout: 15000 });
     await page.fill('#p-name', `PocketSmokeSheet${stamp} renamed`);
     await page.press('#p-name', 'Enter');
-    for (let i = 0; i < 40 && (await (await api('/projects/' + proj.id)).json()).title !== `PocketSmokeSheet${stamp} renamed`; i++) await page.waitForTimeout(250);
+    await synced(page);
     if ((await (await api('/projects/' + proj.id)).json()).title !== `PocketSmokeSheet${stamp} renamed`) throw new Error('not renamed');
     await page.waitForSelector('#p-archive');
     if (await page.textContent('#p-delete') !== 'Delete project and its 0 tasks') throw new Error('delete: ' + await page.textContent('#p-delete'));
