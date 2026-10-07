@@ -1,12 +1,12 @@
-// A task's sheet: its details, labels and people, comments and attachments, and deleting.
+// A task's sheet: its details, labels and people, comments and attachments. What's done to the task is in actions.js.
 import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO} from '../util.js';
-import {api, errText, items, NetError, patchTask} from '../api.js';
+import {api, errText, items, NetError} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
-import {pctOf, progressPatch} from '../progress.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
-import {hasTemplateLabel, notesOnly, patiently, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
+import {hasTemplateLabel, notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
 import {atTime} from '../quickadd.js';
-import {fileEntry, NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
+import {fileEntry, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
+import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 
@@ -14,26 +14,7 @@ export let pendingSaves = 0;
 // Notes written and not saved yet, kept on the phone: {text, base: what the notes said when the editing began}. An older
 // Pocket kept the text only.
 const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
-// Saves to each task: how many have begun or ended, and how many haven't ended. A copy read while one was under way can
-// be older than Vikunja's, so it isn't shown (readTask).
-const saving = new Map();
-const saveMark = (id, open) => { const s = saving.get(id) || {n: 0, open: 0}; s.n++; s.open += open; saving.set(id, s); };
-const reminderKey = r => r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
-// The reminders as Vikunja takes them back: a relative one by what it counts from, so it keeps moving with that date.
-export const plainReminders = t => (t?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder});
 const repeats = t => t.repeat_after > 0 || t.repeat_mode === 1;
-// Whether Vikunja's copy `now` has the change `body` made to `before`. A repeating task marked done is moved to its
-// next date instead.
-function landed(now, body, before){
-  if (body.done === true && !now.done && repeats(now)) return !!before && !before.done && now.due_date !== before.due_date;
-  return Object.entries(body).every(([k, v]) => {
-    if (k === 'reminders') return JSON.stringify(plainReminders(now).map(reminderKey).sort()) === JSON.stringify(v.map(reminderKey).sort());
-    if (k === 'description') return htmlToText(now[k] || '') === htmlToText(v || '');
-    if (k.endsWith('_date')) return Date.parse(now[k]) === Date.parse(v);
-    if (typeof v === 'number') return Math.abs((now[k] || 0) - v) < 1e-6;
-    return (now[k] ?? null) === (v ?? null);
-  });
-}
 let closeTimer;
 let lastFocus;
 
@@ -125,13 +106,6 @@ export default {
     }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
-  // Vikunja's copy of a task, read once the saves waiting now are done; or null if another save to it was under way
-  // while it was read: that save's reply is newer.
-  async readTask(id){
-    await shared.saveChain;
-    const before = saving.get(id), n = before?.n, t = await api('/tasks/' + id);
-    return !before?.open && saving.get(id)?.n === n ? t : null;
-  },
   showTask(t){
     if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
     this.keepTemplate(this.sheet.task);
@@ -190,52 +164,6 @@ export default {
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
   get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
-  // A subtask ticked in its parent's sheet: as in a list, with Undo; a run's step as on the run's screen.
-  async toggleSubtask(st){
-    if (this.checklistRole === 'run') await this.tickRunStep(st, this.sheet.task.id, null);
-    else await this.toggleDone(st, null);
-    this.sheet.dirty = true;
-  },
-  /* The subtask box's lines, as subtasks of the open task, through the outbox like quick add: without a connection they
-     wait, shown in the sheet and the lists, and are sent once Pocket reaches Vikunja. (A template's steps are added with
-     addTemplateSteps.) The box keeps the focus, to type the next one. */
-  async addSubtasks(){
-    const parent = this.sheet.task, b = this.sheet.sub, lines = this.boxLines('sub'), parsed = this.boxParsedLines('sub');
-    if (!parent || b.busy || !parsed.some(p => p.title)) return;
-    const items = lines.map((raw, i) => ({raw, p: parsed[i]})).filter(x => x.p.title)
-      .map(x => ({raw: x.raw, p: packParsed({...x.p, remind: this.remindOn('sub', lines)}), taskId: null, done: false, linked: false}));
-    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
-      parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
-    const here = () => this.sheet.task?.id === parent.id;
-    b.busy = true; b.text = '';
-    this.$nextTick(() => document.getElementById('d-subin')?.focus());
-    try {
-      const {kept, full} = await sync.add(entry, []);
-      const slow = setTimeout(() => this.refreshPending(), 400);           // on a slow connection, shown as waiting meanwhile
-      const r = await sync.lock(() => this.sendEntry(entry.id));
-      clearTimeout(slow);
-      this.placeSent(r.tasks || []);
-      const n = items.length, but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
-      if (r.ids?.length && here()) {
-        this.sheet.dirty = true;
-        try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); } } } catch {}
-      }
-      if (r.status === 'offline') {
-        sync.keep();
-        this.notify(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`);
-      } else if (r.status === 'error') {
-        if (here()) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');      // keep what wasn't added
-        this.notify(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message);
-      } else if (r.ids?.length) {
-        const n = r.ids.length;
-        this.notify(`Added ${n} subtask${n === 1 ? '' : 's'}${but}`, {label: 'Undo', fn: async () => {
-          await this.deleteTasks(r.ids);
-          const t = await this.readTask(parent.id).catch(() => null);
-          if (t && here()) { cache.set(t.id, t); this.showTask(t); }
-        }});
-      }
-    } finally { b.busy = false; this.refreshPending(); }
-  },
   // Subtasks of the open task still waiting to be sent, for its sheet.
   get pendingSubtasks(){ return this.pendingTasks.filter(t => t.parent === this.sheet.task?.id); },
   get descHtml(){
@@ -261,62 +189,6 @@ export default {
       this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
       return false;
     });
-  },
-  // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
-  // Resolves to Vikunja's copy; rejects if not saved.
-  saveTask(id, patch, rebase){
-    saveMark(id, 1);
-    const run = shared.saveChain.then(async () => {
-      // Only the change is sent, so anything changed elsewhere since Pocket loaded the task (notes edited on the web,
-      // say) stays as it is. A field holding a list, or a template's order line in its notes, is sent whole: `rebase`
-      // makes the change to Vikunja's copy as it is now, read first (null: nothing to change).
-      let saved = rebase && await api('/tasks/' + id);
-      const before = saved || cache.get(id), body = rebase ? rebase(saved) : patch;
-      if (body) {
-        try { saved = await patchTask(id, body); }
-        catch (e) {
-          // A reply lost on the way back (a dropped connection, a timeout) doesn't mean the change didn't reach Vikunja:
-          // its copy, read now, says. Ticking a repeating task again would skip a date.
-          const now = e instanceof NetError && await api('/tasks/' + id).catch(() => null);
-          if (!now || !landed(now, body, before)) throw e;
-          saved = now;
-        }
-      }
-      cache.set(id, saved); this.syncTask(saved);
-      return saved;
-    }).finally(() => saveMark(id, -1));
-    shared.saveChain = run.catch(() => {});
-    return run;
-  },
-  // Progress set in the sheet: as in the list, 100% is done, and anything else says so, with Undo.
-  async sheetProgress(t, pct){
-    const was = pctOf(t), patch = progressPatch(t, pct);
-    if (patch.done) return this.sheetDone(patch);
-    await this.save(patch);
-    if (cache.get(t.id)?.percent_done === patch.percent_done)
-      this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.sheet.task?.id === t.id ? this.save({percent_done: was / 100}) : this.saveTask(t.id, {percent_done: was / 100}).catch(() => {})});
-  },
-  nudgeProgress(step){                           // the arrow keys, on the focused bar
-    if (this.isRunTask(this.sheet.task)) return;
-    const t = this.sheet.task, was = pctOf(t), pct = Math.max(0, Math.min(100, Math.round(was / 10) * 10 + step));
-    if (pct !== was) this.sheetProgress(t, pct);
-  },
-  // Move the open task to another project, its subtasks (all the way down) with it.
-  async moveTask(pid){
-    const t = this.sheet.task, kids = [];
-    if (!t || pid === t.project_id) return;
-    const walk = async (id, seen = new Set([t.id])) => {
-      const x = id === t.id ? t : (cache.get(id) || await api('/tasks/' + id));
-      for (const sub of x.related_tasks?.subtask || []) if (!seen.has(sub.id)) { seen.add(sub.id); kids.push(sub.id); await walk(sub.id, seen); }
-    };
-    await this.save({project_id: pid});
-    if (cache.get(t.id)?.project_id !== pid) return;                        // not moved
-    try {
-      await walk(t.id);
-      for (const id of kids) await this.saveTask(id, {project_id: pid});
-      if (kids.length) this.notify(`Moved, with ${kids.length} subtask${kids.length === 1 ? '' : 's'}`);
-    } catch (e) { this.notify(`Moved, but not all its subtasks: ${e.message}`); }
-    this.sheet.dirty = true;
   },
   // A template's name: its title keeps "TEMPLATE: " before it.
   saveTitle(){
@@ -433,11 +305,6 @@ export default {
     const ql = this.picker.q.trim().toLowerCase();
     return !!ql && !this.labels.some(l => l.title.toLowerCase() === ql);
   },
-  setAssignees(assignees, id = this.sheet.task.id){
-    if (this.sheet.task?.id === id) { this.sheet.task.assignees = assignees; this.sheet.dirty = true; }
-    const c = cache.get(id); if (c) c.assignees = assignees;
-    this.syncTask({id, assignees});
-  },
   /* People to assign, as @ suggests them in quick add, matching what's typed: only those who can see the task's project
      (Vikunja refuses anyone else), without those assigned already. */
   get assignSuggestions(){
@@ -457,37 +324,27 @@ export default {
     try {
       const u = pick || await this.findUser(name);
       if (!u) { this.notify(`No user @${name}`); return; }
-      await api(`/tasks/${t.id}/assignees`, {method:'POST', body:{user_id: u.id}});
-      this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id);
+      await this.addAssignee(t, u);
       if (this.sheet.task?.id === t.id) { this.sheet.assignName = ''; document.getElementById('d-assign-in')?.focus(); }
     } catch (e) { this.notify('Not assigned: ' + e.message); }
   },
   async unassign(uid){
     const t = this.sheet.task;                                                // the task it started on
     try {
-      await api(`/tasks/${t.id}/assignees/${uid}`, {method:'DELETE'});
-      this.setAssignees((t.assignees || []).filter(u => u.id !== uid), t.id);
+      await this.removeAssignee(t, uid);
     } catch (e) { this.notify('Not unassigned: ' + e.message); }
-  },
-  setLabels(labels, id = this.sheet.task.id){
-    if (this.sheet.task?.id === id) { this.sheet.task.labels = labels; this.sheet.dirty = true; }
-    const c = cache.get(id); if (c) c.labels = labels;
-    this.syncTask({id, labels});
   },
   async addLabel(l){
     const t = this.sheet.task;                                                // the task it started on
     try {
-      if (!l) { l = await api('/labels', {method:'POST', body:{title: this.picker.q.trim()}}); this.labels.push(l); }
-      await api(`/tasks/${t.id}/labels`, {method:'POST', body:{label_id: l.id}});
-      this.setLabels([...(t.labels || []), l], t.id);
+      await this.addLabelTo(t, l, this.picker.q.trim());
       if (this.sheet.task?.id === t.id) this.picker.q = '';
     } catch (err) { this.notify('Label not added: ' + err.message); }
   },
   async removeLabel(lid){
     const t = this.sheet.task;                                                // the task it started on
     try {
-      await api(`/tasks/${t.id}/labels/${lid}`, {method:'DELETE'});
-      this.setLabels((t.labels || []).filter(l => l.id !== lid), t.id);
+      await this.removeLabelFrom(t, lid);
     } catch (e) { this.notify('Label not removed: ' + e.message); }
   },
 
@@ -560,58 +417,5 @@ export default {
       Object.assign(document.createElement('a'), {href: url, download: a.file?.name || 'attachment'}).click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { w?.close(); this.notify('Couldn\'t open: ' + e.message); }
-  },
-  // What deleting the open task deletes: its subtasks go with it, a template's steps too, and a run's.
-  get deleteLabel(){
-    const n = this.subtasks.length, role = this.checklistRole;
-    if (role === 'run') return 'Delete run';
-    if (role === 'template') return n ? `Delete template and its ${n} step${n === 1 ? '' : 's'}` : 'Delete template';
-    return n ? `Delete task and its ${n} subtask${n === 1 ? '' : 's'}` : 'Delete task';
-  },
-  async deleteTask(){
-    const t = this.sheet.task, role = this.checklistRole;
-    if (role === 'run') return this.confirmDeleteRun({id: t.id, title: t.title, steps: this.subtasks});
-    let tree;
-    try { tree = await this.taskTree(t.id); } catch (e) { this.notify('Not deleted: ' + e.message); return; }
-    const n = tree.length - 1;
-    const direct = this.subtasks.length, deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
-    const what = role === 'template' ? `the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Runs already started keep theirs.` : '?')
-      : `“${t.title}”` + (n ? ` and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?` : '?');
-    if (!confirm(`Delete ${what} This can't be undone here.`)) return;
-    await shared.saveChain;
-    // Opened from its parent's sheet: back to the parent afterwards.
-    const back = this.sheet.from && (t.related_tasks?.parenttask || []).some(x => x.id === this.sheet.from) ? this.sheet.from : null;
-    try {
-      await this.deleteTree(tree);
-      Object.assign(this.sheet, {dirty: false, editingDesc: false, commentDraft: ''}); this.sheet.sub.text = '';
-      if (back) { await this.openTask(back); this.sheet.dirty = true; } else this.closeSheet();
-      this.render();
-      this.notify(n ? `Deleted, with ${n} ${role === 'template' ? 'step' : 'subtask'}${n === 1 ? '' : 's'}` : 'Deleted');
-    } catch (e) { this.notify(`Stopped after deleting ${e.deleted} of ${tree.length}: ${e.message}`); this.render(); }
-  },
-  /* A task and its subtasks, all the way down, deepest first. A subtask that's also under another task stays, with
-     what's under it. */
-  async taskTree(id){
-    const out = [], seen = new Set();
-    const walk = async (tid, from) => {
-      if (seen.has(tid)) return;
-      seen.add(tid);
-      const t = tid === this.sheet.task?.id ? this.sheet.task : await api('/tasks/' + tid);
-      if (from && (t.related_tasks?.parenttask || []).some(p => p.id !== from)) return;
-      for (const sub of t.related_tasks?.subtask || []) await walk(sub.id, tid);
-      out.push(tid);
-    };
-    await walk(id, null);
-    return out;
-  },
-  // Delete what taskTree found. A refusal stops it, saying how many went (e.deleted).
-  async deleteTree(ids){
-    let n = 0;
-    try {
-      for (const id of ids) {
-        await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-        cache.delete(id); this.removeRow(id); n++;
-      }
-    } catch (e) { e.deleted = n; throw e; }
   },
 };

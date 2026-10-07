@@ -56,13 +56,6 @@ export default {
       return {ids, used, problems, error: null};
     } catch (error) { return {ids, used, problems, error}; }
   },
-  // An Undo of tasks just added: deleted, saying if any couldn't be.
-  async deleteTasks(ids){
-    let failed = 0;
-    for (const id of [...ids].reverse()) await api('/tasks/' + id, {method:'DELETE'}).catch(e => { if (e.status !== 404) failed++; });
-    if (failed) this.notify(`Not all undone: ${failed} of ${ids.length} couldn't be deleted.`);
-    this.render();
-  },
   /* Every capture goes through the outbox: online it's sent straight away, offline it waits. */
   async submitCapture(){
     const lines = this.capLines, parsed = this.parsed;

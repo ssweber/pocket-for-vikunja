@@ -1,6 +1,5 @@
 // Holding a row, or the sheet's bar, and sliding to set progress.
-import {NetError} from '../api.js';
-import {HOLD_MS, pctOf, progressPatch} from '../progress.js';
+import {HOLD_MS, pctOf} from '../progress.js';
 
 const EDGE = 48;                                        // px short of the screen's edge where 100% (or 0%) is reached
 export let sliding = false;                             // progress is being set: the sheet doesn't swipe away meanwhile
@@ -9,20 +8,6 @@ export default {
   rowTask(id){
     for (const g of this.view.groups) for (const t of g.tasks) if (t.id === id) return t;
     return null;
-  },
-  // Progress set in the list. At 100% the task is done and slides away, as when it's ticked off.
-  // `undoing`: putting back what it was, exactly, without marking it done.
-  async setProgress(t, pct, rowEl, undoing = false){
-    const was = pctOf(t), patch = undoing ? {percent_done: pct / 100} : progressPatch(t, pct);
-    if (patch.done) return this.toggleDone(t, rowEl, patch, {percent_done: was / 100});
-    t.percent_done = patch.percent_done;
-    try {
-      await this.saveTask(t.id, patch);
-      if (!undoing) this.notify(`Progress set to ${pct}%`, {label: 'Undo', fn: () => this.setProgress(t, was, null, true)});
-    } catch (e) {
-      t.percent_done = was / 100;
-      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
-    }
   },
   /* While sliding, the row is drawn from --slide, not --pct: the screen redraws a row's --pct as it updates (a run's
      steps every second, for their countdowns), which would put the line back to what's saved under the finger. */

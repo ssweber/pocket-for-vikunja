@@ -1,14 +1,13 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
-import {cache, collapse, colorOf, PRIOS, TZ} from '../util.js';
+import {cache, colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError} from '../api.js';
-import {addDays, dueInfo, isLate, isSet, repeats, startOfDay} from '../dates.js';
-import {doneText, openSubtasks, pctOf, undoing} from '../progress.js';
+import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {shared} from './core.js';
-import {pendingSaves, plainReminders} from './sheet.js';
+import {pendingSaves} from './sheet.js';
 
 export let renderSeq = 0;
 
@@ -236,124 +235,6 @@ export default {
     try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }
   },
 
-  // `extra` is saved along with it, and `undoExtra` with the Undo: progress uses these to mark a task done at 100%.
-  async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
-    const run = this.stepRun(t);
-    if (run) return this.tickRunStep(t, run, rowEl);
-    if (this.isRunTask(t) && !extra.quiet) return this.tickRunTask(t, rowEl);
-    const was = t.done, subs = this.isRunTask(t) || extra.quiet ? [] : openSubtasks(t);   // a run's steps are ticked on its screen, with who did each
-    // A repeating task moves on its dates, and its reminders at a set time: Undo puts them back.
-    const back = {due_date: t.due_date};
-    for (const k of ['start_date', 'end_date']) if (isSet(t[k])) back[k] = t[k];
-    if ((t.reminders || []).some(r => !r.relative_to)) back.reminders = plainReminders(t);
-    t.done = !was;
-    try {
-      const {quiet, ...patch} = extra;
-      const saved = await this.saveTask(t.id, {done: !was, ...patch});
-      Object.assign(t, saved);
-      if (!was && !saved.done) {                 // repeating task rolled forward: Undo puts its date back
-        const d = dueInfo(saved.due_date);
-        this.notify(d ? 'Repeats · next ' + d.label : 'Done — repeats', {label: 'Undo', fn: async () => {
-          try {
-            if (!await this.unchanged(t)) { this.notify(`Not undone: “${t.title}” was changed since.`); return; }
-            Object.assign(t, await this.saveTask(t.id, {...back, ...undoExtra}));
-          } catch (e) { this.notify('Not undone: ' + e.message); }
-          this.render();
-        }});
-        this.render(); return;
-      }
-      // Its open subtasks are done with it, and Undo opens them again too.
-      const closed = was ? [] : await this.closeSubtasks(subs);
-      if (!was) this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, says: closed.length < subs.length, fn: async () => { await this.toggleDone(t, null, {...undoExtra, quiet: true}); await this.reopen(closed); this.render(); }});
-      else if (!extra.quiet && !undoing(extra)) this.notify('Marked not done', {label: 'Undo', fn: async () => { await this.toggleDone(t, null, {quiet: true}); this.render(); }});
-      this.afterTick(t, rowEl, was, [t.id, ...closed]);
-    } catch (e) {
-      t.done = was;
-      this.notify(e instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + e.message);
-    }
-  },
-
-  /* A run ticked in its project's list or its sheet: finished, or opened again, as on its screen, through the outbox. Its
-     steps are ticked one by one on its screen, with who did each, so ticking the run leaves them as they are: with steps
-     not done, it asks first. */
-  async tickRunTask(t, rowEl){
-    const was = t.done, open = (t.related_tasks?.subtask || []).filter(s => !s.done).length;
-    if (!was && open && !confirm(`Finish “${t.title}” with ${open} step${open === 1 ? '' : 's'} not done? ${open === 1 ? 'It stays' : 'They stay'} not done.`)) return;
-    const r = await this.act({op: was ? 'reopen' : 'finish', task: t.id, run: t.id});
-    if (r.status === 'error') return;
-    t.done = !was;
-    if (this.sheet.task?.id === t.id) this.sheet.task.done = t.done;
-    if (!was) this.notify(r.status === 'offline' ? `Finished. It's sent once Pocket reaches Vikunja.` : 'Finished ' + t.title,
-      {label: 'Undo', fn: async () => { await this.act({op: 'reopen', task: t.id, run: t.id}); t.done = false; this.render(); }});
-    this.afterTick(t, rowEl, was);
-  },
-  /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
-     waits without a connection. */
-  async tickRunStep(t, run, rowEl){
-    const was = t.done;
-    t.done = !was;
-    navigator.vibrate?.(10);
-    const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
-    if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
-    if (!was) this.notify(r.status === 'offline' ? `Done: ${t.title}. It's sent once Pocket reaches Vikunja.` : doneText(0, 0, t.title),
-      {label: 'Undo', done: true, says: r.status === 'offline', fn: async () => { await this.act({op: 'undone', task: t.id, run}); t.done = false; this.render(); }});
-    this.afterTick(t, rowEl, was);
-  },
-  /* After a tick in a list, once it has registered: the row slides away if the list doesn't show tasks done (or not
-     done) now, with the subtasks ticked with it. In search, which shows both, it moves between Open and Done. */
-  afterTick(t, rowEl, was, ids = [t.id]){
-    if (!rowEl) return;
-    setTimeout(async () => {
-      if (this.route.name === 'search') {
-        const from = this.view.groups.find(g => g.key === (t.done ? 'open' : 'done')), to = this.view.groups.find(g => g.key === (t.done ? 'done' : 'open'));
-        if (!from || !to || !from.tasks.some(x => x.id === t.id)) return;
-        await collapse(rowEl);
-        for (const id of ids) {
-          const i = from.tasks.findIndex(x => x.id === id);
-          if (i >= 0) { const [x] = from.tasks.splice(i, 1); x.done = t.done; to.tasks.unshift(x); }
-        }
-        return;
-      }
-      if (t.done === this.viewWantsDone()) return;
-      await collapse(rowEl);
-      if (t.done !== this.viewWantsDone()) ids.forEach(id => this.removeRow(id));
-    }, was ? 0 : 700);
-  },
-  // Mark these subtasks of a task just done, done too, one by one. Returns the ids marked; stops at the first that fails.
-  async closeSubtasks(subs){
-    const closed = [];
-    for (const s of subs) { try { await this.saveTask(s.id, {done: true}); closed.push(s.id); } catch { break; } }
-    return closed;
-  },
-  // Mark these subtasks not done again (an Undo), saying if any couldn't be.
-  async reopen(ids){
-    let failed = 0;
-    for (const id of ids) await this.saveTask(id, {done: false}).catch(() => failed++);
-    if (failed) this.notify(`Not all undone: ${failed} subtask${failed === 1 ? '' : 's'} couldn't be marked not done.`);
-  },
-  /* The sheet's tick, or its progress taken to 100%: done, and its open subtasks with it, as in the list. */
-  async sheetDone(patch = null){
-    const t = this.sheet.task;
-    if (!t) return;
-    if (this.checklistRole === 'step' && this.parentTask) { await this.tickRunStep(t, this.parentTask.id, null); this.sheet.dirty = true; return; }
-    if (this.isRunTask(t)) { await this.tickRunTask(t, null); this.sheet.dirty = true; return; }
-    if (!patch && t.done) return this.save({done: false});                  // the tick, on a done task: not done after all
-    const subs = this.isRunTask(t) ? [] : openSubtasks(t), pctWas = pctOf(t);
-    await this.save(patch || {done: true});
-    if (!subs.length || !cache.get(t.id)?.done) return;                     // not saved, or it repeats
-    const closed = await this.closeSubtasks(subs);
-    // The parent's save brought Vikunja's copy of its subtasks, still open then: those are the ones the sheet shows.
-    for (const s of t.related_tasks?.subtask || []) if (closed.includes(s.id)) s.done = true;
-    this.sheet.dirty = true;
-    this.notify(doneText(closed.length, subs.length, t.title), {label: 'Undo', done: true, says: closed.length < subs.length, fn: async () => {
-      await this.saveTask(t.id, {done: false, percent_done: pctWas / 100}).catch(e => this.notify('Not undone: ' + e.message));
-      await this.reopen(closed);
-      const back = await api('/tasks/' + t.id).catch(() => null);
-      if (back && this.sheet.task?.id === t.id) { cache.set(back.id, back); this.showTask(back); }
-      this.render();
-    }});
-  },
-
   /* ---------- search ---------- */
   // The magnifier. The box is focused here, during the tap, since that's the only way a phone opens its keyboard for it.
   openSearch(){
@@ -380,53 +261,6 @@ export default {
       {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(opened).map(t => ({...t}))},
       {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: finished.map(t => ({...t}))},
     ];
-  },
-
-  /* ---------- overdue ---------- */
-  // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
-  get overdueMovable(){ return (this.view.groups.find(g => g.key === 'overdue')?.tasks || []).some(t => !repeats(t) && !hasTemplateLabel(t)); },
-  /* "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back. Not a
-     repeating task: moved, its next times would follow the new date; ticked, it moves on to its next date. */
-  async moveOverdueToToday(){
-    // Nor a checklist that comes round: moved, a weekly one would come round on another day from then on.
-    const overdue = this.view.groups.find(g => g.key === 'overdue')?.tasks || [], tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
-    const tpl = overdue.filter(t => hasTemplateLabel(t)).length, stay = overdue.length - tasks.length - tpl;
-    const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}: tick ${stay === 1 ? 'it' : 'them'} to move on to the next date.`,
-      tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}: start ${tpl === 1 ? 'it' : 'them'} to move on to the next time.`].filter(Boolean).join(' ');
-    if (!tasks.length && stays) { this.notify('Nothing moved. ' + stays); return; }
-    if (!tasks.length || this.movingOverdue) return;
-    this.movingOverdue = true;
-    const now = new Date();
-    // Each at the time of day it had, or, if that time's gone today, the next whole hour (in the day's last hour, 11:59
-    // PM), so it isn't overdue again.
-    const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
-    if (next.getDate() !== now.getDate()) next.setTime(new Date(now).setHours(23, 59, 0, 0));
-    const moves = tasks.map(t => {
-      const d = new Date(t.due_date);
-      d.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
-      return {t, was: t.due_date, due: (isLate(d.toISOString(), now) ? next : d).toISOString()};
-    });
-    const moved = await this.saveEach(moves.map(m => [m.t, {due_date: m.due}]));
-    this.movingOverdue = false;
-    const left = moves.length - moved.length, n = moved.length;
-    const undo = {label: 'Undo', fn: async () => {
-      const still = [];                                                       // not changed since, elsewhere
-      for (const m of moves.filter(m => moved.includes(m.t))) if (await this.unchanged(m.t).catch(() => false)) still.push(m);
-      const back = await this.saveEach(still.map(m => [m.t, {due_date: m.was}]));
-      const k = n - back.length;
-      if (k) this.notify(`${k === 1 ? '1 task' : k + ' tasks'} couldn't be moved back (changed since, or not saved) and ${k === 1 ? 'is' : 'are'} still due today.`);
-      this.render();
-    }};
-    if (!n) return this.notify(this.offline ? 'Offline — not moved' : 'Not moved: Vikunja didn\'t save the changes');
-    this.notify(`Moved ${n === 1 ? '1 task' : n + ' tasks'} to today` + (left ? `. ${left === 1 ? '1 wasn\'t' : left + ' weren\'t'} saved and ${left === 1 ? 'is' : 'are'} still overdue.` : '.') + (stays ? ' ' + stays : ''), undo);
-    this.render();
-  },
-  // Whether a task is still as Pocket last saved it, so an Undo doesn't write over a change made since, elsewhere.
-  async unchanged(t){ const now = await api('/tasks/' + t.id); return !t.updated || now.updated === t.updated; },
-  // Saves [task, patch] pairs one after another; resolves to the tasks that saved.
-  async saveEach(pairs){
-    const results = await Promise.allSettled(pairs.map(([t, patch]) => this.saveTask(t.id, patch)));
-    return pairs.filter((p, i) => results[i].status === 'fulfilled').map(([t]) => t);
   },
 
   /* ---------- new project ---------- */
