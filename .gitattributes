@@ -1,0 +1,9 @@
+# Text files have LF line endings in the working copy on every machine, as they have in git, so what reads them as
+# they are (the build's source map, the tests, a diff) sees the same bytes on Windows as on Linux.
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.ico binary
+*.jpg binary
+*.woff binary
+*.woff2 binary

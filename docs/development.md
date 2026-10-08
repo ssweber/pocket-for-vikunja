@@ -349,8 +349,11 @@ What tripped up earlier work, for whoever starts next.
   saved. Pocket orders them itself; a test that checks the order they were made in sorts them by id first, and one that
   picks a subtask finds it by its id, not its place in the sheet.
 - **This Windows machine.** Git Bash eats backslashes in a heredoc: write code with backslashes through Python raw
-  strings in a file, or the Edit tool. A checkout can have CRLF line endings. Without Playwright's own Chromium
-  installed, `BROWSER_CHANNEL=chrome` uses the installed Chrome, for `test:parse` too.
+  strings in a file, or the Edit tool. `.gitattributes` keeps text files' line endings LF in the working copy, as git
+  has them, even with `core.autocrlf` on, so a file reads the same here as on Linux (the build also takes out any
+  `\r` it's given, so the source map matches CI's either way). Counting `\r\n` in a file with `grep` from Git Bash
+  counts "rn": the backslashes are gone before grep sees them. Without Playwright's own Chromium installed,
+  `BROWSER_CHANNEL=chrome` uses the installed Chrome, for `test:parse` too.
 - **Never stop processes by name** (`taskkill /IM`, `pkill`): that closes the person's own Chrome and Node. Stop only
   what you started, by its PID, or the `pocket-dev` containers.
 - **The one-time hint adds a line to a screen's first row** on a phone that's never slid one: the end-to-end tests put
