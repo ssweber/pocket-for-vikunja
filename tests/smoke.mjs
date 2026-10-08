@@ -703,6 +703,8 @@ try {
       await page.getByRole('button', { name: 'Mark not done: ' + c.title, exact: true }).click();
       await expect(page.locator(C)).not.toHaveClass(/\bleaving\b/);
       // A finger down, anywhere, holds them; 3 seconds after it lifts, they go.
+      // (on a heading, on the screen: one scrolled off it would get no touch)
+      await page.locator('#view .sec').first().scrollIntoViewIfNeeded();
       const sec = await page.locator('#view .sec').first().boundingBox();
       await page.mouse.move(sec.x + 4, sec.y + sec.height / 2);
       await page.mouse.down();
