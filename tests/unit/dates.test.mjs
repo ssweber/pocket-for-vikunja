@@ -26,6 +26,10 @@ test('a row on one line says when, short: a time today, a weekday this week, a d
   assert.deepEqual(shortDue(at(2), NOW), { text: day(2, { month: 'short', day: 'numeric' }), cls: 'overdue' }, 'days ago: its date, late');
   assert.equal(shortDue(new Date(2027, 0, 5).toISOString(), NOW).text, new Date(2027, 0, 5).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }), 'another year: with it');
   assert.equal(shortDue('0001-01-01T00:00:00Z', NOW), null);
+  // Under Today's heading, "Today" says nothing new: today with no time says nothing there (one-concept-plan, part 4).
+  assert.equal(shortDue(at(7), NOW, { underToday: true }), null, 'under Today: today with no time, nothing');
+  assert.deepEqual(shortDue(at(7, 16, 30), NOW, { underToday: true }), { text: fmt(16, 30), cls: 'today' }, 'its time still');
+  assert.deepEqual(shortDue(at(9), NOW, { underToday: true }), { text: day(9, { weekday: 'short' }), cls: '' }, 'another day still');
 });
 
 test('late once its time has passed; one due at midnight, once its day is over', () => {

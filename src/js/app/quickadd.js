@@ -1,13 +1,16 @@
 // The add box: what it read, who can see the project, suggestions for @username and *label, and the marks behind the words.
 import {colorOf, esc, userCache} from '../util.js';
-import {api, ApiError, items, NetError} from '../api.js';
-import {hasTemplateLabel, readStepPhrase, STEP_IGNORE} from '../checklists.js';
+import {api, ApiError, items, NetError, sharedToken} from '../api.js';
+import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
+import {saved} from '../lists.js';
 import {placeAfter} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {captureLines, isTicked, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES, tickedLines} from '../quickadd.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
+let peopleAt = 0;                              // when it last loaded, this session
+const PEOPLE_AGE = 10 * 6e4;                   // who can see each project is loaded again once it's older than this
 let cursorIO = null, watched = null;           // what tells when the cursor's row is out of sight, and that row
 
 export default {
@@ -237,19 +240,27 @@ export default {
     const at = b.caret = Math.min(tk.start + word.length, text.length);
     el.focus(); el.setSelectionRange(at, at);
   },
-  /* Everyone with access to each of your projects, from Vikunja's list per project (which counts teams). Loaded once; it also
-     tells checkAccess who can see what, without asking again. Skipped for an API token without Projects → Users search. */
-  async loadPeople(){
-    if (this.people || this.accessBlocked) return;
+  /* Everyone with access to each of your projects, from Vikunja's list per project (which counts teams, and a parent
+     project's shares). Loaded in the background once signed in, and again now and then (refreshPeople); `force` loads
+     it again. It tells checkAccess who can see what, without asking again, and claimSlot which projects no one else can
+     see (seenBy, kept on the phone). Skipped for an API token without Projects → Users search. */
+  async loadPeople(force = false){
+    if ((this.people && !force) || this.accessBlocked) return;
     if (peopleLoading) return peopleLoading;
     peopleLoading = (async () => {
-      const projs = this.projects.filter(p => p.id > 0), get = p => api(`/projects/${p.id}/users/search`).then(items).catch(e => {
+      // (Not once Vikunja's session is gone, signed out in its web app: a request then would renew it, from its cookie,
+      // before Pocket sees the sign-out. This runs in the background, often just as Pocket opens.)
+      const gone = () => this.mode === 'session' && !sharedToken.get();
+      const projs = this.projects.filter(p => p.id > 0), get = p => gone() ? null : api(`/projects/${p.id}/users/search`).then(items).catch(e => {
         if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;
         return null;
       });
       const first = projs.length ? await get(projs[0]) : [];                    // one first, so a token that can't stops here
       if (this.accessBlocked) return;
-      const lists = [first, ...await Promise.all(projs.slice(1).map(get))], byName = new Map();
+      const lists = [first, ...await inBatches(projs.slice(1), 4, get)], byName = new Map();
+      // What was known of a project loaded now goes: someone it's no longer shared with can't see it.
+      const loaded = new Set(projs.filter((p, i) => lists[i]).map(p => p.id));
+      for (const key of Object.keys(this.access)) if (loaded.has(+key.split(':')[0])) delete this.access[key];
       projs.forEach((p, i) => { for (const u of lists[i] || []) {
         const k = u.username.toLowerCase();
         if (!byName.has(k)) byName.set(k, {user: u, pids: new Set()});
@@ -259,10 +270,15 @@ export default {
         userCache.set(k, x.user); this.userKnown[k] = true;
         projs.forEach((p, i) => { if (lists[i]) this.access[p.id + ':' + k] = x.pids.has(p.id); });
       }
+      projs.forEach((p, i) => { if (lists[i]) this.seenBy[p.id] = lists[i].filter(u => u.id !== this.user?.id).length; });
+      if (loaded.size) { saved.set('seenBy', this.seenBy); peopleAt = Date.now(); }
       this.people = [...byName.values()];
     })().finally(() => { peopleLoading = null; });
     return peopleLoading;
   },
+  // Who can see each project, loaded again once it's older than PEOPLE_AGE: in the background, with the other tabs
+  // (preload), from the moment Pocket's signed in.
+  refreshPeople(){ return !this.people || Date.now() - peopleAt > PEOPLE_AGE ? this.loadPeople(true).catch(() => {}) : null; },
 
   /* Enter in an add box: while @ or * is being typed and something's suggested, the suggestion on top; else send. In a
      template's boxes: the name goes on to the first step, a step being written to the next row, a step changed is done. */

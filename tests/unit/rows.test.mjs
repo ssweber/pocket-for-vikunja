@@ -10,6 +10,7 @@ import progress from '../../src/js/app/progress.js';
 import { rowGestures, screenRows } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
 import checklists from '../../src/js/app/checklists.js';
+import quickadd from '../../src/js/app/quickadd.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -115,6 +116,28 @@ test('a slide shows you on a task no one is doing, and claims it only once it ha
   assert.equal(acts.length, 1, 'yours already: nothing to send, and sliding back to 0% later keeps it');
 });
 
+/* "+ me" only where someone else could take it (one-concept-plan, part 4): in a project no one else can see (seenBy,
+   loaded with who can see each project), no slot, nor your own picture; someone else given it still shows, and a slide
+   claims nothing. Until that's known, or for an API token that can't ask, the slot is as anywhere else. */
+test('in a project only you can see, no "+ me" nor your picture, someone else\'s still, and a slide claims nothing', async () => {
+  const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
+  const app = component(claims);
+  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, act: async a => { acts.push(a); }, seenBy: { 1: 2, 4: 0 } });
+  const slot = (people, pid = 4, done = false) => app.claimSlot({ id: 5, title: 'Wipe the menus', project_id: pid }, people, done);
+  assert.equal(slot([]), null, 'no one on it: no "+ me"');
+  assert.equal(slot([me]), null, 'yours: not your picture either');
+  const theirs = slot([priya, me]);
+  assert.deepEqual([theirs.users, theirs.can, theirs.label], [[priya], false, 'Assigned to priya: Wipe the menus'], 'someone else given it: shown, not tapped');
+  assert.deepEqual(slot([priya], 4, true).users, [priya], 'done too');
+  await app.claimOnSlide(slot([]))(true);
+  assert.equal(app.slideClaim, null, 'a slide shows no one');
+  assert.deepEqual(acts, [], 'and claims nothing');
+  assert.equal(slot([], 7).can, true, 'unknown (a project not loaded yet): "+ me", as anywhere');
+  assert.equal(slot([], 1).can, true, 'shared with someone: "+ me"');
+  app.accessBlocked = true;
+  assert.equal(slot([], 4).can, true, 'a token that can\'t ask who can see it: as anywhere');
+});
+
 test('a checklist step\'s box is square, on its run\'s screen, in its run\'s sheet and on a list; a subtask\'s is round', () => {
   const app = component(runs), step = { id: 9 }, sub = { id: 10 };
   app.stepRun = t => t.id === 9 ? 3 : null;
@@ -170,4 +193,26 @@ test('the sheet\'s bar, slid or moved by a key, claims a task no one is doing, a
   app.nudgeProgress(1);
   await new Promise(r => setTimeout(r));
   assert.deepEqual(order, [['save', 25]], 'someone else\'s is never replaced');
+});
+
+// Who can see each project is loaded in the background once signed in, and kept (seenBy), so the claim slots are right
+// as Today opens; loaded again, a project no longer shared counts again, and one that can't be read keeps what was known.
+test('who can see each project: how many besides you, kept on the phone, and loaded again now and then', async () => {
+  const me = { id: 1, username: 'alex' }, bob = { id: 2, username: 'bob' }, seen = { 1: [me], 2: [me, bob] }, fail = new Set();
+  const app = component(quickadd, claims);
+  Object.assign(app, { user: me, projects: [{ id: 1 }, { id: 2 }, { id: -1 }], access: {}, userKnown: {}, accessBlocked: false, people: null, seenBy: {} });
+  globalThis.fetch = async url => {
+    const pid = +new URL(url).pathname.match(/projects\/(\d+)\/users/)[1];
+    return fail.has(pid) ? new Response('{}', { status: 500 }) : new Response(JSON.stringify({ items: seen[pid] }), { status: 200 });
+  };
+  await app.refreshPeople();
+  assert.deepEqual(app.seenBy, { 1: 0, 2: 1 }, 'none besides you, and one; not a saved filter (-1)');
+  assert.deepEqual(JSON.parse(localStorage.getItem('pocket.saved.seenBy')), { 1: 0, 2: 1 }, 'kept on the phone');
+  assert.deepEqual([app.onlyYou(1), app.onlyYou(2)], [true, false]);
+  assert.equal(app.access['2:bob'], true, 'and who can see what, for @username');
+  assert.equal(app.refreshPeople(), null, 'not again so soon');
+  seen[2] = [me]; fail.add(1); seen[1] = [me, bob];
+  await app.loadPeople(true);
+  assert.deepEqual(app.seenBy, { 1: 0, 2: 0 }, 'no longer shared: only you; one not read: as it was');
+  assert.notEqual(app.access['2:bob'], true, 'bob no longer seen to see it (asked again if typed)');
 });

@@ -266,8 +266,19 @@ test('a row on Today, on one line: when it is due, short, its project’s dot, a
   const t = app.keep(task(20, { title: 'Post the rota', due_date: due.toISOString(), priority: 3, project_id: 5, labels: [{ id: 1, title: 'Front' }], comment_count: 2 }));
   const w = app.rowWhen(t, { line: true, depth: {} });
   assert.equal(w.due.text, due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  assert.equal(w.prio, 3, 'its priority, as bars before its time (one-concept-plan, part 4)');
   assert.ok(w.color, 'its project’s dot');
   assert.match(w.said, /^Due Today .*, Priority: High, Café$/, 'when in words, its priority and its project; not its label nor its comments');
+  assert.equal(app.rowWhen({ ...t, priority: 0 }, { line: true, depth: {} }).prio, 0, 'no priority, no bars');
+  // Due today with no time: "Today" under Overdue's heading and elsewhere, nothing under Today's, which says it.
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const u = app.keep(task(21, { title: 'Order the cups', due_date: day.toISOString(), project_id: 5 }));
+  assert.equal(app.rowWhen(u, { line: true, depth: {}, key: 'overdue' }).due.text, 'Today');
+  assert.equal(app.rowWhen(u, { line: true, depth: {}, key: 'today' }).due, null, 'under Today: no time, nothing');
+  assert.match(app.rowWhen(u, { line: true, depth: {}, key: 'today' }).said, /^Due Today/, 'a screen reader still hears it');
+  assert.equal(app.rowWhen(t, { line: true, depth: {}, key: 'today' }).due.text, w.due.text, 'a time still shows');
+  assert.equal(app.cardWhen(u, { key: 'today' }).due, null, 'a card’s heading the same');
+  assert.equal(app.cardWhen(u, { key: 'week' }).due.text, 'Today');
 });
 
 test('where a run goes next: the next step that can be done now, past those counting down; then one before it; then any', () => {

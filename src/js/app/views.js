@@ -107,18 +107,19 @@ export default {
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
   },
-  /* A row on one line (g.line: Today, and a card's step line there; motion-and-rows-plan, section 9): at its right, when
-     it's due, short (shortDue; a run's step's countdown, "in 18m", "12m late"), red when late, and its project's colour
-     dot. Priority is its tick's colour (the p0–p5 classes), labels and counts are off Today, and all of what's under its
-     title elsewhere (rowMeta: when, in words, priority, project or run, the task it's under) is said to a screen reader
-     instead (`said`). */
+  /* A row on one line (g.line: Today, and a card's step line there; motion-and-rows-plan, section 9): at its right, its
+     priority's bars, small, as on a card's heading (one-concept-plan, part 4), when it's due, short (shortDue; a run's
+     step's countdown, "in 18m", "12m late"; nothing for today with no time under the Today heading, g.key), red when
+     late, and its project's colour dot. Labels and counts are off Today, and all of what's under its title elsewhere
+     (rowMeta: when, in words, priority, project or run, the task it's under) is said to a screen reader instead
+     (`said`). */
   rowWhen(t, g){
     const now = this.route.name === 'today' && this.groupedAt || Date.now(), left = !t.done && this.stepRun(t) && isSet(t.due_date) && countdown(+new Date(t.due_date), now);
-    const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(now)), p = this.projById.get(t.project_id);
+    const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(now), {underToday: g?.key === 'today'}), p = this.projById.get(t.project_id);
     // (Photos still waiting to upload are said, though: that's not a count, it's work still to send.)
     const said = this.rowMeta(t, g).filter(m => !/^l\d/.test(m.key) && !['sub', 'com'].includes(m.key) && (m.key !== 'att' || /waiting/.test(m.label)))
       .map(m => m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text).filter(Boolean);
-    return {due, color: p ? colorOf(p.hex_color) : null, said: said.join(', ')};
+    return {prio: t.priority || 0, due, color: p ? colorOf(p.hex_color) : null, said: said.join(', ')};
   },
   /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. A step on a
      run's screen (g.run): Inserted or Repeated, its notes, and, not done, its countdown or when it's due. */
@@ -250,8 +251,9 @@ export default {
   /* ---------- the other tabs, loaded in the background ---------- */
   /* Once a screen has loaded, the copies kept of Today, the project opened last (or the first favourite) and Checklists
      are loaded afresh behind it, one at a time, when the phone has nothing else to do: switching to one then shows a
-     fresh copy at once. Only reads: nothing is changed in Vikunja, nor on the screen. Not without a connection, nor on
-     one the phone says is slow or to be sparing with (Save-Data), nor a copy kept less than a minute ago. */
+     fresh copy at once; first, who can see each project, now and then (refreshPeople). Only reads: nothing is changed
+     in Vikunja, nor on the screen. Not without a connection, nor on one the phone says is slow or to be sparing with
+     (Save-Data), nor a copy kept less than a minute ago. */
   schedulePreload(){
     clearTimeout(preloadTimer);
     const idle = window.requestIdleCallback || (f => setTimeout(f));
@@ -262,6 +264,7 @@ export default {
     if (preloading || this.offline || !this.signedIn || !this.user || document.visibilityState !== 'visible' || c?.saveData || /2g/.test(c?.effectiveType || '')) return;
     preloading = true;
     try {
+      await this.refreshPeople();                      // who can see each project, for the claim slots (claimSlot)
       for (const k of this.preloads()) {
         const kept = saved.get(k.key);
         if (location.hash === k.hash || (kept && Date.now() - Date.parse(kept.at) < PRELOAD_AGE)) continue;

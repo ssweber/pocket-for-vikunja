@@ -15,8 +15,11 @@ export default {
      Assign in its sheet. Done, it shows who had it and can't be tapped. Claiming never ticks anything: Done and Skip
      work for anyone, whoever has the step. `people`: its assignees, with claims waiting to be sent (peopleOf). Up to two
      pictures show (`users`), yours first, then how many more. A tap on it (toggleClaim) is for its task (`id`), a step of
-     the run `run` if it's one. */
+     the run `run` if it's one. In a project no one else can see (onlyYou), no one could take it from you: no "+ me",
+     nor your picture, only anyone else it's assigned to (since before it was moved there from a shared one, say), and a slide claims
+     nothing (claimOnSlide). */
   claimSlot(t, people, done, run = null){
+    if (this.onlyYou(t.project_id)) { people = people.filter(u => u.id !== this.user?.id); done = true; }
     const me = this.user, mine = people.some(u => u.id === me?.id), title = parseStep(t.title).title, id = t.id;
     const all = mine ? [me, ...people.filter(u => u.id !== me.id)] : people, users = all.slice(0, 2), more = all.length - users.length;
     const names = all.map(u => u.id === me?.id ? 'you' : this.nameOf(u)).join(', ');
@@ -26,6 +29,9 @@ export default {
     if (all.length) return {id, run, users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
     return {id, run, users: [], more: 0, can: true, label: `Tap to say you'll do ${title}`};
   },
+  // Whether no one but you can see a project, as last loaded (seenBy, loadPeople): not until that's known, nor for an API
+  // token that can't ask (accessBlocked), when its slots show as anywhere else.
+  onlyYou(pid){ return !this.accessBlocked && this.seenBy?.[pid] === 0; },
   /* A done step's pictures: whoever did it, with a ✓ (⏭ for a skip, grey while it waits to be sent), then the others
      it's assigned to, all one size. Null when there's no one to show. */
   doneSlot(by, people, badge){

@@ -34,7 +34,7 @@ export default {
     const fill = all.map(s => done(s) ? 1 : s.id === step.id ? pctOf(s) / 100 : 0);
     const card = {id: t.id, step, i, n: steps.length, steps, at: placeOf(all, step), total: all.length, all,
       line: runLine(all.length, d, fill), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
-    card.g = {depth: {}, card, line: true};
+    card.g = {depth: {}, card, line: true, key: g.key};          // (its group: under Today's heading, "Today" goes unsaid)
     return card;
   },
   /* A run's card picks its step by the run's own rule, as its screen does (whereNext): the next it can do now, past any
@@ -54,10 +54,11 @@ export default {
   },
   // A subtask done; a run's step counting a tick still waiting to be sent.
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
-  /* A card's heading on one line: its title, its priority's bars, small (it has no tick to colour), and when it's due,
-     short, at the right (shortDue); the rest of cardMeta to a screen reader (`said`). */
-  cardWhen(t){
-    const due = shortDue(t.due_date, new Date(this.groupedAt || Date.now()));
+  /* A card's heading on one line: its title, its priority's bars, small, as a row on Today has them, and when it's due,
+     short, at the right (shortDue: nothing for today with no time under the Today heading, `g`'s key); the rest of
+     cardMeta to a screen reader (`said`). */
+  cardWhen(t, g){
+    const due = shortDue(t.due_date, new Date(this.groupedAt || Date.now()), {underToday: g?.key === 'today'});
     return {prio: t.priority || 0, due, said: this.cardMeta(t).map(m => m.label || m.text).filter(Boolean).join(', ')};
   },
   // What a card's heading says to a screen reader: when its task is due, its priority, and its project, or for a run,

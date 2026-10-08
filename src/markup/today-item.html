@@ -14,7 +14,7 @@
     <div class="day-card" role="group" :aria-label="rowTitle(t)" :data-id="t.id"
          :class="{leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
          @click.capture="if (leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
-      <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="rowTitle(t)"></span><template x-if="cardWhen(t).said"><span class="sr" x-text="', ' + cardWhen(t).said"></span></template><template x-if="cardWhen(t).prio"><span class="bars" :class="'p' + cardWhen(t).prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="cardWhen(t).due"><span class="due num" :class="cardWhen(t).due.cls" aria-hidden="true" x-text="cardWhen(t).due.text"></span></template></button>
+      <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="rowTitle(t)"></span><template x-if="cardWhen(t, g).said"><span class="sr" x-text="', ' + cardWhen(t, g).said"></span></template><template x-if="cardWhen(t, g).prio"><span class="bars" :class="'p' + cardWhen(t, g).prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="cardWhen(t, g).due"><span class="due num" :class="cardWhen(t, g).due.cls" aria-hidden="true" x-text="cardWhen(t, g).due.text"></span></template></button>
       <template x-for="[t, g] in [[c.step, c.g]]" :key="t.id">
         <!-- include markup/task-row.html -->
       </template>

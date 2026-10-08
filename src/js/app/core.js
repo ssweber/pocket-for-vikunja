@@ -50,7 +50,10 @@ export default () => ({
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → Users search.
   access: {}, userKnown: {}, accessBlocked: false,
-  people: null,                                // everyone you share a project with: [{user, pids}], loaded on the first @
+  people: null,                                // everyone you share a project with: [{user, pids}], loaded once signed in (loadPeople)
+  // Project id -> how many people besides you can see it, kept on the phone and loaded again now and then (loadPeople),
+  // so a claim slot shows only where someone else could take the task, from the moment Today opens (claimSlot).
+  seenBy: saved.get('seenBy') || {},
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
   toast: {show: false, msg: '', action: null, more: null, until: 0},

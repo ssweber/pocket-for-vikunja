@@ -31,10 +31,12 @@ export function dueInfo(due){
 }
 /* When a task is due, short, for a row on one line (Today: motion-and-rows-plan, section 9): its time today ("11:55
    AM", or "Today" with no time); its weekday in the coming week ("Fri"); else its date ("Oct 2", with the year when
-   it isn't this one's). `cls` as dueInfo's: 'overdue' when late, 'today'. null with no date. */
-export function shortDue(due, now = new Date()){
+   it isn't this one's). `cls` as dueInfo's: 'overdue' when late, 'today'. null with no date, and, `underToday` (a row
+   under Today's heading), for today with no time: "Today" there says nothing new. */
+export function shortDue(due, now = new Date(), {underToday = false} = {}){
   if (!isSet(due)) return null;
   const d = new Date(due), diff = Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
+  if (underToday && diff === 0 && noTime(d)) return null;
   const text = diff === 0 ? (noTime(d) ? 'Today' : fmtTime(d)) : diff > 0 && diff < 7 ? d.toLocaleDateString([], {weekday: 'short'})
     : d.toLocaleDateString([], {month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined});
   return {text, cls: diff < 0 || isLate(due, now) ? 'overdue' : diff === 0 ? 'today' : ''};
