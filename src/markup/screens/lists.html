@@ -1,6 +1,6 @@
     <!-- Today and a single project share the task-list markup. A project's done tasks are a section of their own, under
          the open ones, folded until it's tapped (loaded then), and kept open or folded for each project. -->
-    <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div>
+    <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div x-effect="hint.pick && pickHint()">
       <template x-for="g in listGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
         <!-- Nothing open: said above the Done section -->
         <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>

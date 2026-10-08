@@ -187,6 +187,7 @@ export default {
       Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null});
       if (s) this.showSaved(r, s);
       if (scrollY) scrollTo(0, 0);                       // a new screen starts at its top
+      Object.assign(this.hint, {at: null, pick: true});  // the hint, if it's still to show, on the new screen's first row (pickHint)
     }
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
     this.view.updating = !this.view.loading; this.view.behind = false;
