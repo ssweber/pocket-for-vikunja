@@ -13,6 +13,7 @@ import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
+const LAST_WAIT = 600;                           // how much longer than its steps a run waits for Last time's notes (loadRun)
 /* Ticks that waited to be sent (offline): Vikunja has a step done when the tick arrived, but its countdowns go on
    counting from when it was ticked here, as they did while it waited, so they don't jump, nor chime again. By step:
    {here, there: Vikunja's done time, while it's that tick's, kept: when}. Kept a day. */
@@ -259,15 +260,24 @@ export default {
   async loadRun(seq, id){
     const run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a checklist run. Open it from its project instead.');
+    /* Last time's notes are read alongside its steps, and shown with them if they come in time (LAST_WAIT), or as kept
+       from the last time it was opened: a step's are on its card, above the steps, so arriving after the run is on
+       screen they'd push the steps down under a finger. Later than that, they're held back from the card on screen
+       (lateLast). */
+    const kept = this.view.run?.run.id === id ? this.view.run : null;
+    const reading = kept?.last ? null : this.readLast(plainRun(run));
     const steps = await inBatches(stepsOf(run), 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)));
+    const last = reading && await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))]);
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
     if (!keep) this.runInsert = {...newBox(), repeat: null, after: null};
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
-    this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null, last: keep?.last || null};
+    const before = last === undefined ? saved.get('run.' + id)?.run?.last : null;
+    this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null,
+      last: keep?.last || last || (before?.notes ? {...before, held: null} : null)};
     this.saveRun();
-    if (!keep?.last) this.loadLast(this.view.run.run);
+    if (last === undefined) reading.then(l => this.lateLast(id, l));
   },
   // Kept for opening offline: the last few runs opened.
   saveRun(){
@@ -278,23 +288,31 @@ export default {
     saved.set('runs.recent', ids.slice(0, 8));
     saved.set('run.' + r.run.id, {run: r, at: new Date().toISOString()});
   },
-  // The handover: notes left on the last finished run of the same template, on the run and on its steps.
-  async loadLast(run){
-    if (!run.from) return;
-    const here = () => this.view.run?.run.id === run.id;
+  /* The handover: notes left on the last finished run of the same template, on the run and on its steps: {id, title,
+     notes}, or null if there's none (or it can't be read). */
+  async readLast(run){
+    if (!run.from) return null;
     try {
       const prev = ((await api('/tasks/' + run.from)).related_tasks?.copiedto || []).filter(x => x.id !== run.id && x.done)
         .sort((a, b) => new Date(b.done_at) - new Date(a.done_at))[0];
-      if (!prev || !here()) return;
-      this.view.run.last = {id: prev.id, title: prev.title, notes: null};
+      if (!prev) return null;
       const full = await allComments(await api(`/tasks/${prev.id}?expand=comments`));
       const steps = await inBatches(stepsOf(full), 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
       // Each with the template step it was on (tpl), so it shows on that step's card this time too.
       const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run', tpl: null})),
         ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title + (addedText(s.description) ? ` (${addedText(s.description).toLowerCase()})` : ''),
           tpl: addedText(s.description) ? null : plainStep(s).tpl})))];
-      if (here()) { this.view.run.last = {id: prev.id, title: prev.title, notes}; this.saveRun(); }
-    } catch { if (here() && !this.view.run.last?.notes) this.view.run.last = null; }
+      return {id: prev.id, title: prev.title, notes};
+    } catch { return null; }
+  },
+  /* Last time's notes come after the run is on screen: under its notes, below the steps, at once; on the card on screen
+     only once another step is shown (held), as they'd push the steps down there. The same notes as kept change nothing. */
+  lateLast(id, last){
+    const r = this.view.run;
+    if (r?.run.id !== id || !last) return;
+    const same = r.last && JSON.stringify(r.last.notes.map(n => n.id)) === JSON.stringify(last.notes.map(n => n.id)) && r.last.id === last.id;
+    r.last = same ? {...last, held: r.last.held} : {...last, held: this.runView?.step?.id ?? null};
+    this.saveRun();
   },
   /* The run on screen, with what's waiting to be sent laid over it, so ticks, skips and notes show straight away. */
   get runView(){
@@ -390,7 +408,7 @@ export default {
       forText: forText && forText[0].toUpperCase() + forText.slice(1)};
   },
   // What was noted on this step last time, from the last finished run of the same template.
-  lastNotes(s){ return s?.tpl ? (this.view.run?.last?.notes || []).filter(n => n.tpl === s.tpl) : []; },
+  lastNotes(s){ const l = this.view.run?.last; return s?.tpl && s.id !== l?.held ? (l?.notes || []).filter(n => n.tpl === s.tpl) : []; },
   /* A run opens on its own screen, a step of one on that step. Back goes to the screen before: Today, a project, search
      or Checklists (runFrom, kept by render). */
   openRun(id, step = null){
@@ -468,6 +486,7 @@ export default {
   showStep(i, scroll){
     if (!this.view.run) return;
     this.view.run.at = i;
+    if (this.view.run.last) this.view.run.last.held = null;                // Last time's notes on its card from now on
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
@@ -486,7 +505,7 @@ export default {
     if (typed) this.runDrafts[s.id] = '';
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));
     if (op === 'done' && typed) { op = 'doneNote'; html = textToHtml(typed); }
-    if (current && op !== 'undone') r.at = this.nextStep(s);
+    if (current && op !== 'undone') { r.at = this.nextStep(s); if (r.last) r.last.held = null; }
     navigator.vibrate?.(10);
     await this.act({op, task: s.id, html});
   },
