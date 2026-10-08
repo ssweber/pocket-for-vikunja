@@ -3,7 +3,7 @@
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardAt, cardGroup, countdown, placeOf, todayItems, turnPage } from '../../src/js/cards.js';
+import { cardAt, cardGroup, countdown, placeOf, segmentAt, stepOfSegment, todayItems, turnPage } from '../../src/js/cards.js';
 import { pageOffset, pageStarts, pageTurn } from '../../src/js/progress.js';
 import { rowGestures } from '../../src/js/lists.js';
 import cards from '../../src/js/app/cards.js';
@@ -148,6 +148,22 @@ test('a card’s count is its step’s real place, done steps included; paging s
   assert.equal(app.said, 'Step 3 of 4: Tables', 'a screen reader hears its real place');
   app.pageCard(app.cardOf(parent, g), -1);
   assert.equal(app.cardOf(parent, g).at, 3, 'back: the marked segment is the fourth');
+});
+
+test('a tap on a card’s line: the segment under it, an open step’s showing it, a done one’s nothing, none past 12 steps', () => {
+  // 5 segments over 197px: each (197 + 3) / 5 = 40px with its gap.
+  assert.deepEqual([0, 39, 40, 119.9, 196, 230, -5].map(x => segmentAt(x, 197, 5)), [0, 0, 1, 2, 4, 4, 0], 'its stretch, a gap with the one before it, the ends kept');
+  assert.deepEqual([segmentAt(60, 300, 12), segmentAt(60, 300, 13), segmentAt(60, 0, 3)], [2, -1, -1], 'past MANY_STEPS too narrow to tap; none without a line');
+  const all = [{ id: 1, done: true }, { id: 2 }, { id: 3, done: true }, { id: 4 }], open = [all[1], all[3]];
+  assert.deepEqual([0, 1, 2, 3, -1, 9].map(k => stepOfSegment(all, open, k)), [-1, 0, -1, 1, -1, -1], 'a done step’s segment is none, as paging skips it');
+  const { app, parent, g } = today(), line = { getBoundingClientRect: () => ({ left: 100, width: 197 }) };   // 4 segments, 50px each
+  app.tasks[12].done = true;                                               // 14 and Chairs done: Tables (3 of 4) showing
+  app.tapSegment(app.cardOf(parent, g), 100 + 160, line);
+  assert.deepEqual([app.cardOf(parent, g).step.title, app.cardOf(parent, g).at, app.said], ['Lights', 3, 'Step 4 of 4: Lights'], 'the fourth, open: it shows, and a screen reader hears it');
+  for (const x of [100 + 10, 100 + 60]) app.tapSegment(app.cardOf(parent, g), x, line);
+  assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'a done one’s segment: nothing');
+  app.tapSegment(app.cardOf(parent, g), 100 + 110, line);
+  assert.equal(app.cardOf(parent, g).step.title, 'Tables', 'back to the third');
 });
 
 test('paged round, a screen reader hears which step; ticked, a step stays until the batch clears, then the next comes in', () => {

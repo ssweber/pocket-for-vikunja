@@ -269,41 +269,35 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* Today's list (today-item.html): each thing an item, a row or a card, with a line between them */
 .item + .item{border-top:1px solid var(--line)}
 /* A card: anything with open subtasks or steps. Its title is a heading, quieter than its step, the next thing to do;
-   under it, its task's line, a segment per subtask, as a run's is, kept with the heading and a clear gap from the step
-   (at the bottom, under the step's own bar, the two read as one double line); then one step on the shared row, with
-   ‹ › at its ends when it has more than one open step */
+   under it, its strip, how to get round its steps; then one step on the shared row, a plain row like any other */
 .day-card{position:relative}
 .card-head{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:10px 14px 0;color:var(--ink)}
-.card-top{display:flex;align-items:baseline;gap:10px}
-.card-title{display:block;flex:1;min-width:0;font-size:15px;font-weight:650;overflow-wrap:anywhere}
-/* its count, the step showing's place among all its subtasks: on the title's first line, at the right, however the
-   title wraps */
-.card-n{flex:none;color:var(--muted);font-size:13px;white-space:nowrap}
+.card-title{display:block;font-size:15px;font-weight:650;overflow-wrap:anywhere}
 .card-head .meta{margin-top:1px}
-.step-pager{position:relative}
-.day-card .step-line{border-top:0;min-height:52px}
-.card-track{position:relative;margin:8px 14px 4px}
-.card-line{height:3px}
+/* The strip: ‹, its task's line, a segment per subtask, as a run's is, ›, and its count, the step showing's place among
+   all its subtasks. Drawn thin, its controls are 48px tall, reaching 8px over the step line's top (its padding: what's
+   left of the step line is still 48px), never over the heading. The arrows' places stay when they're not there, so the
+   line keeps its length as steps go, and the count's is wide enough for most, so cards' lines line up */
+.card-strip{position:relative;z-index:1;display:grid;grid-template-columns:48px minmax(0,1fr) 48px minmax(48px,auto);height:40px;padding-right:14px}
+.card-strip > *{grid-row:1;align-self:start;height:48px}
+.card-track{grid-column:2;position:relative;display:flex;align-items:center}
+.card-line{flex:1;height:3px}
+/* an open step's segment shows that step: its stretch of the line, the strip's full height, takes the tap (tapSegment) */
+.card-track.jumps{cursor:pointer}
+.card-n{grid-column:4;color:var(--muted);font-size:13px;line-height:48px;text-align:right;white-space:nowrap}
 /* The step showing, outlined on its task's line, a little taller than it, so paging visibly moves along it: over its
    segment (each (100% + 3px) / --segs wide, less the 3px gap), or past MANY_STEPS over its stretch between two ticks
    (a 1px gap). It slides along as the card is paged, or with less motion, jumps */
-.card-mark{--gap:3px;position:absolute;top:-2.5px;bottom:-2.5px;left:calc(var(--at,0) * (100% + var(--gap)) / var(--segs,1) - 2.5px);
+.card-mark{--gap:3px;position:absolute;top:calc(50% - 4px);bottom:calc(50% - 4px);left:calc(var(--at,0) * (100% + var(--gap)) / var(--segs,1) - 2.5px);
   width:calc((100% + var(--gap)) / var(--segs,1) - var(--gap) + 5px);border:1.5px solid var(--accent);border-radius:4px;pointer-events:none;transition:left .15s ease-out}
-.card-track.many-steps .card-mark{--gap:1px}
+.card-track.many-steps .card-mark{--gap:1px;top:calc(50% - 6px);bottom:calc(50% - 6px)}
 @media (prefers-reduced-motion:reduce){.card-mark{transition:none}}
-/* The arrows: drawn small, each a tap 48px wide over the step line's full height, at its ends. The step's own tick,
-   title and slot move in to make room, each zone still 48px across */
-.pg{position:absolute;top:0;bottom:0;z-index:1;width:48px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
-.pg.prev{left:0} .pg.next{right:0}
+/* The arrows: drawn small, each a tap 48px wide and tall, at the strip's ends */
+.pg{grid-column:1;width:48px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
+.pg.next{grid-column:3}
 .pg svg.i{width:16px;height:16px;stroke-width:2.4}
 .pg.prev svg.i{transform:scaleX(-1)}
-.day-card.paged .step-line{padding-left:58px;padding-right:48px}
-.day-card.paged .step-line > button.check::after{left:48px;width:48px}
-.day-card.paged .step-line > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:0;padding-right:0}
-.day-card.paged .step-line > .claim:not(:has(~ .icon-btn)){min-width:52px;margin-right:0;padding:12px 4px 0 6px}
-/* its percentage, while it's held, clear of the arrows too */
-.day-card.paged .step-line.setting:has(> .claim)::before{right:108px}
-.day-card.paged .step-line.setting[data-side=left]::before{right:auto;left:56px}
+.day-card > .step-line{border-top:0}
 /* swiped sideways before the hold: the step line follows the finger a little, then pages, or goes back */
 .row.step-line.paging{transform:translateX(var(--page,0px));transition:none}
 .day-card.deleted > :not(.del-gap){visibility:hidden}

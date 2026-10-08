@@ -3,6 +3,7 @@
    what Today read, apart from the screen, so the unit tests can check it; app/cards.js draws them. */
 import {isSet} from './dates.js';
 import {durText, hasTemplateLabel} from './checklists.js';
+import {MANY_STEPS} from './progress.js';
 
 // A task's subtasks still open, as its own copy lists them.
 export const openSubs = t => (t?.related_tasks?.subtask || []).filter(s => !s.done);
@@ -72,6 +73,13 @@ export function cardAt(steps, page, focus){
 export const placeOf = (all, s) => all.findIndex(x => x.id === s?.id);
 // Paging a card: the step `dir` (1 the next, -1 the one before) from `i`, of `n`, round from the last to the first.
 export const turnPage = (i, n, dir) => n ? ((i + dir) % n + n) % n : -1;
+/* A tap on a card's line, `x` px from its left, the line `w` wide in `n` segments, each (w + 3) / n with its 3px gap, as
+   the CSS cuts it: which segment, 0 the first, a gap counting with the segment before it. -1 past MANY_STEPS, where a
+   step's stretch is too narrow to tap: there only the arrows and a swipe page. */
+export const segmentAt = (x, w, n) => n > MANY_STEPS || !(w > 0) || !(n > 0) ? -1 : Math.min(n - 1, Math.max(0, Math.floor(x * n / (w + 3))));
+/* The open step a card's segment `k` stands for, as its index among the open `steps` it pages through; -1 for a done
+   one (paging skips those), or no segment. `all`: every subtask, in the order the line draws them. */
+export const stepOfSegment = (all, steps, k) => k < 0 || !all[k] ? -1 : steps.findIndex(s => s.id === all[k].id);
 /* A run's step's countdown on its card, to the minute, as Today redraws once a minute: "in 1h 5m", "12m late"; null more
    than a day either way, where its date says it better. `due` and `now` in ms. */
 export function countdown(due, now){

@@ -1,12 +1,12 @@
 /* Today's cards on screen (which tasks are cards, and why, is cards.js): a task with open subtasks or steps, its title
    over one line for a step, the shared row (task-row.html) with the card's own options (g.card: paging, no Delete, no
-   moving it). The step line pages through its open steps, by its ‹ › or a swipe, and a tick or a slide there is that
-   step's alone. What a card needs is read once per project shown, not once per card (readCards). */
+   moving it). The card pages through its open steps, by the ‹ › on its strip, a tap on a step's segment there, or a
+   swipe, and a tick or a slide on its step line is that step's alone. What a card needs is read once per project shown, not once per card (readCards). */
 import {colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet} from '../dates.js';
 import {stepsOf} from '../checklists.js';
-import {cardAt, openSubs, placeOf, turnPage} from '../cards.js';
+import {cardAt, openSubs, placeOf, segmentAt, stepOfSegment, turnPage} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {runLine} from '../progress.js';
 
@@ -54,7 +54,19 @@ export default {
      reader hears which. The arrows stay where they are, so the one tapped keeps the focus. */
   pageCard(c, dir){
     if (!c || c.n < 2) return;
-    const i = turnPage(c.i, c.n, dir), s = c.steps[i];
+    this.showCardStep(c, turnPage(c.i, c.n, dir), dir);
+  },
+  /* A segment of its line tapped, at the pointer's `x`: that step, if it's open (a done one is skipped, as paging skips
+     it), coming in from the side it's on. Past MANY_STEPS a step's stretch is too narrow to tap, so nothing. A pointer's
+     shortcut only: the arrows are a keyboard's and a screen reader's way, rather than a stop for each step. */
+  tapSegment(c, x, line){
+    if (!c || c.n < 2 || !line) return;
+    const r = line.getBoundingClientRect(), k = segmentAt(x - r.left, r.width, c.total), i = stepOfSegment(c.all, c.steps, k);
+    if (i >= 0 && i !== c.i) this.showCardStep(c, i, Math.sign(k - c.at) || 1);
+  },
+  // The card on its open step `i`, coming in from the side `dir` says; a screen reader hears its place among all.
+  showCardStep(c, i, dir){
+    const s = c.steps[i];
     this.cardPage[c.id] = {id: s.id, i};
     entering.set(c.id, dir);
     this.said = `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`;
