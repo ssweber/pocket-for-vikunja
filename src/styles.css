@@ -270,16 +270,18 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* Today's list (today-item.html): each thing an item, a row or a card, with a line between them */
 .item + .item{border-top:1px solid var(--line)}
 /* A card: anything with open subtasks or steps. Its title is a heading, quieter than its step, the next thing to do;
-   under it, its strip, how to get round its steps; then one step on the shared row, a plain row like any other */
+   under it, one step on the shared row, a plain row like any other; then, as its footer, its strip, how to get round
+   its steps */
 .day-card{position:relative}
 .card-head{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:10px 14px 0;color:var(--ink)}
 .card-title{display:block;font-size:15px;font-weight:650;overflow-wrap:anywhere}
 .card-head .meta{margin-top:1px}
-/* The strip: ‹, its task's line, a segment per subtask, as a run's is, ›, and its count, the step showing's place among
-   all its subtasks. Drawn thin, its controls are 48px tall, reaching 8px over the step line's top (its padding: what's
-   left of the step line is still 48px), never over the heading. The arrows' places stay when they're not there, so the
-   line keeps its length as steps go, and the count's is wide enough for most, so cards' lines line up */
-.card-strip{position:relative;z-index:1;display:grid;grid-template-columns:48px minmax(0,1fr) 48px minmax(48px,auto);height:40px;padding-right:14px}
+/* The strip, the card's footer: ‹, its task's line, a segment per subtask, as a run's is, ›, and its count, the step
+   showing's place among all its subtasks. Its controls are 48px tall, the strip's height, so they never reach the step
+   line's taps; its line in their middle, a clear gap under the step's own bar, so the two never read as one. The arrows'
+   places stay when they're not there, so the line keeps its length as steps go, and the count's is wide enough for
+   most, so cards' lines line up */
+.card-strip{display:grid;grid-template-columns:48px minmax(0,1fr) 48px minmax(48px,auto);height:48px;padding-right:14px}
 .card-strip > *{grid-row:1;align-self:start;height:48px}
 .card-track{grid-column:2;position:relative;display:flex;align-items:center}
 .card-line{flex:1;height:3px}
