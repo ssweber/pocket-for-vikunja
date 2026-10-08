@@ -125,6 +125,8 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row .title{font-size:16.5px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
 .meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:13.5px;color:var(--muted)}
+/* A long name with no spaces (an address pasted as a title, say) breaks where it must, rather than widening a row or a sheet */
+.meta > span,.d-path .linkish,.d-parent,.d-title h2,#sheet h3,.sec > span,.kicker,.cl .title{min-width:0;overflow-wrap:anywhere}
 .meta .due.overdue{color:var(--overdue);font-weight:600}
 .meta .due.today{color:var(--today);font-weight:600}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
