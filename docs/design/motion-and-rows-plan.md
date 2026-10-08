@@ -46,7 +46,8 @@ than one rule per kind of row, and it keeps destructive swipes off the screen us
 | Tap the checkbox | Done |
 | Tap the initials or "+ me" | Claim, or let go |
 | Hold, then drag sideways | Progress, on the step showing (or on the task, if it has no open steps) |
-| Plain swipe left or right on a card | Page through its open steps (section 4) |
+| Drag along a card's strip, tap a segment, or `‹ ›` | Page through its open steps (section 4) |
+| Plain swipe on a card's step line or heading | Nothing |
 | Plain swipe on a row without steps | Nothing |
 | Tap the title | Open the task |
 
@@ -117,8 +118,7 @@ Anything with open subtasks or steps shows on Today as a card: its title, and on
 never show as rows of their own on Today. **This changes #167 as built in part 9 of `fast-tasks-plan.md`**, where a
 subtask assigned to you showed as its own row under "Added today, no date".
 
-**It isn't a separate widget.** The step line is the row from section 3a, with paging on and reorder and swipe-to-delete
-off. A change to the row shows up in both places.
+**It isn't a separate widget.** The step line is the row from section 3a, with reorder and swipe-to-delete off. A change to the row shows up in both places.
 
 - **The card's title** has no checkbox. It's a heading: tapping it opens the task. Closing the whole thing is done in
   its sheet or on Projects, where ticking a parent closes its subtasks.
@@ -133,7 +133,7 @@ off. A change to the row shows up in both places.
   count between them. The arrows look small, but take taps over 48px. Hidden when there's one open step. Paging wraps
   round. Leaving Today puts every card back on its next step. (Part 6b moved the count to the title's row, "3 of 5",
   the step's real place, and marks the step on the card's line. The card's strip, below, then put the arrows and the
-  count on one line with it, at the card's foot.)
+  count on one line with it, at the card's foot, and the scrubber below made the strip the only way to page.)
 - **The parent's progress** is a line under the step line, counted from its subtasks (steps done out of all of them),
   in segments as in section 3a. A task's own % still shows on Projects and in its sheet.
 - **The card's heading, again** (user, 2026-10-08): the card shows its task's priority bars under its title, as its
@@ -150,10 +150,19 @@ off. A change to the row shows up in both places.
   its 48px, a clear gap (about 22px) under the step's own bar, so the two never read as one double line.
   **A tap on an open step's segment** shows that step: its stretch of the line, the strip's full height, takes the
   tap. A done step's segment does nothing, as paging skips done steps. Past 12 steps (the line with ticks) a step's
-  stretch is too narrow to tap, so only the arrows and a swipe page there. Segment taps are a pointer's shortcut: a
-  screen reader has the arrows, buttons, and the step line's "Step 3 of 5: …", not a stop for each step. **The step
-  line is a plain row**, with no arrows on it: its tick at the row's left edge like every other row, its title, its
-  claim slot, its own bar at the bottom, and hold-to-slide progress as before. A plain swipe on the card still pages.
+  stretch is too narrow to tap, so only the arrows and dragging along the strip page there. Segment taps are a
+  pointer's shortcut: a screen reader has the arrows, buttons, and the step line's "Step 3 of 5: …", not a stop for
+  each step. **The step line is a plain row**, with no arrows on it: its tick at the row's left edge like every other
+  row, its title, its claim slot, its own bar at the bottom, and hold-to-slide progress as before.
+- **Paging is the strip only** (user, 2026-10-08, tried on the phone: "scrubber feels right"). Pressed on the strip and
+  dragged along it, it's a scrubber: the step under the finger shows (absolute, not moved along from the step showing),
+  the marker following, from open step to open step, done ones skipped, a light tick at each new one, the step line
+  switching to it with no slide; let go, it stays there. It starts only after a mostly sideways move, so scrolling up
+  or down still works, and works past 12 steps too, as it's a drag. A tap on an open step's segment jumps there. `‹ ›`
+  step through the open ones and stop at the ends, with no going round: `‹` on the first open step and `›` on the last
+  are dimmed, in their places, and do nothing. A plain swipe on the step line or the heading does nothing, as on any
+  row on Today (hold first, on the step line, and it's progress). A screen reader hears "Step N of M: …" when the step
+  shown changes, once the finger lifts when scrubbing.
 - **What brings a card onto Today:**
   - the parent being due, by Today's groups (overdue, today, the coming week); or
   - one of its open subtasks being due, by the same groups; or

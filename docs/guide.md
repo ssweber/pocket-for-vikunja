@@ -64,13 +64,15 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. Under
   the step line, at the card's foot, is its strip: a line in segments, one for each subtask, each filled once its step
   is done, with the step showing outlined on it, and "3 of 5" at its end, where that step is among all the subtasks,
-  done ones too. With more than one step open, **‹** and **›** at the strip's ends page through the open ones, and so does a plain
-  swipe left or right anywhere on the card (hold first, and it's progress instead): with the first two done, from 3 to
-  4, 5, then back round to 3. Tapping a step's segment on the line shows that step, if it's still open (a done one's
-  does nothing). Done steps are on the run's screen, or in the task's sheet. Leaving Today puts every card back on its
-  next step. Past 12 steps, the line has a tick at each step instead of segments, each step's stretch filled once it's
-  done, and the outline is around that step's stretch; those are too small to tap, so page with the arrows or a swipe. A screen reader hears the line as "2 of 5
-  subtasks done", the card named by its title, and the step line as "Step 3 of 5: Load chairs".
+  done ones too. With more than one step open, the strip is how to get round them: press on it and slide your finger
+  along, and the step under your finger shows as you go, skipping the done ones, and stays when you let go; tap a
+  step's segment to show that step, if it's still open (a done one's does nothing); or tap **‹** and **›** at its ends,
+  which go through the open ones and stop at the first and the last (dimmed there): with the first two done, from 3 to
+  4, then 5. A plain swipe on the step line or the title does nothing. Done steps are on the run's screen, or in the
+  task's sheet. Leaving Today puts every card back on its next step. Past 12 steps, the line has a tick at each step
+  instead of segments, each step's stretch filled once it's done, and the outline is around that step's stretch; those
+  are too small to tap, so slide along the strip or use the arrows. A screen reader hears the line as "2 of 5 subtasks
+  done", the card named by its title, and the step line as "Step 3 of 5: Load chairs".
 - **What brings a card onto Today:** its task being due (overdue, today or in the next 7 days); one of its open subtasks
   being due then; a subtask assigned to you that's due, or that was made today without a date (Vikunja doesn't keep when
   a task was assigned, so one made before today doesn't keep the card there); or, for a checklist run, its being yours
@@ -80,7 +82,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   circle), its title opens it, and its right end says who's doing it, or **+ me** (see **Assigning**, below).
 - **Two screens, two jobs:** Today is for doing; Projects, search and a task's sheet are for managing. On Today, a
   task's row (or a card's step line) is ticked, claimed, opened, and held and slid sideways for its progress, and that's
-  all: a plain swipe does nothing there but page a card, so nothing is deleted by a slip on the screen you use fastest,
+  all: a plain swipe does nothing there, so nothing is deleted by a slip on the screen you use fastest,
   and holding a task doesn't move it, since Today is in the order things are due. Its **⋯** still deletes it. On a project's list and in a task's
   sheet, a row can also be swiped left to **Delete** it, and held and moved up or down to move it; in search, swiped to
   **Delete**, but not moved, as search's results have no order of their own. No swipe ticks a task, anywhere.
