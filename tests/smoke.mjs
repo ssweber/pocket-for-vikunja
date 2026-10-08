@@ -2268,7 +2268,7 @@ ${footName('Hooks')}`);
   // A card's step line, and what its title shows (without what a screen reader hears before it).
   const stepLine = t => `${cardOf(t)} .step-line`;
   const stepTitle = t => page.locator(`${stepLine(t)} .title > span:not(.sr)`);
-  // Swiped sideways, before any hold, as a finger pages a card.
+  // Swiped sideways, before any hold: on a card, that pages nothing.
   const swipeOn = async (sel, by) => {
     await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
@@ -2294,6 +2294,18 @@ ${footName('Hooks')}`);
     await line.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const [segs, l] = await line.evaluate(el => [+getComputedStyle(el).getPropertyValue('--segs'), el.getBoundingClientRect().toJSON()]);
     await page.mouse.click(l.left + (k + 0.5) * (l.width + 3) / segs - 1.5, l.top + l.height / 2 + dy);
+  };
+  /* A finger (Chrome's own touch input) pressed on segment `from` of a card's strip and dragged along it to segment
+     `to`, then lifted: the counts seen on the way, each once. */
+  const scrub = async (t, from, to) => {
+    const line = page.locator(`${cardOf(t)} .card-line`), count = page.locator(`${cardOf(t)} .card-strip > .card-n`);
+    await line.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const [segs, l] = await line.evaluate(el => [+getComputedStyle(el).getPropertyValue('--segs'), el.getBoundingClientRect().toJSON()]);
+    const at = k => l.left + (k + 0.5) * (l.width + 3) / segs - 1.5, y = l.top + l.height / 2, n = 4 * Math.max(1, Math.abs(to - from)), seen = [];
+    await touch('touchStart', at(from), y);
+    for (let i = 1; i <= n; i++) { await touch('touchMove', at(from) + (at(to) - at(from)) * i / n, y + 1); seen.push(await count.textContent()); }
+    await touch('touchEnd', at(to), y + 1);
+    return [...new Set(seen)];
   };
   /* Each step's segment (or past 12 steps, its stretch) on a card's line, as drawn: its colour at its middle, from the
      stops of the line's fill (its last layer, not the ticks above it), and the colour a done one has (the mark's). */
@@ -2410,28 +2422,48 @@ ${footName('Hooks')}`);
       await expect(count).toHaveText('2 of 3');
       await expect.poll(() => markedSeg(P.title)).toBe(1);
       if (await page.isVisible('#sheet')) throw new Error('a tap on its line opened the task');
-      // Paged by its arrows, through the open ones only, round from the last to the first and back; a screen reader
-      // hears which; the marked segment moves along.
+      // Paged by its arrows, through the open ones only, stopping at the ends, where the arrow is dimmed and does
+      // nothing (‹ at the first open one, the first done); a screen reader hears which; the marked segment moves along.
+      const [prev, next] = [card.locator('.pg.prev'), card.locator('.pg.next')];
+      await expect(prev).toHaveAttribute('aria-disabled', 'true');
       await card.locator('.pg.next').click();
       await expect(title).toHaveText(A.title);
       await expect(page.locator('#said')).toHaveText(`Step 3 of 3: ${A.title}`);
       await expect(count).toHaveText('3 of 3');
       await expect.poll(() => markedSeg(P.title)).toBe(2);
-      await card.locator('.pg.next').click();
+      await expect(next).toHaveAttribute('aria-disabled', 'true');
+      await expect(prev).toHaveAttribute('aria-disabled', 'false');
+      await next.click({ force: true });                                     // dimmed, so as a finger taps it
+      await later(300);
+      await expect(title).toHaveText(A.title);
+      await expect(count).toHaveText('3 of 3');
+      await prev.click();
       await expect(title).toHaveText(C.title);
       await expect(count).toHaveText('2 of 3');
       await expect.poll(() => markedSeg(P.title)).toBe(1);
-      await card.locator('.pg.prev').click();
-      await expect(title).toHaveText(A.title);
-      // And by a plain swipe on the card, either way, on the step line or its title; neither opens the task.
-      await swipeOn(stepLine(P.title), -120);
+      await prev.click({ force: true });
+      await later(300);
       await expect(title).toHaveText(C.title);
-      await swipeOn(`${cardOf(P.title)} > .card-head`, 120);
+      // Scrubbed: a finger dragged along its strip shows the step under it as it goes, the done one skipped, and it stays
+      // where it's let go, which a screen reader hears; over the done one's segment, the open one nearest.
+      if (JSON.stringify(await scrub(P.title, 0, 2)) !== '["2 of 3","3 of 3"]') throw new Error('scrubbed along, it showed: ' + JSON.stringify(await scrub(P.title, 0, 2)));
       await expect(title).toHaveText(A.title);
-      await swipeOn(stepLine(P.title), -20);                                   // not far enough: it stays
-      await expect(title).toHaveText(A.title);
+      await expect(page.locator('#said')).toHaveText(`Step 3 of 3: ${A.title}`);
+      await expect.poll(() => markedSeg(P.title)).toBe(2);
+      await scrub(P.title, 2, 0);
+      await expect(title).toHaveText(C.title);
+      await expect(count).toHaveText('2 of 3');
+      // A plain swipe on the step line or its heading pages nothing, nor opens the task.
+      await swipeOn(stepLine(P.title), -120);
+      await later(300);
+      await expect(title).toHaveText(C.title);
+      await swipeOn(`${cardOf(P.title)} > .card-head`, -120);
+      await later(300);
+      await expect(title).toHaveText(C.title);
       if (await page.isVisible('#sheet')) throw new Error('a swipe opened the task');
       // Leaving Today puts it back on its next step.
+      await next.click();
+      await expect(title).toHaveText(A.title);
       await page.click('nav.tabs a[data-tab=projects]');
       await page.click('nav.tabs a[data-tab=today]');
       await expect(title).toHaveText(C.title);
@@ -2467,7 +2499,8 @@ ${footName('Hooks')}`);
   });
 
   // Past 12 steps, its line has a tick at each step, each step's stretch filled by whether its own step is done (the
-  // 2nd and 9th of 14 here), too narrow to tap: a tap there pages nothing; its arrows still do, past the done ones.
+  // 2nd and 9th of 14 here), too narrow to tap: a tap there pages nothing; its arrows still do, past the done ones, and
+  // a finger dragged along it.
   await step('a-card-past-12-steps-pages-by-its-arrows-not-its-segments', async () => {
     const P = await make(`Pocket smoke long card ${stamp}`, { due_date: todayAt(23) }), kids = [];
     for (let i = 1; i <= 14; i++) kids.push(await make(`Pocket smoke long card step ${i} ${stamp}`, { done: i === 2 || i === 9 }));
@@ -2486,12 +2519,18 @@ ${footName('Hooks')}`);
       await expect(count).toHaveText('1 of 14');
       await expect(title).toHaveText(kids[0].title);
       if (await page.isVisible('#sheet')) throw new Error('a tap on its line opened the task');
+      await expect(card.locator('.pg.prev')).toHaveAttribute('aria-disabled', 'true');
       await card.locator('.pg.next').click();
       await expect(count).toHaveText('3 of 14');
       await expect(title).toHaveText(kids[2].title);
       await card.locator('.pg.prev').click();
       await expect(count).toHaveText('1 of 14');
       await expect(title).toHaveText(kids[0].title);
+      // Scrubbed along it, a drag rather than a tap, it goes step by step, the done ones skipped, to the last.
+      const seen = await scrub(P.title, 0, 13);
+      if (seen.includes('2 of 14') || seen.includes('9 of 14') || seen.at(-1) !== '14 of 14' || seen.length !== 12) throw new Error('scrubbed along, it showed: ' + JSON.stringify(seen));
+      await expect(title).toHaveText(kids[13].title);
+      await expect(card.locator('.pg.next')).toHaveAttribute('aria-disabled', 'true');
     } finally { for (const t of [...kids, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
