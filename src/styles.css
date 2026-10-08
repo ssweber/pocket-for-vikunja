@@ -102,8 +102,8 @@ nav.tabs.icons a:not([aria-current=page]) .lbl{position:absolute;width:1px;heigh
 .page-title{display:flex;align-items:center;gap:6px;margin:6px 0 0 -8px}
 .page-title .t{flex:1;min-width:0}
 .page-title .kicker{color:var(--muted);font-size:14px;font-weight:600}
-.page-title h2{margin:0;font-size:28px;line-height:1.15;letter-spacing:-.02em;font-weight:800;overflow-wrap:anywhere}
-.page-title h2.run{font-size:20px;line-height:1.25;letter-spacing:-.01em;font-weight:750}
+/* the same size and weight as a section's heading: the screen says where you are, it needn't shout it */
+.page-title h2{margin:0;font-size:15px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}
 .icon-btn{width:40px;height:40px;border-radius:20px;border:0;background:var(--surface);display:grid;place-items:center;color:var(--ink);flex:none}
 .icon-btn.plain{background:transparent}
 main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}

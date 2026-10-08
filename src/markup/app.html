@@ -27,7 +27,7 @@
   <main id="view" aria-live="polite" :aria-busy="view.updating ? 'true' : null">
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title">
       <button id="btn-back" class="icon-btn plain" :aria-label="'Back to ' + backName" @click="route.name === 'run' ? leaveRun() : back(projectFrom || '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
-      <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" :class="{run: route.name === 'run'}" x-text="head.title"></h2></div>
+      <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div>
       <!-- The project's own sheet: where it's used for checklists -->
       <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
       <template x-if="route.name === 'run' && view.run"><button id="btn-run-more" class="icon-btn plain" aria-label="Run options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
