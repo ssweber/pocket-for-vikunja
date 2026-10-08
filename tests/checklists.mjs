@@ -713,6 +713,47 @@ try {
     }
   });
 
+  /* "+ me" only where someone else could take it (one-concept-plan, part 4): a run in a project no one else can see has
+     no slots, on its steps or its card, nor your picture on a step of yours, and a slide claims nothing. Who can see
+     each project is loaded as Pocket's signed in, and kept. (Someone else's picture still showing there is smoke.mjs's:
+     unsharing a project takes its people off its tasks.) */
+  if (other) await step('a-run-only-you-can-see-has-no-slots', async () => {
+    const row = '#run-steps .row:nth-of-type(3)', id = (await runStep(first.id, 2)).id;          // the open one, on the card
+    const people = async () => ((await task(id)).assignees || []).map(u => u.id), assign = u => api(`/tasks/${id}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: u }) });
+    await assign(me.id);
+    await api(`/projects/${project.id}/users/${encodeURIComponent(OTHER)}`, { method: 'DELETE' });
+    try {
+      await page.reload();                                                   // signed in again: who can see it, loaded
+      await page.waitForSelector(`${row}:not(.done)`, { timeout: 15000 });
+      await expect(page.locator(`${row} .claim`), 'your picture shows, in a project only you can see').toHaveCount(0, { timeout: 20000 });
+      await expect(page.locator('#step-card .claim'), 'the card has a slot').toHaveCount(0);
+      // No one on it: no "+ me", and a slide sets its progress and claims nothing.
+      await api(`/tasks/${id}/assignees/${me.id}`, { method: 'DELETE' });
+      await page.reload();
+      await page.waitForSelector(`${row}:not(.done)`, { timeout: 15000 });
+      await expect(page.locator(`${row} .claim`), '"+ me" in a project only you can see').toHaveCount(0);
+      await expect(page.locator('#step-card .claim')).toHaveCount(0);
+      await page.locator(row).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await later(450);                                                      // the hold's timer is the page's
+      for (let i = 0; !await page.$(`${row}.setting`); i++) { if (i > 40) throw new Error('the hold never began'); await new Promise(r => setTimeout(r, 50)); }
+      await page.mouse.move(x + (page.viewportSize().width - 48 - x) * .3, y, { steps: 10 });
+      const shown = await page.$(`${row} .claim`);
+      await page.mouse.up();
+      if (shown) throw new Error('a slide put someone on it');
+      await until('its progress never reached Vikunja', async () => Math.round((await task(id)).percent_done * 100) > 0);
+      await synced(page);
+      if ((await people()).length) throw new Error('a slide claimed it: ' + JSON.stringify(await people()));
+    } finally {
+      await api(`/projects/${project.id}/users`, { method: 'POST', body: JSON.stringify({ username: OTHER, permission: 1 }) });
+      await api(`/tasks/${id}/assignees/${me.id}`, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + id, { method: 'PATCH', body: JSON.stringify({ percent_done: 0 }) });
+      await page.reload();
+      await page.waitForSelector(`${row} .claim .me`, { timeout: 20000 });
+    }
+  });
+
   await step('today-shows-your-run-as-a-card', async () => {
     await page.click('nav.tabs a[data-tab=today]');
     // A card: the run's name and who it's for, over its next step, with that step's countdown; its steps aren't rows of

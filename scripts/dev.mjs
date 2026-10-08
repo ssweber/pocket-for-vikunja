@@ -91,11 +91,14 @@ if (!/pocket: serving/.test(logs.stdout + logs.stderr) || !/pocket: step times o
 const info = await (await fetch(BASE + '/api/v2/info')).json();
 if (!info.auth?.openid_connect?.providers?.length) throw new Error('Vikunja does not offer the mock sign-on provider; see: docker logs ' + NAME);
 
-// Two users and a project they share, so @assignee can be tried.
-for (const u of ['dev', 'bob']) await call('POST', '/register', { username: u, email: `${u}@example.com`, password: `${u}-password` });
+// Two users and a project they share, so @assignee can be tried. And dev's default project shared with a third, carol:
+// a task's "+ me" shows only where someone else could take it, and the tests claim tasks there (smoke.mjs).
+for (const u of ['dev', 'bob', 'carol']) await call('POST', '/register', { username: u, email: `${u}@example.com`, password: `${u}-password` });
 const { token } = await call('POST', '/login', { username: 'dev', password: 'dev-password' });
 const team = await call('POST', '/projects', { title: 'Team' }, token);
 await call('POST', `/projects/${team.id}/users`, { username: 'bob', permission: 1 }, token);
+const { settings } = await call('GET', '/user', undefined, token);
+await call('POST', `/projects/${settings.default_project_id}/users`, { username: 'carol', permission: 1 }, token);
 
 console.log(`Vikunja ${VERSION}: ${BASE}  (on ${SQLITE ? 'SQLite' : 'Postgres'}; sign in as dev / dev-password, or with Mock SSO)`);
 console.log(`Pocket:        ${BASE}/api/v1/plugins/pocket/`);

@@ -253,13 +253,16 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click('#btn-refresh');
     await page.waitForSelector('#btn-refresh:not([disabled])');
-    // On Today, one line (motion-and-rows-plan, section 9): its priority the tick's ring, when it's due, short, and its
-    // project's dot at the right of its title; no labels or counts, which a screen reader doesn't need either, but its
-    // priority, when it's due in words and its project it hears.
+    // On Today, one line (motion-and-rows-plan, section 9): its priority's bars, small, before when it's due, short, and
+    // its project's dot at the right of its title (one-concept-plan, part 4: its tick's ring isn't its priority); no
+    // labels or counts, which a screen reader doesn't need either, but its priority, when it's due in words and its
+    // project it hears.
     const R = page.locator(row);
     await expect(R).toHaveClass(/\bone-line\b/);
-    await expect(R.locator('> .check')).toHaveClass(/\bp3\b/);
-    await expect(R.locator('.when .due')).toHaveText(/\S/);
+    await expect(R.locator('.when > .bars.p3 ~ .due')).toHaveText(/\S/);
+    const ring = await R.locator('> .check').evaluate(el => getComputedStyle(el).borderTopColor);
+    const plain = await page.evaluate(() => { const b = document.createElement('button'); b.className = 'check'; document.body.append(b); const c = getComputedStyle(b).borderTopColor; b.remove(); return c; });
+    if (ring !== plain) throw new Error(`its tick's ring is coloured ${ring}, not ${plain}`);
     await expect(R.locator('.when .dot')).toHaveCount(1);
     await expect(R.locator('.meta')).toHaveCount(0);
     const said = await R.locator('.title .sr').allTextContents();
@@ -300,6 +303,8 @@ try {
     if (!await titleBox.evaluate(el => el.isConnected)) throw new Error('saving rebuilt the sheet');
     const shown = await page.textContent('.prio-pick');
     if (await page.inputValue('#d-prio') !== '1' || !shown.includes('Low')) throw new Error('priority shows ' + shown.trim());
+    // Its bars say it; the tick's ring doesn't (one-concept-plan, part 4).
+    if (/\bp\d\b/.test(await page.getAttribute('#d-done', 'class'))) throw new Error("the sheet's tick has its priority: " + await page.getAttribute('#d-done', 'class'));
   });
   await page.screenshot({ path: `${OUT}/sheet.png` });
   await step('save-keeps-changes-made-elsewhere', async () => {
@@ -1130,6 +1135,51 @@ try {
       if (await page.locator(chip).count()) throw new Error("someone else's task shows you in Assigned");
       await close();
     } finally { for (const t of [a, b].filter(Boolean)) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* "+ me" only where someone else could take it (one-concept-plan, part 4): on a project no one else can see, no slot,
+     nor your own picture, while someone given it in a shared project, then moved there, still shows; and a slide claims nothing. Who can
+     see each project is loaded in the background once signed in, and kept. And under Today's heading, a row due today
+     with no time shows no time ("Today" says nothing new there); its project's list still says Today. */
+  await step('a-project-only-you-can-see-has-no-me', async () => {
+    const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeAlone${stamp}` }) })).json();
+    createdProjects.push(proj.id);
+    const me = await (await api('/user')).json();
+    const free = await make(`Pocket smoke alone free ${stamp}`, { due_date: todayAt(21) }, proj.id), mine = await make(`Pocket smoke alone mine ${stamp}`, { due_date: todayAt(21) }, proj.id);
+    const day = await make(`Pocket smoke alone day ${stamp}`, { due_date: todayAt(0) }, proj.id);
+    await api(`/tasks/${mine.id}/assignees`, { method: 'POST', headers: json, body: JSON.stringify({ user_id: me.id }) });
+    // Someone else's, given it in a project shared with them, then moved here: Vikunja keeps them on it (unsharing a
+    // project takes its people off its tasks instead).
+    let theirs = null, other = null;
+    const team = ASSIGNEE && projects2.find(p => p.title === ASSIGNEE_PROJECT);
+    if (team) {
+      other = ((await (await api(`/projects/${team.id}/users/search`)).json()).items || []).find(u => u.username === ASSIGNEE);
+      theirs = await make(`Pocket smoke alone theirs ${stamp}`, { due_date: todayAt(21) }, team.id);
+      await api(`/tasks/${theirs.id}/assignees`, { method: 'POST', headers: json, body: JSON.stringify({ user_id: other.id }) });
+      await api(`/tasks/${theirs.id}`, { method: 'PATCH', headers: json, body: JSON.stringify({ project_id: proj.id }) });
+    }
+    const people = async id => ((await get(id)).assignees || []).map(u => u.id), pct = async id => Math.round((await get(id)).percent_done * 100);
+    const F = rowOf(free.title), M = rowOf(mine.title), D = rowOf(day.title);
+    await toastGone();
+    await page.evaluate(() => { location.hash = '#/today'; });
+    await page.reload();                                                     // signed in again: who can see each project, loaded
+    await expect(page.locator(F)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(`${F} .claim`), 'a project only you can see has "+ me"').toHaveCount(0, { timeout: 20000 });
+    await expect(page.locator(`${M} .claim`), 'your own picture shows on a project only you can see').toHaveCount(0);
+    if (theirs) await expect(page.locator(`${rowOf(theirs.title)} .claim[aria-disabled=true] .av`), 'someone else given it isn\'t shown').toBeVisible();
+    // Under Today: no time, nothing at its right but its project's dot; its project's list says Today.
+    await expect(page.locator(`.sec.today ~ .list ${D} .when .dot`)).toHaveCount(1);
+    await expect(page.locator(`${D} .when .due`)).toHaveCount(0);
+    // Slid, its progress is set, and no one's on it.
+    await page.locator(F).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await slideProgress(F, 25, async () => { if (await page.$(`${F} .claim`)) throw new Error('a slide put someone on it'); });
+    await expect(page.locator('#said')).toHaveText(`Progress of ${free.title} set to 25%`);
+    await synced(page);
+    if (await pct(free.id) !== 25) throw new Error('progress saved ' + await pct(free.id));
+    if ((await people(free.id)).length) throw new Error('a slide claimed it: ' + JSON.stringify(await people(free.id)));
+    if (theirs && JSON.stringify(await people(theirs.id)) !== JSON.stringify([other.id])) throw new Error('moved, it lost its assignee');
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
+    await expect(page.locator(`#view ${D} .meta .due`)).toHaveText('Today', { timeout: 15000 });
+    await page.evaluate(() => { location.hash = '#/today'; });
   });
   /* The one-time hint (motion-and-rows-plan, section 8), on a phone that's never slid a row: on the first row that
      takes a slide, drawn with it, so no row moves as it comes, nor as it goes (it fades, keeping its space). A tap puts
