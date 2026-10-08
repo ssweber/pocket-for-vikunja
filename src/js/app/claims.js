@@ -61,12 +61,15 @@ export default {
   },
   /* A row's slot for who's doing it: in a sheet (g.sheet), its subtask's; on a run's screen (g.run), its step's, until
      it's done (then its row shows who did it); in a list, the task's own, from its assignees. None on a row waiting to
-     be sent, a run (its row says who it's for), or a template that comes round. */
+     be sent, a run (its row says who it's for), or a template that comes round. A row ticked or opened again in a list,
+     waiting for the batch (leaving.js), keeps the slot it had, so its title doesn't move; it can't be tapped meanwhile. */
   rowSlot(t, g){
     if (g.run) return t.done ? null : t.slot;
     if (g.sheet) return this.subSlots[t.id] || null;
     if (t.pending || this.isRunTask(t) || (this.checklistIds.has(t.project_id) && hasTemplateLabel(t))) return null;
-    return this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t));
+    const mark = this.leaving[t.id], was = mark === 'done' ? false : mark === 'open' ? true : t.done;
+    const slot = this.claimSlot(t, this.peopleOf(t.id, t.assignees), was, this.stepRun(t));
+    return slot && was !== t.done ? {...slot, can: false, label: (t.done ? 'Done: ' : 'Not done: ') + t.title} : slot;
   },
   // The open task's subtasks' slots, by id.
   get subSlots(){

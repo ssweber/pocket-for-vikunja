@@ -99,15 +99,16 @@ try {
     await old.waitForSelector(row, { timeout: 15000 });
     await old.close();
   });
-  await step('tick-in-list-and-undo', async () => {
-    // Ticked off the list, its row is a line saying so, with its Undo, in its place.
+  await step('tick-in-list-and-tick-again', async () => {
+    // Ticked, its row stays where it is, done, until the rows ticked leave together; its tick again opens it.
     await page.click(`${row} .check`);
-    await page.waitForSelector(`${row}.lined .row-line:has-text("Done:")`, { timeout: 10000 });
+    await expect(page.locator(row)).toHaveClass(/\bleaving\b/);
+    await expect(page.locator(row)).toHaveClass(/\bdone\b/);
     if (await page.$('#toast.show #toast-msg:has-text("Done")')) throw new Error('a tick in a list said: ' + await page.textContent('#toast-msg'));
     if (!(await page.textContent('#said')).startsWith('Done: ' + title)) throw new Error('a screen reader hears: ' + await page.textContent('#said'));
-    await page.click(`${row} .line-act`);
-    await page.waitForSelector(`${row}:not(.lined)`, { timeout: 15000 });
-    if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after undo');
+    await page.click(`${row} .check`);
+    await expect(page.locator(row)).not.toHaveClass(/\bleaving\b/);
+    if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after its tick again');
   });
   /* How far right a finger at x slides to go from `from`% to `to`%: the room to the screen's edge is the rest of the way
      to 100%, 48px short of it (holdToSlide's EDGE). */
@@ -158,15 +159,15 @@ try {
     if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
     if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('moved down, it saved ' + (await apiTask()).percent_done);
   });
-  await step('progress-100-marks-done-and-undo', async () => {
+  await step('progress-100-marks-done-and-tick-again', async () => {
+    // Done, with its progress as it was (only `done` is sent), so marked not done it's back at 50%.
+    const sent = page.waitForRequest(r => r.method() === 'PATCH' && /\/tasks\/\d+$/.test(r.url()) && JSON.parse(r.postData() || '{}').done === true);
     await slideProgress(row, 100, null, 50);                               // from 50%, to the edge: 100%
-    await page.waitForSelector(`${row}.lined`, { timeout: 10000 });
-    // Done, with its progress as it was, so marked not done it's back at 50%.
-    await synced(page);
-    if (!(await apiTask()).done) throw new Error('100% never marked it done');
-    if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('done saved percent_done ' + (await apiTask()).percent_done);
-    await page.click(`${row} .line-act`);
-    await page.waitForSelector(`${row}:not(.lined)`, { timeout: 15000 });
+    const body = JSON.parse((await sent).postData());
+    if ('percent_done' in body) throw new Error('done sent ' + JSON.stringify(body));
+    await page.waitForSelector(`${row}.leaving.done`, { timeout: 10000 });
+    await page.click(`${row} .check`);
+    await page.waitForSelector(`${row}:not(.leaving)`, { timeout: 15000 });
     await synced(page);
     const t = await apiTask();
     if (t.done || Math.round(t.percent_done * 100) !== 50) throw new Error(`after undo: done ${t.done}, percent_done ${t.percent_done}`);
@@ -537,16 +538,17 @@ try {
     await page.waitForSelector(`div:has(> .sec:has-text("Next 7 days")) .row .title:has-text("${parentTitle}")`, { timeout: 15000 });
   });
   await step('done-closes-its-subtasks', async () => {
-    // Ticking a parent ticks its open subtasks too; Undo opens them all again, and not the one done before.
+    // Ticking a parent ticks its open subtasks too; its tick again opens them all again, and not the one done before.
     const parent = ((await (await api('/tasks?q=' + encodeURIComponent(parentTitle))).json()).items || []).find(x => x.title === parentTitle);
     const subs = async () => (await (await api('/tasks/' + parent.id)).json()).related_tasks?.subtask || [];
     const open = (await subs()).filter(s => !s.done).map(s => s.id);
     if (open.length !== 3) throw new Error('open subtasks before: ' + open.length);
     const parentRow = `.row:has(> .body .title:has-text("${parentTitle}"))`;
     await page.click(`${parentRow} > .check`);
-    await expect(page.locator(`${parentRow}.lined .row-line`)).toContainText(`Closed ${parentTitle} + 3 subtasks`, { timeout: 20000 });
+    await expect(page.locator('#said')).toHaveText(`Closed ${parentTitle} + 3 subtasks`, { timeout: 20000 });
+    await expect(page.locator(parentRow)).toHaveClass(/\bleaving\b/);
     if ((await subs()).some(s => !s.done)) throw new Error('a subtask is still open');
-    await page.click(`${parentRow} .line-act`);
+    await page.click(`${parentRow} > .check`);
     await synced(page);
     const after = await subs();
     if (JSON.stringify(after.filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify([...open].sort())) throw new Error('open after undo: ' + JSON.stringify(after.map(s => [s.title, s.done])));
@@ -671,28 +673,80 @@ try {
     await page.evaluate(() => document.activeElement?.blur());
   });
 
-  await step('two-ticks-each-keep-their-undo', async () => {
-    const a = await make(`Pocket smoke tick A ${stamp}`, { due_date: todayAt(23) }), b = await make(`Pocket smoke tick B ${stamp}`, { due_date: todayAt(23) });
-    const A = rowOf(a.title), B = rowOf(b.title);
-    await toastGone();
-    await refreshToday();
-    await tick(a.title);
-    await expect(page.locator(A)).toHaveClass(/lined/);
-    await tick(b.title);
-    await expect(page.locator(B)).toHaveClass(/lined/);
-    // Each its own line: A's Undo opens A only.
-    await page.locator(A).getByRole('button', { name: 'Undo' }).click();
-    await expect(page.locator(A)).not.toHaveClass(/lined/);
-    await synced(page);
-    if ((await get(a.id)).done || !(await get(b.id)).done) throw new Error(`after A's Undo: A done ${(await get(a.id)).done}, B done ${(await get(b.id)).done}`);
-    // B's folds away once its time is up.
-    await later(5000);
-    await page.waitForSelector(B, { state: 'detached', timeout: 5000 });
-    if (!await page.$(`${A}:not(.lined)`)) throw new Error('A went too');
+  /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger
+     lifts; then they leave together, the rows below closing up once. A finger down holds them. */
+  // Watches rows `ids` as they go: the heights each is drawn at (to see it fold), and which change took it off the
+  // page, so rows that went together went in the same one. Read with gone().
+  const watchGoing = ids => page.evaluate(ids => {
+    const w = window.__going = { heights: {}, gone: {}, n: 0 };
+    const ro = new ResizeObserver(es => { for (const e of es) (w.heights[e.target.dataset.id] ||= []).push(Math.round(e.target.getBoundingClientRect().height)); });
+    for (const id of ids) for (const el of document.querySelectorAll(`#view .row[data-id="${id}"]`)) ro.observe(el);
+    new MutationObserver(rs => { w.n++; for (const r of rs) for (const el of r.removedNodes) if (el.dataset?.id) w.gone[el.dataset.id] ??= w.n; })
+      .observe(document.getElementById('view'), { childList: true, subtree: true });
+  }, ids.map(String));
+  const gone = () => page.evaluate(() => window.__going);
+  await step('ticks-stay-in-place-then-leave-together', async () => {
+    const [a, b, c] = await Promise.all(['A', 'B', 'C'].map(n => make(`Pocket smoke tick ${n} ${stamp}`, { due_date: todayAt(23) })));
+    const A = rowOf(a.title), B = rowOf(b.title), C = rowOf(c.title), heights = () => Promise.all([A, B, C].map(r => page.locator(r).evaluate(el => el.offsetHeight)));
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(C)).toBeVisible();
+      const before = await heights();
+      await tick(a.title);
+      await tick(b.title);
+      await tick(c.title);
+      for (const r of [A, B, C]) await expect(page.locator(r)).toHaveClass(/\bleaving\b/);
+      await watchGoing([a.id, b.id]);
+      if (JSON.stringify(await heights()) !== JSON.stringify(before)) throw new Error(`heights ${before} became ${await heights()}`);
+      // A tap on a tick before they go opens it again, and it stays.
+      await page.getByRole('button', { name: 'Mark not done: ' + c.title, exact: true }).click();
+      await expect(page.locator(C)).not.toHaveClass(/\bleaving\b/);
+      // A finger down, anywhere, holds them; 3 seconds after it lifts, they go.
+      const sec = await page.locator('#view .sec').first().boundingBox();
+      await page.mouse.move(sec.x + 4, sec.y + sec.height / 2);
+      await page.mouse.down();
+      await later(6000);
+      await expect(page.locator(A)).toHaveCount(1);
+      await page.mouse.up();
+      await later(2800);
+      for (const r of [A, B]) await expect(page.locator(r)).toHaveClass(/\bleaving\b/);
+      if (JSON.stringify(await heights()) !== JSON.stringify(before)) throw new Error(`while waiting, heights ${before} became ${await heights()}`);
+      await later(300);
+      await expect(page.locator(A)).toHaveCount(0);
+      await expect(page.locator(B)).toHaveCount(0);
+      const w = await gone();
+      if (!w.gone[a.id] || w.gone[a.id] !== w.gone[b.id]) throw new Error('not taken off together: ' + JSON.stringify(w.gone));
+      if (!w.heights[a.id]?.some(h => h > 0 && h < before[0])) throw new Error('A never folded: ' + JSON.stringify(w.heights));
+      await expect(page.locator(C)).toBeVisible();
+      await synced(page);
+      if (!(await get(a.id)).done || !(await get(b.id)).done || (await get(c.id)).done) throw new Error('done in Vikunja: ' + [(await get(a.id)).done, (await get(b.id)).done, (await get(c.id)).done]);
+      // Open again for the search below.
+      await api('/tasks/' + a.id, { method: 'PATCH', headers: json, body: JSON.stringify({ done: false }) });
+    } finally { for (const t of [b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  await step('with-less-motion-rows-ticked-go-without-folding', async () => {
+    const d = await make(`Pocket smoke tick D ${stamp}`, { due_date: todayAt(23) }), D = rowOf(d.title);
+    try {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await refreshToday();
+      await tick(d.title);
+      await expect(page.locator(D)).toHaveClass(/\bleaving\b/);
+      const full = await page.locator(D).evaluate(el => el.offsetHeight);
+      await watchGoing([d.id]);
+      await later(3000);
+      await expect(page.locator(D)).toHaveCount(0);
+      const w = await gone();
+      if (w.heights[d.id]?.some(h => h > 0 && h < full - 1)) throw new Error('it folded: ' + JSON.stringify(w.heights[d.id]));
+    } finally {
+      await page.emulateMedia({ reducedMotion: null });
+      await api('/tasks/' + d.id, { method: 'DELETE' });
+    }
   });
 
-  /* Every row has who's doing it at its end, as a subtask in a sheet does; a subtask's tick shows on its row, which stays;
-     a row swiped left shows its Delete, which deletes with an Undo, and only once the Undo has gone. */
+  /* Every row has who's doing it at its end, as a subtask in a sheet does; a subtask's tick shows on its row, which stays
+     until the batch clears; a row swiped left shows its Delete, which leaves the row dimmed, with Restore, and deletes
+     only once the batch clears. */
   const swipe = async (sel, from = 200, by = -100) => {
     await page.locator(sel).scrollIntoViewIfNeeded();                       // once a sheet has slid in
     await page.$eval(sel, el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));    // and clear of the header
@@ -734,11 +788,27 @@ try {
       await expect(page.locator(K)).toHaveClass(/\bdone\b/);
       await synced(page);
       if (!(await get(k.id)).done) throw new Error('never done');
-      await later(900);                                                      // when a row would have slid away
-      await expect(page.locator(K)).toHaveClass(/\bdone\b/);
       if (await page.$('#toast.show')) throw new Error('a subtask\'s tick said: ' + await page.textContent('#toast-msg'));
       await page.getByRole('button', { name: 'Mark not done: ' + k.title, exact: true }).click();
       await expect(page.locator(K)).not.toHaveClass(/\bdone\b/);
+      // Three zones, each the row's full height and at least 48px across: its tick, the whole left gutter (a subtask's
+      // from the row's edge); its title, which opens it; who's doing it, at its end.
+      for (const R of [P, K]) {
+        await page.$eval(R, el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        const zones = await page.$eval(R, el => {
+          const r = el.getBoundingClientRect(), at = (x, y) => document.elementFromPoint(r.left + x, r.top + y)?.closest('button');
+          const name = b => b?.matches('.check') ? 'tick' : b?.matches('.body') ? 'title' : b?.matches('.claim') ? 'slot' : String(b?.className);
+          const body = el.querySelector(':scope > .body').getBoundingClientRect(), slot = el.querySelector(':scope > .claim').getBoundingClientRect();
+          // (8px in from the row's corners, which a list's rounded corners clip)
+          const xs = { tick: [8, body.left - r.left - 1], title: [body.left - r.left + 1, slot.left - r.left - 1], slot: [slot.left - r.left + 1, r.width - 8] };
+          const out = { widths: { tick: body.left - r.left, slot: slot.width }, wrong: [] };
+          for (const [want, [x0, x1]] of Object.entries(xs)) for (const x of [x0, (x0 + x1) / 2, x1]) for (const y of [8, r.height / 2, r.height - 8])
+            if (name(at(x, y)) !== want) out.wrong.push(`${want} at ${Math.round(x)},${Math.round(y)}: ${name(at(x, y))}`);
+          return out;
+        });
+        if (zones.wrong.length) throw new Error('taps land elsewhere: ' + zones.wrong.join('; '));
+        if (zones.widths.tick < 48 || zones.widths.slot < 48) throw new Error('a zone under 48px: ' + JSON.stringify(zones.widths));
+      }
       // Not from the screen's edge, where the phone's Back starts; tapped elsewhere, an open row shuts.
       await swipe(K, 370);
       if (await page.$(`${K}.swiped`)) throw new Error('a swipe from the edge opened the row');
@@ -747,15 +817,22 @@ try {
       await page.click('#view .sec .n >> nth=0');                              // anything else, tapped
       await page.waitForSelector(`${P}.swiped`, { state: 'detached' });
       if (await page.isVisible('#sheet')) throw new Error('shutting the row opened a task');
-      // Delete: a line in its place at once, with its Undo, and nothing sent until it folds.
+      // Delete: dimmed where it is, at its height, with Restore where "+ me" was, and nothing sent; a tap anywhere on it
+      // restores it.
+      const kh = await page.locator(K).evaluate(el => el.offsetHeight);
       await swipe(K);
       await tapDelete(K);
-      await expect(page.locator(`${K}.lined .row-line`)).toContainText('Deleted');
+      await expect(page.locator(K)).toHaveClass(/\bdeleted\b/);
+      await expect(page.locator(K).getByRole('button', { name: 'Restore ' + k.title })).toBeVisible();
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${k.title}. Restore is on the row`);
       if (await page.$('#toast.show')) throw new Error('deleting said: ' + await page.textContent('#toast-msg'));
-      await page.locator(K).getByRole('button', { name: 'Undo' }).click();
-      await expect(page.locator(K)).not.toHaveClass(/lined/);
+      if (await page.locator(K).evaluate(el => el.offsetHeight) !== kh) throw new Error('its height changed');
+      if (!await get(k.id)) throw new Error('sent while it can be restored');
+      await page.locator(`${K} > .body`).click();
+      await expect(page.locator(K)).not.toHaveClass(/\bdeleted\b/);
+      if (await page.isVisible('#sheet')) throw new Error('restoring it opened the task');
       await synced(page);
-      if (!await get(k.id)) throw new Error('Undo didn\'t keep it');
+      if (!await get(k.id)) throw new Error('Restore didn\'t keep it');
       // A full swipe: past half the row, the Delete fills it; back under half before letting go, it's only open.
       await page.locator(K).scrollIntoViewIfNeeded();
       await page.$eval(K, el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
@@ -768,14 +845,14 @@ try {
       if (await page.$(`${K}.swipe-full`)) throw new Error('back under half, the Delete still filled the row');
       await page.mouse.up();
       await page.waitForSelector(`${K}.swiped`);
-      if (await page.$(`${K}.lined`)) throw new Error('backed off, it was deleted');
-      // Carried on from there past half, and let go: deleted, for good once its line has folded.
+      if (await page.$(`${K}.deleted`)) throw new Error('backed off, it was deleted');
+      // Carried on from there past half, and let go: deleted, for good once the batch clears.
       await page.mouse.move(250, ky); await page.mouse.down();
       await page.mouse.move(90, ky + 3, { steps: 10 });
       await page.mouse.up();
-      await page.waitForSelector(`${K}.lined .row-line:has-text("Deleted")`);
-      if (!await get(k.id)) throw new Error('deleted while its Undo showed');
-      await later(5000);
+      await page.waitForSelector(`${K}.deleted`);
+      if (!await get(k.id)) throw new Error('deleted while it could be restored');
+      await later(3000);
       await expect(page.locator(K)).toHaveCount(0);
       await synced(page);
       if (await get(k.id)) throw new Error('never deleted');
@@ -784,7 +861,7 @@ try {
       for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
-  await step('a-subtask-swiped-in-its-sheet-deletes-with-an-undo', async () => {
+  await step('a-subtask-swiped-in-its-sheet-is-restored-from-its-row', async () => {
     const p = await make(`Pocket smoke sheet parent ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke sheet kid ${stamp}`);
     await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
     const K = `#d-subtasks > .row:has(.title:text-is("${k.title}"))`;
@@ -796,17 +873,18 @@ try {
       await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // slid in
       await swipe(K);
       await tapDelete(K);
-      await page.waitForSelector(`${K}.lined`);
+      await page.waitForSelector(`${K}.deleted`);
       if (!await page.isVisible('#sheet')) throw new Error('the sheet closed');
-      await page.click(`${K} .line-act`);
-      await page.waitForSelector(`${K}:not(.lined)`);
-      if (!await get(k.id)) throw new Error('Undo didn\'t keep it');
-      // Its ⋯ deletes the task, with its subtask, after asking: the line is in its row's place in the list.
+      await page.getByRole('button', { name: 'Restore ' + k.title }).click();
+      await page.waitForSelector(`${K}:not(.deleted)`);
+      if (!await get(k.id)) throw new Error('Restore didn\'t keep it');
+      // Its ⋯ deletes the task, with its subtask, after asking: its row in the list is dimmed, with Restore.
       await page.click('#d-more');
       await page.click('#d-delete');
       await page.waitForSelector('#sheet', { state: 'hidden' });
-      await page.waitForSelector(`${rowOf(p.title)}.lined .row-line:has-text("+ 1 subtask")`);
-      await later(5000);
+      await page.waitForSelector(`${rowOf(p.title)}.deleted`);
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is on the row`);
+      await later(3000);
       await expect(page.locator(rowOf(p.title))).toHaveCount(0);
       await synced(page);
       if (await get(k.id) || await get(p.id)) throw new Error('never deleted');
@@ -814,6 +892,24 @@ try {
       if (await page.isVisible('#sheet')) await page.click('#btn-sheet-close');
       for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
+  });
+
+  await step('leaving-the-screen-sends-a-deletion-at-once', async () => {
+    // Deleted, then another tab tapped before the batch clears: it's sent then, not left waiting.
+    const x = await make(`Pocket smoke leave ${stamp}`, { due_date: todayAt(23) }), X = rowOf(x.title);
+    try {
+      await toastGone();
+      await refreshToday();
+      await swipe(X, 330, -260);
+      await page.waitForSelector(`${X}.deleted`);
+      await page.click('nav.tabs a[data-tab=projects]');
+      await page.waitForFunction(() => location.hash === '#/projects');
+      await synced(page);
+      if (await get(x.id)) throw new Error('not sent on leaving the screen');
+      await page.click('nav.tabs a[data-tab=today]');
+      await loaded(page);
+      await expect(page.locator(X)).toHaveCount(0);
+    } finally { await api('/tasks/' + x.id, { method: 'DELETE' }); }
   });
 
   // A phone's keyboard covers the bottom of the page without making it shorter: here visualViewport says it's h tall.
@@ -1012,15 +1108,16 @@ try {
     await page.fill('#in-search', t);
     const open = `#view div:has(> .sec:has-text("Open")) ${rowOf(t)}`, done = `#view div:has(> .sec:has-text("Done")) ${rowOf(t)}`;
     await page.waitForSelector(open, { timeout: 10000 });
-    // A line where it was, with its Undo, as in a list; when it folds, the task is under Done.
+    // Done where it is, as in a list; when the batch clears, the task is under Done.
     await page.click(`${open} > .check`);
-    await expect(page.locator(`${open}.lined .row-line`)).toContainText('Done:');
+    await expect(page.locator(`${open}.leaving`)).toHaveClass(/\bdone\b/);
     await noToast(page);
-    await later(5000);
+    await later(3000);
     await page.waitForSelector(done, { timeout: 10000 });
     await page.click(`${done} > .check`);                                   // and back
-    await expect(page.locator(`${done}.lined .row-line`)).toContainText('Not done:');
-    await later(5000);
+    await expect(page.locator(`${done}.leaving`)).not.toHaveClass(/\bdone\b/);
+    await expect(page.locator('#said')).toHaveText('Not done: ' + t);
+    await later(3000);
     await page.waitForSelector(open, { timeout: 10000 });
     await page.click('#btn-search-cancel');
   });
@@ -1134,20 +1231,39 @@ try {
     await page.click('nav.tabs a[data-tab=today]');
   });
 
-  await step('repeating-tick-can-be-undone', async () => {
-    // Its dates and its reminder at a set time, which moved on with it, go back too.
+  await step('repeating-tick-shows-done-then-its-next-date', async () => {
+    // Shown done, with the date it had, until the batch clears; its tick before then puts its dates back, and its
+    // reminder at a set time, which moved on with it, too.
     const r = await make(`Pocket smoke repeat undo ${stamp}`, { due_date: todayAt(9), repeat_after: 86400, reminders: [{ reminder: todayAt(8) }] });
-    await toastGone();
-    await refreshToday();
-    await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
-    // On its row, which stays, with its next date.
-    await rowLine(page, 'Repeats · next').getByRole('button', { name: 'Undo' }).click();
-    await noToast(page);
-    const want = new Date(r.due_date).getTime();
-    await synced(page);
-    if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
-    const rem = (await get(r.id)).reminders?.[0]?.reminder;
-    if (new Date(rem).getTime() !== new Date(todayAt(8)).getTime()) throw new Error('reminder at ' + rem);
+    const R = page.locator(rowOf(r.title)), due = () => R.locator('.meta .due').textContent();
+    try {
+      await toastGone();
+      await refreshToday();
+      const was = await due();
+      await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
+      await expect(R).toHaveClass(/\bleaving\b/);
+      await expect(R).toHaveClass(/\bdone\b/);
+      await expect(page.locator('#said')).toContainText(`Done: ${r.title}. It repeats, next `);
+      if (await due() !== was) throw new Error(`its date changed to ${await due()} while it shows done`);
+      await page.click(`${rowOf(r.title)} > .check`);
+      await expect(R).not.toHaveClass(/\bleaving\b/);
+      await noToast(page);
+      const want = new Date(r.due_date).getTime();
+      await synced(page);
+      if (new Date((await get(r.id)).due_date).getTime() !== want) throw new Error('due ' + (await get(r.id)).due_date);
+      const rem = (await get(r.id)).reminders?.[0]?.reminder;
+      if (new Date(rem).getTime() !== new Date(todayAt(8)).getTime()) throw new Error('reminder at ' + rem);
+      // Left to the batch: back, open, with its next date.
+      await page.click(`${rowOf(r.title)} > .check`);
+      await expect(R).toHaveClass(/\bleaving\b/);
+      await later(3000);
+      await expect(R).not.toHaveClass(/\bleaving\b/);
+      await expect(R).not.toHaveClass(/\bdone\b/);
+      await synced(page);
+      const next = new Date((await get(r.id)).due_date).getTime();
+      if (next <= want) throw new Error('not moved on: due ' + (await get(r.id)).due_date);
+      if (await due() === was) throw new Error('its row still shows ' + was);
+    } finally { await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
   await step('a-repeating-subtask-keeps-its-date', async () => {
     // Ticking a parent leaves a subtask that repeats as it is: marked done, it would only move to its next date.
@@ -1157,7 +1273,7 @@ try {
       await toastGone();
       await refreshToday();
       await page.click(`${rowOf(parent.title)} > .check`, { timeout: 15000 });
-      await page.waitForSelector(`${rowOf(parent.title)}.lined`, { timeout: 20000 });
+      await page.waitForSelector(`${rowOf(parent.title)}.leaving`, { timeout: 20000 });
       const s = await get(sub.id);
       if (s.done || new Date(s.due_date).getTime() !== new Date(sub.due_date).getTime()) throw new Error(`subtask done ${s.done}, due ${s.due_date}`);
     } finally { for (const id of [sub.id, parent.id]) await api('/tasks/' + id, { method: 'DELETE' }); }
@@ -1172,7 +1288,7 @@ try {
       await refreshToday();
       await page.route(`**/api/v2/tasks/${r.id}`, lose);
       await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
-      await expect(rowLine(page, 'Repeats · next')).toBeVisible({ timeout: 20000 });
+      await expect(page.locator('#said')).toContainText(`Done: ${r.title}. It repeats, next `, { timeout: 20000 });
       const due = new Date((await get(r.id)).due_date).getTime();
       if (due !== new Date(r.due_date).getTime() + 864e5) throw new Error('due ' + (await get(r.id)).due_date);
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, lose); await api('/tasks/' + r.id, { method: 'DELETE' }); }
@@ -1192,7 +1308,7 @@ try {
       await noToast(page);
       await page.unroute(`**/api/v2/tasks/${r.id}`, cut);
       await line.getByRole('button', { name: 'Try again' }).click();
-      await expect(rowLine(page, 'Done:')).toContainText(r.title);
+      await expect(page.locator(`${rowOf(r.title)}.leaving`)).toHaveClass(/\bdone\b/);
       await synced(page);
       if (!(await get(r.id)).done) throw new Error('Try again did not tick it');
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
@@ -1364,22 +1480,23 @@ try {
     await expect(delta).toBeVisible({ timeout: 15000 });
     // Ticked to reopen it: back in the open list, and not done in Vikunja.
     await page.getByRole('button', { name: `Mark not done: Delta ${stamp}` }).click();
-    await expect(rowLine(page, 'Not done:')).toBeVisible();
-    await later(5000);
+    await expect(page.locator(`#view .row.leaving[data-id="${T.Delta.id}"]`)).not.toHaveClass(/\bdone\b/);
+    await later(3000);
     await expect(page.locator('#view .list').first().locator(`.row[data-id="${T.Delta.id}"]`)).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /^Done/ })).toHaveCount(0);           // nothing done any more
     await synced(page);
     if ((await (await api('/tasks/' + T.Delta.id)).json()).done) throw new Error('still done in Vikunja');
     // Ticked done again: off the open list, and counted in Done.
     await page.getByRole('button', { name: `Mark done: Delta ${stamp}` }).click();
-    await later(5000);
+    await expect(page.locator(`#view .row.leaving[data-id="${T.Delta.id}"]`)).toHaveClass(/\bdone\b/);
+    await later(3000);
     await expect(page.getByRole('button', { name: 'Done (1)' })).toBeVisible();
   });
-  /* A parent ticked closes its open subtasks with it, and says so: "Closed Echo + 2 subtasks". Its Undo opens those two
-     again, and not the one done before. */
+  /* A parent ticked closes its open subtasks with it, all shown done where they are, and says so: "Closed Echo + 2
+     subtasks". Its tick again opens those two again, and not the one done before. */
   const openList = () => page.locator('#view .list').first();
   const doneIn = async (...names) => Promise.all(names.map(async n => (await (await api('/tasks/' + order.tasks[n].id)).json()).done));
-  await step('a-parent-ticked-closes-its-open-subtasks-and-undo-opens-only-those', async () => {
+  await step('a-parent-ticked-closes-its-open-subtasks-and-its-tick-again-opens-only-those', async () => {
     const T = order.tasks, mk = async (name, extra = {}) => T[name] = await (await api(`/projects/${order.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: `${name} ${stamp}`, ...extra }) })).json();
     await mk('Echo');
     for (const s of ['echo one', 'echo two']) await mk(s);
@@ -1389,13 +1506,12 @@ try {
     await page.waitForSelector('#btn-refresh:not([disabled])');
     await expect(page.locator(rowById(T['echo two'].id))).toBeVisible();
     await openList().getByRole('button', { name: `Mark done: Echo ${stamp}`, exact: true }).click();
-    const line = rowLine(page, `Echo ${stamp}`);
-    await expect(line).toContainText(`Closed Echo ${stamp} + 2 subtasks`);
     await expect(page.locator('#said')).toContainText(`Closed Echo ${stamp} + 2 subtasks`);
+    for (const n of ['Echo', 'echo one', 'echo two']) await expect(page.locator(`${rowById(T[n].id)}.leaving`)).toHaveClass(/\bdone\b/);
     await synced(page);
     if (JSON.stringify(await doneIn('Echo', 'echo one', 'echo two')) !== '[true,true,true]') throw new Error('not all closed in Vikunja');
-    await line.getByRole('button', { name: 'Undo' }).click();
-    await expect(page.locator(rowById(T['echo one'].id))).toBeVisible();
+    await openList().getByRole('button', { name: `Mark not done: Echo ${stamp}`, exact: true }).click();
+    await expect(page.locator(rowById(T['echo one'].id))).not.toHaveClass(/\bdone\b/);
     await synced(page);
     const now = await doneIn('Echo', 'echo one', 'echo two', 'echo done');
     if (JSON.stringify(now) !== '[false,false,false,true]') throw new Error('after Undo, done: ' + now);
@@ -1432,8 +1548,8 @@ try {
     // Its tick opens it again, where it is, with its subtasks under it, and out of Done.
     const count = +(await page.getByRole('button', { name: /^Done \(/ }).textContent()).match(/\d+/)[0];
     await openList().getByRole('button', { name: `Mark not done: Echo ${stamp}`, exact: true }).click();
-    await expect(rowLine(page, 'Not done:')).toContainText(`Echo ${stamp}`);
-    await later(5000);
+    await expect(page.locator('#said')).toHaveText(`Not done: Echo ${stamp}`);
+    await later(3000);
     await expect(head).not.toHaveClass(/done/);
     await expect(openList().locator('.row > .body .title')).toHaveText(rows);
     await expect(page.getByRole('button', { name: `Done (${count - 1})` })).toBeVisible();

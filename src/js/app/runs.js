@@ -553,7 +553,7 @@ export default {
     const {kept, full} = await sync.add(entry, []);
     return this.sendActs(entry.id, kept, full);
   },
-  // Send the acts waiting, up to and with this one (`id`), in order; a deletion still offering its Undo waits (held).
+  // Send the acts waiting, up to and with this one (`id`), in order; a deletion that can still be restored waits (held).
   async sendActs(id, kept = true, full = false){
     this.refreshPending();
     let last = {status: 'gone'};

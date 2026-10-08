@@ -97,9 +97,11 @@ export default {
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
   // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, or a task, which
-  // then becomes the one quick add's box adds subtasks to (aimAfterTick).
+  // then becomes the one quick add's box adds subtasks to (aimAfterTick). On a row marked done or not done, waiting for
+  // the batch to clear, it takes that back (unmark, leaving.js).
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
+    if (this.unmark(t.id)) { if (!g.sheet) this.aimAfterTick(t); return; }
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
   },
@@ -263,15 +265,26 @@ export default {
   },
   /* Lists loaded afresh, over what's on screen (`ids`: their tasks): the rows no longer in them fold away first, as a
      tick's do, rather than vanish from under a finger, and the rows new to the screen fade in, softly, unlike one just
-     added. Resolves to whether this load (`seq`) is still the one to show. */
+     added. Rows marked done or deleted stay, for the batch (keepMarked). Resolves to whether this load (`seq`) is still
+     the one to show. */
   async settle(ids, seq){
     if (this.view.loading) return seq === renderSeq;
     const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
-    const gone = shown.filter(id => !now.has(id) && !this.lines[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
+    const gone = shown.filter(id => !now.has(id) && !this.lines[id] && !this.leaving[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
     if (gone.length) await Promise.all(gone.flatMap(id => [...document.querySelectorAll(`#view .row[data-id="${id}"]`)]).map(collapse));
     if (seq !== renderSeq) return false;
     if (arrived.length) this.flash(arrived, 'arrived');
     return true;
+  },
+  /* Rows marked done or deleted, waiting for the batch to clear (leaving.js), stay where they were through a load of
+     their list, though Vikunja's no longer has them (a task done): they go with the batch. */
+  keepMarked(groups){
+    const ids = new Set(groups.flatMap(g => g.tasks.map(t => t.id)));
+    for (const old of this.view.groups) old.tasks.forEach((t, i) => {
+      const g = this.leaving[t.id] && !ids.has(t.id) && groups.find(x => x.key === old.key);
+      if (g) { g.tasks.splice(Math.min(i, g.tasks.length), 0, t); ids.add(t.id); }
+    });
+    return groups;
   },
   async loadToday(seq){
     const got = await this.readToday();
@@ -280,7 +293,7 @@ export default {
     const groups = this.todayFrom(got, t => { cache.set(t.id, t); return this.keep(t); });
     if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
     this.todayDay = +startOfDay();
-    this.view.groups = groups;
+    this.view.groups = this.keepMarked(groups);
     saved.set('today', {groups, at: new Date().toISOString()});
   },
   // What Today shows, from Vikunja: its tasks, not yet in their groups.
@@ -321,7 +334,7 @@ export default {
     if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
     Object.assign(this.positions, d.positions);
     for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;   // a move made meanwhile
-    Object.assign(this.view, {project: d.project, listView: d.listView, groups});
+    Object.assign(this.view, {project: d.project, listView: d.listView, groups: this.keepMarked(groups)});
     saved.set('project.last', p.id);                            // loaded in the background from now on (preloads)
     this.saveProject();
     if (open && !d.finished) this.loadDoneSection(this.view.groups[1]);
@@ -450,10 +463,10 @@ export default {
     const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(items)]);
     if (seq !== renderSeq) return;
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
-    this.view.groups = [
+    this.view.groups = this.keepMarked([
       {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(opened).map(t => this.keep(t))},
       {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: finished.map(t => this.keep(t))},
-    ];
+    ]);
   },
 
   /* ---------- new project ---------- */

@@ -31,6 +31,9 @@ function sections(){
   const chairs = task({title: 'Wipe the chairs', state: {drag: 70, with: true}, related_tasks: {parenttask: [{id: tables.id}]}});
   // A done task with subtasks still open (ticked done on the web, say): over them, struck through, on a project's list.
   const party = task({title: 'Plan the staff party', done: true}), cake = task({title: 'Order the cake', related_tasks: {parenttask: [{id: party.id}]}});
+  const mover = task({title: 'Pack the van', done: true, assignees: [me], state: {leaving: 'done'}});
+  const moverKid = task({title: 'Load chairs', done: true, related_tasks: {parenttask: [{id: mover.id}]}, state: {leaving: 'done'}});
+  const tent = task({title: 'Put up the tent'}), pegs = task({title: 'Hammer in the pegs', percent_done: .5, state: {held: 50}, related_tasks: {parenttask: [{id: tent.id}]}});
   const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
@@ -53,9 +56,16 @@ function sections(){
     {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, tasks: [
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
-    {title: 'A line in a row\'s place: ticked off, deleted, a repeating task ticked, and a tick not saved', depth: {}, tasks: [
-      task({title: 'Pack the van', state: {line: {text: 'Closed', more: '+ 4 subtasks'}}}), task({title: 'Load chairs', state: {line: {text: 'Deleted'}}}),
-      task({title: 'Water the plants', state: {line: {text: 'Repeats · next Friday 9:00 AM', title: '', stays: true}}}),
+    // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
+    // a deleted row with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
+    {title: 'Ticked and deleted, in place: a parent with its subtask, a deleted row with Restore, a repeating task', depth: {[mover.id]: 0, [moverKid.id]: 1}, tasks: [
+      mover, moverKid, task({title: 'Return the crates', due_date: at(4 * HOUR), assignees: [priya], state: {leaving: 'deleted'}}),
+      task({title: 'Water the plants', done: true, due_date: at(-HOUR), repeat_after: 86400, state: {leaving: 'done'}}), task({title: 'Order oat milk'})]},
+    {title: 'The batch clearing: the rows ticked and deleted fold together, and the row below closes up once', depth: {}, tasks: [
+      task({title: 'Sweep the yard', done: true, state: {leaving: 'done', folding: .45}}), task({title: 'Wipe the menus', state: {leaving: 'deleted', folding: .45}}),
+      task({title: 'Light the heaters'})]},
+    {title: 'A subtask held at 50%: its fill starts where its progress line does', depth: {[tent.id]: 0, [pegs.id]: 1}, tasks: [tent, pegs]},
+    {title: 'A line in a row\'s place: a tick not saved', depth: {}, tasks: [
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
     // The task quick add's box adds subtasks to (quickadd.js: the cursor), lit up: a task, and a subtask.
     {title: 'What the add box adds subtasks to, lit up: a task, and a subtask', depth: {[van.id]: 0, [load.id]: 1}, tasks: [hall, van, load]},
@@ -136,7 +146,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         tasks: finished.map(x => ({...x, id: x.id + 1000}))}];
     // The states a finger makes, put on the rows as the app does.
     const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
-    for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', hide: [], action: {label: 'Undo', fn(){}}, ...t.state.line};
+    for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', action: {label: 'Undo', fn(){}}, ...t.state.line};
+    for (const t of all) if (t.state.leaving) this.leaving[t.id] = t.state.leaving;
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
     this.$nextTick(() => {
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
@@ -146,6 +157,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         if (t.state.drag) { row.classList.add('dragged', ...t.state.with ? [] : ['held']); row.style.transform = `translateY(${t.state.drag}px)`; row.parentElement.classList.add('reordering'); }
         if (t.state.shift) row.style.transform = `translateY(${t.state.shift}px)`;
         if (t.state.aimed) row.classList.add('aimed');
+        // A still of the exit (leaving.js), partway: each row folding at once, the rows below closing up with them.
+        if (t.state.folding) { const h = row.offsetHeight, f = t.state.folding; Object.assign(row.style, {overflow: 'hidden', minHeight: '0', height: h * f + 'px', opacity: f, paddingTop: 12 * f + 'px', paddingBottom: 12 * f + 'px'}); }
       }
     });
   };

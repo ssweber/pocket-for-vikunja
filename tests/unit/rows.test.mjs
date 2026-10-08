@@ -5,13 +5,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';
 import claims from '../../src/js/app/claims.js';
+import leaving from '../../src/js/app/leaving.js';
 
 const RUN = { depth: {}, run: true, at: 0, insertAt: null, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
 const step = f => ({ id: 7, i: 0, title: 'Take the croissants out', done: false, skipped: false, slow: false, added: '', notes: [], dueText: '', late: false, slot: null, ...f });
 
 test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a task\'s, as before', () => {
-  const app = component(views, claims), calls = [];
+  const app = component(views, claims, leaving), calls = [];
   Object.assign(app, { tickStep: (s, op) => calls.push(['step', s.id, op]), toggleSubtask: t => calls.push(['sub', t.id]),
     toggleDone: (t, row) => calls.push(['task', t.id, row]), aimAfterTick: t => calls.push(['aim', t.id]) });
   app.tickRow(step({}), RUN);

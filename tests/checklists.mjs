@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, loaded, noToast, placeLine, placeSays, rowLine, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -610,8 +610,8 @@ try {
     await page.waitForSelector(`${runRow} > button.check`, { timeout: 15000 });
     await page.click('#btn-back');
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
-    // A step ticked on Today is ticked as on the run's screen: with a ✅ from you. A step is a subtask: no message, and
-    // its row stays, done, so ticking it again takes both back.
+    // A step ticked on Today is ticked as on the run's screen: with a ✅ from you. No message: its row stays where it
+    // is, done, until the batch clears, so ticking it again before then takes both back.
     const check = (await runStep(first.id, 2)).id, stepRow = '.row:has(> .body .title:has-text("First article check"))';
     await toastGone().catch(() => {});
     await page.click(`${stepRow} > .check`, { timeout: 15000 });
@@ -800,7 +800,7 @@ try {
 
   await step('a-run-ticked-in-its-project', async () => {
     // Ticked in its project's list with steps not done: it asks first, then finishes it as Finish run does, through the
-    // outbox, and leaves its steps as they are. Undo opens it again.
+    // outbox, and leaves its steps as they are. Its tick again, before the batch clears, opens it again.
     const { id } = await startRun();
     const title = (await api('/tasks/' + id)).title, asked = [], record = d => asked.push(d.message());
     page.on('dialog', record);                                                // accepted by the handler at the top
@@ -819,15 +819,16 @@ try {
       await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
       if (!asked.some(m => m.includes('with 3 steps not done'))) throw new Error('asked ' + JSON.stringify(asked));
       if ((await subtasks(id)).some(x => x.done)) throw new Error('a step was ticked with it');
-      // Its Undo is in its row's place, as a task's tick is.
-      await rowLine(page, 'Finished:').getByRole('button', { name: 'Undo' }).click();
-      await until('Undo never opened it again', async () => !(await api('/tasks/' + id)).done);
-      // Finished again, once its line has gone it stays over its steps not done, struck through, rather than leave them
-      // on their own; its tick opens it again.
+      // Shown done where it is, as a task's tick is, until the batch clears: its tick meanwhile opens it again.
+      await expect(page.locator(`.row.leaving:has(> .body .title:has-text("${title}"))`)).toHaveClass(/\bdone\b/);
+      await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
+      await until('its tick again never opened it', async () => !(await api('/tasks/' + id)).done);
+      // Finished again, once the batch has cleared it stays over its steps not done, struck through, rather than leave
+      // them on their own; its tick opens it again.
       await synced(page);
       await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
       await until('the run was never finished again', async () => (await api('/tasks/' + id)).done);
-      await later(5000);
+      await later(3000);
       await expect(page.locator(`#view .row.head:has(> .body .title:has-text("${title}"))`).first()).toBeVisible();
       const now = await page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.replace(/^Subtask: /, '').trim()));
       const head = now.findIndex(t => t.includes(title));

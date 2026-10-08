@@ -1,11 +1,10 @@
 /* Where Pocket says what happened: in the place it happened, not at the bottom of the screen.
-   - A row's place (markup/row-line.html): the row shrinks to a slim line saying what happened to it, with an action at
-     its end. A task ticked off its list, or deleted, has its Undo here ("Deleted “Load chairs”  Undo"). Each row's line
-     is its own, so a few done one after another each keep theirs. After its time (`ms`, an Undo's by default) it folds
-     away, and what it was for is done (`gone`): a ticked row goes (the tick was saved at once), a deletion is sent. A
-     line on a row that stays (`stays`: a repeating task's tick, a tick not saved) gives the row back instead. Leaving the
-     screen, or putting Pocket away, folds them all at once, so a deletion is never left waiting. What a line shows is
-     apart from what it's for: a deletion waits in the outbox (holdDelete), and its line only says when to send it.
+   - The row itself: a tick or a deletion shows on the row, which stays where it is until the batch clears (leaving.js),
+     and a screen reader hears it.
+   - A row's place (markup/row-line.html): the row shrinks to a slim line saying what went wrong with it, with an action
+     at its end: a tick not saved ("Not saved: no connection  Try again"), a move turned down. After its time (`ms`) it
+     folds away and gives the row back (`stays`), or, on a row that goes, folds it away; then `gone` is called. Leaving
+     the screen, or putting Pocket away, folds them all at once.
    - A place (markup/place-line.html): under a list's heading (Move all to today, under Overdue), by the add box (where
      a task went, when it isn't on the screen), in the open sheet under what it's about (a save that failed), on a run's
      step card. A sheet's lines go with it.
@@ -52,16 +51,16 @@ export default {
   rowEl(id){ return rowsOf(id)[0] || null; },
 
   /* ---------- a row's place ---------- */
-  /* A line in place of task `id`'s rows: {text: what happened ("Deleted", "Done:"), title: the task's, shown struck
-     through (or none), more: after it (" + 4 subtasks"), action: {label, fn} (Undo), ms: how long it stays (null: until
-     its action, or the screen is left), hide: ids of rows that go with it (subtasks ticked with it), stays: the row comes
-     back when it goes, gone(): called when it folds}. Returns false when no row of it is on screen. */
+  /* A line in place of task `id`'s rows: {text: what happened ("Not saved: no connection"), title: the task's, shown
+     struck through (or none), more: after it, action: {label, fn} (Try again), ms: how long it stays (null: until its
+     action, or the screen is left), stays: the row comes back when it goes, gone(): called when it folds}. Returns false
+     when no row of it is on screen. */
   rowLine(id, line){
     const els = rowsOf(id);
     if (!els.length) return false;
     if (this.lines[id]) this.endLine(id, true);
     const from = els.map(el => el.offsetHeight);
-    this.lines[id] = {title: '', more: '', hide: [], action: null, stays: false, ...line, id};
+    this.lines[id] = {title: '', more: '', action: null, stays: false, ...line, id};
     this.said = [line.text, line.title, line.more].filter(Boolean).join(' ') + (line.action ? `. ${line.action.label} is ${line.stays ? 'on its row' : 'where it was'}.` : '');
     // It shrinks to the line, rather than jumping.
     if (motion()) this.$nextTick(() => els.forEach((el, i) => el.isConnected && el.animate([{height: from[i] + 'px'}, {height: el.offsetHeight + 'px'}], {duration: 200, easing: 'ease-out'})));
@@ -92,18 +91,15 @@ export default {
     this.said = '';
     line.action?.fn();
   },
-  // Leaving the screen, or Pocket put away: every line goes at once, and what it was for is done; so do the screen's
-  // places'.
+  // Leaving the screen, or Pocket put away: the rows marked done or deleted go at once (a deletion is sent), every line
+  // goes, and what it was for is done; so do the screen's places'.
   foldLines(){
+    this.clearNow();
     for (const id of Object.keys(this.lines)) this.endLine(id, true);
     for (const k of Object.keys(this.places)) this.endPlace(k, this.places[k], true);
   },
-  // Rows not shown: those being deleted (but one with a line, in its row's place), and those that went with a line.
-  get hiddenRows(){
-    const out = new Set(this.deleting.filter(id => !this.lines[id]));
-    for (const l of Object.values(this.lines)) for (const id of l.hide) out.add(id);
-    return out;
-  },
+  // Rows not shown: those being deleted, but those deleted in place, waiting for the batch (leaving.js).
+  get hiddenRows(){ return new Set(this.deleting.filter(id => !this.leaving[id])); },
 
   /* ---------- a place ---------- */
   // Where a place's line is kept: a sheet's in the sheet, so it goes with it; in a sheet that isn't a task's, at its top.

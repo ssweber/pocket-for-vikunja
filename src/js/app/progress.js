@@ -178,7 +178,7 @@ export default {
      that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet. Held and moved up or
      down, its place among its siblings (reorderOf). Swiped, its Delete. */
   rowGesture(t, row, sheet){
-    if (this.lines[t.id]) return null;                    // a line in its place: only its Undo
+    if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
     const slides = !t.pending && !t.done && (sheet ? this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.canTick(t) && !this.isRunTask(t));
     const swipe = this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null, reorder = this.reorderOf(t, row, sheet);
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
@@ -210,7 +210,7 @@ export default {
     if (blocks.some(b => !b.length)) return null;
     return {el: row, reorder: dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true))};
   },
-  // A row's Delete, once it's swiped open: the row closes as its line takes its place.
+  // A row's Delete, once it's swiped open: the row shuts, and stays where it is, dimmed, with Restore (removeTask).
   async swipeDelete(t, sheet){ shut(); if (await this.removeTask(t) && sheet) this.sheet.dirty = true; },
   // A run's step held on its row: not one done, waiting to be sent, or in a finished run, nor from its buttons.
   stepSlide(row, target){

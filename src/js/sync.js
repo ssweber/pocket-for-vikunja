@@ -19,7 +19,7 @@ export const sync = {
   volatile: new Set(),                           // ids of entries kept in memory only
   bytes: new Map(),                              // key -> File, for files kept in memory only
   claimed: new Map(),                            // task id -> {key, at}: see claim()
-  held: new Set(),                               // ids of deletions offering their Undo in this tab: not sent yet
+  held: new Set(),                               // ids of deletions in this tab that can still be restored: not sent yet
   db: null, asked: false,
   channel: 'BroadcastChannel' in self ? new BroadcastChannel('pocket-sync') : null,
 
@@ -362,11 +362,11 @@ export const INSERT_STEPS = [
    connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
    and mark, someone is assigned once, and a note whose reply was lost is looked for before it's posted again. Claiming
    a subtask or a step (assigning yourself) goes the same way, from anywhere. */
-/* A deletion waiting for its Undo to go (removeTask): in this tab, until its message goes (sync.held); in another, or
-   after a reload, until the time its Undo would have gone (`until`). */
+/* A deletion that can still be restored (removeTask): in this tab, until its rows go, or its message does (sync.held);
+   in another, or after a reload, until a while after it was made (`until`). */
 export const held = e => sync.held.has(e.id) || e.until > Date.now();
 /* Where sending stands, for <html data-sync>, which the tests wait on: 'sending' while a change is on its way to
-   Vikunja; 'waiting' while something is kept that can't go now (no connection, a deletion's Undo still showing, turned
+   Vikunja; 'waiting' while something is kept that can't go now (no connection, a deletion that can still be restored, turned
    down, or Vikunja busy and tried again later), or the outbox isn't read yet (`unsent` null); else 'idle'. */
 export const sendState = ({busy, unsent}) => busy ? 'sending' : unsent === 0 ? 'idle' : 'waiting';
 /* A change shows on screen at once, as it'll be. It looks waiting (dotted, "waiting to send") only once it has waited

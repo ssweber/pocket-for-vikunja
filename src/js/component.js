@@ -22,6 +22,7 @@ import sheet from './app/sheet.js';
 import toast from './app/toast.js';
 import outbox from './app/outbox.js';
 import lines from './app/lines.js';
+import leaving from './app/leaving.js';
 import sharing from './app/sharing.js';
 
 
@@ -41,7 +42,7 @@ export const directives = Alpine => Alpine.directive('style', (el, {expression},
 // Alpine's component is one object: the data from core.js, with the methods of each part of the app. Getters are
 // copied as getters (a spread, {...auth}, would read each one once and keep the value), so they still work out what
 // they show each time they're read.
-const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, claims, alerts, sheet, toast, outbox, lines, sharing];
+const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, claims, alerts, sheet, toast, outbox, lines, leaving, sharing];
 export const pocket = () => {
   const component = core();
   for (const part of parts) Object.defineProperties(component, Object.getOwnPropertyDescriptors(part));

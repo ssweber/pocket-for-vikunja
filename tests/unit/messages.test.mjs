@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { addedWhere, doneLine, doneText, headText, movedText, notMoved, notSaved, sentLater } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
+import leaving from '../../src/js/app/leaving.js';
 import { blankSheet } from '../../src/js/app/core.js';
 
 test('a change not saved says why in a few words', () => {
@@ -58,8 +59,9 @@ test('Move all to today says how many moved, and what stayed', () => {
 
 // The places, on a pretend component with lines.js's methods, a screen (route) and a sheet.
 const app = (route = 'today', sheet = blankSheet('')) => {
-  const a = { route: { name: route }, sheet, places: {}, lines: {}, said: '', toasts: [], runView: null, notify(msg, action){ this.toasts.push({ msg, action }); } };
-  return Object.defineProperties(a, Object.getOwnPropertyDescriptors(lines));
+  const a = { route: { name: route }, sheet, places: {}, lines: {}, leaving: {}, said: '', toasts: [], runView: null, notify(msg, action){ this.toasts.push({ msg, action }); } };
+  for (const part of [lines, leaving]) Object.defineProperties(a, Object.getOwnPropertyDescriptors(part));
+  return a;
 };
 
 test('a message goes to its place when that is on screen, and to the toast when not', t => {

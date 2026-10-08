@@ -63,6 +63,7 @@ export default () => ({
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
+  leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
   said: '',                                    // the last of those, for a screen reader
@@ -116,7 +117,7 @@ export default () => ({
     this.$watch('offline', () => this.markSlow());
     // Where sending stands, on the page itself, so a test can wait until everything has reached Vikunja.
     Alpine.effect(() => { document.documentElement.dataset.sync = this.syncState; });
-    // A deletion offering its Undo is sent as Pocket is put away or closed, so it isn't left waiting meanwhile.
+    // Rows marked done or deleted go as Pocket is put away or closed, and a deletion is sent, so it isn't left waiting.
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this.foldLines(); this.sendHeld(); } });
     addEventListener('pagehide', () => { this.foldLines(); this.sendHeld(); });
     // A message going, by its own timer or anything else, ends its Undo: a deletion waiting for it is sent then.
@@ -160,6 +161,7 @@ export default () => ({
     }
     this.$nextTick(() => {
       this.initSwipe();
+      this.initBatch();
       this.initProgressDrag();
       this.initSheetProgress();
       this.initHeader();
