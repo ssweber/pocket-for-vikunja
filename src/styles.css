@@ -269,8 +269,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* Today's list (today-item.html): each thing an item, a row or a card, with a line between them */
 .item + .item{border-top:1px solid var(--line)}
 /* A card: anything with open subtasks or steps. Its title is a heading, quieter than its step, the next thing to do;
-   under it, one step on the shared row, with ‹ › at its ends when it has more than one open step; and its task's line,
-   a segment per subtask, as a run's is */
+   under it, its task's line, a segment per subtask, as a run's is, kept with the heading and a clear gap from the step
+   (at the bottom, under the step's own bar, the two read as one double line); then one step on the shared row, with
+   ‹ › at its ends when it has more than one open step */
 .day-card{position:relative}
 .card-head{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:10px 14px 0;color:var(--ink)}
 .card-top{display:flex;align-items:baseline;gap:10px}
@@ -281,7 +282,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-head .meta{margin-top:1px}
 .step-pager{position:relative}
 .day-card .step-line{border-top:0;min-height:52px}
-.card-track{position:relative;margin:2px 14px 10px}
+.card-track{position:relative;margin:8px 14px 4px}
 .card-line{height:3px}
 /* The step showing, outlined on its task's line, a little taller than it, so paging visibly moves along it: over its
    segment (each (100% + 3px) / --segs wide, less the 3px gap), or past MANY_STEPS over its stretch between two ticks

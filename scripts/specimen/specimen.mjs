@@ -45,14 +45,14 @@ function sections(){
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
-  // Today's cards (cards.js): a task with one subtask of five done and four open (one of them yours), paged to the second
-  // open one, 3 of 5; a run with a step counting down; a task with one subtask open; and one of 14, past MANY_STEPS, five
-  // done, paged to 8 of 14. Their subtasks are in the store, as Today keeps them.
+  // Today's cards (cards.js): a task of high priority with one subtask of five done and four open (one of them yours),
+  // paged to the second open one, 3 of 5; a run with a step counting down; a task with one subtask open; and one of 14,
+  // past MANY_STEPS, five done, paged to 8 of 14, of low priority. Their subtasks are in the store, as Today keeps them.
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
-  const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
+  const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), priority: 3, related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
   const opening = task({title: 'Opening up · Oct 8', project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
-  const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 5}))}});
+  const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 5}))}});
   const cardSubs = [kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
     kid(703, {under: van2.id, title: 'Sound system', assignees: [me], percent_done: .5}), kid(704, {under: van2.id, title: 'Lights'}), kid(705, {under: van2.id, title: 'The extension leads'}),
     kid(711, {under: opening.id, project_id: 2, title: 'Turn on the espresso machine', done: true, related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 1}]}}),

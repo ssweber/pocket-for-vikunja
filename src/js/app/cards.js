@@ -2,7 +2,7 @@
    over one line for a step, the shared row (task-row.html) with the card's own options (g.card: paging, no Delete, no
    moving it). The step line pages through its open steps, by its ‹ › or a swipe, and a tick or a slide there is that
    step's alone. What a card needs is read once per project shown, not once per card (readCards). */
-import {colorOf, TZ} from '../util.js';
+import {colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet} from '../dates.js';
 import {stepsOf} from '../checklists.js';
@@ -40,10 +40,12 @@ export default {
   },
   // A subtask done; a run's step counting a tick still waiting to be sent.
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
-  // Under a card's title: when its task is due, and its project, or for a run, who it's for.
+  // Under a card's title: when its task is due, its priority's bars, as its row shows them (rowMeta), and its project,
+  // or for a run, who it's for.
   cardMeta(t){
     const out = [], due = dueInfo(t.due_date), p = this.projById.get(t.project_id);
     if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
+    if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     if (this.isRunTask(t)) out.push({key: 'run', icon: 'checklist', text: (t.assignees || []).length ? this.forText(t) : 'Checklist run'});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     return out;
