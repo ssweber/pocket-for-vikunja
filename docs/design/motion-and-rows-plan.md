@@ -74,6 +74,9 @@ than one rule per kind of row, and it keeps destructive swipes off the screen us
 - **No plain swipe right for done**, anywhere. It would share a direction with progress, and a mistaken done is
   expensive.
 - Search shows subtasks as rows, as Projects does, not as cards.
+- **A hold never selects text** (user, 2026-10-08: moving a subtask in a task's sheet selected the words near it). A
+  phone's long press picks the nearest words it can select: while a row is held, no selection starts, and one made is
+  cleared; rows, a sheet's subtasks' card and its headings can't be selected. Notes, comments and inputs can.
 
 ## 3. The progress drag
 
@@ -128,7 +131,8 @@ off. A change to the row shows up in both places.
   onto Today, it opens on that one.
 - **Paging:** a plain swipe left or right on the card, or the `‹ ›` arrows at the ends of the step line, with a `2/5`
   count between them. The arrows look small, but take taps over 48px. Hidden when there's one open step. Paging wraps
-  round. Leaving Today puts every card back on its next step.
+  round. Leaving Today puts every card back on its next step. (Part 6b moved the count to the title's row, "3 of 5",
+  the step's real place, and marks the step on the card's line.)
 - **The parent's progress** is a line under the step line, counted from its subtasks (steps done out of all of them),
   in segments as in section 3a. A task's own % still shows on Projects and in its sheet.
 - **What brings a card onto Today:**
@@ -189,6 +193,9 @@ the × that clears a date, keep their own tap. Built with part 4.
 
 - **A one-time hint on the first row** that can take it: "Hold and slide to start working on it". It goes after the
   first drag that sets progress, and is remembered on the phone (localStorage, in a try/catch).
+- **Its space closes once it's safe** (user, 2026-10-08: the row kept the hint's height until the screen was left,
+  which looked wrong). Put away, it fades at once; then, by the batch's rules (no finger down, the list still), a
+  second later its row folds back to its own height (about 200ms; with reduced motion, at once).
 - The `‹ ›` arrows teach paging without a hint.
 - The ⋯ menu has every gesture.
 
@@ -202,6 +209,8 @@ the × that clears a date, keep their own tap. Built with part 4.
 | 4 | Progress claims (3), square boxes and segmented run lines (3a), the sheet's rows taking a tap anywhere (7) | |
 | 5 | Today's card with its next step (4) | Changes #167 from part 9 |
 | 6 | The one-time hint (8) | |
+| 6b | The card's count (user, 2026-10-08): it moves off the step line to the right end of the card's title row, "3 of 5", and the shown step's segment is marked on the line below, so paging visibly moves along it. The count is the step's real place in the whole list (done ones included), while paging still goes through open steps only: from 3 to 4, 5, then back to 3. Done steps stay on the run screen or the task's sheet | Changes part 5's "2/5" under the step's title, counted among open steps |
+| 7 | An experiment, to try and keep or drop (user, 2026-10-08): on the Project tab, a nudge aims the add box. A touch that turns into a short, slow scroll (under about one row's height) makes the row it started on the add box's target, as opening its sheet does; a long or fast scroll (a fling) leaves the target alone. The footer naming the target, and its ×, make a wrong guess visible and cheap. Thresholds in one place, easy to tune | Adds to part 6 of `fast-tasks-plan.md` (the add box's target) |
 
 ## Sources
 

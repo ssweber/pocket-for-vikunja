@@ -60,12 +60,15 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
   own order), whoever it's for, or the subtask of yours that brought the card onto Today. Ticked, a step stays on the
   card, ticked, until the ticks leave together; then the step after it comes in. Holding the step line and sliding sets
-  that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. With more
-  than one step open, **‹** and **›** at the ends of the step line page through them, with "2/5" under the step's title
-  saying which, and so does a plain swipe left or right anywhere on the card (hold first, and it's progress instead). It
-  goes round from the last to the first. Leaving Today puts every card back on its next step. Under the step line, a
-  line in segments, one for each subtask, fills as they're done: "2 of 5 subtasks done" to a screen reader, which hears
-  the card named by its title and the step line as "Step 2 of 5: Load chairs".
+  that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. At the
+  right of the card's title, "3 of 5" says where the step showing is among all the subtasks, done ones too. With more
+  than one step open, **‹** and **›** at the ends of the step line page through the open ones, and so does a plain
+  swipe left or right anywhere on the card (hold first, and it's progress instead): with the first two done, from 3 to
+  4, 5, then back round to 3. Done steps are on the run's screen, or in the task's sheet. Leaving Today puts every card
+  back on its next step. Under the step line, a line in segments, one for each subtask, fills as they're done, and the
+  step showing is outlined on it, moving along as you page (past 12 steps, the line has a tick at each step, and the
+  outline is around that step's stretch): "2 of 5 subtasks done" to a screen reader, which hears the card named by its
+  title and the step line as "Step 3 of 5: Load chairs".
 - **What brings a card onto Today:** its task being due (overdue, today or in the next 7 days); one of its open subtasks
   being due then; a subtask assigned to you that's due, or that was made today without a date (Vikunja doesn't keep when
   a task was assigned, so one made before today doesn't keep the card there); or, for a checklist run, its being yours
@@ -96,7 +99,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   is until you slide it, then goes to the nearest of those. Sliding to 100% fills the tick and marks the task done;
   100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. Moving up or down
   after the hold moves the task instead, on a project's list and in a task's sheet (see **Order**, below); anywhere
-  else it lets go, changing nothing. The same works on the bar in a task's sheet (the arrow keys move it a stop
+  else it lets go, changing nothing. Holding a task never selects text, the task's or any near it; a task's notes and
+  comments can still be selected to copy, by holding them. The same works on the bar in a task's sheet (the arrow keys move it a stop
   at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
   run's steps are held and slid the same way. The bar is all that shows it, with no message: to take it back, slide it
   back. Sliding a task, a subtask or a step no one is doing says you're doing it: **+ me** turns into your picture as
@@ -104,8 +108,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   nothing is). Someone else's stays theirs. Sliding it back to 0% later keeps it yours: tap your picture to let it go.
   The bar in a task's sheet does the same, slid or moved with the arrow keys, and its **Assigned** row shows you at
   once. The first time, the first task on a screen that you can slide says "Hold and slide to start working on it",
-  until you first set a task's progress this way, or tap it away; the phone remembers. It fades where it is, so the
-  tasks under it don't move.
+  until you first set a task's progress this way, or tap it away; the phone remembers. It fades where it is, and its
+  space closes a second after your finger lifts, so the tasks under it never move while you're touching the list.
   On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
   trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
 - **Order:** a project's list is in the order of its **List view** in Vikunja's web app, each subtask under its
