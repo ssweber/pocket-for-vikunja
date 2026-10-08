@@ -58,12 +58,15 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   its screen.
 - Today is cards and rows (`markup/today-item.html`, its lists' option `g.cards`, from `screenRows`): a task with open
   subtasks, or a run with open steps, is a card (`.day-card`, `app/cards.js`), its title a heading that opens it, with
-  its due date, priority bars and project under it (`cardMeta`); then its task's line in segments, as a run's, the step
-  showing outlined on it (`.card-mark`, at `--at`, sliding as it's paged), kept with the heading; then one step line,
-  the task row with the card's options (`g.card`, `g.paging`): its own tick, slot and progress (its bar at the line's
-  bottom), "Step 3 of 5" to a screen reader, and `‹ ›` beside it (outside the keyed row, so they keep the focus). Its
-  count, "3 of 5", at the right of its title's first line (`.card-n`), is the step's place among all its subtasks, done
-  ones too (`placeOf`, `cards.js`), while paging goes through the open ones only. Subtasks are never rows of their own on Today. What's a card, and why, is `todayItems`
+  its due date, priority bars and project under it (`cardMeta`); then its strip (`.card-strip`, a grid): `‹`, its task's
+  line in segments, as a run's, the step showing outlined on it (`.card-mark`, at `--at`, sliding as it's paged), `›`,
+  and its count, "3 of 5" (`.card-n`), the step's place among all its subtasks, done ones too (`placeOf`, `cards.js`),
+  while paging goes through the open ones only. Drawn 40px tall, its arrows and line take taps 48px tall, reaching over
+  the step line's top padding, never the heading; the arrows keep their places when hidden, so the line keeps its
+  length. A tap on an open step's segment shows it (`tapSegment`; `segmentAt` and `stepOfSegment` in `cards.js` work
+  out which, none past `MANY_STEPS`), a pointer's shortcut only. The arrows are outside the keyed row, so they keep the
+  focus. Then one step line, the task row with the card's options (`g.card`, `g.paging`), a plain row: its own tick,
+  slot and progress (its bar at the line's bottom), and "Step 3 of 5" to a screen reader. Subtasks are never rows of their own on Today. What's a card, and why, is `todayItems`
   (`cards.js`, beside `app/`, so the unit tests check it): a task due, a subtask due, a subtask of yours made today
   without a date (Vikunja doesn't say when a task was assigned), a run of yours or one you're on a step of; `view.cards`
   keeps, by task id, the earliest date that brought each (`when`, which `placeDated` and `todayOrder` place it by, with
@@ -170,7 +173,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   and with no server: the order of a list and subtasks under their parents, a done one too (`lists.test.mjs`), due dates in words
   (`dates.test.mjs`), Today's order, a card's by what brought it (`lists.test.mjs`), which tasks are cards on Today
   and why, where each sits, which step shows, paging it round through the open ones, its count (the step's place, the done ones counted) and the
-  segment its line marks, its line and a step's countdown (`cards.test.mjs`), progress, sliding to the snaps and swiping to Delete, who a slide claims for, a run's line in segments, and a nudge told from a tap and a fling (`progress.test.mjs`), a
+  segment its line marks, which step a tap on its line shows, its line and a step's countdown (`cards.test.mjs`), progress, sliding to the snaps and swiping to Delete, who a slide claims for, a run's line in segments, and a nudge told from a tap and a fling (`progress.test.mjs`), a
   checklist's steps, their order and times (`checklists.test.mjs`), when rows ticked or deleted leave together, and what a tap on a marked row does (`batch.test.mjs`), the address, util.js and what's waiting to send, and when it looks it (`helpers.test.mjs`), what Pocket says (a tick too) and in which place
   (`messages.test.mjs`), a project's order: its List view, a move's position, a task's siblings, a drag, and
   which task the add box adds subtasks to and where they go (`order.test.mjs`), progress as a text and as a
@@ -193,7 +196,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   sheet, and copied where there's none) and as a Markdown list, with Open in Vikunja's address, and copies a task's notes
   and a comment, opens Today at once with the copy kept of it while its lists answer late (no Loading, a line under the
   header after a second) and changes a row in place, shows a new task at once and dotted only after a few seconds,
-  shows a task with subtasks as a card on Today, on its next subtask in its List view's order (with no rows of its subtasks), ticks its step line (the next coming in once the batch clears), shows its count at the right of its title, the step's place with the done ones counted (2 of 3 with the first done), pages it by its arrows and by a swipe, through the open ones, round from the last to the first, the segment marked on its line moving along, and back to its next step on leaving Today, checks its tap zones, holds its step line to set that step's progress (stopping at 100% of it) and checks its line's segments, brings a task onto Today, opened on it, by a subtask of yours made today without a date (not one made before today), and by a subtask due today, and opens Today with its cards from the copy kept, keeps a long title with no spaces
+  shows a task with subtasks as a card on Today, on its next subtask in its List view's order (with no rows of its subtasks), ticks its step line (the next coming in once the batch clears), shows its count at its strip's end, the step's place with the done ones counted (2 of 3 with the first done), pages it by a tap on an open step's segment (not a done one's, nor any past 12 steps), by its arrows and by a swipe, through the open ones, round from the last to the first, the segment marked on its line moving along, its height steady and its line's length too as its arrows go, and back to its next step on leaving Today, checks its tap zones (its strip's, and its step line's tick at its left edge, as a row's is), holds its step line to set that step's progress (stopping at 100% of it) and checks its line's segments, brings a task onto Today, opened on it, by a subtask of yours made today without a date (not one made before today), and by a subtask due today, and opens Today with its cards from the copy kept, keeps a long title with no spaces
   from widening the page, attaches a file and a photo, creates a project, assigns someone, loads a new version of Pocket on refresh, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side (keeping what was being written when Vikunja signs you out), single sign-on, renewing an expired sign-in from both at once, and following a switch to another account.
 - `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload and between a task and its label, loses replies (for a task with an @username, with `ASSIGNEE`, and for a subtask link), answers 500, fills up Pocket's storage, adds the same title twice (in Pocket, and on the web then in Pocket), adds a subtask and a comment in a sheet offline, and a subtask from the add box on a project's list, puts a cancelled task's words back in the box, shows what's waiting in the header and lists it in Waiting to send (dropping one from there), moves over what an older Pocket left waiting, and has two tabs send the same waiting task. `BROWSER=webkit` runs it on Safari's engine.

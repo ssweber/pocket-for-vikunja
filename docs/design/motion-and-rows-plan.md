@@ -132,7 +132,8 @@ off. A change to the row shows up in both places.
 - **Paging:** a plain swipe left or right on the card, or the `‹ ›` arrows at the ends of the step line, with a `2/5`
   count between them. The arrows look small, but take taps over 48px. Hidden when there's one open step. Paging wraps
   round. Leaving Today puts every card back on its next step. (Part 6b moved the count to the title's row, "3 of 5",
-  the step's real place, and marks the step on the card's line.)
+  the step's real place, and marks the step on the card's line. The card's strip, below, then put the arrows and the
+  count on one line with it, under the heading.)
 - **The parent's progress** is a line under the step line, counted from its subtasks (steps done out of all of them),
   in segments as in section 3a. A task's own % still shows on Projects and in its sheet.
 - **The card's heading, again** (user, 2026-10-08): the card shows its task's priority bars under its title, as its
@@ -140,6 +141,17 @@ off. A change to the row shows up in both places.
   just under the title, with a clear gap before the step line, whose own progress bar stays at its bottom. At the
   bottom, the two lines read as one double line. Runs' cards the same. Both are where things are drawn, not moves
   during a gesture: nothing moves under a finger.
+- **The card's strip** (user, 2026-10-08, to make the card feel pulled together): under the heading, one navigation
+  strip: `‹`, the parent's segmented line with the step showing marked, `›`, and the count, "3 of 5", at its end. It
+  replaces the arrows at the ends of the step line and the count in the title row. Drawn thin, its controls take
+  48px-tall taps, reaching a little over the step line's top padding, never over the heading: the arrows are 48px wide,
+  and their places stay when they're hidden (one open step), so the line keeps its length; the line and the count stay.
+  **A tap on an open step's segment** shows that step: its stretch of the line, the strip's full height, takes the
+  tap. A done step's segment does nothing, as paging skips done steps. Past 12 steps (the line with ticks) a step's
+  stretch is too narrow to tap, so only the arrows and a swipe page there. Segment taps are a pointer's shortcut: a
+  screen reader has the arrows, buttons, and the step line's "Step 3 of 5: …", not a stop for each step. **The step
+  line is a plain row**, with no arrows on it: its tick at the row's left edge like every other row, its title, its
+  claim slot, its own bar at the bottom, and hold-to-slide progress as before. A plain swipe on the card still pages.
 - **What brings a card onto Today:**
   - the parent being due, by Today's groups (overdue, today, the coming week); or
   - one of its open subtasks being due, by the same groups; or
