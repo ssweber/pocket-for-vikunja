@@ -504,6 +504,8 @@ try {
     const me = await (await api('/user')).json(), id = +await page.getAttribute('#d-subtasks .row:not(.done) >> nth=0', 'data-id');
     const row = `#d-subtasks .row[data-id="${id}"]`, people = async () => ((await (await api('/tasks/' + id)).json()).assignees || []).map(u => u.id);
     if (await page.$('#d-subtasks .row.done .claim')) throw new Error('a done subtask with no one on it has a slot');
+    const radius = await page.$eval(`${row} > .check`, el => getComputedStyle(el).borderRadius);
+    if (radius !== '50%') throw new Error("a subtask's box isn't round: " + radius);
     await page.click(`${row} .claim:has(.me)`);
     await page.waitForSelector(`${row} .claim.mine .av`);
     for (let i = 0; JSON.stringify(await people()) !== JSON.stringify([me.id]); i++) { if (i > 40) throw new Error('never assigned'); await new Promise(r => setTimeout(r, 250)); }
@@ -998,6 +1000,101 @@ try {
       if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('moved on Today, after a reload');
       if (moves.sent.length) throw new Error('a position was written: ' + moves.sent.join(', '));
     } finally { moves.off(); for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* Progress slid on a task no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture as the
+     slide starts, the claim sent once it's let go having changed something. Let go where it started, nothing is
+     claimed; slid back to 0% later, it stays yours; someone else's stays theirs. */
+  await step('sliding-progress-claims-a-task-no-one-is-doing', async () => {
+    const me = await (await api('/user')).json(), mine = (me.name || me.username).match(/[\p{L}\p{N}]+/gu).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+    const a = await make(`Pocket smoke slide claim ${stamp}`, { due_date: todayAt(21) }), A = rowOf(a.title);
+    // Someone else's, in a project shared with them (ASSIGNEE), when there is one.
+    const team = ASSIGNEE && projects2.find(p => p.title === ASSIGNEE_PROJECT);
+    const found = team && await api(`/projects/${team.id}/users/search?q=${encodeURIComponent(ASSIGNEE)}`);
+    const other = found?.ok ? ((await found.json()).items || []).find(u => u.username === ASSIGNEE) : null;
+    const b = other && await make(`Pocket smoke slide theirs ${stamp}`, { due_date: todayAt(21) }, team.id), B = b && rowOf(b.title);
+    if (b) await api(`/tasks/${b.id}/assignees`, { method: 'POST', headers: json, body: JSON.stringify({ user_id: other.id }) });
+    const people = async id => ((await get(id)).assignees || []).map(u => u.id), pct = async id => Math.round((await get(id)).percent_done * 100);
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(A)).toBeVisible({ timeout: 15000 });
+      await page.locator(A).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      // Held and slid a little, short of 25%, then let go: yours while it slides, and no one's once it's let go.
+      const box = await page.locator(A).boundingBox(), x = box.x + box.width * .2, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await page.waitForSelector(`${A}.setting.held`, { timeout: 2000 });
+      await page.mouse.move(x + 20, y, { steps: 4 });
+      await expect(page.locator(`${A} .claim.mine .av`)).toHaveText(mine);
+      await page.mouse.up();
+      await expect(page.locator(`${A} .claim .me`)).toBeVisible();
+      await synced(page);
+      if ((await people(a.id)).length) throw new Error('a slide that changed nothing claimed it');
+      // Slid to 25%: yours, in Vikunja, its slot your initials.
+      await slideProgress(A, 25);
+      await expect(page.locator(`${A} .claim.mine .av`)).toHaveText(mine);
+      await synced(page);
+      if (JSON.stringify(await people(a.id)) !== JSON.stringify([me.id])) throw new Error('slid, assigned to ' + JSON.stringify(await people(a.id)));
+      if (await pct(a.id) !== 25) throw new Error('progress saved ' + await pct(a.id));
+      // Slid back to 0%: still yours. Letting go is a tap of its own.
+      await slideProgress(A, 0, null, 25);
+      await expect(page.locator('#said')).toHaveText(`Progress of ${a.title} set to 0%`);
+      await synced(page);
+      if (await pct(a.id) !== 0) throw new Error('slid back, progress saved ' + await pct(a.id));
+      if (JSON.stringify(await people(a.id)) !== JSON.stringify([me.id])) throw new Error('slid back to 0%, it was let go');
+      await expect(page.locator(`${A} .claim.mine .av`)).toBeVisible();
+      if (!b) { console.log('  (no ASSIGNEE and ASSIGNEE_PROJECT: someone else\'s claim not checked)'); return; }
+      // Someone else's: slid, its progress is set, and it stays theirs.
+      await expect(page.locator(B)).toBeVisible({ timeout: 15000 });
+      await page.locator(B).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await slideProgress(B, 25);
+      await expect(page.locator('#said')).toHaveText(`Progress of ${b.title} set to 25%`);
+      await synced(page);
+      if (JSON.stringify(await people(b.id)) !== JSON.stringify([other.id])) throw new Error("someone else's task was claimed: " + JSON.stringify(await people(b.id)));
+      if (await page.$(`${B} .claim.mine`)) throw new Error("someone else's task shows as yours");
+    } finally { for (const t of [a, b].filter(Boolean)) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* A label-and-value row in a task's sheet takes a tap anywhere (motion-and-rows-plan, section 7): Due opens the date's
+     picker, Repeats and Project are a select over the whole row, Reminders opens its list, Labels and Assigned their
+     Add. The × that clears a date keeps its own tap. */
+  await step('the-sheets-rows-take-a-tap-anywhere', async () => {
+    const t = await make(`Pocket smoke rows ${stamp}`, { due_date: todayAt(22) });
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.click(`${rowOf(t.title)} > .body`, { timeout: 15000 });
+      await page.waitForSelector('#d-due-card');
+      // showPicker, as the page has it, only noted: a headless browser shows no picker.
+      await page.evaluate(() => {
+        window.picked = [];
+        for (const C of [HTMLInputElement, HTMLSelectElement]) C.prototype.showPicker = function(){ window.picked.push(this.id); };
+      });
+      const picked = () => page.evaluate(() => window.picked.slice());
+      const key = what => page.locator('#sheet .prop > .k', { hasText: new RegExp(`^${what}$`) });
+      await key('Due').click();
+      await expect.poll(picked).toEqual(['d-due']);
+      await key('Reminders').click();
+      await expect.poll(picked).toEqual(['d-due', 'd-remind-add']);
+      // Repeats: the select itself is under the finger, wherever the row is tapped.
+      for (const [what, id] of [['Repeats', 'd-repeat'], ['Project', 'd-proj']]) {
+        await key(what).scrollIntoViewIfNeeded();
+        const at = await key(what).boundingBox(), hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id, [at.x + at.width / 2, at.y + at.height / 2]);
+        if (hit !== id) throw new Error(`a tap on ${what} lands on ${hit || 'nothing'}, not its select`);
+      }
+      await key('Labels').click();
+      await expect(page.locator('#lp-q')).toBeFocused();
+      await page.press('#lp-q', 'Escape');
+      await key('Assigned').click();
+      await expect(page.locator('#d-assign-in')).toBeFocused();
+      await page.click('#d-assign-done');
+      // The ×: clears the date, and opens no picker.
+      await page.click('#d-due-clear');
+      await synced(page);
+      const due = (await get(t.id)).due_date;
+      if (due && !due.startsWith('0001')) throw new Error('the × left the date: ' + (await get(t.id)).due_date);
+      if ((await picked()).length !== 2) throw new Error('the × opened a picker: ' + (await picked()).join());
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally { await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
   /* Search follows Projects, with subtasks as rows under their parents, swiped to Delete, but not moved: its results
      have no order of their own. */

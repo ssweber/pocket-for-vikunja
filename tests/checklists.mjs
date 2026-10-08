@@ -594,6 +594,57 @@ try {
     await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
   });
 
+  /* Progress slid on a step no one is doing says you're doing it, as on a task's row (motion-and-rows-plan, section 3);
+     slid back to 0%, it stays yours, and someone else's stays theirs. A step's box is square, and the run's bar is in
+     segments, one per step. */
+  await step('sliding-a-step-claims-it', async () => {
+    const row = '#run-steps .row:nth-of-type(3)', id = (await runStep(first.id, 2)).id;
+    const people = async () => ((await task(id)).assignees || []).map(u => u.id), pct = async () => Math.round((await task(id)).percent_done * 100);
+    const slide = async n => {
+      const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await later(450);                                                      // the hold's timer is the page's (hold-a-step-to-set-its-progress)
+      for (let i = 0; !await page.$(`${row}.setting`); i++) { if (i > 40) throw new Error('the hold never began'); await new Promise(r => setTimeout(r, 50)); }
+      await page.mouse.move(x + (n >= 0 ? page.viewportSize().width - 48 - x : x - 48) * n / 10, y, { steps: 10 });
+      await page.mouse.up();
+    };
+    await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
+    const radius = await page.$eval(`${row} > .check`, el => getComputedStyle(el).borderRadius);
+    if (radius !== '7px') throw new Error("a step's box isn't square: " + radius);
+    const segs = await page.$eval('#run-bar .track', el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage]);
+    if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's bar isn't a segment per step: " + segs.join(' '));
+    try {
+      await toastGone().catch(() => {});
+      await slide(2.2);                                                      // 25%: yours, as the slide starts
+      await page.waitForSelector(`${row} .claim.mine .av`);
+      await until('sliding never claimed it', async () => JSON.stringify(await people()) === JSON.stringify([me.id]));
+      await until('its progress never reached Vikunja', async () => await pct() === 25);
+      await slide(-10);                                                      // back to 0%: still yours
+      await until('sliding back never put it back', async () => await pct() === 0);
+      if (JSON.stringify(await people()) !== JSON.stringify([me.id])) throw new Error('slid back to 0%, it was let go');
+      await page.click(`${row} .claim`);                                     // letting go is a tap of its own
+      await until('never let go', async () => !(await people()).length);
+      await page.waitForSelector(`${row} .claim .me`);
+      if (!other) return;
+      // Someone else's: slid, its progress is set, and it stays theirs.
+      await api(`/tasks/${id}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
+      await page.reload();
+      await page.waitForSelector(`${row} .claim[aria-disabled=true] .av`, { timeout: 15000 });
+      await toastGone().catch(() => {});
+      await slide(2.2);
+      await until('its progress never reached Vikunja', async () => await pct() === 25);
+      await synced(page);
+      if (JSON.stringify(await people()) !== JSON.stringify([other.id])) throw new Error("someone else's step was claimed: " + JSON.stringify(await people()));
+      if (await page.$(`${row} .claim.mine`)) throw new Error("someone else's step shows as yours");
+    } finally {
+      if (other) await api(`/tasks/${id}/assignees/${other.id}`, { method: 'DELETE' }).catch(() => {});
+      await api(`/tasks/${id}/assignees/${me.id}`, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + id, { method: 'PATCH', body: JSON.stringify({ percent_done: 0 }) });
+      await page.reload();
+      await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
+    }
+  });
+
   await step('today-shows-your-run', async () => {
     await page.click('nav.tabs a[data-tab=today]');
     // The run, without a due date of its own, and its open step, by its due date.
@@ -703,6 +754,9 @@ try {
     await page.waitForSelector(`${runRow} .meta:has-text("Next: First article check")`, { timeout: 15000 });
     const line = await page.$eval(runRow, el => [parseFloat(getComputedStyle(el).getPropertyValue('--pct')), parseFloat(getComputedStyle(el, '::after').width)]);
     if (!(line[0] > 0 && line[1] > 0)) throw new Error('no progress line under Checklists: ' + line);
+    // In segments, one per step, the steps done filled (runLine).
+    const segs = await page.$eval(runRow, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).getPropertyValue('--done').trim(), getComputedStyle(el, '::after').maskImage || getComputedStyle(el, '::after').webkitMaskImage]);
+    if (segs[0] !== '3' || segs[1] !== '2' || !/repeating-linear-gradient/.test(segs[2])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
     await page.click(`.cl-run .body:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`, { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#step-done');
