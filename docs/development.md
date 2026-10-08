@@ -34,7 +34,17 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
 - What's done to a task is in `app/actions.js`, a method for each thing: ticking it (and its subtasks with it: `toggleDone`,
   the one way, from a list or its sheet, which hands a run to `tickRunTask`), its progress, deleting it, moving it to another project, its place in its project's list (`reorder`), adding subtasks, its people and labels, and saving a change. Each one makes the request, changes what's on screen and offers the Undo, so the lists and the sheet call these rather than `api()`. A run and its steps go through the outbox instead (`act`, in `app/runs.js`), and a template's steps are moved by `moveStep` (`app/checklists.js`).
 - Each task on screen is one object, in `tasks`, by id (`app/tasks.js`): every list's rows are those objects, so a change shows on all of a task's rows at once. A list loaded from Vikunja puts its tasks there with `keep`. `cache` (`util.js`) is apart from it: Vikunja's last copy of each task, as it said it, for an Undo to compare with and a failed save to put back. A task's sheet still has a copy of its own, and a run's screen its own steps (see `roadmap.md`).
-- A task's row is `markup/task-row.html`, in every list of tasks and for the subtasks in a task's sheet (`g.sheet`, where it differs in the few ways its comment lists). A template's steps and a run's steps have rows of their own, with the same slot for who's doing them, `markup/claim-slot.html`.
+- A task's row is `markup/task-row.html`: in every list of tasks, for the subtasks in a task's sheet, and for a run's
+  steps on its screen. What differs is said by the list it's in, `g`: `g.depth` (each row's depth under the task above
+  it), `g.heads` (done tasks over their open subtasks), `g.sheet` (a subtask in its parent's sheet: its own tick, its
+  words alone for a title, its due date only under them) and `g.run` (a run's steps, each `t` a step as `runView`
+  works it out, in `app/runs.js`). On a run, `g.at` is the step on its card, lit (`.row.current`); `g.insertAt` the
+  step the insert box is open under, which its › opens; and `g.locked` a run finished or shared with you to read: no
+  tick, › or ×. The row asks the component by those options: its tick (`tickRow`: `tickStep` through the outbox for a
+  step), what's under its title (`rowMeta`: a step's Inserted or Repeated, notes, and countdown), and who's doing it
+  (`rowSlot`, shown by `markup/claim-slot.html`; a done step shows who did or skipped it, ✅ or ⏭️ on their picture,
+  instead). A step held is `stepSlide` (`app/progress.js`). A template's steps keep a row of their own, an editor, with
+  the same slot.
 - What a finger does on a row is `app/progress.js`: held, then slid sideways, progress, in snaps of 25% (the sums are in `progress.js`, beside `app/`, so the unit tests can check them); moved up or down after the hold, its place among its siblings (`dragOf`: the row follows the finger, the rows it passes make room, and the page scrolls near the edges); swiped left, the row's Delete, or past half the row, deleted. `haptics.js` is the tick felt at each snap.
 - A project's order is its List view's in Vikunja (`order.js`, beside `app/`, with the sums: where a move goes, between
   its neighbours as Vikunja's web app puts it, and which rows are a task's siblings). `positions`, by task id, is read
@@ -104,7 +114,8 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   (`messages.test.mjs`), a project's order: its List view, a move's position, a task's siblings, a drag, and
   which task the add box adds subtasks to and where they go (`order.test.mjs`), progress as a text and as a
   Markdown list: the bar, names, due dates, nesting, a run and a project, and what collapses (`share.test.mjs`), the one
-  copy of each task (`tasks.test.mjs`), and what's done to a task (`actions.test.mjs`): ticking a parent closes its open subtasks and
+  copy of each task (`tasks.test.mjs`), what the one row asks by its options: a step's tick, what's under its title and
+  who's on it (`rows.test.mjs`), and what's done to a task (`actions.test.mjs`): ticking a parent closes its open subtasks and
   Undo opens exactly those, with their progress, from its sheet too, a done parent over its open subtasks opened again
   where it is, and one ticked with a subtask left open staying over it, a repeating task whose reply is lost is ticked once, progress at 100%, saves one after
   another, deleting, a subtask's tick with no message, a deletion held until its Undo has gone (and sent without a
@@ -226,7 +237,7 @@ With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo
 
 ## The task row's specimen
 
-`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each, and a row held, swiped to its Delete, and in a line's place), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
+`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each, and a row held, swiped to its Delete, and in a line's place; and a run's steps on its screen: done by you or someone else, skipped, inserted, repeated, counting down, late, held, a tick waiting to send, and in a run finished or read only), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
 
 ## Upgrading the libraries
 

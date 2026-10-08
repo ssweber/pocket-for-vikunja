@@ -111,7 +111,7 @@ What's left of one copy of each task, for when a feature needs it:
 - The subtasks in a task's sheet are Vikunja's copies inside the task's own (`related_tasks.subtask`), without their
   people or labels, so they can't be the store's either. Their row differs from a list's in a few ways (its tick,
   title and meta, no progress line), marked `g.sheet` in `task-row.html`, until the plan's Rows make every row the same.
-- A run's screen has its own run and steps (`view.run`), and Checklists its templates and the runs finished lately,
+- A run's screen has its own run and steps (`view.run`), drawn by the task row (`g.run`), and Checklists its templates and the runs finished lately,
   as summaries. The runs in progress under Checklists are the store's.
 - `cache` stays Vikunja's last copy of each task.
 - Projects (new, rename, archive, delete, use for checklists), templates (`app/checklists.js`) and runs (`app/runs.js`,
