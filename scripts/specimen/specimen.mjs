@@ -15,7 +15,7 @@ const task = fields => ({id: ++n, title: 'A task', done: false, priority: 0, due
   comment_count: 0, attachments: null, reminders: null, repeat_after: 0, repeat_mode: 0, description: '', related_tasks: {}, created_by: me, ...fields});
 
 const projects = [{id: 1, title: 'Café', hex_color: '1d6b52'}, {id: 2, title: 'Checklists', hex_color: 'b8860b', description: `<p>${CHECKLIST_MARK}</p>`},
-  {id: 3, title: 'Head office', hex_color: '6a5acd'}, {id: 4, title: 'Upkeep', hex_color: '3d85c6'}];
+  {id: 3, title: 'Head office', hex_color: '6a5acd'}, {id: 4, title: 'Upkeep', hex_color: '3d85c6'}, {id: 5, title: 'My own', hex_color: 'c0504d'}];
 
 // The sections of the page: each a list of rows, as `g` is to a row in the app (its depth under the task above it,
 // and whether it's in a task's sheet).
@@ -62,9 +62,9 @@ function sections(){
     kid(713, {under: opening.id, project_id: 2, title: 'Unlock the door', related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 3}]}}),
     kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]}),
     ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 5}))];
-  // Today's rows, on one line (line: section 9): the tick's ring its priority, from none to do now; the title cut short;
-  // and at the right when it's due, short (a time today, a weekday this week, a date beyond, red when late), and the
-  // project's dot.
+  // Today's rows, on one line (line: section 9): the title cut short; and at the right its priority's bars, small, from
+  // none to do now (one-concept-plan, part 4), when it's due, short (a time today, a weekday this week, a date beyond,
+  // red when late), and the project's dot.
   const dayAt = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
   const today = [task({title: 'Post next week’s rota', due_date: dayAt(0, 10, 30), priority: 3}),
     task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [priya]}),
@@ -72,7 +72,14 @@ function sections(){
     task({title: 'Order the cups', due_date: dayAt(2, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(12, 0)}),
     task({title: 'Fix the till drawer', due_date: dayAt(0, 9), priority: 5, assignees: [me]})];
   return {parent, steps: runSteps(), cards: [van2, opening, sign, shelves], cardSubs, list: [
-    {title: 'Today, on one line: high, low, urgent, medium, none, do now', depth: {}, line: true, tasks: today},
+    {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, tasks: today},
+    // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
+    {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
+      task({title: 'Order the cups', due_date: dayAt(0, 0), priority: 2}), task({title: 'Post next week’s rota', due_date: dayAt(0, 16, 30)})]},
+    // A project no one else can see (seenBy 0): no "+ me", nor your picture; someone given it in a shared project before it was moved here, still.
+    {title: 'A project only you can see: no “+ me”, nor your picture; someone given it elsewhere, before it was moved there, still shows', depth: {}, tasks: [
+      task({title: 'Renew the car insurance', project_id: 5}), task({title: 'Book the dentist', project_id: 5, assignees: [me]}),
+      task({title: 'Fix the shed door', project_id: 5, assignees: [priya]})]},
     {title: 'Open, done, and waiting to send', depth: {}, tasks: [task({title: 'Order oat milk'}), task({title: 'Wipe the counters', done: true}),
       {...task({title: 'Call the plumber tomorrow'}), id: 'pending-specimen-0', pending: true, waits: true, entry: 'specimen', index: 0}]},
     {title: 'Progress', depth: {}, tasks: [task({title: 'Repaint the sign', percent_done: .3}), task({title: 'Train the new barista', percent_done: .7})]},
@@ -166,7 +173,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   c.init = function(){
     setApp(this);
     const s = sections(), subs = s.parent.related_tasks.subtask;
-    Object.assign(this, {signedIn: true, screen: 'app', user: me, route: {name: 'today'}, perms: {1: 2, 2: 2, 3: 0, 4: 1},
+    // Who can see each project besides you (loadPeople): all shared but the last, yours alone.
+    Object.assign(this, {signedIn: true, screen: 'app', user: me, route: {name: 'today'}, perms: {1: 2, 2: 2, 3: 0, 4: 1, 5: 2}, seenBy: {1: 2, 2: 2, 3: 4, 4: 1, 5: 0},
       avatars: Object.fromEntries([me, priya, sam].map(u => [u.username, {url: '', at: Date.now()}])), labelsLoaded: true});
     this.setProjects(projects);
     // A task's sheet, open on a task with subtasks, for its rows' slots: who's doing each.

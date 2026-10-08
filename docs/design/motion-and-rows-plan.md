@@ -235,8 +235,8 @@ for doing, so every row and card line there is one line, with "…" when a title
 - **A row on Today:** the tick, the title on one line, then at the right a short time and "+ me" or initials.
   - **The time:** "11:55" today; "Fri" in the coming week; "Oct 2" beyond. It's red when late. A run's step shows its
     countdown ("in 18m", "12m late").
-  - **Priority** is the tick ring's colour (the `p0`–`p5` classes), costing no width. The bars stay on Projects and in
-    the sheet.
+  - **Priority** was the tick ring's colour; it's now small bars before the time, as everywhere (`one-concept-plan.md`,
+    part 4).
   - **The project** is its colour dot only, beside the time.
   - **Labels and counts** (comments, attachments, subtasks) are off Today.
   - A row's own progress line stays at its bottom.

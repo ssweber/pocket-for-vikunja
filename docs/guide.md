@@ -54,16 +54,18 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
   next date. On a card, its task and its subtasks that are overdue themselves are moved; a run's steps stay, as their
   run times them.
-- **Today is on one line:** each task there is one line, as Today is for doing, and the sheet has the rest. Its tick's
-  ring is its priority's colour: grey for none, then blue (low), amber (medium), orange (high), red (urgent), and red,
-  thicker and tinted, for do now. Its title is cut short with "…" when it's too long, and at the right is when it's
-  due, short: the time today ("11:55 AM"), the weekday this week ("Fri"), or the date beyond ("Oct 20"), red when
-  it's late, with a run's step's countdown instead ("in 18m", "12m late"); then its project's colour dot, and **+ me**
-  or who's on it. Labels and counts (comments, attachments, subtasks) are left off Today: they're on Projects, in
+- **Today is on one line:** each task there is one line, as Today is for doing, and the sheet has the rest. Its title
+  is cut short with "…" when it's too long, and at the right are its priority's bars, small, as everywhere else (one
+  to five, red from high up; none for no priority), then when it's due, short: the time today ("11:55 AM"), the
+  weekday this week ("Fri"), or the date beyond ("Oct 20"), red when it's late, with a run's step's countdown instead
+  ("in 18m", "12m late"). Under the **Today** heading, a task due today with no time of its own shows no time: the
+  heading says it (under **Overdue**, and anywhere else, it still says "Today"). Then its project's colour dot, and
+  **+ me** or who's on it. A tick is never coloured: red means late, or Delete. Labels and counts (comments, attachments, subtasks) are left off Today: they're on Projects, in
   search and in the sheet, which keep their second line. A screen reader hears it all: the whole title, when it's due
   in words, its priority and its project.
 - **Cards on Today:** a task with subtasks still open (or a checklist run with steps still open) shows on Today as a
-  card of three lines: its title, with its priority's bars and when it's due; one line for a step, as a task's line on
+  card of three lines: its title, with its priority's bars and when it's due (nothing for today with no time, under
+  the Today heading, as a row); one line for a step, as a task's line on
   Today, with that step's own tick and **+ me** or who's on it; and its strip, below. Every card is the same height,
   whatever its steps hold.
   Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
@@ -117,7 +119,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   comments can still be selected to copy, by holding them. The same works on the bar in a task's sheet (the arrow keys move it a stop
   at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
   run's steps are held and slid the same way. The bar is all that shows it, with no message: to take it back, slide it
-  back. Sliding a task, a subtask or a step no one is doing says you're doing it: **+ me** turns into your picture as
+  back. Sliding a task, a subtask or a step no one is doing, in a project shared with someone, says you're doing it: **+ me** turns into your picture as
   you start, and it's assigned to you once you let go, if the slide changed its progress (let go where it started, and
   nothing is). Someone else's stays theirs. Sliding it back to 0% later keeps it yours: tap your picture to let it go.
   The bar in a task's sheet does the same, slid or moved with the arrow keys, and its **Assigned** row shows you at
@@ -298,7 +300,12 @@ in a project they can see.
 
 **Who's doing a task, a subtask or a step:** every task's row, every subtask in a task's sheet, and every step of a
 run, has a slot at the end of its row (not a checklist run or a template, whose row says who they're for). **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
-shows who has it; to hand it over, open it and use **Assigned** (a run's step: the run's **⋯** → **Open as a task**,
+shows who has it. **+ me** shows only where someone else could take it: in a project shared with someone (a person or
+a team, there or in a project it's under). In a project only you can see, the slot is empty, your picture isn't shown
+either, and sliding progress claims nothing; someone else assigned to it (in a shared project, before it was moved there, say) still shows.
+Pocket finds out who can see each project once you're signed in, keeps it on the phone, so Today opens with it, and
+looks again as you use it, at most every 10 minutes; until it first knows (or with an API token that can't search a
+project's users), every slot shows as in a shared project. To hand one over, open it and use **Assigned** (a run's step: the run's **⋯** → **Open as a task**,
 then tap the step). Two people who say they'll do a step
 at the same moment don't both get it: the first keeps it, and the other is told. Done or skipped is still recorded for whoever taps it,
 whoever has the step, and claiming never ticks anything. A step you claim in someone else's run brings the run onto
