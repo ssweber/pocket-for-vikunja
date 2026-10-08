@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DELETE_W, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -99,4 +99,12 @@ test('a subtask is a task with a parent', () => {
   assert.equal(isSubtask({ related_tasks: { parenttask: [{ id: 1 }] } }), true);
   assert.equal(isSubtask({ related_tasks: { parenttask: [] } }), false);
   assert.equal(isSubtask({}), false);
+});
+
+test('sliding progress claims a task only where no one is on it and its slot can be tapped', () => {
+  assert.equal(claimsOnSlide({ can: true, users: [] }), true, '"+ me": it\'s yours');
+  assert.equal(claimsOnSlide({ can: false, users: [{ id: 2 }] }), false, 'someone else\'s stays theirs');
+  assert.equal(claimsOnSlide({ can: true, mine: true, users: [{ id: 1 }] }), false, 'yours already');
+  assert.equal(claimsOnSlide({ can: false, users: [] }), false, 'done, or shared with you to read');
+  assert.equal(claimsOnSlide(null), false, 'no slot: a run, a template, a task waiting to be sent');
 });

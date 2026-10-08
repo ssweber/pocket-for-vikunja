@@ -3,6 +3,7 @@ import {cache} from '../util.js';
 import {allPages, api, ApiError, NetError} from '../api.js';
 import {hasTemplateLabel, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
+import {claimsOnSlide} from '../progress.js';
 
 const loading = new Set();                       // usernames whose picture is being fetched
 const tried = new Map();                         // username -> when fetching its picture last failed for want of a connection
@@ -31,12 +32,26 @@ export default {
     const all = [...by.map(u => ({...u, badge})), ...people.filter(u => !by.some(d => d.id === u.id))];
     return all.length ? {users: all.slice(0, 2), more: Math.max(0, all.length - 2), can: false} : null;
   },
-  // A task's assignees as shown: Vikunja's, with your claims and let-gos still waiting to be sent laid over them.
+  /* A task's assignees as shown: Vikunja's, with your claims and let-gos still waiting to be sent laid over them, and
+     you on the one whose progress is being slid (claimOnSlide). */
   peopleOf(id, base){
     let list = base || [];
     for (const a of this.pending) if (a.kind === 'act' && a.task === id && (a.op === 'claim' || a.op === 'unclaim'))
       list = [...list.filter(u => u.id !== this.user?.id), ...a.op === 'claim' ? [this.user] : []];
+    if (this.slideClaim === id && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
     return list;
+  },
+  /* Progress slid on a task or a step no one is doing says you're doing it: your picture takes the place of "+ me" as
+     the slide starts, and the claim is sent, through the outbox as a tap on "+ me" is, once it's let go having changed
+     something; let go where it started, nothing is claimed. Someone else's is never replaced (claimsOnSlide), and
+     sliding back to 0% later keeps it: letting go is a tap of its own. Resolves the slide's end: end(changed). */
+  claimOnSlide(slot){
+    if (!claimsOnSlide(slot)) return () => {};
+    this.slideClaim = slot.id;
+    return async changed => {
+      try { if (changed) await this.act({op: 'claim', task: slot.id, run: slot.run}); }
+      finally { if (this.slideClaim === slot.id) this.slideClaim = null; }     // from then on, the outbox or Vikunja says
+    };
   },
   // Claim it, or let it go. Through the outbox, like a tick on a run: without a connection it waits, shown as done.
   async toggleClaim(slot){

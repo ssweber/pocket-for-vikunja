@@ -69,3 +69,28 @@ test('a row held or swiped: its Delete and its move only where its list allows t
   assert.ok(project.swipe && project.reorder);
   assert.deepEqual(asked, [5]);
 });
+
+/* Progress slid on a row no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture as the
+   slide starts, the claim sent only if the slide changed something, and someone else's never replaced. */
+test('a slide shows you on a task no one is doing, and claims it only once it has changed something', async () => {
+  const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
+  const app = component(claims);
+  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, act: async a => { acts.push(a); } });
+  const free = app.claimSlot({ id: 5, title: 'Wipe the menus', project_id: 1 }, [], false);
+  const end = app.claimOnSlide(free);
+  assert.equal(app.slideClaim, 5);
+  assert.deepEqual(app.peopleOf(5, []), [me], 'your picture takes the place of "+ me" as it starts');
+  await end(false);
+  assert.equal(app.slideClaim, null);
+  assert.deepEqual(app.peopleOf(5, []), [], 'let go where it started: no one claimed');
+  assert.deepEqual(acts, []);
+  await app.claimOnSlide(free)(true);
+  assert.deepEqual(acts, [{ op: 'claim', task: 5, run: null }], 'changed: claimed, through the outbox');
+  assert.equal(app.slideClaim, null, 'from then on the outbox says who');
+  const theirs = app.claimSlot({ id: 6, title: 'Count the till', project_id: 1 }, [priya], false);
+  await app.claimOnSlide(theirs)(true);
+  assert.equal(app.slideClaim, null);
+  assert.equal(acts.length, 1, 'someone else\'s stays theirs');
+  await app.claimOnSlide(app.claimSlot({ id: 7, title: 'Mine', project_id: 1 }, [me], false))(true);
+  assert.equal(acts.length, 1, 'yours already: nothing to send, and sliding back to 0% later keeps it');
+});

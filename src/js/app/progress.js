@@ -124,7 +124,7 @@ export default {
      steps every second, for their countdowns), which would put the line back to what's saved under the finger. */
   /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
      swiped to its Delete (swipeOf), `reorder` if it can be moved (dragOf), and if its progress can be set, {el: the row,
-     start, width, show(pct, x: where the finger is), finish(pct, or null if nothing changed)}.
+     start, width, show(pct, x: where the finger is), begin() as the slide starts, finish(pct, or null if nothing changed)}.
      Moving before the hold ends is a scroll or a tap as usual, or, sideways to the left, the swipe; once the hold has
      ended (a tick is felt, and the row lifts), nothing scrolls or swipes until the finger lifts. The first LOCK_PX it
      moves then decide the way: sideways sets progress, from where it was, in snaps of 25% (slidePct), a tick felt at
@@ -167,7 +167,7 @@ export default {
         if (!way) return;
         if (!(way === 'x' ? s.show : s.reorder)) { swallow(); stop(false); return; }
         g.mode = way === 'x' ? 'slide' : 'reorder';
-        if (g.mode === 'reorder') s.reorder.start(e.clientY);
+        if (g.mode === 'reorder') s.reorder.start(e.clientY); else s.begin?.();
       }
       if (g.mode === 'reorder') { s.reorder.move(e.clientY - g.y, e.clientY); return; }
       const pct = slidePct({start: s.start, dx: e.clientX - g.x, x: g.x, width: s.width, screen: innerWidth});
@@ -210,7 +210,8 @@ export default {
     });
   },
   /* A task's row, in a list or (sheet) a task's sheet. Held and slid, its progress: not one done, waiting to be sent, or
-     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet. Where its list allows
+     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; with no one on it, it's
+     then yours (claimOnSlide). Where its list allows
      (allows), held and moved up or down, its place among its siblings (reorderOf), and swiped, its Delete: on Today,
      neither (screenRows). */
   rowGesture(t, row, sheet){
@@ -219,9 +220,12 @@ export default {
     const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row)) : null;
     const reorder = can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
+    let claimed = null;
     return {el: row, swipe, reorder, start: pctOf(t), width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),
+      begin: () => { claimed = this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {})); },
       finish: pct => {
+        claimed?.(pct !== null);
         if (pct !== null) { this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined}); if (sheet) this.sheet.dirty = true; else this.aimAfterTick(t); }
         this.endSlide(row);
         row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
@@ -254,13 +258,16 @@ export default {
     const removing = this.removeTask(t);
     if (await (row ? sweep(row, removing) : removing) && sheet) this.sheet.dirty = true;
   },
-  // A run's step held on its row: not one done, waiting to be sent, or in a finished run, nor from its buttons.
+  /* A run's step held on its row: not one done, waiting to be sent, or in a finished run, nor from its buttons. With no
+     one on it, it's then yours, as a task's is. */
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
     if (!s || s.done || s.pending || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('button:not(.body)')) return null;
+    let claimed = null;
     return {el: row, start: s.pct, width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),
-      finish: pct => { this.endSlide(row); if (pct !== null) this.stepProgress(s, pct); }};
+      begin: () => { claimed = this.claimOnSlide(s.slot); },
+      finish: pct => { claimed?.(pct !== null); this.endSlide(row); if (pct !== null) this.stepProgress(s, pct); }};
   },
   // In a task's sheet: hold the progress bar, or around the title (not its text, where a long press selects); and its
   // subtasks' rows, as in a list.

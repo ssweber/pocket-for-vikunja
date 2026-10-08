@@ -65,6 +65,7 @@ export default () => ({
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
+  slideClaim: null,                            // a task or step whose progress is being slid, which you'll be doing (claimOnSlide)
   places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
   said: '',                                    // the last of those, for a screen reader
   waitShown: false,                            // something has waited a while: the header's button says so

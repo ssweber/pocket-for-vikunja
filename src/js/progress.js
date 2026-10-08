@@ -52,3 +52,8 @@ export const swipeOffset = (dx, width) => Math.max(-width, Math.min(0, dx));
 export const swipeEnd = (offset, width) => offset < -width / 2 ? 'delete' : offset < -DELETE_W / 3 ? 'open' : 'shut';
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.
 export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;
+
+/* ---------- who's doing it, and a run's line ---------- */
+// Whether sliding progress on a row says you're doing it: only where no one is yet and its slot can be tapped (not done,
+// not shared with you to read). Someone else's is never replaced, and yours is already yours (claimSlot, app/claims.js).
+export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
