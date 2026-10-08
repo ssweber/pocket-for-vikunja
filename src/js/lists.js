@@ -20,9 +20,8 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
    list (`g`) has these as its options, and a row writes them on itself for the gesture code (rowGestures). */
 export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}, today: {cards: true}}[name] || {});
 /* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
-   can't reach the list's `g`: "delete" (swiped left, its Delete), "reorder" (held and moved up or down), "paging" (a
-   card's step line: swiped either way, the card's step before or after it). */
-export const rowGestures = g => ['delete', 'reorder', 'paging'].filter(k => g?.[k]).join(' ');
+   can't reach the list's `g`: "delete" (swiped left, its Delete), "reorder" (held and moved up or down). */
+export const rowGestures = g => ['delete', 'reorder'].filter(k => g?.[k]).join(' ');
 // The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
 export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
 /* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's

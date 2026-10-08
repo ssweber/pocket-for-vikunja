@@ -1,12 +1,13 @@
 /* Today's cards on screen (which tasks are cards, and why, is cards.js): a task with open subtasks or steps, its title
-   over one line for a step, the shared row (task-row.html) with the card's own options (g.card: paging, no Delete, no
-   moving it). The card pages through its open steps, by the ‹ › on its strip, a tap on a step's segment there, or a
-   swipe, and a tick or a slide on its step line is that step's alone. What a card needs is read once per project shown, not once per card (readCards). */
+   over one line for a step, the shared row (task-row.html) with the card's own options (g.card: no Delete, no
+   moving it). The card pages through its open steps on its strip only: its ‹ ›, a tap on a step's segment, or a finger
+   dragged along it (cardScrub); a tick or a slide on its step line is that step's alone. What a card needs is read once per project shown, not once per card (readCards). */
 import {colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet} from '../dates.js';
 import {stepsOf} from '../checklists.js';
-import {cardAt, openSubs, placeOf, segmentAt, stepOfSegment, turnPage} from '../cards.js';
+import {cardAt, openSubs, placeOf, scrubTo, segmentAt, segmentOf, stepOfSegment, turnPage} from '../cards.js';
+import {haptic} from '../haptics.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {runLine} from '../progress.js';
 
@@ -29,7 +30,7 @@ export default {
     const i = cardAt(steps, this.cardPage[t.id], c.focus), d = all.filter(done).length;
     const card = {id: t.id, step: steps[i], i, n: steps.length, steps, at: placeOf(all, steps[i]), total: all.length, all,
       line: runLine(all.length, d, all.map(done)), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
-    card.g = {depth: {}, card, paging: steps.length > 1};
+    card.g = {depth: {}, card};
     return card;
   },
   // A card's subtasks, all of them, each the copy on screen where there's one: a run's in its order line, a task's in its
@@ -50,11 +51,13 @@ export default {
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     return out;
   },
-  /* Paged, by its ‹ › or a swipe: the step after it (dir 1) or before it (-1), round from the last to the first. A screen
-     reader hears which. The arrows stay where they are, so the one tapped keeps the focus. */
+  /* Paged by its ‹ ›: the step after it (dir 1) or before it (-1), stopping at the first and the last, where that arrow
+     is dimmed and does nothing. A screen reader hears which. The arrows stay where they are, so the one tapped keeps the
+     focus. */
   pageCard(c, dir){
     if (!c || c.n < 2) return;
-    this.showCardStep(c, turnPage(c.i, c.n, dir), dir);
+    const i = turnPage(c.i, c.n, dir);
+    if (i !== c.i) this.showCardStep(c, i, dir);
   },
   /* A segment of its line tapped, at the pointer's `x`: that step, if it's open (a done one is skipped, as paging skips
      it), coming in from the side it's on. Past MANY_STEPS a step's stretch is too narrow to tap, so nothing. A pointer's
@@ -64,24 +67,47 @@ export default {
     const r = line.getBoundingClientRect(), k = segmentAt(x - r.left, r.width, c.total), i = stepOfSegment(c.all, c.steps, k);
     if (i >= 0 && i !== c.i) this.showCardStep(c, i, Math.sign(k - c.at) || 1);
   },
-  // The card on its open step `i`, coming in from the side `dir` says; a screen reader hears its place among all.
-  showCardStep(c, i, dir){
+  /* The card on its open step `i`, coming in from the side `dir` says (or, 'none', just there, as while scrubbing); a
+     screen reader hears its place among all, unless `quiet` (scrubbing, which says where it stopped: cardScrub). */
+  showCardStep(c, i, dir, quiet = false){
     const s = c.steps[i];
     this.cardPage[c.id] = {id: s.id, i};
     entering.set(c.id, dir);
-    this.said = `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`;
+    if (!quiet) this.said = this.stepSaid(c, s);
   },
-  pageCardOf(id, dir){ const t = this.tasks[id]; this.pageCard(t && this.cardOf(t, {cards: true}), dir); },
+  stepSaid(c, s = c.step){ return `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`; },
+  /* A finger pressed on a card's strip and dragged along it, mostly sideways (holdToSlide, app/progress.js): the step
+     under it shows, the marker following, from open step to open step (scrubTo), a tick felt at each, the step line
+     switching to it as it goes; let go, it stays there, and a screen reader hears where. Past MANY_STEPS too: it's a
+     drag, not a tap. With one open step, nothing. */
+  cardScrub(card){
+    if (card.matches('.deleted, .lined')) return null;
+    const id = +card.dataset.id, line = card.querySelector('.card-line'), now = () => { const t = this.tasks[id]; return t && this.cardOf(t, {cards: true}); };
+    const c0 = now();
+    if (!c0 || c0.n < 2 || !line) return null;
+    let last = 0, moved = false;
+    return {el: null, page: {
+      begin(){},
+      move: (dx, x) => {
+        const c = now(), r = line.getBoundingClientRect(), dir = Math.sign(dx - last) || 1;
+        last = dx;
+        const i = c ? scrubTo(c.all, c.steps, segmentOf(x - r.left, r.width, c.total), dir) : -1;
+        if (i < 0 || i === c.i) return;
+        haptic('tick'); this.showCardStep(c, i, 'none', true); moved = true;
+      },
+      end: () => { const c = moved && now(); if (c) this.said = this.stepSaid(c); },
+    }};
+  },
   // A tick or a slide on a card's step: the card stays at its place, so once that step has gone, the one after it comes in.
   pinCard(c){ if (c) this.cardPage[c.id] = {id: c.step.id, i: c.i}; },
   // Leaving Today: every card back on its next step.
   resetCards(){ this.cardPage = {}; entering.clear(); shownStep.clear(); },
   /* A card's step line, new to it (paged, or the step before gone with the batch): it slides in from the way it was paged,
-     or fades in. Not when the card is first drawn, nor with less motion asked for. */
+     or fades in. Not when the card is first drawn, nor while scrubbing, nor with less motion asked for. */
   cardEntered(el, c){
     const was = shownStep.get(c.id), dir = entering.get(c.id) || 0;
     shownStep.set(c.id, c.step.id); entering.delete(c.id);
-    if (was === undefined || was === c.step.id || !motion()) return;
+    if (was === undefined || was === c.step.id || dir === 'none' || !motion()) return;
     el.animate([{transform: `translateX(${dir * 32}px)`, opacity: 0}, {transform: 'none', opacity: 1}], {duration: 180, easing: 'ease-out'});
   },
   // What Move all to today moves: each overdue row, and on an overdue card its task and its open subtasks overdue

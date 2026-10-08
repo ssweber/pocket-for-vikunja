@@ -301,9 +301,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .pg.next{grid-column:3}
 .pg svg.i{width:16px;height:16px;stroke-width:2.4}
 .pg.prev svg.i{transform:scaleX(-1)}
+/* at the first open step, ‹, and at the last, ›: dimmed, in their places, and a tap does nothing */
+.pg[aria-disabled=true]{opacity:.3;cursor:default}
 .day-card > .step-line{border-top:0}
-/* swiped sideways before the hold: the step line follows the finger a little, then pages, or goes back */
-.row.step-line.paging{transform:translateX(var(--page,0px));transition:none}
 .day-card.deleted > :not(.del-gap){visibility:hidden}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
 .day-card.lined > :not(.row-line){display:none}

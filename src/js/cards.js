@@ -69,17 +69,31 @@ export function cardAt(steps, page, focus){
   return Math.max(0, k(focus));
 }
 // Where step `s` is among all of a card's subtasks, done ones too (0 the first): its count, "3 of 5", and the segment
-// marked on its line. Paging goes through the open ones only, so from 3 it goes to 4, 5, then back to 3.
+// marked on its line. Paging goes through the open ones only, so with the first two done, from 3 it goes to 4, then 5.
 export const placeOf = (all, s) => all.findIndex(x => x.id === s?.id);
-// Paging a card: the step `dir` (1 the next, -1 the one before) from `i`, of `n`, round from the last to the first.
-export const turnPage = (i, n, dir) => n ? ((i + dir) % n + n) % n : -1;
+// Paging a card by its ‹ ›: the step `dir` (1 the next, -1 the one before) from `i`, of `n`, stopping at the first and
+// the last (`i` itself there), with no going round.
+export const turnPage = (i, n, dir) => n ? Math.max(0, Math.min(n - 1, i + dir)) : -1;
 /* A tap on a card's line, `x` px from its left, the line `w` wide in `n` segments, each (w + 3) / n with its 3px gap, as
    the CSS cuts it: which segment, 0 the first, a gap counting with the segment before it. -1 past MANY_STEPS, where a
    step's stretch is too narrow to tap: there only the arrows and a swipe page. */
-export const segmentAt = (x, w, n) => n > MANY_STEPS || !(w > 0) || !(n > 0) ? -1 : Math.min(n - 1, Math.max(0, Math.floor(x * n / (w + 3))));
+export const segmentAt = (x, w, n) => n > MANY_STEPS ? -1 : segmentOf(x, w, n);
+// The same, past MANY_STEPS too, for a finger dragged along the line (scrubTo), where a stretch's size doesn't matter.
+export const segmentOf = (x, w, n) => !(w > 0) || !(n > 0) ? -1 : Math.min(n - 1, Math.max(0, Math.floor(x * n / (w + 3))));
 /* The open step a card's segment `k` stands for, as its index among the open `steps` it pages through; -1 for a done
    one (paging skips those), or no segment. `all`: every subtask, in the order the line draws them. */
 export const stepOfSegment = (all, steps, k) => k < 0 || !all[k] ? -1 : steps.findIndex(s => s.id === all[k].id);
+/* A finger dragged along a card's strip, over segment `k`: the open step nearest it, as its index among the open
+   `steps`, so it goes from open step to open step, done ones skipped; between two as near, the one the finger is moving
+   towards (`dir`: 1 right, -1 left). -1 with none. */
+export function scrubTo(all, steps, k, dir = 1){
+  let best = -1, far = Infinity;
+  steps.forEach((s, i) => {
+    const d = all.findIndex(x => x.id === s.id) - k;
+    if (Math.abs(d) < far || (Math.abs(d) === far && Math.sign(d) === dir)) { best = i; far = Math.abs(d); }
+  });
+  return k < 0 ? -1 : best;
+}
 /* A run's step's countdown on its card, to the minute, as Today redraws once a minute: "in 1h 5m", "12m late"; null more
    than a day either way, where its date says it better. `due` and `now` in ms. */
 export function countdown(due, now){
