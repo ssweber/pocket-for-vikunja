@@ -2285,12 +2285,20 @@ ${footName('Hooks')}`);
     const l = el.parentElement.querySelector('.card-line').getBoundingClientRect(), m = el.getBoundingClientRect(), segs = +getComputedStyle(el).getPropertyValue('--segs');
     return Math.floor((m.left + m.width / 2 - l.left) / ((l.width + 3) / segs));
   });
-  // A card from the top: its heading (title, count and what's under it), its task's line, and the step line, each one's
-  // top and bottom, as drawn.
-  const cardStack = t => page.locator(cardOf(t)).evaluate(el => ['.card-head', '.card-track', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
+  // A card from the top: its heading (title and what's under it), its strip, and the step line, each one's top and
+  // bottom, as drawn.
+  const cardStack = t => page.locator(cardOf(t)).evaluate(el => ['.card-head', '.card-strip', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
+  // A tap on segment `k` of a card's line, in its middle, `dy` px from the line (its tap area is the strip's height).
+  const tapSeg = async (t, k, dy = 0) => {
+    const line = page.locator(`${cardOf(t)} .card-line`);
+    await line.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const [segs, l] = await line.evaluate(el => [+getComputedStyle(el).getPropertyValue('--segs'), el.getBoundingClientRect().toJSON()]);
+    await page.mouse.click(l.left + (k + 0.5) * (l.width + 3) / segs - 1.5, l.top + l.height / 2 + dy);
+  };
   await step('a-task-with-subtasks-is-a-card-on-today-on-its-next-one', async () => {
     const P = await make(`Pocket smoke card ${stamp}`, { due_date: todayAt(23), priority: 3 });
     const [A, B, C] = [await make(`Pocket smoke card A ${stamp}`), await make(`Pocket smoke card B ${stamp}`), await make(`Pocket smoke card C ${stamp}`)];
+    const Q = await make(`Pocket smoke card's neighbour ${stamp}`, { due_date: todayAt(23) });     // a row beside it on Today
     await under(P, [A, B, C]);
     await placeIn(await listView(home2), [[B, 100], [C, 200], [A, 300]]);    // B, C, A in its List view
     const card = page.locator(cardOf(P.title)), line = page.locator(stepLine(P.title)), title = stepTitle(P.title);
@@ -2303,39 +2311,59 @@ ${footName('Hooks')}`);
       await expect(card).toHaveAttribute('aria-label', P.title);
       await expect(title).toHaveText(B.title);
       await expect(line.locator('.title .sr')).toHaveText('Step 1 of 3: ');
-      // Its count at the right of its title's first line, the step's place among all its subtasks; its segment marked.
-      const count = card.locator('.card-head .card-n');
+      // Its strip under its heading: ‹, its line, ›, and its count at the end, the step's place among all its subtasks,
+      // level with the line; its segment marked. Not on the title's row any more.
+      const count = card.locator('.card-strip > .card-n');
       await expect(count).toHaveText('1 of 3');
+      await expect(card.locator('.card-head .card-n')).toHaveCount(0);
       await expect(line.locator('.meta')).not.toContainText('of 3');
-      const at = await card.locator('.card-head').evaluate(el => { const n = el.querySelector('.card-n').getBoundingClientRect(); return { title: el.querySelector('.card-title').getBoundingClientRect().top, top: n.top, gap: el.getBoundingClientRect().right - n.right }; });
-      if (Math.abs(at.top - at.title) > 6 || at.gap > 20) throw new Error('the count is not at the right of the title: ' + JSON.stringify(at));
+      const at = await card.locator('.card-strip').evaluate(el => {
+        const r = k => el.querySelector(k).getBoundingClientRect(), [prev, l, next, n] = ['.pg.prev', '.card-line', '.pg.next', '.card-n'].map(r);
+        return { order: prev.right <= l.left + 1 && l.right <= next.left + 1 && next.right <= n.left + 1, level: Math.abs((n.top + n.bottom) / 2 - (l.top + l.bottom) / 2), gap: el.getBoundingClientRect().right - n.right };
+      });
+      if (!at.order || at.level > 3 || at.gap > 20) throw new Error('the strip is not ‹, its line, › and its count: ' + JSON.stringify(at));
       await expect.poll(() => markedSeg(P.title)).toBe(0);
       // Its priority's bars under its title, as its row showed them.
       await expect(card.locator('.card-head .meta .bars.p3')).toBeVisible();
       await expect(card.locator('.card-head .meta [aria-label="Priority: High"]')).toHaveCount(1);
-      // Its task's line right under the heading, a clear gap before the step line, whose own bar is at its bottom: not
-      // one double line.
-      const [head, track, stepAt] = await cardStack(P.title);
-      if (!(head[1] <= track[0] && track[0] - head[1] <= 12 && track[1] < stepAt[0])) throw new Error('its line is not between its title and its step: ' + JSON.stringify([head, track, stepAt]));
+      // Its strip right under the heading, then the step line, whose own bar is at its bottom: not one double line.
+      const [head, strip, stepAt] = await cardStack(P.title);
+      if (!(head[1] <= strip[0] + 0.5 && strip[0] - head[1] <= 2 && strip[1] <= stepAt[0] + 0.5)) throw new Error('its strip is not between its title and its step: ' + JSON.stringify([head, strip, stepAt]));
       if (await line.evaluate(el => getComputedStyle(el, '::after').bottom) !== '0px') throw new Error("the step's own bar is not at its bottom");
       for (const k of [A, B, C]) await expect(page.locator(`.item > .row:has(.title:has-text("${k.title}"))`)).toHaveCount(0);
       await expect(card.locator('.check')).toHaveCount(1);                     // the step's: the card's title has none
       // Its line, a segment per subtask, those done filled.
       if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', '0', true, '0 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
-      // Each zone 48px across at least, over the step line's full height: ‹, the tick, the title, who's on it, ›.
+      // The step line, a plain row: its tick at its left edge, as a row's is on Today, each zone 48px across at least,
+      // over its full height, less the strip's reach over its top: the tick, the title, who's on it.
       await line.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       const zones = await line.evaluate(el => {
-        const r = el.getBoundingClientRect(), pager = el.parentElement, prev = pager.querySelector('.pg.prev').getBoundingClientRect(), next = pager.querySelector('.pg.next').getBoundingClientRect();
-        const name = (x, y) => { const b = document.elementFromPoint(x, r.top + y)?.closest('button'); return b?.matches('.pg.prev') ? 'prev' : b?.matches('.pg.next') ? 'next' : b?.matches('.check') ? 'tick' : b?.matches('.body') ? 'title' : b?.matches('.claim') ? 'slot' : String(b?.className); };
+        const r = el.getBoundingClientRect(), strip = el.parentElement.querySelector('.card-strip').getBoundingClientRect();
+        const name = (x, y) => { const b = document.elementFromPoint(x, r.top + y)?.closest('button'); return b?.matches('.check') ? 'tick' : b?.matches('.body') ? 'title' : b?.matches('.claim') ? 'slot' : String(b?.className); };
         const body = el.querySelector(':scope > .body').getBoundingClientRect(), slot = el.querySelector(':scope > .claim').getBoundingClientRect();
-        const want = { prev: [r.left + 8, prev.right - 1], tick: [prev.right + 1, body.left - 1], title: [body.left + 1, slot.left - 1], slot: [slot.left + 1, next.left - 1], next: [next.left + 1, r.right - 8] };
+        const want = { tick: [r.left + 1, body.left - 1], title: [body.left + 1, slot.left - 1], slot: [slot.left + 1, r.right - 1] }, top = strip.bottom + 8 - r.top + 1;
         const wrong = [];
-        for (const [k, [x0, x1]] of Object.entries(want)) for (const x of [x0, (x0 + x1) / 2, x1]) for (const y of [6, r.height / 2, r.height - 6]) if (name(x, y) !== k) wrong.push(`${k} at ${Math.round(x - r.left)},${Math.round(y)}: ${name(x, y)}`);
-        return { wrong, widths: { prev: prev.width, tick: body.left - prev.right, slot: next.left - slot.left, next: next.width }, heights: [prev.height, next.height, r.height] };
+        for (const [k, [x0, x1]] of Object.entries(want)) for (const x of [x0, (x0 + x1) / 2, x1]) for (const y of [top, r.height / 2, r.height - 2]) if (name(x, y) !== k) wrong.push(`${k} at ${Math.round(x - r.left)},${Math.round(y)}: ${name(x, y)}`);
+        return { wrong, tick: el.querySelector(':scope > .check').getBoundingClientRect().left - r.left, widths: { tick: body.left - r.left, slot: r.right - slot.left }, height: r.height - top + 1 };
       });
       if (zones.wrong.length) throw new Error('taps land elsewhere: ' + zones.wrong.join('; '));
-      if (Object.values(zones.widths).some(w => w < 48)) throw new Error('a zone under 48px: ' + JSON.stringify(zones.widths));
-      if (zones.heights[0] < zones.heights[2] || zones.heights[1] < zones.heights[2]) throw new Error("an arrow isn't the step line's height: " + zones.heights);
+      if (Object.values(zones.widths).some(w => w < 48) || zones.height < 48) throw new Error('a zone under 48px: ' + JSON.stringify(zones));
+      const rowTick = await page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`).evaluate(el => el.querySelector(':scope > .check').getBoundingClientRect().left - el.getBoundingClientRect().left);
+      if (Math.abs(zones.tick - rowTick) > 0.5) throw new Error(`the step line's tick is not where a row's is: ${zones.tick}, a row's ${rowTick}`);
+      // Its strip's taps, each 48px tall at least, none over the heading: ‹, the line (its segments), ›.
+      const taps = await card.locator('.card-strip').evaluate(el => {
+        const s = el.getBoundingClientRect(), head = el.parentElement.querySelector('.card-head'), what = (x, y) => document.elementFromPoint(x, y)?.closest('.pg.prev, .pg.next, .card-track, .card-head, .step-line');
+        const [prev, track, next] = ['.pg.prev', '.card-track', '.pg.next'].map(k => el.querySelector(k)), box = e => e.getBoundingClientRect();
+        const wrong = [], spans = { prev: [s.left + 1, box(prev).right - 1, prev], track: [box(track).left + 1, box(track).right - 1, track], next: [box(next).left + 1, box(next).right - 1, next] };
+        for (const [k, [x0, x1, want]] of Object.entries(spans)) for (const x of [x0, (x0 + x1) / 2, x1]) {
+          for (const y of [s.top + 1, s.top + 24, s.top + 47]) if (what(x, y) !== want) wrong.push(`${k} at ${Math.round(x - s.left)},${Math.round(y - s.top)}`);
+          if (what(x, s.top - 1) !== head) wrong.push(`${k} over the heading at ${Math.round(x - s.left)}`);
+        }
+        return { wrong, sizes: [box(prev).width, box(next).width, box(prev).height, box(next).height] };
+      });
+      if (taps.wrong.length) throw new Error("the strip's taps land elsewhere: " + taps.wrong.join('; '));
+      if (taps.sizes.some(w => w < 48)) throw new Error('an arrow under 48px: ' + JSON.stringify(taps.sizes));
+      const lineW = await card.locator('.card-line').evaluate(el => el.getBoundingClientRect().width);
       // Ticked: done where it is, the card's height kept, until the batch clears; then the next one comes in.
       const h = await card.evaluate(el => el.offsetHeight);
       await line.locator('> .check').click();
@@ -2348,10 +2376,28 @@ ${footName('Hooks')}`);
       await later(3000);
       await expect(title).toHaveText(C.title);
       await expect(line).not.toHaveClass(/\bdone\b/);
+      if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height as the batch cleared');
       // Its first subtask done: the next is 2 of 3, its real place, the done one counted.
       await expect(count).toHaveText('2 of 3');
       await expect(line.locator('.title .sr')).toHaveText('Step 2 of 3: ');
       await expect.poll(() => markedSeg(P.title)).toBe(1);
+      // A tap on an open step's segment shows that step, the count and the mark following, the card's height kept; from
+      // above the line too, within the strip. A done one's does nothing, and none opens the task.
+      await tapSeg(P.title, 2, -12);
+      await expect(title).toHaveText(A.title);
+      await expect(count).toHaveText('3 of 3');
+      await expect(page.locator('#said')).toHaveText(`Step 3 of 3: ${A.title}`);
+      await expect.poll(() => markedSeg(P.title)).toBe(2);
+      if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height as a segment was tapped');
+      await tapSeg(P.title, 0);
+      await later(500);
+      await expect(title).toHaveText(A.title);
+      await expect(count).toHaveText('3 of 3');
+      await tapSeg(P.title, 1, 10);
+      await expect(title).toHaveText(C.title);
+      await expect(count).toHaveText('2 of 3');
+      await expect.poll(() => markedSeg(P.title)).toBe(1);
+      if (await page.isVisible('#sheet')) throw new Error('a tap on its line opened the task');
       // Paged by its arrows, through the open ones only, round from the last to the first and back; a screen reader
       // hears which; the marked segment moves along.
       await card.locator('.pg.next').click();
@@ -2399,11 +2445,39 @@ ${footName('Hooks')}`);
       if (!(await get(C.id)).done || (await get(A.id)).done || (await get(A.id)).percent_done || (await get(P.id)).done) throw new Error('more than that step was changed');
       await later(3000);
       await expect(title).toHaveText(A.title);
-      // One step open: no arrows; its count still says where it is.
+      // One step open: no arrows; its count still says where it is, and its line keeps its length, the card its height.
       await expect(card.locator('.pg')).toHaveCount(0);
       await expect(count).toHaveText('3 of 3');
+      if (await card.locator('.card-line').evaluate(el => el.getBoundingClientRect().width) !== lineW) throw new Error('its line changed length as its arrows went');
+      if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height as its arrows went');
       if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', '2', true, '2 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
-    } finally { for (const t of [A, B, C, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+    } finally { for (const t of [A, B, C, P, Q]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+
+  // Past 12 steps, its line has a tick at each step, too narrow to tap: a tap there pages nothing; its arrows still do.
+  await step('a-card-past-12-steps-pages-by-its-arrows-not-its-segments', async () => {
+    const P = await make(`Pocket smoke long card ${stamp}`, { due_date: todayAt(23) }), kids = [];
+    for (let i = 1; i <= 13; i++) kids.push(await make(`Pocket smoke long card step ${i} ${stamp}`));
+    await under(P, kids);
+    const card = page.locator(cardOf(P.title)), count = card.locator('.card-strip > .card-n'), title = stepTitle(P.title);
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(card).toBeVisible({ timeout: 15000 });
+      await expect(count).toHaveText('1 of 13');
+      await expect(card.locator('.card-track')).toHaveClass(/\bmany-steps\b/);
+      const first = await title.textContent();
+      for (const k of [4, 12]) { await tapSeg(P.title, k); await later(500); }
+      await expect(count).toHaveText('1 of 13');
+      await expect(title).toHaveText(first);
+      if (await page.isVisible('#sheet')) throw new Error('a tap on its line opened the task');
+      await card.locator('.pg.next').click();
+      await expect(count).toHaveText('2 of 13');
+      await expect(title).not.toHaveText(first);
+      await card.locator('.pg.prev').click();
+      await expect(count).toHaveText('1 of 13');
+      await expect(title).toHaveText(first);
+    } finally { for (const t of [...kids, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
   await step('a-subtask-of-yours-made-today-brings-its-task-opened-on-it-an-old-one-doesnt', async () => {
@@ -2429,7 +2503,7 @@ ${footName('Hooks')}`);
       await expect(page.locator(`${added} ${cardOf(P.title)}`)).toBeVisible({ timeout: 15000 });
       // Opened on yours, though another comes first.
       await expect(stepTitle(P.title)).toHaveText(mine.title);
-      await expect(page.locator(`${cardOf(P.title)} .card-n`)).toHaveText('2 of 2');
+      await expect(page.locator(`${cardOf(P.title)} .card-strip > .card-n`)).toHaveText('2 of 2');
       await expect(page.locator(`${stepLine(P.title)} .claim.mine`)).toBeVisible();
       await expect(page.locator(cardOf(Q.title))).toHaveCount(0);
       await expect(page.locator(`.row .title:has-text("${old.title}")`)).toHaveCount(0);
