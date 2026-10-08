@@ -231,9 +231,9 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 // Its timers are the test's, so the ones still to come (the Undo's own, say) don't keep Node waiting.
 const deleting = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'sendEntry'),
+  const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'markSlow', 'sendEntry'),
     pick(runs, 'sendActs', 'sendAct', 'applyAct', 'actWhat', 'actTitle', 'wordsBack', 'giveBack', 'refreshRunTask'));
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], canWrite: () => true, flushing: false, cap: {}, sheet: { task: null, sub: {} } });
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], canWrite: () => true, flushing: false, cap: {}, sheet: { task: null, sub: {} } });
   Object.defineProperty(app, 'syncState', Object.getOwnPropertyDescriptor(outbox, 'syncState'));
   globalThis.confirm = () => true;
   return app;

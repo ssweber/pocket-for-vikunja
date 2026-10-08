@@ -5,8 +5,8 @@ import {addDays, isLate, isSet, startOfDay} from '../dates.js';
 import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
-import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, sync, unpackParsed} from '../sync.js';
-import {nestSubtasks, saved, todayGroups, viewKey} from '../lists.js';
+import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
+import {nestSubtasks, saved, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -79,12 +79,12 @@ export default {
     this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.capPhotos = [];
     if (this.cap.focus) this.$nextTick(() => this.$refs.capture.focus());   // to type the next one
     try {
-      // Saved first, with its photos, but only shown as waiting if sending doesn't finish.
+      // Saved first, with its photos, and on screen at once, where it'll be: it looks waiting only if sending takes a while.
       const {kept, full} = await sync.add(entry, photos);
-      const slow = setTimeout(() => this.refreshPending(), 400);           // on a slow connection, shown as waiting meanwhile
+      this.refreshPending();
       const r = await sync.lock(() => this.sendEntry(entry.id));
-      clearTimeout(slow);
       if (r.ids?.length) this.flash(r.ids);
+      this.refreshPending();                                                // its waiting row, and the row sent, swapped at once
       this.placeSent(r.tasks || []);
       /* Added, the new rows light up in the list, and nothing more is said: unless they aren't on this screen (a task due
          next month, added on Today; one for another project), when the add box says where they went, with Open. What
@@ -282,17 +282,25 @@ export default {
   },
 
   /* ---------- what's waiting to be sent ---------- */
-  // What's waiting, and what Vikunja turned down (kept to try again or drop). The header's button says something is
-  // waiting only once it has for a moment: a tick sent at once doesn't make it flicker.
+  // What's waiting, and what Vikunja turned down (kept to try again or drop). It's on screen at once; it looks waiting,
+  // and the header's button says so, only once it has waited a while (markSlow).
   refreshPending(){
     const all = this.user ? sync.all(this.user.id) : [];
     this.pending = all.filter(e => !e.failed && !sync.held.has(e.id)); this.failed = all.filter(e => e.failed);
     this.unsent = this.user ? all.length : null;
     // Tasks being deleted, unless Vikunja turned it down: off every list until they're gone, or back with Undo.
     this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
+    this.markSlow();
+  },
+  // What has waited long enough to look waiting (slowness), worked out again when the next will have. Once it looks
+  // waiting, it does until it's sent.
+  markSlow(){
     clearTimeout(waitTimer);
-    if (!this.pending.length) this.waitShown = false;
-    else if (!this.waitShown) waitTimer = setTimeout(() => { this.waitShown = !!this.pending.length; }, 1500);
+    const was = new Set(this.slow), still = this.pending.filter(e => was.has(e.id)).map(e => e.id);
+    const {slow: more, next} = slowness(this.pending.filter(e => !was.has(e.id)), Date.now(), this.offline), slow = [...still, ...more];
+    if (slow.join() !== this.slow.join()) this.slow = slow;
+    this.waitShown = slow.length > 0;
+    if (next !== null) waitTimer = setTimeout(() => this.markSlow(), next - Date.now());
   },
   pendingNested(entryId){ const e = this.pending.find(x => x.id === entryId); return !!e?.nest && e.items.length > 1; },
   // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
@@ -304,7 +312,7 @@ export default {
         if (x.taskId) return;
         const p = x.p;
         const child = isChild(e, i);
-        out.push({id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: false, priority: p.priority || 0, position: p.position || 0,
+        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: false, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
           waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});
@@ -348,7 +356,12 @@ export default {
       });
     } else if (!extra.length) return base;
     if (!base.length && this.route.name === 'project' && this.view.project) base = [{key:'open', cls:'', title:'Open', tasks:[]}];
-    return base.map(g => ({...g, tasks: [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)]}));
+    // Today's in each group's own order (a project's are put in its List view's by listGroups).
+    const order = this.route.name === 'today' ? todayOrder : {};
+    return base.map(g => {
+      const tasks = [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)];
+      return {...g, tasks: order[g.key] ? tasks.sort(order[g.key]) : tasks};
+    });
   },
   /* Cancel one waiting task. Its words go back in the box it was added from, to change or add again. Cancelling the
      first line of a pasted list with a parent leaves the rest as tasks of their own, and says so. The photos added with

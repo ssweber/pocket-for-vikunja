@@ -461,10 +461,11 @@ export default {
     b.adding++; b.text = '';
     if (!foot || b.focus) this.$nextTick(() => this.boxEl(w)?.focus());
     try {
+      // On screen at once, where they'll be: they look waiting only if sending takes a while.
       const {kept, full} = await sync.add(entry, []);
-      const slow = setTimeout(() => this.refreshPending(), 400);           // on a slow connection, shown as waiting meanwhile
+      this.refreshPending();
       const r = await sync.lock(() => this.sendEntry(entry.id));
-      clearTimeout(slow);
+      if (foot) this.refreshPending();                                     // the waiting rows, and the rows sent, swapped at once
       this.placeSent(r.tasks || []);
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && foot) {

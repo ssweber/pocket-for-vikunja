@@ -64,7 +64,8 @@ export default () => ({
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
   said: '',                                    // the last of those, for a screen reader
-  waitShown: false,                            // something has waited a moment: the header's button says so
+  waitShown: false,                            // something has waited a while: the header's button says so
+  slow: [],                                    // ids of the outbox entries that have waited a while, which look waiting (sending.js)
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
   writing: 0,                                  // changes on their way to Vikunja (api.js, saveTask)
@@ -109,6 +110,8 @@ export default () => ({
     window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     window.addEventListener('online', () => this.flush());
+    // Without a connection, what's waiting looks it at once.
+    this.$watch('offline', () => this.markSlow());
     // Where sending stands, on the page itself, so a test can wait until everything has reached Vikunja.
     Alpine.effect(() => { document.documentElement.dataset.sync = this.syncState; });
     // A deletion offering its Undo is sent as Pocket is put away or closed, so it isn't left waiting meanwhile.

@@ -41,13 +41,14 @@ test('landing next to tasks with no position, they get positions after the last 
   assert.deepEqual(placeMove(sibs, 3, 0), [[6, 50]], 'one with none moved among those with one: only it');
 });
 
-test('siblings in their List view order: by position, those with none after, by id, and one waiting to be sent last', () => {
+test('siblings in their List view order: by position, those with none after, by id, and one waiting to be sent first', () => {
   const pos = { 1: 300, 2: 100, 3: 0, 4: 200 };
   const list = [{ id: 5 }, { id: 1 }, { id: 'pending-x', pending: true }, { id: 3 }, { id: 2 }, { id: 4 }];
-  assert.deepEqual(ids([...list].sort(positionOrder(pos))), [2, 4, 1, 3, 5, 'pending-x']);
+  // First, where Vikunja puts a new task, so it doesn't jump there once it's sent.
+  assert.deepEqual(ids([...list].sort(positionOrder(pos))), ['pending-x', 2, 4, 1, 3, 5]);
   // One waiting that was given its place (a subtask added after another) is in it already.
   list.push({ id: 'pending-y', pending: true, position: 150 });
-  assert.deepEqual(ids([...list].sort(positionOrder(pos))), [2, 'pending-y', 4, 1, 3, 5, 'pending-x']);
+  assert.deepEqual(ids([...list].sort(positionOrder(pos))), ['pending-x', 2, 'pending-y', 4, 1, 3, 5]);
 });
 
 test('new subtasks go after the one given, before the next, each after the one before', () => {

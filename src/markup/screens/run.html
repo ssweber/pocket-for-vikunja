@@ -30,10 +30,10 @@
           <!-- include markup/place-line.html -->
         </template>
         <h3 id="step-title" x-text="runView.step.title"></h3>
-        <template x-if="runView.step.added"><div class="step-added" id="step-added" x-text="runView.step.added + (runView.step.pending ? ' · waiting to send' : '')"></div></template>
+        <template x-if="runView.step.added"><div class="step-added" id="step-added" x-text="runView.step.added + (runView.step.slowAdd ? ' · waiting to send' : '')"></div></template>
         <template x-if="runView.step.dueText"><div class="step-due num" :class="{late: runView.step.late}" x-text="runView.step.dueText"></div></template>
         <template x-if="runView.step.description"><div class="desc" x-html="sanitize(runView.step.description)"></div></template>
-        <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.waiting}" x-text="runView.step.whoText"></div></template>
+        <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.slow}" x-text="runView.step.whoText"></div></template>
         <div class="step-acts" x-show="!runView.finished && canWrite(view.run.run.project_id)">
           <!-- The same words with a note being written, so the buttons don't change size under the thumb: the line under
                the note says it goes with them -->
@@ -74,13 +74,13 @@
         <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at, 'ins-on': runView.insert?.at === i}" :data-id="s.id" x-style="{order: i * 2, '--pct': s.done ? 0 : s.pct / 100}">
           <!-- › opens the box under this step, to insert a step after it or repeat it -->
           <template x-if="!runView.finished && canWrite(view.run.run.project_id)"><button class="ins-open" :aria-expanded="String(runView.insert?.at === i)" :aria-label="'Insert a step after “' + s.title + '”'" @click="openInsert(s)"><svg class="i"><use href="#i-chev"/></svg></button></template>
-          <button class="check" :class="{wait: s.waiting, skip: s.skipped}" :disabled="runView.finished || !canWrite(view.run.run.project_id)" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use :href="s.skipped ? '#i-skip' : '#i-check'"/></svg></button>
+          <button class="check" :class="{wait: s.slow, skip: s.skipped}" :disabled="runView.finished || !canWrite(view.run.run.project_id)" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use :href="s.skipped ? '#i-skip' : '#i-check'"/></svg></button>
           <button class="body" @click="showStep(i, true)"><div class="title" x-text="s.title"></div>
             <div class="meta" x-show="(s.dueText && !s.done) || s.added || s.notes.length"><template x-if="s.added"><span class="added" x-text="s.added"></span></template>
               <template x-if="s.notes.length"><span class="note-mark num" :aria-label="s.notes.length === 1 ? 'A note' : s.notes.length + ' notes'"><svg class="i"><use href="#i-comment"/></svg><span x-text="s.notes.length"></span></span></template>
               <template x-if="s.dueText && !s.done"><span class="due num" :class="{overdue: s.late}" x-text="s.dueText"></span></template></div></button>
           <!-- Done: who did it, ✓ on their picture (⏭ for a skip), and who else it's assigned to -->
-          <template x-if="s.done && s.slot"><span class="did" :class="{waiting: s.waiting, skip: s.skipped}" role="img" :aria-label="s.whoText"><template x-for="slot in [s.slot]" :key="0"><span class="pics">
+          <template x-if="s.done && s.slot"><span class="did" :class="{waiting: s.slow, skip: s.skipped}" role="img" :aria-label="s.whoText"><template x-for="slot in [s.slot]" :key="0"><span class="pics">
             <!-- include markup/pics.html -->
           </span></template></span></template>
           <!-- Not done: who's doing it; "+ me" claims it, your picture lets it go -->

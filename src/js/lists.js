@@ -46,6 +46,16 @@ export const doneParentIds = (tasks, pid) => {
   return [...out];
 };
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
+/* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
+   days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task
+   just added or sent goes straight to where the next load will put it, rather than to the bottom first. */
+const due = t => +new Date(t.due_date), made = t => t.created ? +new Date(t.created) : Infinity;
+export const todayOrder = {
+  overdue: (a, b) => (b.priority || 0) - (a.priority || 0) || due(a) - due(b),
+  today: (a, b) => due(a) - due(b),
+  week: (a, b) => due(a) - due(b),
+  nodate: (a, b) => made(b) - made(a),
+};
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 export const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
   {key:'runs', cls:'', title:'Checklist runs', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];

@@ -42,11 +42,12 @@ export function placeAfter(sibs, after, n = 1){
 }
 /* Siblings in their List view order (`pos`: id -> position): smaller first, and those with none (0) after the others,
    by id, as Vikunja sorts them. A task still waiting to be sent goes where its position says, if it was given one (a
-   subtask added after another), else after all of those. */
+   subtask added after another), else first, where Vikunja puts a new task (and placeSent puts it once it's sent), so
+   it doesn't jump there from the bottom. */
 export const positionOrder = pos => (a, b) => {
   const p = (a.pending ? a.position : pos[a.id]) || 0, q = (b.pending ? b.position : pos[b.id]) || 0;
-  const last = t => !!t.pending && !t.position;
-  return last(a) - last(b) || (!p) - (!q) || p - q || (a.pending || b.pending ? 0 : a.id - b.id);
+  const first = t => !!t.pending && !t.position;
+  return first(b) - first(a) || (!p) - (!q) || p - q || (a.pending || b.pending ? 0 : a.id - b.id);
 };
 /* A task's siblings in a list with each subtask under its parent (nestSubtasks: `tasks` in order, `depth` by id): the
    tasks under the same parent, at the same depth, each with the rows that go with it when it moves (its subtasks, all

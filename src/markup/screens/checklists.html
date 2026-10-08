@@ -38,7 +38,7 @@
         <template x-if="cl.runs.length || startingIn(cl.project.id).length"><div>
           <div class="cl-sub">In progress</div>
           <div class="list">
-            <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
+            <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending waits"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
               <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="forText({assignees: e.for})"></span></div></div>
               <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
             <!-- The same row as on Today: its steps done, the next, its progress line -->

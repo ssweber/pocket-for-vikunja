@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
 import { andList, colorOf, esc, fmtSize, sizeLimit, taskDrafts } from '../../src/js/util.js';
-import { entryDone, heldTasks, isChild, itemDone, packParsed, sendState, unpackParsed } from '../../src/js/sync.js';
+import { entryDone, heldTasks, isChild, itemDone, packParsed, sendState, slowness, unpackParsed, WAIT_MS } from '../../src/js/sync.js';
 
 test('the screen in the address', () => {
   assert.deepEqual(routeOf(''), { name: 'today' });
@@ -84,4 +84,13 @@ test('a parsed line kept on the phone keeps its date', () => {
   assert.equal(+back.due, +p.due);
   assert.equal(back.title, 'Call Jo');
   assert.equal(back.priority, 2);
+});
+
+test('a change looks waiting only once it has waited a while, or at once without a connection', () => {
+  const now = Date.parse('2026-10-07T10:00:00Z'), at = ms => new Date(now - ms).toISOString();
+  const entries = [{ id: 'old', at: at(WAIT_MS) }, { id: 'new', at: at(500) }, { id: 'newer', at: at(100) }];
+  assert.deepEqual(slowness(entries, now, false), { slow: ['old'], next: now - 500 + WAIT_MS }, 'the next to look waiting: the oldest of the rest');
+  assert.deepEqual(slowness(entries, now, true), { slow: ['old', 'new', 'newer'], next: null }, 'offline: all at once');
+  assert.deepEqual(slowness([], now, false), { slow: [], next: null });
+  assert.ok(WAIT_MS >= 2000 && WAIT_MS <= 3000, 'a few seconds');
 });

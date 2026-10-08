@@ -313,7 +313,8 @@ export default {
     }
     const steps = base.map((s, i) => {
       const skipper = skippedBy(s);
-      let done = s.done, skipped = !!skipper, waiting = false, doneAt = s.done_at, pct = Math.round((s.percent_done || 0) * 100);
+      // waiting: a tick, skip or untick not sent yet, shown as it'll be; slow: one that has waited a while, which looks it.
+      let done = s.done, skipped = !!skipper, waiting = false, slow = false, doneAt = s.done_at, pct = Math.round((s.percent_done || 0) * 100);
       const kept = keptTicks()[s.id];
       // To the second: Vikunja's reply to the tick has its done time to the nanosecond, its copy since then whole seconds.
       if (done && kept && Math.floor(Date.parse(kept.there) / 1000) === Math.floor(Date.parse(s.done_at) / 1000)) doneAt = kept.here;
@@ -324,18 +325,18 @@ export default {
         if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
         if (a.op === 'progress') { pct = a.pct; continue; }
         if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
-        waiting = true; done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
+        waiting = true; slow = this.slow.includes(a.id); done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
-      const slot = done ? this.doneSlot(by, people, waiting ? 'wait' : skipped ? 'skip' : 'done')
+      const slot = done ? this.doneSlot(by, people, slow ? 'wait' : skipped ? 'skip' : 'done')
         : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done, r.run.id);
       // by: who did it or skipped it, shown in the list as a reaction is, ✅ or ⏭️ with their picture.
       // "Done by Priya at 4:46 PM" (and the day, if it wasn't today).
       const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))
         : new Date(doneAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'})) : '';
-      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, notes, doneAt, slot, by, pct,
-        added: s.added || '', pending: s.pending || null, from: s.from || null, tpl: s.tpl,
-        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (waiting ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at)};
+      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, slow, notes, doneAt, slot, by, pct,
+        added: s.added || '', pending: s.pending || null, slowAdd: !!s.pending && this.slow.includes(s.pending), from: s.from || null, tpl: s.tpl,
+        whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (slow ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at)};
     });
     /* When each step is due. A timed step (T# in its template step) counts from the step it waits on being done: from
        Vikunja's done time of it, or, while that tick waits to be sent, from when it was ticked here. Vikunja's due date

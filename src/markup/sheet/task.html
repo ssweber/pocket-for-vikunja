@@ -167,8 +167,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           </div>
         </template>
         <!-- Subtasks still waiting to be sent -->
-        <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :data-id="t.id">
-          <button class="check wait" disabled :aria-label="'Not sent yet: ' + t.title"><svg class="i"><use href="#i-check"/></svg></button>
+        <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits}" :data-id="t.id">
+          <button class="check" :class="{wait: t.waits}" disabled :aria-label="'Not sent yet: ' + t.title"><svg class="i"><use href="#i-check"/></svg></button>
           <div class="body"><div class="title"><span class="sr">Not sent yet: </span><span x-text="t.title"></span></div><div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div></div>
           <button class="icon-btn plain" :aria-label="'Cancel ' + t.title" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button>
         </div></template>

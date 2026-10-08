@@ -5,6 +5,7 @@
 import {store} from '../util.js';
 import {serverTime} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
+import {todayOrder} from '../lists.js';
 
 let sound = null;                                // the AudioContext, made on a tap so the browser lets it play
 let wakeLock = null, askingLock = false, lockFailed = 0;
@@ -53,8 +54,7 @@ export default {
     const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // a day of 23 or 25 hours too
     for (const g of [overdue, today, week]) g.tasks = [];
     for (const t of tasks) (isLate(t.due_date, now) ? overdue : new Date(t.due_date) < t1 ? today : week).tasks.push(t);
-    overdue.tasks.sort((a,b) => (b.priority||0) - (a.priority||0) || new Date(a.due_date) - new Date(b.due_date));
-    today.tasks.sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+    for (const g of [overdue, today, week]) g.tasks.sort(todayOrder[g.key]);
     this.groupedAt = +now;
     this.setBadge(overdue.tasks.length);
   },

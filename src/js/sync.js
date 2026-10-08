@@ -369,6 +369,16 @@ export const held = e => sync.held.has(e.id) || e.until > Date.now();
    Vikunja; 'waiting' while something is kept that can't go now (no connection, a deletion's Undo still showing, turned
    down, or Vikunja busy and tried again later), or the outbox isn't read yet (`unsent` null); else 'idle'. */
 export const sendState = ({busy, unsent}) => busy ? 'sending' : unsent === 0 ? 'idle' : 'waiting';
+/* A change shows on screen at once, as it'll be. It looks waiting (dotted, "waiting to send") only once it has waited
+   WAIT_MS for Vikunja, or at once without a connection: most are answered well within it, so a row doesn't flicker to
+   waiting and back. The entries (`at`, when each was made) that look waiting `now`, and when the next one will (null:
+   none). */
+export const WAIT_MS = 2500;
+export function slowness(entries, now, offline){
+  const slow = [], later = [];
+  for (const e of entries) { const at = Date.parse(e.at) + WAIT_MS; if (offline || !(at > now)) slow.push(e.id); else later.push(at); }
+  return {slow, next: later.length ? Math.min(...later) : null};
+}
 // The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
 export const ACTS = {progress: ['progress'], done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],

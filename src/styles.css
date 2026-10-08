@@ -136,8 +136,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
 .loading{padding:40px 0;text-align:center;color:var(--muted)}
 .offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
-/* a task added offline, not sent yet */
-.row.pending{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
+/* a task not sent yet, once it has waited a few seconds (or at once offline) */
+.row.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 /* a task just added lights up, then fades, to show where it went */
 .row.fresh{animation:fresh 1.6s ease-out}
 @keyframes fresh{0%,35%{background:var(--accent-soft)}100%{background:transparent}}
