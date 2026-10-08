@@ -154,6 +154,12 @@ off. A change to the row shows up in both places.
   screen reader has the arrows, buttons, and the step line's "Step 3 of 5: …", not a stop for each step. **The step
   line is a plain row**, with no arrows on it: its tick at the row's left edge like every other row, its title, its
   claim slot, its own bar at the bottom, and hold-to-slide progress as before. A plain swipe on the card still pages.
+- **A card's height never changes as it's paged** (user, 2026-10-08, from the phone: paging from a step with a due date
+  to one without shrank the card, moving everything below it). On a card, the step line always keeps a line under its
+  title for its due date and the rest, empty when the step has none, so it's as tall as a dated row; a step's title
+  takes two lines at most there (all of it is in its sheet). A title of two lines is then the one thing that differs,
+  so the step area is as tall as its tallest open step, from a hidden copy of each laid out as the row is. It changes
+  only as the card's steps do (a tick, the batch clearing), never as it's paged. A shorter step sits at the top.
 - **What brings a card onto Today:**
   - the parent being due, by Today's groups (overdue, today, the coming week); or
   - one of its open subtasks being due, by the same groups; or
@@ -217,6 +223,31 @@ the × that clears a date, keep their own tap. Built with part 4.
   second later its row folds back to its own height (about 200ms; with reduced motion, at once).
 - The `‹ ›` arrows teach paging without a hint.
 - The ⋯ menu has every gesture.
+
+## 9. Today on one line (agreed 2026-10-08, to build after the strip scrubber)
+
+A card's height changed as its step line gained or lost a date line, and reserving the space left holes. Today is
+for doing, so every row and card line there is one line, with "…" when a title is too long. The sheet has the rest.
+
+- **A row on Today:** the tick, the title on one line, then at the right a short time and "+ me" or initials.
+  - **The time:** "11:55" today; "Fri" in the coming week; "Oct 2" beyond. It's red when late. A run's step shows its
+    countdown ("in 18m", "12m late").
+  - **Priority** is the tick ring's colour (the `p0`–`p5` classes), costing no width. The bars stay on Projects and in
+    the sheet.
+  - **The project** is its colour dot only, beside the time.
+  - **Labels and counts** (comments, attachments, subtasks) are off Today.
+  - A row's own progress line stays at its bottom.
+- **A card on Today is three fixed lines:**
+  - **The heading:** title, small priority bars (it has no tick to colour), and its own time at the right.
+  - **The step line:** as a row.
+  - **The strip.**
+  - The step line has no bar of its own: **the step's progress fills its own segment of the strip**, so a card shows
+    one line, not two. Done segments are full, and the shown step's segment is outlined and filled by its progress.
+    Holding and sliding the step line shows its fill as now while held.
+  - Every card is then the same height, whatever its steps hold. This replaces the paused "steady card height" change
+    (reserved meta line, measuring).
+- **Projects, search and a task's sheet keep their second line** (labels, counts, project name): that's where you
+  look for them.
 
 ## Build order
 
