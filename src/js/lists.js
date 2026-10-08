@@ -12,6 +12,15 @@ export const saved = {
 // Open tasks in a list: dated first, soonest first, then undated, by priority and then newest first.
 export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date)),
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
+/* What a finger can do on a screen's rows, besides ticking, claiming, opening and setting progress, which every row
+   has. Today is for doing: no swipe to Delete and no holding to move a row, so nothing destructive is one slip away on
+   the screen used fastest (Delete stays in the task's ⋯), and Today is in the order things are due. A project's list is
+   for managing; search's results have no order of their own to move a row in. A task's sheet gives its subtasks both (sheet/task.html). Each list (`g`) has these
+   as its options, and a row writes them on itself for the gesture code (rowGestures). */
+export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}}[name] || {});
+/* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
+   can't reach the list's `g`: "delete" (swiped left, its Delete), "reorder" (held and moved up or down). */
+export const rowGestures = g => ['delete', 'reorder'].filter(k => g?.[k]).join(' ');
 // The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
 export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
 /* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's

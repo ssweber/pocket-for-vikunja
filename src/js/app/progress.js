@@ -1,5 +1,6 @@
 // What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar), or moved up or
-// down, it moves the row among its siblings; swiped left, it shows the row's Delete.
+// down, it moves the row among its siblings; swiped left, it shows the row's Delete. The last two only where the row's
+// list allows them (rowGestures): not on Today.
 import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pctOf, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
@@ -10,6 +11,9 @@ let opened = null;                                      // the row swiped open, 
 const scrolled = () => [scrollY, document.querySelector('#sheet .scroll')?.scrollTop || 0];
 let openAt = [0, 0];
 let swallowClick = false;
+// What a row's list allows it, besides progress: written on the row (data-gestures), as its list's options (`g`) can't
+// be reached from its element.
+const allows = row => new Set((row.dataset.gestures || '').split(' '));
 // The click a hold, a swipe, or a tap that shut a row ends with isn't a tap on the row.
 const swallow = () => { swallowClick = true; setTimeout(() => swallowClick = false, 400); };
 const shut = (row = opened) => {
@@ -123,7 +127,9 @@ export default {
       if (g.mode === 'wait') {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
-        if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { stop(false); return; }
+        // Not a swipe it can take (none on Today, or to the right): a sideways move does nothing, not even open the task
+        // where a mouse lets go; up or down is a scroll.
+        if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
         clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin();
       }
       if (g.mode === 'swipe') { g.dx = e.clientX - g.x0; s.swipe.move(g.dx); return; }
@@ -175,12 +181,14 @@ export default {
     });
   },
   /* A task's row, in a list or (sheet) a task's sheet. Held and slid, its progress: not one done, waiting to be sent, or
-     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet. Held and moved up or
-     down, its place among its siblings (reorderOf). Swiped, its Delete. */
+     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet. Where its list allows
+     (allows), held and moved up or down, its place among its siblings (reorderOf), and swiped, its Delete: on Today,
+     neither (screenRows). */
   rowGesture(t, row, sheet){
     if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
     const slides = !t.pending && !t.done && (sheet ? this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.canTick(t) && !this.isRunTask(t));
-    const swipe = this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null, reorder = this.reorderOf(t, row, sheet);
+    const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null;
+    const reorder = can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
     return {el: row, swipe, reorder, start: pctOf(t), width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),
@@ -190,8 +198,8 @@ export default {
         row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
       }};
   },
-  /* A task's row moved up or down, among its siblings (orderOf): on a project's list, not Today's or search's, or in a
-     task's sheet. Let go somewhere else, it's moved there (reorder). */
+  /* A task's row moved up or down, among its siblings (orderOf): on a project's list, or in a task's sheet. Let go
+     somewhere else, it's moved there (reorder). */
   reorderOf(t, row, sheet){
     const o = this.orderOf(t, sheet ? 'sheet' : 'list');
     if (!o || o.sibs.length < 2) return null;

@@ -6,6 +6,7 @@ import {dueInfo, fromLocalInput, isSet, toLocalInput} from './dates.js';
 import {RICH, sanitize} from './html.js';
 import {addedText, durText} from './checklists.js';
 import {runTitle} from './sync.js';
+import {rowGestures} from './lists.js';
 import core from './app/core.js';
 import auth from './app/auth.js';
 import views from './app/views.js';
@@ -27,8 +28,8 @@ import sharing from './app/sharing.js';
 
 
 // The markup's Alpine expressions use these by name, so they have to be globals (main.js makes them so).
-export const globals = {addedText, andList, colorOf, durText, dueInfo, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, RICH, runTitle, sanitize, taskDrafts,
-  toLocalInput, ZERO};
+export const globals = {addedText, andList, colorOf, durText, dueInfo, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, RICH, rowGestures, runTitle, sanitize,
+  taskDrafts, toLocalInput, ZERO};
 
 /* x-style="{'--pct': .5, paddingLeft: '18px'}": what :style does with an object, without the timer Alpine starts each
    time it works one out (to drop a style attribute left empty). A list's rows are worked out again on every change to

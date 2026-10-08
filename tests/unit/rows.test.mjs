@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';
 import claims from '../../src/js/app/claims.js';
 import leaving from '../../src/js/app/leaving.js';
+import progress from '../../src/js/app/progress.js';
+import { rowGestures, screenRows } from '../../src/js/lists.js';
 
 const RUN = { depth: {}, run: true, at: 0, insertAt: null, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -36,4 +38,34 @@ test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who
   const app = component(views, claims), slot = { id: 7, users: [], can: true };
   assert.equal(app.rowSlot(step({ slot }), RUN), slot);
   assert.equal(app.rowSlot(step({ slot, done: true }), RUN), null);
+});
+
+/* What a finger can do on a row, besides its progress, by the screen its list is on (motion-and-rows-plan, section 2):
+   Today is for doing, so no swipe to Delete and no move; a project and a task's sheet are for managing; search has no
+   order of its own. The row writes its list's options on itself, and the gesture code reads them there. */
+test('Today\'s rows are neither swiped to Delete nor moved; a project\'s and a sheet\'s are both; search\'s only swiped', () => {
+  const on = name => rowGestures({ depth: {}, ...screenRows(name) });
+  assert.equal(on('today'), '');
+  assert.equal(on('project'), 'delete reorder');
+  assert.equal(on('search'), 'delete');
+  assert.equal(on('checklists'), '', 'a screen that says nothing allows neither');
+  assert.equal(rowGestures({ depth: {}, sheet: true, delete: true, reorder: true }), 'delete reorder');
+  assert.equal(rowGestures(RUN), '', 'a run\'s steps: never swiped, their order is the order line');
+});
+
+test('a row held or swiped: its Delete and its move only where its list allows them, its progress everywhere', () => {
+  const app = component(progress), asked = [];
+  Object.assign(app, { lines: {}, canTick: () => true, canDelete: () => true, reorderOf: t => (asked.push(t.id), { start(){} }) });
+  const row = gestures => ({ dataset: { gestures }, clientWidth: 360 }), t = { id: 5, percent_done: .25 };
+  const today = app.rowGesture(t, row(''), false);
+  assert.equal(today.swipe, null, 'Today: a swipe left is left to the page');
+  assert.equal(today.reorder, null);
+  assert.equal(today.start, 25, 'its progress still slides');
+  assert.deepEqual(asked, [], 'its place isn\'t even looked up');
+  const search = app.rowGesture(t, row('delete'), false);
+  assert.ok(search.swipe);
+  assert.equal(search.reorder, null);
+  const project = app.rowGesture(t, row('delete reorder'), false);
+  assert.ok(project.swipe && project.reorder);
+  assert.deepEqual(asked, [5]);
 });

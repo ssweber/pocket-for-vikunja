@@ -52,8 +52,9 @@ function sections(){
     {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
     {title: 'A checklist run', depth: {}, tasks: [run]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
-    // Held and slid (progress.js), swiped to its Delete, and a line in a row's place (lines.js): shown by `state`.
-    {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, tasks: [
+    // Held and slid (progress.js), swiped to its Delete (a project's list, which has one: delete), and a line in a
+    // row's place (lines.js): shown by `state`.
+    {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, delete: true, tasks: [
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
     // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
@@ -138,7 +139,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.view.run = {run, steps: s.steps, at: 4, last: null};
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {held: 75}};
-    this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, tasks: subs},
+    this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted, repeated, held at 75%, late, waiting on another step, and a tick waiting to send',
         depth: {}, run: true, at: 4, insertAt: null, locked: false, tasks: steps},
       // (other ids, so the held state above stays on its own row)

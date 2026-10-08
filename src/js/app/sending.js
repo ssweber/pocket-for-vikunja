@@ -6,7 +6,7 @@ import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
-import {nestSubtasks, saved, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {nestSubtasks, saved, screenRows, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -341,10 +341,10 @@ export default {
     return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
   // The current list, with waiting tasks added where they belong, and subtasks under their parents: a project's open
-  // tasks in its List view's order.
+  // tasks in its List view's order. Each group has what a finger can do on its rows on this screen (screenRows).
   get listGroups(){
-    const hidden = this.hiddenRows, order = this.route.name === 'project' ? positionOrder(this.positions) : null;
-    return this.listBase.map(g => ({...g, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null)}));
+    const hidden = this.hiddenRows, order = this.route.name === 'project' ? positionOrder(this.positions) : null, can = screenRows(this.route.name);
+    return this.listBase.map(g => ({...g, ...can, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null)}));
   },
   get listBase(){
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
