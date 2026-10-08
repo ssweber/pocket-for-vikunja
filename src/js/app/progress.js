@@ -1,7 +1,7 @@
 // What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar), or moved up or
 // down, it moves the row among its siblings; swiped left, it shows the row's Delete. The last two only where the row's
 // list allows them (rowGestures): not on Today. There, a card is swiped either way to page through its steps.
-import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pageOffset, pageStarts, pageTurn, pctOf, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
+import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pageOffset, pageStarts, pageTurn, pctOf, releaseSpeed, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {store} from '../util.js';
@@ -237,6 +237,35 @@ export default {
       const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
       return card ? this.cardGesture(card, s) : s;
     });
+    this.watchNudges(document.getElementById('view'));
+  },
+  /* A nudge, an experiment (motion-and-rows-plan.md, part 7): on a project's list, a touch that starts on a row and turns
+     into a short, slow scroll aims the add box at that row (isNudge, in progress.js beside app/, where its numbers are;
+     `nudged`, app/quickadd.js); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
+     scrolling: once the phone scrolls, it ends the pointer events (pointercancel), but these carry on. A hold, a swipe
+     or a second finger on the way, and it's not one. */
+  watchNudges(area){
+    let n = null;
+    area.addEventListener('touchstart', e => {
+      n = null;
+      const row = e.touches.length === 1 && this.route.name === 'project' && !e.target.closest('.row-del') && e.target.closest('.list:not(.tree) > .row');
+      if (!row) return;
+      const p = e.touches[0];
+      n = {id: +row.dataset.id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
+    }, {passive: true});
+    area.addEventListener('touchmove', e => {
+      if (!n) return;
+      if (sliding || e.touches.length !== 1) { n = null; return; }
+      const p = e.touches[0];
+      n.far = Math.max(n.far, Math.abs(p.clientY - n.y0)); n.moves.push({t: e.timeStamp, y: p.clientY});
+    }, {passive: true});
+    area.addEventListener('touchend', e => {
+      const was = n, p = e.changedTouches[0]; n = null;
+      if (!was || e.touches.length || !p) return;
+      const dy = Math.max(was.far, Math.abs(p.clientY - was.y0));
+      if (isNudge({dx: p.clientX - was.x0, dy, ms: e.timeStamp - was.t0, speed: releaseSpeed(was.moves, e.timeStamp, p.clientY)})) this.nudged(was.id);
+    }, {passive: true});
+    area.addEventListener('touchcancel', () => { n = null; }, {passive: true});
   },
   /* A task's row, in a list or (sheet) a task's sheet. Held and slid, its progress: not one done, waiting to be sent, or
      that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; with no one on it, it's

@@ -72,3 +72,26 @@ export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
    by. */
 export const MANY_STEPS = 12;
 export const runLine = (total, done) => ({segs: Math.max(total, 1), done: Math.max(0, Math.min(done, total)), many: total > MANY_STEPS});
+
+/* ---------- a nudge: a short, slow scroll that aims the add box (an experiment) ---------- */
+/* On a project's list, a touch that starts on a row and turns into a short, slow scroll makes that row the add box's
+   target, as opening its sheet does (app/progress.js, `nudged` in app/quickadd.js); a longer or faster one, a fling,
+   is only a scroll. Tune it here: */
+export const NUDGE_MIN_PX = 10;                         // moved less than this, it was a tap, or a hold
+export const NUDGE_MAX_PX = 56;                         // moved further than about a row's height, it was a scroll
+export const NUDGE_MAX_SPEED = 0.5;                     // px/ms as the finger lifts: faster, the page flies on
+export const NUDGE_SPEED_MS = 100;                      // how far back that speed is measured
+export const NUDGE_TICK = true;                         // a light tick felt when a nudge moves the target
+/* How fast the finger was going as it lifted at (t, y), in px/ms: from its first move in the last NUDGE_SPEED_MS,
+   `moves` being [{t, y}] from where it went down, or the one before when that's its last (a phone may send few, the
+   last where it lifts); with none that recent, from its last (held still, that's 0). */
+export function releaseSpeed(moves, t, y){
+  let i = moves.findIndex(m => t - m.t <= NUDGE_SPEED_MS);
+  if (i < 0) i = moves.length - 1; else if (i && i === moves.length - 1) i--;
+  const ref = moves[i];
+  return ref ? Math.abs(y - ref.y) / Math.max(t - ref.t, 1) : 0;
+}
+/* Whether a touch was a nudge: `dy` its furthest up or down, `dx` sideways, over `ms`, lifting at `speed` (if not
+   given, its average). Mostly up or down (sideways is a swipe), past a tap, within about a row, and slow. */
+export const isNudge = ({dx = 0, dy, ms, speed = Math.abs(dy) / Math.max(ms, 1)}) => Math.abs(dy) >= NUDGE_MIN_PX
+  && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) <= NUDGE_MAX_PX && speed <= NUDGE_MAX_SPEED;

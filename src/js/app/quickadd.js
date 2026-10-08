@@ -3,6 +3,8 @@ import {colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError} from '../api.js';
 import {hasTemplateLabel, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {placeAfter} from '../order.js';
+import {NUDGE_TICK} from '../progress.js';
+import {haptic} from '../haptics.js';
 import {captureLines, isTicked, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES, tickedLines} from '../quickadd.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
@@ -340,10 +342,10 @@ export default {
 
   /* ---------- what quick add's box adds to, on a project's list ---------- */
   /* On a project's list, quick add's box adds a task to the project, until a task is touched: its sheet opened, ticked,
-     or its progress slid. That task is then the cursor, lit up, and the box adds subtasks to it (the box 'under'); one
-     on a subtask adds them after it, under its parent. A task ticked done can't be one: its parent is, if it's on the
-     list. The box goes back to adding a task with its ×, when the cursor's row is out of sight (scrolling back doesn't
-     bring it back), or when the screen is left. */
+     its progress slid, or nudged (a short, slow scroll that starts on it: nudged). That task is then the cursor, lit
+     up, and the box adds subtasks to it (the box 'under'); one on a subtask adds them after it, under its parent. A
+     task ticked done can't be one: its parent is, if it's on the list. The box goes back to adding a task with its ×,
+     when the cursor's row is out of sight (scrolling back doesn't bring it back), or when the screen is left. */
   // A task that can be the cursor: open, on this project's list, one you can change, and not a run, a step of one or a
   // template, which add steps their own way.
   canAim(t){
@@ -356,6 +358,17 @@ export default {
   aim(t){
     if (this.canAim(t)) { if (this.cursor?.id !== t.id) this.cursor = {id: t.id, after: null}; }
     else this.cursor = null;
+  },
+  /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
+     isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
+     A row that can't be leaves the target as it was. A light tick is felt when the target changes, not when it stays. */
+  nudged(id){
+    const t = this.tasks[id], row = document.querySelector(`#view .row[data-id="${id}"]`);
+    if (!row || this.leaving[id] || this.lines[id] || !this.canAim(t)) return;
+    const r = row.getBoundingClientRect(), top = Math.max(0, this.$refs.header?.getBoundingClientRect().bottom || 0);
+    if (r.bottom <= top || r.top >= (this.$refs.captureBar?.getBoundingClientRect().top ?? innerHeight)) return;
+    if (this.cursor?.id !== id && NUDGE_TICK) haptic('tick');
+    this.aim(t);
   },
   // A tick or a slide: the task, still open; done, the task it's under, to add more beside it.
   aimAfterTick(t){ this.aim(t.done ? this.listParent(t) : t); },

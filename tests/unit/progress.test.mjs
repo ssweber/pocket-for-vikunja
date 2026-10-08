@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, runLine, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isNudge, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, releaseSpeed, runLine, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -115,4 +115,28 @@ test('a run\'s line has a segment per step, the done ones filled; past MANY_STEP
   assert.equal(runLine(MANY_STEPS + 1, 0).many, true);
   assert.deepEqual(runLine(0, 0), { segs: 1, done: 0, many: false }, 'no steps: nothing to fill, and nothing divided by 0');
   assert.equal(runLine(3, 5).done, 3, 'never more done than there are steps');
+});
+
+test('a nudge: a touch moved up or down past a tap, within about a row, and slow as it lifts; else a tap or a fling', () => {
+  assert.equal(isNudge({ dy: 30, ms: 300, speed: 0.1 }), true, 'a short, slow scroll');
+  assert.equal(isNudge({ dy: -30, ms: 300, speed: 0.1 }), true, 'up as well as down');
+  assert.equal(isNudge({ dy: NUDGE_MIN_PX - 1, ms: 300, speed: 0 }), false, 'hardly moved: a tap, or a hold');
+  assert.equal(isNudge({ dy: NUDGE_MAX_PX, ms: 400, speed: 0.1 }), true, 'a row\'s height');
+  assert.equal(isNudge({ dy: NUDGE_MAX_PX + 1, ms: 2000, speed: 0.1 }), false, 'further: a scroll, however slow');
+  assert.equal(isNudge({ dy: 40, ms: 400, speed: NUDGE_MAX_SPEED + 0.1 }), false, 'fast as it lifts: a fling');
+  assert.equal(isNudge({ dx: 30, dy: 20, ms: 300, speed: 0.1 }), false, 'more sideways: a swipe');
+  assert.equal(isNudge({ dy: 40, ms: 50 }), false, 'no speed given: its average, here fast');
+  assert.equal(isNudge({ dy: 40, ms: 400 }), true, 'its average, here slow');
+});
+
+test('the speed as the finger lifts is over its last moves, not the whole touch', () => {
+  const slow = [0, 40, 80, 120, 160, 200].map((t, i) => ({ t, y: 400 - i * 5 }));
+  assert.equal(releaseSpeed(slow, 240, 370), 10 / 80, `from its first move in the last ${NUDGE_SPEED_MS}ms`);
+  // Slow, then flicked at the end: the end is what counts.
+  const flick = [{ t: 0, y: 400 }, { t: 500, y: 390 }, { t: 600, y: 388 }, { t: 620, y: 370 }];
+  assert.ok(releaseSpeed(flick, 640, 340) > NUDGE_MAX_SPEED);
+  assert.equal(releaseSpeed([{ t: 0, y: 400 }], 50, 380), 20 / 50, 'a touch shorter than that: from where it went down');
+  assert.equal(releaseSpeed([{ t: 0, y: 400 }, { t: 300, y: 380 }], 900, 380), 0, 'held still before lifting: no speed');
+  assert.equal(releaseSpeed([{ t: 0, y: 400 }, { t: 70, y: 425 }, { t: 190, y: 450 }], 200, 450), 25 / 130, 'only its last move that recent: from the one before');
+  assert.equal(releaseSpeed([], 10, 10), 0);
 });
