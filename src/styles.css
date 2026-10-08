@@ -115,13 +115,16 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .sec-act{margin-left:auto;border:0;background:transparent;color:var(--accent);font-size:14px;font-weight:650;padding:6px 2px}
 .sec-act[disabled]{opacity:.55}
 .list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
-.row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
+.row{--row-inset:0px;display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
 .row:first-of-type{border-top:0}
-/* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too */
-.row.sub{padding-left:calc(14px + var(--depth) * 38px);border-top-color:transparent}
-.row.sub::after{left:calc(14px + var(--depth) * 38px);width:calc(var(--pct,0) * (100% - 14px - var(--depth) * 38px))}
-.row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:calc(14px + var(--depth) * 38px);height:1px;background:var(--line);pointer-events:none}
+/* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too,
+   as do its progress line and the fill while its progress is set (--row-inset, read by each) */
+.row.sub{--row-inset:calc(14px + var(--depth) * 38px);padding-left:var(--row-inset);border-top-color:transparent}
+.row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
+/* a row's title takes taps over the row's full height, and up to its edge when there's nothing after it */
+:not(.tree) > .row > button.body{align-self:stretch;margin:-12px 0;padding:14px 0}
+:not(.tree) > .row > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:-14px;padding-right:14px}
 .row .title{font-size:16.5px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
 .meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:13.5px;color:var(--muted)}
@@ -131,10 +134,13 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .meta .due.today{color:var(--today);font-weight:600}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
 .check{width:26px;height:26px;border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:1px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
-/* a tick's touch target is 48px, past its circle (a run's step has its › close on the left) */
+/* a tick's touch target is 48px, past its circle; on a row, the whole left gutter, at the row's full height, up to its
+   title (a subtask's from the row's edge; a run's step's from its ›) */
 button.check{position:relative}
 button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
-#run-steps button.check::after{left:-4px}
+.row > button.check{position:static}
+.row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + 38px)}
+#run-steps > .row > .ins-open ~ button.check::after{left:44px;width:38px}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
 .check.p3,.check.p4,.check.p5{border-color:var(--overdue)}
 .row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
@@ -166,6 +172,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .check.no-tick.ro{border:2px dotted var(--line)}
 /* Who's doing a subtask or a step, at the end of its row: "+ me" when no one is, else their pictures or initials */
 .claim{flex:none;display:flex;align-items:center;gap:2px;min-width:48px;height:48px;margin:-10px -8px -10px 0;padding:0 6px;border:0;background:transparent;color:var(--muted);justify-content:center}
+/* at a row's end, it takes taps over the row's full height, to its edge; what it shows stays beside the title */
+.row > .claim:not(:has(~ .icon-btn)){align-self:stretch;align-items:flex-start;height:auto;min-width:66px;margin:-12px -14px -12px -12px;padding:12px 12px 0 18px}
 .claim[aria-disabled=true]{cursor:default}
 /* People's pictures on a row (pics.html): one size everywhere, two at most, a little overlapped, yours ringed; a done
    step's doer has a ✓ on the corner of theirs */
@@ -192,12 +200,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
 .list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-.row::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:calc(var(--pct,0) * 100%);background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
-.row.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--slide) * 100%),var(--surface) 0)}
+.row::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(var(--pct,0) * (100% - var(--row-inset)));background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
+.row.setting{background:linear-gradient(to right,var(--surface) var(--row-inset),var(--accent-soft) 0 calc(var(--row-inset) + var(--slide) * (100% - var(--row-inset))),var(--surface) 0)}
 .row.current.setting{background:linear-gradient(to right,var(--accent-fill) calc(var(--slide) * 100%),var(--accent-soft) 0)}
 /* While it's being set, from --slide, which the screen's redraws don't touch (progress.js) */
-.row.setting::after{width:calc(var(--slide) * 100%)}
-.row.sub.setting::after{width:calc(var(--slide) * (100% - 14px - var(--depth) * 38px))}
+.row.setting::after{width:calc(var(--slide) * (100% - var(--row-inset)))}
 .row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
 /* held on the right half, the percentage moves to the left, clear of the thumb */
 .row.setting[data-side=left]::before,.d-head.setting[data-side=left]::before{right:auto;left:12px}
@@ -346,7 +353,7 @@ a.sec-act{text-decoration:none}
 .step-gap{border-top:1px solid var(--line);background:var(--bg)}
 .gap-where{margin:0;padding:8px 14px 0;font-size:13px;color:var(--muted)}
 /* A step's ›, at its left edge: opens the box under it */
-.ins-open{flex:none;align-self:stretch;width:30px;margin:-12px -8px -12px -14px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
+.ins-open{flex:none;align-self:stretch;width:44px;margin:-12px -12px -12px -14px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
 .ins-open svg.i{width:16px;height:16px;transition:transform .15s}
 .ins-open[aria-expanded=true]{color:var(--accent)}
 .ins-open[aria-expanded=true] svg.i{transform:rotate(90deg)}
@@ -355,6 +362,9 @@ a.sec-act{text-decoration:none}
 .step-gap .rep.on{background:var(--accent-soft);color:var(--accent)}
 .gap-note{margin:8px 2px 0;font-size:13.5px;color:var(--muted)}
 .row .step-del{align-self:center;width:34px;height:34px;color:var(--danger)}
+/* a row's × (a step inserted, a task waiting to be sent) takes taps 48px across, past what's drawn */
+.row > .icon-btn{position:relative}
+.row > .icon-btn::after{content:"";position:absolute;inset:calc(50% - 24px)}
 #heading{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
 .step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
