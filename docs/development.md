@@ -55,8 +55,8 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   the same slot. A step's box is square wherever it shows (`isStepRow`: a run's screen, its sheet, a list), a task's
   round; a run's own row has its line in segments, one per step (`runLineOf`, from `runLine` in `progress.js`, as
   `--segs`, and `--fill`, a gradient filling each segment by whether its own step is done, cut by a CSS mask; with
-  only a count, `--done`, filled from the left; past `MANY_STEPS`, one line with ticks, `.many-steps`, filled by
-  count), as have the bar on its screen and a card's line on Today.
+  only a count, `--done`, filled from the left; past `MANY_STEPS`, one line with ticks, `.many-steps`, each step's
+  stretch filled the same way), as have the bar on its screen and a card's line on Today.
 - Today is cards and rows (`markup/today-item.html`, its lists' option `g.cards`, from `screenRows`): a task with open
   subtasks, or a run with open steps, is a card (`.day-card`, `app/cards.js`), its title a heading that opens it, with
   its due date, priority bars and project under it (`cardMeta`); then one step line, the task row with the card's

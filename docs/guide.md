@@ -68,8 +68,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   swipe left or right anywhere on the card (hold first, and it's progress instead): with the first two done, from 3 to
   4, 5, then back round to 3. Tapping a step's segment on the line shows that step, if it's still open (a done one's
   does nothing). Done steps are on the run's screen, or in the task's sheet. Leaving Today puts every card back on its
-  next step. Past 12 steps, the line has a tick at each step instead of segments, and the outline is around that step's
-  stretch; those are too small to tap, so page with the arrows or a swipe. A screen reader hears the line as "2 of 5
+  next step. Past 12 steps, the line has a tick at each step instead of segments, each step's stretch filled once it's
+  done, and the outline is around that step's stretch; those are too small to tap, so page with the arrows or a swipe. A screen reader hears the line as "2 of 5
   subtasks done", the card named by its title, and the step line as "Step 3 of 5: Load chairs".
 - **What brings a card onto Today:** its task being due (overdue, today or in the next 7 days); one of its open subtasks
   being due then; a subtask assigned to you that's due, or that was made today without a date (Vikunja doesn't keep when

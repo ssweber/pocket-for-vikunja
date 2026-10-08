@@ -109,7 +109,7 @@ test('sliding progress claims a task only where no one is on it and its slot can
   assert.equal(claimsOnSlide(null), false, 'no slot: a run, a template, a task waiting to be sent');
 });
 
-test('a run\'s line has a segment per step, each filled by whether its own step is done; past MANY_STEPS, one line with ticks', () => {
+test('a run\'s line has a segment per step, each filled by whether its own step is done; past MANY_STEPS, one line with ticks, filled the same way', () => {
   assert.deepEqual(runLine(4, 1), { segs: 4, done: 1, many: false, fill: null }, 'only a count: filled from the left');
   assert.deepEqual(runLine(MANY_STEPS, MANY_STEPS), { segs: 12, done: 12, many: false, fill: null });
   assert.equal(runLine(MANY_STEPS + 1, 0).many, true);
@@ -118,8 +118,9 @@ test('a run\'s line has a segment per step, each filled by whether its own step 
   assert.equal(runLine(4, 2, [true, false, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 50%,var(--accent) 50% 75%,var(--track) 75% 100%)', 'the first and third done: those two filled, not the first two');
   assert.equal(runLine(3, 2, [true, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 66.667%,var(--track) 66.667% 100%)', 'steps alike side by side, one stretch');
   assert.equal(runLine(3, 0, [false, false, false]).fill, 'linear-gradient(to right,var(--track) 0% 100%)');
-  const many = Array.from({ length: MANY_STEPS + 1 }, (_, i) => i % 2 === 0);
-  assert.deepEqual([runLine(many.length, 7, many).fill, runLine(many.length, 7, many).done], [null, 7], 'past MANY_STEPS: filled from the left, by count');
+  const many = Array.from({ length: 14 }, (_, i) => i === 1 || i === 8);   // the 2nd and 9th of 14 done
+  assert.deepEqual([runLine(14, 2, many).many, runLine(14, 2, many).fill], [true, 'linear-gradient(to right,var(--track) 0% 7.143%,var(--accent) 7.143% 14.286%,var(--track) 14.286% 57.143%,var(--accent) 57.143% 64.286%,var(--track) 64.286% 100%)'], 'past MANY_STEPS too, each step’s stretch by its own step');
+  assert.equal(runLine(14, 2).fill, null, 'only a count: filled from the left');
   assert.equal(runLine(4, 1, [true]).fill, null, 'which steps, not matching how many: by count');
 });
 
