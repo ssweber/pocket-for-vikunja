@@ -417,26 +417,19 @@ a.sec-act{text-decoration:none}
 .chip-x{display:inline-flex;border:0;background:none;padding:0 0 0 2px;color:var(--muted);cursor:pointer}
 .draft-add{display:flex;align-items:center;gap:8px;width:100%;min-height:50px;padding:0 14px;border:0;border-top:1px solid var(--line);background:none;color:var(--accent);font:inherit;font-weight:650;cursor:pointer}
 .run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
-/* Under the header, and at the top once the header slides away on a long run */
-.run-bar{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;width:calc(100% + 2 * var(--pad));margin:0 calc(-1 * var(--pad)) 6px;padding:8px var(--pad);border:0;background:var(--bg);font:inherit;color:inherit;cursor:pointer}
-.run-bar .track{flex:1;height:8px;border-radius:4px;background:var(--fill,var(--track));overflow:hidden}
-.run-bar .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent);transition:width .2s}
-/* In segments, one per step, as a run's row's line; past 12, one bar with a tick at each step */
-.run-bar .track{-webkit-mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat;
-  mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat}
-.run-bar .track.many{-webkit-mask:none;mask:none;position:relative}
-.run-bar .track.many::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(to right,transparent 0 calc(100% / var(--segs) - 1px),var(--bg) 0 calc(100% / var(--segs))) 0 0/calc(100% + 1px) 100% no-repeat}
-.run-bar .num{color:var(--muted);font-size:14px;font-weight:650}
 .timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:16px;color:var(--ink);text-align:left;cursor:pointer}
 .timer + .timer{border-top:1px solid var(--line)}
 .timer .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .timer .num{flex:none;font-weight:650;color:var(--accent)}
 .timer .num.late{color:var(--overdue)}
 .step-card{padding:16px}
-.step-head{display:flex;align-items:center;gap:2px;margin:-6px 0 0 -8px}
-.step-head .icon-btn{width:32px;height:32px;color:var(--accent)}
-.step-head .icon-btn[disabled]{opacity:.3}
-.step-no{color:var(--muted);font-size:14px;font-weight:650}
+/* Today's card's strip at its top (card-strip.html): its arrows' taps at the card's edges, and dragged along it, it
+   scrubs, so the page doesn't take the move, nor a long press its words */
+.step-card > .card-strip{margin:-10px -16px 2px;padding-right:16px;touch-action:pan-y pinch-zoom;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+/* its title, and who's on it at its right, as on its row */
+.step-title-line{display:flex;align-items:flex-start;gap:8px}
+.step-title-line h3{flex:1;min-width:0}
+.step-title-line > .claim{margin:-6px -8px -6px 0}
 .step-card h3{margin:4px 0 6px;font-size:24px;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
 .step-card .desc{padding:0;margin:8px 0 0}
 .step-due{font-size:15px;color:var(--muted)}

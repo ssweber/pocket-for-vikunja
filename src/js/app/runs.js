@@ -4,7 +4,7 @@ import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, s
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, runLine} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext} from '../checklists.js';
+import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
@@ -105,8 +105,9 @@ export default {
       this.closeSheet(true);
       if (r.runId) this.openRun(r.runId);
       // Said at the top of the run, with its Undo, until anything's done in it (act) or its screen is left: not on a
-      // timer, so the step card doesn't move up under the thumb while it's being read.
-      this.say('Started ' + (r.title || st.template.title), {place: 'run', ms: null, action: r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }}});
+      // timer, so the step card doesn't move up under the thumb while it's being read. The run's name is its screen's
+      // header, so it isn't said again.
+      this.say('Started', {place: 'run', ms: null, action: r.runId && {label: 'Undo', fn: async () => { await this.deleteRun(r.runId); if (r.ticked) await this.untick(r.ticked); }}});
       if (this.places.run) this.places.run.startOf = r.runId; else this.toast.startOf = r.runId;
     } else if (r.status === 'offline') {
       sync.keep();
@@ -388,9 +389,10 @@ export default {
       s.countText = !s.counting ? '' : left >= 0 ? 'in ' + durText(left < 6e4 ? Math.ceil(left / 1e3) * 1e3 : Math.ceil(left / 6e4) * 6e4) : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
       s.dueText = waitsOn ? 'Due ' + waitsOn : s.counting ? (left >= 0 ? 'Due ' : '') + s.countText : due ? 'Due ' + dueInfo(due.toISOString()).label : '';
     });
-    const total = steps.length, doneCount = steps.filter(s => s.done).length, first = steps.findIndex(s => !s.done);
-    const allDone = total > 0 && doneCount === total, at = r.at ?? (first >= 0 ? first : total - 1);
-    // Skipped steps are out of the way (doneCount, for the bar), but not done (didCount, in words).
+    // On the step a tick would go to (whereNext): the next one that can be done now, unless a step was put on the card.
+    const total = steps.length, doneCount = steps.filter(s => s.done).length, next = whereNext(steps, now);
+    const allDone = total > 0 && doneCount === total, at = r.at ?? (next >= 0 ? next : total - 1);
+    // Skipped steps are out of the way (doneCount, for the line), but not done (didCount, in words).
     const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length, didCount = doneCount - skippedN;
     const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
@@ -401,8 +403,14 @@ export default {
        after it, or at the end after the last. That step can be repeated there, done or not, once it's been sent. */
     const k = steps.findIndex(s => s.id === this.runInsert.after), under = k >= 0 ? steps[k] : null;
     const insert = !under ? null : {at: k, after: under, before: steps[k + 1]?.id ?? null, repeatable: under.pending ? null : under};
-    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, insert, finished, line: runLine(total, doneCount, steps.map(s => s.done)), timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
-      countText: `${didCount} of ${total} done` + (skippedN ? ` · ${skippedN} skipped` : ''),
+    /* The step card's strip (card-strip.html), Today's card's: ‹, the run's line, a segment per step, each done one's
+       full and the card's step's filled by its progress, that step marked, ›, and "3 of 6", its place. It pages through
+       the open steps, and the step on the card if it's done (tapped in the list), as Today's card does (showCardStep). */
+    const pages = step ? steps.filter(s => !s.done || s === step) : [];
+    const card = step && {runScreen: true, id: r.run.id, step, i: pages.indexOf(step), n: pages.length, steps: pages, all: steps, at, total,
+      line: runLine(total, doneCount, steps.map(s => s.done ? 1 : s === step ? s.pct / 100 : 0)),
+      lineText: `${didCount} of ${total} steps done` + (skippedN ? `, ${skippedN} skipped` : '')};
+    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, card, insert, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
       forText: forText && forText[0].toUpperCase() + forText.slice(1)};
@@ -525,14 +533,12 @@ export default {
     navigator.vibrate?.(10);
     await this.act({op, task: s.id, html});
   },
-  /* Where the run goes after a step is done or skipped on screen: the next step after it that can be done now, not one
-     still counting down, nor one that starts counting down with this tick; then one before it; then any not done. Null
-     once every other step is done: the finish card. */
+  /* Where the run goes after a step is done or skipped on screen (whereNext, which a run's card on Today goes by too):
+     the next step after it that can be done now, not one still counting down, nor one that starts counting down with
+     this tick; then one before it; then any not done. Null once every other step is done: the finish card. */
   nextStep(s){
-    const v = this.runView, open = v ? v.steps.filter(x => !x.done && x.id !== s.id) : [];
-    if (!open.length) return null;
-    const ready = x => !(x.counting && x.dueAt > serverTime(this.clock)) && x.waitsFor !== s.id;
-    return (open.find(x => x.i > s.i && ready(x)) || open.find(ready) || open[0]).i;
+    const i = this.runView ? whereNext(this.runView.steps, serverTime(this.clock), s) : -1;
+    return i < 0 ? null : i;
   },
   async addNote(task){
     const text = this.runDrafts[task]?.trim();

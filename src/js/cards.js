@@ -60,13 +60,17 @@ export const cardGroup = (c, run) => c.when ? 'dated' : run ? 'runs' : 'nodate';
 
 /* The step a card shows, of its open `steps` in order: where it was paged to (`page`: {id, i}), or, once that step has
    gone (done, the batch cleared), the one that came after it, now in its place, round to the first after the last;
-   unpaged, the subtask of yours that brought it (`focus`), else the first. -1 with none. */
-export function cardAt(steps, page, focus){
+   unpaged, the subtask of yours that brought it (`focus`), else the first. A run's card has `pick` instead of "the one
+   after" and "the first": the run's own rule (whereNext, checklists.js), given the step that has gone, or null, and
+   giving the id of the step to show. -1 with none. */
+export function cardAt(steps, page, focus, pick = null){
   const n = steps.length;
   if (!n) return -1;
   const k = id => steps.findIndex(s => s.id === id);
-  if (page) return k(page.id) >= 0 ? k(page.id) : page.i < n ? page.i : 0;
-  return Math.max(0, k(focus));
+  if (page && k(page.id) >= 0) return k(page.id);
+  const picked = pick ? k(pick(page?.id ?? null)) : -1;
+  if (page) return picked >= 0 ? picked : page.i < n ? page.i : 0;
+  return k(focus) >= 0 ? k(focus) : Math.max(0, picked);
 }
 // Where step `s` is among all of a card's subtasks, done ones too (0 the first): its count, "3 of 5", and the segment
 // marked on its line. Paging goes through the open ones only, so with the first two done, from 3 it goes to 4, then 5.

@@ -1,5 +1,6 @@
 // Today's cards (src/js/cards.js, and app/cards.js on a pretend component): which tasks are cards and what brought each,
-// where each sits on Today, which step a card shows and how it pages, and its task's line.
+// where each sits on Today, which step a card shows and how it pages, and its task's line; where a run goes next, the
+// one rule its card and its screen go by, and the same strip on its screen's step card.
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,6 +13,10 @@ import alerts from '../../src/js/app/alerts.js';
 import tasks from '../../src/js/app/tasks.js';
 import leaving from '../../src/js/app/leaving.js';
 import progress from '../../src/js/app/progress.js';
+import runs from '../../src/js/app/runs.js';
+import claims from '../../src/js/app/claims.js';
+import checklists from '../../src/js/app/checklists.js';
+import { whereNext } from '../../src/js/checklists.js';
 
 const NONE = '0001-01-01T00:00:00Z', me = { id: 1 }, other = { id: 2 };
 const at = (d, h) => `2026-10-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:00:00Z`;
@@ -263,4 +268,76 @@ test('a row on Today, on one line: when it is due, short, its project’s dot, a
   assert.equal(w.due.text, due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
   assert.ok(w.color, 'its project’s dot');
   assert.match(w.said, /^Due Today .*, Priority: High, Café$/, 'when in words, its priority and its project; not its label nor its comments');
+});
+
+test('where a run goes next: the next step that can be done now, past those counting down; then one before it; then any', () => {
+  const now = 1000, s = (id, f = {}) => ({ id, done: false, counting: false, dueAt: Infinity, ...f });
+  const steps = [s(1, { done: true }), s(2, { counting: true, dueAt: 1600 }), s(3), s(4, { counting: true, dueAt: 900 }), s(5)];
+  assert.equal(whereNext(steps, now), 2, 'opening: the first that can be done now, not one counting down');
+  assert.equal(whereNext(steps, now, steps[2]), 3, 'after a tick: the next one, its countdown over');
+  assert.equal(whereNext(steps, now, { ...steps[4] }), 2, 'none after it: one before it');
+  assert.equal(whereNext([s(1, { done: true }), s(2), s(3, { waitsFor: 2 })], now, { id: 2 }), 2, 'not one that starts counting down with this tick');
+  assert.equal(whereNext([s(1, { counting: true, dueAt: 1500 }), s(2, { counting: true, dueAt: 1200 })], now), 0, 'all counting down: the first open');
+  assert.equal(whereNext([s(1, { done: true }), s(2)], now, { id: 2 }), -1, 'none open but the one ticked');
+});
+
+test('a run’s card on Today opens on the step its screen would, and goes by the same rule once the step ticked has gone', () => {
+  const { app, parent, g } = today();
+  app.isRunTask = t => t.id === 10;                                        // its steps in its order: Lights, Chairs, Tables, then 14, done
+  const soon = m => new Date(Date.now() + m * 6e4).toISOString();
+  app.tasks[11].due_date = soon(10); app.tasks[13].due_date = soon(20);   // Lights and Tables counting down
+  const c = app.cardOf(parent, g);
+  assert.deepEqual([c.step.title, c.at], ['Chairs', 1], 'the one it can do now');
+  assert.equal(cardAt([{ id: 1 }, { id: 2 }], null, 2, () => 1), 1, 'a step of yours that brought it still comes first');
+  app.pinCard(c);
+  app.tasks[12].done = true; app.leaving[12] = 'done';
+  assert.equal(app.cardOf(parent, g).step.title, 'Chairs', 'ticked, it stays until the batch clears');
+  delete app.leaving[12];
+  assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'then the next by the rule: all counting down, the first open, not the one in its place');
+});
+
+// A run on its screen (runView, runs.js): A done a minute ago; B timed 30 minutes from A, counting down; C and D.
+const runScreen = () => {
+  const app = component(runs, claims, checklists, cards, views), now = Date.now(), NONE = '0001-01-01T00:00:00Z';
+  const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
+    assignees: [], attachments: [], reactions: {}, comments: [], tpl: title, added: '', from: null, ...f });
+  Object.assign(app, { user: me, pending: [], slow: [], perms: {}, clock: now, runInsert: {}, actTask: a => a.task,
+    view: { run: { run: { id: 50, title: 'Opening up', done: false, project_id: 5, assignees: [me], created_by: me, comments: [] },
+      steps: [step(51, 'A', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [me] } }), step(52, 'B', { tpl: 'B T#30m' }), step(53, 'C', { percent_done: .5 }), step(54, 'D')], at: null, last: null } } });
+  return app;
+};
+
+test('a run’s screen opens on the step a tick would go to, and its step card has Today’s card’s strip', () => {
+  const app = runScreen(), v = app.runView, c = v.card;
+  assert.deepEqual([v.step.title, v.at], ['C', 2], 'not B, counting down');
+  assert.deepEqual([c.runScreen, c.steps.map(s => s.title), c.i, c.n, c.at, c.total], [true, ['B', 'C', 'D'], 1, 3, 2, 4], 'it pages through the open steps; 3 of 4, its place');
+  assert.equal(c.line.fill, 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 50%,var(--accent) 50% 62.5%,var(--track) 62.5% 100%)', 'A done, C half done: its progress in its segment');
+  assert.equal(c.lineText, '1 of 4 steps done');
+  assert.equal(app.nextStep(v.steps[2]), 3, 'ticked, on to D');
+});
+
+test('the step card’s strip pages through the open steps, to the step put on the card; a done step comes on it from its row', () => {
+  const app = runScreen(), line = { getBoundingClientRect: () => ({ left: 0, width: 197 }) };   // 4 segments, 50px each
+  app.pageCard(app.runView.card, -1);
+  assert.deepEqual([app.runView.step.title, app.view.run.at, app.said], ['B', 1, 'Step 2 of 4: B'], '‹: B, said');
+  app.pageCard(app.runView.card, -1);
+  assert.equal(app.runView.step.title, 'B', 'the first open step: ‹ does nothing');
+  app.tapSegment(app.runView.card, 25, line);
+  assert.equal(app.runView.step.title, 'B', 'A’s segment, done: nothing');
+  app.tapSegment(app.runView.card, 175, line);
+  assert.equal(app.runView.step.title, 'D', 'D’s: D');
+  app.showStep(0);                                                         // A tapped in the list
+  const c = app.runView.card;
+  assert.deepEqual([c.step.title, c.steps.map(s => s.title), c.i], ['A', ['A', 'B', 'C', 'D'], 0], 'done, it’s on the card, and pages on from there');
+  app.pageCard(c, 1);
+  assert.deepEqual([app.runView.step.title, app.runView.card.steps.map(s => s.title)], ['B', ['B', 'C', 'D']], 'paged away, A is out of the way again');
+  const g = app.stripScrub({ querySelector: () => line }, () => app.runView.card);
+  g.page.begin(); g.page.move(120, 120); g.page.end(120);
+  assert.deepEqual([app.runView.step.title, app.said], ['C', 'Step 3 of 4: C'], 'dragged along it, as on Today');
+});
+
+test('the step card shows who’s on its step, as its row does, until it’s done', () => {
+  const app = runScreen(), v = app.runView;
+  assert.deepEqual(app.rowSlot(v.step, { run: true }), v.step.slot);
+  assert.equal(app.rowSlot(v.steps[0], { run: true }), null, 'done: its row and card say who did it instead');
 });

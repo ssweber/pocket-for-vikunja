@@ -1,13 +1,11 @@
     <!-- A run: the step it's on, the list of steps, notes, and the notes from the last run of the same template -->
     <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
       <p class="run-for" id="run-for" x-text="runView.forText"></p>
-      <!-- A start just made, with its Undo until anything's done in it -->
+      <!-- A start just made, "Started", with its Undo until anything's done in it -->
       <template x-for="line in placeLines('run')" :key="line.n">
         <!-- include markup/place-line.html -->
       </template>
       <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">This run's project is shared with you to read only: you can follow it, but not tick its steps or add notes. Ask its owner for write access.</p></template>
-      <!-- Stays at the top on a long run: tapped, back up to the step on screen. In segments, one per step (runLine) -->
-      <button type="button" class="run-bar" id="run-bar" :aria-label="runView.countText + ': back to the step'" @click="scrollTo({top: 0, behavior: 'smooth'})"><span class="track" :class="{many: runView.line.many}" x-style="{'--segs': runView.line.segs, '--fill': runView.line.fill}"><i x-style="{'--pct': runView.line.fill || !runView.total ? 0 : runView.doneCount / runView.total}"></i></span><span class="num" id="run-count" x-text="runView.countText"></span></button>
 
       <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
       <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
@@ -20,54 +18,7 @@
         <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(s.i, true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
       </div></template>
 
-      <template x-if="runView.step"><div class="card step-card" id="step-card" :data-id="runView.step.id">
-        <div class="step-head">
-          <button class="icon-btn plain" id="step-prev" aria-label="Previous step" :disabled="runView.at === 0" @click="showStep(runView.at - 1)"><svg class="i"><use href="#i-back"/></svg></button>
-          <span class="step-no num" x-text="'Step ' + (runView.at + 1) + ' of ' + runView.total"></span>
-          <button class="icon-btn plain" id="step-next" aria-label="Next step" :disabled="runView.at >= runView.total - 1" @click="showStep(runView.at + 1)"><svg class="i"><use href="#i-chev"/></svg></button>
-        </div>
-        <template x-for="line in placeLines('step')" :key="line.n">
-          <!-- include markup/place-line.html -->
-        </template>
-        <h3 id="step-title" x-text="runView.step.title"></h3>
-        <template x-if="runView.step.added"><div class="step-added" id="step-added" x-text="runView.step.added + (runView.step.slowAdd ? ' · waiting to send' : '')"></div></template>
-        <template x-if="runView.step.dueText"><div class="step-due num" :class="{late: runView.step.late}" x-text="runView.step.dueText"></div></template>
-        <template x-if="runView.step.description"><div class="desc" x-html="sanitize(runView.step.description)"></div></template>
-        <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.slow}" x-text="runView.step.whoText"></div></template>
-        <div class="step-acts" x-show="!runView.finished && canWrite(view.run.run.project_id)">
-          <!-- The same words with a note being written, so the buttons don't change size under the thumb: the line under
-               the note says it goes with them -->
-          <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" @click="tickStep(runView.step, 'done')"><svg class="i"><use href="#i-check"/></svg><span>Done</span></button></template>
-          <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" @click="tickStep(runView.step, 'skip')">Skip</button></template>
-          <template x-if="runView.step.done"><button class="btn ghost go-on" id="step-undo" @click="tickStep(runView.step, 'undone')">Not done</button></template>
-        </div>
-        <!-- Photos and notes for this step: photos wait on the phone without a connection, as everywhere in Pocket -->
-        <div class="step-extra" id="step-extra">
-          <template x-for="a in runView.step.attachments || []" :key="a.id">
-            <button class="att" @click="openAttachment(a, runView.step.id)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
-          </template>
-          <template x-for="f in waitingByTask.get(runView.step.id) || []" :key="f.key">
-            <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span></div>
-          </template>
-          <template x-if="attachmentsOn && !runView.step.pending"><label class="att add-att">
-            <svg class="i"><use href="#i-camera"/></svg><span class="nm">Add a photo</span>
-            <input type="file" id="step-file" class="sr" accept="image/*" multiple aria-label="Add a photo to this step" @change="addFiles($event.target.files, runView.step); $event.target.value = ''">
-          </label></template>
-          <template x-for="c in runView.step.notes" :key="c.id">
-            <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
-          </template>
-          <form class="comment-form" id="step-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(runView.step.id)">
-            <textarea id="step-note" rows="1" placeholder="Note on this step" aria-label="Note on this step" x-model="runDrafts[runView.step.id]"
-                      x-effect="runDrafts[runView.step.id]; $nextTick(() => grow($el))"></textarea>
-            <button class="go btn" style="width:44px;padding:0" aria-label="Save note" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
-          </form>
-          <template x-if="!runView.step.done && !runView.finished && (runDrafts[runView.step.id] || '').trim()"><p class="note step-note-with" id="step-note-with">Done or Skip sends this note with it: for Skip, as the reason.</p></template>
-          <!-- What was noted on this step last time -->
-          <template x-for="c in lastNotes(runView.step)" :key="'last' + c.id">
-            <div class="comment last"><div class="who">Last time · <b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
-          </template>
-        </div>
-      </div></template>
+      <!-- include markup/step-card.html -->
 
       <div class="h3">Steps</div>
       <div class="list" id="run-steps">

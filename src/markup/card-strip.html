@@ -1,0 +1,16 @@
+<!-- A card's strip, `c`: how to get round its steps, at the foot of a card on Today (cardOf, today-item.html) and at the
+     top of a run's step card (runView.card, screens/run.html). ‹, its task's line, a segment per subtask or step, each
+     filled by whether it's done, the step showing marked on it and filled by its progress, ›, and its count, "3 of 5",
+     the step's place among all of them, done ones too. It pages through the open ones: dragged along it, the step under
+     the finger (cardScrub, absolute, as a scrubber); a tap on an open step's segment (tapSegment; a pointer's shortcut,
+     not a stop for each step); or its arrows, which stop at the first and last open step, dimmed there. Its controls
+     take taps 48px tall, within the strip: the arrows, 48px wide, there with more than one open step (their places kept
+     without, so the line doesn't stretch; they stay put as the step changes, so the one tapped keeps the focus). On
+     Today a screen reader hears the count on the step line; on a run's screen, here. -->
+<div class="card-strip">
+  <template x-if="c.n > 1"><button class="pg prev" aria-label="Show the step before" :aria-disabled="String(c.i === 0)" @click="pageCard(c, -1)"><svg class="i"><use href="#i-chev"/></svg></button></template>
+  <div class="card-track" :class="{'many-steps': c.line.many, jumps: c.n > 1 && !c.line.many}" x-style="{'--segs': c.line.segs, '--done': c.line.done, '--fill': c.line.fill, '--at': c.at}" @click="tapSegment(c, $event.clientX, $el.querySelector('.card-line'))">
+    <div class="card-line" :class="{'many-steps': c.line.many}" role="img" :aria-label="c.lineText"></div><i class="card-mark" aria-hidden="true"></i></div>
+  <template x-if="c.n > 1"><button class="pg next" aria-label="Show the step after" :aria-disabled="String(c.i === c.n - 1)" @click="pageCard(c, 1)"><svg class="i"><use href="#i-chev"/></svg></button></template>
+  <template x-if="c.total > 1"><span class="card-n num" :aria-hidden="c.runScreen ? null : 'true'"><template x-if="c.runScreen"><span class="sr">Step </span></template><span x-text="(c.at + 1) + ' of ' + c.total"></span></span></template>
+</div>

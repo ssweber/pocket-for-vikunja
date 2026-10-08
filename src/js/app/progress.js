@@ -217,6 +217,8 @@ export default {
     this.holdToSlide(document.getElementById('view'), target => {
       // A card on Today: its step line held is that step's (cardGesture); its strip dragged along, its steps
       // (cardScrub); its heading only a tap, a swipe there doing nothing, as on any row on Today.
+      // A run's step card has the same strip, scrubbed the same way.
+      if (target.closest('#step-card > .card-strip')) return this.stripScrub(target.closest('#step-card'), () => this.runView?.card);
       const step = target.closest('.step-line'), card = target.closest('.day-card');
       const row = step || (card ? null : target.closest('.list:not(.tree) > .row, .item > .row'));
       if (card && !step) return target.closest('.card-strip') ? this.cardScrub(card) : this.cardGesture(card, null);

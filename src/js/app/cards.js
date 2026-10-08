@@ -1,12 +1,14 @@
 /* Today's cards on screen (which tasks are cards, and why, is cards.js): a task with open subtasks or steps, its title
    over one line for a step, the shared row (task-row.html) with the card's own options (g.card: no Delete, no
    moving it). The card pages through its open steps on its strip only: its ‹ ›, a tap on a step's segment, or a finger
-   dragged along it (cardScrub); a tick or a slide on its step line is that step's alone. What a card needs is read once per project shown, not once per card (readCards). */
+   dragged along it (cardScrub); a tick or a slide on its step line is that step's alone. A run's screen has the same
+   strip on its step card (runView.card, runs.js), paged by the same code. What a card needs is read once per project
+   shown, not once per card (readCards). */
 import {colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, shortDue} from '../dates.js';
-import {stepsOf} from '../checklists.js';
-import {cardAt, openSubs, placeOf, scrubTo, segmentAt, segmentOf, stepOfSegment, turnPage} from '../cards.js';
+import {stepsOf, whereNext} from '../checklists.js';
+import {cardAt, countdown, openSubs, placeOf, scrubTo, segmentAt, segmentOf, stepOfSegment, turnPage} from '../cards.js';
 import {haptic} from '../haptics.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {pctOf, runLine} from '../progress.js';
@@ -27,13 +29,22 @@ export default {
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     const steps = all.filter(s => !done(s) || this.leaving[s.id]);
     if (!steps.length) return null;
-    const i = cardAt(steps, this.cardPage[t.id], c.focus), d = all.filter(done).length, step = steps[i];
+    const i = cardAt(steps, this.cardPage[t.id], c.focus, run ? this.runPick(all, done) : null), d = all.filter(done).length, step = steps[i];
     // Its line: each done step's segment full, the one showing filled by its progress (the step line has no bar of its own).
     const fill = all.map(s => done(s) ? 1 : s.id === step.id ? pctOf(s) / 100 : 0);
     const card = {id: t.id, step, i, n: steps.length, steps, at: placeOf(all, step), total: all.length, all,
       line: runLine(all.length, d, fill), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
     card.g = {depth: {}, card, line: true};
     return card;
+  },
+  /* A run's card picks its step by the run's own rule, as its screen does (whereNext): the next it can do now, past any
+     still counting down, as Today shows it (countdown); given the step that has gone (its id), or null as it opens. */
+  runPick(all, done){
+    return from => {
+      const now = this.groupedAt || Date.now();
+      const facts = all.map(s => { const due = isSet(s.due_date) ? +new Date(s.due_date) : Infinity; return {id: s.id, done: done(s), counting: !!countdown(due, now), dueAt: due}; });
+      return all[whereNext(facts, now, from === null ? null : {id: from})]?.id ?? null;
+    };
   },
   // A card's subtasks, all of them, each the copy on screen where there's one: a run's in its order line, a task's in its
   // project's List view.
@@ -76,22 +87,28 @@ export default {
     if (i >= 0 && i !== c.i) this.showCardStep(c, i, Math.sign(k - c.at) || 1);
   },
   /* The card on its open step `i`, coming in from the side `dir` says (or, 'none', just there, as while scrubbing); a
-     screen reader hears its place among all, unless `quiet` (scrubbing, which says where it stopped: cardScrub). */
+     screen reader hears its place among all, unless `quiet` (scrubbing, which says where it stopped: cardScrub). The run
+     screen's step card (runView.card, runs.js) has the same strip: there, the step goes on the card (showStep). */
   showCardStep(c, i, dir, quiet = false){
     const s = c.steps[i];
-    this.cardPage[c.id] = {id: s.id, i};
-    entering.set(c.id, dir);
+    if (c.runScreen) this.showStep(s.i);
+    else { this.cardPage[c.id] = {id: s.id, i}; entering.set(c.id, dir); }
     if (!quiet) this.said = this.stepSaid(c, s);
   },
   stepSaid(c, s = c.step){ return `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`; },
   /* A finger pressed on a card's strip and dragged along it, mostly sideways (holdToSlide, app/progress.js): the step
      under it shows, the marker following, from open step to open step (scrubTo), a tick felt at each, the step line
      switching to it as it goes; let go, it stays there, and a screen reader hears where. Past MANY_STEPS too: it's a
-     drag, not a tap. With one open step, nothing. */
+     drag, not a tap. With one open step, nothing. On Today, the card `card`; on a run's screen, its step card (stripScrub
+     with runView.card). */
   cardScrub(card){
     if (card.matches('.deleted, .lined')) return null;
-    const id = +card.dataset.id, line = card.querySelector('.card-line'), now = () => { const t = this.tasks[id]; return t && this.cardOf(t, {cards: true}); };
-    const c0 = now();
+    const id = +card.dataset.id;
+    return this.stripScrub(card, () => { const t = this.tasks[id]; return t && this.cardOf(t, {cards: true}); });
+  },
+  // The strip in `el` scrubbed, `now()` giving its card as it is at each move.
+  stripScrub(el, now){
+    const line = el.querySelector('.card-line'), c0 = now();
     if (!c0 || c0.n < 2 || !line) return null;
     let last = 0, moved = false;
     return {el: null, page: {
