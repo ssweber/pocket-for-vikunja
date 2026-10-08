@@ -46,7 +46,7 @@ line for each subtask and who's on it.
 
 Write the steps once, as a template: "Turn on the espresso machine", "Put the croissants in the oven", "Take the
 croissants out in 18 min". Then start a run each morning, for yourself or someone on shift, and work through it one
-step at a time, with a note or a photo where it helps. Timed steps count down, and everyone sees who did what.
+step at a time, with a comment or a photo where it helps. Timed steps count down, and everyone sees who did what.
 
 <img src="docs/screenshots/pocket-run.png" width="300" alt="A run of Opening up, 2 of 4 steps done, two of its line's four segments filled: 'Dial in the grinder' is due in 20 minutes, 'Take the croissants out', due in 18, is pinned above it, and the two steps done are ticked in their square boxes">
 
@@ -108,7 +108,7 @@ Tap a chip to keep its words in the title instead. A pasted list becomes a task 
 2. Under Checklists, tap **New template** and write its steps, a row each. `@priya` in a step gives it to Priya. To
    time a step, write it in the step: "in 18 min", or "20 minutes after Turn on the espresso machine".
 3. Tap **Start** and choose who the run is for.
-4. Work through it: **Done**, or **Skip**. A note typed on the step goes with it.
+4. Work through it: **Done**, or **Skip**. A comment typed on the step goes with it.
 
 **The [guide](docs/guide.md)** has the rest: [every quick add shortcut](docs/guide.md#quick-add), [checklists in
 full](docs/guide.md#checklists) and [timed steps](docs/guide.md#timed-steps), [offline](docs/guide.md#offline),

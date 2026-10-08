@@ -48,11 +48,15 @@ function sections(){
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
   // Today's cards (cards.js): a task of high priority with one subtask of five done and four open (one of them yours),
-  // paged to the second open one, 3 of 5; a run with a step counting down; a task with one subtask open; and one of 14,
-  // past MANY_STEPS, five done, paged to 8 of 14, of low priority. Their subtasks are in the store, as Today keeps them.
+  // paged to the second open one, 3 of 5; a run with a step counting down; a run started from a template that came round,
+  // due when it was; a task with one subtask open; and one of 14, past MANY_STEPS, five done, paged to 8 of 14, of low
+  // priority. Their subtasks are in the store, as Today keeps them. A run's heading reads as a task's: its name without
+  // the day it was started (runWithoutDay), and when it's due at the right.
+  const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
   const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), priority: 3, related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
-  const opening = task({title: 'Opening up · Oct 8', project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
+  const opening = task({title: `Opening up · run 2 · ${day}`, created: now.toISOString(), project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
+  const closing = task({title: `Closing up · run 5 · ${day}`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, priya], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
   const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 5}))}});
   const cardSubs = [kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
@@ -60,6 +64,8 @@ function sections(){
     kid(711, {under: opening.id, project_id: 2, title: 'Turn on the espresso machine', done: true, related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 1}]}}),
     kid(712, {under: opening.id, project_id: 2, title: 'Take the croissants out', due_date: at(18 * 6e4), related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 2}]}}),
     kid(713, {under: opening.id, project_id: 2, title: 'Unlock the door', related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 3}]}}),
+    kid(751, {under: closing.id, project_id: 2, title: 'Stack the chairs', related_tasks: {parenttask: [{id: closing.id}], copiedfrom: [{id: 4}]}}),
+    kid(752, {under: closing.id, project_id: 2, title: 'Lock the door', related_tasks: {parenttask: [{id: closing.id}], copiedfrom: [{id: 5}]}}),
     kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]}),
     ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 5}))];
   // Today's rows, on one line (line: section 9): the title cut short; and at the right its priority's bars, small, from
@@ -71,7 +77,7 @@ function sections(){
     task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),
     task({title: 'Order the cups', due_date: dayAt(2, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(12, 0)}),
     task({title: 'Fix the till drawer', due_date: dayAt(0, 9), priority: 5, assignees: [me]})];
-  return {parent, steps: runSteps(), cards: [van2, opening, sign, shelves], cardSubs, list: [
+  return {parent, steps: runSteps(), cards: [van2, opening, closing, sign, shelves], cardSubs, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -158,6 +164,8 @@ function runSteps(){
 document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
+  c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
+    {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
   c.specimen = []; c.specimenCards = []; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
@@ -204,7 +212,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
-    this.cardPage = {[s.cards[0].id]: {id: 703, i: 1}, [s.cards[3].id]: {id: 738, i: 2}};
+    this.cardPage = {[s.cards[0].id]: {id: 703, i: 1}, [s.cards[4].id]: {id: 738, i: 2}};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted, repeated, held at 75%, late, waiting on another step, and a tick waiting to send',
         depth: {}, run: true, at: 4, locked: false, tasks: steps},

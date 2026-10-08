@@ -65,7 +65,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   in words, its priority and its project.
 - **Cards on Today:** a task with subtasks still open (or a checklist run with steps still open) shows on Today as a
   card of three lines: its title, with its priority's bars and when it's due (nothing for today with no time, under
-  the Today heading, as a row); one line for a step, as a task's line on
+  the Today heading, as a row; a run's name without the day it was started, "Opening up · run 3"); one line for a step, as a task's line on
   Today, with that step's own tick and **+ me** or who's on it; and its strip, below. Every card is the same height,
   whatever its steps hold.
   Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
@@ -151,7 +151,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   and they go with it. The task's **⋯** deletes it too, on any screen: the way on Today, and for a keyboard or a screen
   reader. Its row turns into the same gap. Without a connection, it's deleted once Pocket reaches Vikunja.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
-  comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
+  comments. **Notes** are the task's own description in Vikunja; **Comments** are Vikunja's comments, a conversation
+  under it, as on a checklist run. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet shares its progress (see **Sharing progress**,
@@ -335,18 +336,22 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    down, then tap **Make template**. When it comes round, if it should, is set in its sheet once it's made. In a template's sheet, tap a step to change it, or remove it with ×; hold a step, then move it
    up or down, to move it (or tap it, and its **⋯** has **Move up** and **Move down**, as **Alt+↑** and **Alt+↓** do in its
    box). Runs already started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
-   comes with its notes, so that's the place for how to do it.
+   comes with its notes, so that's the place for how to do it. The steps are numbered, as on the Start sheet, not in
+   square boxes: those are steps you tick, in a run.
+   A template's sheet has what its runs get from it: its notes and attachments (each run's, under **Open as a task** in
+   the run's **⋯**), its labels but **template**, its people (who a run is for, to start with) and when it comes round.
+   It has no **Comments**, nor has a template's step: Vikunja doesn't copy comments to a run, so they'd reach no one.
    A task with its steps as subtasks can also be made one, with **Use as checklist template** in its sheet's **⋯**.
    Its **template** label is what makes it one, so its sheet doesn't offer to take that off; delete it from its **⋯**.
 3. **Start a run.** Tap **Start** and choose who it's for: tap everyone it's for, one or more people who can work on
    the project, the template's assignees to start with. The steps say who each is for. A name, like "Saturday", takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
    seen under Checklists, and is set up once Pocket reaches Vikunja. A step assigned to someone in the template stays
    assigned to them in every run.
-4. **Work through it.** One step at a time, on its card: **Done**, or **Skip**. A note typed on the step goes with
-   either: Done saves it on the step, and Skip makes it the reason. The run opens on the next step that can be done
-   now, and after Done that's the step on screen: not one still counting down. Add a photo or a note to a step, or a
-   note to the whole run; a step with notes has a mark on its row. **Last time** shows the notes from the last finished
-   run of the same template, as a handover, and each step's card shows the ones left on it (ones that come after the
+4. **Work through it.** One step at a time, on its card: **Done**, or **Skip**. A comment typed on the step goes with
+   either: Done posts it on the step, and Skip makes it the reason. The run opens on the next step that can be done
+   now, and after Done that's the step on screen: not one still counting down. Add a photo or a comment to a step, or a
+   comment to the whole run (they're Vikunja's comments, which its web app shows too); a step with comments has a mark
+   on its row. **Last time** shows the comments from the last finished run of the same template, as a handover, and each step's card shows the ones left on it (ones that come after the
    run is on screen from the next step on, so the steps don't move). At the top of the step's card is the strip a card
    on Today has: the run's line, a segment for each step, the step on the card outlined and filled by its progress,
    and "3 of 6", the step's place in the run. Its **‹** and **›**, a tap on an open step's segment, or a finger dragged
@@ -385,7 +390,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   done asks first: theirs stays on it. A step ticked on
   Today counts the same.
 - **Today** shows your runs in progress, to the person who started the run and the person it's for, each as a card
-  (see **Cards on Today**, under Tasks): its name, who it's for, and its next step, the one its screen opens on (not one
+  (see **Cards on Today**, under Tasks): its heading as a task card's, its name without the day it was started and,
+  if it's due (one started from a template that came round), when, at the right; then its next step, the one its screen opens on (not one
   counting down), with its countdown when the step is timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
   under **Checklist runs**, or with a step due, by that step's date. A run's line is in segments, one for each step,
   filled as steps are done (past 12 steps, one line with a small mark at each step): on its card, on its row under
@@ -394,11 +400,11 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   a run's name opens it; tapping a step opens its run on that step.
 - **A step has a square box**, wherever it shows: on its run's screen, in the run's sheet, and on Today. A task or a
   subtask has a round one. They work differently (a step's tick records who did it, with its ✅), so they look
-  different. A template's numbered steps are square too.
+  different. A template's steps aren't ticked: they're numbered, plainly.
 - **The run on screen** updates by itself as teammates tick steps.
 - **A run's ⋯** shares its progress as a text, with who did each step (see **Sharing progress**, under Tasks), changes
   its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
-- **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them. A
+- **Offline:** ticks, skips, comments and photos are sent once Pocket reaches Vikunja, in the order you did them. A
   **Not done** made offline isn't sent if the run was finished meanwhile. A step inserted offline can be called off from
   Waiting to send; whatever of it reached Vikunja is taken out.
 - **In Vikunja's web app**, a template is a task labelled `template`, its title starting "TEMPLATE: " so it isn't
@@ -506,7 +512,7 @@ them again behind. Anything changed since then changes in place: a row ticked el
 fades in, and the rest stay as they are, under your thumb. If loading takes over a second, a thin line runs under the
 header. While you're on one screen, Pocket loads Today, the project you opened last and Checklists in the background,
 one at a time and only when the phone is idle, so they're up to date when you switch to them; not without a
-connection, nor when the phone is set to save data. A run opens once it's loaded, with Last time's notes when they
+connection, nor when the phone is set to save data. A run opens once it's loaded, with Last time's comments when they
 come quickly; ones that come later are shown under the run straight away, and on a step's card from the next step on,
 so the steps never jump down under your thumb.
 
@@ -528,8 +534,8 @@ Pocket opens without a connection and shows your lists as they were last loaded.
   refresh button at the top turns amber, with how many. Tap it
   for **Waiting to send**: each thing in words ("Done: Check the milk fridge", "Photo for “Restock cups”"), when you did
   it, and **Don't send it** on anything not started yet. **Try now** sends what it can.
-- **Nothing you write is lost:** a comment, notes, subtasks, a step's note or a new template is kept on the phone until
-  it's sent, even if Pocket is closed, and through a sign-in that runs out. A task or note Vikunja turns down for good
+- **Nothing you write is lost:** a comment (on a task, a run or a step), notes, subtasks or a new template is kept on
+  the phone until it's sent, even if Pocket is closed, and through a sign-in that runs out. A task or comment Vikunja turns down for good
   says what it was, and its words go back in the box. A tick, skip, claim or finish it turns down is kept: the button
   turns red, and Waiting to send says why, with **Try again** and **Don't send it**. Until then, anything done after it
   on the same task waits behind it. Notes someone changed elsewhere while you wrote yours aren't written over: both are

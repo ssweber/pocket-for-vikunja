@@ -241,7 +241,8 @@ for doing, so every row and card line there is one line, with "…" when a title
   - **Labels and counts** (comments, attachments, subtasks) are off Today.
   - A row's own progress line stays at its bottom.
 - **A card on Today is three fixed lines:**
-  - **The heading:** title, small priority bars (it has no tick to colour), and its own time at the right.
+  - **The heading:** title, small priority bars (it has no tick to colour), and its own time at the right. A run's
+    reads the same: its name without the day it was started, and its time if it's due (`one-concept-plan.md`, part 5).
   - **The step line:** as a row.
   - **The strip.**
   - The step line has no bar of its own: **the step's progress fills its own segment of the strip**, so a card shows
