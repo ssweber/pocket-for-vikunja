@@ -291,7 +291,7 @@ Vikunja tells the task's creator (for a step, whoever started the run) when you 
 Checklists are the things done the same way again and again: opening up, closing down, a delivery check. Each start of
 one is a run, with who did each step and when. They're ordinary Vikunja projects and tasks.
 
-<p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a run of the café's Opening up template. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' and 'Take the croissants out' count down, pinned at the top."></p>
+<p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a run of the café's Opening up template: its steps have square boxes, and its line a segment for each step. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' is due in 20 minutes, and 'Take the croissants out', due in 18, is pinned at the top."></p>
 
 1. **Use a project for checklists.** Under Projects, **Set up checklists** makes a project called Checklists with an
    example template to try, "Example: Opening up": start it, then change it into your own or delete it. Or open a
@@ -483,7 +483,7 @@ and right away without a connection. If Vikunja turns it down, it goes back as i
 
 Pocket opens without a connection and shows your lists as they were last loaded.
 
-<img src="screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying what's sent once back online, and 'Buy till receipt rolls' tinted under Today, waiting to be sent">
+<img src="screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying that ticking off or changing tasks needs a connection, except on a run, and 'Buy till receipt rolls' tinted under Today, waiting to be sent">
 
 - **What works offline:** new tasks and subtasks, comments, and what you do in a checklist run. A task waiting to be
   sent has a light tint and a dashed circle (online, once it has waited a few seconds); its × cancels it and puts its

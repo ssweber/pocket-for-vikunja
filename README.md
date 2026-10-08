@@ -11,8 +11,8 @@ like opening up and closing down, into checklists that you and your team tick of
     <th>Checklists</th>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Typing 'Order 6 bags of house blend at 4 +orders !3' highlights the words Pocket reads, chips show Orders, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds 'Post next week's rota' and slides it, stopping at 25% and then 50%, taps '+ me' on it so Alex's picture takes its place, and ticks off 'Pick up change from the bank', whose row becomes a line, 'Done: Pick up change from the bank', with Undo."></td>
-    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the café's Opening up checklist, which says it's started, with an Undo. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' and 'Take the croissants out' count down, pinned at the top."></td>
+    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Today, with 'Order oat milk from Riverside Dairy' overdue as a card showing its next step, 'Ask about the October price', 2 of 3; › pages it on to 'Set up the standing order', 3 of 3. Typing 'Order 6 bags of house blend at 4 +orders !3' highlights the words Pocket reads, chips show Orders, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds 'Post next week's rota' and slides it: its '+ me' turns into Alex's A as the slide starts, and it stops at 25% and then 50%. Last, 'Pick up change from the bank' is ticked: it stays where it is, ticked and struck through, and leaves 3 seconds later, the rows below closing up."></td>
+    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the café's Opening up checklist, which says it's started, with an Undo; its steps have square boxes, and its line has a segment for each step. Once the espresso machine is on and the croissants are in, two segments are filled, 'Dial in the grinder' is due in 20 minutes, and 'Take the croissants out', due in 18, is pinned at the top."></td>
   </tr>
 </table>
 
@@ -31,7 +31,7 @@ ones you ticked leave together a few seconds later; tick it again to take it bac
 say how far along it is. Today is for doing, so nothing is deleted or moved there: on a project's list, swipe a task
 left to delete it, and its place stays as a gap with **Restore** until the gap closes.
 
-<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end, and the café's week ahead">
+<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, a card showing its next step, 'Ask about the October price', 2 of 3, on a line in three segments; 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end; and the café's week ahead">
 
 ## Hand it off
 
@@ -48,7 +48,7 @@ Write the steps once, as a template: "Turn on the espresso machine", "Put the cr
 croissants out in 18 min". Then start a run each morning, for yourself or someone on shift, and work through it one
 step at a time, with a note or a photo where it helps. Timed steps count down, and everyone sees who did what.
 
-<img src="docs/screenshots/pocket-run.png" width="300" alt="A run of Opening up, 2 of 4 steps done: 'Dial in the grinder' is due in 20 minutes, and 'Take the croissants out' counts down above it">
+<img src="docs/screenshots/pocket-run.png" width="300" alt="A run of Opening up, 2 of 4 steps done, two of its line's four segments filled: 'Dial in the grinder' is due in 20 minutes, 'Take the croissants out', due in 18, is pinned above it, and the two steps done are ticked in their square boxes">
 
 Pocket works offline, and keeps whatever you're writing until it's sent. It follows the phone's light or dark mode.
 Timers ring while Pocket is open; reminders arrive by email when it's closed, so the server needs mail set up (see

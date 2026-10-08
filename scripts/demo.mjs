@@ -78,7 +78,7 @@ const oatMilk = await task('Orders', { title: 'Order oat milk from Riverside Dai
   description: '<p>Two cases a week from October: set it up as a standing order.</p>' }, {
   labels: ['suppliers'], comment: '<p>We’re on the last case. Riverside’s cut-off is 2pm for next-day delivery.</p>', file: { name: 'riverside-price-list.pdf', text: '%PDF-1.4 demo', size: 184000 },
   subtasks: [['Count what’s left in the fridge', true], ['Ask about the October price', false], ['Set up the standing order', false]] });
-await task('Orders', { title: 'Pay the coffee roaster’s invoice', due_date: at(-1) });
+await task('Orders', { title: 'Pay the coffee roaster’s invoice', due_date: at(1) });   // not overdue: room on the GIF's screen for one task more today
 await task('Café', { title: 'Post next week’s rota', due_date: at(0, 10, 30), priority: 3 });
 await task('Café', { title: 'Call the plumber about the dishwasher', due_date: at(0) }, { labels: ['calls'], assign: priya });   // Priya's picture on its row
 await task('Café', { title: 'Pick up change from the bank', due_date: at(0, 15, 30) }, { labels: ['quick'] });
@@ -123,7 +123,7 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
 {
   const { context, page } = await phone();
   await page.screenshot({ path: out('pocket-today.png') });
-  await page.locator('.row .body:has-text("Order oat milk")').click();
+  await page.locator('.day-card:has-text("Order oat milk") > .card-head').click();   // a card on Today: its title opens it
   await page.waitForSelector('#d-comments .comment'); await page.waitForTimeout(500);
   await page.screenshot({ path: out('pocket-task.png') });
   await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -187,39 +187,42 @@ async function tap(sel){
 gif = await phone({ scale: 1.5, height: 760 });
 let { page, touch } = gif;
 
-await snap(1800);                                                    // Today
-// 1. Quick add: the words it reads are highlighted, and chips say what they'll save.
+await snap(1800);                                                    // Today, the oat milk order a card on its next step
+// 1. A card pages through its open steps: › shows the one after, and its place in the count and on the line moves.
+await tap('.day-card:has-text("Order oat milk") .pg.next');
+await page.waitForSelector('.day-card:has-text("Order oat milk") .card-n:text-is("3 of 3")'); await page.waitForTimeout(250);
+await snap(1500);
+// 2. Quick add: the words it reads are highlighted, and chips say what they'll save.
 await tap('#in-capture');
 for (const ch of 'Order 6 bags of house blend at 4 +orders !3') { await page.keyboard.type(ch); await snap(ch === ' ' ? 40 : 75); }
-hold(1600);
+hold(1500);
 await tap('#f-capture .go');
 await page.waitForSelector('.row .title:has-text("Order 6 bags")');
-await page.locator('#in-capture').blur();
-await film(1500); hold(1000);                                      // the new row lights up, then fades
-// 2. Progress: hold a task, then slide; it stops at 25% and 50%.
+await page.locator('#in-capture').blur(); await page.waitForTimeout(150);   // the box's help goes with the keyboard
+await film(1500); hold(800);                                       // the new row lights up, then fades
+// 3. Progress: hold a task nobody has, then slide; "+ me" becomes Alex's A as it starts, and it stops at 25% and 50%.
 {
   await page.waitForTimeout(250); await snap(300);
   const row = await page.locator('.row:has-text("Post next week")').boundingBox();
   const x = row.x + 30, y = row.y + row.height / 2;        // so the finger ends at the edge of the fill
   await touch('touchStart', x, y); await snap(250);
   await page.waitForSelector('.row.setting'); await snap(350);
-  const width = (await page.locator('.row:has-text("Post next week")').boundingBox()).width * .8;
+  const width = row.width * .8;
   for (let step = 1; step <= 6; step++) { await touch('touchMove', x + width * step / 10, y); await snap(130); }
   hold(600);
   await touch('touchEnd');
-  await film(400); hold(1200);
+  await page.waitForSelector('.row:has-text("Post next week") .claim.mine'); await page.waitForTimeout(300);
+  await snap(1600);
 }
-// 3. "+ me" says you'll do it, and your picture takes its place.
-await tap('.row:has-text("Post next week") .claim');
-await page.waitForSelector('.row:has-text("Post next week") .claim.mine'); await page.waitForTimeout(300);
-await snap(1300);
-// 4. Done: tick one off, and its row becomes a line with an Undo.
+// 4. Done: a ticked row stays where it is, ticked, and leaves 3 seconds later, the rows below closing up once.
 await tap('.row:has-text("Pick up change from the bank") .check');
-await film(1000); hold(2200);
+await page.waitForSelector('.row.done:has-text("Pick up change from the bank")'); await page.waitForTimeout(200);
+await snap(); { const t = Date.now(); await page.waitForTimeout(2300); hold(Date.now() - t); }
+await film(1200); hold(1800);
 await gif.context.close();
 await writeGif('pocket-demo.gif');
 
-// ---------- the checklist GIF: opening up the café, its timed steps counting down ----------
+// ---------- the checklist GIF: opening up the café, its square steps, its line a segment a step, and its timed steps ----------
 // Templates made as Pocket makes them: labelled "template", their steps done, then themselves done.
 const tplLabel = (await A('GET', '/labels')).items.find(l => l.title === 'template') || await A('POST', '/labels', { title: 'template' });
 async function template(title, steps){
@@ -249,7 +252,7 @@ await page.waitForSelector('#step-title'); await page.waitForTimeout(400);
 await snap(1800);                                                    // a run just started says so, with an Undo
 await tap('#step-done');
 await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")'); await page.waitForTimeout(300); await snap(1200);
-await tap('#step-done');                                             // the grinder counts down, and the croissants above it
+await tap('#step-done');                                             // the grinder is due in 20m, and the croissants are pinned above it
 await page.waitForSelector('#step-title:text-is("Dial in the grinder")'); await page.waitForSelector('#run-timers'); await page.waitForTimeout(400);
 await film(600); hold(3600);
 await page.screenshot({ path: out('pocket-run.png') });             // a still of the run, for the README
