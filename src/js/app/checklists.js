@@ -173,6 +173,13 @@ export default {
   openTasks(pid){ return allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ})); },
   // Each checklist project, with its templates and the runs still open in it.
   async loadChecklists(seq){
+    const checklists = await this.readChecklists(t => this.keep(t));
+    if (seq !== renderSeq || !await this.settle(checklists.flatMap(cl => cl.runs.map(t => t.id)), seq)) return;
+    this.view.checklists = checklists;
+    saved.set('checklists', {checklists, at: new Date().toISOString()});
+  },
+  // The same from Vikunja, each run's row given by `own`: the one on screen, or (preload) Vikunja's as it is.
+  async readChecklists(own){
     templatesKept = saved.get('templates') || {};
     const ws = this.checklistProjects;
     const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
@@ -187,13 +194,11 @@ export default {
         templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,
             done: t.done, labels: t.labels, due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}; }),
-        runs: open.filter(isRun).map(t => this.keep(t)),
+        runs: open.filter(isRun).map(own),
         finished: finished.filter(t => this.isRunTask(t)).slice(0, 5).map(t => ({id: t.id, title: t.title, done_at: t.done_at, forText: this.forText(t)}))};
     }));
-    if (seq !== renderSeq) return;
     saved.set('templates', templatesKept);
-    this.view.checklists = checklists;
-    saved.set('checklists', {checklists, at: new Date().toISOString()});
+    return checklists;
   },
   /* A template's line under Checklists, after its steps: "Next: Wed, Oct 7, 8:00 AM, then every day", or "Due now,
      since 6:00 PM today, just once". '' for one that doesn't come round. */

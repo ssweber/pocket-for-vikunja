@@ -59,6 +59,11 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke
    list scrolls down, and back when it scrolls up. The strip under the status bar stays, so the list never shows under it. */
 header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);padding:calc(env(safe-area-inset-top) + 8px) var(--pad) 8px;display:flex;align-items:center;gap:6px;transition:transform .22s ease}
 header.top.tucked{transform:translateY(-100%)}
+/* What's on screen being loaded afresh, when that takes over a second: a thin line running under the header */
+header.top .behind{position:absolute;left:0;right:0;bottom:0;height:2px;overflow:hidden;pointer-events:none}
+header.top .behind::after{content:"";position:absolute;top:0;bottom:0;left:-30%;width:30%;background:var(--accent);opacity:.7;animation:behind 1.2s ease-in-out infinite}
+@keyframes behind{to{left:100%}}
+@media (prefers-reduced-motion:reduce){header.top .behind::after{animation:none;left:0;width:100%;opacity:.35}}
 #app::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:6}
 header.top > .icon-btn{width:38px;height:38px}
 /* Refresh, while something waits to be sent: its count in a dot on the corner; amber waiting, red turned down */
@@ -148,6 +153,10 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.came-due{animation:came-due 2s ease-out}
 @keyframes came-due{0%,40%{background:color-mix(in srgb,var(--overdue) 16%,transparent)}100%{background:transparent}}
 @media (prefers-reduced-motion:reduce){.row.came-due{animation:none;background:color-mix(in srgb,var(--overdue) 16%,transparent)}}
+/* A row a refresh brought (added elsewhere): it fades in, without the light of one just added here */
+.row.arrived{animation:arrived .4s ease-out}
+@keyframes arrived{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.row.arrived{animation:none}}
 .check.wait{border-style:dashed;opacity:.8}
 .row.done .check.skip{background:var(--muted);border-color:var(--muted)}
 .check.no-tick{border:0;color:var(--muted)}

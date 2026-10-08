@@ -5,6 +5,8 @@
    Vikunja's copies inside it, and a run's screen has its own steps (view.run). */
 import {cache} from '../util.js';
 
+const forgotten = new Set();                     // tasks deleted this session, still in copies kept on the phone
+
 export default {
   // A task as Vikunja has it now, in place of what was kept of it (a list loaded again): the object its rows show.
   keep(t){
@@ -12,6 +14,17 @@ export default {
     if (!had) { this.tasks[t.id] = {...t}; return this.tasks[t.id]; }
     for (const k of Object.keys(had)) if (!(k in t)) delete had[k];
     return Object.assign(had, t);
+  },
+  /* Tasks from a copy kept on the phone (a screen shown before it's loaded): each the one on screen already, unless the
+     kept copy is newer (loaded in the background since); none deleted since. */
+  keptRows(list){
+    const newer = (a, b) => Date.parse(a.updated) > Date.parse(b.updated);
+    return list.filter(t => !forgotten.has(t.id)).map(t => {
+      const had = this.tasks[t.id];
+      if (had && !newer(t, had)) return had;
+      if (!cache.has(t.id) || newer(t, cache.get(t.id))) cache.set(t.id, t);
+      return this.keep(t);
+    });
   },
   // A change saved to a task, on its rows.
   syncTask(saved){ const t = this.tasks[saved.id]; if (t) Object.assign(t, saved); },
@@ -21,7 +34,7 @@ export default {
     for (const g of this.view.groups) { const i = g.tasks.findIndex(t => t.id === id); if (i >= 0) g.tasks.splice(i, 1); }
   },
   // A task deleted: off the list on screen, and forgotten.
-  forget(id){ cache.delete(id); delete this.tasks[id]; this.removeRow(id); },
+  forget(id){ cache.delete(id); delete this.tasks[id]; forgotten.add(id); this.removeRow(id); },
   // Tasks deleted: forgotten, and off the subtasks of those on screen and of the task in the sheet.
   forgetTree(ids){
     for (const id of ids) this.forget(id);

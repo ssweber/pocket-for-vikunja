@@ -1,5 +1,5 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
-import {cache, colorOf, PRIOS, store, TZ} from '../util.js';
+import {cache, collapse, colorOf, PRIOS, store, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError, why} from '../api.js';
 import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
@@ -12,6 +12,8 @@ import {shared} from './core.js';
 import {pendingSaves} from './sheet.js';
 
 export let renderSeq = 0;
+let behindTimer, preloadTimer, preloading = false;
+const PRELOAD_AGE = 60e3;                        // a copy kept younger than this isn't loaded again in the background
 // The projects whose Done section was left open, kept on the phone: project id -> true.
 const doneOpen = {
   all(){ try { return JSON.parse(store.get('done.open')) || {}; } catch { return {}; } },
@@ -154,9 +156,20 @@ export default {
     if (r.name !== 'run') this.runFrom = location.hash || '#/today';
     if (r.name !== 'run' && r.name !== 'project') this.projectFrom = location.hash || '#/today';
     const seq = ++renderSeq;
-    const fresh = this.view.route !== location.hash;   // new screen: show Loading; same screen: refresh in place
-    if (fresh) Object.assign(this.view, {loading: true, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null});
+    /* A new screen opens at once with the copy kept of it, loaded afresh behind it and changed in place (settle); with
+       none, it says Loading. The same screen is refreshed in place. Either way, a load that takes over a second says so,
+       with a thin line under the header (view.behind), not over what's on screen. */
+    const fresh = this.view.route !== location.hash;
+    if (fresh) {
+      const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
+      Object.assign(this.view, {loading: !s, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null});
+      if (s) this.showSaved(r, s);
+      if (scrollY) scrollTo(0, 0);                       // a new screen starts at its top
+    }
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
+    this.view.updating = !this.view.loading; this.view.behind = false;
+    clearTimeout(behindTimer);
+    behindTimer = setTimeout(() => { if (seq === renderSeq && this.view.updating) this.view.behind = true; }, 1000);
     try {
       if (r.name === 'today') await this.loadToday(seq);
       else if (r.name === 'projects') { if (!this.projects.length) await this.loadProjects(); }
@@ -164,31 +177,103 @@ export default {
       else if (r.name === 'search') await this.loadSearch(seq);
       else if (r.name === 'checklists') await this.loadChecklists(seq);
       else if (r.name === 'run') await this.loadRun(seq, r.id);
-      if (seq === renderSeq) { this.view.loading = false; this.view.savedAt = null; }   // fresh from Vikunja
+      if (seq === renderSeq) { this.view.loading = false; this.view.savedAt = null; this.schedulePreload(); }   // fresh from Vikunja
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
       if (e instanceof NetError) {
-        // Keep what's on screen, the banner saying we're offline; Today placed again for the time now (after midnight, say).
-        if (!fresh && !this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
-        const s = saved.get(viewKey(r));
-        if (s) {
-          const groups = (s.groups || []).map(g => ({...g, loading: false, tasks: g.tasks.map(t => { cache.set(t.id, t); return this.keep(t); })}));
-          const checklists = (s.checklists || []).map(cl => ({...cl, runs: (cl.runs || []).map(t => this.keep(t))}));
-          Object.assign(this.view, {loading: false, groups, project: s.project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
-          Object.assign(this.positions, s.positions || {});
-          if (r.name === 'today') this.regroupToday();
-          return;
-        }
+        // Keep what's on screen (the copy kept of it, say), the banner saying we're offline; Today placed again for the
+        // time now (after midnight, say).
+        if (!this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
+        const s = saved.get(viewKey(r));                 // a run's, which isn't shown before it's loaded
+        if (s) { this.showSaved(r, s); return; }
       }
       if (r.name === 'run' && e.runGone) { this.runGone(r.id); return; }
       // A project that's gone (deleted elsewhere): back to the list of them.
       if (r.name === 'project' && e instanceof ApiError && e.status === 404) { await this.loadProjects().catch(() => {}); this.go('#/projects'); this.notify('That project isn\'t there any more.'); return; }
-      // A refresh that fails says so, unless it would hide a message still being read.
-      if (!fresh && !this.view.loading) { if (!(this.toast.show && this.toast.until - Date.now() > 1500)) this.notify((r.name === 'search' ? 'Couldn\'t search: ' : 'Couldn\'t refresh: ') + e.message); return; }
+      // A refresh that fails says so, unless it would hide a message still being read; what's on screen stays.
+      if (!this.view.loading) { if (!(this.toast.show && this.toast.until - Date.now() > 1500)) this.notify((r.name === 'search' ? 'Couldn\'t search: ' : 'Couldn\'t refresh: ') + e.message); return; }
       Object.assign(this.view, {loading: false, error: errText(e)});
+    } finally {
+      if (seq === renderSeq) { clearTimeout(behindTimer); this.view.updating = this.view.behind = false; }
     }
   },
+  /* The copy of a screen kept on the phone, to show while it loads: Today, a project and Checklists, as last loaded (or
+     loaded in the background: preload), and only ever this account's. */
+  savedView(r){
+    if (!['today', 'project', 'checklists'].includes(r.name) || !this.user || saved.get('user')?.id !== this.user.id) return null;
+    const s = saved.get(viewKey(r));
+    return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
+  },
+  // A copy kept of screen `r`, on screen: its tasks the ones on screen already, where those are as new (keptRows).
+  showSaved(r, s){
+    const groups = (s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks)}));
+    const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || [])}));
+    const project = s.project && (this.projById.get(s.project.id) || s.project);
+    Object.assign(this.view, {loading: false, groups, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
+    // Where its tasks are in its List view, unless this session knows better (a move since).
+    for (const [id, pos] of Object.entries(s.positions || {})) if (!(id in this.positions)) this.positions[id] = pos;
+    if (r.name === 'today') this.regroupToday();
+  },
+  /* ---------- the other tabs, loaded in the background ---------- */
+  /* Once a screen has loaded, the copies kept of Today, the project opened last (or the first favourite) and Checklists
+     are loaded afresh behind it, one at a time, when the phone has nothing else to do: switching to one then shows a
+     fresh copy at once. Only reads: nothing is changed in Vikunja, nor on the screen. Not without a connection, nor on
+     one the phone says is slow or to be sparing with (Save-Data), nor a copy kept less than a minute ago. */
+  schedulePreload(){
+    clearTimeout(preloadTimer);
+    const idle = window.requestIdleCallback || (f => setTimeout(f));
+    preloadTimer = setTimeout(() => idle(() => this.preload(), {timeout: 5000}), 2000);
+  },
+  async preload(){
+    const c = navigator.connection;
+    if (preloading || this.offline || !this.signedIn || !this.user || document.visibilityState !== 'visible' || c?.saveData || /2g/.test(c?.effectiveType || '')) return;
+    preloading = true;
+    try {
+      for (const k of this.preloads()) {
+        const kept = saved.get(k.key);
+        if (location.hash === k.hash || (kept && Date.now() - Date.parse(kept.at) < PRELOAD_AGE)) continue;
+        if (this.offline || saved.get('user')?.id !== this.user?.id) break;
+        try { saved.set(k.key, {...await k.load(), at: new Date().toISOString()}); } catch { /* tried again after the next screen loads */ }
+      }
+    } finally { preloading = false; }
+  },
+  // What's loaded in the background: {hash: its screen, key: its copy's (viewKey), load: its copy}. Each row is a task as
+  // Vikunja has it (`t => t`): the tasks on screen aren't touched.
+  preloads(){
+    const out = [{hash: '#/today', key: 'today', load: async () => ({groups: this.todayFrom(await this.readToday(), t => t)})}];
+    const p = this.projById.get(saved.get('project.last')) || this.favorites[0];
+    if (p) out.push({hash: '#/project/' + p.id, key: viewKey({name: 'project', id: p.id}), load: async () => {
+      const open = doneOpen.all()[p.id], d = await this.readProject(p, open);
+      return {groups: [{key: 'open', cls: '', title: 'Open', tasks: d.list, heads: d.heads}, this.doneGroup(d.finished, d.count, open, t => t)],
+        project: d.project, listView: d.listView, positions: d.positions};
+    }});
+    if (this.checklistProjects.length) out.push({hash: '#/checklists', key: 'checklists', load: async () => ({checklists: await this.readChecklists(t => t)})});
+    return out;
+  },
+  /* Lists loaded afresh, over what's on screen (`ids`: their tasks): the rows no longer in them fold away first, as a
+     tick's do, rather than vanish from under a finger, and the rows new to the screen fade in, softly, unlike one just
+     added. Resolves to whether this load (`seq`) is still the one to show. */
+  async settle(ids, seq){
+    if (this.view.loading) return seq === renderSeq;
+    const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
+    const gone = shown.filter(id => !now.has(id) && !this.lines[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
+    if (gone.length) await Promise.all(gone.flatMap(id => [...document.querySelectorAll(`#view .row[data-id="${id}"]`)]).map(collapse));
+    if (seq !== renderSeq) return false;
+    if (arrived.length) this.flash(arrived, 'arrived');
+    return true;
+  },
   async loadToday(seq){
+    const got = await this.readToday();
+    if (seq !== renderSeq) return;
+    for (const t of [...got.tasks, ...got.added, ...got.mine]) cache.set(t.id, t);
+    const groups = this.todayFrom(got, t => { cache.set(t.id, t); return this.keep(t); });
+    if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
+    this.todayDay = +startOfDay();
+    this.view.groups = groups;
+    saved.set('today', {groups, at: new Date().toISOString()});
+  },
+  // What Today shows, from Vikunja: its tasks, not yet in their groups.
+  async readToday(){
     const end = addDays(startOfDay(), 8);
     const t0 = startOfDay();
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
@@ -197,38 +282,52 @@ export default {
     const qMine = new URLSearchParams({filter: `done = false && assignees in ${this.user?.username}`, filter_timezone: TZ, expand: 'comment_count'});
     const [all, allAdded, {index: runs, mine}, claimed] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
       this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : []]);
-    if (seq !== renderSeq) return;
-    const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
-    for (const t of [...tasks, ...added, ...mine]) cache.set(t.id, t);
+    return {tasks: all.filter(t => this.inToday(t, runs)), added: allAdded.filter(t => this.inToday(t, runs)), mine, claimed, runs};
+  },
+  // Today's groups of those tasks, each task's row given by `own`: the one on screen, or (preload) Vikunja's as it is.
+  todayFrom({tasks, added, mine, claimed, runs}, own){
     const groups = todayGroups(), [, , inRuns, nodate] = groups;
     // Your runs in progress: a run has no due date, its timed steps have theirs.
-    for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push(this.keep(t));
-    for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) { cache.set(t.id, t); inRuns.tasks.push(this.keep(t)); }
-    this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(t => this.keep(t)));
-    this.todayDay = +startOfDay();
+    for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push(own(t));
+    for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) inRuns.tasks.push(own(t));
+    this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(own));
     // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
-    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push(this.keep(t));
-    this.view.groups = groups;
-    saved.set('today', {groups, at: new Date().toISOString()});
+    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push(own(t));
+    return groups;
   },
   /* A project's open tasks, in the order of its List view in Vikunja (order.js), each subtask under its parent in its
      own order; its done tasks in a section of their own below, counted, and loaded once it's opened. A project with no
      List view, or one Pocket can't read, is in the order its tasks were made, and can't be reordered. */
   async loadProject(seq, r){
     if (!this.projById.has(r.id)) await this.loadProjects();
-    let p = this.projById.get(r.id);
+    const p = this.projById.get(r.id), open = p && doneOpen.all()[p.id];
     this.view.project = p || null;
     if (!p) { this.view.groups = []; return; }
-    const open = doneOpen.all()[p.id], q = {filter_timezone: TZ, expand: 'comment_count'};
+    const d = await this.readProject(p, open);
+    if (seq !== renderSeq) return;
+    for (const t of [...d.tasks, ...d.read]) cache.set(t.id, t);
+    const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.keep(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
+    if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
+    Object.assign(this.positions, d.positions);
+    for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;   // a move made meanwhile
+    Object.assign(this.view, {project: d.project, listView: d.listView, groups});
+    saved.set('project.last', p.id);                            // loaded in the background from now on (preloads)
+    this.saveProject();
+    if (open && !d.finished) this.loadDoneSection(this.view.groups[1]);
+  },
+  /* A project's lists from Vikunja, its tasks as Vikunja has them: {project, listView, tasks: what the view gave, read: the
+     heads read besides, list: its open list, heads, positions, count: of its done tasks, finished: those, if `withDone`}. */
+  async readProject(p, withDone){
+    const q = {filter_timezone: TZ, expand: 'comment_count'}, id = p.id;
     const count = api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', per_page: 1})).then(d => d?.total ?? null, () => null);
-    const done = open ? this.doneTasks(p).catch(() => null) : null;
+    const done = withDone ? this.doneTasks(p).catch(() => null) : null;
     let lv = listViewOf(p), tasks = null;
     // Its List view, as last loaded: gone, or not one Pocket can read, the project's views are looked up again, once.
     for (let tries = 0; lv && !tasks && tries < 2; tries++) {
       try { tasks = await allPages(`/projects/${p.id}/views/${lv.id}/tasks?expand=subtasks&` + new URLSearchParams(q)); }
       catch (e) {
         if (!(e instanceof ApiError && [403, 404].includes(e.status))) throw e;
-        await this.loadProjects(); p = this.projById.get(r.id) || p;
+        await this.loadProjects(); p = this.projById.get(id) || p;
         const again = listViewOf(p); lv = again && again.id !== lv.id ? again : null;
       }
     }
@@ -240,30 +339,26 @@ export default {
     const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
     const heads = headIds.map(id => given.get(id) || read.find(t => t.id === id) || named(id));
     const [n, finished] = await Promise.all([count, done]);
-    if (seq !== renderSeq) return;
     // The view gives each open task's subtasks, done ones too: those are in the Done section.
-    const list = [...tasks.filter(t => !t.done), ...heads];
-    for (const t of [...tasks, ...read]) cache.set(t.id, t);
+    const list = [...tasks.filter(t => !t.done), ...heads], positions = {};
     if (lv) {
-      for (const t of tasks) this.positions[t.id] = t.position || 0;
+      for (const t of tasks) positions[t.id] = t.position || 0;
       // A head the view didn't give has no position Pocket can read (the view leaves out what's done): it goes where
       // its first open subtask is, where Vikunja's web app shows that subtask.
       for (const h of heads.filter(h => !given.has(h.id))) {
-        const at = Math.min(...list.filter(t => !t.done && (t.related_tasks?.parenttask || []).some(x => x.id === h.id)).map(t => this.positions[t.id] || Infinity));
-        this.positions[h.id] = at < Infinity ? at : 0;
+        const at = Math.min(...list.filter(t => !t.done && (t.related_tasks?.parenttask || []).some(x => x.id === h.id)).map(t => positions[t.id] || Infinity));
+        positions[h.id] = at < Infinity ? at : 0;
       }
       // Moves still waiting to be sent, as they'll be.
-      for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;
+      for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') positions[e.task] = e.pos;
     }
-    this.view.listView = lv?.id || null;
-    this.view.groups = [{key: 'open', cls: '', title: 'Open', tasks: list.map(t => this.keep(t)), heads: headIds}, this.doneGroup(finished, n, open)];
-    this.saveProject();
-    if (open && !finished) this.loadDoneSection(this.view.groups[1]);
+    return {project: p, listView: lv?.id || null, tasks, read, list, heads: headIds, positions, count: n, finished};
   },
-  // The Done section: `tasks` loaded (or null, not yet), `count` from Vikunja (null if it didn't say).
-  doneGroup(tasks, count, open){
+  // The Done section: `tasks` loaded (or null, not yet), `count` from Vikunja (null if it didn't say), each task's row
+  // given by `own` (as for Today).
+  doneGroup(tasks, count, open, own = t => this.keep(t)){
     return {key: 'done', cls: 'done-sec', title: 'Done', fold: true, open: !!open, loading: false, loaded: !!tasks, count: tasks ? tasks.length : count,
-      tasks: (tasks || []).map(t => this.keep(t))};
+      tasks: (tasks || []).map(own)};
   },
   // A project's done tasks, the most recently done first.
   async doneTasks(p){

@@ -20,9 +20,11 @@
             :disabled="refreshing && !outboxShown" @click="tapRefresh()"><svg class="i"><use :href="failed.length ? '#i-alert' : outboxShown ? '#i-wait' : '#i-refresh'"/></svg>
       <template x-if="outboxShown"><span class="count num" id="outbox-count" aria-hidden="true" x-text="outboxRows.length"></span></template></button>
     <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
+    <!-- What's on screen (the copy kept of it, say) being loaded afresh, when that takes over a second -->
+    <div class="behind" id="behind" x-show="view.behind" aria-hidden="true"></div>
   </header>
 
-  <main id="view" aria-live="polite">
+  <main id="view" aria-live="polite" :aria-busy="view.updating ? 'true' : null">
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title">
       <button id="btn-back" class="icon-btn plain" :aria-label="'Back to ' + backName" @click="route.name === 'run' ? leaveRun() : back(projectFrom || '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" :class="{run: route.name === 'run'}" x-text="head.title"></h2></div>

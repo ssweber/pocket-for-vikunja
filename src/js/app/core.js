@@ -36,7 +36,9 @@ export default () => ({
   // view
   route: currentRoute(),
   // listView: the id of the project's List view on screen, which its order is read from and moves are written to
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null},
+  // savedAt: when the copy on screen was kept, while it's one kept on the phone; updating: it's being loaded afresh, behind
+  // what's on screen; behind: that has taken over a second, which a line under the header says (views.js)
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null, updating: false, behind: false},
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
@@ -56,7 +58,7 @@ export default () => ({
   settingUp: false,                            // Set up checklists is making the project and its example
   startedHidden: (() => { try { return JSON.parse(store.get('started.hidden')) || {}; } catch { return {}; } })(),   // project id -> Getting started hidden
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
-  flashed: {fresh: [], due: []},               // rows lit up for a moment: tasks just added, and just come due (lines.js)
+  flashed: {fresh: [], due: [], arrived: []},  // rows lit up for a moment: tasks just added, just come due, and new to the screen on a refresh (lines.js)
   movingOverdue: false,                        // "Move all to today" is saving
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)

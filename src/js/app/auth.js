@@ -176,6 +176,9 @@ export default {
       if (owner && owner !== String(user.id)) { taskDrafts.clear(); this.runDrafts = {}; }
       store.del('drafts.user');
       if (this.mode === 'session') setSeenToken(sharedToken.get());             // whose session this is, checked
+      // What was kept of someone else's lists (signed out where Pocket didn't see it) is never shown: screens open with
+      // the copies kept of them (savedView), so they're this account's only.
+      if (saved.get('user')?.id !== user.id) { saved.clear(); this.perms = {}; }
       saved.set('user', user); if (info) saved.set('info', info);
       await this.loadProjects();
       this.refreshPending();
