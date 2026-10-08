@@ -10,7 +10,7 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
   styles.css   all of the CSS
   js/          main.js, where the code starts; component.js, which puts the Alpine component together; the helpers
                (messages.js: what Pocket says; order.js: a project's order; share.js: progress as a text or a Markdown
-               list); and app/, the parts of the component
+               list; batch.js: when rows ticked or deleted leave together); and app/, the parts of the component
 pocket/        the plugin, as it's installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
   app/         the built app, the libraries it uses, and sw.js, which lets it open offline
@@ -32,10 +32,11 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
 - A module can't assign to another module's variable. A variable lives in the module that changes it; the few that several parts change are properties of `shared`, in `app/core.js`.
 - The markup's Alpine expressions see the component's data and methods, and the few helpers `component.js` lists as globals. A helper used in the markup has to be added there.
 - What's done to a task is in `app/actions.js`, a method for each thing: ticking it (and its subtasks with it: `toggleDone`,
-  the one way, from a list or its sheet, which hands a run to `tickRunTask`), its progress, deleting it, moving it to another project, its place in its project's list (`reorder`), adding subtasks, its people and labels, and saving a change. Each one makes the request, changes what's on screen and offers the Undo, so the lists and the sheet call these rather than `api()`. A run and its steps go through the outbox instead (`act`, in `app/runs.js`), and a template's steps are moved by `moveStep` (`app/checklists.js`).
+  the one way, from a list or its sheet, which hands a run to `tickRunTask`), its progress, deleting it, moving it to another project, its place in its project's list (`reorder`), adding subtasks, its people and labels, and saving a change. Each one makes the request, changes what's on screen and gives the way to take it back (a row's tick again, Restore, an Undo), so the lists and the sheet call these rather than `api()`. A run and its steps go through the outbox instead (`act`, in `app/runs.js`), and a template's steps are moved by `moveStep` (`app/checklists.js`).
 - Each task on screen is one object, in `tasks`, by id (`app/tasks.js`): every list's rows are those objects, so a change shows on all of a task's rows at once. A list loaded from Vikunja puts its tasks there with `keep`. `cache` (`util.js`) is apart from it: Vikunja's last copy of each task, as it said it, for an Undo to compare with and a failed save to put back. A task's sheet still has a copy of its own, and a run's screen its own steps (see `roadmap.md`).
 - A task's row is `markup/task-row.html`: in every list of tasks, for the subtasks in a task's sheet, and for a run's
-  steps on its screen. What differs is said by the list it's in, `g`: `g.depth` (each row's depth under the task above
+  steps on its screen. Ticked or deleted in a list, it's marked (`leaving`, below), and shows it in place. What differs
+  is said by the list it's in, `g`: `g.depth` (each row's depth under the task above
   it), `g.heads` (done tasks over their open subtasks), `g.sheet` (a subtask in its parent's sheet: its own tick, its
   words alone for a title, its due date only under them) and `g.run` (a run's steps, each `t` a step as `runView`
   works it out, in `app/runs.js`). On a run, `g.at` is the step on its card, lit (`.row.current`); `g.insertAt` the
@@ -78,15 +79,25 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   at once without a connection: `markSlow` (`app/sending.js`) keeps `slow`, the outbox entries that look it, which the
   task row (`waits`), a run's steps (`slow`) and the header's button (`waitShown`) go by. A task not sent yet is on its
   list from the start, where it'll be (`todayOrder`, `positionOrder`), so it doesn't move once it's sent.
+- A row ticked, opened again or deleted in a list (Today, a project, search, a task's sheet for a deletion) is marked:
+  `markRow` (`app/leaving.js`) keeps it where it is, at its height, as `leaving[id]` says (`'done'`, `'open'`,
+  `'deleted'`: dimmed, with Restore over its slot, which keeps its room), with the rows that go with it (subtasks closed
+  with a task, or deleted with it). Its tick meanwhile is the mark's `undo` (`unmark`, from `tickRow`); a deleted row's
+  tap anywhere restores it. Each mark restarts the batch (`batch.js`): 3 seconds after the last, counted from when the
+  finger lifts, never while a finger is down or the page or a sheet scrolls; then every marked row that leaves (`out`)
+  folds at once and each mark's `gone` runs (`clearBatch`): off Today, between Open and Done (`moveInSearch`), a
+  repeating task's next date, a deletion sent. Leaving the screen, or Pocket put away, clears it at once (`clearNow`,
+  from `foldLines`), and a list loaded meanwhile keeps the marked rows (`keepMarked`). While marked, a row keeps the
+  slot it had (`rowSlot`), so its title doesn't move.
 - Pocket says what happened where it happened: `say(msg, {row, place, action})` (`app/lines.js`). A message about one
-  row is a line in the row's place (`rowLine`, shown by `markup/row-line.html`): a tick that takes a task off its list,
-  a deletion, a repeating task's tick, a tick not saved (with Try again). Anything else goes to a place on the screen
+  row that went wrong is a line in the row's place (`rowLine`, shown by `markup/row-line.html`): a tick not saved (with
+  Try again), a move turned down. A tick or a deletion shows on its row (above), and `#said` says it. Anything else goes to a place on the screen
   (`sayAt`, shown by `markup/place-line.html`): under Overdue's heading, by the add box, in the open sheet under what
   it's about (`sheet:notes`; a sheet's go with it), on a run. Only what has none of those goes to the toast at the
   bottom (`toast.js`). Each is said to a screen reader through `#said`. The words are in `messages.js`, beside `app/`,
   so the unit tests check them. A deletion is apart from how it's shown: `holdDelete` puts it in the outbox, held back
-  (`sync.held`), and `sendHeld` sends it when its line folds, the screen is left, or Pocket is put away; `undoDelete`
-  takes it out.
+  (`sync.held`), and `sendHeld` sends it when its marked row goes (or its toast, with no row on screen), the screen is
+  left, or Pocket is put away; `undoDelete` (Restore) takes it out.
 - Sharing progress (a task's, a project's or a run's ⋯) is `app/sharing.js`: it gathers what's on screen into items,
   `{title, done, pct, people, items}`, and `share.js` writes them as a text or a Markdown list, from data only, never
   HTML, so the unit tests check every rule (`share.test.mjs`). `navigator.share` is called straight from the tap, with
@@ -110,15 +121,16 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
 - `tests/unit/`: the parts of the app that need no browser, under Node's own test runner (`node --test`), in a second
   and with no server: the order of a list and subtasks under their parents, a done one too (`lists.test.mjs`), due dates in words
   (`dates.test.mjs`), Today's order and what's under Added today, no date (`lists.test.mjs`), progress, sliding to the snaps and swiping to Delete (`progress.test.mjs`), a
-  checklist's steps, their order and times (`checklists.test.mjs`), the address, util.js and what's waiting to send, and when it looks it (`helpers.test.mjs`), what Pocket says (a tick too) and in which place
+  checklist's steps, their order and times (`checklists.test.mjs`), when rows ticked or deleted leave together, and what a tap on a marked row does (`batch.test.mjs`), the address, util.js and what's waiting to send, and when it looks it (`helpers.test.mjs`), what Pocket says (a tick too) and in which place
   (`messages.test.mjs`), a project's order: its List view, a move's position, a task's siblings, a drag, and
   which task the add box adds subtasks to and where they go (`order.test.mjs`), progress as a text and as a
   Markdown list: the bar, names, due dates, nesting, a run and a project, and what collapses (`share.test.mjs`), the one
   copy of each task (`tasks.test.mjs`), what the one row asks by its options: a step's tick, what's under its title and
-  who's on it (`rows.test.mjs`), and what's done to a task (`actions.test.mjs`): ticking a parent closes its open subtasks and
-  Undo opens exactly those, with their progress, from its sheet too, a done parent over its open subtasks opened again
-  where it is, and one ticked with a subtask left open staying over it, a repeating task whose reply is lost is ticked once, progress at 100%, saves one after
-  another, deleting, a subtask's tick with no message, a deletion held until its Undo has gone (and sent without a
+  who's on it (`rows.test.mjs`), and what's done to a task (`actions.test.mjs`): ticking a parent closes its open subtasks,
+  shown in place with it and gone together when the batch clears, and its tick again opens exactly those, with their
+  progress, from its sheet too (with an Undo), a done parent over its open subtasks opened again
+  where it is, and one ticked with a subtask left open staying over it, a repeating task whose reply is lost is ticked once, and one shown done then back at its next date (or off Today), progress at 100%, saves one after
+  another, deleting, a subtask's tick with no message, a deletion held until its row has gone (and sent without a
   connection later, or brought back if Vikunja turns it down), and Move all to today. The app's methods run as they
   are, on a pretend component, with a pretend Vikunja behind `fetch()` (`fake.mjs`). `browser.mjs` gives the modules what they look for in a browser as they load,
   and nothing more: there's no DOM, so reading a task's notes (Pocket's lines in them) stays in `parse.mjs`. A test file
@@ -126,7 +138,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
 - `tests/parse.mjs`: how quick add reads about 570 phrases, adapted from Vikunja's Quick Add Magic tests, how pasted lists lose their bullets and checkboxes, how checklist steps are read, a template's order line, and a run's, with steps inserted in it, and what's a template, its name, and where Vikunja moves one that comes round. It loads `src/js/quickadd.js` and `src/js/checklists.js` as they are, so it needs no build and no server, and runs in a few seconds.
 - `tests/smoke.mjs`: Pocket in a headless browser against a Vikunja with the plugin. It signs in with a token, then adds, ticks off, sets the progress of, searches for, edits, comments on and deletes tasks, pastes a list with subtasks, adds subtasks in the sheet with quick add's chips, claims one and lets it go, and a task from its row, adds subtasks from the add box on a project's list to the task
   touched last (after its last subtask, or right after a subtask touched, in order, and back to a task with its ×, a
-  scroll or another screen), ticks a subtask in a list (it stays, with no message), swipes a row and a subtask in a sheet to Delete with the Undo in the row's place, sets progress in snaps (and lets go when moved up or down after the hold), gives two ticks an Undo each, moves a task to Overdue as its time passes (lighting it up, with no message at the bottom), says by the add box where a task went when it isn't on the screen, and with Open, says a tick not saved on its row and a save not made in the sheet, each with Try again, says Move all to today under the Overdue heading, adds and removes reminders in the sheet (keeping those changed elsewhere meanwhile), offers the 🔔 chip only for a time and only when reminder emails reach you, ticks off a parent and its subtasks with it ("Closed … + 2 subtasks", and an Undo that opens only those), shows a parent done elsewhere over its open subtasks and opens it again, adds quick ticks up into one Undo, takes the top suggestion on Enter, reads a bare hour as daytime and warns of a repeat Vikunja can't do, closes a sheet with the phone's Back and keeps the draft through a reload, moves a ticked search result to Done, keeps notes and a comment being written when the sheet closes, doesn't write over notes changed elsewhere meanwhile, adds a label with Enter and a suggested person, undoes a repeating tick (its reminder at a set time too), ticks one whose reply is lost, leaves a repeating subtask alone when its parent is ticked, moves and deletes a task with its subtasks, keeps a project's list in its List view's order and moves a task and a subtask in it by holding them (and a subtask in a sheet), checked in Vikunja and after a reload, says on its row a move turned down for an API token, moves a task with its ⋯'s Move up and with Alt+↓, opens and folds a project's Done section (from an old link too) and reopens a task there, renames and deletes a project from its ⋯, shares a task's and a project's progress as a text (through a share
+  scroll or another screen), ticks a subtask in a list (it stays, with no message), checks a row's three tap zones (its tick over the whole left gutter, its title, its slot, each the row's full height and 48px across), swipes a row and a subtask in a sheet to Delete (dimmed, with Restore, a tap on the row restoring it, nothing sent until the batch clears, and sent at once on leaving the screen), sets progress in snaps (and lets go when moved up or down after the hold), ticks rows that stay in place at their height until 3 seconds after the last (a finger down holding them), then leave together, folding (fading, with less motion), and ticks one again to open it, moves a task to Overdue as its time passes (lighting it up, with no message at the bottom), says by the add box where a task went when it isn't on the screen, and with Open, says a tick not saved on its row and a save not made in the sheet, each with Try again, says Move all to today under the Overdue heading, adds and removes reminders in the sheet (keeping those changed elsewhere meanwhile), offers the 🔔 chip only for a time and only when reminder emails reach you, ticks off a parent and its subtasks with it ("Closed … + 2 subtasks", all shown done in place, and its tick again opening only those), shows a parent done elsewhere over its open subtasks and opens it again, adds quick ticks up into one Undo, takes the top suggestion on Enter, reads a bare hour as daytime and warns of a repeat Vikunja can't do, closes a sheet with the phone's Back and keeps the draft through a reload, moves a ticked search result to Done once the batch clears, keeps notes and a comment being written when the sheet closes, doesn't write over notes changed elsewhere meanwhile, adds a label with Enter and a suggested person, shows a repeating task ticked, then back at its next date, and its tick again putting its dates back (its reminder at a set time too), ticks one whose reply is lost, leaves a repeating subtask alone when its parent is ticked, moves and deletes a task with its subtasks, keeps a project's list in its List view's order and moves a task and a subtask in it by holding them (and a subtask in a sheet), checked in Vikunja and after a reload, says on its row a move turned down for an API token, moves a task with its ⋯'s Move up and with Alt+↓, opens and folds a project's Done section (from an old link too) and reopens a task there, renames and deletes a project from its ⋯, shares a task's and a project's progress as a text (through a share
   sheet, and copied where there's none) and as a Markdown list, with Open in Vikunja's address, and copies a task's notes
   and a comment, opens Today at once with the copy kept of it while its lists answer late (no Loading, a line under the
   header after a second) and changes a row in place, shows a new task at once and dotted only after a few seconds,
@@ -158,8 +170,10 @@ so a slow one is seen. CI runs `lint`, `test:unit` and `test:parse` in one job, 
 the page, which keeps the real time until a test moves it: `later(ms)` runs what the page would do in that time (a toast
 going, Today's minute, a countdown's second) at once, then puts the page's clock back on the real time. A test moves
 the page's clock, never waits, for what the page decides: a task becoming overdue, a countdown reaching zero, a tick
-made a while before it's sent. A toast is made to go at once (`toastGone`), as its own timer would. A message in its
-place is found with `placeLine(page, 'overdue')` or `rowLine(page, text)` (`tests/helpers.mjs`). Vikunja's clock is
+made a while before it's sent, rows ticked leaving together (`later(3000)`). A toast is made to go at once
+(`toastGone`), as its own timer would. A message in its place is found with `placeLine(page, 'overdue')` or
+`rowLine(page, text)` (`tests/helpers.mjs`); a row ticked or deleted, waiting for the batch, is `.row.leaving`
+(`.deleted` too for a deletion). Vikunja's clock is
 real, so the page's goes back to the real time after, and what Vikunja dates itself still takes real time: a change a
 second after another (its times have whole seconds), a task made on the web before one from Pocket. Those few waits say
 why. Moving the clock on runs everything due meanwhile at once, and what that starts (a request, a redraw) lands after,
@@ -170,7 +184,7 @@ loaded afresh behind it: `loaded(page)`, in `tests/helpers.mjs`, waits until it'
 `aria-busy`), for a test that reads the screen once rather than with `expect`.
 
 **Waiting for Pocket to send.** `<html data-sync>` says where sending stands: `sending`, `waiting` (something is kept
-that can't go now: no connection, a deletion whose Undo still shows, one Vikunja turned down), or `idle`. `synced(page)`,
+that can't go now: no connection, a deletion that can still be restored, one Vikunja turned down), or `idle`. `synced(page)`,
 in `tests/helpers.mjs`, waits for `idle`, so a test checks Vikunja once, after it, rather than asking it again and again.
 The helpers also have Playwright's own `expect`, used without its test runner: `await expect(locator).toBeVisible()`
 tries again until it passes, so new tests find things by their role and name (`page.getByRole('button', {name:
@@ -186,7 +200,7 @@ The tests delete what they create, except a `pocket-smoke` label that the end-to
 What tripped up earlier work, for whoever starts next.
 
 - **The page's own timers.** Today checks the time once a minute, a run's screen reloads every 20 seconds, countdowns
-  tick every second, and lines and toasts fold after 5. A test that waits in real time collides with them: move the
+  tick every second, lines and toasts fold after 5, and rows ticked or deleted leave 3 seconds after the last. A test that waits in real time collides with them: move the
   page's clock with `later(ms)` instead. `later()` puts the clock back on the real time after, and the page's frames
   follow its clock, so for a moment after it `waitForSelector` (which looks every frame) can stall: use `expect`, or
   `waitForFunction` with `polling: 100`.
@@ -199,7 +213,11 @@ What tripped up earlier work, for whoever starts next.
 - **The outbox sends in the background.** A tick, a claim or a deletion is still on its way when the screen has
   changed. `await synced(page)` before checking Vikunja or deleting what the test made. It knows of changes being
   written and of what's in the outbox: after a tap whose handler reads first (a deletion asks Vikunja for the
-  subtasks), wait for what the screen shows first. A deletion waits for its Undo to go: `later(5000)` folds its line.
+  subtasks), wait for what the screen shows first. A deletion waits for the batch: `later(3000)` clears it, as does
+  leaving the screen.
+- **The batch runs on the page's clock, which keeps the real time.** A test that ticks a row, then reads Vikunja before
+  ticking it again, has 3 real seconds (from the tick's reply) before the row goes: tap first and read after, or keep
+  the reads short. `page.mouse.down()` holds the batch, as a finger does, until `mouse.up()`.
 - **Alpine applies `x-if` and `x-show` a frame apart,** so one part of a change can be on screen before the other.
   `$nextTick` runs on a timer, which Playwright's clock owns: with the clock moved, it runs when the clock says.
 - **`:text-is()` matches the innermost element** with that text, which is often not the one meant. Prefer
@@ -237,7 +255,7 @@ With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo
 
 ## The task row's specimen
 
-`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each, and a row held, swiped to its Delete, and in a line's place; and a run's steps on its screen: done by you or someone else, skipped, inserted, repeated, counting down, late, held, a tick waiting to send, and in a run finished or read only), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
+`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each, and a row held (a subtask too), swiped to its Delete, ticked and deleted in place, the batch clearing, and a tick not saved in a line's place; and a run's steps on its screen: done by you or someone else, skipped, inserted, repeated, counting down, late, held, a tick waiting to send, and in a run finished or read only), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
 
 ## Upgrading the libraries
 

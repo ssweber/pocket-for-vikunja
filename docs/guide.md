@@ -54,15 +54,20 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   at the time of day it had, or the next whole hour if that time has gone today; a line under the Overdue heading says
   how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
   next date.
-- **Ticking off:** a ticked task's row becomes a slim line saying so, "Done: Call Ana", with **Undo** at its end;
-  after a few seconds it folds away. Each tick has its own line, so ticking a few in a row leaves each its Undo. A
-  task's open subtasks are closed with it, without asking, and its line says so: "Closed Pack the van + 4 subtasks".
-  Its Undo opens again only those four, not one that was done before, with the progress each had. A subtask that
-  repeats is left alone, since closing it would only move it to its next date. The same goes for the tick in a task's
-  sheet, whose line is under its subtasks. A ticked subtask stays where it is, ticked, with no message: tick it again
-  to take it back. A repeating task stays, at its next date: its line says "Repeats · next Friday", with an
-  Undo that puts its date back. An Undo leaves alone a task that was changed elsewhere since. In search, a ticked task
-  moves from Open to Done once its line folds; unticked in a list of done tasks, it says "Not done", with Undo.
+- **A task's row** has three parts, each the row's full height: its left edge ticks it (the whole margin, not only the
+  circle), its title opens it, and its right end says who's doing it, or **+ me** (see **Assigning**, below).
+- **Ticking off:** a ticked task stays where it is, at the same height, ticked and struck through, so nothing moves
+  under your finger. Tick it again to take it back. Three seconds after your last tick (counted from when your finger
+  lifts, and not while it's still on the screen or the list is scrolling), everything you ticked leaves together, the
+  tasks below closing up once; leaving the screen sends them at once. A task's open subtasks are closed with it, without
+  asking, show ticked under it, and leave with it; ticking it again opens only those, not one that was done before,
+  with the progress each had. A subtask that repeats is left alone, since closing it would only move it to its next
+  date. On a project's list, ticked tasks go to its **Done** section, whose count goes up; in search, from Open to Done;
+  ticked again in a list of done tasks, they move back the same way. A repeating task shows ticked, then comes back
+  open, at its next date, or leaves Today if that's more than a week away; ticking it again before then puts its date
+  back. In a task's sheet, a subtask ticked stays there, ticked; the sheet's own tick says under its subtasks how many
+  it closed, with an Undo. An Undo leaves alone a task that was changed elsewhere since. A screen reader hears each
+  tick: "Done: Call Ana". With less motion asked for on the phone, ticked tasks fade out rather than fold away.
 - **Progress:** hold a task until it lifts (and, on a phone that can, you feel a tick), then slide sideways to set how
   far along it is. It stops at 0, 25, 50, 75 and 100%, with a tick at each; progress set elsewhere (40%, say) stays as it
   is until you slide it, then goes to the nearest of those. Sliding to 100% fills the tick and marks the task done;
@@ -87,16 +92,17 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   app**, under Checklists).
 - **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
   past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. Back under half
-  before you let go, it's only left open. Its row becomes a line, "Deleted Load chairs", with **Undo**; it's deleted in Vikunja once the line folds away, or as soon as
-  you leave the screen or put Pocket away. A task with subtasks asks first, and they go with it. Swipe back, or tap
-  anywhere else, to leave it. The task's **⋯** deletes it too, the way for a keyboard or a screen reader. Without a
-  connection, it's deleted once Pocket reaches Vikunja.
+  before you let go, it's only left open. Its row stays where it is, faded, with **Restore** where "+ me" was: tap
+  anywhere on the row to bring it back. It leaves with the tasks you ticked, three seconds after the last, and it's
+  deleted in Vikunja then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with
+  subtasks asks first, and they go with it. Swipe back, or tap anywhere else, to leave it. The task's **⋯** deletes it
+  too, the way for a keyboard or a screen reader. Without a connection, it's deleted once Pocket reaches Vikunja.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
   comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet shares its progress (see **Sharing progress**,
-  below), and deletes it, with its subtasks, and an Undo in its row's place. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
+  below), and deletes it, with its subtasks: its row in the list then has **Restore**. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
   on its row only, with no message. A change that isn't saved goes back, and the sheet says so under what it's about
   (at its top, under its notes, under its subtasks), with **Try again** where that helps.
 - **Sharing progress:** a task's **⋯**, a project's **⋯** and a run's **⋯** have **Share progress as a text**. It opens
@@ -125,8 +131,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done.
 - **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
-  is a line in the task's row, with its Undo; a tick that couldn't be saved goes back, and its row says why, "Not saved:
-  no connection", with **Try again**. A task added from quick add lights up where it went; if that's not on the screen
+  shows on the task's row itself, which stays until they leave together; a tick that couldn't be saved goes back, and
+  its row says why, "Not saved: no connection", with **Try again**. A task added from quick add lights up where it went; if that's not on the screen
   you're looking at (a task due next month, added on Today, or one for another project), a note by the add box says
   where, "Added to Orders, due Friday", with **Open**. The bottom of the screen is left for what has no place of its
   own: a countdown reaching zero, a screen that couldn't load, and what's done once its sheet has closed. A screen
@@ -147,7 +153,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   its Done section open. A done task with subtasks still open (ticked done in Vikunja's web app, which leaves its
   subtasks open, or one of them opened again since) stays among the open tasks, struck through, over those subtasks,
   saying "Done, but 2 subtasks are still open", so they're never left on their own as if they had no parent. Tap it to
-  open its sheet; tick it to open it again where it is, with an Undo. It can't be moved, nor be what the bottom box
+  open its sheet; tick it to open it again where it is (tick it again within a few seconds to make it done again). It can't be moved, nor be what the bottom box
   adds to; its subtasks are like any others. A finished run with steps not done shows the same way. On Today and in
   search, a subtask whose task isn't above it there says which task it's under: "↳ Pack the van". **New project** makes one, inside
   another if you like. A project's **⋯** shares its progress, and renames or archives it if it's shared with you to write, and deletes it if
@@ -273,8 +279,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    don't move). ‹ and › beside the step's number show the step before and after. On a long run,
    the bar with the count stays at the top: tap it to go back up. A skipped step counts as skipped, not done. A run
    just started says so at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
-   with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, with an Undo in its row's place;
-   with steps not done, it asks first, and they stay not done.
+   with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, shown as a task's tick is (in
+   its sheet, with an Undo); with steps not done, it asks first, and they stay not done.
 
 - **A checklist that comes round:** give the template a date in its sheet, under **When it's due**, and how it
   **Repeats**: every day at 8:00, say. It's then Vikunja's repeating task: at its time it shows on Today, without a tick,
