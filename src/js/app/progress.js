@@ -17,6 +17,10 @@ let swallowClick = false;
 const allows = row => new Set((row.dataset.gestures || '').split(' '));
 // The click a hold, a swipe, or a tap that shut a row ends with isn't a tap on the row.
 const swallow = () => { swallowClick = true; setTimeout(() => swallowClick = false, 400); };
+// A row held, swiped or paged is a gesture, not text: no selection starts meanwhile, anywhere the finger goes (the
+// phone's long press would otherwise select the words under it, or the nearest it can, around a sheet's subtasks), and
+// one made is cleared as the hold ends and as the row moves. One function, so it's added once.
+const noSelect = e => { if (sliding) e.preventDefault(); };
 const shut = (row = opened) => {
   if (!row) return;
   row.classList.remove('swiping', 'swiped', 'swipe-full'); row.style.removeProperty('--swipe');
@@ -147,6 +151,7 @@ export default {
      row can't go lets it go, changing nothing. */
   holdToSlide(area, find){
     let g = null;
+    document.addEventListener('selectstart', noSelect, true);
     const stop = commit => {
       if (!g) return;
       clearTimeout(g.timer); sliding = false;
@@ -165,7 +170,7 @@ export default {
       const s = find(e.target); if (!s) return;
       if (s.swipe?.base) { delete s.show; delete s.reorder; }   // an open row is swiped on, or tapped shut: not held
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, dx: 0, mode: 'wait', pct: s.start};
-      if (s.show || s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; s.el?.classList.add('held'); s.show?.(g.pct, g.x); haptic('hold'); }, HOLD_MS);
+      if (s.show || s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); s.show?.(g.pct, g.x); haptic('hold'); }, HOLD_MS);
     });
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
@@ -182,6 +187,7 @@ export default {
         else { clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin(); }
       }
       if (g.mode === 'swipe' || g.mode === 'page') { g.dx = e.clientX - g.x0; s[g.mode === 'swipe' ? 'swipe' : 'page'].move(g.dx); return; }
+      if (getSelection()?.rangeCount) getSelection().removeAllRanges();     // whatever the long press selected near the row
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
         if (!way) return;

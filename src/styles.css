@@ -208,8 +208,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.current .did .pic.mine .av{box-shadow:0 0 0 2px var(--accent-soft)}
 .did{flex:none;align-self:center;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
 .ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
+/* Rows are held, slid, swiped and moved, so a long press never selects their words (nor shows the phone's menu for
+   them); what's typed in one stays selectable. A phone's long press picks the nearest words it can select, so what's
+   around a sheet's subtasks isn't either: their card, and the headings (with their counts). A sheet's notes and
+   comments, as shown, are text to copy from */
+.list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks,#run-steps > .row,.h3{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+:is(.row,#d-subtasks) :is(input,textarea){-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 /* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
-.list:not(.tree) > .row,.item > .row,.day-card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .row::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(var(--pct,0) * (100% - var(--row-inset)));background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
 /* A run's line: a segment per step (--segs), those done filled from the left (--done), the rest a faint track. Past
    12 steps (runLine), one line with a small tick above it at each step. Its steps are its progress: it isn't slid. */

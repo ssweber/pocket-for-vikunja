@@ -1721,15 +1721,21 @@ try {
   const openRows = () => page.locator('#view .list').first().locator('.row > .body .title');
   // Hold a row, move it past the first few pixels (so it's a move, not progress), then to the top or the bottom of the
   // row `to`, and let go.
-  async function dragTo(sel, to, edge = 'top'){
+  /* `selects`: [what a phone's long press selects as the finger goes down (the row's words, or the nearest it can
+     select), where a selection tries to start as it moves]; the hold clears the one and stops the other. Returns what's
+     selected after. */
+  async function dragTo(sel, to, edge = 'top', selects = null){
     await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));   // clear of the edges, where it scrolls
     const box = await steady(page.locator(sel)), x = box.x + box.width / 2, y0 = box.y + box.height / 2;
     const b = await page.locator(to).boundingBox(), y = edge === 'top' ? b.y + 4 : b.y + b.height - 4;
     await page.mouse.move(x, y0); await page.mouse.down();
+    if (selects) await page.locator(selects[0]).evaluate(el => getSelection().selectAllChildren(el));
     await expect(page.locator(sel)).toHaveClass(/held/);
     await page.mouse.move(x, y0 + Math.sign(y - y0) * 14, { steps: 3 });
+    if (selects && await page.locator(selects[1]).evaluate(el => el.dispatchEvent(new Event('selectstart', { bubbles: true, cancelable: true })))) throw new Error('a selection could start while moving a row');
     await page.mouse.move(x, y, { steps: 12 });
     await page.mouse.up();
+    return page.evaluate(() => getSelection().toString());
   }
   const rowById = id => `#view .row[data-id="${id}"]`;
   await step('project-in-list-view-order', async () => {
@@ -1737,7 +1743,7 @@ try {
     createdProjects.push(order.project.id);
     order.view = order.project.views.filter(v => v.view_kind === 'list').sort((a, b) => a.position - b.position || a.id - b.id)[0].id;
     const mk = async (name, extra = {}) => order.tasks[name] = await (await api(`/projects/${order.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title: `${name} ${stamp}`, ...extra }) })).json();
-    for (const name of ['Alpha', 'Bravo', 'Charlie', 'sub one', 'sub two', 'sub three']) await mk(name);
+    for (const name of ['Alpha', 'Bravo', 'Charlie', 'sub one', 'sub two', 'sub three']) await mk(name, name === 'Alpha' ? { description: '<p>Bring the long ladder</p>' } : {});
     await mk('Delta', { done: true });
     const T = order.tasks;
     for (const s of ['sub one', 'sub two', 'sub three']) await api(`/tasks/${T.Alpha.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: T[s].id, relation_kind: 'subtask' }) });
@@ -1758,8 +1764,11 @@ try {
   });
   await step('drag-a-task-and-a-subtask', async () => {
     const T = order.tasks;
+    // A row held and moved is a gesture, not text: nothing is left selected after it, whatever a phone's long press
+    // started (dragTo's `selects`).
+    const unselected = (where, sel) => { if (sel) throw new Error(`moving ${where} left "${sel}" selected`); };
     // Bravo, from the top to the bottom: under Charlie, past Alpha and its subtasks, which go with Alpha.
-    await dragTo(rowById(T.Bravo.id), rowById(T.Charlie.id), 'bottom');
+    unselected("a row on a project's list", await dragTo(rowById(T.Bravo.id), rowById(T.Charlie.id), 'bottom', [`${rowById(T.Bravo.id)} .title`, `${rowById(T.Bravo.id)} .title`]));
     await expect(openRows()).toHaveText(['Alpha', 'Subtask: sub three', 'Subtask: sub one', 'Subtask: sub two', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
     await synced(page);
     const pos = async () => Object.fromEntries((await viewOrder()).map(t => [t.title.replace(` ${stamp}`, ''), t.position]));
@@ -1777,7 +1786,18 @@ try {
     await page.click(`${rowById(T.Alpha.id)} > .body`);
     await expect(page.locator('#d-subtasks .row .title')).toHaveText(['sub two', 'sub three', 'sub one'].map(n => `${n} ${stamp}`));
     // In the sheet, moved the same way: sub one to the top, written to Vikunja's List view too.
-    await dragTo(`#d-subtasks .row[data-id="${T['sub one'].id}"]`, `#d-subtasks .row[data-id="${T['sub two'].id}"]`);
+    // In the sheet, the long press picks the nearest words: the Subtasks heading over them, or the notes.
+    unselected('a subtask in its sheet', await dragTo(`#d-subtasks .row[data-id="${T['sub one'].id}"]`, `#d-subtasks .row[data-id="${T['sub two'].id}"]`, 'top', ['.h3:has(#d-subcount)', '#d-desc']));
+    // The heading and the subtasks' card can't be selected; the notes, held on their own, can.
+    const userSelect = q => page.locator(q).evaluate(el => getComputedStyle(el).userSelect || getComputedStyle(el).webkitUserSelect);
+    if (await userSelect('.h3:has(#d-subcount)') !== 'none' || await userSelect('#d-subtasks') !== 'none') throw new Error('the Subtasks heading or card can be selected');
+    if (await userSelect('#d-desc') === 'none') throw new Error("the notes can't be selected");
+    // (A tap on them opens them to edit, so the long press is only its selection, with no row held.)
+    const notes = page.locator('#d-desc');
+    if (!await notes.evaluate(el => el.dispatchEvent(new Event('selectstart', { bubbles: true, cancelable: true })))) throw new Error('a long press on the notes selects nothing');
+    await notes.evaluate(el => getSelection().selectAllChildren(el));
+    if (!(await page.evaluate(() => getSelection().toString())).includes('Bring the long ladder')) throw new Error('the notes lost their selection');
+    await page.evaluate(() => getSelection().removeAllRanges());
     await expect(page.locator('#d-subtasks .row .title')).toHaveText(['sub one', 'sub two', 'sub three'].map(n => `${n} ${stamp}`));
     await synced(page);
     p = await pos();
