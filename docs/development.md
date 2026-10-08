@@ -64,22 +64,24 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   is a step you tick, in a run). A template's sheet, and its step's, have no Comments (`ofTemplate`): a run is Vikunja's
   copy of them, which takes their notes, attachments, labels and people but not their comments. A step's box is square wherever it shows (`isStepRow`: a run's screen, its sheet, a list), a task's
   round; a run's own row has its line in segments, one per step (`runLineOf`, from `runLine` in `progress.js`, as
-  `--segs`, and `--fill`, a gradient filling each segment by whether its own step is done, cut by a CSS mask; with
-  only a count, `--done`, filled from the left; past `MANY_STEPS`, one line with ticks, `.many-steps`, each step's
-  stretch filled the same way), as has a card's strip, on Today and on its screen's step card.
+  `--segs`, and `--fill`, a gradient filling each segment by whether its own step is done, cut by a CSS mask; past
+  `MANY_STEPS`, one line with ticks, `.many-steps`, each step's stretch filled the same way), as has a card's strip, on
+  Today and on its screen's step card.
 - Today is on one line (motion-and-rows-plan, section 9): its lists' option `g.line` (from `screenRows`) makes a row
   `.one-line`: its title cut short with "…", and at its right `rowWhen` (`app/views.js`): its priority's bars, small, as
   on a card's heading (a tick is never coloured by priority: one-concept-plan, part 4), when it's due, short
   (`shortDue`, `dates.js`; a run's step's `countdown`; nothing for today with no time under the Today heading, its
   group's `g.key`, which a card's step line has too), red when late, and its project's dot; labels and counts are left
   off. All of `rowMeta` but labels and
-  counts is said to a screen reader instead, in an `.sr` after the title (`rowWhen(t, g).said`). Projects, search and
-  sheets keep `rowMeta`'s second line.
+  counts (its `extra`) is said to a screen reader instead, in an `.sr` after the title (`rowWhen(t, g).said`). The row
+  works `rowWhen` out once, as it does its slot (an `x-for` of one, `w`), and `rowWhen` reads `rowMeta`'s, countdown
+  and all. Projects, search and sheets keep `rowMeta`'s second line.
 - Today is cards and rows (`markup/today-item.html`, its lists' option `g.cards`, from `screenRows`): a task with open
   subtasks, or a run with open steps, is a card (`.day-card`, `app/cards.js`) of three lines, the same height whatever
-  its steps hold: its title, a heading that opens it (`cardTitle`: a run's name without the day it was started,
-  `runWithoutDay` in `checklists.js`, so it reads as a task's), with its priority bars and when it's due, short (`cardWhen`, given its group as a row's `rowWhen` is; the
-  rest of `cardMeta` said to a screen reader); then one step line, the task row with the card's options (`g.card`,
+  its steps hold: its title, a heading that opens it (`cardHead`, worked out once per card, given its group as a row's
+  `rowWhen` is: its title, a run's name without the day it was started, `runWithoutDay` in `checklists.js`, so it reads
+  as a task's; its priority bars and when it's due, short; and, said to a screen reader, when in words, its priority
+  and its project or who a run is for); then one step line, the task row with the card's options (`g.card`,
   `g.line`), on one line as Today's rows are, its own tick and slot, and "Step 3 of 5" to a screen reader, its
   progress filling its segment of the strip (`runLine`'s fill, by `pctOf`) rather than a bar of its own (shown only
   while it's held and slid); then, as its footer, its strip (`.card-strip`, a grid): `‹`, its task's line in segments,
@@ -87,10 +89,11 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   of 5" (`.card-n`), the step's place among all its subtasks, done ones too (`placeOf`, `cards.js`), while paging goes
   through the open ones only. It's 48px tall, its arrows and line taking taps its full height, clear of the step
   line's, its line a clear gap under the step's bar; the arrows keep their places when hidden, so the line keeps its
-  length. A tap on an open step's segment shows it (`tapSegment`; `segmentAt` and `stepOfSegment` in `cards.js` work
-  out which, none past `MANY_STEPS`), a pointer's shortcut only. Dragged along, the strip is a scrubber (`cardScrub`:
-  the open step nearest the finger, `scrubTo` and `segmentOf` in `cards.js`, shown with no slide, said once the finger
-  lifts). The arrows stop at the first and last open step (`turnPage`), dimmed there (`aria-disabled`); they're outside
+  length. Dragged along, the strip is a scrubber (`cardScrub`, holdToSlide's `scrub`: the open step nearest the finger,
+  `segmentOf` and `scrubTo` in `cards.js`, shown with no slide, said once the finger lifts). A tap on an open step's
+  segment shows it (`tapSegment`: the same two, when the open step nearest is the one tapped; none past `MANY_STEPS`),
+  a pointer's shortcut only. The arrows stop at the first and last open step (`pageCard`), dimmed there
+  (`aria-disabled`); they're outside
   the keyed row, so they keep the focus. The strip is `markup/card-strip.html`, given the card `c`; a run's step card
   has it too (below). A plain swipe on the step line or the heading does nothing (`cardGesture`). Subtasks are never rows of their own on Today. What's a card, and why, is `todayItems`
   (`cards.js`, beside `app/`, so the unit tests check it): a task due, a subtask due, a subtask of yours made today
@@ -225,7 +228,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   and with no server: the order of a list and subtasks under their parents, a done one too, and what a project's lists and search leave out (templates marked done and their steps, and a run's steps on a project's) (`lists.test.mjs`), due dates in words, and short, for a row on one line
   (and nothing for today with no time under Today's heading) (`dates.test.mjs`), Today's order, a card's by what brought it (`lists.test.mjs`), which tasks are cards on Today
   and why, where each sits, which step shows, paging it through the open ones, stopping at the ends, and scrubbing along its strip, its count (the step's place, the done ones counted) and the
-  segment its line marks, which step a tap on its line shows, its line and a step's countdown, where a run goes next (`whereNext`), a run's card opening by that rule, and its heading as a task's (its name without the day it was started, when it's due at the right), and a run's step card: the step it opens on, its strip, paged, tapped and scrubbed as Today's, and its slot, and its bottom box: aimed at the card's step, steps added each after the last until that changes, after the last step with every one done, none on a run finished or read only, and Repeat with its Undo (`cards.test.mjs`), progress, sliding to the snaps and swiping to Delete, who a slide claims for, a run's line in segments, each filled by whether its own step is done, and a nudge told from a tap and a fling (`progress.test.mjs`), a
+  segment its line marks, which step a tap on its line shows (none past 12 steps), its line and a step's countdown, a row on one line (what's at its right, and what it says: a run's step's countdown, photos waiting to upload, not its labels or counts), where a run goes next (`whereNext`), a run's card opening by that rule, and its heading as a task's (its name without the day it was started, when it's due at the right), and a run's step card: the step it opens on, its strip, paged, tapped and scrubbed as Today's, and its slot, and its bottom box: aimed at the card's step, steps added each after the last until that changes, after the last step with every one done, none on a run finished or read only, and Repeat with its Undo (`cards.test.mjs`), progress, sliding to the snaps and swiping to Delete, who a slide claims for, a run's line in segments, each filled by whether its own step is done, and a nudge told from a tap and a fling (`progress.test.mjs`), a
   checklist's steps, their order and times (`checklists.test.mjs`), when rows ticked or deleted leave together, and what a tap on a marked row does (`batch.test.mjs`), the address, util.js and what's waiting to send, and when it looks it (`helpers.test.mjs`), what Pocket says (a tick too, and a run's comments called comments) and in which place
   (`messages.test.mjs`), a project's order: its List view, a move's position, a task's siblings, a drag, and
   which task the add box adds subtasks to and where they go (`order.test.mjs`), progress as a text and as a
