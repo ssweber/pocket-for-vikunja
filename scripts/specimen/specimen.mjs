@@ -57,11 +57,11 @@ function sections(){
     {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, delete: true, tasks: [
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
-    {title: 'A full swipe let go, or Delete tapped: the row carries on off the screen, then comes back dimmed with Restore', depth: {}, delete: true,
+    {title: 'A full swipe let go, or Delete tapped: the row carries on off the screen, leaving a gap with Restore', depth: {}, delete: true,
       tasks: [task({title: 'Wipe the menus', state: {sweep: .8}}), task({title: 'Wipe the menus', state: {leaving: 'deleted'}})]},
     // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
-    // a deleted row with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
-    {title: 'Ticked and deleted, in place: a parent with its subtask, a deleted row with Restore, a repeating task', depth: {[mover.id]: 0, [moverKid.id]: 1}, tasks: [
+    // a deleted row's gap with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
+    {title: 'Ticked and deleted, in place: a parent with its subtask, a deleted row’s gap with Restore, a repeating task', depth: {[mover.id]: 0, [moverKid.id]: 1}, tasks: [
       mover, moverKid, task({title: 'Return the crates', due_date: at(4 * HOUR), assignees: [priya], state: {leaving: 'deleted'}}),
       task({title: 'Water the plants', done: true, due_date: at(-HOUR), repeat_after: 86400, state: {leaving: 'done'}}), task({title: 'Order oat milk'})]},
     {title: 'The batch clearing: the rows ticked and deleted fold together, and the row below closes up once', depth: {}, tasks: [

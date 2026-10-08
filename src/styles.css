@@ -232,11 +232,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.swiping .row-del,.row.swiped .row-del{display:flex}
 /* past half the row, a full swipe: let go, it's deleted; the Delete fills what the row left, its word by the finger */
 .row.swipe-full .row-del{justify-content:flex-start;padding-left:28px}
-/* Deleted, until the batch clears (leaving.js): dimmed, its title still to be read, not struck through; Restore where
-   who's doing it was, the same shape as "+ me" */
-.row.deleted > :not(.restore),.row.deleted::after{opacity:.5}
-.row.deleted > .claim:not(.restore){visibility:hidden}
-.row > .claim.restore{position:absolute;top:0;right:0;bottom:0;margin:0;padding:12px 12px 0 12px}
+/* Deleted, until the batch clears (leaving.js): gone from its place, which stays, at its height, so nothing moves: a
+   gap holding only "Deleted", in muted words, and Restore where who's doing it was, the same shape as "+ me" */
+.row.deleted > :not(.del-gap),.row.deleted::after{visibility:hidden}
+.del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:calc(14px + var(--depth,0) * 38px);background:var(--sunk);color:var(--muted);font-size:14.5px}
+.row:not(.sub) > .del-gap{padding-left:14px}
+.del-gap .what{flex:1;min-width:0}
+.del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}
 /* A message in a row's place (lines.js): the row shrinks to a line, the task's title struck through, its action at the end */
 .row.lined{min-height:48px;padding-top:0;padding-bottom:0;align-items:center}

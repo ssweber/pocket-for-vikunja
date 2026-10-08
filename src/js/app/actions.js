@@ -532,7 +532,7 @@ export default {
       && !(sheet && ['run', 'template'].includes(this.checklistRole));
   },
   /* Deleting a task, from its row's Delete or its sheet's ⋯: its subtasks go with it, all the way down (taskTree), and
-     with any it asks first. Its row stays where it is, dimmed, with Restore in its slot, with its subtasks' rows, until
+     with any it asks first. Its row stays where it is, a gap holding only Restore, with its subtasks' rows, until
      the batch clears (markRow, leaving.js): then they go, and it's sent; or at once if the screen is left, or Pocket is
      put away or closed. Meanwhile it waits in the outbox, kept on the phone, held back (sync.held): so it's sent even
      if Pocket is closed before then, the next time it opens, and without a connection, once there's one. Restore takes
@@ -541,7 +541,7 @@ export default {
   async removeTask(t){
     const d = await this.holdDelete(t, d => {
       const undo = () => this.undoDelete(d.id), gone = () => this.sendHeld(d.id);
-      if (this.rowEl(t.id)) return this.markRow(t.id, {kind: 'deleted', ids: d.ids, undo, gone, said: `Deleted: ${t.title}. Restore is on the row`});
+      if (this.rowEl(t.id)) return this.markRow(t.id, {kind: 'deleted', ids: d.ids, undo, gone, said: `Deleted: ${t.title}. Restore is in its place`});
       const title = t.title.length > 40 ? t.title.slice(0, 38) + '…' : t.title;
       this.notify(`Deleted “${title}”` + (d.n ? ` + ${d.n} subtask${d.n === 1 ? '' : 's'}` : ''), {label: 'Undo', fn: undo, gone});
     });
@@ -569,6 +569,9 @@ export default {
   // Restore, or Undo: the deletion isn't sent, and the rows are back.
   async undoDelete(id){
     if (!sync.held.delete(id)) return;
+    // Back on its list at once, not once it's out of the outbox: its row, restored where it is, mustn't blink out.
+    const e = this.user ? sync.all(this.user.id).find(x => x.id === id) : null;
+    if (e) this.deleting = this.deleting.filter(x => !e.ids.includes(x));
     await sync.lock(() => sync.remove(id));
     this.refreshPending();
   },

@@ -5,8 +5,8 @@
      (g.delete: a project, search, a sheet; not Today), swiped left, its Delete (canDelete; also in the task's ⋯, the way
      for a keyboard or a screen reader); where it allows g.reorder (a project, a sheet), held and moved up or down, its
      place. The gesture code reads those off the row (data-gestures, rowGestures). Ticked, or deleted, it stays
-     where it is until the batch clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's dimmed,
-     with Restore in its slot, and a tap anywhere on it restores it. A tick not saved is a line in its place, with Try
+     where it is until the batch clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap
+     at its height, holding only "Deleted" and Restore, and a tap anywhere on it restores it (restoreRow). A tick not saved is a line in its place, with Try
      again (lines.js). One not sent yet (pending) is on its list at once, where
      it'll be; once it has waited a while (waits), it looks it: tinted, its tick dotted. On a project's list it's lit up
      (aimed) while quick add's box adds subtasks to it, and watched meanwhile, so the box forgets it once it's out of
@@ -21,7 +21,7 @@
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, 'ins-on': t.i === g.insertAt} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under'}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {order: t.i * 2, '--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && cursor?.id === t.id && watchCursor($el)"
-     @click.capture="if (!g.run && leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); unmark(t.id) }">
+     @click.capture="if (!g.run && leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
   <!-- › opens the box under this step, to insert a step after it or repeat it -->
   <template x-if="g.run && !g.locked"><button class="ins-open" :aria-expanded="String(t.i === g.insertAt)" :aria-label="'Insert a step after “' + t.title + '”'" @click="openInsert(t)"><svg class="i"><use href="#i-chev"/></svg></button></template>
   <template x-if="g.run || g.sheet || canTick(t)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped} : 'p' + (t.priority || 0) + (t.waits ? ' wait' : '')" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
@@ -29,7 +29,6 @@
   <template x-if="!g.run && !g.sheet && !canTick(t)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Shared with you to read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
   <!-- Alt+↑ and Alt+↓ move it among its siblings, as holding it and moving it up or down does, where that's allowed -->
   <button class="body" @click="g.run ? showStep(t.i, true) : t.pending || (g.sheet ? openTask(t.id) : openRow(t))" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
-    <template x-if="leaving[t.id] === 'deleted'"><span class="sr">Deleted: </span></template>
     <template x-if="g.sheet || g.run"><div class="title" x-text="t.title"></div></template>
     <template x-if="!g.sheet && !g.run"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template></div></template>
     <div class="meta" x-show="rowMeta(t, g).length">
@@ -45,9 +44,9 @@
   <template x-for="slot in [rowSlot(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/claim-slot.html -->
   </template>
-  <!-- Deleted, until the batch clears: Restore, over where who's doing it was, which keeps its room so nothing moves (the
-       row's tap, above, does it) -->
-  <template x-if="!g.run && leaving[t.id] === 'deleted'"><button class="claim restore" :aria-label="'Restore ' + t.title"><span class="me">Restore</span></button></template>
+  <!-- Deleted, until the batch clears: a gap where it was, at its height, so nothing moves, holding only "Deleted" and
+       Restore, where who's doing it was (the row's tap, above, restores it) -->
+  <template x-if="!g.run && leaving[t.id] === 'deleted'"><div class="del-gap"><span class="what">Deleted<span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="'Restore ' + t.title"><span class="me">Restore</span></button></div></template>
   <!-- A step inserted during the run, on its card and not done: likely a mistake, so it can go -->
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="'Cancel ' + t.title + (t.index === 0 && pendingNested(t.entry) ? ': the lines under it become tasks of their own' : '')" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>

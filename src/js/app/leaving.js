@@ -1,7 +1,7 @@
 /* Done and deleted, in place: a row ticked done, not done again, or deleted keeps its height and its place until the
    batch clears (batch.js), so nothing moves under a finger; then every row waiting goes at once, and the rows below
    close up once. Meanwhile the mark can be taken back from the row itself: its tick opens it again (or ticks it again),
-   and a deleted row, dimmed with Restore in its slot, is restored by a tap anywhere on it. So it needs no Undo of its
+   and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it. So it needs no Undo of its
    own. What happens when the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done
    in search and a project, a repeating task shows its next date, a deletion is sent (held in the outbox until then:
    holdDelete). Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from
@@ -56,6 +56,12 @@ export default {
     const title = this.tasks[id]?.title || '';
     this.said = m.kind === 'deleted' ? 'Restored: ' + title : m.kind === 'done' ? 'Not done: ' + title : 'Done: ' + title;
     return m.undo?.() || true;
+  },
+  // A deleted row's gap tapped: restored (unmark), its rows sliding back in from the left, where the delete took them.
+  restoreRow(id){
+    const m = of(this).marks.get(id), els = m && !m.going && motion() ? rowsOf(m.ids) : [], r = this.unmark(id);
+    for (const el of els) el.animate([{transform: `translateX(${-el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
+    return r;
   },
   // A mark taken off its rows (or off row `only`); with none left waiting, the batch has nothing to clear.
   dropMark(m, only){

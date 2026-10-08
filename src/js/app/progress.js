@@ -46,9 +46,10 @@ const swipeOf = (row, remove) => ({
 });
 
 /* A row deleted by a full swipe, or its Delete tapped, follows through: it carries on to the left, off the screen, the
-   red filling the row behind it, then comes back where it was, at the same height, dimmed with Restore, with a short
-   fade (removeTask, `removing`, marks it meanwhile). Only its content moves, so nothing around it does. With less
-   motion asked for, it only changes. Resolves to what `removing` did. */
+   red filling the row behind it, and doesn't come back. Its place stays, at its height, as a gap (removeTask,
+   `removing`, marks it meanwhile: task-row.html), the red fading into it, holding only "Deleted" and Restore. Only its
+   content moves, so nothing around it does. With less motion asked for, it only changes. Resolves to what `removing`
+   did: not deleted after all (a question about its subtasks said no), the row fades back in. */
 const SWEEP_MS = 200, BACK_MS = 150;
 async function sweep(row, removing){
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
@@ -59,10 +60,15 @@ async function sweep(row, removing){
   const go = {duration: SWEEP_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
     ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${-w}px)`}], go), del.animate([{width: -from + 'px'}, {width: w + 'px'}], go)] : [];
   const [done] = await Promise.all([removing, ...anims.map(a => a.finished.catch(() => {}))]);
-  // Back in its place at once, not sliding back (.row's transition), then fading in.
+  // Its content back in its place at once, unseen under the gap, not sliding back (.row's transition).
+  const red = del && getComputedStyle(del).backgroundColor;
   row.style.transition = 'none'; shut(row); anims.forEach(a => a.cancel());
   void row.offsetWidth; row.style.transition = '';
-  if (moving && row.isConnected) row.animate([{opacity: 0}, {opacity: 1}], {duration: BACK_MS, easing: 'ease-out'});
+  if (!moving || !row.isConnected) return done;
+  const gap = row.querySelector(':scope > .del-gap'), fade = {duration: BACK_MS, easing: 'ease-out'};
+  if (!gap) { row.animate([{opacity: 0}, {opacity: 1}], fade); return done; }
+  gap.animate([{backgroundColor: red}, {backgroundColor: getComputedStyle(gap).backgroundColor}], fade);
+  for (const el of gap.children) el.animate([{opacity: 0}, {opacity: 1}], fade);
   return done;
 }
 
@@ -242,7 +248,7 @@ export default {
     return {el: row, reorder: dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true))};
   },
   /* A row's Delete, tapped once it's swiped open (a tick felt then), or a full swipe let go (felt as it passed half): the
-     row carries on off the screen, and comes back where it was, dimmed, with Restore (sweep, removeTask). */
+     row carries on off the screen, leaving a gap at its height with Restore (sweep, removeTask). */
   async swipeDelete(t, sheet, row = null){
     if (!row) { row = opened; haptic('done'); }
     const removing = this.removeTask(t);

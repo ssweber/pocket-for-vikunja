@@ -86,7 +86,7 @@ test('a row marked: its tap takes the mark back; a subtask closed with its paren
   const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default;
   const app = component(leaving), did = [];
   app.tasks = { 1: { id: 1, title: 'Load chairs' }, 2: { id: 2, title: 'Pack the van' } };
-  app.markRow(1, { kind: 'deleted', undo: () => did.push('restored 1'), gone: () => did.push('sent 1'), said: 'Deleted: Load chairs. Restore is on the row' });
+  app.markRow(1, { kind: 'deleted', undo: () => did.push('restored 1'), gone: () => did.push('sent 1'), said: 'Deleted: Load chairs. Restore is in its place' });
   app.markRow(2, { kind: 'done', ids: [2, 3, 4], undo: () => did.push('opened 2'), gone: () => did.push('gone 2') });
   assert.deepEqual(app.leaving, { 1: 'deleted', 2: 'done', 3: 'done', 4: 'done' });
   assert.ok(app.unmark(1));
