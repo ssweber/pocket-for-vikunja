@@ -98,8 +98,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   app**, under Checklists).
 - **Deleting:** on a project's list, in search or in a task's sheet (not on Today), swipe a task's row to the left,
   starting away from the screen's edge, and tap **Delete**; or swipe on past half the row, until the red fills it (and,
-  on a phone that can, you feel a tick), and let go. Back under half before you let go, it's only left open. Its row stays where it is, faded, with **Restore** where "+ me" was: tap
-  anywhere on the row to bring it back. It leaves with the tasks you ticked, three seconds after the last, and it's
+  on a phone that can, you feel a tick), and let go. Back under half before you let go, it's only left open. Deleted,
+  the row carries on off the screen to the left, then comes back where it was, at the same height, faded, with
+  **Restore** where "+ me" was (with less motion asked for on the phone, it only changes): tap anywhere on the row to
+  bring it back. It leaves with the tasks you ticked, three seconds after the last, and it's
   deleted in Vikunja then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with
   subtasks asks first, and they go with it. Swipe back, or tap anywhere else, to leave it. The task's **⋯** deletes it
   too, on any screen: the way on Today, and for a keyboard or a screen reader. Its row then shows **Restore** the same
