@@ -14,6 +14,7 @@ The examples follow a small café: Alex owns it, and Priya is the shift lead who
 - [Timed steps](#timed-steps)
 - [Step times](#step-times)
 - [Reminders and alerts](#reminders-and-alerts)
+- [Opening at once](#opening-at-once)
 - [Offline](#offline)
 - [Signing in with an API token](#signing-in-with-an-api-token)
 - [Troubleshooting](#troubleshooting)
@@ -44,7 +45,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
 ## Tasks
 
 - **Today** groups tasks into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task added without a
-  date stays in view until tonight instead of vanishing into a project. A task is overdue once its time has passed, as
+  date stays in view until tonight instead of vanishing into a project. A subtask added today without a date shows
+  there only if it's assigned to you, with its parent's name under it ("↳ Pack the van"); the lines of a pasted list
+  under its first, and subtasks added to a task, otherwise stay with their parent. A task is overdue once its time has passed, as
   in Vikunja: "friday" is due at your default due time, noon unless you changed it. One due at midnight, as Vikunja's
   web app sets a day without a time, is overdue once that day is over. Left open, Today moves tasks to Overdue as their
   time passes, each lighting up for a moment as it moves. **Move all to today** brings every overdue task to today, each
@@ -266,7 +269,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    saves it on the step, and Skip makes it the reason. After Done, the next step that can be done is on screen, not one
    still counting down. Add a photo or a note to a step, or a note to the whole run; a step with notes has a mark on its
    row. **Last time** shows the notes from the last finished run of the same template, as a handover, and each step's
-   card shows the ones left on it. ‹ and › beside the step's number show the step before and after. On a long run,
+   card shows the ones left on it (ones that come after the run is on screen from the next step on, so the steps
+   don't move). ‹ and › beside the step's number show the step before and after. On a long run,
    the bar with the count stays at the top: tap it to go back up. A skipped step counts as skipped, not done. A run
    just started says so at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, with an Undo in its row's place;
@@ -404,6 +408,21 @@ apps already), and reminder emails turned on in your own Vikunja settings. Pocke
 Vikunja's web push, being worked on in [go-vikunja/vikunja#4020](https://github.com/go-vikunja/vikunja/pull/4020), would
 let reminders ring the phone too.
 
+## Opening at once
+
+Today, a project, Checklists and Projects open at once, with the copy of them Pocket kept last time, while it loads
+them again behind. Anything changed since then changes in place: a row ticked elsewhere folds away, one added elsewhere
+fades in, and the rest stay as they are, under your thumb. If loading takes over a second, a thin line runs under the
+header. While you're on one screen, Pocket loads Today, the project you opened last and Checklists in the background,
+one at a time and only when the phone is idle, so they're up to date when you switch to them; not without a
+connection, nor when the phone is set to save data. A run opens once it's loaded, with Last time's notes when they
+come quickly; ones that come later are shown under the run straight away, and on a step's card from the next step on,
+so the steps never jump down under your thumb.
+
+What you do shows at once too. A new task is on its list straight away, where it will be; it looks waiting (a light
+tint and a dashed circle, or "waiting to send" on a run's step) only if Vikunja hasn't answered after a few seconds,
+and right away without a connection. If Vikunja turns it down, it goes back as it was, and says so.
+
 ## Offline
 
 Pocket opens without a connection and shows your lists as they were last loaded.
@@ -411,9 +430,11 @@ Pocket opens without a connection and shows your lists as they were last loaded.
 <img src="screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying what's sent once back online, and 'Buy till receipt rolls' tinted under Today, waiting to be sent">
 
 - **What works offline:** new tasks and subtasks, comments, and what you do in a checklist run. A task waiting to be
-  sent has a light tint and a dashed circle; its × cancels it and puts its words back in the box. Ticking off or editing
+  sent has a light tint and a dashed circle (online, once it has waited a few seconds); its × cancels it and puts its
+  words back in the box. Ticking off or editing
   other tasks needs a connection.
-- **What's waiting:** while anything waits to be sent, the refresh button at the top turns amber, with how many. Tap it
+- **What's waiting:** while anything waits to be sent (without a connection, or for more than a few seconds), the
+  refresh button at the top turns amber, with how many. Tap it
   for **Waiting to send**: each thing in words ("Done: Check the milk fridge", "Photo for “Restock cups”"), when you did
   it, and **Don't send it** on anything not started yet. **Try now** sends what it can.
 - **Nothing you write is lost:** a comment, notes, subtasks, a step's note or a new template is kept on the phone until
@@ -465,8 +486,9 @@ A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn
 - Pocket has no server of its own. Vikunja serves its files, and Pocket only talks to that same Vikunja.
 - Pocket uses Vikunja's own sign-in, stored in the browser where Vikunja's web app keeps it, and renews it the way
   Vikunja does. To revoke an API token entirely, delete it in Vikunja.
-- For offline use, Pocket keeps the lists it last loaded, what's waiting to be sent, and what you're still writing, in
-  the browser on that device. Signing out removes them, and asks first if something is still waiting.
+- To open at once and offline, Pocket keeps the lists it last loaded, what's waiting to be sent, and what you're still
+  writing, in the browser on that device. Signing out removes them, and asks first if something is still waiting.
+  Someone else signing in on that device never sees them: Pocket drops another account's lists before showing any.
 - Notes and comments are cleaned before they're shown, and attachments other than images, PDFs and plain text are
   downloaded instead of opened. Together, these stop content from people you share projects with from running code
   inside Pocket, which shares its web address with Vikunja.

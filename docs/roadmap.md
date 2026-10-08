@@ -104,7 +104,10 @@ What's left of one copy of each task, for when a feature needs it:
 
 - A task's sheet has its own copy (`sheet.task`). It shows a change at once and puts it back if it isn't saved
   (`save`), and while saves are under way it doesn't show the replies in between. As the store's copy, the rows would
-  show those too: the changes waiting need keeping apart from Vikunja's copy first, which the plan's Instant feel does.
+  show those too: the changes waiting need keeping apart from Vikunja's copy first. The plan's Instant feel (part 9)
+  didn't need that: what's waiting is shown from the outbox, and looks waiting only after a few seconds (`slow`).
+- The copies of each screen kept on the phone (`saved`), which a screen now opens with before it's loaded, are their
+  own copies too: shown, each task gives way to the store's where that's as new (`keptRows`).
 - The subtasks in a task's sheet are Vikunja's copies inside the task's own (`related_tasks.subtask`), without their
   people or labels, so they can't be the store's either. Their row differs from a list's in a few ways (its tick,
   title and meta, no progress line), marked `g.sheet` in `task-row.html`, until the plan's Rows make every row the same.

@@ -184,6 +184,27 @@ Settled while building it (part 8):
 - Changes show at once. A row looks waiting (dotted) only if the server hasn't answered after a few seconds, and goes
   back if the change fails. This lives in the actions and the store from part 2, not in each view.
 
+Settled while building it (part 9):
+
+- Today, a project, Checklists and Projects open with the copy kept on the phone; search and a run's screen still load
+  first (a run keeps which step is shown and what's being written, and its copy can be days old). A copy is only ever
+  shown for the account that's signed in: Pocket drops another account's copies when it starts.
+- Rows a refresh takes away fold, as a tick's do; rows it brings fade in, with no colour: the light is kept for a task
+  you've just added. A new screen starts at its top.
+- The line under the header shows once loading has taken a second, for a screen refreshed in place too.
+- In the background: Today, the project opened last (else the first favourite) and Checklists, two seconds after a
+  screen has loaded and when the phone is idle, one at a time, each at most once a minute; not offline or with
+  Save-Data or a 2G connection. They don't touch the screen or the store, only the copies kept.
+- "Waiting" after 2.5 seconds (`WAIT_MS`), at once without a connection, and it stays until it's sent. The header's
+  waiting button goes by the same rule. A task waiting to be sent shows at once where it'll be (first on a project's
+  list, where Vikunja puts it; in its place by date or newest first on Today), so it doesn't jump when it's sent. Its ×
+  shows from the start.
+- Last time's notes are read alongside the run's steps and shown with them if they come within 0.6 seconds more, or
+  from the copy kept when the run was last opened; later than that, they show under the run at once and on the step's
+  card from the next step on.
+- #167: a subtask added today without a date is under "Added today, no date" if it's assigned to you, whoever made
+  it; a subtask you made that isn't assigned to you isn't. One waiting to be sent shows there once it's sent.
+
 ### Today: subtasks added today (#167)
 
 A subtask with no date shows under "Added today, no date" only if it's assigned to you.
