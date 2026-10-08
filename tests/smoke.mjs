@@ -852,11 +852,26 @@ try {
       await page.mouse.up();
       await page.waitForSelector(`${K}.swiped`);
       if (await page.$(`${K}.deleted`)) throw new Error('backed off, it was deleted');
-      // Carried on from there past half, and let go: deleted, for good once the batch clears.
+      // Carried on from there past half, and let go: it follows through, off the screen to the left, then comes back
+      // where it was, dimmed with Restore, at its height all along (watched frame by frame); deleted for good once the
+      // batch clears.
       await page.mouse.move(250, ky); await page.mouse.down();
       await page.mouse.move(90, ky + 3, { steps: 10 });
+      await page.$eval(K, el => {
+        const seen = window.__sweep = [], t0 = performance.now();
+        (function look(){
+          seen.push({ h: el.offsetHeight, w: el.clientWidth, x: new DOMMatrix(getComputedStyle(el).transform).m41, deleted: el.classList.contains('deleted') });
+          if (performance.now() - t0 < 1000) requestAnimationFrame(look); else window.__swept = true;
+        })();
+      });
       await page.mouse.up();
       await page.waitForSelector(`${K}.deleted`);
+      await page.waitForFunction(() => window.__swept, null, { polling: 100 });
+      const seen = await page.evaluate(() => window.__sweep), far = seen.reduce((m, s, i) => s.x < seen[m].x ? i : m, 0);
+      if (seen.some(s => s.h !== kh)) throw new Error('its height changed as it went: ' + [...new Set(seen.map(s => s.h))]);
+      if (seen[far].x > -.9 * seen[far].w) throw new Error(`it went only to ${seen[far].x}px of ${seen[far].w}`);
+      const back = seen.slice(far).filter(s => Math.abs(s.x) < 1);
+      if (!back.length || back.some(s => !s.deleted)) throw new Error('it came back without its deleted state: ' + JSON.stringify(back.slice(0, 3)));
       if (!await get(k.id)) throw new Error('deleted while it could be restored');
       await later(3000);
       await expect(page.locator(K)).toHaveCount(0);
