@@ -54,17 +54,26 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
   next date. On a card, its task and its subtasks that are overdue themselves are moved; a run's steps stay, as their
   run times them.
+- **Today is on one line:** each task there is one line, as Today is for doing, and the sheet has the rest. Its tick's
+  ring is its priority's colour: grey for none, then blue (low), amber (medium), orange (high), red (urgent), and red,
+  thicker and tinted, for do now. Its title is cut short with "…" when it's too long, and at the right is when it's
+  due, short: the time today ("11:55 AM"), the weekday this week ("Fri"), or the date beyond ("Oct 20"), red when
+  it's late, with a run's step's countdown instead ("in 18m", "12m late"); then its project's colour dot, and **+ me**
+  or who's on it. Labels and counts (comments, attachments, subtasks) are left off Today: they're on Projects, in
+  search and in the sheet, which keep their second line. A screen reader hears it all: the whole title, when it's due
+  in words, its priority and its project.
 - **Cards on Today:** a task with subtasks still open (or a checklist run with steps still open) shows on Today as a
-  card: its title, with its due date, priority and project under it, and below that one line for a step, with that
-  step's own tick, **+ me** or who's on it, and progress, its bar along the step line's bottom.
+  card of three lines: its title, with its priority's bars and when it's due; one line for a step, as a task's line on
+  Today, with that step's own tick and **+ me** or who's on it; and its strip, below. Every card is the same height,
+  whatever its steps hold.
   Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
   its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
   own order), whoever it's for, or the subtask of yours that brought the card onto Today. Ticked, a step stays on the
   card, ticked, until the ticks leave together; then the step after it comes in. Holding the step line and sliding sets
   that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. Under
   the step line, at the card's foot, is its strip: a line in segments, one for each subtask, each filled once its step
-  is done, with the step showing outlined on it, and "3 of 5" at its end, where that step is among all the subtasks,
-  done ones too. With more than one step open, the strip is how to get round them: press on it and slide your finger
+  is done, with the step showing outlined on it and filled as far as its progress (the step line has no bar of its
+  own), and "3 of 5" at its end, where that step is among all the subtasks, done ones too. With more than one step open, the strip is how to get round them: press on it and slide your finger
   along, and the step under your finger shows as you go, skipping the done ones, and stays when you let go; tap a
   step's segment to show that step, if it's still open (a done one's does nothing); or tap **‹** and **›** at its ends,
   which go through the open ones and stop at the first and the last (dimmed there): with the first two done, from 3 to

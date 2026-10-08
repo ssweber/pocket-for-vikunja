@@ -60,7 +60,17 @@ function sections(){
     kid(713, {under: opening.id, project_id: 2, title: 'Unlock the door', related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 3}]}}),
     kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]}),
     ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 5}))];
+  // Today's rows, on one line (line: section 9): the tick's ring its priority, from none to do now; the title cut short;
+  // and at the right when it's due, short (a time today, a weekday this week, a date beyond, red when late), and the
+  // project's dot.
+  const dayAt = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
+  const today = [task({title: 'Post next week’s rota', due_date: dayAt(0, 10, 30), priority: 3}),
+    task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [priya]}),
+    task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),
+    task({title: 'Order the cups', due_date: dayAt(2, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(12, 0)}),
+    task({title: 'Fix the till drawer', due_date: dayAt(0, 9), priority: 5, assignees: [me]})];
   return {parent, steps: runSteps(), cards: [van2, opening, sign, shelves], cardSubs, list: [
+    {title: 'Today, on one line: high, low, urgent, medium, none, do now', depth: {}, line: true, tasks: today},
     {title: 'Open, done, and waiting to send', depth: {}, tasks: [task({title: 'Order oat milk'}), task({title: 'Wipe the counters', done: true}),
       {...task({title: 'Call the plumber tomorrow'}), id: 'pending-specimen-0', pending: true, waits: true, entry: 'specimen', index: 0}]},
     {title: 'Progress', depth: {}, tasks: [task({title: 'Repaint the sign', percent_done: .3}), task({title: 'Train the new barista', percent_done: .7})]},
