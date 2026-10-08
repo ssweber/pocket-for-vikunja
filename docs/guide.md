@@ -61,10 +61,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
   own order), whoever it's for, or the subtask of yours that brought the card onto Today. Ticked, a step stays on the
   card, ticked, until the ticks leave together; then the step after it comes in. Holding the step line and sliding sets
-  that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. Between
-  the title and the step line is the card's strip: a line in segments, one for each subtask, filled as they're done,
-  with the step showing outlined on it, and "3 of 5" at its end, where that step is among all the subtasks, done ones
-  too. With more than one step open, **‹** and **›** at the strip's ends page through the open ones, and so does a plain
+  that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. Under
+  the step line, at the card's foot, is its strip: a line in segments, one for each subtask, each filled once its step
+  is done, with the step showing outlined on it, and "3 of 5" at its end, where that step is among all the subtasks,
+  done ones too. With more than one step open, **‹** and **›** at the strip's ends page through the open ones, and so does a plain
   swipe left or right anywhere on the card (hold first, and it's progress instead): with the first two done, from 3 to
   4, 5, then back round to 3. Tapping a step's segment on the line shows that step, if it's still open (a done one's
   does nothing). Done steps are on the run's screen, or in the task's sheet. Leaving Today puts every card back on its
