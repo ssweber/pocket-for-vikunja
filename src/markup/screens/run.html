@@ -6,8 +6,8 @@
         <!-- include markup/place-line.html -->
       </template>
       <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">This run's project is shared with you to read only: you can follow it, but not tick its steps or add notes. Ask its owner for write access.</p></template>
-      <!-- Stays at the top on a long run: tapped, back up to the step on screen -->
-      <button type="button" class="run-bar" id="run-bar" :aria-label="runView.countText + ': back to the step'" @click="scrollTo({top: 0, behavior: 'smooth'})"><span class="track"><i x-style="{'--pct': runView.total ? runView.doneCount / runView.total : 0}"></i></span><span class="num" id="run-count" x-text="runView.countText"></span></button>
+      <!-- Stays at the top on a long run: tapped, back up to the step on screen. In segments, one per step (runLine) -->
+      <button type="button" class="run-bar" id="run-bar" :aria-label="runView.countText + ': back to the step'" @click="scrollTo({top: 0, behavior: 'smooth'})"><span class="track" :class="{many: runView.line.many}" x-style="{'--segs': runView.line.segs}"><i x-style="{'--pct': runView.total ? runView.doneCount / runView.total : 0}"></i></span><span class="num" id="run-count" x-text="runView.countText"></span></button>
 
       <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
       <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">

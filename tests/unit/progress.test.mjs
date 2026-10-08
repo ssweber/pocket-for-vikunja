@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isSubtask, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, openSubtasks, pctOf, progressPatch, runLine, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -107,4 +107,12 @@ test('sliding progress claims a task only where no one is on it and its slot can
   assert.equal(claimsOnSlide({ can: true, mine: true, users: [{ id: 1 }] }), false, 'yours already');
   assert.equal(claimsOnSlide({ can: false, users: [] }), false, 'done, or shared with you to read');
   assert.equal(claimsOnSlide(null), false, 'no slot: a run, a template, a task waiting to be sent');
+});
+
+test('a run\'s line has a segment per step, the done ones filled; past MANY_STEPS, one line with ticks', () => {
+  assert.deepEqual(runLine(4, 1), { segs: 4, done: 1, many: false });
+  assert.deepEqual(runLine(MANY_STEPS, MANY_STEPS), { segs: 12, done: 12, many: false });
+  assert.equal(runLine(MANY_STEPS + 1, 0).many, true);
+  assert.deepEqual(runLine(0, 0), { segs: 1, done: 0, many: false }, 'no steps: nothing to fill, and nothing divided by 0');
+  assert.equal(runLine(3, 5).done, 3, 'never more done than there are steps');
 });

@@ -8,6 +8,7 @@ import claims from '../../src/js/app/claims.js';
 import leaving from '../../src/js/app/leaving.js';
 import progress from '../../src/js/app/progress.js';
 import { rowGestures, screenRows } from '../../src/js/lists.js';
+import runs from '../../src/js/app/runs.js';
 
 const RUN = { depth: {}, run: true, at: 0, insertAt: null, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -93,4 +94,16 @@ test('a slide shows you on a task no one is doing, and claims it only once it ha
   assert.equal(acts.length, 1, 'someone else\'s stays theirs');
   await app.claimOnSlide(app.claimSlot({ id: 7, title: 'Mine', project_id: 1 }, [me], false))(true);
   assert.equal(acts.length, 1, 'yours already: nothing to send, and sliding back to 0% later keeps it');
+});
+
+test('a checklist step\'s box is square, on its run\'s screen, in its run\'s sheet and on a list; a subtask\'s is round', () => {
+  const app = component(runs), step = { id: 9 }, sub = { id: 10 };
+  app.stepRun = t => t.id === 9 ? 3 : null;
+  assert.equal(app.isStepRow(step, RUN), true);
+  assert.equal(app.isStepRow(step, { depth: {} }), true, 'a step you\'ve claimed, on Today');
+  assert.equal(app.isStepRow(sub, { depth: {} }), false);
+  Object.defineProperty(app, 'checklistRole', { get: () => 'run', configurable: true });
+  assert.equal(app.isStepRow(sub, { depth: {}, sheet: true }), true, 'a run\'s sheet: its subtasks are its steps');
+  Object.defineProperty(app, 'checklistRole', { get: () => null, configurable: true });
+  assert.equal(app.isStepRow(sub, { depth: {}, sheet: true }), false);
 });

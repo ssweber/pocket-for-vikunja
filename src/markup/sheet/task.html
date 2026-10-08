@@ -9,7 +9,7 @@
           <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTitle"></button></span></template>
         </div>
         <div class="d-title">
-          <template x-if="!ofTemplate && canEdit"><button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="sheetDone()"><svg class="i"><use href="#i-check"/></svg></button></template>
+          <template x-if="!ofTemplate && canEdit"><button class="check" id="d-done" :class="'p' + (sheet.task.priority || 0) + (sheet.task.done ? ' on' : '') + (checklistRole === 'step' ? ' sq' : '')" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="sheetDone()"><svg class="i"><use href="#i-check"/></svg></button></template>
           <template x-if="checklistRole !== 'tplstep'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title"
                     x-effect="sheet.title; $nextTick(() => grow($el))"
                     @keydown.enter.prevent="$el.blur()" @change="saveTitle()"></textarea></template>

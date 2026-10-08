@@ -57,3 +57,8 @@ export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;
 // Whether sliding progress on a row says you're doing it: only where no one is yet and its slot can be tapped (not done,
 // not shared with you to read). Someone else's is never replaced, and yours is already yours (claimSlot, app/claims.js).
 export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
+/* A run's progress line is in segments, one per step, the steps done filled from the left; past MANY_STEPS they'd be
+   too short to read, so it's one line with a small tick at each step instead. `segs` is at least 1, for the CSS to divide
+   by. */
+export const MANY_STEPS = 12;
+export const runLine = (total, done) => ({segs: Math.max(total, 1), done: Math.max(0, Math.min(done, total)), many: total > MANY_STEPS});
