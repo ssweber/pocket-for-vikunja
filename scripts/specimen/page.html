@@ -13,6 +13,8 @@
   .theme h1{font-size:20px;margin:16px 0 0}
   /* a row lit up stays lit, to be looked at */
   .row.fresh,.row.came-due{animation-play-state:paused}
+  /* the bottom box, as it sits under a run's steps, not fixed to the page's foot */
+  .spec-box{margin-top:16px}
 </style>
 </head>
 <body x-data="specimen">
@@ -50,9 +52,25 @@
       <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
         <!-- include markup/step-card.html -->
       </div></template>
+      <!-- A run's screen adding steps from the bottom box (app.html, capW 'ins'): the step on its card lit, two steps
+           added after it, one after the other, a third waiting to send, and the line above the box naming the last,
+           with Repeat (cap-target.html) -->
+      <div class="sec">A run’s screen, adding steps from the bottom box: two after the step on its card, a third waiting to send, the line naming the last</div>
+      <template x-for="g in [{depth: {}, run: true, at: specimenAdding.at, locked: false}]" :key="0"><div class="list">
+        <template x-for="t in specimenAdding.steps" :key="t.id">
+          <!-- include markup/task-row.html -->
+        </template>
+      </div></template>
+      <div class="addbox spec-box">
+        <template x-for="target in [specimenAdding.target]" :key="0">
+          <!-- include markup/cap-target.html -->
+        </template>
+        <form><div class="cap-field"><textarea rows="1" placeholder="Add a step, or paste a list" aria-label="New step"></textarea></div>
+          <button class="go" type="button" disabled aria-label="Add step"><svg class="i"><use href="#i-up"/></svg></button></form>
+      </div>
       <!-- Above quick add's box on a project's list (cap-target.html): adding subtasks to the task touched last, after its
-           last subtask, and after the subtask touched -->
-      <div class="sec">Above the add box: what it adds subtasks to</div>
+           last subtask, and after the subtask touched; and on a run's screen, the step a step goes after, with Repeat -->
+      <div class="sec">Above the add box: what it adds subtasks to; on a run, the step a step goes after, Repeat off for a step waiting to send</div>
       <template x-for="target in specimenTargets" :key="target.after">
         <!-- include markup/cap-target.html -->
       </template>

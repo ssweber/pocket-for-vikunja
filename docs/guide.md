@@ -202,7 +202,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   sheet's subtask box does (no `+project`; a pasted list is a subtask a line), with no message: they show on their rows
   at once, and without a connection they wait there and are sent later. The **×** beside the task's name goes back to
   adding a task, and so does scrolling the task off the screen, or leaving the project. A run, a template, a done task
-  and a project shared with you to read only can't be added to this way. Today's box always adds a task.
+  and a project shared with you to read only can't be added to this way. Today's box always adds a task. On a run's
+  screen, the box adds steps (below).
 - **Projects:** your project tree with favorites, and the tasks in each: its open tasks, in order, then its done tasks
   in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. Tick
   one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
@@ -353,16 +354,19 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   keeps its repeat for a date given again. On Today before its day, it says **Checklist, for then**: starting it early
   doesn't move it on. **Move all to today** leaves it where it is, and isn't offered when it's all that's overdue. Runs of the same template can be open at once. A task with a due date made a
   template comes round at that date.
-- **A step the template doesn't have:** in **Steps**, the **›** at the left of any step opens a box under it, like the
-  subtask box: what's typed in it and added with **+** is a step after that one, for this run only (a pasted list, a
-  step a line). The last step's › adds one at the end. Quick add reads labels, people and priority there, but not
-  dates. **🔁** beside it puts that step in the box: left as it is, **+** does that step again, as a fresh copy, not
-  done, with the template's notes and photos for it but none of this run's; changed, it's a new step. Escape, or its ›
-  again, closes the box, keeping what was typed for next time; 🔁 tapped again puts that back. Either says
-  **Inserted** or **Repeated** under its title, here, in the run's sheet and in Last time, and works like any step,
-  offline too. A run's sheet has no subtask box: steps are added on its screen, so they're marked. One that isn't done yet can be deleted with the ×
-  on its row while it's on screen. The template never changes; a step from the template can't be taken out of a run,
-  only skipped.
+- **A step the template doesn't have:** the box at the bottom of a run's screen adds one, as the box on a project's
+  list adds subtasks. The line above it says where it goes: "Add a step after “Unlock the door”", the step on the
+  card. Type it and press Enter: it's a step after that one, for this run only, and the next one you type goes after
+  it, and so on, until another step is on the card (a pasted list is a step a line, in order). To add one somewhere
+  else, put that step on the card: tap its row under **Steps**, or nudge it (put your finger on it and scroll a
+  little, slowly). With every step done, the box adds after the last. Quick add reads labels, people and priority
+  there, but not dates. **Repeat**, on that line, does the step on the card again: a fresh copy of it, not done, with
+  the template's notes and photos for it but none of this run's, added there at once, with an **Undo** by the box.
+  Either says **Inserted** or **Repeated** under its title, here, in the run's sheet and in Last time, and works like
+  any step, offline too. A run finished, or shared with you to read only, has no box. A run's sheet has no subtask
+  box: steps are added on its screen, so they're marked. One that isn't done yet can be deleted with the × on its row
+  while it's on the card. The template never changes; a step from the template can't be taken out of a run, only
+  skipped.
 - **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too, with when:
   "Done by Priya at 4:46 PM". Vikunja lets each person take off only their own ✅, so marking someone else's step not
   done asks first: theirs stays on it. A step ticked on

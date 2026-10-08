@@ -147,7 +147,7 @@ function runSteps(){
 document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
-  c.specimen = []; c.specimenCards = []; c.specimenRunCards = [];
+  c.specimen = []; c.specimenCards = []; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -155,7 +155,9 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     {key: 3, place: 'sheet:top', text: 'Not saved: no connection', cls: 'failed', action: {label: 'Try again', fn(){}}},
     {key: 4, place: 'sheet:subtasks', text: 'Closed Deep clean + 3 subtasks', action: undo},
     {key: 5, place: 'step', text: 'Done: Take the croissants out', action: undo}];
-  c.specimenTargets = [{to: 'Pack the van', after: ''}, {to: 'Pack the van', after: 'Load chairs'}];
+  // And on a run's screen: the step a step goes after, with Repeat (off for a step still waiting to be sent).
+  c.specimenTargets = [{to: 'Pack the van', after: ''}, {to: 'Pack the van', after: 'Load chairs'},
+    {step: true, after: 'Unlock the door', repeat: 'Unlock the door', canRepeat: true}, {step: true, after: 'Check the milk', repeat: 'Check the milk', canRepeat: false}];
   // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.
   c.init = function(){
     setApp(this);
@@ -177,6 +179,15 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {held: 75}};
+    /* Steps added from the bottom box, one after another, after the step on the card: two sent, the third waiting to
+       be sent, and the line above the box naming it (runAim). */
+    const mk = title => ({...s.steps[5], id: ++n, title, comments: [], assignees: []});
+    const inRow = [...s.steps.slice(0, 5), mk('Fill the water jug'), mk('Wipe the counter'), ...s.steps.slice(5)];
+    this.pending.push({kind: 'step', id: 'specimen-step', run: run.id, title: 'Stack the trays', before: s.steps[5].id, after: inRow[6].id, at: new Date().toISOString(), tpl: null, from: null, items: [], files: []});
+    this.slow.push('specimen-step');
+    this.view.run = {run, steps: inRow, at: 4, last: null};
+    // (from the step before the card's to the run's next steps; other ids, so the held state above stays on its own row)
+    this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4, target: {step: true, after: 'Stack the trays', repeat: this.runView.step.title, canRepeat: true}};
     // Today's cards: their subtasks in the store, the van's paged to its second open step, the shelves' to their third.
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));
@@ -184,9 +195,9 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.cardPage = {[s.cards[0].id]: {id: 703, i: 1}, [s.cards[3].id]: {id: 738, i: 2}};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted, repeated, held at 75%, late, waiting on another step, and a tick waiting to send',
-        depth: {}, run: true, at: 4, insertAt: null, locked: false, tasks: steps},
+        depth: {}, run: true, at: 4, locked: false, tasks: steps},
       // (other ids, so the held state above stays on its own row)
-      {title: 'The same steps in a run finished, or shared with you to read only', depth: {}, run: true, at: null, insertAt: null, locked: true,
+      {title: 'The same steps in a run finished, or shared with you to read only', depth: {}, run: true, at: null, locked: true,
         tasks: finished.map(x => ({...x, id: x.id + 1000}))}];
     // The states a finger makes, put on the rows as the app does.
     const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
