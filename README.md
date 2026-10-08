@@ -31,7 +31,7 @@ ones you ticked leave together a few seconds later; tick it again to take it bac
 say how far along it is. Today is for doing, so nothing is deleted or moved there: on a project's list, swipe a task
 left to delete it, and its place stays as a gap with **Restore** until the gap closes.
 
-<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, a card showing its next step, 'Ask about the October price', 2 of 3, on a line in three segments; 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end; and the café's week ahead">
+<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, a card with its urgent priority's bars and a line in three segments under its title, then its next step, 'Ask about the October price', 2 of 3; 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end; and the café's week ahead">
 
 ## Hand it off
 
