@@ -3,7 +3,6 @@
    what Today read, apart from the screen, so the unit tests can check it; app/cards.js draws them. */
 import {isSet} from './dates.js';
 import {durText, hasTemplateLabel} from './checklists.js';
-import {MANY_STEPS} from './progress.js';
 
 // A task's subtasks still open, as its own copy lists them.
 export const openSubs = t => (t?.related_tasks?.subtask || []).filter(s => !s.done);
@@ -75,21 +74,15 @@ export function cardAt(steps, page, focus, pick = null){
 // Where step `s` is among all of a card's subtasks, done ones too (0 the first): its count, "3 of 5", and the segment
 // marked on its line. Paging goes through the open ones only, so with the first two done, from 3 it goes to 4, then 5.
 export const placeOf = (all, s) => all.findIndex(x => x.id === s?.id);
-// Paging a card by its ‹ ›: the step `dir` (1 the next, -1 the one before) from `i`, of `n`, stopping at the first and
-// the last (`i` itself there), with no going round.
-export const turnPage = (i, n, dir) => n ? Math.max(0, Math.min(n - 1, i + dir)) : -1;
-/* A tap on a card's line, `x` px from its left, the line `w` wide in `n` segments, each (w + 3) / n with its 3px gap, as
-   the CSS cuts it: which segment, 0 the first, a gap counting with the segment before it. -1 past MANY_STEPS, where a
-   step's stretch is too narrow to tap: there only the arrows and a swipe page. */
-export const segmentAt = (x, w, n) => n > MANY_STEPS ? -1 : segmentOf(x, w, n);
-// The same, past MANY_STEPS too, for a finger dragged along the line (scrubTo), where a stretch's size doesn't matter.
+/* A point on a card's line, `x` px from its left, the line `w` wide in `n` segments, each (w + 3) / n with its 3px gap,
+   as the CSS cuts it: which segment, 0 the first, a gap counting with the segment before it, held to the ends; -1 with
+   no line. Where a finger drags along it (scrubTo), or taps it (tapSegment, which does nothing past MANY_STEPS, where a
+   step's stretch is too narrow to tap). */
 export const segmentOf = (x, w, n) => !(w > 0) || !(n > 0) ? -1 : Math.min(n - 1, Math.max(0, Math.floor(x * n / (w + 3))));
-/* The open step a card's segment `k` stands for, as its index among the open `steps` it pages through; -1 for a done
-   one (paging skips those), or no segment. `all`: every subtask, in the order the line draws them. */
-export const stepOfSegment = (all, steps, k) => k < 0 || !all[k] ? -1 : steps.findIndex(s => s.id === all[k].id);
-/* A finger dragged along a card's strip, over segment `k`: the open step nearest it, as its index among the open
-   `steps`, so it goes from open step to open step, done ones skipped; between two as near, the one the finger is moving
-   towards (`dir`: 1 right, -1 left). -1 with none. */
+/* A finger on a card's strip, over segment `k`: the open step nearest it, as its index among the open `steps`, so it
+   goes from open step to open step, done ones skipped; between two as near, the one the finger is moving towards (`dir`:
+   1 right, -1 left). -1 with none. `all`: every subtask, in the order the line draws them. A tap takes it only when it's
+   the step tapped (tapSegment). */
 export function scrubTo(all, steps, k, dir = 1){
   let best = -1, far = Infinity;
   steps.forEach((s, i) => {

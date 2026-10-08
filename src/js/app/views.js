@@ -110,19 +110,20 @@ export default {
   /* A row on one line (g.line: Today, and a card's step line there; motion-and-rows-plan, section 9): at its right, its
      priority's bars, small, as on a card's heading (one-concept-plan, part 4), when it's due, short (shortDue; a run's
      step's countdown, "in 18m", "12m late"; nothing for today with no time under the Today heading, g.key), red when
-     late, and its project's colour dot. Labels and counts are off Today, and all of what's under its title elsewhere
-     (rowMeta: when, in words, priority, project or run, the task it's under) is said to a screen reader instead
-     (`said`). */
+     late, and its project's colour dot. Labels and counts are off Today (rowMeta's `extra`), and all of what's under its
+     title elsewhere (rowMeta: when, in words, priority, project or run, the task it's under) is said to a screen reader
+     instead (`said`). Worked out once per row (task-row.html). */
   rowWhen(t, g){
-    const now = this.route.name === 'today' && this.groupedAt || Date.now(), left = !t.done && this.stepRun(t) && isSet(t.due_date) && countdown(+new Date(t.due_date), now);
-    const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(now), {underToday: g?.key === 'today'}), p = this.projById.get(t.project_id);
-    // (Photos still waiting to upload are said, though: that's not a count, it's work still to send.)
-    const said = this.rowMeta(t, g).filter(m => !/^l\d/.test(m.key) && !['sub', 'com'].includes(m.key) && (m.key !== 'att' || /waiting/.test(m.label)))
-      .map(m => m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text).filter(Boolean);
+    const meta = this.rowMeta(t, g), left = meta.find(m => m.key === 'due')?.countdown, p = this.projById.get(t.project_id);
+    const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'});
+    const said = meta.filter(m => !m.extra).map(m => m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text).filter(Boolean);
     return {prio: t.priority || 0, due, color: p ? colorOf(p.hex_color) : null, said: said.join(', ')};
   },
+  // Now, for a row's countdown and when it's due: on Today, its minute (groupedAt), which redraws it once a minute.
+  rowNow(){ return this.route.name === 'today' && this.groupedAt || Date.now(); },
   /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. A step on a
-     run's screen (g.run): Inserted or Repeated, its comments, and, not done, its countdown or when it's due. */
+     run's screen (g.run): Inserted or Repeated, its comments, and, not done, its countdown or when it's due. Labels and
+     counts are `extra`: a row on one line leaves them out, and doesn't say them (rowWhen). */
   rowMeta(t, g){
     if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},
@@ -130,10 +131,9 @@ export default {
     const out = [], due = dueInfo(t.due_date), card = g?.card;
     // A done task over its open subtasks: why it's on the open list.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});
-    // A run's step not done yet, due within a day: its countdown, to the minute (on Today, its minute redraws it: groupedAt).
-    const now = this.route.name === 'today' && this.groupedAt || Date.now();
-    const left = due && !t.done && this.stepRun(t) && countdown(+new Date(t.due_date), now);
-    if (left) out.push({key: 'due', cls: 'due num ' + (left.late ? 'overdue' : 'today'), text: left.text, label: left.late ? 'Late: ' + left.text : 'Due ' + left.text});
+    // A run's step not done yet, due within a day: its countdown, to the minute (on Today, its minute redraws it: rowNow).
+    const left = due && !t.done && this.stepRun(t) && countdown(+new Date(t.due_date), this.rowNow());
+    if (left) out.push({key: 'due', cls: 'due num ' + (left.late ? 'overdue' : 'today'), text: left.text, label: left.late ? 'Late: ' + left.text : 'Due ' + left.text, countdown: left});
     else if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
@@ -156,18 +156,19 @@ export default {
     // A subtask with its parent not above it here (not due this week, say, or done): the parent's name, to know it by.
     const up = !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title});
-    for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title});
+    for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true});
     // A run: who it's for, as its screen says ("For you and Jo"). Any other task shows who's doing it in its slot, at the
     // end of the row (rowSlot).
     if (this.isRunTask(t) && (t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     // Its subtasks done. Not a run's steps: its line, a segment per step, says how far it is (and its screen what's next).
     const subs = t.related_tasks?.subtask || [];
-    if (subs.length && !this.isRunTask(t)) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
-    if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments'});
-    // Photos and files still uploading count too, so a photo added with a task shows on its row straight away.
+    if (subs.length && !this.isRunTask(t)) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
+    if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments', extra: true});
+    // Photos and files still uploading count too, so a photo added with a task shows on its row straight away. (Said on
+    // one line while some wait: that's not a count, it's work still to send.)
     const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waitingByTask.get(t.id)?.length || 0;
-    if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : '')});
+    if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : ''), extra: !waiting});
     // (Not a run's step's: its reminder is Pocket's own, for the countdown it shows.)
     if (!this.stepRun(t) && (t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});
     return out;

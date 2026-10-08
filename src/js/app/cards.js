@@ -4,14 +4,14 @@
    dragged along it (cardScrub); a tick or a slide on its step line is that step's alone. A run's screen has the same
    strip on its step card (runView.card, runs.js), paged by the same code. What a card needs is read once per project
    shown, not once per card (readCards). */
-import {colorOf, PRIOS, TZ} from '../util.js';
+import {PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, shortDue} from '../dates.js';
 import {runWithoutDay, stepsOf, whereNext} from '../checklists.js';
-import {cardAt, countdown, openSubs, placeOf, scrubTo, segmentAt, segmentOf, stepOfSegment, turnPage} from '../cards.js';
+import {cardAt, countdown, openSubs, placeOf, scrubTo, segmentOf} from '../cards.js';
 import {haptic} from '../haptics.js';
 import {listViewOf, positionOrder} from '../order.js';
-import {pctOf, runLine} from '../progress.js';
+import {MANY_STEPS, pctOf, runLine} from '../progress.js';
 
 const entering = new Map();                      // card id -> the way its next step comes in: 1 from the right, -1 the left
 const shownStep = new Map();                     // card id -> the step it showed last, to tell a new one
@@ -33,7 +33,7 @@ export default {
     // Its line: each done step's segment full, the one showing filled by its progress (the step line has no bar of its own).
     const fill = all.map(s => done(s) ? 1 : s.id === step.id ? pctOf(s) / 100 : 0);
     const card = {id: t.id, step, i, n: steps.length, steps, at: placeOf(all, step), total: all.length, all,
-      line: runLine(all.length, d, fill), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
+      line: runLine(fill), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
     card.g = {depth: {}, card, line: true, key: g.key};          // (its group: under Today's heading, "Today" goes unsaid)
     return card;
   },
@@ -54,75 +54,72 @@ export default {
   },
   // A subtask done; a run's step counting a tick still waiting to be sent.
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
-  // A card's title: a run's without the day it was started, which its name ends with (runWithoutDay), so its heading
-  // reads as a task's: its name, and when it's due at the right.
-  cardTitle(t){ return this.isRunTask(t) ? runWithoutDay(t.title, t.created) : this.rowTitle(t); },
-  /* A card's heading on one line: its title, its priority's bars, small, as a row on Today has them, and when it's due,
-     short, at the right (shortDue: nothing for today with no time under the Today heading, `g`'s key); the rest of
-     cardMeta to a screen reader (`said`). */
-  cardWhen(t, g){
-    const due = shortDue(t.due_date, new Date(this.groupedAt || Date.now()), {underToday: g?.key === 'today'});
-    return {prio: t.priority || 0, due, said: this.cardMeta(t).map(m => m.label || m.text).filter(Boolean).join(', ')};
-  },
-  // What a card's heading says to a screen reader: when its task is due, its priority, and its project, or for a run,
-  // who it's for.
-  cardMeta(t){
-    const out = [], due = dueInfo(t.due_date), p = this.projById.get(t.project_id);
-    if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label, label: (due.cls === 'overdue' ? 'Late: ' : 'Due ') + due.label});
-    if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
-    if (this.isRunTask(t)) out.push({key: 'run', icon: 'checklist', text: (t.assignees || []).length ? this.forText(t) : 'Checklist run'});
-    else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
-    return out;
+  /* A card's heading, on one line, worked out once per card (today-item.html): its title, a run's without the day it
+     was started, which its name ends with (runWithoutDay), so it reads as a task's; its priority's bars, small, as a row
+     on Today has them; and when it's due, short, at the right (shortDue: nothing for today with no time under the Today
+     heading, `g`'s key). A screen reader hears the rest (`said`): when it's due, in words, its priority, and its
+     project, or for a run, who it's for. */
+  cardHead(t, g){
+    const run = this.isRunTask(t), when = dueInfo(t.due_date), p = this.projById.get(t.project_id);
+    const said = [when && (when.cls === 'overdue' ? 'Late: ' : 'Due ') + when.label, t.priority && 'Priority: ' + PRIOS[t.priority].label,
+      run ? ((t.assignees || []).length ? this.forText(t) : 'Checklist run') : p?.title];
+    return {title: run ? runWithoutDay(t.title, t.created) : this.rowTitle(t), prio: t.priority || 0,
+      due: shortDue(t.due_date, new Date(this.groupedAt || Date.now()), {underToday: g?.key === 'today'}), said: said.filter(Boolean).join(', ')};
   },
   /* Paged by its ‹ ›: the step after it (dir 1) or before it (-1), stopping at the first and the last, where that arrow
      is dimmed and does nothing. A screen reader hears which. The arrows stay where they are, so the one tapped keeps the
      focus. */
   pageCard(c, dir){
     if (!c || c.n < 2) return;
-    const i = turnPage(c.i, c.n, dir);
+    const i = Math.max(0, Math.min(c.n - 1, c.i + dir));
     if (i !== c.i) this.showCardStep(c, i, dir);
   },
   /* A segment of its line tapped, at the pointer's `x`: that step, if it's open (a done one is skipped, as paging skips
-     it), coming in from the side it's on. Past MANY_STEPS a step's stretch is too narrow to tap, so nothing. A pointer's
-     shortcut only: the arrows are a keyboard's and a screen reader's way, rather than a stop for each step. */
+     it: the open step nearest, scrubTo, has to be the one tapped), coming in from the side it's on. Past MANY_STEPS a
+     step's stretch is too narrow to tap, so nothing. A pointer's shortcut only: the arrows are a keyboard's and a screen
+     reader's way, rather than a stop for each step. */
   tapSegment(c, x, line){
-    if (!c || c.n < 2 || !line) return;
-    const r = line.getBoundingClientRect(), k = segmentAt(x - r.left, r.width, c.total), i = stepOfSegment(c.all, c.steps, k);
-    if (i >= 0 && i !== c.i) this.showCardStep(c, i, Math.sign(k - c.at) || 1);
+    if (!c || c.n < 2 || !line || c.total > MANY_STEPS) return;
+    const r = line.getBoundingClientRect(), k = segmentOf(x - r.left, r.width, c.total), i = scrubTo(c.all, c.steps, k);
+    if (i >= 0 && i !== c.i && placeOf(c.all, c.steps[i]) === k) this.showCardStep(c, i, Math.sign(k - c.at) || 1);
   },
-  /* The card on its open step `i`, coming in from the side `dir` says (or, 'none', just there, as while scrubbing); a
-     screen reader hears its place among all, unless `quiet` (scrubbing, which says where it stopped: cardScrub). The run
-     screen's step card (runView.card, runs.js) has the same strip: there, the step goes on the card (showStep). */
-  showCardStep(c, i, dir, quiet = false){
+  /* The card on its open step `i`: paged, coming in from the side `dir` says (1 the right, -1 the left), its place among
+     all said to a screen reader; scrubbed (no `dir`), just there, with nothing said until the finger lifts (stripScrub).
+     The run screen's step card (runView.card, runs.js) has the same strip: there, the step goes on the card (showStep). */
+  showCardStep(c, i, dir = 0){
     const s = c.steps[i];
     if (c.runScreen) this.showStep(s.i);
-    else { this.cardPage[c.id] = {id: s.id, i}; entering.set(c.id, dir); }
-    if (!quiet) this.said = this.stepSaid(c, s);
+    else {
+      this.cardPage[c.id] = {id: s.id, i};
+      // Scrubbed, the card shows it already, as far as cardEntered goes, so it doesn't slide in.
+      if (dir) entering.set(c.id, dir); else { entering.delete(c.id); shownStep.set(c.id, s.id); }
+    }
+    if (dir) this.said = this.stepSaid(c, s);
   },
   stepSaid(c, s = c.step){ return `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`; },
-  /* A finger pressed on a card's strip and dragged along it, mostly sideways (holdToSlide, app/progress.js): the step
-     under it shows, the marker following, from open step to open step (scrubTo), a tick felt at each, the step line
-     switching to it as it goes; let go, it stays there, and a screen reader hears where. Past MANY_STEPS too: it's a
-     drag, not a tap. With one open step, nothing. On Today, the card `card`; on a run's screen, its step card (stripScrub
-     with runView.card). */
+  /* A finger pressed on a card's strip and dragged along it, mostly sideways (holdToSlide's `scrub`, app/progress.js):
+     the step under it shows, the marker following, from open step to open step (scrubTo), a tick felt at each, the step
+     line switching to it as it goes; let go, it stays there, and a screen reader hears where. Past MANY_STEPS too: it's
+     a drag, not a tap. With one open step, nothing. On Today, the card `card`; on a run's screen, its step card
+     (stripScrub with runView.card). */
   cardScrub(card){
     if (card.matches('.deleted, .lined')) return null;
     const id = +card.dataset.id;
     return this.stripScrub(card, () => { const t = this.tasks[id]; return t && this.cardOf(t, {cards: true}); });
   },
-  // The strip in `el` scrubbed, `now()` giving its card as it is at each move.
+  // The strip in `el` scrubbed, `now()` giving its card as it is at each move: move(dx, x), the finger `dx` along from
+  // where it went down, at `x`; then end().
   stripScrub(el, now){
     const line = el.querySelector('.card-line'), c0 = now();
     if (!c0 || c0.n < 2 || !line) return null;
     let last = 0, moved = false;
-    return {el: null, page: {
-      begin(){},
+    return {scrub: {
       move: (dx, x) => {
         const c = now(), r = line.getBoundingClientRect(), dir = Math.sign(dx - last) || 1;
         last = dx;
         const i = c ? scrubTo(c.all, c.steps, segmentOf(x - r.left, r.width, c.total), dir) : -1;
         if (i < 0 || i === c.i) return;
-        haptic('tick'); this.showCardStep(c, i, 'none', true); moved = true;
+        haptic('tick'); this.showCardStep(c, i); moved = true;
       },
       end: () => { const c = moved && now(); if (c) this.said = this.stepSaid(c); },
     }};
@@ -132,11 +129,12 @@ export default {
   // Leaving Today: every card back on its next step.
   resetCards(){ this.cardPage = {}; entering.clear(); shownStep.clear(); },
   /* A card's step line, new to it (paged, or the step before gone with the batch): it slides in from the way it was paged,
-     or fades in. Not when the card is first drawn, nor while scrubbing, nor with less motion asked for. */
+     or fades in. Not when the card is first drawn, nor while scrubbing (showCardStep marks it shown already), nor with
+     less motion asked for. */
   cardEntered(el, c){
     const was = shownStep.get(c.id), dir = entering.get(c.id) || 0;
     shownStep.set(c.id, c.step.id); entering.delete(c.id);
-    if (was === undefined || was === c.step.id || dir === 'none' || !motion()) return;
+    if (was === undefined || was === c.step.id || !motion()) return;
     el.animate([{transform: `translateX(${dir * 32}px)`, opacity: 0}, {transform: 'none', opacity: 1}], {duration: 180, easing: 'ease-out'});
   },
   // What Move all to today moves: each overdue row, and on an overdue card its task and its open subtasks overdue

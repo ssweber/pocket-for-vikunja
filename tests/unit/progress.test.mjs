@@ -110,20 +110,17 @@ test('sliding progress claims a task only where no one is on it and its slot can
 });
 
 test('a run\'s line has a segment per step, each filled by whether its own step is done; past MANY_STEPS, one line with ticks, filled the same way', () => {
-  assert.deepEqual(runLine(4, 1), { segs: 4, done: 1, many: false, fill: null }, 'only a count: filled from the left');
-  assert.deepEqual(runLine(MANY_STEPS, MANY_STEPS), { segs: 12, done: 12, many: false, fill: null });
-  assert.equal(runLine(MANY_STEPS + 1, 0).many, true);
-  assert.deepEqual(runLine(0, 0), { segs: 1, done: 0, many: false, fill: null }, 'no steps: nothing to fill, and nothing divided by 0');
-  assert.equal(runLine(3, 5).done, 3, 'never more done than there are steps');
-  assert.equal(runLine(4, 2, [true, false, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 50%,var(--accent) 50% 75%,var(--track) 75% 100%)', 'the first and third done: those two filled, not the first two');
-  assert.equal(runLine(3, 2, [true, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 66.667%,var(--track) 66.667% 100%)', 'steps alike side by side, one stretch');
-  assert.equal(runLine(3, 0, [false, false, false]).fill, 'linear-gradient(to right,var(--track) 0% 100%)');
+  const none = n => Array(n).fill(false);
+  assert.deepEqual([runLine(none(MANY_STEPS)).segs, runLine(none(MANY_STEPS)).many], [12, false]);
+  assert.equal(runLine(none(MANY_STEPS + 1)).many, true);
+  assert.deepEqual(runLine([]), { segs: 1, many: false, fill: null }, 'no steps: nothing to fill, and nothing divided by 0');
+  assert.equal(runLine([true, false, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 50%,var(--accent) 50% 75%,var(--track) 75% 100%)', 'the first and third done: those two filled, not the first two');
+  assert.equal(runLine([true, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 66.667%,var(--track) 66.667% 100%)', 'steps alike side by side, one stretch');
+  assert.equal(runLine([false, false, false]).fill, 'linear-gradient(to right,var(--track) 0% 100%)');
   const many = Array.from({ length: 14 }, (_, i) => i === 1 || i === 8);   // the 2nd and 9th of 14 done
-  assert.deepEqual([runLine(14, 2, many).many, runLine(14, 2, many).fill], [true, 'linear-gradient(to right,var(--track) 0% 7.143%,var(--accent) 7.143% 14.286%,var(--track) 14.286% 57.143%,var(--accent) 57.143% 64.286%,var(--track) 64.286% 100%)'], 'past MANY_STEPS too, each step’s stretch by its own step');
-  assert.equal(runLine(14, 2).fill, null, 'only a count: filled from the left');
-  assert.equal(runLine(4, 1, [true]).fill, null, 'which steps, not matching how many: by count');
-  assert.equal(runLine(4, 1, [1, 0.5, 0, true]).fill, 'linear-gradient(to right,var(--accent) 0% 37.5%,var(--track) 37.5% 75%,var(--accent) 75% 100%)', 'a step half done: half its segment, from the left');
-  assert.equal(runLine(2, 0, [0, 0.25]).fill, 'linear-gradient(to right,var(--track) 0% 50%,var(--accent) 50% 62.5%,var(--track) 62.5% 100%)');
+  assert.deepEqual([runLine(many).many, runLine(many).fill], [true, 'linear-gradient(to right,var(--track) 0% 7.143%,var(--accent) 7.143% 14.286%,var(--track) 14.286% 57.143%,var(--accent) 57.143% 64.286%,var(--track) 64.286% 100%)'], 'past MANY_STEPS too, each step’s stretch by its own step');
+  assert.equal(runLine([1, 0.5, 0, true]).fill, 'linear-gradient(to right,var(--accent) 0% 37.5%,var(--track) 37.5% 75%,var(--accent) 75% 100%)', 'a step half done: half its segment, from the left');
+  assert.equal(runLine([0, 0.25]).fill, 'linear-gradient(to right,var(--track) 0% 50%,var(--accent) 50% 62.5%,var(--track) 62.5% 100%)');
 });
 
 test('a nudge: a touch moved up or down past a tap, within about a row, and slow as it lifts; else a tap or a fling', () => {

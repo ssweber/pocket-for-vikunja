@@ -227,17 +227,17 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 :is(.row,#d-subtasks) :is(input,textarea){-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 /* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
 .row::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(var(--pct,0) * (100% - var(--row-inset)));background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
-/* A run's line: a segment per step (--segs), each filled by whether its step is done (--fill, from runLine), or with
-   only a count, those done filled from the left (--done), the rest a faint track. Past 12 steps (runLine), one line with
+/* A run's line: a segment per step (--segs), each filled by whether its step is done (--fill, from runLine), on a
+   faint track (all of it, with no steps). Past 12 steps (runLine), one line with
    a small tick above it at each step, each step's stretch filled the same way. Its steps are its progress: it isn't
    slid. */
 .row.cl-run::after{width:calc(100% - var(--row-inset));border-radius:0}
-.row.cl-run::after,.card-line{background:var(--fill,linear-gradient(to right,var(--accent) calc(var(--done,0) / var(--segs,1) * 100%),var(--track) 0));
+.row.cl-run::after,.card-line{background:var(--fill,var(--track));
   -webkit-mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat;
   mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat}
 .row.cl-run.many-steps::after,.card-line.many-steps{-webkit-mask:none;mask:none;height:7px;background:
   repeating-linear-gradient(to right,transparent 0 calc(100% / var(--segs) - 1px),var(--muted) 0 calc(100% / var(--segs))) 0 0/calc(100% + 1px) 4px no-repeat,
-  var(--fill,linear-gradient(to right,var(--accent) calc(var(--done) / var(--segs) * 100%),var(--track) 0)) 0 100%/100% 3px no-repeat}
+  var(--fill,linear-gradient(var(--track),var(--track))) 0 100%/100% 3px no-repeat}
 .row.setting{background:linear-gradient(to right,var(--surface) var(--row-inset),var(--accent-soft) 0 calc(var(--row-inset) + var(--slide) * (100% - var(--row-inset))),var(--surface) 0)}
 .row.current.setting{background:linear-gradient(to right,var(--accent-fill) calc(var(--slide) * 100%),var(--accent-soft) 0)}
 /* While it's being set, from --slide, which the screen's redraws don't touch (progress.js) */

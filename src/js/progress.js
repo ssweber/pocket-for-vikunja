@@ -66,13 +66,10 @@ export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
    a small tick at each step instead. `segs` is at least 1, for the CSS to divide by. Given which steps are done
    (`which`, in the line's order), each segment, or past MANY_STEPS each step's stretch between two ticks, is filled by
    whether its own step is done (`fill`, the line's background), so a filled one is always a done step; a number from 0
-   to 1 instead fills that much of it from the left (a card's step showing, by its progress); given only how many
-   (`done`), the steps done are filled from the left. */
+   to 1 instead fills that much of it from the left (a card's step showing, by its progress). With no steps, no fill:
+   the line is its track. */
 export const MANY_STEPS = 12;
-export const runLine = (total, done, which = null) => {
-  const many = total > MANY_STEPS;
-  return {segs: Math.max(total, 1), done: Math.max(0, Math.min(done, total)), many, fill: which && total && which.length === total ? segFill(which) : null};
-};
+export const runLine = which => ({segs: Math.max(which.length, 1), many: which.length > MANY_STEPS, fill: which.length ? segFill(which) : null});
 /* The line's background, each step's stretch filled or not: a stop at k / n of the way, which always falls in the gap
    before segment k (the CSS cuts each segment (100% + 3px) / n wide, less a 3px gap), or past MANY_STEPS on the tick
    between two stretches; a step part done, a stop that far into its stretch. Stretches alike side by side are one. */

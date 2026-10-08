@@ -404,7 +404,7 @@ export default {
        the open steps, and the step on the card if it's done (tapped in the list), as Today's card does (showCardStep). */
     const pages = step ? steps.filter(s => !s.done || s === step) : [];
     const card = step && {runScreen: true, id: r.run.id, step, i: pages.indexOf(step), n: pages.length, steps: pages, all: steps, at, total,
-      line: runLine(total, doneCount, steps.map(s => s.done ? 1 : s === step ? s.pct / 100 : 0)),
+      line: runLine(steps.map(s => s.done ? 1 : s === step ? s.pct / 100 : 0)),
       lineText: `${didCount} of ${total} steps done` + (skippedN ? `, ${skippedN} skipped` : '')};
     return {steps, total, doneCount, didCount, skippedN, allDone, at, step, card, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
@@ -481,8 +481,7 @@ export default {
   // for any other task, whose line is one.
   runLineOf(t){
     if (!this.isRunTask(t)) return null;
-    const which = stepsOf(t).map(x => this.stepDone(x.id, x.done));
-    return runLine(which.length, which.filter(Boolean).length, which);
+    return runLine(stepsOf(t).map(x => this.stepDone(x.id, x.done)));
   },
   /* Whether a row is a checklist run's step, whose box is square: things that behave differently look different, and a
      step is ticked through its run (with its ✅), where a task or a subtask has a round one. On a run's screen, in the

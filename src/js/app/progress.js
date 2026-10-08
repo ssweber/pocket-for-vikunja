@@ -130,7 +130,7 @@ export default {
   /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
      swiped to its Delete (swipeOf), `reorder` if it can be moved (dragOf), and if its progress can be set, {el: the row,
      start, width, show(pct, x: where the finger is), begin() as the slide starts, finish(pct, or null if nothing changed)},
-     and `page` if it's a card on Today, which a swipe either way pages (pageOf).
+     or `scrub` if it's a card's strip, which a finger dragged along it scrubs through (stripScrub, app/cards.js).
      Moving before the hold ends is a scroll or a tap as usual, or, sideways, the swipe or the scrubbing; once the hold has
      ended (a tick is felt, and the row lifts), nothing scrolls or swipes until the finger lifts. The first LOCK_PX it
      moves then decide the way: sideways sets progress, from where it was, in snaps of 25% (slidePct), a tick felt at
@@ -145,7 +145,7 @@ export default {
       const {s, mode, pct, dx} = g; g = null;
       s.el?.classList.remove('held');
       if (mode === 'swipe') { s.swipe.end(commit ? dx : null); return; }
-      if (mode === 'page') { s.page.end(commit ? dx : null); return; }
+      if (mode === 'scrub') { s.scrub.end(); return; }
       if (mode === 'reorder') s.reorder.end(commit);
       const set = commit && mode === 'slide' && pct !== s.start;
       if (mode !== 'wait') s.finish?.(set ? pct : null);
@@ -166,14 +166,14 @@ export default {
       if (g.mode === 'wait') {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
-        // A card's strip on Today, dragged along, mostly sideways: its steps, scrubbed through (cardScrub).
-        if (s.page && scrubStarts(dx, dy, g.x0, innerWidth)) { clearTimeout(g.timer); g.mode = 'page'; sliding = true; s.page.begin(); }
+        // A card's strip, dragged along, mostly sideways: its steps, scrubbed through (stripScrub).
+        if (s.scrub && scrubStarts(dx, dy, g.x0, innerWidth)) { clearTimeout(g.timer); g.mode = 'scrub'; sliding = true; }
         // Not a swipe it can take (none on Today, or to the right): a sideways move does nothing, not even open the task
         // where a mouse lets go; up or down is a scroll.
         else if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
         else { clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin(); }
       }
-      if (g.mode === 'swipe' || g.mode === 'page') { g.dx = e.clientX - g.x0; s[g.mode === 'swipe' ? 'swipe' : 'page'].move(g.dx, e.clientX); return; }
+      if (g.mode === 'swipe' || g.mode === 'scrub') { g.dx = e.clientX - g.x0; s[g.mode].move(g.dx, e.clientX); return; }
       if (getSelection()?.rangeCount) getSelection().removeAllRanges();     // whatever the long press selected near the row
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
