@@ -519,6 +519,12 @@ body.sheet-open{overflow:hidden}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:6px 0;outline:0}
 .prop input[type=datetime-local]::-webkit-calendar-picker-indicator{margin-left:8px}
+/* A row takes a tap anywhere (propTap); one with only a select has it over the whole row, its words where they were
+   (past the label: the row's padding, the label, the gap), so the phone's own list opens wherever it's tapped */
+.prop:has([data-tap]),.prop.sel{cursor:pointer}
+.prop.sel{position:relative}
+.prop.sel select{position:absolute;inset:0;width:100%;height:100%;padding:0 14px 0 98px}
+.prop.sel:has(select:focus-visible){box-shadow:inset 0 0 0 2px var(--accent)}
 .chip.rem{cursor:default;padding-right:6px}
 .prop-note{margin:0;padding:0 14px 12px}
 .assign-pick{flex:1 1 100%;min-width:0}

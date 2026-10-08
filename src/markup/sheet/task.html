@@ -47,24 +47,26 @@
            opened from its template would show for a frame with the template's date and steps under its own name -->
       <!-- A template's: when it comes round, as Vikunja's repeating task, and the reminders Vikunja emails before then -->
       <template x-if="checklistRole === 'template'"><div class="h3">When it's due</div></template>
+      <!-- A row takes a tap anywhere (propTap): its date's picker, the list of its select, or its Add; a row with only a
+           select has it over the whole row (.prop.sel), so the phone opens it where showPicker can't -->
       <template x-if="!ofTemplate || checklistRole === 'template'"><div class="card" id="d-due-card">
-        <div class="prop"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
-          <input type="datetime-local" id="d-due" :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
+        <div class="prop" @click="propTap($event)"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
+          <input type="datetime-local" id="d-due" data-tap :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
           <template x-if="isSet(dueShown) && canEdit"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="setDue(ZERO)"><svg class="i"><use href="#i-close"/></svg></button></template>
         </span></div>
-        <template x-if="checklistRole === 'template'"><div class="prop"><span class="k">Repeats</span><span class="v">
+        <template x-if="checklistRole === 'template'"><div class="prop sel"><span class="k">Repeats</span><span class="v">
           <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
           </select>
         </span></div></template>
         <!-- Reminders, which Vikunja sends by email: counted back from the due date when there is one, or at a set time.
              Only while a task isn't done, so a template's only while it comes round. -->
-        <template x-if="checklistRole !== 'template' || isSet(dueShown)"><div class="prop" id="d-reminders"><span class="k">Reminders</span><span class="v">
+        <template x-if="checklistRole !== 'template' || isSet(dueShown)"><div class="prop" id="d-reminders" @click="propTap($event)"><span class="k">Reminders</span><span class="v">
           <template x-for="(r, k) in sheet.task.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
             <template x-if="canEdit"><button class="chip-x" :aria-label="'Remove the reminder ' + reminderText(r)" @click="removeReminder(k)"><svg class="i"><use href="#i-close"/></svg></button></template></span></template>
-          <template x-if="canEdit && !sheet.remindAt"><select id="d-remind-add" aria-label="Add a reminder" @change="addReminder($event.target.value); $event.target.value = ''">
+          <template x-if="canEdit && !sheet.remindAt"><select id="d-remind-add" data-tap aria-label="Add a reminder" @change="addReminder($event.target.value); $event.target.value = ''">
             <option value="">Add a reminder</option><template x-for="o in reminderPresets" :key="o.value"><option :value="o.value" x-text="o.label"></option></template></select></template>
-          <template x-if="sheet.remindAt"><span class="v"><input type="datetime-local" id="d-remind-at" aria-label="Remind me at" @change="addReminderAt($event.target.value)">
+          <template x-if="sheet.remindAt"><span class="v"><input type="datetime-local" id="d-remind-at" data-tap aria-label="Remind me at" @change="addReminderAt($event.target.value)">
             <button class="icon-btn plain" aria-label="Don't add a reminder" @click="sheet.remindAt = false"><svg class="i"><use href="#i-close"/></svg></button></span></template>
         </span></div></template>
         <template x-if="remindersNote && (sheet.task.reminders || []).length && (checklistRole !== 'template' || isSet(dueShown))"><p class="note prop-note" x-text="remindersNote"></p></template>
@@ -232,19 +234,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
 
       <div class="h3">Details</div>
       <div class="card">
-        <div class="prop"><span class="k">Project</span><span class="v">
+        <div class="prop sel"><span class="k">Project</span><span class="v">
           <select id="d-proj" aria-label="Project" :disabled="!canEdit" @change="moveTask(+$event.target.value)">
             <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheet.task.project_id" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>
           </select>
         </span></div>
-        <div class="prop"><span class="k">Labels</span><span class="v">
+        <div class="prop" @click="propTap($event)"><span class="k">Labels</span><span class="v">
           <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
           <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">The “template” label is what makes it a template.</span></template>
-          <template x-if="canEdit"><button class="add-label" id="d-add-label" @click="toggleLabelPicker()">Add</button></template>
+          <template x-if="canEdit"><button class="add-label" id="d-add-label" data-tap @click="toggleLabelPicker()">Add</button></template>
         </span></div>
-        <div class="prop"><span class="k">Assigned</span><span class="v" id="d-assignees">
+        <div class="prop" @click="propTap($event)"><span class="k">Assigned</span><span class="v" id="d-assignees">
           <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
-          <template x-if="!sheet.assigning && canEdit"><button class="add-label" id="d-add-assignee" @click="sheet.assigning = true">Add</button></template>
+          <template x-if="!sheet.assigning && canEdit"><button class="add-label" id="d-add-assignee" data-tap @click="sheet.assigning = true">Add</button></template>
           <template x-if="sheet.assigning"><div class="assign-pick">
             <form class="assign-form" @submit.prevent="assign()">
               <input id="d-assign-in" placeholder="Name or username" aria-label="Who to assign" autocapitalize="off" autocomplete="off" spellcheck="false" enterkeyhint="done"
@@ -257,7 +259,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           </div></template>
         </span></div>
         <!-- Not for a step: a template's steps and a run's are copied, not repeated -->
-        <template x-if="!['template', 'tplstep', 'step'].includes(checklistRole)"><div class="prop"><span class="k">Repeats</span><span class="v">
+        <template x-if="!['template', 'tplstep', 'step'].includes(checklistRole)"><div class="prop sel"><span class="k">Repeats</span><span class="v">
           <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
           </select>

@@ -302,6 +302,18 @@ export default {
     if (v === 'at') { this.sheet.remindAt = true; this.$nextTick(() => { const el = document.getElementById('d-remind-at'); el?.focus(); try { el?.showPicker(); } catch {} }); }
     else if (v) this.changeReminders({relative_to: 'due_date', relative_period: +v}, null);
   },
+  /* A tap anywhere on one of the sheet's label-and-value rows (Due, Reminders, Labels, Assigned) works its control,
+     marked data-tap: a date's picker, a select's list (or, where the phone can't open one from here, the select
+     focused), or the row's Add. A tap on a control, or on a button in the row (a date's ×, a chip's ×), is its own. The
+     control stays the one stop for a keyboard: the row isn't a second. Repeats and Project don't need it: their select
+     lies over the whole row (.prop.sel). */
+  propTap(e){
+    const el = e.currentTarget.querySelector('[data-tap]');
+    if (!el || el.disabled || e.target.closest('button, a, input, select, textarea, label, form')) return;
+    if (el.tagName === 'BUTTON') { el.click(); return; }
+    el.focus();
+    try { el.showPicker(); } catch {}
+  },
   addReminderAt(v){ this.sheet.remindAt = false; if (v) this.changeReminders({reminder: new Date(v).toISOString()}, null); },
   removeReminder(k){ const r = plainReminders(this.sheet.task)[k]; if (r) this.changeReminders(null, r); },
   // Add a reminder or take one out, of those Vikunja has when it's sent: one added or removed elsewhere since the sheet
