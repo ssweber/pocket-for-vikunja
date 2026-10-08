@@ -68,8 +68,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   whatever its steps hold.
   Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
   its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
-  own order), whoever it's for, or the subtask of yours that brought the card onto Today. Ticked, a step stays on the
-  card, ticked, until the ticks leave together; then the step after it comes in. Holding the step line and sliding sets
+  own order), whoever it's for, or the subtask of yours that brought the card onto Today. A run's card goes by its
+  screen's rule instead: the next step that can be done now, not one still counting down. Ticked, a step stays on the
+  card, ticked, until the ticks leave together; then the step after it comes in (on a run's, the next by that rule). Holding the step line and sliding sets
   that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. Under
   the step line, at the card's foot, is its strip: a line in segments, one for each subtask, each filled once its step
   is done, with the step showing outlined on it and filled as far as its progress (the step line has no bar of its
@@ -328,14 +329,17 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    the project, the template's assignees to start with. The steps say who each is for. A name, like "Saturday", takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
    seen under Checklists, and is set up once Pocket reaches Vikunja. A step assigned to someone in the template stays
    assigned to them in every run.
-4. **Work through it.** One step at a time: **Done**, or **Skip**. A note typed on the step goes with either: Done
-   saves it on the step, and Skip makes it the reason. After Done, the next step that can be done is on screen, not one
-   still counting down. Add a photo or a note to a step, or a note to the whole run; a step with notes has a mark on its
-   row. **Last time** shows the notes from the last finished run of the same template, as a handover, and each step's
-   card shows the ones left on it (ones that come after the run is on screen from the next step on, so the steps
-   don't move). ‹ and › beside the step's number show the step before and after. On a long run,
-   the bar with the count stays at the top: tap it to go back up. A skipped step counts as skipped, not done. A run
-   just started says so at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
+4. **Work through it.** One step at a time, on its card: **Done**, or **Skip**. A note typed on the step goes with
+   either: Done saves it on the step, and Skip makes it the reason. The run opens on the next step that can be done
+   now, and after Done that's the step on screen: not one still counting down. Add a photo or a note to a step, or a
+   note to the whole run; a step with notes has a mark on its row. **Last time** shows the notes from the last finished
+   run of the same template, as a handover, and each step's card shows the ones left on it (ones that come after the
+   run is on screen from the next step on, so the steps don't move). At the top of the step's card is the strip a card
+   on Today has: the run's line, a segment for each step, the step on the card outlined and filled by its progress,
+   and "3 of 6", the step's place in the run. Its **‹** and **›**, a tap on an open step's segment, or a finger dragged
+   along it, go through the steps not done yet; a done step is shown by tapping its row under **Steps**. Who's on the
+   step is beside its title, as on its row: **+ me** says you're doing it. A skipped step counts as skipped, not done.
+   A run just started says **Started** at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, shown as a task's tick is (in
    its sheet, with an Undo); with steps not done, it asks first, and they stay not done.
 
@@ -364,11 +368,11 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   done asks first: theirs stays on it. A step ticked on
   Today counts the same.
 - **Today** shows your runs in progress, to the person who started the run and the person it's for, each as a card
-  (see **Cards on Today**, under Tasks): its name, who it's for, and its next step, with its countdown when the step is
-  timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
+  (see **Cards on Today**, under Tasks): its name, who it's for, and its next step, the one its screen opens on (not one
+  counting down), with its countdown when the step is timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
   under **Checklist runs**, or with a step due, by that step's date. A run's line is in segments, one for each step,
   filled as steps are done (past 12 steps, one line with a small mark at each step): on its card, on its row under
-  Checklists, and as the bar at the top of its screen. A run has no tick on Today: it's finished on its screen. Tapping
+  Checklists, and on the strip at the top of its screen's step card. A run has no tick on Today: it's finished on its screen. Tapping
   a run's name opens it; tapping a step opens its run on that step.
 - **A step has a square box**, wherever it shows: on its run's screen, in the run's sheet, and on Today. A task or a
   subtask has a round one. They work differently (a step's tick records who did it, with its ✅), so they look

@@ -147,7 +147,7 @@ function runSteps(){
 document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
-  c.specimen = []; c.specimenCards = [];
+  c.specimen = []; c.specimenCards = []; c.specimenRunCards = [];
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -172,7 +172,9 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.slow = ['specimen-tick'];
     this.view.run = {run: {...run, done: true}, steps: s.steps, at: null, last: null};
     const finished = this.runView.steps;
-    this.view.run = {run, steps: s.steps, at: 4, last: null};
+    // Its step card, on a step of yours counting down, one Priya is on, half done, and one done by Priya (tapped in the
+    // list): each as runView has it then, to draw step-card.html with.
+    this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {held: 75}};
     // Today's cards: their subtasks in the store, the van's paged to its second open step, the shelves' to their third.

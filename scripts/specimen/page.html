@@ -44,6 +44,12 @@
           <!-- include markup/today-item.html -->
         </template>
       </div></template>
+      <!-- A run's step card (step-card.html), with Today's card's strip at its top: the run's line, the card's step marked
+           and filled by its progress, and its place; then its title and who's on it -->
+      <div class="sec">A run’s step card: on a step of yours, counting down, 5 of 11; one Priya is on, half done; one done, tapped in the list</div>
+      <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
+        <!-- include markup/step-card.html -->
+      </div></template>
       <!-- Above quick add's box on a project's list (cap-target.html): adding subtasks to the task touched last, after its
            last subtask, and after the subtask touched -->
       <div class="sec">Above the add box: what it adds subtasks to</div>
