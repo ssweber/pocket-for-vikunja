@@ -2295,6 +2295,15 @@ ${footName('Hooks')}`);
     const [segs, l] = await line.evaluate(el => [+getComputedStyle(el).getPropertyValue('--segs'), el.getBoundingClientRect().toJSON()]);
     await page.mouse.click(l.left + (k + 0.5) * (l.width + 3) / segs - 1.5, l.top + l.height / 2 + dy);
   };
+  /* Each step's segment (or past 12 steps, its stretch) on a card's line, as drawn: its colour at its middle, from the
+     stops of the line's fill (its last layer, not the ticks above it), and the colour a done one has (the mark's). */
+  const lineFills = t => page.locator(`${cardOf(t)} .card-line`).evaluate(el => {
+    const cs = getComputedStyle(el), n = +cs.getPropertyValue('--segs'), bg = cs.backgroundImage, stops = [];
+    const fill = bg.slice([...bg.matchAll(/(?<!repeating-)linear-gradient\(/g)].pop().index);
+    for (const m of fill.matchAll(/(rgba?\([^)]*\))((?:\s+[-\d.]+%)+)/g)) for (const p of m[2].trim().split(/\s+/)) stops.push([m[1], parseFloat(p)]);
+    const at = x => (stops.filter(s => s[1] <= x).pop() || stops[0])?.[0], done = getComputedStyle(el.parentElement.querySelector('.card-mark')).borderTopColor;
+    return Array.from({ length: n }, (_, k) => at((k + 0.5) / n * 100) === done);
+  });
   await step('a-task-with-subtasks-is-a-card-on-today-on-its-next-one', async () => {
     const P = await make(`Pocket smoke card ${stamp}`, { due_date: todayAt(23), priority: 3 });
     const [A, B, C] = [await make(`Pocket smoke card A ${stamp}`), await make(`Pocket smoke card B ${stamp}`), await make(`Pocket smoke card C ${stamp}`)];
@@ -2457,29 +2466,32 @@ ${footName('Hooks')}`);
     } finally { for (const t of [A, B, C, P, Q]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
-  // Past 12 steps, its line has a tick at each step, too narrow to tap: a tap there pages nothing; its arrows still do.
+  // Past 12 steps, its line has a tick at each step, each step's stretch filled by whether its own step is done (the
+  // 2nd and 9th of 14 here), too narrow to tap: a tap there pages nothing; its arrows still do, past the done ones.
   await step('a-card-past-12-steps-pages-by-its-arrows-not-its-segments', async () => {
     const P = await make(`Pocket smoke long card ${stamp}`, { due_date: todayAt(23) }), kids = [];
-    for (let i = 1; i <= 13; i++) kids.push(await make(`Pocket smoke long card step ${i} ${stamp}`));
+    for (let i = 1; i <= 14; i++) kids.push(await make(`Pocket smoke long card step ${i} ${stamp}`, { done: i === 2 || i === 9 }));
     await under(P, kids);
+    await placeIn(await listView(home2), kids.map((k, i) => [k, 100 * (i + 1)]));
     const card = page.locator(cardOf(P.title)), count = card.locator('.card-strip > .card-n'), title = stepTitle(P.title);
     try {
       await toastGone();
       await refreshToday();
       await expect(card).toBeVisible({ timeout: 15000 });
-      await expect(count).toHaveText('1 of 13');
+      await expect(count).toHaveText('1 of 14');
       await expect(card.locator('.card-track')).toHaveClass(/\bmany-steps\b/);
-      const first = await title.textContent();
+      const filled = (await lineFills(P.title)).flatMap((f, k) => f ? [k + 1] : []);
+      if (JSON.stringify(filled) !== '[2,9]') throw new Error('its stretches filled are not its done steps: ' + JSON.stringify(filled));
       for (const k of [4, 12]) { await tapSeg(P.title, k); await later(500); }
-      await expect(count).toHaveText('1 of 13');
-      await expect(title).toHaveText(first);
+      await expect(count).toHaveText('1 of 14');
+      await expect(title).toHaveText(kids[0].title);
       if (await page.isVisible('#sheet')) throw new Error('a tap on its line opened the task');
       await card.locator('.pg.next').click();
-      await expect(count).toHaveText('2 of 13');
-      await expect(title).not.toHaveText(first);
+      await expect(count).toHaveText('3 of 14');
+      await expect(title).toHaveText(kids[2].title);
       await card.locator('.pg.prev').click();
-      await expect(count).toHaveText('1 of 13');
-      await expect(title).toHaveText(first);
+      await expect(count).toHaveText('1 of 14');
+      await expect(title).toHaveText(kids[0].title);
     } finally { for (const t of [...kids, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
@@ -2491,21 +2503,14 @@ ${footName('Hooks')}`);
     await under(P, kids);
     await placeIn(await listView(home2), kids.map((k, i) => [k, 100 * (i + 1)]));
     const card = page.locator(cardOf(P.title)), count = card.locator('.card-strip > .card-n'), title = stepTitle(P.title);
-    // Each segment's colour as drawn, at its middle, from the line's background's stops; and the colour a done one has.
-    const fills = () => card.locator('.card-line').evaluate(el => {
-      const cs = getComputedStyle(el), n = +cs.getPropertyValue('--segs'), stops = [];
-      for (const m of cs.backgroundImage.matchAll(/(rgba?\([^)]*\))((?:\s+[-\d.]+%)+)/g)) for (const p of m[2].trim().split(/\s+/)) stops.push([m[1], parseFloat(p)]);
-      const at = x => (stops.filter(s => s[1] <= x).pop() || stops[0])?.[0];
-      return { segs: Array.from({ length: n }, (_, k) => at((k + 0.5) / n * 100)), done: getComputedStyle(el.parentElement.querySelector('.card-mark')).borderTopColor };
-    });
     try {
       await toastGone();
       await refreshToday();
       await expect(card).toBeVisible({ timeout: 15000 });
       await expect(title).toHaveText(kids[1].title);
       await expect(count).toHaveText('2 of 4');
-      const f = await fills();
-      if (JSON.stringify(f.segs.map(c => c === f.done)) !== '[true,false,true,false]') throw new Error('its segments are not filled by their own steps: ' + JSON.stringify(f));
+      const f = await lineFills(P.title);
+      if (JSON.stringify(f) !== '[true,false,true,false]') throw new Error('its segments are not filled by their own steps: ' + JSON.stringify(f));
       // The fourth, open: it shows. The first and third, done: nothing. The second: back to it.
       await tapSeg(P.title, 3);
       await expect(title).toHaveText(kids[3].title);
