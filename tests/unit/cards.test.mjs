@@ -124,6 +124,15 @@ test('a card: its open steps in its List view’s order, the first showing, its 
   assert.deepEqual(app.rowMeta(c.step, c.g).map(m => m.text), [], 'not which step it is (that’s on the card’s title now), nor the project');
 });
 
+test('under a card’s title: its due date, its priority’s bars as its row shows them, only when it has one, and its project', () => {
+  const { app, parent } = today();
+  assert.deepEqual(app.cardMeta(parent).map(m => m.key), ['p'], 'no priority, no bars');
+  const urgent = { ...parent, priority: 4, due_date: at(8, 10) }, row = app.rowMeta(urgent, { depth: {} }).find(m => m.key === 'prio');
+  assert.deepEqual(app.cardMeta(urgent).map(m => m.key), ['due', 'prio', 'p']);
+  assert.deepEqual(app.cardMeta(urgent).find(m => m.key === 'prio'), row, 'the same as on its row');
+  assert.equal(row.label, 'Priority: Urgent');
+});
+
 test('a card’s count is its step’s real place, done steps included; paging skips the done ones and goes round; its line marks that place', () => {
   const steps = [{ id: 1, done: true }, { id: 2, done: true }, { id: 3 }, { id: 4 }, { id: 5 }];
   assert.deepEqual([placeOf(steps, steps[2]), placeOf(steps, { id: 9 }), placeOf(steps, null)], [2, -1, -1]);

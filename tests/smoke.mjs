@@ -2285,8 +2285,11 @@ ${footName('Hooks')}`);
     const l = el.parentElement.querySelector('.card-line').getBoundingClientRect(), m = el.getBoundingClientRect(), segs = +getComputedStyle(el).getPropertyValue('--segs');
     return Math.floor((m.left + m.width / 2 - l.left) / ((l.width + 3) / segs));
   });
+  // A card from the top: its heading (title, count and what's under it), its task's line, and the step line, each one's
+  // top and bottom, as drawn.
+  const cardStack = t => page.locator(cardOf(t)).evaluate(el => ['.card-head', '.card-track', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
   await step('a-task-with-subtasks-is-a-card-on-today-on-its-next-one', async () => {
-    const P = await make(`Pocket smoke card ${stamp}`, { due_date: todayAt(23) });
+    const P = await make(`Pocket smoke card ${stamp}`, { due_date: todayAt(23), priority: 3 });
     const [A, B, C] = [await make(`Pocket smoke card A ${stamp}`), await make(`Pocket smoke card B ${stamp}`), await make(`Pocket smoke card C ${stamp}`)];
     await under(P, [A, B, C]);
     await placeIn(await listView(home2), [[B, 100], [C, 200], [A, 300]]);    // B, C, A in its List view
@@ -2307,6 +2310,14 @@ ${footName('Hooks')}`);
       const at = await card.locator('.card-head').evaluate(el => { const n = el.querySelector('.card-n').getBoundingClientRect(); return { title: el.querySelector('.card-title').getBoundingClientRect().top, top: n.top, gap: el.getBoundingClientRect().right - n.right }; });
       if (Math.abs(at.top - at.title) > 6 || at.gap > 20) throw new Error('the count is not at the right of the title: ' + JSON.stringify(at));
       await expect.poll(() => markedSeg(P.title)).toBe(0);
+      // Its priority's bars under its title, as its row showed them.
+      await expect(card.locator('.card-head .meta .bars.p3')).toBeVisible();
+      await expect(card.locator('.card-head .meta [aria-label="Priority: High"]')).toHaveCount(1);
+      // Its task's line right under the heading, a clear gap before the step line, whose own bar is at its bottom: not
+      // one double line.
+      const [head, track, stepAt] = await cardStack(P.title);
+      if (!(head[1] <= track[0] && track[0] - head[1] <= 12 && track[1] < stepAt[0])) throw new Error('its line is not between its title and its step: ' + JSON.stringify([head, track, stepAt]));
+      if (await line.evaluate(el => getComputedStyle(el, '::after').bottom) !== '0px') throw new Error("the step's own bar is not at its bottom");
       for (const k of [A, B, C]) await expect(page.locator(`.item > .row:has(.title:has-text("${k.title}"))`)).toHaveCount(0);
       await expect(card.locator('.check')).toHaveCount(1);                     // the step's: the card's title has none
       // Its line, a segment per subtask, those done filled.

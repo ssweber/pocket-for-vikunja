@@ -709,6 +709,10 @@ try {
     await expect(page.locator(`${runCard} .card-head .card-n`)).toHaveText('3 of 3');
     await expect(page.locator(`${runCard} .step-line .title .sr`)).toHaveText('Step 3 of 3: ');
     if (await page.$eval(`${runCard} .card-mark`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '2') throw new Error('the step marked is not the third');
+    // Its line under its heading, over the step line; no priority, so no bars.
+    const stack = await page.$eval(runCard, el => ['.card-head', '.card-track', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
+    if (!(stack[0][1] <= stack[1][0] && stack[1][1] < stack[2][0])) throw new Error('its line is not between its title and its step: ' + JSON.stringify(stack));
+    await expect(page.locator(`${runCard} .card-head .bars`)).toHaveCount(0);
     await page.click(`${runCard} > .card-head`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
     if (await page.getAttribute('#btn-back', 'aria-label') !== 'Back to Today') throw new Error('back: ' + await page.getAttribute('#btn-back', 'aria-label'));
