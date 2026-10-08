@@ -36,6 +36,12 @@ function sections(){
   const tent = task({title: 'Put up the tent'}), pegs = task({title: 'Hammer in the pegs', percent_done: .5, state: {held: 50}, related_tasks: {parenttask: [{id: tent.id}]}});
   const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
+  // A long run: past 12 steps, its line is one, with a tick at each step (runLine).
+  const long = task({title: 'Deep clean · Oct 5', project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 899}],
+    subtask: Array.from({length: 16}, (_, i) => ({id: 950 + i, title: 'Step ' + (i + 1), done: i < 5}))}});
+  // A step of a run you've claimed, on Today, beside a task: square and round.
+  const stepRow = task({title: 'Take the croissants out', project_id: 2, assignees: [me], related_tasks: {parenttask: [{id: run.id}], copiedfrom: [{id: 903}]}});
+  const subRow = task({title: 'Book the back room', assignees: [me]});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
@@ -50,7 +56,8 @@ function sections(){
       task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, priya], comment_count: 3, repeat_after: 86400}),
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
     {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
-    {title: 'A checklist run', depth: {}, tasks: [run]},
+    {title: 'Checklist runs: a line in segments, a step each; past 12 steps, one line with a tick at each', depth: {}, tasks: [run, long]},
+    {title: 'A checklist’s step has a square box (a step you’ve claimed, on Today), a task or a subtask a round one', depth: {}, tasks: [stepRow, subRow]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
     // Held and slid (progress.js), swiped to its Delete (a project's list, which has one: delete), and a line in a
     // row's place (lines.js): shown by `state`.
@@ -67,6 +74,8 @@ function sections(){
     {title: 'The batch clearing: the rows ticked and deleted fold together, and the row below closes up once', depth: {}, tasks: [
       task({title: 'Sweep the yard', done: true, state: {leaving: 'done', folding: .45}}), task({title: 'Wipe the menus', state: {leaving: 'deleted', folding: .45}}),
       task({title: 'Light the heaters'})]},
+    // Slid on a task no one was doing: your initials in place of "+ me" as the slide starts (claimOnSlide).
+    {title: 'Slid on a task no one was doing: yours as the slide starts', depth: {}, tasks: [task({title: 'Restock the napkins', state: {held: 25, claim: true}})]},
     {title: 'A subtask held at 50%: its fill starts where its progress line does', depth: {[tent.id]: 0, [pegs.id]: 1}, tasks: [tent, pegs]},
     {title: 'A line in a row\'s place: a tick not saved', depth: {}, tasks: [
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
@@ -152,6 +161,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', action: {label: 'Undo', fn(){}}, ...t.state.line};
     for (const t of all) if (t.state.leaving) this.leaving[t.id] = t.state.leaving;
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
+    for (const t of all) if (t.state.claim) this.slideClaim = t.id;
     this.$nextTick(() => {
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
         if (t.state.held) { row.classList.add('held'); this.showSlide(row, t.state.held, 0); }
