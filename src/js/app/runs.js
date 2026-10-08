@@ -401,7 +401,7 @@ export default {
        after it, or at the end after the last. That step can be repeated there, done or not, once it's been sent. */
     const k = steps.findIndex(s => s.id === this.runInsert.after), under = k >= 0 ? steps[k] : null;
     const insert = !under ? null : {at: k, after: under, before: steps[k + 1]?.id ?? null, repeatable: under.pending ? null : under};
-    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, insert, finished, line: runLine(total, doneCount), timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, insert, finished, line: runLine(total, doneCount, steps.map(s => s.done)), timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       countText: `${didCount} of ${total} done` + (skippedN ? ` · ${skippedN} skipped` : ''),
       summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
@@ -473,11 +473,12 @@ export default {
     const steps = t.related_tasks?.subtask || [];
     return {done: steps.filter(x => this.stepDone(x.id, x.done)).length, total: steps.length};
   },
-  // A run's row's line, a segment for each step (runLine); null for any other task, whose line is one.
+  // A run's row's line, a segment for each step, in its order, each filled by whether its step is done (runLine); null
+  // for any other task, whose line is one.
   runLineOf(t){
     if (!this.isRunTask(t)) return null;
-    const {done, total} = this.runSteps(t);
-    return runLine(total, done);
+    const which = stepsOf(t).map(x => this.stepDone(x.id, x.done));
+    return runLine(which.length, which.filter(Boolean).length, which);
   },
   /* Whether a row is a checklist run's step, whose box is square: things that behave differently look different, and a
      step is ticked through its run (with its ✅), where a task or a subtask has a round one. On a run's screen, in the

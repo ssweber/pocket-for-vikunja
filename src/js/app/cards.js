@@ -28,7 +28,7 @@ export default {
     if (!steps.length) return null;
     const i = cardAt(steps, this.cardPage[t.id], c.focus), d = all.filter(done).length;
     const card = {id: t.id, step: steps[i], i, n: steps.length, steps, at: placeOf(all, steps[i]), total: all.length, all,
-      line: runLine(all.length, d), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
+      line: runLine(all.length, d, all.map(done)), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
     card.g = {depth: {}, card, paging: steps.length > 1};
     return card;
   },

@@ -23,7 +23,7 @@
      slot and progress, "Step 3 of 5" to a screen reader (its place among all the card's steps, done ones too), and
      paged (g.paging) by a swipe; its step coming in slides or fades in (cardEntered). -->
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, 'ins-on': t.i === g.insertAt} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), 'many-steps': !!runLineOf(t)?.many, lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card}" :data-id="t.id" :data-gestures="rowGestures(g)"
-     x-style="g.run ? {order: t.i * 2, '--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3), '--segs': runLineOf(t)?.segs ?? null, '--done': runLineOf(t)?.done ?? null}"
+     x-style="g.run ? {order: t.i * 2, '--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3), '--segs': runLineOf(t)?.segs ?? null, '--done': runLineOf(t)?.done ?? null, '--fill': runLineOf(t)?.fill ?? null}"
      x-effect="!g.sheet && !g.run && cursor?.id === t.id && watchCursor($el)" x-init="g.card && cardEntered($el, g.card)"
      @click.capture="if (!g.run && leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
   <!-- › opens the box under this step, to insert a step after it or repeat it -->

@@ -21,7 +21,7 @@
         <span class="meta" x-show="cardMeta(t).length"><template x-for="m in cardMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template></span></button>
       <div class="card-strip">
         <template x-if="c.n > 1"><button class="pg prev" aria-label="Show the step before" @click="pageCard(c, -1)"><svg class="i"><use href="#i-chev"/></svg></button></template>
-        <div class="card-track" :class="{'many-steps': c.line.many, jumps: c.n > 1 && !c.line.many}" x-style="{'--segs': c.line.segs, '--done': c.line.done, '--at': c.at}" @click="tapSegment(c, $event.clientX, $el.querySelector('.card-line'))">
+        <div class="card-track" :class="{'many-steps': c.line.many, jumps: c.n > 1 && !c.line.many}" x-style="{'--segs': c.line.segs, '--done': c.line.done, '--fill': c.line.fill, '--at': c.at}" @click="tapSegment(c, $event.clientX, $el.querySelector('.card-line'))">
           <div class="card-line" :class="{'many-steps': c.line.many}" role="img" :aria-label="c.lineText"></div><i class="card-mark" aria-hidden="true"></i></div>
         <template x-if="c.n > 1"><button class="pg next" aria-label="Show the step after" @click="pageCard(c, 1)"><svg class="i"><use href="#i-chev"/></svg></button></template>
         <template x-if="c.total > 1"><span class="card-n num" aria-hidden="true" x-text="(c.at + 1) + ' of ' + c.total"></span></template>

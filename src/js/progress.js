@@ -67,11 +67,27 @@ export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;
 // Whether sliding progress on a row says you're doing it: only where no one is yet and its slot can be tapped (not done,
 // not shared with you to read). Someone else's is never replaced, and yours is already yours (claimSlot, app/claims.js).
 export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
-/* A run's progress line is in segments, one per step, the steps done filled from the left; past MANY_STEPS they'd be
-   too short to read, so it's one line with a small tick at each step instead. `segs` is at least 1, for the CSS to divide
-   by. */
+/* A run's progress line is in segments, one per step; past MANY_STEPS they'd be too short to read, so it's one line with
+   a small tick at each step instead. `segs` is at least 1, for the CSS to divide by. Given which steps are done
+   (`which`, in the line's order), each segment is filled by whether its own step is done (`fill`, the line's
+   background), as a segment marks a step and a tap on one shows it; given only how many (`done`), or past MANY_STEPS,
+   the steps done are filled from the left. */
 export const MANY_STEPS = 12;
-export const runLine = (total, done) => ({segs: Math.max(total, 1), done: Math.max(0, Math.min(done, total)), many: total > MANY_STEPS});
+export const runLine = (total, done, which = null) => {
+  const many = total > MANY_STEPS;
+  return {segs: Math.max(total, 1), done: Math.max(0, Math.min(done, total)), many, fill: which && !many && total && which.length === total ? segFill(which) : null};
+};
+/* The line's background, each step's stretch filled or not: a stop at k / n of the way, which always falls in the gap
+   before segment k (the CSS cuts each segment (100% + 3px) / n wide, less a 3px gap). Steps alike side by side are one
+   stretch. */
+const segFill = which => {
+  const n = which.length, at = k => +(k / n * 100).toFixed(3) + '%', parts = [];
+  for (let k = 0, j; k < n; k = j) {
+    for (j = k + 1; j < n && !!which[j] === !!which[k];) j++;
+    parts.push(`var(${which[k] ? '--accent' : '--track'}) ${at(k)} ${at(j)}`);
+  }
+  return `linear-gradient(to right,${parts.join(',')})`;
+};
 
 /* ---------- a nudge: a short, slow scroll that aims the add box (an experiment) ---------- */
 /* On a project's list, a touch that starts on a row and turns into a short, slow scroll makes that row the add box's

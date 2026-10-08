@@ -117,7 +117,7 @@ test('a card: its open steps in its List view’s order, the first showing, its 
   assert.deepEqual(c.steps.map(s => s.title), ['Chairs', 'Tables', 'Lights']);
   assert.deepEqual([c.step.title, c.i, c.n], ['Chairs', 0, 3]);
   assert.deepEqual([c.at, c.total], [1, 4], 'its count, 2 of 4: its place among all its subtasks, the done one first');
-  assert.deepEqual(c.line, { segs: 4, done: 1, many: false });
+  assert.deepEqual(c.line, { segs: 4, done: 1, many: false, fill: 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 100%)' }, 'the done one first: its segment filled');
   assert.equal(c.lineText, '1 of 4 subtasks done');
   assert.deepEqual([c.g.paging, c.g.card === c], [true, true], 'the step line pages, and knows its card');
   assert.equal(app.cardOf(parent, { depth: {} }), null, 'only on Today’s lists');
@@ -164,6 +164,20 @@ test('a tap on a card’s line: the segment under it, an open step’s showing i
   assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'a done one’s segment: nothing');
   app.tapSegment(app.cardOf(parent, g), 100 + 110, line);
   assert.equal(app.cardOf(parent, g).step.title, 'Tables', 'back to the third');
+});
+
+test('a card’s line fills each segment by whether its own step is done: with the first and third done, those two, and only the open ones’ taps show them', () => {
+  const { app, parent, g } = today(), line = { getBoundingClientRect: () => ({ left: 0, width: 197 }) };   // 4 segments, 50px each
+  app.tasks[13].done = true;                                               // 14 and Tables done, the first and third
+  let c = app.cardOf(parent, g);
+  assert.equal(c.line.fill, 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 50%,var(--accent) 50% 75%,var(--track) 75% 100%)');
+  assert.deepEqual([c.step.title, c.at, c.line.done], ['Chairs', 1, 2]);
+  app.tapSegment(c, 175, line);
+  assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'the fourth, open');
+  for (const x of [25, 125]) app.tapSegment(app.cardOf(parent, g), x, line);
+  assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'the first and third, done: nothing');
+  app.tapSegment(app.cardOf(parent, g), 75, line);
+  assert.equal(app.cardOf(parent, g).step.title, 'Chairs', 'the second, open');
 });
 
 test('paged round, a screen reader hears which step; ticked, a step stays until the batch clears, then the next comes in', () => {
