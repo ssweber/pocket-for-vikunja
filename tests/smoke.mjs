@@ -2480,6 +2480,42 @@ ${footName('Hooks')}`);
     } finally { for (const t of [...kids, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
+  // Each segment of a card's line filled by whether its own step is done, not the first ones by count: a filled segment
+  // is a done step, whose tap does nothing; an open one's shows it.
+  await step('a-card-fills-each-segment-by-its-own-step', async () => {
+    const P = await make(`Pocket smoke gappy card ${stamp}`, { due_date: todayAt(23) });
+    const kids = [await make(`Pocket smoke gappy 1 ${stamp}`, { done: true }), await make(`Pocket smoke gappy 2 ${stamp}`), await make(`Pocket smoke gappy 3 ${stamp}`, { done: true }), await make(`Pocket smoke gappy 4 ${stamp}`)];
+    await under(P, kids);
+    await placeIn(await listView(home2), kids.map((k, i) => [k, 100 * (i + 1)]));
+    const card = page.locator(cardOf(P.title)), count = card.locator('.card-strip > .card-n'), title = stepTitle(P.title);
+    // Each segment's colour as drawn, at its middle, from the line's background's stops; and the colour a done one has.
+    const fills = () => card.locator('.card-line').evaluate(el => {
+      const cs = getComputedStyle(el), n = +cs.getPropertyValue('--segs'), stops = [];
+      for (const m of cs.backgroundImage.matchAll(/(rgba?\([^)]*\))((?:\s+[-\d.]+%)+)/g)) for (const p of m[2].trim().split(/\s+/)) stops.push([m[1], parseFloat(p)]);
+      const at = x => (stops.filter(s => s[1] <= x).pop() || stops[0])?.[0];
+      return { segs: Array.from({ length: n }, (_, k) => at((k + 0.5) / n * 100)), done: getComputedStyle(el.parentElement.querySelector('.card-mark')).borderTopColor };
+    });
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(card).toBeVisible({ timeout: 15000 });
+      await expect(title).toHaveText(kids[1].title);
+      await expect(count).toHaveText('2 of 4');
+      const f = await fills();
+      if (JSON.stringify(f.segs.map(c => c === f.done)) !== '[true,false,true,false]') throw new Error('its segments are not filled by their own steps: ' + JSON.stringify(f));
+      // The fourth, open: it shows. The first and third, done: nothing. The second: back to it.
+      await tapSeg(P.title, 3);
+      await expect(title).toHaveText(kids[3].title);
+      await expect(count).toHaveText('4 of 4');
+      for (const k of [0, 2]) { await tapSeg(P.title, k); await later(300); }
+      await expect(title).toHaveText(kids[3].title);
+      await expect(count).toHaveText('4 of 4');
+      await tapSeg(P.title, 1);
+      await expect(title).toHaveText(kids[1].title);
+      await expect(count).toHaveText('2 of 4');
+    } finally { for (const t of [...kids, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+
   await step('a-subtask-of-yours-made-today-brings-its-task-opened-on-it-an-old-one-doesnt', async () => {
     const me = await (await api('/user')).json(), far = new Date(Date.now() + 30 * 864e5).toISOString();
     const P = await make(`Pocket smoke later ${stamp}`, { due_date: far }), Q = await make(`Pocket smoke older ${stamp}`, { due_date: far });

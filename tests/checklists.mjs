@@ -616,6 +616,9 @@ try {
     if (radius !== '7px') throw new Error("a step's box isn't square: " + radius);
     const segs = await page.$eval('#run-bar .track', el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage]);
     if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's bar isn't a segment per step: " + segs.join(' '));
+    // Each segment filled by whether its own step is done (runLine's fill), not the first ones by count.
+    const barFill = await page.$eval('#run-bar .track', el => getComputedStyle(el).getPropertyValue('--fill').trim());
+    if (!/^linear-gradient\(to right,\S+ 0% .* 100%\)$/.test(barFill)) throw new Error("the run's bar isn't filled by its steps: " + barFill);
     try {
       await toastGone().catch(() => {});
       await slide(2.2);                                                      // 25%: yours, as the slide starts
@@ -781,6 +784,10 @@ try {
     // In segments, one per step, the steps done filled (runLine).
     const segs = await page.$eval(runRow, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).getPropertyValue('--done').trim(), getComputedStyle(el, '::after').maskImage || getComputedStyle(el, '::after').webkitMaskImage]);
     if (segs[0] !== '3' || segs[1] !== '2' || !/repeating-linear-gradient/.test(segs[2])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
+    // Each segment filled by whether its own step is done, in the run's order: the first two.
+    const rowFill = await page.$eval(runRow, el => getComputedStyle(el).getPropertyValue('--fill').trim());
+    const fillOf = rowFill.match(/^linear-gradient\(to right,(\S+) 0% 66\.667%,(\S+) 66\.667% 100%\)$/);
+    if (!fillOf || fillOf[1] === fillOf[2]) throw new Error("the run's line isn't filled by its steps: " + rowFill);
     await page.click(`.cl-run .body:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`, { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#step-done');
