@@ -2,6 +2,7 @@
   --bg:#EEF1EF; --surface:#FFFFFF; --sunk:#E3E8E5; --ink:#17201C; --muted:#5B6863; --line:#D6DDD9;
   --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#E3E8E5;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
+  --prio-1:#3B78B0; --prio-2:#A97B06; --prio-3:#C85A12; --prio-4:#B3203A;
   /* shadows, and the shade behind a sheet: the same in dark mode, whose block below redefines any that should differ */
   --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-pct:0 2px 10px rgba(0,0,0,.18); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
   --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
@@ -14,6 +15,7 @@
   --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
   --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#2C3833;
   --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B; --danger-ink:#1A080C;
+  --prio-1:#79AEE2; --prio-2:#E4C25A; --prio-3:#F2975A; --prio-4:#F26D82;
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
@@ -127,6 +129,16 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 :not(.tree) > .row > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:-14px;padding-right:14px}
 .row .title{font-size:16.5px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
+/* On one line (Today): the title cut short with "…", and at its right, when it's due, short, and its project's dot. Its
+   height is a row's with one line; a screen reader hears the rest (rowWhen) */
+.row.one-line .title-line{display:flex;align-items:baseline;gap:8px}
+.row.one-line .title{position:relative;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+/* what only a screen reader hears, kept at the start, not past the end of a title cut short */
+.row.one-line .title .sr,.card-head > .sr{left:0}
+.when{flex:none;display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);white-space:nowrap}
+.when .dot{margin:0}
+.when .due.overdue,.card-head .due.overdue{color:var(--overdue);font-weight:600}
+.when .due.today,.card-head .due.today{color:var(--today);font-weight:600}
 .meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:13.5px;color:var(--muted)}
 /* A long name with no spaces (an address pasted as a title, say) breaks where it must, rather than widening a row or a sheet */
 .meta > span,.d-path .linkish,.d-parent,.d-title h2,#sheet h3,.sec > span,.kicker,.cl .title{min-width:0;overflow-wrap:anywhere}
@@ -149,7 +161,10 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + 38px)}
 #run-steps > .row > .ins-open ~ button.check::after{left:44px;width:38px}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
-.check.p3,.check.p4,.check.p5{border-color:var(--overdue)}
+/* A tick's ring is its task's priority: low blue, medium amber, high orange, urgent red, do now red and thicker, filled
+   faintly; with none, grey. Each told apart in light and dark (motion-and-rows-plan, section 9) */
+.check.p1{border-color:var(--prio-1)} .check.p2{border-color:var(--prio-2)} .check.p3{border-color:var(--prio-3)}
+.check.p4{border-color:var(--prio-4)} .check.p5{border-color:var(--prio-4);border-width:3px;background:color-mix(in srgb,var(--prio-4) 16%,transparent)}
 .row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
 .row.done .check svg,.check.on svg{opacity:1}
 /* A checklist's step has a square box, a task and a subtask a round one: they behave differently (a step is ticked
@@ -193,7 +208,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .pic:has(> .badge) + .pic{margin-left:5px}                  /* the ✓ clear of the next picture, so it's plainly the doer's */
 .pic.mine{z-index:1}
 .pic .av{position:relative;width:28px;height:28px;border-radius:50%;background:var(--sunk);color:var(--ink);display:grid;place-items:center;font-size:11.5px;font-weight:700;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}
-.pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* a picture isn't dragged as an image: a row held there is held, its slide not cut off by the browser's own drag */
+.pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;-webkit-user-drag:none}
 .pic.mine .av{box-shadow:0 0 0 2px var(--accent)}
 .row.current .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--accent-soft)}
 .badge{position:absolute;z-index:2;right:-4px;bottom:-3px;width:15px;height:15px;border-radius:50%;background:var(--accent);display:grid;place-items:center;box-shadow:0 0 0 2px var(--surface)}
@@ -274,9 +290,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    under it, one step on the shared row, a plain row like any other; then, as its footer, its strip, how to get round
    its steps */
 .day-card{position:relative}
-.card-head{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:10px 14px 0;color:var(--ink)}
-.card-title{display:block;font-size:15px;font-weight:650;overflow-wrap:anywhere}
-.card-head .meta{margin-top:1px}
+/* its heading, one line: the title cut short with "…", its priority's bars, small, and when it's due, short, at the right */
+.card-head{position:relative;display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:12px 14px 0;color:var(--ink)}
+.card-title{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.card-head .bars{flex:none;height:9px}
+.card-head .due{flex:none;font-size:13.5px;color:var(--muted);white-space:nowrap}
+/* the step line's own bar is its segment of the strip; held and slid, its fill shows as on any row */
+.row.step-line:not(.setting)::after{display:none}
 /* The strip, the card's footer: ‹, its task's line, a segment per subtask, as a run's is, ›, and its count, the step
    showing's place among all its subtasks. Its controls are 48px tall, the strip's height, so they never reach the step
    line's taps; its line in their middle, a clear gap under the step's own bar, so the two never read as one. The arrows'

@@ -1,7 +1,7 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
 import {cache, collapse, colorOf, PRIOS, store, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError, why} from '../api.js';
-import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
+import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
@@ -106,6 +106,19 @@ export default {
     if (this.unmark(t.id)) { if (!g.sheet) this.aimAfterTick(t); return; }
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
+  },
+  /* A row on one line (g.line: Today, and a card's step line there; motion-and-rows-plan, section 9): at its right, when
+     it's due, short (shortDue; a run's step's countdown, "in 18m", "12m late"), red when late, and its project's colour
+     dot. Priority is its tick's colour (the p0–p5 classes), labels and counts are off Today, and all of what's under its
+     title elsewhere (rowMeta: when, in words, priority, project or run, the task it's under) is said to a screen reader
+     instead (`said`). */
+  rowWhen(t, g){
+    const now = this.route.name === 'today' && this.groupedAt || Date.now(), left = !t.done && this.stepRun(t) && isSet(t.due_date) && countdown(+new Date(t.due_date), now);
+    const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(now)), p = this.projById.get(t.project_id);
+    // (Photos still waiting to upload are said, though: that's not a count, it's work still to send.)
+    const said = this.rowMeta(t, g).filter(m => !/^l\d/.test(m.key) && !['sub', 'com'].includes(m.key) && (m.key !== 'att' || /waiting/.test(m.label)))
+      .map(m => m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text).filter(Boolean);
+    return {due, color: p ? colorOf(p.hex_color) : null, said: said.join(', ')};
   },
   /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. A step on a
      run's screen (g.run): Inserted or Repeated, its notes, and, not done, its countdown or when it's due. */

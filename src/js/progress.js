@@ -65,8 +65,9 @@ export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
 /* A run's progress line is in segments, one per step; past MANY_STEPS they'd be too short to read, so it's one line with
    a small tick at each step instead. `segs` is at least 1, for the CSS to divide by. Given which steps are done
    (`which`, in the line's order), each segment, or past MANY_STEPS each step's stretch between two ticks, is filled by
-   whether its own step is done (`fill`, the line's background), so a filled one is always a done step; given only how
-   many (`done`), the steps done are filled from the left. */
+   whether its own step is done (`fill`, the line's background), so a filled one is always a done step; a number from 0
+   to 1 instead fills that much of it from the left (a card's step showing, by its progress); given only how many
+   (`done`), the steps done are filled from the left. */
 export const MANY_STEPS = 12;
 export const runLine = (total, done, which = null) => {
   const many = total > MANY_STEPS;
@@ -74,14 +75,16 @@ export const runLine = (total, done, which = null) => {
 };
 /* The line's background, each step's stretch filled or not: a stop at k / n of the way, which always falls in the gap
    before segment k (the CSS cuts each segment (100% + 3px) / n wide, less a 3px gap), or past MANY_STEPS on the tick
-   between two stretches. Steps alike side by side are one stretch. */
+   between two stretches; a step part done, a stop that far into its stretch. Stretches alike side by side are one. */
 const segFill = which => {
-  const n = which.length, at = k => +(k / n * 100).toFixed(3) + '%', parts = [];
-  for (let k = 0, j; k < n; k = j) {
-    for (j = k + 1; j < n && !!which[j] === !!which[k];) j++;
-    parts.push(`var(${which[k] ? '--accent' : '--track'}) ${at(k)} ${at(j)}`);
-  }
-  return `linear-gradient(to right,${parts.join(',')})`;
+  const n = which.length, at = x => +(x / n * 100).toFixed(3) + '%', parts = [];
+  const add = (on, a, b) => { const last = parts.at(-1); if (last && last[0] === on && last[2] === a) last[2] = b; else parts.push([on, a, b]); };
+  which.forEach((v, k) => {
+    const f = Math.max(0, Math.min(1, v === true ? 1 : +v || 0));
+    if (f > 0) add(true, k, k + f);
+    if (f < 1) add(false, k + f, k + 1);
+  });
+  return `linear-gradient(to right,${parts.map(([on, a, b]) => `var(${on ? '--accent' : '--track'}) ${at(a)} ${at(b)}`).join(',')})`;
 };
 
 /* ---------- a nudge: a short, slow scroll that aims the add box (an experiment) ---------- */

@@ -117,7 +117,9 @@ test('a card: its open steps in its List view’s order, the first showing, its 
   assert.deepEqual([c.at, c.total], [1, 4], 'its count, 2 of 4: its place among all its subtasks, the done one first');
   assert.deepEqual(c.line, { segs: 4, done: 1, many: false, fill: 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 100%)' }, 'the done one first: its segment filled');
   assert.equal(c.lineText, '1 of 4 subtasks done');
-  assert.equal(c.g.card, c, 'the step line knows its card');
+  assert.deepEqual([c.g.card, c.g.line], [c, true], 'the step line knows its card, and is on one line');
+  app.tasks[12].percent_done = .5;
+  assert.equal(app.cardOf(parent, g).line.fill, 'linear-gradient(to right,var(--accent) 0% 37.5%,var(--track) 37.5% 100%)', 'the step showing, half done: half its segment, its bar on the strip');
   assert.equal(app.cardOf(parent, { depth: {} }), null, 'only on Today’s lists');
   assert.deepEqual(app.rowMeta(c.step, c.g).map(m => m.text), [], 'not which step it is (that’s on the card’s title now), nor the project');
 });
@@ -250,4 +252,15 @@ test('a card’s strip dragged along: the open step nearest the finger, done one
   assert.equal(app.said, 'Step 2 of 4: Chairs', 'where it stopped');
   app.tasks[12].done = app.tasks[13].done = true;
   assert.equal(app.cardScrub(card), null, 'one open step: nothing to scrub');
+});
+
+test('a row on Today, on one line: when it is due, short, its project’s dot, and the rest said to a screen reader', () => {
+  const { app } = today();
+  app.route = { name: 'today' };
+  const due = new Date(); due.setHours(23, 30, 0, 0);
+  const t = app.keep(task(20, { title: 'Post the rota', due_date: due.toISOString(), priority: 3, project_id: 5, labels: [{ id: 1, title: 'Front' }], comment_count: 2 }));
+  const w = app.rowWhen(t, { line: true, depth: {} });
+  assert.equal(w.due.text, due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  assert.ok(w.color, 'its project’s dot');
+  assert.match(w.said, /^Due Today .*, Priority: High, Café$/, 'when in words, its priority and its project; not its label nor its comments');
 });

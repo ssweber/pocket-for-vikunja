@@ -17,8 +17,9 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
    the screen used fastest (Delete stays in the task's ⋯), and Today is in the order things are due; anything with open
    subtasks or steps is a card there, showing its next step (cards.js). A project's list is for managing; search's
    results have no order of their own to move a row in. A task's sheet gives its subtasks both (sheet/task.html). Each
-   list (`g`) has these as its options, and a row writes them on itself for the gesture code (rowGestures). */
-export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}, today: {cards: true}}[name] || {});
+   list (`g`) has these as its options, and a row writes them on itself for the gesture code (rowGestures). Today's rows
+   are on one line (`line`: rowWhen, app/views.js). */
+export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}, today: {cards: true, line: true}}[name] || {});
 /* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
    can't reach the list's `g`: "delete" (swiped left, its Delete), "reorder" (held and moved up or down). */
 export const rowGestures = g => ['delete', 'reorder'].filter(k => g?.[k]).join(' ');

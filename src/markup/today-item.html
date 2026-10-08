@@ -1,7 +1,8 @@
 <!-- One thing on Today (screens/lists.html), task `t` in Today's list `g`: its row (task-row.html), or, with open subtasks
      or steps, its card (app/cards.js). A card is a group named by its title, which is a heading that opens the task (no
-     tick: it's closed in its sheet, or on Projects), with its due date, priority and project under it; then one line
-     for a step, the shared row with the card's own options (c.g: no Delete, no moving it), a plain row like any other;
+     tick: it's closed in its sheet, or on Projects), on one line: its title, its priority's bars and when it's due,
+     short, its project too to a screen reader (cardWhen); then one line for a step, on one line as a row on Today is,
+     with no bar of its own (its progress fills its segment of the strip), the shared row with the card's own options (c.g: no Delete, no moving it), a plain row like any other;
      then, as its footer, its strip, how to get round its steps: ‹, its task's line, a segment per subtask, each filled
      by whether its step is done, the step showing marked on it, ›, and its count, "3 of 5", the step's place among all
      its subtasks, done ones too (a screen reader hears it on the step line instead). The card pages on its strip only:
@@ -20,8 +21,7 @@
     <div class="day-card" role="group" :aria-label="rowTitle(t)" :data-id="t.id"
          :class="{leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
          @click.capture="if (leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
-      <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="rowTitle(t)"></span>
-        <span class="meta" x-show="cardMeta(t).length"><template x-for="m in cardMeta(t)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template></span></button>
+      <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="rowTitle(t)"></span><template x-if="cardWhen(t).said"><span class="sr" x-text="', ' + cardWhen(t).said"></span></template><template x-if="cardWhen(t).prio"><span class="bars" :class="'p' + cardWhen(t).prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="cardWhen(t).due"><span class="due num" :class="cardWhen(t).due.cls" aria-hidden="true" x-text="cardWhen(t).due.text"></span></template></button>
       <template x-for="[t, g] in [[c.step, c.g]]" :key="t.id">
         <!-- include markup/task-row.html -->
       </template>

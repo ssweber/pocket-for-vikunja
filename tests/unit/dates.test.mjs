@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, dueInfo, fromLocalInput, isLate, isSet, repeats, startOfDay, toLocalInput } from '../../src/js/dates.js';
+import { addDays, dueInfo, fromLocalInput, isLate, isSet, repeats, shortDue, startOfDay, toLocalInput } from '../../src/js/dates.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
 const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
@@ -13,6 +13,19 @@ test('Vikunja\'s "no date" isn\'t a date', () => {
   assert.equal(!!isSet(null), false);
   assert.equal(!!isSet(''), false);
   assert.equal(isSet(at(7)), true);
+});
+
+test('a row on one line says when, short: a time today, a weekday this week, a date beyond; red when late', () => {
+  const day = (d, o) => new Date(2026, 9, d).toLocaleDateString([], o);
+  assert.deepEqual(shortDue(at(7, 16, 30), NOW), { text: fmt(16, 30), cls: 'today' });
+  assert.deepEqual(shortDue(at(7, 11, 55), NOW), { text: fmt(11, 55), cls: 'overdue' }, 'its time passed: late');
+  assert.deepEqual(shortDue(at(7), NOW), { text: 'Today', cls: 'today' }, 'today, with no time of its own');
+  assert.deepEqual(shortDue(at(9, 9), NOW), { text: day(9, { weekday: 'short' }), cls: '' }, 'this week: its weekday, no time');
+  assert.deepEqual(shortDue(at(13), NOW), { text: day(13, { weekday: 'short' }), cls: '' });
+  assert.deepEqual(shortDue(at(14), NOW), { text: day(14, { month: 'short', day: 'numeric' }), cls: '' }, 'a week on: its date');
+  assert.deepEqual(shortDue(at(2), NOW), { text: day(2, { month: 'short', day: 'numeric' }), cls: 'overdue' }, 'days ago: its date, late');
+  assert.equal(shortDue(new Date(2027, 0, 5).toISOString(), NOW).text, new Date(2027, 0, 5).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }), 'another year: with it');
+  assert.equal(shortDue('0001-01-01T00:00:00Z', NOW), null);
 });
 
 test('late once its time has passed; one due at midnight, once its day is over', () => {

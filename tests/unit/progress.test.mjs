@@ -122,6 +122,8 @@ test('a run\'s line has a segment per step, each filled by whether its own step 
   assert.deepEqual([runLine(14, 2, many).many, runLine(14, 2, many).fill], [true, 'linear-gradient(to right,var(--track) 0% 7.143%,var(--accent) 7.143% 14.286%,var(--track) 14.286% 57.143%,var(--accent) 57.143% 64.286%,var(--track) 64.286% 100%)'], 'past MANY_STEPS too, each step’s stretch by its own step');
   assert.equal(runLine(14, 2).fill, null, 'only a count: filled from the left');
   assert.equal(runLine(4, 1, [true]).fill, null, 'which steps, not matching how many: by count');
+  assert.equal(runLine(4, 1, [1, 0.5, 0, true]).fill, 'linear-gradient(to right,var(--accent) 0% 37.5%,var(--track) 37.5% 75%,var(--accent) 75% 100%)', 'a step half done: half its segment, from the left');
+  assert.equal(runLine(2, 0, [0, 0.25]).fill, 'linear-gradient(to right,var(--track) 0% 50%,var(--accent) 50% 62.5%,var(--track) 62.5% 100%)');
 });
 
 test('a nudge: a touch moved up or down past a tap, within about a row, and slow as it lifts; else a tap or a fling', () => {

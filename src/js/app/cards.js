@@ -4,12 +4,12 @@
    dragged along it (cardScrub); a tick or a slide on its step line is that step's alone. What a card needs is read once per project shown, not once per card (readCards). */
 import {colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
-import {dueInfo, isLate, isSet} from '../dates.js';
+import {dueInfo, isLate, isSet, shortDue} from '../dates.js';
 import {stepsOf} from '../checklists.js';
 import {cardAt, openSubs, placeOf, scrubTo, segmentAt, segmentOf, stepOfSegment, turnPage} from '../cards.js';
 import {haptic} from '../haptics.js';
 import {listViewOf, positionOrder} from '../order.js';
-import {runLine} from '../progress.js';
+import {pctOf, runLine} from '../progress.js';
 
 const entering = new Map();                      // card id -> the way its next step comes in: 1 from the right, -1 the left
 const shownStep = new Map();                     // card id -> the step it showed last, to tell a new one
@@ -27,10 +27,12 @@ export default {
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     const steps = all.filter(s => !done(s) || this.leaving[s.id]);
     if (!steps.length) return null;
-    const i = cardAt(steps, this.cardPage[t.id], c.focus), d = all.filter(done).length;
-    const card = {id: t.id, step: steps[i], i, n: steps.length, steps, at: placeOf(all, steps[i]), total: all.length, all,
-      line: runLine(all.length, d, all.map(done)), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
-    card.g = {depth: {}, card};
+    const i = cardAt(steps, this.cardPage[t.id], c.focus), d = all.filter(done).length, step = steps[i];
+    // Its line: each done step's segment full, the one showing filled by its progress (the step line has no bar of its own).
+    const fill = all.map(s => done(s) ? 1 : s.id === step.id ? pctOf(s) / 100 : 0);
+    const card = {id: t.id, step, i, n: steps.length, steps, at: placeOf(all, step), total: all.length, all,
+      line: runLine(all.length, d, fill), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
+    card.g = {depth: {}, card, line: true};
     return card;
   },
   // A card's subtasks, all of them, each the copy on screen where there's one: a run's in its order line, a task's in its
@@ -41,11 +43,17 @@ export default {
   },
   // A subtask done; a run's step counting a tick still waiting to be sent.
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
-  // Under a card's title: when its task is due, its priority's bars, as its row shows them (rowMeta), and its project,
-  // or for a run, who it's for.
+  /* A card's heading on one line: its title, its priority's bars, small (it has no tick to colour), and when it's due,
+     short, at the right (shortDue); the rest of cardMeta to a screen reader (`said`). */
+  cardWhen(t){
+    const due = shortDue(t.due_date, new Date(this.groupedAt || Date.now()));
+    return {prio: t.priority || 0, due, said: this.cardMeta(t).map(m => m.label || m.text).filter(Boolean).join(', ')};
+  },
+  // What a card's heading says to a screen reader: when its task is due, its priority, and its project, or for a run,
+  // who it's for.
   cardMeta(t){
     const out = [], due = dueInfo(t.due_date), p = this.projById.get(t.project_id);
-    if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
+    if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label, label: (due.cls === 'overdue' ? 'Late: ' : 'Due ') + due.label});
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     if (this.isRunTask(t)) out.push({key: 'run', icon: 'checklist', text: (t.assignees || []).length ? this.forText(t) : 'Checklist run'});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});

@@ -29,6 +29,16 @@ export function dueInfo(due){
   if (hasTime && Math.abs(diff) < 7) label += ' ' + fmtTime(d);
   return {label, cls: diff < 0 || isLate(due) ? 'overdue' : diff === 0 ? 'today' : '', diff};
 }
+/* When a task is due, short, for a row on one line (Today: motion-and-rows-plan, section 9): its time today ("11:55
+   AM", or "Today" with no time); its weekday in the coming week ("Fri"); else its date ("Oct 2", with the year when
+   it isn't this one's). `cls` as dueInfo's: 'overdue' when late, 'today'. null with no date. */
+export function shortDue(due, now = new Date()){
+  if (!isSet(due)) return null;
+  const d = new Date(due), diff = Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
+  const text = diff === 0 ? (noTime(d) ? 'Today' : fmtTime(d)) : diff > 0 && diff < 7 ? d.toLocaleDateString([], {weekday: 'short'})
+    : d.toLocaleDateString([], {month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined});
+  return {text, cls: diff < 0 || isLate(due, now) ? 'overdue' : diff === 0 ? 'today' : ''};
+}
 export const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 export const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
