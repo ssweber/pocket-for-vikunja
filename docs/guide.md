@@ -183,7 +183,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
   number. A ticked result moves from Open to Done. A subtask is a row, under its task when that's found too, as on a
-  project's list.
+  project's list. Checklist templates and their steps aren't in it: they're under **Checklists** (a template that comes
+  round, due, is found).
 - **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
   shows on the task's row itself, which stays until they leave together; a tick that couldn't be saved goes back, and
   its row says why, "Not saved: no connection", with **Try again**. A task added from quick add lights up where it went; if that's not on the screen
@@ -211,8 +212,12 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   subtasks open, or one of them opened again since) stays among the open tasks, struck through, over those subtasks,
   saying "Done, but 2 subtasks are still open", so they're never left on their own as if they had no parent. Tap it to
   open its sheet; tick it to open it again where it is (tick it again within a few seconds to make it done again). It can't be moved, nor be what the bottom box
-  adds to; its subtasks are like any others. A finished run with steps not done shows the same way. In search, a
-  subtask whose task isn't above it there says which task it's under: "↳ Pack the van". **New project** makes one, inside
+  adds to; its subtasks are like any others. In search, a
+  subtask whose task isn't above it there says which task it's under: "↳ Pack the van". In a project for checklists,
+  a checklist run is one row, as under **Checklists**: its steps are on its screen, a tap away, not under it, and they
+  aren't counted among the open tasks. Its templates and their steps live under **Checklists** too, so they're not in
+  its **Done**, nor are runs' steps. Most of such a project's done tasks are those, so its **Done** says how many once
+  it's opened. **New project** makes one, inside
   another if you like. A project's **⋯** shares its progress, and renames or archives it if it's shared with you to write, and deletes it if
   you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
 - **Signing in:** sign in once, with your usual Vikunja login, and Pocket and Vikunja's web app are both signed in on
@@ -342,7 +347,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    step is beside its title, as on its row: **+ me** says you're doing it. A skipped step counts as skipped, not done.
    A run just started says **Started** at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
    with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, shown as a task's tick is (in
-   its sheet, with an Undo); with steps not done, it asks first, and they stay not done.
+   its sheet, with an Undo); with steps not done, it asks first, and they stay not done. On the list, it then goes to
+   **Done** with the other ticks, as a task does.
 
 - **A checklist that comes round:** give the template a date in its sheet, under **When it's due**, and how it
   **Repeats**: every day at 8:00, say. It's then Vikunja's repeating task: at its time it shows on Today, without a tick,
@@ -376,7 +382,8 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   counting down), with its countdown when the step is timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
   under **Checklist runs**, or with a step due, by that step's date. A run's line is in segments, one for each step,
   filled as steps are done (past 12 steps, one line with a small mark at each step): on its card, on its row under
-  Checklists, and on the strip at the top of its screen's step card. A run has no tick on Today: it's finished on its screen. Tapping
+  Checklists, on its project's list and in search, and on the strip at the top of its screen's step card. The line says
+  how far it is, so a run's row says who it's for, not how many steps are done or which is next. A run has no tick on Today: it's finished on its screen. Tapping
   a run's name opens it; tapping a step opens its run on that step.
 - **A step has a square box**, wherever it shows: on its run's screen, in the run's sheet, and on Today. A task or a
   subtask has a round one. They work differently (a step's tick records who did it, with its ✅), so they look
@@ -480,7 +487,7 @@ apps already), and reminder emails turned on in your own Vikunja settings. Pocke
 - **Timed steps** of a run get a reminder at their due time, which goes to whoever started the run and anyone who's
   claimed the step. It goes off once the plugin's [step times](#step-times) give the step its due date. A step due less
   than a minute after the one it waits on gets none: Vikunja checks reminders once a minute, so it would never be sent.
-  Pocket still rings for it while it's open.
+  Pocket still rings for it while it's open. A step's row shows no 🔔 for it: its countdown says when it's due.
 
 Vikunja's web push, being worked on in [go-vikunja/vikunja#4020](https://github.com/go-vikunja/vikunja/pull/4020), would
 let reminders ring the phone too.

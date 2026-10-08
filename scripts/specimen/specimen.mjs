@@ -40,8 +40,10 @@ function sections(){
   const long = task({title: 'Deep clean · Oct 5', project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 899}],
     subtask: Array.from({length: 16}, (_, i) => ({id: 950 + i, title: 'Step ' + (i + 1), done: i < 5}))}});
   // A step of a run you've claimed, on Today, beside a task: square and round.
-  const stepRow = task({title: 'Take the croissants out', project_id: 2, assignees: [me], related_tasks: {parenttask: [{id: run.id}], copiedfrom: [{id: 903}]}});
+  const stepRow = task({title: 'Take the croissants out', project_id: 2, assignees: [me], related_tasks: {parenttask: [{id: run.id, title: run.title}], copiedfrom: [{id: 903}]}});
   const subRow = task({title: 'Book the back room', assignees: [me]});
+  // A run's step counting down, with the reminder Pocket gave it for that: no 🔔, the countdown says it; a task's has one.
+  const timed = task({title: 'Take the croissants out', project_id: 2, due_date: at(18 * 6e4), reminders: [{reminder: at(18 * 6e4)}], related_tasks: {parenttask: [{id: run.id, title: run.title}], copiedfrom: [{id: 903}]}});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
@@ -81,7 +83,9 @@ function sections(){
       task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, priya], comment_count: 3, repeat_after: 86400}),
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
     {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
-    {title: 'Checklist runs: a line in segments, a step each; past 12 steps, one line with a tick at each', depth: {}, tasks: [run, long]},
+    {title: 'Checklist runs, as under Checklists, on a project’s list and in search: one row, who it’s for, and a line in segments, a step each (past 12 steps, one line with a tick at each), with no count of its steps or the next', depth: {}, tasks: [run, long]},
+    {title: 'A run’s step counting down, with no 🔔 for the reminder Pocket gave it; a task’s reminder still to come has one', depth: {}, tasks: [timed,
+      task({title: 'Call the plumber', reminders: [{reminder: at(5 * HOUR)}]})]},
     {title: 'A checklist’s step has a square box (a step you’ve claimed, on Today), a task or a subtask a round one', depth: {}, tasks: [stepRow, subRow]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
     // Held and slid (progress.js), swiped to its Delete (a project's list, which has one: delete), and a line in a
