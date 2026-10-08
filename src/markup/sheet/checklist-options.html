@@ -67,5 +67,5 @@
         <button class="btn ghost block" id="r-open-task" @click="openTask(view.run.run.id)">Open as a task</button>
       </div>
       <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(view.run.run)">Delete run</button>
-        <p class="note" x-text="'Deletes the run and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their notes and photos, for everyone.'"></p></div>
+        <p class="note" x-text="'Deletes the run and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their comments and photos, for everyone.'"></p></div>
     </div></template>

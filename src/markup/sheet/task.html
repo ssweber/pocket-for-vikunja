@@ -124,7 +124,8 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true}]" :key="0"><template x-for="t in checklistRole === 'template' ? [] : subtasks" :key="t.id">
           <!-- include markup/task-row.html -->
         </template></template>
-        <!-- A template's step has a row of its own, not the task row: its number where a task has its tick, when it's due in
+        <!-- A template's step has a row of its own, not the task row: its number, plain (a square box is a step you tick,
+             in a run), where a task has its tick, when it's due in
              a run and its notes' first line under it, and, tapped, quick add's box in its place, with × and ⋯ (Move up,
              Move down). It's moved by holding it and moving it up or down, or with Alt+↑ ↓. Who's doing it is the same
              slot as on a subtask. -->
@@ -180,7 +181,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         </template>
         <!-- The same box as quick add: what it read is marked, with chips to undo it, and @ and * suggest people and labels -->
         <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
-        <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the › beside a step on the run's screen: it's marked as added during the run.</p></template>
+        <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the run's screen: it's marked as added during the run.</p></template>
         <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox">
           <form id="d-subform" autocomplete="off" @submit.prevent="addSubtasks()">
             <div class="cap-field">
@@ -212,6 +213,9 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         </div></template>
       </div></template>
 
+      <!-- Not on a template or its step: a run is a copy of them made by Vikunja, which copies their notes, photos,
+           labels and people but not their comments, so nothing written there reaches a run -->
+      <template x-if="!ofTemplate"><div>
       <div class="h3">Comments<span class="n num" id="d-ccount" x-text="(sheet.comments?.length || 0) + pendingComments.length || ''"></span></div>
       <div class="card" id="d-comments">
         <template x-if="sheet.commentsNote"><p class="note" style="padding:12px 14px;margin:0" x-html="sheet.commentsNote"></p></template>
@@ -231,6 +235,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
         </form></template>
       </div>
+      </div></template>
 
       <div class="h3">Details</div>
       <div class="card">
@@ -241,7 +246,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Labels</span><span class="v">
           <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
-          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">The “template” label is what makes it a template.</span></template>
+          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">Its runs get its labels, all but “template”, which is what makes it a template.</span></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" data-tap @click="toggleLabelPicker()">Add</button></template>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Assigned</span><span class="v" id="d-assignees">

@@ -27,13 +27,13 @@ test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a t
   assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4]]);
 });
 
-test('under a step\'s title: Inserted or Repeated, its notes, and its countdown until it\'s done', () => {
+test('under a step\'s title: Inserted or Repeated, its comments, and its countdown until it\'s done', () => {
   const app = component(views, claims);
   assert.deepEqual(app.rowMeta(step({}), RUN), []);
   const meta = app.rowMeta(step({ added: 'Inserted', notes: [{}, {}], dueText: '5m late', late: true }), RUN);
   assert.deepEqual(meta.map(m => [m.key, m.cls, m.text]), [['added', 'added', 'Inserted'], ['notes', 'note-mark num', '2'], ['due', 'due num overdue', '5m late']]);
-  assert.equal(meta[1].label, '2 notes');
-  assert.equal(app.rowMeta(step({ notes: [{}] }), RUN)[0].label, 'A note');
+  assert.equal(meta[1].label, '2 comments');
+  assert.equal(app.rowMeta(step({ notes: [{}] }), RUN)[0].label, 'A comment');
   assert.deepEqual(app.rowMeta(step({ done: true, dueText: 'Due in 3m' }), RUN), [], 'a done step has no countdown');
 });
 

@@ -7,7 +7,7 @@
 import {colorOf, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, shortDue} from '../dates.js';
-import {stepsOf, whereNext} from '../checklists.js';
+import {runWithoutDay, stepsOf, whereNext} from '../checklists.js';
 import {cardAt, countdown, openSubs, placeOf, scrubTo, segmentAt, segmentOf, stepOfSegment, turnPage} from '../cards.js';
 import {haptic} from '../haptics.js';
 import {listViewOf, positionOrder} from '../order.js';
@@ -54,6 +54,9 @@ export default {
   },
   // A subtask done; a run's step counting a tick still waiting to be sent.
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
+  // A card's title: a run's without the day it was started, which its name ends with (runWithoutDay), so its heading
+  // reads as a task's: its name, and when it's due at the right.
+  cardTitle(t){ return this.isRunTask(t) ? runWithoutDay(t.title, t.created) : this.rowTitle(t); },
   /* A card's heading on one line: its title, its priority's bars, small, as a row on Today has them, and when it's due,
      short, at the right (shortDue: nothing for today with no time under the Today heading, `g`'s key); the rest of
      cardMeta to a screen reader (`said`). */

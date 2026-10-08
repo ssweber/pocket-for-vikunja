@@ -356,6 +356,15 @@ export async function inBatches(list, n, fn){
 }
 const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
 export const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
+/* A run's name without the day it was started, its last part ("Opening up · run 2 · Oct 8": "Opening up · run 2"), for
+   its card on Today, whose heading has when it's due at the right, as a task's has. Only the day as a start writes it
+   (runTitle), the day Vikunja made it or up to a week before (a start made offline): any other name stays whole. */
+export function runWithoutDay(title, created){
+  const parts = (title || '').split(' · '), at = Date.parse(created);
+  if (parts.length < 3 || !(at > 0)) return title;
+  for (let i = 0; i < 8; i++) if (new Date(at - i * 864e5).toLocaleDateString([], {month: 'short', day: 'numeric'}) === parts.at(-1)) return parts.slice(0, -1).join(' · ');
+  return title;
+}
 // What a run's screen keeps of a run and its steps, also saved for opening it offline.
 export const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
   comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: stepsOf(t).map(s => s.id)});

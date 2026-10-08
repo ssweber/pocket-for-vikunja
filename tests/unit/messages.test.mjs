@@ -7,6 +7,9 @@ import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
 import { blankSheet } from '../../src/js/app/core.js';
+import outbox from '../../src/js/app/outbox.js';
+import runs from '../../src/js/app/runs.js';
+import { component } from './fake.mjs';
 
 test('a change not saved says why in a few words', () => {
   assert.equal(notSaved(new NetError('Failed to fetch')), 'Not saved: no connection');
@@ -108,4 +111,14 @@ test('an action tapped runs once, and its line goes without calling gone', () =>
   a.sayAt('overdue', { text: 'Nothing moved', gone: () => gone++ });
   a.foldLines();
   assert.deepEqual([gone, a.placeLines('overdue').length], [1, 0]);
+});
+
+test('on a run, what\'s written on a step or the run is a comment, as Vikunja calls it, in Waiting to send and its messages', () => {
+  const a = component(outbox, runs);
+  Object.assign(a, { pending: [], failed: [], view: { groups: [], run: null }, actTitle: () => 'Unlock the door' });
+  assert.equal(a.actText({ op: 'note', task: 1 }), 'A comment on “Unlock the door”');
+  assert.equal(a.actText({ op: 'doneNote', task: 1 }), 'Done, with a comment: Unlock the door');
+  assert.equal(a.dropText({ op: 'note', task: 1 }), 'The comment isn\'t posted: its words go back where you wrote them.');
+  assert.equal(a.actWhat({ op: 'note', task: 1, run: 5 }), 'A comment on “Unlock the door”');
+  assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'A tick and its comment on “Unlock the door”');
 });

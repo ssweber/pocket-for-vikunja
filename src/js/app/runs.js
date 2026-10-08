@@ -232,7 +232,7 @@ export default {
   // Delete a run, from its ⋯ or its sheet: its steps go too, so none is left behind as a task of its own.
   async confirmDeleteRun(run){
     const n = run.steps.length;
-    if (!confirm(`Delete “${run.title}” and its ${n} step${n === 1 ? '' : 's'}? Their notes and photos go too, for everyone. This can't be undone.`)) return;
+    if (!confirm(`Delete “${run.title}” and its ${n} step${n === 1 ? '' : 's'}? Their comments and photos go too, for everyone. This can't be undone.`)) return;
     this.closeSheet(true);
     await this.deleteRun(run.id, {deleted: true});
   },
@@ -649,7 +649,7 @@ export default {
   // What an act was, for a message: "A tick on “Check the milk fridge”".
   actWhat(a){
     const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '';
-    return {note: a.run ? 'A note' + on : 'A comment' + on, doneNote: 'A tick and its note' + on, skip: 'A skip' + on,
+    return {note: 'A comment' + on, doneNote: 'A tick and its comment' + on, skip: 'A skip' + on,
       done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
       claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it'),
       position: 'Moving' + (title ? ` “${title}”` : ' a task'),

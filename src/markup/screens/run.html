@@ -1,11 +1,11 @@
-    <!-- A run: the step it's on, the list of steps, notes, and the notes from the last run of the same template -->
+    <!-- A run: the step it's on, the list of steps, its comments, and the comments from the last run of the same template -->
     <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
       <p class="run-for" id="run-for" x-text="runView.forText"></p>
       <!-- A start just made, "Started", with its Undo until anything's done in it -->
       <template x-for="line in placeLines('run')" :key="line.n">
         <!-- include markup/place-line.html -->
       </template>
-      <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">This run's project is shared with you to read only: you can follow it, but not tick its steps or add notes. Ask its owner for write access.</p></template>
+      <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">This run's project is shared with you to read only: you can follow it, but not tick its steps or add comments. Ask its owner for write access.</p></template>
 
       <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
       <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
@@ -28,19 +28,19 @@
         </template></template>
       </div>
 
-      <div class="h3">Notes on this run</div>
+      <div class="h3">Comments on this run</div>
       <div class="card" id="run-notes">
         <template x-for="c in runView.notes" :key="c.id">
           <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
         </template>
         <form class="comment-form" id="run-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(view.run.run.id)">
-          <textarea id="run-note" rows="1" placeholder="Note for this run, and the next one" aria-label="Note on this run" x-model="runDrafts[view.run.run.id]"
+          <textarea id="run-note" rows="1" placeholder="Comment for this run, and the next" aria-label="Comment on this run" x-model="runDrafts[view.run.run.id]"
                     x-effect="runDrafts[view.run.run.id]; $nextTick(() => grow($el))"></textarea>
-          <button class="go btn" style="width:44px;padding:0" aria-label="Save note" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
         </form>
       </div>
 
-      <!-- What was noted on the last finished run of this template, as a handover -->
+      <!-- The comments on the last finished run of this template and its steps, as a handover -->
       <template x-if="view.run.last"><div>
         <div class="h3">Last time<button class="n linkish" id="run-last-open" @click="openRun(view.run.last.id)" x-text="view.run.last.title"></button></div>
         <div class="card" id="run-last">
@@ -48,7 +48,7 @@
           <template x-for="c in view.run.last.notes || []" :key="c.id">
             <div class="comment"><div class="who"><b x-text="c.step"></b> · <span x-text="c.author"></span> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
           </template>
-          <template x-if="view.run.last.notes && !view.run.last.notes.length"><p class="note" style="padding:12px 14px;margin:0">No notes were left last time.</p></template>
+          <template x-if="view.run.last.notes && !view.run.last.notes.length"><p class="note" style="padding:12px 14px;margin:0">No comments were left last time.</p></template>
         </div>
       </div></template>
     </div></template>

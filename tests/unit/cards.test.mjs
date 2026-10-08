@@ -281,6 +281,24 @@ test('a row on Today, on one line: when it is due, short, its project’s dot, a
   assert.equal(app.cardWhen(u, { key: 'week' }).due.text, 'Today');
 });
 
+test('a run’s card has a heading like a task’s: its name without the day it was started, and when it’s due at the right', () => {
+  const { app } = today();
+  app.route = { name: 'today' };
+  const made = new Date(2026, 9, 8, 7, 30), day = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const run = task(30, { title: `Opening up · run 2 · ${day(made)}`, created: made.toISOString(), project_id: 5 });
+  app.isRunTask = t => t.id === 30;
+  assert.equal(app.cardTitle(run), 'Opening up · run 2');
+  assert.equal(app.cardTitle({ ...run, title: `Opening up · Saturday · ${day(new Date(2026, 9, 6))}` }), 'Opening up · Saturday', 'started offline, made in Vikunja later');
+  assert.equal(app.cardTitle({ ...run, title: `Opening up · run 2 · ${day(new Date(2026, 8, 20))}` }), `Opening up · run 2 · ${day(new Date(2026, 8, 20))}`, 'not a day it was started: kept');
+  assert.equal(app.cardTitle({ ...run, title: 'Opening up' }), 'Opening up', 'a name of its own: kept whole');
+  assert.equal(app.cardTitle({ ...run, created: NONE }), run.title, 'not made yet: kept whole');
+  assert.equal(app.cardTitle(task(31, { title: `Pack the van · front · ${day(made)}`, created: made.toISOString() })), `Pack the van · front · ${day(made)}`, 'a task’s title as it is');
+  // Due when its template was (started from Today), it shows that at the right, as a task's card does.
+  const due = new Date(); due.setHours(23, 30, 0, 0);
+  assert.equal(app.cardWhen({ ...run, due_date: due.toISOString() }, { key: 'today' }).due.text, due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  assert.equal(app.cardWhen(run, { key: 'today' }).due, null, 'none: nothing at the right');
+});
+
 test('where a run goes next: the next step that can be done now, past those counting down; then one before it; then any', () => {
   const now = 1000, s = (id, f = {}) => ({ id, done: false, counting: false, dueAt: Infinity, ...f });
   const steps = [s(1, { done: true }), s(2, { counting: true, dueAt: 1600 }), s(3), s(4, { counting: true, dueAt: 900 }), s(5)];

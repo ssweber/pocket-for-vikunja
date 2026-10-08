@@ -122,10 +122,10 @@ export default {
     return {prio: t.priority || 0, due, color: p ? colorOf(p.hex_color) : null, said: said.join(', ')};
   },
   /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. A step on a
-     run's screen (g.run): Inserted or Repeated, its notes, and, not done, its countdown or when it's due. */
+     run's screen (g.run): Inserted or Repeated, its comments, and, not done, its countdown or when it's due. */
   rowMeta(t, g){
     if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
-      t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A note' : t.notes.length + ' notes'},
+      t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},
       t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}].filter(Boolean);
     const out = [], due = dueInfo(t.due_date), card = g?.card;
     // A done task over its open subtasks: why it's on the open list.

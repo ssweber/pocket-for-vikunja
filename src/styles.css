@@ -163,8 +163,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
 .row.done .check svg,.check.on svg{opacity:1}
 /* A checklist's step has a square box, a task and a subtask a round one: they behave differently (a step is ticked
-   through its run, with its ✅), so they look it. A template's numbered steps too, as its runs' steps will be. */
-.check.sq,.check.step-n{border-radius:7px}
+   through its run, with its ✅), so they look it. */
+.check.sq{border-radius:7px}
 .empty{text-align:center;color:var(--muted);padding:48px 12px}
 .empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
 .loading{padding:40px 0;text-align:center;color:var(--muted)}
@@ -374,10 +374,10 @@ a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
 .start-due.bad{color:var(--overdue)}
 .cl-new .body{display:flex;align-items:center;gap:10px;color:var(--accent);font-weight:650}
-/* A template's steps, saved or being written, look like subtasks: the step's number where a subtask has its tick, and
-   what's written in a box like the subtask box (.addbox.sub). The ↑ ↓ × are on the rows being written only. */
-.check.step-n{border-color:var(--line);color:var(--muted);font-size:13px;font-weight:650}
-.check.step-n:empty{border-style:dashed}
+/* A template's steps, saved or being written, look like subtasks: the step's number where a subtask has its tick, plain,
+   as the start sheet has it (a square box is a step you tick, in a run), and what's written in a box like the subtask
+   box (.addbox.sub). The ↑ ↓ × are on the rows being written only. */
+.check.step-n{border-color:transparent;color:var(--muted);font-size:15px;font-weight:400}
 .step-box{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)}
 .step-box:focus-within{border-color:var(--accent)}
 /* iOS Safari gives a textarea its own rounded corners and a shade along the top */
