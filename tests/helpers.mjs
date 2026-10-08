@@ -27,7 +27,14 @@ export async function signIn(page, url, token){
   await page.getByLabel('API token').fill(token);
   await page.getByRole('button', { name: 'Connect' }).click();
   await expect(page.locator('#app')).toBeVisible();
-  await expect(page.locator('#view .loading')).toHaveCount(0, { timeout: 15000 });
+  await loaded(page);
+}
+
+/* Until the screen on show is loaded from Vikunja: no Loading, and not the copy kept of it, shown at once while it's
+   loaded afresh behind (<main id="view" aria-busy>). */
+export async function loaded(page, timeout = 15000){
+  await expect(page.locator('#view .loading')).toHaveCount(0, { timeout });
+  await expect(page.locator('#view[aria-busy="true"]')).toHaveCount(0, { timeout });
 }
 
 /* A message in its place (lines.js): under a heading ("overdue"), by the add box ("cap"), in a sheet ("sheet:notes"), on

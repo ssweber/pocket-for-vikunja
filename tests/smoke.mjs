@@ -13,7 +13,7 @@
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, noToast, placeLine, placeSays, rowLine, signIn, steady, synced, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, synced, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -70,8 +70,8 @@ try {
     const chips = await page.textContent('#cap-chips');
     if (!/Tomorrow/.test(chips) || !/Priority 3/.test(chips)) throw new Error('chips: ' + chips);
     await page.click('#f-capture .go');
-    await page.waitForSelector(`.row .title:has-text("${title}")`, { timeout: 15000 });
-    if (!await page.$(`.row.fresh:has(.title:has-text("${title}"))`)) throw new Error('the new row isn\'t highlighted');
+    // On its list at once, not sent yet; once it's in Vikunja, it lights up.
+    await expect(page.locator(`.row.fresh:has(.title:has-text("${title}"))`), 'the new row isn\'t highlighted').toBeVisible({ timeout: 15000 });
   });
   const row = `.row:has(.title:has-text("${title}"))`;
   await step('refresh-keeps-rows', async () => {
@@ -462,7 +462,7 @@ try {
     await noToast(page);
   });
   await step('subtasks-in-sheet', async () => {
-    await page.click(`.row .body:has-text("${parentTitle}")`);
+    await page.click(`.row > .body:has(.title:has-text("${parentTitle}"))`);
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 2, null, { timeout: 10000 });
     const names = await page.$$eval('#d-subtasks .row .title', els => els.map(e => e.textContent));
     if (!names.some(n => n === `Pocket smoke sub B ${stamp}`)) throw new Error('markers not stripped: ' + names.join(' | '));
@@ -509,7 +509,7 @@ try {
     // Shown again when the sheet is opened again: Vikunja leaves a task's subtasks' assignees out, so Pocket asks.
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    await page.click(`.row .body:has-text("${parentTitle}")`);
+    await page.click(`.row > .body:has(.title:has-text("${parentTitle}"))`);
     await page.waitForSelector(`${row} .claim.mine .av`, { timeout: 10000 });
     if (!(await page.getAttribute(`${row} .claim`, 'aria-label')).startsWith("You're doing")) throw new Error('says ' + await page.getAttribute(`${row} .claim`, 'aria-label'));
     await page.click(`${row} .claim`);
@@ -552,7 +552,7 @@ try {
     if (JSON.stringify(after.filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify([...open].sort())) throw new Error('open after undo: ' + JSON.stringify(after.map(s => [s.title, s.done])));
     if ((await (await api('/tasks/' + parent.id)).json()).done) throw new Error('the parent is still done');
     // The same from its sheet, whose subtasks show as done straight away.
-    await page.click(`.row .body:has-text("${parentTitle}")`);
+    await page.click(`.row > .body:has(.title:has-text("${parentTitle}"))`);
     await page.waitForSelector('#d-subcount:text("1/4")', { timeout: 10000 });
     await page.click('#d-done');
     await placeSays(page, 'sheet:subtasks', `Closed ${parentTitle} + 3 subtasks`);
@@ -972,13 +972,13 @@ try {
     const t = `Pocket smoke call the plumber ${stamp}`;
     try {
       await setReminders(false);
-      await page.reload(); await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+      await page.reload(); await loaded(page);
       await page.fill('#in-capture', `${t} at 4pm`);
       await page.waitForSelector('#cap-chips .chip[data-kind=due]');
       if (await page.$('#cap-chips .chip[data-kind=remind]')) throw new Error('a 🔔 chip with your reminder emails off');
       await setReminders(true);
       await page.fill('#in-capture', '');
-      await page.reload(); await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+      await page.reload(); await loaded(page);
       // A date without a time: none. A time: there, off until tapped.
       await page.fill('#in-capture', `${t} friday`);
       await page.waitForSelector('#cap-chips .chip[data-kind=due]');
@@ -1645,6 +1645,99 @@ ${footName('Hooks')}`);
     await expect.poll(clip).toBe([`# PocketSmokeShare${stamp}`, '', '5 open · 1 done', '', `- [ ] Pack the van ${stamp} (60%)`, '  - [ ] Tables (50%)',
       `  - [ ] Sound system @${me.username}`, '  - [ ] Lights', `- [ ] Order milk ${stamp}`].join('\n'));
     await expect(page.locator('#p-open-vikunja')).toHaveAttribute('href', `${SERVER}/projects/${proj.id}`);
+    await page.click('#btn-sheet-close');
+  });
+
+  // ---- Instant feel: a tab opens at once with its last copy; a change looks waiting only after a few seconds ----
+  await step('a-tab-opens-at-once-with-its-last-copy-then-changes-in-place', async () => {
+    const t = await make(`Instant ${stamp}`, { due_date: todayAt(23) });
+    await refreshToday();
+    await expect(page.locator(rowOf(`Instant ${stamp}`))).toBeVisible();
+    await page.click('nav.tabs a[data-tab=projects]');
+    await page.click('.tree .row .body');
+    await expect(page.locator('#btn-project')).toBeVisible();
+    await api('/tasks/' + t.id, { method: 'PATCH', headers: json, body: JSON.stringify({ title: `Instant renamed ${stamp}` }) });
+    // Today's lists answer late: what shows meanwhile is the copy kept of it, with no Loading.
+    let answer; const late = new Promise(ok => { answer = ok; });
+    const slow = async r => { await late; await r.fallback(); };
+    await page.route(/\/api\/v2\/tasks\?/, slow);
+    try {
+      await page.click('nav.tabs a[data-tab=today]');
+      await expect(page.locator(rowOf(`Instant ${stamp}`))).toBeVisible();
+      await expect(page.locator('#view .loading')).toHaveCount(0);
+      await page.locator(rowOf(`Instant ${stamp}`)).evaluate(el => { el.dataset.mark = 'kept'; });
+      await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
+      // Taking over a second, a line under the header says it's being loaded; not over the rows.
+      await expect(page.locator('#behind')).toBeVisible();
+    } finally { answer(); await page.unroute(/\/api\/v2\/tasks\?/, slow); }
+    // The change, in place: the same row, not one drawn again.
+    await expect(page.locator(`[data-mark="kept"] .title`)).toHaveText(`Instant renamed ${stamp}`, { timeout: 15000 });
+    await expect(page.locator('#behind')).toBeHidden();
+    await expect(page.locator('#view[aria-busy]')).toHaveCount(0);
+  });
+
+  await step('a-change-shows-at-once-and-looks-waiting-only-after-a-few-seconds', async () => {
+    let send; const sending = new Promise(ok => { send = ok; });
+    const hold = async r => { if (r.request().method() === 'POST') await sending; await r.fallback(); };
+    await page.route('**/api/v2/projects/*/tasks', hold);
+    try {
+      await page.fill('#in-capture', `Waits ${stamp}`);
+      await page.press('#in-capture', 'Enter');
+      // On Today at once, as it'll be: not dotted, nor the header's waiting button, for the first few seconds.
+      const row = page.locator(`.row.pending:has(.title:has-text("Waits ${stamp}"))`);
+      await expect(row).toBeVisible();
+      await later(2000);
+      await expect(row).not.toHaveClass(/\bwaits\b/);
+      await expect(row.locator('.check.wait')).toHaveCount(0);
+      await expect(page.locator('#btn-refresh.waits')).toHaveCount(0);
+      // Then it looks waiting.
+      await later(1000);
+      await expect(row).toHaveClass(/\bwaits\b/);
+      await expect(row.locator('.check.wait')).toHaveCount(1);
+      await expect(page.locator('#btn-refresh.waits')).toBeVisible();
+    } finally { send(); await page.unroute('**/api/v2/projects/*/tasks', hold); }
+    await expect(page.locator(`.row:not(.pending):has(.title:has-text("Waits ${stamp}"))`)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#btn-refresh.waits')).toHaveCount(0);
+    await synced(page);
+  });
+
+  await step('a-subtask-added-today-without-a-date-is-on-today-only-if-its-yours', async () => {
+    const me = await (await api('/user')).json();
+    const parent = await make(`Parent later ${stamp}`, { due_date: new Date(Date.now() + 30 * 864e5).toISOString() });
+    const mine = await make(`Sub mine ${stamp}`), theirs = await make(`Sub theirs ${stamp}`);
+    for (const s of [mine, theirs]) await api(`/tasks/${parent.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: s.id, relation_kind: 'subtask' }) });
+    await api(`/tasks/${mine.id}/assignees`, { method: 'POST', headers: json, body: JSON.stringify({ user_id: me.id }) });
+    await refreshToday();
+    const added = page.locator('#view div:has(> .sec:has-text("Added today, no date"))');
+    await expect(added.locator(rowOf(`Sub mine ${stamp}`))).toBeVisible();
+    await expect(added.locator(`${rowOf(`Sub mine ${stamp}`)} .meta`)).toContainText(`↳ Parent later ${stamp}`);
+    await expect(page.locator(rowOf(`Sub theirs ${stamp}`))).toHaveCount(0);
+  });
+
+  await step('a-long-title-with-no-spaces-doesnt-widen-the-page', async () => {
+    const long = `Unbroken${'x'.repeat(120)}${stamp}`;
+    const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: long }) })).json();
+    createdProjects.push(proj.id);
+    await make(long, { due_date: todayAt(23) }, proj.id);
+    // What's on screen and reaches past its right edge.
+    const past = () => page.evaluate(() => {
+      const w = document.documentElement.clientWidth;
+      return [...document.querySelectorAll('#app *, #sheet *')].filter(el => el.offsetParent !== null && el.getBoundingClientRect().right > w + 1)
+        .map(el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className : '')).slice(0, 3);
+    });
+    await refreshToday();
+    await expect(page.locator(rowOf(long))).toBeVisible();
+    expect(await past(), 'past the edge on Today').toEqual([]);
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
+    await page.click('#btn-project', { timeout: 15000 });
+    await expect(page.locator('#p-sharing')).toBeVisible();
+    await page.waitForTimeout(300);                                          // the sheet sliding in
+    expect(await past(), 'past the edge in the project\'s sheet').toEqual([]);
+    await page.click('#btn-sheet-close');
+    await page.click(`${rowOf(long)} > .body`);
+    await expect(page.locator('#d-title')).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(await past(), 'past the edge in the task\'s sheet').toEqual([]);
     await page.click('#btn-sheet-close');
   });
 

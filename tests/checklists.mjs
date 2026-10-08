@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, noToast, placeLine, placeSays, rowLine, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, loaded, noToast, placeLine, placeSays, rowLine, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -266,7 +266,7 @@ try {
     await page.press('#d-subtasks .step-box textarea', 'Escape');
     // The order stays after a reload.
     await page.reload();
-    await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+    await loaded(page);
     if (!await page.waitForSelector('#d-start', { timeout: 3000 }).catch(() => null)) { await page.evaluate(() => { location.hash = '#/checklists'; }); await page.click(`${tplRow} .body`, { timeout: 15000 }); }
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")', { timeout: 15000 });
     // Cut off mid-move: back as it was, and it says so.
@@ -806,7 +806,7 @@ try {
     page.on('dialog', record);                                                // accepted by the handler at the top
     try {
       await page.evaluate(pid => { location.hash = '#/project/' + pid; }, project.id);
-      await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+      await loaded(page);
       await page.click('#btn-refresh');                                       // its rows from Vikunja, not the copy shown first
       await page.waitForSelector('#btn-refresh:not([disabled])');
       // Its steps under it in the run's order, not newest first.
@@ -1100,12 +1100,21 @@ try {
 
   await step('hold-a-step-to-set-its-progress', async () => {
     // As on a task's row: hold, then slide, in snaps of 25%. Sent like a tick, with Undo; 100% is Done, with its ✅.
-    const { id } = await startRun();
+    // Last time's notes answer late this time, after the run is on screen: a step's go on its card, above the steps, so
+    // they're held back from the card on screen, and nothing under a finger moves as they come.
+    const last = ((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).filter(x => x.done).sort((a, b) => Date.parse(b.done_at) - Date.parse(a.done_at))[0];
+    const lastNotes = `**/api/v2/tasks/${last.id}?expand=comments`, slow = async r => { await new Promise(ok => setTimeout(ok, 1500)); await r.fallback(); };
+    await page.route(lastNotes, slow);
+    let id, before;
+    try {
+      ({ id } = await startRun());
+      before = await steady(page.locator('#run-steps .row:nth-of-type(2)'));
+      await expect(page.locator('#run-last')).toBeVisible({ timeout: 15000 });
+    } finally { await page.unroute(lastNotes, slow); }
     const row = '#run-steps .row:nth-of-type(2)', step2 = (await runStep(id, 1)).id;
-    // Last time's notes come after the run's screen, a step's on its card, pushing the steps down: under a finger put
-    // where a step was before they came, the hold never began. So the notes are waited for first.
-    await expect(page.locator('#run-last')).toBeVisible();
     await expect(page.locator('#run-last .loading')).toHaveCount(0);
+    const after = await steady(page.locator(row));
+    if (Math.abs(after.y - before.y) > 0.5) throw new Error(`the steps moved ${after.y - before.y}px as Last time came`);
     const slide = async (n, check) => {
       // The room to 48px short of the screen's edge is the rest of the way to 100% (EDGE): n tenths of it.
       const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
@@ -1416,7 +1425,7 @@ try {
     await toastGone().catch(() => {});
     const before = new Set(((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).map(t => t.id));
     await page.evaluate(() => { location.hash = '#/today'; });
-    await page.waitForSelector('#view .loading', { state: 'detached', timeout: 15000 });
+    await loaded(page);
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`${dailyRow} .cl-start`, { timeout: 15000 });
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
@@ -1530,6 +1539,7 @@ try {
     if (!tpl.done || (tpl.due_date && !tpl.due_date.startsWith('0001'))) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.waitForSelector(dailyRow, { timeout: 15000 });
+    await loaded(page);                                                      // not the copy kept from before the start
     if (await page.$(`${dailyRow} .cl-when`)) throw new Error('it still says when it comes round');
   });
 
