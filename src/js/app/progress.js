@@ -312,18 +312,27 @@ export default {
       }
       const head = target.closest('.d-head');
       if (!head || !t || this.isRunTask(t) || this.ofTemplate || target.closest('textarea, button, a, select')) return null;
+      let claimed = null;
       return {start: this.shownPct(t), width: head.clientWidth,
         show: (pct, x) => { this.sheet.pct = pct; this.showSlide(head, pct, x); },
+        begin: () => { claimed = this.claimOnSlide(this.sheetSlot); },
         finish: pct => {
           this.endSlide(head); this.sheet.pct = null;
-          if (pct !== null && this.sheet.task === t) this.sheetProgress(t, pct);
+          const set = pct !== null && this.sheet.task === t;
+          // The claim after the save: the save's reply, from before it, would otherwise be shown over it.
+          (set ? this.sheetProgress(t, pct) : Promise.resolve()).finally(() => claimed?.(set));
         }};
     });
   },
+  // The sheet's task's slot for who's doing it, as its row has (claimSlot): its bar, slid or moved by a key, claims it
+  // as a row's slide does, if no one is doing it; its Assigned row shows it (peopleOf).
+  get sheetSlot(){ const t = this.sheet.task; return t && this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t)); },
   nudgeProgress(dir){                            // the arrow keys, on the focused bar: to the next snap
     const t = this.sheet.task;
     if (this.isRunTask(t)) return;
     const was = pctOf(t), pct = nextSnap(was, dir);
-    if (pct !== was) this.sheetProgress(t, pct);
+    if (pct === was) return;
+    const claimed = this.claimOnSlide(this.sheetSlot);
+    this.sheetProgress(t, pct).finally(() => claimed(true));
   },
 };

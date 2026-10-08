@@ -245,7 +245,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" data-tap @click="toggleLabelPicker()">Add</button></template>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Assigned</span><span class="v" id="d-assignees">
-          <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <template x-for="u in peopleOf(sheet.task.id, sheet.task.assignees)" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
           <template x-if="!sheet.assigning && canEdit"><button class="add-label" id="d-add-assignee" data-tap @click="sheet.assigning = true">Add</button></template>
           <template x-if="sheet.assigning"><div class="assign-pick">
             <form class="assign-form" @submit.prevent="assign()">

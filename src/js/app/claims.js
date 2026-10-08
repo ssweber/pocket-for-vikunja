@@ -98,6 +98,7 @@ export default {
     const was = this.sheet.subPeople?.[a.task] ?? null, step = this.view.run?.steps.find(s => s.id === a.task);
     const set = list => [...(list || []).filter(u => u.id !== this.user?.id), ...a.op === 'claim' ? [this.user] : []];
     if (was !== null) this.sheet.subPeople[a.task] = set(was);
+    if (this.sheet.task?.id === a.task) this.sheet.task.assignees = set(this.sheet.task.assignees);
     if (step) step.assignees = set(step.assignees);
     const c = cache.get(a.task); if (c) c.assignees = set(c.assignees);
     if (this.tasks[a.task]) this.syncTask({id: a.task, assignees: set(this.tasks[a.task].assignees)});
