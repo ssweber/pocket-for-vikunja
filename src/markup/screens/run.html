@@ -71,25 +71,10 @@
 
       <div class="h3">Steps</div>
       <div class="list" id="run-steps">
-        <template x-for="(s, i) in runView.steps" :key="s.id"><div class="row" :class="{done: s.done, current: i === runView.at, 'ins-on': runView.insert?.at === i}" :data-id="s.id" x-style="{order: i * 2, '--pct': s.done ? 0 : s.pct / 100}">
-          <!-- › opens the box under this step, to insert a step after it or repeat it -->
-          <template x-if="!runView.finished && canWrite(view.run.run.project_id)"><button class="ins-open" :aria-expanded="String(runView.insert?.at === i)" :aria-label="'Insert a step after “' + s.title + '”'" @click="openInsert(s)"><svg class="i"><use href="#i-chev"/></svg></button></template>
-          <button class="check" :class="{wait: s.slow, skip: s.skipped}" :disabled="runView.finished || !canWrite(view.run.run.project_id)" :aria-label="(s.done ? 'Mark not done: ' : 'Mark done: ') + s.title" @click="tickStep(s, s.done ? 'undone' : 'done')"><svg class="i"><use :href="s.skipped ? '#i-skip' : '#i-check'"/></svg></button>
-          <button class="body" @click="showStep(i, true)"><div class="title" x-text="s.title"></div>
-            <div class="meta" x-show="(s.dueText && !s.done) || s.added || s.notes.length"><template x-if="s.added"><span class="added" x-text="s.added"></span></template>
-              <template x-if="s.notes.length"><span class="note-mark num" :aria-label="s.notes.length === 1 ? 'A note' : s.notes.length + ' notes'"><svg class="i"><use href="#i-comment"/></svg><span x-text="s.notes.length"></span></span></template>
-              <template x-if="s.dueText && !s.done"><span class="due num" :class="{overdue: s.late}" x-text="s.dueText"></span></template></div></button>
-          <!-- Done: who did it, ✓ on their picture (⏭ for a skip), and who else it's assigned to -->
-          <template x-if="s.done && s.slot"><span class="did" :class="{waiting: s.slow, skip: s.skipped}" role="img" :aria-label="s.whoText"><template x-for="slot in [s.slot]" :key="0"><span class="pics">
-            <!-- include markup/pics.html -->
-          </span></template></span></template>
-          <!-- Not done: who's doing it; "+ me" claims it, your picture lets it go -->
-          <template x-for="slot in !s.done && s.slot ? [s.slot] : []" :key="0">
-            <!-- include markup/claim-slot.html -->
-          </template>
-          <!-- A step added during the run, on screen and not done: likely a mistake, so it can go -->
-          <template x-if="s.added && !s.done && i === runView.at && !runView.finished && canWrite(view.run.run.project_id)"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + s.title" @click="deleteAddedStep(s)"><svg class="i"><use href="#i-close"/></svg></button></template>
-        </div></template>
+        <!-- Its steps: the task row, as a run's screen has it (g.run, in task-row.html) -->
+        <template x-for="g in [{depth: {}, run: true, at: runView.at, insertAt: runView.insert?.at ?? null, locked: runView.finished || !canWrite(view.run.run.project_id)}]" :key="0"><template x-for="t in runView.steps" :key="t.id">
+          <!-- include markup/task-row.html -->
+        </template></template>
         <!-- The box under the step whose › was tapped, for a step the template didn't have: 🔁 puts that step in the box, to do
              again; + adds what's in the box after it. Last in the page, put in its place by order, so it isn't a row. -->
         <template x-if="runView.insert && !runView.finished && canWrite(view.run.run.project_id)"><div class="step-gap" id="step-gap" x-style="{order: runView.insert.at * 2 + 1}">

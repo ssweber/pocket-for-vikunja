@@ -982,7 +982,7 @@ try {
     const inserted = await api('/tasks/' + (await runStep(id, 1)).id);
     if (!/pocket:added/.test(inserted.description) || inserted.related_tasks?.copiedfrom?.length || inserted.done) throw new Error('inserted: ' + JSON.stringify(inserted.description));
     // The step after it still counts from the template's step before it.
-    await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .due:text-matches("^Due in (30|29)m$")');
+    await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .due span:text-matches("^Due in (30|29)m$")');
     // 🔁 puts the step the box is under in it; changed, it would be a new step, and Escape closes the box.
     await openUnder(1);
     await page.click('#step-repeat[aria-label^="Repeat “Check the guards at 3pm”"]');
@@ -1012,8 +1012,8 @@ try {
     if ((await subtasks(template.id)).length !== tplSteps) throw new Error('the template changed');
     // Its order stays after a reload, each marked.
     await page.reload();
-    await page.waitForSelector('#run-steps .row:nth-of-type(2) .meta .added:text-is("Repeated")', { timeout: 15000 });
-    await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .added:text-is("Inserted")');
+    await page.waitForSelector('#run-steps .row:nth-of-type(2) .meta .added span:text-is("Repeated")', { timeout: 15000 });
+    await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .added span:text-is("Inserted")');
     // One added by mistake is deleted, until it's done.
     await page.click('#run-steps .row:nth-of-type(3) .body');
     await page.click('#step-delete');

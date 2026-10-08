@@ -96,8 +96,19 @@ export default {
   },
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
-  // What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet.
+  // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, or a task, which
+  // then becomes the one quick add's box adds subtasks to (aimAfterTick).
+  tickRow(t, g, row){
+    if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
+    if (g.sheet) return this.toggleSubtask(t);
+    this.toggleDone(t, row); this.aimAfterTick(t);
+  },
+  /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. A step on a
+     run's screen (g.run): Inserted or Repeated, its notes, and, not done, its countdown or when it's due. */
   rowMeta(t, g){
+    if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
+      t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A note' : t.notes.length + ' notes'},
+      t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}].filter(Boolean);
     const out = [], due = dueInfo(t.due_date);
     // A done task over its open subtasks: why it's on the open list.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});

@@ -3,8 +3,8 @@
 //   npm run specimen        then open specimen/index.html in a browser
 //
 // It shows src/markup/task-row.html in every state (open, done, waiting to send, with progress, subtasks at each depth,
-// due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet, with who's
-// doing each), in light and dark side by side, with Pocket's stylesheet and its own Alpine component given made-up tasks
+// due dates, priority, labels, people and comments, a run's row, read only, a task's subtasks in its sheet, with who's
+// doing each, and a run's steps on its screen), in light and dark side by side, with Pocket's stylesheet and its own Alpine component given made-up tasks
 // (scripts/specimen/). It isn't part of Pocket: it's built into specimen/, which git ignores, outside pocket/app/, so
 // it's never served or saved for offline.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';

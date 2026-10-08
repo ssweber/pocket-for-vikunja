@@ -36,7 +36,7 @@ function sections(){
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
-  return {parent, list: [
+  return {parent, steps: runSteps(), list: [
     {title: 'Open, done, and waiting to send', depth: {}, tasks: [task({title: 'Order oat milk'}), task({title: 'Wipe the counters', done: true}),
       {...task({title: 'Call the plumber tomorrow'}), id: 'pending-specimen-0', pending: true, waits: true, entry: 'specimen', index: 0}]},
     {title: 'Progress', depth: {}, tasks: [task({title: 'Repaint the sign', percent_done: .3}), task({title: 'Train the new barista', percent_done: .7})]},
@@ -71,6 +71,32 @@ function sections(){
   ]};
 }
 
+/* A run's steps as Vikunja gives them, with only what its screen keeps (plainStep): done by you, by Priya, skipped by
+   Sam, a step with notes on you, one inserted and one repeated during the run, progress, people on them, and timed
+   steps: one counting down from the step before it, one late, and one waiting on a step not done. */
+function runSteps(){
+  const MIN = 6e4;
+  const step = f => ({id: ++n, title: 'A step', done: false, done_at: ZERO, due_date: ZERO, updated: at(-HOUR), percent_done: 0, description: '', assignees: [],
+    attachments: [], reactions: {}, comments: [], added: '', from: null, ...f, tpl: f.tpl === undefined ? f.title : f.tpl});
+  const doneBy = (u, mins) => ({done: true, done_at: at(-mins * MIN), reactions: {'✅': [u]}});
+  const note = (id, author, mins, text) => ({id, author, created: at(-mins * MIN), comment: `<p>${text}</p>`});
+  const list = [
+    step({title: 'Turn on the espresso machine', tpl: 'Turn on the espresso machine {#machine}', ...doneBy(me, 40)}),
+    step({title: 'Grind the beans', assignees: [priya], ...doneBy(priya, 30)}),
+    step({title: 'Wipe the steam wand', done: true, done_at: at(-20 * MIN), reactions: {'⏭️': [sam]}, comments: [note(1, sam, 19, 'Skipped: no milk yet')]}),
+    step({title: 'Put the croissants in', tpl: 'Put the croissants in {#oven}', ...doneBy(me, 2)}),
+    step({title: 'Take the croissants out', tpl: 'Take the croissants out T#18m:oven', assignees: [me], comments: [note(2, priya, 50, 'Use the top shelf')]}),
+    step({title: 'Check the milk', added: 'Inserted', tpl: null}),
+    step({title: 'Wipe the steam wand', added: 'Repeated'}),
+    step({title: 'Restock the cups', assignees: [priya], percent_done: .5}),
+    step({title: 'Unlock the door', tpl: 'Unlock the door T#30m:machine'}),
+    step({title: 'Sweep the floor', tpl: 'Sweep the floor T#10m'}),
+    step({title: 'Count the till', assignees: [priya, sam]}),
+  ];
+  list[6].from = list[2].id;
+  return list;
+}
+
 document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
@@ -92,9 +118,24 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.setProjects(projects);
     // A task's sheet, open on a task with subtasks, for its rows' slots: who's doing each.
     this.sheet = {...blankSheet('task'), task: s.parent, subPeople: {801: [], 802: [me], 803: [priya], 804: [priya, sam]}};
-    this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, tasks: subs}];
+    // A run's screen, open on its fifth step, with a tick on the last waiting to be sent: its steps are the task row
+    // too (g.run), each as the screen works it out (runView).
+    const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, priya], created_by: me, comments: [], from: 900, steps: s.steps.map(x => x.id)};
+    this.pending = [{kind: 'act', id: 'specimen-tick', run: run.id, task: s.steps.at(-1).id, op: 'done', at: new Date().toISOString(), items: []}];
+    this.slow = ['specimen-tick'];
+    this.view.run = {run: {...run, done: true}, steps: s.steps, at: null, last: null};
+    const finished = this.runView.steps;
+    this.view.run = {run, steps: s.steps, at: 4, last: null};
+    const steps = this.runView.steps;
+    steps[7] = {...steps[7], state: {held: 75}};
+    this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, tasks: subs},
+      {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted, repeated, held at 75%, late, waiting on another step, and a tick waiting to send',
+        depth: {}, run: true, at: 4, insertAt: null, locked: false, tasks: steps},
+      // (other ids, so the held state above stays on its own row)
+      {title: 'The same steps in a run finished, or shared with you to read only', depth: {}, run: true, at: null, insertAt: null, locked: true,
+        tasks: finished.map(x => ({...x, id: x.id + 1000}))}];
     // The states a finger makes, put on the rows as the app does.
-    const all = s.list.flatMap(g => g.tasks).filter(t => t.state);
+    const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
     for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', hide: [], action: {label: 'Undo', fn(){}}, ...t.state.line};
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
     this.$nextTick(() => {

@@ -59,9 +59,11 @@ export default {
       for (const id of ids) if (cache.get(id)?.assignees) this.sheet.subPeople[id] ??= cache.get(id).assignees;
     }
   },
-  /* A row's slot for who's doing it: in a sheet (g.sheet), its subtask's; in a list, the task's own, from its assignees.
-     None on a row waiting to be sent, a run (its row says who it's for), or a template that comes round. */
+  /* A row's slot for who's doing it: in a sheet (g.sheet), its subtask's; on a run's screen (g.run), its step's, until
+     it's done (then its row shows who did it); in a list, the task's own, from its assignees. None on a row waiting to
+     be sent, a run (its row says who it's for), or a template that comes round. */
   rowSlot(t, g){
+    if (g.run) return t.done ? null : t.slot;
     if (g.sheet) return this.subSlots[t.id] || null;
     if (t.pending || this.isRunTask(t) || (this.checklistIds.has(t.project_id) && hasTemplateLabel(t))) return null;
     return this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t));
