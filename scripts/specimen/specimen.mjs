@@ -45,7 +45,19 @@ function sections(){
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
-  return {parent, steps: runSteps(), list: [
+  // Today's cards (cards.js): a task with three subtasks open (one of them yours), paged to the second; a run with a
+  // step counting down; a task with one subtask open. Their subtasks are in the store, as Today keeps them.
+  const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
+  const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}]}});
+  const opening = task({title: 'Opening up · Oct 8', project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
+  const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
+  const cardSubs = [kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
+    kid(703, {under: van2.id, title: 'Sound system', assignees: [me], percent_done: .5}), kid(704, {under: van2.id, title: 'Lights'}),
+    kid(711, {under: opening.id, project_id: 2, title: 'Turn on the espresso machine', done: true, related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 1}]}}),
+    kid(712, {under: opening.id, project_id: 2, title: 'Take the croissants out', due_date: at(18 * 6e4), related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 2}]}}),
+    kid(713, {under: opening.id, project_id: 2, title: 'Unlock the door', related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 3}]}}),
+    kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]})];
+  return {parent, steps: runSteps(), cards: [van2, opening, sign], cardSubs, list: [
     {title: 'Open, done, and waiting to send', depth: {}, tasks: [task({title: 'Order oat milk'}), task({title: 'Wipe the counters', done: true}),
       {...task({title: 'Call the plumber tomorrow'}), id: 'pending-specimen-0', pending: true, waits: true, entry: 'specimen', index: 0}]},
     {title: 'Progress', depth: {}, tasks: [task({title: 'Repaint the sign', percent_done: .3}), task({title: 'Train the new barista', percent_done: .7})]},
@@ -122,7 +134,7 @@ function runSteps(){
 document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
-  c.specimen = [];
+  c.specimen = []; c.specimenCards = [];
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -150,6 +162,11 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.view.run = {run, steps: s.steps, at: 4, last: null};
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {held: 75}};
+    // Today's cards: their subtasks in the store, the van's paged to its second open step.
+    for (const x of s.cardSubs) this.keep(x);
+    this.specimenCards = s.cards.map(t => this.keep(t));
+    this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
+    this.cardPage = {[s.cards[0].id]: {id: 703, i: 1}};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted, repeated, held at 75%, late, waiting on another step, and a tick waiting to send',
         depth: {}, run: true, at: 4, insertAt: null, locked: false, tasks: steps},

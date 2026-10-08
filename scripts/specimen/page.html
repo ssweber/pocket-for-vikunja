@@ -34,6 +34,14 @@
           </template>
         </div>
       </div></template>
+      <!-- Today's cards (today-item.html): a task's subtask, paged mid-way, and a run's step counting down, each between
+           its ‹ ›; one with one open step, with no arrows; and the line under each, a segment per subtask -->
+      <div class="sec">Today’s cards: a task’s subtask, paged to 2 of 3; a run’s step, counting down; one step only, no arrows</div>
+      <template x-for="g in [{cards: true, depth: {}}]" :key="0"><div class="list">
+        <template x-for="t in specimenCards" :key="t.id">
+          <!-- include markup/today-item.html -->
+        </template>
+      </div></template>
       <!-- Above quick add's box on a project's list (cap-target.html): adding subtasks to the task touched last, after its
            last subtask, and after the subtask touched -->
       <div class="sec">Above the add box: what it adds subtasks to</div>
