@@ -830,8 +830,8 @@ try {
     // not its sheet; Back comes back to Today.
     const runCard = cardOf(`${TEMPLATE} · run`);
     await page.waitForSelector(runCard, { timeout: 15000 });
-    const line = await page.$eval(`${runCard} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).getPropertyValue('--done').trim(), el.getAttribute('aria-label')]);
-    if (JSON.stringify(line) !== JSON.stringify(['3', '2', '2 of 3 steps done'])) throw new Error('its line: ' + line);
+    const line = await page.$eval(`${runCard} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), el.getAttribute('aria-label')]);
+    if (JSON.stringify(line) !== JSON.stringify(['3', '2 of 3 steps done'])) throw new Error('its line: ' + line);
     // Steps 1 and 2 done: its count, at its strip's end, is 3 of 3, the step's place in the run's order, and its segment
     // the one marked. One step open: no arrows.
     await expect(page.locator(`${runCard} .card-strip > .card-n`)).toHaveText('3 of 3');
@@ -907,8 +907,8 @@ try {
     const line = await page.$eval(runRow, el => [parseFloat(getComputedStyle(el).getPropertyValue('--pct')), parseFloat(getComputedStyle(el, '::after').width)]);
     if (!(line[0] > 0 && line[1] > 0)) throw new Error('no progress line under Checklists: ' + line);
     // In segments, one per step, the steps done filled (runLine).
-    const segs = await page.$eval(runRow, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).getPropertyValue('--done').trim(), getComputedStyle(el, '::after').maskImage || getComputedStyle(el, '::after').webkitMaskImage]);
-    if (segs[0] !== '3' || segs[1] !== '2' || !/repeating-linear-gradient/.test(segs[2])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
+    const segs = await page.$eval(runRow, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el, '::after').maskImage || getComputedStyle(el, '::after').webkitMaskImage]);
+    if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
     // Each segment filled by whether its own step is done, in the run's order: the first two.
     const rowFill = await page.$eval(runRow, el => getComputedStyle(el).getPropertyValue('--fill').trim());
     const fillOf = rowFill.match(/^linear-gradient\(to right,(\S+) 0% 66\.667%,(\S+) 66\.667% 100%\)$/);

@@ -2335,17 +2335,10 @@ ${footName('Hooks')}`);
   // A card's step line, and what its title shows (without what a screen reader hears before it).
   const stepLine = t => `${cardOf(t)} .step-line`;
   const stepTitle = t => page.locator(`${stepLine(t)} .title > span:not(.sr)`);
-  // Swiped sideways, before any hold: on a card, that pages nothing.
-  const swipeOn = async (sel, by) => {
-    await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-    const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
-    await page.mouse.move(x, y); await page.mouse.down();
-    await page.mouse.move(x + by, y + 3, { steps: 6 });
-    await page.mouse.up();
-  };
+  // A card's line: its segments, cut by its mask, and what it says (how many are done).
   const lineSegs = t => page.locator(`${cardOf(t)} .card-line`).evaluate(el => {
     const cs = getComputedStyle(el);
-    return [cs.getPropertyValue('--segs').trim(), cs.getPropertyValue('--done').trim(), /repeating-linear-gradient/.test(cs.maskImage || cs.webkitMaskImage), el.getAttribute('aria-label')];
+    return [cs.getPropertyValue('--segs').trim(), /repeating-linear-gradient/.test(cs.maskImage || cs.webkitMaskImage), el.getAttribute('aria-label')];
   });
   // Which segment of a card's line is marked, as drawn: the one under the middle of its outline (it slides there).
   const markedSeg = t => page.locator(`${cardOf(t)} .card-mark`).evaluate(el => {
@@ -2429,7 +2422,7 @@ ${footName('Hooks')}`);
       for (const k of [A, B, C]) await expect(page.locator(`.item > .row:has(.title:has-text("${k.title}"))`)).toHaveCount(0);
       await expect(card.locator('.check')).toHaveCount(1);                     // the step's: the card's title has none
       // Its line, a segment per subtask, those done filled.
-      if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', '0', true, '0 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
+      if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', true, '0 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
       // The step line, a plain row: its tick at its left edge, as a row's is on Today, each zone 48px across at least,
       // over its full height: the tick, the title, who's on it.
       await line.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
@@ -2467,7 +2460,7 @@ ${footName('Hooks')}`);
       await expect(title).toHaveText(B.title);
       await synced(page);
       if (!(await get(B.id)).done) throw new Error('never done');
-      if ((await lineSegs(P.title))[1] !== '1') throw new Error('its line, after the tick: ' + await lineSegs(P.title));
+      if ((await lineSegs(P.title))[2] !== '1 of 3 subtasks done') throw new Error('its line, after the tick: ' + await lineSegs(P.title));
       if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height');
       await later(3000);
       await expect(title).toHaveText(C.title);
@@ -2525,13 +2518,16 @@ ${footName('Hooks')}`);
       await scrub(P.title, 2, 0);
       await expect(title).toHaveText(C.title);
       await expect(count).toHaveText('2 of 3');
-      // A plain swipe on the step line or its heading pages nothing, nor opens the task.
-      await swipeOn(stepLine(P.title), -120);
-      await later(300);
-      await expect(title).toHaveText(C.title);
-      await swipeOn(`${cardOf(P.title)} > .card-head`, -120);
-      await later(300);
-      await expect(title).toHaveText(C.title);
+      // A plain swipe on the step line or its heading, before any hold, pages nothing, nor opens the task.
+      for (const sel of [stepLine(P.title), `${cardOf(P.title)} > .card-head`]) {
+        await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
+        await page.mouse.move(x, y); await page.mouse.down();
+        await page.mouse.move(x - 120, y + 3, { steps: 6 });
+        await page.mouse.up();
+        await later(300);
+        await expect(title).toHaveText(C.title);
+      }
       if (await page.isVisible('#sheet')) throw new Error('a swipe opened the task');
       // Leaving Today puts it back on its next step.
       await next.click();
@@ -2568,7 +2564,7 @@ ${footName('Hooks')}`);
       await expect(count).toHaveText('3 of 3');
       if (await card.locator('.card-line').evaluate(el => el.getBoundingClientRect().width) !== lineW) throw new Error('its line changed length as its arrows went');
       if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height as its arrows went');
-      if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', '2', true, '2 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
+      if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', true, '2 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
     } finally { for (const t of [A, B, C, P, Q]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
