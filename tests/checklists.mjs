@@ -73,6 +73,8 @@ async function step(name, fn){
 const signIn = (p, token) => signInAt(p, APP, token);
 // A card on Today (a run with steps still open), by its name.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
+// A run's name on its card on Today: without the day it was started ("Line 4 · run 1 · Oct 8": "Line 4 · run 1").
+const dayless = t => t.split(' · ').slice(0, -1).join(' · ');
 const STRIP = '#step-card > .card-strip';                                  // the run's step card's, Today's card's strip
 const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 // A message in its place (lines.js): "checklists", "step", "sheet:subtasks"…
@@ -236,6 +238,15 @@ try {
     const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent + '|' + (e.querySelector('.meta')?.textContent || '')));
     if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “check-the-guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
       throw new Error('sheet shows ' + JSON.stringify(shown));
+    // Its steps are numbered plainly, as the start sheet has them: a square box is a step you tick, in a run. Its sheet
+    // has what a run gets from it (its notes, its labels but "template", its people, when it comes round), and no
+    // Comments: Vikunja's copy of a template, a run, doesn't take its comments.
+    const n = page.locator('#d-subtasks .row .step-n').first();
+    await expect(n).toHaveText('1');
+    await expect(n).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await expect(page.locator('#d-comments')).toHaveCount(0);
+    await expect(page.locator('#d-template-label')).toHaveText('Its runs get its labels, all but “template”, which is what makes it a template.');
+    for (const id of ['#d-desc', '#d-due', '#d-repeat', '#d-assignees']) await expect(page.locator(id)).toBeVisible();
   });
 
   await step('a-step-it-counts-from-removed', async () => {
@@ -521,7 +532,7 @@ try {
     await page.click('#run-steps .row:nth-of-type(1) .body');
     await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")');
     await page.fill('#step-note', 'Guard 3 tightened');
-    await page.waitForSelector('#step-note-with');
+    await expect(page.locator('#step-note-with')).toHaveText('Done or Skip sends this comment with it: for Skip, as the reason.');
     await page.click('#step-done');
     await until('the note never reached the step', async () => { const t = await task(id); return t.done && (t.comments || []).some(c => c.comment.includes('Guard 3 tightened')); });
     await page.reload();
@@ -529,12 +540,15 @@ try {
   });
 
   await step('note-on-a-step-and-the-run', async () => {
-    await page.fill('#step-note', 'Looks good');
-    await page.click('#step-note-form button');
+    // What's written on a run is a Vikunja comment, and called one, as in a task's sheet: "Notes" are a task's own.
+    await page.getByRole('textbox', { name: 'Comment on this step' }).fill('Looks good');
+    await page.locator('#step-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#step-extra .comment:has-text("Looks good")');
-    await page.waitForSelector('#run-steps .row:nth-of-type(3) .note-mark');                 // its row says it has a note
-    await page.fill('#run-note', 'Line 2 ran slow today');
-    await page.click('#run-note-form button');
+    await expect(page.locator('#run-steps .row:nth-of-type(3) .note-mark')).toHaveAttribute('aria-label', 'A comment');   // its row says it has one
+    await expect(page.locator('#run .h3:has-text("Comments on this run")')).toBeVisible();
+    await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment for this run, and the next');
+    await page.getByRole('textbox', { name: 'Comment on this run' }).fill('Line 2 ran slow today');
+    await page.locator('#run-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#run-notes .comment:has-text("Line 2 ran slow today")');
     const step3 = await task((await runStep(first.id, 2)).id), run = await task(first.id);
     if ((step3.comments || []).filter(c => c.comment.includes('Looks good')).length !== 1) throw new Error('step comments: ' + JSON.stringify(step3.comments?.map(c => c.comment)));
@@ -760,6 +774,10 @@ try {
     // their own.
     const card = page.locator(cardOf(`${TEMPLATE} · run`));
     await expect(card.locator('.card-head .sr')).toContainText('For you', { timeout: 15000 });
+    // Its heading reads as a task card's: its name, without the day it was started, and with no due date, nothing at
+    // the right.
+    await expect(card.locator('.card-title')).toHaveText(dayless((await api('/tasks/' + first.id)).title));
+    await expect(card.locator('.card-head .due')).toHaveCount(0);
     await expect(card.locator('.step-line .title > span:not(.sr)')).toHaveText('First article check');
     await expect(card.locator('.step-line .when .due')).toHaveText(/^in \d+[hm]( \d+m)?$/);
     await expect(card.locator('.step-line > .check')).toHaveCSS('border-radius', '7px');   // a step's box: square
@@ -794,6 +812,9 @@ try {
     await page.click('#btn-run-more');
     await page.click('#r-open-task');
     await page.waitForSelector('#d-subtasks .row');
+    // A run's sheet has its Comments (its screen's "Comments on this run"); a step is added on its screen.
+    await expect(page.locator('#d-comments')).toBeVisible();
+    await expect(page.locator('#d-run-steps-note')).toHaveText("To add a step, use the box at the bottom of the run's screen: it's marked as added during the run.");
     await page.click('#d-subtasks .row:nth-of-type(2) .body');
     await page.waitForSelector('#d-assignees');
     if (await page.$('#d-repeat')) throw new Error('Repeats on a run\'s step');
@@ -858,8 +879,8 @@ try {
     await call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
     try {
       await signIn(p, otherToken);
-      await p.waitForSelector(cardOf(run.title), { timeout: 15000 });
-      const mine = (await api('/tasks/' + first.id)).title;
+      await p.waitForSelector(cardOf(dayless(run.title)), { timeout: 15000 });
+      const mine = dayless((await api('/tasks/' + first.id)).title);
       await p.waitForSelector(`${cardOf(mine)} .step-line .title:has-text("Check the guards at 3pm")`, { timeout: 15000 }).catch(() => { throw new Error("their claimed step's run isn't on their Today, opened on it"); });
       // Your run's last step is due, and isn't theirs: not a row of its own there.
       if (await p.$('.item > .row .title:has-text("First article check")')) throw new Error('their Today: ' + JSON.stringify(await rows()));
@@ -981,6 +1002,7 @@ try {
     await page.waitForSelector('#step-title', { timeout: 15000 });
     await toastGone();
     await page.click('#btn-run-more');
+    await expect(page.locator('#r-delete + .note')).toHaveText(/^Deletes the run and its \d+ steps, with their comments and photos, for everyone\.$/);
     await page.click('#r-delete');
     await toast('Run deleted');
     await expect(page).toHaveURL(/#\/checklists$/, { timeout: 15000 });
@@ -1374,7 +1396,7 @@ try {
     await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 4 of 4');
     const title = (await api('/tasks/' + id)).title;
     await page.click('nav.tabs a[data-tab=today]');
-    await expect(page.locator(`${cardOf(title)} .step-line .title > span:not(.sr)`)).toHaveText('Sweep the floor', { timeout: 15000 });
+    await expect(page.locator(`${cardOf(dayless(title))} .step-line .title > span:not(.sr)`)).toHaveText('Sweep the floor', { timeout: 15000 });
   });
 
   await step('hold-a-step-to-set-its-progress', async () => {
@@ -1521,6 +1543,7 @@ try {
     await page.click(`#step-notes-${a.id}`);
     await page.waitForSelector('#d-step-title:text-is("Stir")');
     await page.waitForSelector('#d-step-when:has-text("Step 1 of 2")');
+    await expect(page.locator('#d-comments')).toHaveCount(0);                // a run's copy of the step doesn't get them
     if (await page.$('#d-done') || await page.$('#d-progress') || await page.isVisible('#d-due') || await page.isVisible('#d-subtasks')) throw new Error("a template's step has a tick, a date or subtasks");
     await page.click('#d-desc');
     await page.fill('#d-desc-in', 'Use the long spoon.\nNot the whisk.');
@@ -1760,6 +1783,12 @@ try {
     if (run.labels?.some(l => l.title === 'template') || run.done) throw new Error('the run is a template, or done');
     const want = other ? [me.id, other.id].sort((a, b) => a - b) : [me.id];
     if (JSON.stringify(run.assignees?.map(u => u.id).sort((a, b) => a - b)) !== JSON.stringify(want)) throw new Error('run for ' + JSON.stringify(run.assignees?.map(u => u.username)));
+    // On Today, its card's heading is a task card's: its name without its day, and when it's due at the right, late.
+    await page.evaluate(() => { location.hash = '#/today'; });
+    const runCard = page.locator(cardOf(dayless(run.title)));
+    await expect(runCard.locator('.card-title')).toHaveText(dayless(run.title), { timeout: 15000 });
+    const at = await page.evaluate(ms => new Date(ms).toDateString() === new Date().toDateString() && new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), +due);
+    await expect(runCard.locator('.card-head .due.overdue')).toHaveText(at || /\S/);             // its time, if it was today
     // The template, moved on a day by Vikunja, and still not done.
     if (tpl.done || !sameTime(tpl.due_date, new Date(+due + 864e5).toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
   });
