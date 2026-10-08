@@ -154,12 +154,11 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
 .check{width:26px;height:26px;border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:1px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
 /* a tick's touch target is 48px, past its circle; on a row, the whole left gutter, at the row's full height, up to its
-   title (a subtask's from the row's edge; a run's step's from its ›) */
+   title (a subtask's from the row's edge) */
 button.check{position:relative}
 button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row > button.check{position:static}
 .row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + 38px)}
-#run-steps > .row > .ins-open ~ button.check::after{left:44px;width:38px}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
 /* A tick's ring is its task's priority: low blue, medium amber, high orange, urgent red, do now red and thicker, filled
    faintly; with none, grey. Each told apart in light and dark (motion-and-rows-plan, section 9) */
@@ -443,21 +442,9 @@ a.sec-act{text-decoration:none}
 .step-acts{display:flex;gap:10px;margin-top:16px}
 .step-acts .btn{min-height:60px;font-size:19px}
 .step-acts .go-on{flex:1;max-width:360px}
-/* A step added during the run, and the way to add one: a gap in Steps, above the step on screen, not near Done */
+/* A step added during the run (from the bottom box: cap-target.html) */
 .step-added{font-size:14px;color:var(--muted);margin-bottom:4px}
-#run-steps{display:flex;flex-direction:column}
 #run-steps .meta .added{color:var(--muted)}
-.step-gap{border-top:1px solid var(--line);background:var(--bg)}
-.gap-where{margin:0;padding:8px 14px 0;font-size:13px;color:var(--muted)}
-/* A step's ›, at its left edge: opens the box under it */
-.ins-open{flex:none;align-self:stretch;width:44px;margin:-12px -12px -12px -14px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
-.ins-open svg.i{width:16px;height:16px;transition:transform .15s}
-.ins-open[aria-expanded=true]{color:var(--accent)}
-.ins-open[aria-expanded=true] svg.i{transform:rotate(90deg)}
-/* The subtask box, with 🔁 beside + */
-.step-gap .rep{width:38px;height:38px;border-radius:10px;border:0;background:var(--sunk);color:var(--ink);display:grid;place-items:center;flex:none}
-.step-gap .rep.on{background:var(--accent-soft);color:var(--accent)}
-.gap-note{margin:8px 2px 0;font-size:13.5px;color:var(--muted)}
 .row .step-del{align-self:center;width:34px;height:34px;color:var(--danger)}
 /* a row's × (a step inserted, a task waiting to be sent) takes taps 48px across, past what's drawn */
 .row > .icon-btn{position:relative}
@@ -495,6 +482,11 @@ a.sec-act{text-decoration:none}
 .cap-target .what{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .cap-target b{color:var(--ink);font-weight:650}
 .cap-target .icon-btn{width:48px;height:48px;margin:-8px 0}
+/* On a run: Repeat, the card's step again, at the line's end; its taps 48px tall, past what's drawn */
+.cap-target .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:-4px 6px -4px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14.5px;font-weight:600}
+.cap-target .rep::after{content:"";position:absolute;inset:-6px 0}
+.cap-target .rep svg.i{width:16px;height:16px;color:var(--accent)}
+.cap-target .rep[disabled]{opacity:.4}
 /* The subtask box: the same box, in a task's sheet, quieter until it has the focus */
 .addbox.sub{padding:10px}
 .row ~ .addbox.sub{border-top:1px solid var(--line)}

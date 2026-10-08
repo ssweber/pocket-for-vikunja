@@ -460,7 +460,7 @@ export default {
     try { res = await fetch(new URL('.', location.href), {cache: 'no-store', headers: {'If-Modified-Since': LOADED.toUTCString()}}); }
     catch { return; }                                                          // offline: no news
     if (res.status !== 200) return;
-    const busy = this.sheet.open || this.cap.text.trim() || this.capPhotos.length || this.cap.busy || this.searchQ || this.movingOverdue || this.starting
+    const busy = this.sheet.open || this.cap.text.trim() || this.runInsert.text.trim() || this.capPhotos.length || this.cap.busy || this.searchQ || this.movingOverdue || this.starting
       || this.pending.length || pendingSaves;
     if (!busy) location.reload();
   },

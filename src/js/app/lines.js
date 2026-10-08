@@ -6,8 +6,8 @@
      folds away and gives the row back (`stays`), or, on a row that goes, folds it away; then `gone` is called. Leaving
      the screen, or putting Pocket away, folds them all at once.
    - A place (markup/place-line.html): under a list's heading (Move all to today, under Overdue), by the add box (where
-     a task went, when it isn't on the screen), in the open sheet under what it's about (a save that failed), on a run's
-     step card. A sheet's lines go with it.
+     a task went, when it isn't on the screen; on a run, a step repeated), in the open sheet under what it's about (a
+     save that failed), on a run's step card. A sheet's lines go with it.
    - Only where there's none of those: the toast at the bottom (toast.js).
    A screen reader hears each from #said. */
 import {collapse} from '../util.js';
@@ -22,7 +22,7 @@ const rowsOf = id => [...document.querySelectorAll(`:is(.row, .day-card)[data-id
 const SCREEN = {
   overdue: a => a.route.name === 'today',
   done: a => a.route.name === 'project',                 // under a project's Done heading
-  cap: a => ['today', 'project'].includes(a.route.name),
+  cap: a => ['today', 'project'].includes(a.route.name) || (a.route.name === 'run' && !!a.runAim),   // by the add box
   checklists: a => a.route.name === 'checklists',
   projects: a => a.route.name === 'projects',
   setup: a => ['projects', 'checklists'].includes(a.route.name),

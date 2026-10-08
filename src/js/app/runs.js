@@ -272,7 +272,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // the same run, refreshed: same step, same drafts
-    if (!keep) this.runInsert = {...newBox(), repeat: null, after: null};
+    if (!keep) { this.runInsert = newBox(); this.runAdded = null; }
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
     const before = last === undefined ? saved.get('run.' + id)?.run?.last : null;
     this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null,
@@ -399,10 +399,6 @@ export default {
     const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish';
     // Finished, or every step done, no step is on screen until one is tapped.
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
-    /* Where the insert box is open: under the step whose › was tapped (`after`), so what's added goes before the step
-       after it, or at the end after the last. That step can be repeated there, done or not, once it's been sent. */
-    const k = steps.findIndex(s => s.id === this.runInsert.after), under = k >= 0 ? steps[k] : null;
-    const insert = !under ? null : {at: k, after: under, before: steps[k + 1]?.id ?? null, repeatable: under.pending ? null : under};
     /* The step card's strip (card-strip.html), Today's card's: ‹, the run's line, a segment per step, each done one's
        full and the card's step's filled by its progress, that step marked, ›, and "3 of 6", its place. It pages through
        the open steps, and the step on the card if it's done (tapped in the list), as Today's card does (showCardStep). */
@@ -410,7 +406,7 @@ export default {
     const card = step && {runScreen: true, id: r.run.id, step, i: pages.indexOf(step), n: pages.length, steps: pages, all: steps, at, total,
       line: runLine(total, doneCount, steps.map(s => s.done ? 1 : s === step ? s.pct / 100 : 0)),
       lineText: `${didCount} of ${total} steps done` + (skippedN ? `, ${skippedN} skipped` : '')};
-    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, card, insert, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, card, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
       forText: forText && forText[0].toUpperCase() + forText.slice(1)};
@@ -509,6 +505,7 @@ export default {
   },
   showStep(i, scroll){
     if (!this.view.run) return;
+    if (this.runView?.step?.i !== i) this.runAdded = null;               // the bottom box aims at it now (runAim)
     this.view.run.at = i;
     if (this.view.run.last) this.view.run.last.held = null;                // Last time's notes on its card from now on
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
@@ -716,45 +713,60 @@ export default {
   // The task an act is for: a step inserted offline is known by its entry until it's in Vikunja.
   actTask(a){ return typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) ?? a.task : a.task; },
 
-  /* ---------- steps inserted during a run ---------- */
-  /* Insert a step after any step, or repeat that step there (repeatStep). Through the outbox, as a tick is: offline it
-     waits, shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
-  /* The box opens under a step from the › at its left (openInsert), one at a time, out of the way otherwise. It's quick
-     add's 'ins' box, so it reads labels, people and priority as the subtask box does (not dates: a step's time is its
-     template's), and each line of a pasted list is a step, in order. 🔁 puts the step it's under in the box (armRepeat):
-     left as it is, + repeats that step; changed, it's a new step; tapped again, it puts back what was typed before.
-     What's typed stays in the box when it's closed or moved under another step, until it's inserted (keep: false). */
-  openInsert(s){
-    const open = this.runInsert.after === s?.id ? null : s?.id ?? null, text = this.insertKept();
-    this.runInsert = {...newBox(), text, repeat: null, after: open};
-    if (open) this.$nextTick(() => document.getElementById('step-insert-in')?.focus());
+  /* ---------- steps added during a run ---------- */
+  /* Add a step after any step, or repeat one there (repeatStep). Through the outbox, as a tick is: offline it waits,
+     shown in its place, and can be ticked meanwhile. The run's screen then shows the new step. */
+  /* The bottom box on a run's screen (quick add's 'ins', app.html), as on a project's list adding subtasks: aimed at the
+     step on the card, the line above it saying where a step goes. Steps added one after another go in order, each
+     after the last added (runAdded), until the card's step changes. Every step done, it aims at the last. None on a
+     run finished or read only. {on: the card's step, after: the step they go after, its title, before: the step they
+     go before, or null at the end}. */
+  get runAim(){
+    const r = this.view.run, v = this.runView;
+    if (!v || v.finished || !v.steps.length || !this.canWrite(r.run.project_id)) return null;
+    const on = v.step || v.steps[v.total - 1], c = this.runAdded, id = x => this.actTask({task: x});
+    if (c && c.run === r.run.id && id(c.on) === id(on.id)) return {on, after: c.after, title: c.title, before: c.before};
+    return {on, after: on.id, title: on.title, before: v.steps[on.i + 1]?.id ?? null};
   },
-  insertKept(){ const b = this.runInsert; return b.repeat ? b.typed || '' : b.text; },
-  closeInsert(keep = true){ this.runInsert = {...newBox(), text: keep ? this.insertKept() : '', repeat: null, after: null}; },
-  armRepeat(s){
-    const b = this.runInsert;
-    if (b.repeat) { this.runInsert = {...b, text: b.typed || '', repeat: null, typed: ''}; return; }
-    this.runInsert = {...newBox(), text: s.title, repeat: s, after: b.after, typed: b.text};
+  /* Steps from the box, `list` [{title, p | from, tpl, id?}], each after the one before, from where the box aims. Where
+     the last goes is kept before any is sent, so one typed meanwhile goes after it. The entries' ids. */
+  async addSteps(list){
+    const a = this.runAim;
+    if (!a || !list.length) return [];
+    const ids = list.map(f => f.id || randomId());
+    this.runAdded = {run: this.view.run.run.id, on: a.on.id, after: 'pending-' + ids.at(-1), title: list.at(-1).title, before: a.before};
+    let after = a.after;
+    for (const [i, f] of list.entries()) { await this.addStep({...f, id: ids[i], before: a.before, after}); after = 'pending-' + ids[i]; }
+    return ids;
   },
+  // What's typed in the box: each line a step, with the people, labels and priority quick add read (not dates: a
+  // step's time is its template's).
   async insertStep(){
-    const v = this.runView, b = this.runInsert;
-    if (!v?.insert || b.busy) return;
-    // Each goes before the step after the box; if that one's deleted meanwhile, after the one before it.
-    const before = v.insert.before, under = v.insert.after.id;
-    if (b.repeat && b.text.trim() === b.repeat.title) {
-      this.closeInsert(false);
-      await this.repeatStep(b.repeat, before, under);
-      return;
-    }
     const lines = this.boxParsedLines('ins').filter(p => p.title);
-    if (!lines.length) return;
-    this.closeInsert(false);
-    let after = under;
-    for (const p of lines) after = 'pending-' + await this.addStep({title: p.title, p: packParsed(p), before, after});
+    if (!lines.length || !this.runAim) return;
+    this.runInsert = {...newBox(), focus: this.runInsert.focus};
+    await this.addSteps(lines.map(p => ({title: p.title, p: packParsed(p)})));
   },
-  async repeatStep(s, before, after = null){
-    if (!s) return;
-    await this.addStep({title: s.title, before, after, from: s.from, tpl: s.tpl ?? null});
+  /* Repeat, on the line above the box: a fresh copy of the card's step, not done, where the box aims, at once, with an
+     Undo by the box. Not one still waiting to be sent: there's nothing to copy yet. */
+  async repeatCard(){
+    const a = this.runAim, s = a?.on;
+    if (!s || s.pending) return;
+    const was = this.runAdded, id = randomId();
+    this.say(`Repeated “${s.title}”`, {place: 'cap', action: {label: 'Undo', fn: () => this.undoAdded(id, s.title, was)}});
+    await this.repeatStep(s, id);
+  },
+  // A copy of the template step `s` was copied from (or of its words, for one inserted), where the box aims, as entry `id`.
+  async repeatStep(s, id){ await this.addSteps([{title: s.title, from: s.from, tpl: s.tpl ?? null, id}]); },
+  /* A step just added taken back: not sent if it's still waiting, else deleted. The box aims where it did before, if
+     this was the last added. */
+  async undoAdded(id, title, was){
+    if (this.runAdded?.after === 'pending-' + id) this.runAdded = was;
+    if (await this.dropStep(id, true)) {
+      const tid = sync.taskOf(id);
+      if (tid) await this.deleteAddedStep(this.runView?.steps.find(x => x.id === tid) || {id: tid, title, added: 'Repeated', done: false}, true);
+    }
+    this.said = `Not repeated: ${title}`;
   },
   /* A step's progress, held and slid on its row as on a task's: through the outbox, as a tick is. 100% is done, with its
      ✅, as Done is. `undoing`: putting back what it was. */
@@ -779,8 +791,9 @@ export default {
     this.refreshPending();
     const res = await sync.lock(() => this.sendEntry(entry.id));
     this.refreshPending();
-    if (res.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: 'step', cls: 'failed'}); }
-    if (res.status === 'error') this.say(`${res.error.what} couldn't be done: ${res.error.message}.`, {place: 'step', cls: 'failed'});
+    // By the box it was added from.
+    if (res.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: ['cap', 'step'], cls: 'failed'}); }
+    if (res.status === 'error') this.say(`${res.error.what} couldn't be done: ${res.error.message}.`, {place: ['cap', 'step'], cls: 'failed'});
     if (res.status === 'sent' && this.view.run?.run.id === entry.run) this.render();
     return entry.id;
   },
@@ -806,22 +819,27 @@ export default {
     }
   },
   /* Delete a step inserted or repeated during the run, until it's done: it was likely a mistake. One still waiting to
-     be sent isn't sent, nor is anything done on it. A step from the template can't be taken out: it's skipped. */
-  async deleteAddedStep(s){
-    if (!s?.added || s.done || !confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`)) return;
-    if (s.pending) { await this.dropStep(s.pending); return; }
+     be sent isn't sent, nor is anything done on it. A step from the template can't be taken out: it's skipped. `undo`:
+     Repeat's Undo, which asks nothing and says nothing more. */
+  async deleteAddedStep(s, undo = false){
+    if (!s?.added || s.done || (!undo && !confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`))) return;
+    // The box aims at the card's step again, if this was where the next would go.
+    if (this.runAdded && this.actTask({task: this.runAdded.after}) === s.id) this.runAdded = null;
+    if (s.pending) { await this.dropStep(s.pending, undo); return; }
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       cache.delete(s.id);
       await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
       this.refreshPending();
-      this.say('Step deleted', {place: ['sheet:top', 'step']});
+      if (!undo) this.say('Step deleted', {place: ['sheet:top', 'step']});
       this.render();
     } catch (e) { this.say(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message, {place: ['sheet:top', 'step'], cls: 'failed'}); }
   },
   /* Don't send a step waiting to be inserted, nor what was done on it. One that may have reached Vikunja already (tried
-     when the connection went) is called off: whatever reached it is deleted once Pocket reaches it again (unsendStep). */
-  async dropStep(id){
+     when the connection went) is called off: whatever reached it is deleted once Pocket reaches it again (unsendStep).
+     `quiet`: an Undo, which says nothing. Returns whether it was sent already. */
+  async dropStep(id, quiet = false){
+    if (this.runAdded?.after === 'pending-' + id) this.runAdded = null;    // the box aims at the card's step again
     let tried = false, gone = false;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
@@ -832,9 +850,10 @@ export default {
     });
     if (tried) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
-    this.say(gone ? 'It was sent already: delete it on the run if it isn\'t needed.'
+    if (!quiet) this.say(gone ? 'It was sent already: delete it on the run if it isn\'t needed.'
       : tried && this.pending.some(e => e.id === id) ? 'Not inserted. What reached Vikunja of it is taken out once Pocket reaches it.' : 'Not sent.', {place: ['sheet:top', 'step']});
     if (this.route.name === 'run') this.render();
+    return gone;
   },
   // A step called off that may have reached Vikunja: found, if it got there, and deleted.
   async unsendStep(j, c, none){

@@ -1,6 +1,13 @@
 <!-- Above quick add's box on a project's list, while it adds subtasks to the task touched last (`target`, from
      capTarget in quickadd.js): to which task, and after which subtask when that isn't the last. × goes back to adding a
-     task to the project. -->
-<div class="cap-target" id="cap-target"><svg class="i"><use href="#i-subtasks"/></svg>
-  <span class="what">Add a subtask to <b x-text="target.to"></b><template x-if="target.after"><span>, after <b x-text="target.after"></b></span></template></span>
-  <button type="button" class="icon-btn plain" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="cursor = null"><svg class="i"><use href="#i-close"/></svg></button></div>
+     task to the project.
+     On a run's screen (target.step): the step a step goes after, the card's step or the last added from the box
+     (runAim, runs.js), with no ×, as a step always goes after some step; and Repeat, a fresh copy of the card's step
+     there, at once, with an Undo by the box (repeatCard). -->
+<div class="cap-target" id="cap-target"><svg class="i"><use :href="target.step ? '#i-checklist' : '#i-subtasks'"/></svg>
+  <template x-if="!target.step"><span class="what">Add a subtask to <b x-text="target.to"></b><template x-if="target.after"><span>, after <b x-text="target.after"></b></span></template></span></template>
+  <template x-if="target.step"><span class="what">Add a step after “<b x-text="target.after"></b>”</span></template>
+  <template x-if="!target.step"><button type="button" class="icon-btn plain" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="cursor = null"><svg class="i"><use href="#i-close"/></svg></button></template>
+  <template x-if="target.step"><button type="button" class="rep" id="btn-repeat" :disabled="!target.canRepeat" :aria-label="'Repeat “' + target.repeat + '”'"
+    :title="target.canRepeat ? 'A fresh copy of “' + target.repeat + '”, not done, after “' + target.after + '”' : 'It can be repeated once it\'s sent'"
+    @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg><span>Repeat</span></button></template></div>

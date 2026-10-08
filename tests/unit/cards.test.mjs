@@ -1,6 +1,6 @@
 // Today's cards (src/js/cards.js, and app/cards.js on a pretend component): which tasks are cards and what brought each,
 // where each sits on Today, which step a card shows and how it pages, and its task's line; where a run goes next, the
-// one rule its card and its screen go by, and the same strip on its screen's step card.
+// one rule its card and its screen go by, the same strip on its screen's step card, and the bottom box aimed at its step.
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -301,7 +301,7 @@ const runScreen = () => {
   const app = component(runs, claims, checklists, cards, views), now = Date.now(), NONE = '0001-01-01T00:00:00Z';
   const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
     assignees: [], attachments: [], reactions: {}, comments: [], tpl: title, added: '', from: null, ...f });
-  Object.assign(app, { user: me, pending: [], slow: [], perms: {}, clock: now, runInsert: {}, actTask: a => a.task,
+  Object.assign(app, { user: me, pending: [], slow: [], perms: {}, clock: now, actTask: a => a.task,
     view: { run: { run: { id: 50, title: 'Opening up', done: false, project_id: 5, assignees: [me], created_by: me, comments: [] },
       steps: [step(51, 'A', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [me] } }), step(52, 'B', { tpl: 'B T#30m' }), step(53, 'C', { percent_done: .5 }), step(54, 'D')], at: null, last: null } } });
   return app;
@@ -340,4 +340,42 @@ test('the step card shows who’s on its step, as its row does, until it’s don
   const app = runScreen(), v = app.runView;
   assert.deepEqual(app.rowSlot(v.step, { run: true }), v.step.slot);
   assert.equal(app.rowSlot(v.steps[0], { run: true }), null, 'done: its row and card say who did it instead');
+});
+
+test('a run’s bottom box aims at the card’s step; steps added go each after the last, until the card’s step changes', async () => {
+  const app = runScreen(), added = [], aim = () => { const a = app.runAim; return [a.on.title, a.after, a.title, a.before]; };
+  app.addStep = async f => { added.push(f); };
+  assert.deepEqual(aim(), ['C', 53, 'C', 54], 'after C, before D');
+  const ids = await app.addSteps([{ title: 'X' }, { title: 'Y' }]);
+  assert.deepEqual(added.map(f => [f.id, f.title, f.after, f.before]), [[ids[0], 'X', 53, 54], [ids[1], 'Y', 'pending-' + ids[0], 54]], 'a pasted list in order');
+  assert.deepEqual(aim(), ['C', 'pending-' + ids[1], 'Y', 54], 'the next goes after Y, still before D');
+  app.showStep(3);
+  assert.deepEqual(aim(), ['D', 54, 'D', null], 'D on the card: after it, at the end');
+  app.showStep(2);
+  assert.deepEqual(aim(), ['C', 53, 'C', 54], 'back on C, from C again');
+});
+
+test('a run’s bottom box: every step done, after the last; none on a run finished or read only', () => {
+  const app = runScreen();
+  for (const s of app.view.run.steps) Object.assign(s, { done: true, done_at: new Date().toISOString() });
+  assert.equal(app.runView.step, null, 'no step on the card');
+  assert.deepEqual([app.runAim.on.title, app.runAim.before], ['D', null]);
+  app.perms[5] = 0;
+  assert.equal(app.runAim, null, 'read only');
+  app.perms[5] = 1; app.view.run.run.done = true;
+  assert.equal(app.runAim, null, 'finished');
+});
+
+test('Repeat copies the card’s step where the box aims, with an Undo that puts the aim back', async () => {
+  const app = runScreen(), added = [], said = [];
+  app.addStep = async f => { added.push(f); };
+  app.say = (text, o) => said.push({ text, ...o });
+  app.dropStep = async () => false;                                        // still waiting: not sent
+  await app.addSteps([{ title: 'X' }]);
+  await app.repeatCard();
+  assert.deepEqual([added[1].title, added[1].tpl, added[1].after, added[1].before], ['C', 'C', 'pending-' + added[0].id, 54], 'a copy of C, after X');
+  assert.deepEqual([said[0].text, said[0].place, said[0].action.label], ['Repeated “C”', 'cap', 'Undo']);
+  assert.equal(app.runAim.after, 'pending-' + added[1].id);
+  await said[0].action.fn();
+  assert.deepEqual([app.runAim.after, app.runAim.title, app.said], ['pending-' + added[0].id, 'X', 'Not repeated: C'], 'after X again');
 });

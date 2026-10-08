@@ -81,7 +81,8 @@ export default () => ({
   unsent: null,                                // this user's outbox entries, held and turned down too; null until read
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
-  runInsert: {...newBox(), repeat: null, after: null},   // a run's insert box (quick add's 'ins'): the step it's open under, and the step it repeats
+  runInsert: newBox(),                          // the bottom box on a run's screen (quick add's 'ins'), apart from quick add's own text
+  runAdded: null,                              // where the last steps from it went, which the next go after (runAim, runs.js)
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
@@ -138,8 +139,10 @@ export default () => ({
     // An emptied add box starts afresh: no chips tapped off.
     this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.remind = false; } });
     this.$watch('sheet.sub.text', v => { if (!v.trim()) { this.sheet.sub.ignore = {}; this.sheet.sub.remind = false; } });
+    this.$watch('runInsert.text', v => { if (!v.trim()) this.runInsert.ignore = {}; });
     // What quick add's box adds to, said to a screen reader as it changes on a project's list: not behind a sheet, but
-    // as the sheet that changed it closes.
+    // as the sheet that changed it closes. (On a run, the step card's step is said as it changes, and the box's label
+    // names where a step goes.)
     this.$watch(() => !this.sheet.open && this.capTargetText, (v, was) => { if (this.route.name === 'project' && v !== false && (v || was)) this.said = v || this.capPlaceholder; });
     // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));

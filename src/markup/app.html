@@ -46,34 +46,36 @@
     <!-- include markup/screens/run.html -->
   </main>
 
-  <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
+  <!-- Quick add. On a run's screen it adds steps (capW 'ins'), while the run can be written to and isn't finished -->
+  <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists'].includes(route.name) || (route.name === 'run' && !runAim)">
     <!-- Where what was just added went, when it isn't on this screen; what couldn't be added, and why -->
     <template x-for="line in placeLines('cap')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
-    <!-- On a project's list: the task it adds subtasks to, if one was touched (capW is then 'under', quickadd.js) -->
+    <!-- On a project's list: the task it adds subtasks to, if one was touched (capW is then 'under', quickadd.js); on a
+         run's screen, the step a step goes after (runAim, runs.js) -->
     <template x-for="target in capTarget ? [capTarget] : []" :key="0">
       <!-- include markup/cap-target.html -->
     </template>
-    <form id="f-capture" autocomplete="off" @submit.prevent="capW === 'cap' ? submitCapture() : addSubtasks(capW)">
+    <form id="f-capture" autocomplete="off" @submit.prevent="capW === 'cap' ? submitCapture() : capW === 'ins' ? insertStep() : addSubtasks(capW)">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
-        <textarea id="in-capture" x-ref="capture" x-model="cap.text" rows="1" :placeholder="capPlaceholder" :aria-label="capTarget ? 'New subtask of ' + capTarget.to : 'New task'" enterkeyhint="send"
-                  x-effect="cap.text; $nextTick(() => grow($el))"
+        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" rows="1" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"
+                  x-effect="capBox.text; $nextTick(() => grow($el))"
                   @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter(capW); }"
-                  @input="cap.caret = $el.selectionStart" @click="cap.caret = $el.selectionStart" @keyup="cap.caret = $el.selectionStart"
+                  @input="capBox.caret = $el.selectionStart" @click="capBox.caret = $el.selectionStart" @keyup="capBox.caret = $el.selectionStart"
                   @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
-                  @focus="cap.focus = true" @blur="setTimeout(() => cap.focus = document.activeElement === $el, 150)"></textarea>
+                  @focus="capBox.focus = true" @blur="const b = capBox; setTimeout(() => b.focus = document.activeElement === $el, 150)"></textarea>
       </div>
       <template x-if="attachmentsOn && capW === 'cap'"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
         <svg class="i"><use href="#i-camera"/></svg>
         <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
       </label></template>
-      <button class="go" type="submit" :aria-label="capW === 'cap' ? 'Add task' : 'Add subtask'" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
+      <button class="go" type="submit" :aria-label="{cap: 'Add task', under: 'Add subtask', ins: 'Add step'}[capW]" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
-    <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(cap.focus && !cap.text)">
+    <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">
       <template x-if="capLines.length > 1 && capW === 'cap'"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(cap.nest)" @mousedown.prevent @click="cap.nest = !cap.nest">↳ Under first line</button></template>
-      <template x-if="cap.focus && !cap.text"><span class="hint" x-text="boxHint(capW)"></span></template>
+      <template x-if="capBox.focus && !capBox.text"><span class="hint" x-text="boxHint(capW)"></span></template>
       <template x-for="c in chips(capW)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
         :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
         @mousedown.prevent @click="tapChip(capW, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>

@@ -229,19 +229,20 @@ export default {
     });
     this.watchNudges(document.getElementById('view'));
   },
-  /* A nudge, an experiment (motion-and-rows-plan.md, part 7): on a project's list, a touch that starts on a row and turns
-     into a short, slow scroll aims the add box at that row (isNudge, in progress.js beside app/, where its numbers are;
-     `nudged`, app/quickadd.js); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
+  /* A nudge (motion-and-rows-plan.md, part 7): on a project's list, or a run's steps, a touch that starts on a row and
+     turns into a short, slow scroll aims the add box at that row (isNudge, in progress.js beside app/, where its numbers
+     are; `nudged`, app/quickadd.js: on a run, the step goes on the card); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
      scrolling: once the phone scrolls, it ends the pointer events (pointercancel), but these carry on. A hold, a swipe
      or a second finger on the way, and it's not one. */
   watchNudges(area){
     let n = null;
     area.addEventListener('touchstart', e => {
       n = null;
-      const row = e.touches.length === 1 && this.route.name === 'project' && !e.target.closest('.row-del') && e.target.closest('.list:not(.tree) > .row');
+      const run = this.route.name === 'run';
+      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !e.target.closest('.row-del') && e.target.closest('.list:not(.tree) > .row');
       if (!row) return;
       const p = e.touches[0];
-      n = {id: +row.dataset.id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
+      n = {id: run ? row.dataset.id : +row.dataset.id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
     }, {passive: true});
     area.addEventListener('touchmove', e => {
       if (!n) return;

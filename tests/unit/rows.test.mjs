@@ -10,7 +10,7 @@ import progress from '../../src/js/app/progress.js';
 import { rowGestures, screenRows } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
 
-const RUN = { depth: {}, run: true, at: 0, insertAt: null, locked: false };
+const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
 const step = f => ({ id: 7, i: 0, title: 'Take the croissants out', done: false, skipped: false, slow: false, added: '', notes: [], dueText: '', late: false, slot: null, ...f });
 

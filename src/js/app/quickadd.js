@@ -14,7 +14,7 @@ export default {
   /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
      ('cap'), the subtask box in a task's sheet ('sub'), whose lines become subtasks of the open task, in its project,
      quick add's box again on a project's list while it adds subtasks to the task touched last ('under', the cursor),
-     the box above the step on screen in a run ('ins'), whose lines are inserted as steps before it, and the boxes a
+     and on a run's screen ('ins'), whose lines are steps added after the step on its card (runAim), and the boxes a
      template is written in: its name in New template ('tname'), each step being written ('new:<row key>' there,
      'add:<row key>' under a template) and a step being changed ('edit'). The methods below take which box. */
   box(w){
@@ -30,7 +30,7 @@ export default {
   boxEl(w){
     if (w === 'sub') return document.getElementById('d-subin');
     if (w === 'under') return this.$refs.capture;
-    if (w === 'ins') return document.getElementById('step-insert-in');
+    if (w === 'ins') return this.$refs.capture;
     if (w === 'tname') return document.getElementById('nt-name');
     if (w === 'edit') return document.getElementById('step-edit-' + this.sheet.stepEdit?.id);
     const [which, key] = w.split(':');
@@ -290,7 +290,7 @@ export default {
     // Photos for the new task, each with a tap to take it off again. A pasted list puts them on its first task.
     const photos = !cap ? [] : this.capPhotos.map((f, i) => ({key: 'ph' + i, cls: 'photo', icon: 'clip', hint: 'Tap to remove this photo',
       text: f.name + (this.capLines.length > 1 ? ' · on the first task' : '') + '  ✕', action: () => this.capPhotos.splice(i, 1)}));
-    if (!b.text.trim() || (w === 'ins' && b.repeat)) return photos;           // a step to repeat is copied as it is
+    if (!b.text.trim()) return photos;
     const sg = this.suggestions(w);
     if (sg) return sg;
     const ticked = tickedLines(b.text);
@@ -361,14 +361,17 @@ export default {
   },
   /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
      isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
-     A row that can't be leaves the target as it was. A light tick is felt when the target changes, not when it stays. */
+     A row that can't be leaves the target as it was. A light tick is felt when the target changes, not when it stays.
+     On a run's screen, a step's row nudged puts that step on the card, as a tap on it does (without scrolling up to
+     it), so the box aims there: one current step, never two. Only while the box shows. */
   nudged(id){
-    const t = this.tasks[id], row = document.querySelector(`#view .row[data-id="${id}"]`);
-    if (!row || this.leaving[id] || this.lines[id] || !this.canAim(t)) return;
+    const run = this.route.name === 'run', row = document.querySelector(`#view .row[data-id="${id}"]`);
+    const t = run ? this.runAim && this.runView.steps.find(s => String(s.id) === String(id)) : this.tasks[id];
+    if (!row || (run ? !t : this.leaving[id] || this.lines[id] || !this.canAim(t))) return;
     const r = row.getBoundingClientRect(), top = Math.max(0, this.$refs.header?.getBoundingClientRect().bottom || 0);
     if (r.bottom <= top || r.top >= (this.$refs.captureBar?.getBoundingClientRect().top ?? innerHeight)) return;
-    if (this.cursor?.id !== id && NUDGE_TICK) haptic('tick');
-    this.aim(t);
+    if ((run ? this.runView.step?.id : this.cursor?.id) !== t.id && NUDGE_TICK) haptic('tick');
+    if (run) this.showStep(t.i); else this.aim(t);
   },
   // A tick or a slide: the task, still open; done, the task it's under, to add more beside it.
   aimAfterTick(t){ this.aim(t.done ? this.listParent(t) : t); },
@@ -380,20 +383,28 @@ export default {
   get cursorTask(){ const t = this.cursor && this.tasks[this.cursor.id]; return this.canAim(t) ? t : null; },
   // The task the box's subtasks go under: the cursor's, or the cursor itself.
   get cursorParent(){ const t = this.cursorTask; return t && (this.listParent(t) || t); },
-  // Which box quick add's is: adding a task, or subtasks to the cursor.
-  get capW(){ return this.cursorTask ? 'under' : 'cap'; },
-  // What the box adds to, said above it: the task, and the subtask they go after, unless that's the last.
+  // Which box quick add's is: adding a task, subtasks to the cursor, or on a run's screen, steps.
+  get capW(){ return this.route.name === 'run' ? 'ins' : this.cursorTask ? 'under' : 'cap'; },
+  // Its text and the rest, as the box `capW` keeps them: a run's apart from quick add's, so neither turns up in the other.
+  get capBox(){ return this.box(this.capW); },
+  /* What the box adds to, said above it: the task, and the subtask they go after, unless that's the last. On a run's
+     screen, the step they go after, and the card's step, which Repeat copies there (not one still waiting to be sent). */
   get capTarget(){
+    if (this.capW === 'ins') { const a = this.runAim; return a && {step: true, after: a.title, repeat: a.on.title, canRepeat: !a.on.pending}; }
     const t = this.cursorTask, p = this.cursorParent;
     return t && {to: p.title, after: this.cursor.after?.title || (t !== p ? t.title : '')};
   },
   get capPlaceholder(){
+    if (this.capW === 'ins') return 'Add a step, or paste a list';
     if (this.cursorTask) return 'Add a subtask';                     // photos wait for a task: none show meanwhile
     if (this.capPhotos.length) return 'What\'s this photo for?';
     return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
   },
   // The same, to a screen reader, said as it changes.
-  get capTargetText(){ const c = this.capTarget; return c ? `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}` : ''; },
+  get capTargetText(){
+    const c = this.capTarget;
+    return !c ? '' : c.step ? `Add a step after “${c.after}”` : `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}`;
+  },
   // Where the next `n` subtasks from the box go in the project's List view: after the cursor's subtask, or the last one
   // added from the box, else after the parent's last subtask; null if the project has no List view.
   cursorPlaces(n){
@@ -413,7 +424,7 @@ export default {
   // Marks in the text as typed, over every line of a pasted list. A tapped-off chip's words aren't marked, since they
   // stay in the title, nor is an @username that won't be assigned: no such user, or one who can't see the project.
   marks(w){
-    if (!this.prefixes || !this.boxLines(w).length || (w === 'ins' && this.runInsert.repeat)) return [];
+    if (!this.prefixes || !this.boxLines(w).length) return [];
     const parsed = this.boxParsedLines(w), target = parsed.length === 1 ? this.boxPid(w) : this.boxPeople(w).target;
     const stays = n => this.userKnown[n.toLowerCase()] === false || (target && this.access[target + ':' + n.toLowerCase()] === false);
     const out = [];
