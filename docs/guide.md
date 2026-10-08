@@ -181,7 +181,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   day" and adds tasks to that project. Touch a task (open its sheet and close it, tick it, or slide its progress) and
   its row lights up, and the box says "Add a subtask to Pack the van": what you type there now goes under that task,
   after its last subtask. Touch a subtask instead, and they go right after it, under its parent: "Add a subtask to
-  Pack the van, after Load chairs". **New, being tried out:** a nudge touches a task too. Put your finger on it and
+  Pack the van, after Load chairs". A nudge touches a task too. Put your finger on it and
   scroll the list a little, slowly, less than a row's height, and it's the one the box adds to; a longer or quicker
   scroll is only a scroll. The box names it either way, so a wrong one is seen, and **×** undoes it. Press Enter and type the next: the keyboard stays open, and each goes after the one
   before. A subtask ticked done hands the box to its parent, so you can add more beside it. The box reads them as the
