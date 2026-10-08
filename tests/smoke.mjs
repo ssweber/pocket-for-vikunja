@@ -2061,6 +2061,76 @@ ${footName('Hooks')}`);
     await expect(target).toHaveCount(0);
     await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
   });
+  /* A nudge (an experiment): a finger on a row that turns into a short, slow scroll aims the add box at it; a long or
+     fast one, a hold, a tap (which opens the sheet, aiming as it closes), a row done or read only, and Today don't. The
+     finger is Chrome's own touch input, so the page scrolls under it as on a phone. Each one goes down from the top of
+     the list, where the page can't scroll, so no row moves out of sight meanwhile. Each touch says when it happened
+     (`at`, in ms), as a phone's do, since Chrome takes its own time to pass them on: how fast the finger went is then
+     the test's to say. */
+  const cdp = await context.newCDPSession(page);
+  const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  // Row `sel` touched, moved `by` px in `n` moves `every` ms apart, then lifted; held `hold` ms first (really waited).
+  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0) => {
+    const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    await touch('touchStart', x, y);
+    if (hold) await page.waitForTimeout(hold);
+    const t0 = Date.now();
+    for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
+    await touch('touchEnd', x, y + by, t0 + n * every + 8);
+  };
+  const cursorId = () => page.evaluate(() => Alpine.$data(document.body).cursor?.id ?? null);
+  await step('a-nudge-aims-the-add-box', async () => {
+    const T = foot.tasks, Fuel = rowOf(footName('Fuel')), Hooks = rowOf(footName('Hooks'));
+    await page.evaluate(() => scrollTo(0, 0));
+    await expect(target).toHaveCount(0);
+    // Down 40px, slowly: the row it started on is the target, lit up, and a screen reader hears it.
+    await touchDrag(rowById(T.Van.id), 40);
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await expect(page.locator(rowById(T.Van.id))).toHaveClass(/aimed/);
+    await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
+    // On a subtask: after it, under its task.
+    await touchDrag(rowById(T.Tables.id), 30);
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Tables')}`);
+    // Further than a row, however slowly; or fast: a scroll, and the target stays.
+    await touchDrag(rowById(T.Chairs.id), 150, 30);
+    await touchDrag(Fuel, 50, 2, 8);
+    // Held, then lifted without moving: not a tap, nor a nudge.
+    await touchDrag(rowById(T.Chairs.id), 0, 0, 0, 700);
+    await expect(page.locator('#sheet')).toBeHidden();
+    if (await cursorId() !== T.Tables.id) throw new Error('the target moved to ' + await cursorId());
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Tables')}`);
+    // A row ticked done (its tick aims at its task) and a project read only: a nudge leaves the target as it is.
+    await page.getByRole('button', { name: 'Mark done: ' + footName('Hooks'), exact: true }).click();
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await touchDrag(Hooks, 30);
+    if (await cursorId() !== T.Van.id) throw new Error('the target moved to ' + await cursorId());
+    // Ticked open again, it's the target (its tick), and the project made read only, a nudge on another row leaves it.
+    await page.getByRole('button', { name: 'Mark not done: ' + footName('Hooks'), exact: true }).click();
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Hooks')}`);
+    await page.evaluate(id => { Alpine.$data(document.body).perms[id] = 0; }, foot.project.id);
+    try { await touchDrag(Fuel, 30); if (await cursorId() !== +await page.locator(Hooks).getAttribute('data-id')) throw new Error('the target moved to ' + await cursorId()); }
+    finally { await page.evaluate(id => { delete Alpine.$data(document.body).perms[id]; }, foot.project.id); }
+    // A tap, by a finger too, still opens the sheet, which aims as it closes.
+    const b = await steady(page.locator(Fuel + ' > .body'));
+    await touch('touchStart', b.x + b.width / 2, b.y + b.height / 2); await touch('touchEnd', 0, 0);
+    await page.waitForSelector('#d-title');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await expect(target).toHaveText(`Add a subtask to ${footName('Fuel')}`);
+    await synced(page);
+  });
+  await step('a-nudge-on-today-does-nothing', async () => {
+    const d = await make(`Pocket smoke nudge ${stamp}`, { due_date: todayAt(23) });
+    try {
+      await refreshToday();
+      await expect(page.locator(rowOf(d.title))).toBeVisible({ timeout: 15000 });
+      await page.locator(rowOf(d.title)).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await touchDrag(rowOf(d.title), 30);
+      await expect(page.locator('#sheet')).toBeHidden();
+      if (await cursorId() !== null) throw new Error('Today has a target: ' + await cursorId());
+      await expect(target).toHaveCount(0);
+    } finally { await api('/tasks/' + d.id, { method: 'DELETE' }); }
+  });
 
   await step('share-progress-copy-it-and-open-it-in-vikunja', async () => {
     // A project of its own: Pack the van at 60%, its subtasks in this order (one done, one half way, one yours), with
