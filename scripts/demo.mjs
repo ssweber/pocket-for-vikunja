@@ -60,10 +60,12 @@ await A('PATCH', '/user/settings/general', { default_project_id: proj['Café'].i
 const label = {};
 for (const [title, hex_color] of [['suppliers', 'db2777'], ['calls', '7c3aed'], ['quick', '0891b2']]) label[title] = await A('POST', '/labels', { title, hex_color });
 
-async function task(project, t, { labels = [], subtasks = [], comment, file } = {}){
+async function task(project, t, { labels = [], subtasks = [], comment, file, assign } = {}){
   const made = await A('POST', `/projects/${proj[project].id}/tasks`, t);
   for (const l of labels) await A('POST', `/tasks/${made.id}/labels`, { label_id: label[l].id });
-  for (const [title, done] of subtasks) {
+  if (assign) await A('POST', `/tasks/${made.id}/assignees`, { user_id: assign.user.id });
+  // Made last first: Vikunja's List view puts a new task at the top, and Pocket shows subtasks in that order.
+  for (const [title, done] of [...subtasks].reverse()) {
     const s = await A('POST', `/projects/${proj[project].id}/tasks`, { title, done });
     await A('POST', `/tasks/${made.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
   }
@@ -77,7 +79,7 @@ const oatMilk = await task('Orders', { title: 'Order oat milk from Riverside Dai
   subtasks: [['Count what’s left in the fridge', true], ['Ask about the October price', false], ['Set up the standing order', false]] });
 await task('Orders', { title: 'Pay the coffee roaster’s invoice', due_date: at(-1) });
 await task('Café', { title: 'Post next week’s rota', due_date: at(0, 10, 30), priority: 3 });
-await task('Café', { title: 'Call the plumber about the dishwasher', due_date: at(0) }, { labels: ['calls'] });
+await task('Café', { title: 'Call the plumber about the dishwasher', due_date: at(0) }, { labels: ['calls'], assign: priya });   // Priya's picture on its row
 await task('Café', { title: 'Pick up change from the bank', due_date: at(0, 15, 30) }, { labels: ['quick'] });
 await task('Café', { title: 'Try the autumn menu with Priya', due_date: at(1, 14) });
 await task('Café', { title: 'Deep-clean the espresso machine', due_date: at(2), repeat_after: 604800 });
@@ -191,10 +193,10 @@ hold(1600);
 await tap('#f-capture .go');
 await page.waitForSelector('.row .title:has-text("Order 6 bags")');
 await page.locator('#in-capture').blur();
-await film(1800); hold(1200);                                      // the new row lights up, then fades
-// 2. Progress: hold a task, then slide.
+await film(1500); hold(1000);                                      // the new row lights up, then fades
+// 2. Progress: hold a task, then slide; it stops at 25% and 50%.
 {
-  await page.evaluate(() => { Alpine.$data(document.body).toast.show = false; }); await page.waitForTimeout(250); await snap(300);
+  await page.waitForTimeout(250); await snap(300);
   const row = await page.locator('.row:has-text("Post next week")').boundingBox();
   const x = row.x + 30, y = row.y + row.height / 2;        // so the finger ends at the edge of the fill
   await touch('touchStart', x, y); await snap(250);
@@ -203,11 +205,15 @@ await film(1800); hold(1200);                                      // the new ro
   for (let step = 1; step <= 6; step++) { await touch('touchMove', x + width * step / 10, y); await snap(130); }
   hold(600);
   await touch('touchEnd');
-  await film(400); hold(1600);
+  await film(400); hold(1200);
 }
-// 3. Done: tick one off, and it slides away with an Undo.
+// 3. "+ me" says you'll do it, and your picture takes its place.
+await tap('.row:has-text("Post next week") .claim');
+await page.waitForSelector('.row:has-text("Post next week") .claim.mine'); await page.waitForTimeout(300);
+await snap(1300);
+// 4. Done: tick one off, and its row becomes a line with an Undo.
 await tap('.row:has-text("Pick up change from the bank") .check');
-await film(1300); hold(2000);
+await film(1000); hold(2200);
 await gif.context.close();
 await writeGif('pocket-demo.gif');
 
@@ -237,8 +243,8 @@ await tap('.cl-tpl:has-text("Opening up") .cl-start');
 await page.waitForSelector('#start-go:not([disabled])'); await page.waitForTimeout(500);
 await snap(2600);                                                    // the steps, with when each is due
 await tap('#start-go');
-await page.waitForSelector('#step-title'); await page.evaluate(() => { Alpine.$data(document.body).toast.show = false; }); await page.waitForTimeout(400);
-await snap(1800);
+await page.waitForSelector('#step-title'); await page.waitForTimeout(400);
+await snap(1800);                                                    // a run just started says so, with an Undo
 await tap('#step-done');
 await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")'); await page.waitForTimeout(300); await snap(1200);
 await tap('#step-done');                                             // the grinder counts down, and the croissants above it

@@ -11,8 +11,8 @@ like opening up and closing down, into checklists that you and your team tick of
     <th>Checklists</th>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Typing 'Order 6 bags of house blend at 4 +orders !3' highlights the words Pocket reads, chips show Orders, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds 'Post next week's rota' and slides it to 60% done, and ticks off 'Pick up change from the bank', which slides away with an Undo."></td>
-    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the café's Opening up checklist. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' and 'Take the croissants out' count down, pinned at the top."></td>
+    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Typing 'Order 6 bags of house blend at 4 +orders !3' highlights the words Pocket reads, chips show Orders, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds 'Post next week's rota' and slides it, stopping at 25% and then 50%, taps '+ me' on it so Alex's picture takes its place, and ticks off 'Pick up change from the bank', whose row becomes a line, 'Done: Pick up change from the bank', with Undo."></td>
+    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the café's Opening up checklist, which says it's started, with an Undo. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' and 'Take the croissants out' count down, pinned at the top."></td>
   </tr>
 </table>
 
@@ -28,13 +28,13 @@ Type a task the way you'd say it: "Order 6 bags of house blend fri at 9 +orders 
 shows it in chips before you send. **Today** has what's overdue, what's due today and the week ahead. Tick a task off
 and its row says so, with an Undo, then folds away. Swipe a row left to delete it, with an Undo too.
 
-<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, 'Call the plumber about the dishwasher', 'Post next week's rota' and 'Pick up change from the bank' due today, and the café's week ahead">
+<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end, and the café's week ahead">
 
 ## Hand it off
 
 Add `@priya` and the task is Priya's, in a project Priya can see. A checklist run can be for anyone on the team, and
 Vikunja tells them about it once, not once per step. To keep someone posted, **Share progress as a text**, in a task's,
-a project's or a run's ⋯, sends a few plain lines through the phone's share sheet: "Pack the van ▰▰▰▱▱ 60%", then a
+a project's or a run's ⋯, sends a few plain lines through the phone's share sheet: "Pack the van ▰▰▰▱▱ 50%", then a
 line for each subtask and who's on it.
 
 <img src="docs/screenshots/pocket-assign.png" width="320" alt="'Clean the milk steamer tomorrow @priya', with chips showing Café, Tomorrow and @priya">

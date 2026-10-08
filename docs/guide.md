@@ -103,7 +103,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   the phone's share sheet, to send it in a message, as a few plain lines:
 
   ```
-  Pack the van  ▰▰▰▱▱ 60%
+  Pack the van  ▰▰▰▱▱ 50%
   ✓ Load chairs
   ◐ Tables 50%
   ○ Sound system · Priya
@@ -119,7 +119,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   included. Where there's no share sheet (on most computers), the text is copied instead, and the sheet says "Copied:
   paste it into a message".
 - **Copying:** beside it, **Copy as a Markdown list** copies the same as a list to paste into notes or a document, with
-  nothing collapsed: `## Pack the van (60%)`, then `- [x] Load chairs`, `- [ ] Tables (50%)`, `- [ ] Sound system
+  nothing collapsed: `## Pack the van (50%)`, then `- [x] Load chairs`, `- [ ] Tables (50%)`, `- [ ] Sound system
   @priya`. **Open in Vikunja ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
