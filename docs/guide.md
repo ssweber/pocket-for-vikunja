@@ -56,6 +56,12 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   next date.
 - **A task's row** has three parts, each the row's full height: its left edge ticks it (the whole margin, not only the
   circle), its title opens it, and its right end says who's doing it, or **+ me** (see **Assigning**, below).
+- **Two screens, two jobs:** Today is for doing; Projects, search and a task's sheet are for managing. On Today, a
+  task's row is ticked, claimed, opened, and held and slid sideways for its progress, and that's all: a plain swipe
+  does nothing there, so nothing is deleted by a slip on the screen you use fastest, and holding a task doesn't move
+  it, since Today is in the order things are due. Its **⋯** still deletes it. On a project's list and in a task's
+  sheet, a row can also be swiped left to **Delete** it, and held and moved up or down to move it; in search, swiped to
+  **Delete**, but not moved, as search's results have no order of their own. No swipe ticks a task, anywhere.
 - **Ticking off:** a ticked task stays where it is, at the same height, ticked and struck through, so nothing moves
   under your finger. Tick it again to take it back. Three seconds after your last tick (counted from when your finger
   lifts, and not while it's still on the screen or the list is scrolling), everything you ticked leaves together, the
@@ -90,13 +96,14 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   the ways for a keyboard or a screen reader. A project whose List view was deleted in Vikunja is in the order its
   tasks were made, and can't be reordered. A checklist's steps keep an order of their own (see **In Vikunja's web
   app**, under Checklists).
-- **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
-  past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. Back under half
-  before you let go, it's only left open. Its row stays where it is, faded, with **Restore** where "+ me" was: tap
+- **Deleting:** on a project's list, in search or in a task's sheet (not on Today), swipe a task's row to the left,
+  starting away from the screen's edge, and tap **Delete**; or swipe on past half the row, until the red fills it (and,
+  on a phone that can, you feel a tick), and let go. Back under half before you let go, it's only left open. Its row stays where it is, faded, with **Restore** where "+ me" was: tap
   anywhere on the row to bring it back. It leaves with the tasks you ticked, three seconds after the last, and it's
   deleted in Vikunja then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with
   subtasks asks first, and they go with it. Swipe back, or tap anywhere else, to leave it. The task's **⋯** deletes it
-  too, the way for a keyboard or a screen reader. Without a connection, it's deleted once Pocket reaches Vikunja.
+  too, on any screen: the way on Today, and for a keyboard or a screen reader. Its row then shows **Restore** the same
+  way. Without a connection, it's deleted once Pocket reaches Vikunja.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
   comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
@@ -129,7 +136,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   @priya`. **Open in Vikunja ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
-  number. A ticked result moves from Open to Done.
+  number. A ticked result moves from Open to Done. A subtask is a row, under its task when that's found too, as on a
+  project's list.
 - **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
   shows on the task's row itself, which stays until they leave together; a tick that couldn't be saved goes back, and
   its row says why, "Not saved: no connection", with **Try again**. A task added from quick add lights up where it went; if that's not on the screen
