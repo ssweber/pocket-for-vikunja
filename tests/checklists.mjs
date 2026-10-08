@@ -70,6 +70,8 @@ async function step(name, fn){
   }
 }
 const signIn = (p, token) => signInAt(p, APP, token);
+// A card on Today (a run with steps still open), by its name.
+const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 // A message in its place (lines.js): "checklists", "step", "sheet:subtasks"…
 const said = (where, text) => placeSays(page, where, text);
@@ -645,25 +647,30 @@ try {
     }
   });
 
-  await step('today-shows-your-run', async () => {
+  await step('today-shows-your-run-as-a-card', async () => {
     await page.click('nav.tabs a[data-tab=today]');
-    // The run, without a due date of its own, and its open step, by its due date.
-    await page.waitForSelector(`.sec:has-text("Checklist runs") ~ .list .row:has(.title:has-text("${TEMPLATE} · run")) .meta:has-text("For you")`, { timeout: 15000 });
-    await page.waitForSelector('.row .title:has-text("First article check")');
+    // A card: the run's name and who it's for, over its next step, with that step's countdown; its steps aren't rows of
+    // their own.
+    const card = page.locator(cardOf(`${TEMPLATE} · run`));
+    await expect(card.locator('.card-head .meta')).toContainText('For you', { timeout: 15000 });
+    await expect(card.locator('.step-line .title > span:not(.sr)')).toHaveText('First article check');
+    await expect(card.locator('.step-line .meta .due')).toHaveText(/^in \d+[hm]( \d+m)?$/);
+    await expect(card.locator('.step-line > .check')).toHaveCSS('border-radius', '7px');   // a step's box: square
+    await expect(page.locator('.item > .row .title:has-text("First article check")')).toHaveCount(0);
   });
 
   await step('today-run-has-no-tick-and-a-step-tick-says-who', async () => {
-    const runRow = `.row:has(> .body .title:has-text("${TEMPLATE} · run"))`;
-    await page.waitForSelector(`${runRow} > .check.no-tick`, { timeout: 15000 });
-    if (await page.$(`${runRow} > button.check`)) throw new Error('the run can be ticked on Today');
+    const runRow = `.row:has(> .body .title:has-text("${TEMPLATE} · run"))`, runCard = cardOf(`${TEMPLATE} · run`);
+    await page.waitForSelector(`${runCard} > .card-head`, { timeout: 15000 });
+    if (await page.$(`${runCard} .check:not(.step-line .check)`)) throw new Error('the run can be ticked on Today');
     // In its project's own list it's an ordinary task, with a tick.
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
     await page.waitForSelector(`${runRow} > button.check`, { timeout: 15000 });
     await page.click('#btn-back');
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
-    // A step ticked on Today is ticked as on the run's screen: with a ✅ from you. No message: its row stays where it
-    // is, done, until the batch clears, so ticking it again before then takes both back.
-    const check = (await runStep(first.id, 2)).id, stepRow = '.row:has(> .body .title:has-text("First article check"))';
+    // A step ticked on its card is ticked as on the run's screen: with a ✅ from you. No message: it stays on the card,
+    // done, until the batch clears, so ticking it again before then takes both back.
+    const check = (await runStep(first.id, 2)).id, stepRow = `${runCard} .step-line:has(> .body .title:has-text("First article check"))`;
     await toastGone().catch(() => {});
     await page.click(`${stepRow} > .check`, { timeout: 15000 });
     await until('the tick from Today has no ✅', async () => { const t = await task(check); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
@@ -671,10 +678,10 @@ try {
     if (await page.$('#toast.show')) throw new Error('a step ticked on Today said: ' + await page.textContent('#toast-msg'));
     await page.click(`${stepRow} > .check`);
     await until('ticked again, the step stayed done', async () => { const t = await task(check); return !t.done && !t.reactions?.['✅']?.some(u => u.id === me.id); });
-    await page.waitForSelector('.row .title:has-text("First article check")', { timeout: 15000 });
+    await page.waitForSelector(`${stepRow}:not(.done)`, { timeout: 15000 });
     // The run's sheet, from its ⋯: a step there opens its own sheet, to hand it over with Assigned (no Repeats), and
     // that opens the run on that step.
-    await page.click(`${runRow} > .body`);
+    await page.click(`${runCard} > .card-head`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
     await page.waitForSelector('#step-title');
     await page.click('#btn-run-more');
@@ -691,19 +698,20 @@ try {
   });
 
   await step('today-opens-the-run', async () => {
-    // A run's row fills by its steps done (2 of 3), and opens the run's screen, not its sheet; Back comes back to Today.
-    const runRow = `.row:has(> .body .title:has-text("${TEMPLATE} · run"))`;
-    await page.waitForSelector(runRow, { timeout: 15000 });
-    const pct = await page.$eval(runRow, el => el.style.getPropertyValue('--pct'));
-    if (pct !== '0.67') throw new Error('--pct ' + pct);
-    await page.click(`${runRow} > .body`);
+    // A run's card has its line in segments, a step each, those done filled (2 of 3); its name opens the run's screen,
+    // not its sheet; Back comes back to Today.
+    const runCard = cardOf(`${TEMPLATE} · run`);
+    await page.waitForSelector(runCard, { timeout: 15000 });
+    const line = await page.$eval(`${runCard} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).getPropertyValue('--done').trim(), el.getAttribute('aria-label')]);
+    if (JSON.stringify(line) !== JSON.stringify(['3', '2', '2 of 3 steps done'])) throw new Error('its line: ' + line);
+    await page.click(`${runCard} > .card-head`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
     if (await page.getAttribute('#btn-back', 'aria-label') !== 'Back to Today') throw new Error('back: ' + await page.getAttribute('#btn-back', 'aria-label'));
     if (await page.isVisible('#sheet')) throw new Error('the sheet opened');
     await page.click('#btn-back');
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
     // A step opens the run on that step.
-    await page.click('.row .body:has(.title:has-text("First article check"))', { timeout: 15000 });
+    await page.click(`${runCard} .step-line > .body:has(.title:has-text("First article check"))`, { timeout: 15000 });
     await page.waitForFunction(id => location.hash.startsWith(`#/run/${id}?step=`), first.id, { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#btn-back');
@@ -716,23 +724,23 @@ try {
     const run = await api('/tasks/' + forOther.id);
     if (JSON.stringify(run.assignees?.map(u => u.id)) !== JSON.stringify([other.id])) throw new Error('assignees ' + JSON.stringify(run.assignees?.map(u => u.username)));
     if (!(await page.textContent('#run-for')).startsWith(`For ${other.name || other.username} · started by you`)) throw new Error('shows ' + await page.textContent('#run-for'));
-    // Their Today has their run and not yours; their Checklists tab has both in progress.
+    // Their Today has their run; theirs and yours are both under their Checklists tab, in progress.
     const theirs = await context.browser().newContext({ viewport: { width: 390, height: 844 } }), p = await theirs.newPage();
     p.on('pageerror', e => errors.push('(other) ' + e));
     p.on('console', m => m.type() === 'error' && console.log('  (other) console:', m.text()));
-    const rows = () => p.$$eval('.row .title', els => els.map(x => x.textContent));
-    // A step of your run they've claimed is on their Today, though it has no due date. (It's done by now: not done for this.)
+    const rows = () => p.$$eval('.row .title, .card-title', els => els.map(x => x.textContent));
+    // A step of your run they've claimed brings your run onto their Today, as a card opened on that step, though it has
+    // no due date. (It's done by now: not done for this.)
     const guards = (await runStep(first.id, 0)).id;
     await api('/tasks/' + guards, { method: 'PATCH', body: JSON.stringify({ done: false }) });
     await call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
     try {
       await signIn(p, otherToken);
-      await p.waitForSelector(`.row .title:has-text("${run.title}")`, { timeout: 15000 });
-      await p.waitForSelector('.row .title:has-text("Check the guards at 3pm")', { timeout: 15000 }).catch(() => { throw new Error("their claimed step isn't on their Today"); });
-      const mine = (await api('/tasks/' + first.id)).title, seen = await rows();
-      if (seen.includes(mine)) throw new Error('your run is in their Today');
-      // Your run's last step is due, and isn't theirs; theirs has no due date yet.
-      if (seen.some(t => t.endsWith('First article check'))) throw new Error('their Today: ' + JSON.stringify(seen));
+      await p.waitForSelector(cardOf(run.title), { timeout: 15000 });
+      const mine = (await api('/tasks/' + first.id)).title;
+      await p.waitForSelector(`${cardOf(mine)} .step-line .title:has-text("Check the guards at 3pm")`, { timeout: 15000 }).catch(() => { throw new Error("their claimed step's run isn't on their Today, opened on it"); });
+      // Your run's last step is due, and isn't theirs: not a row of its own there.
+      if (await p.$('.item > .row .title:has-text("First article check")')) throw new Error('their Today: ' + JSON.stringify(await rows()));
       await p.click('nav.tabs a[data-tab=checklists]');
       await p.waitForSelector(`.cl-run .title:has-text("${mine}")`, { timeout: 15000 });
       await p.waitForSelector(`.cl-run .title:has-text("${run.title}")`, { timeout: 20000 }).catch(() => { throw new Error("their run isn't under Checklists"); });

@@ -279,8 +279,9 @@ try {
   });
 
   await step('comment-written-offline-waits', async () => {
-    // A comment goes through the outbox too; the banner says what needs a connection.
-    await page.click(`.row .body:has-text("${T('G')}")`);
+    // A comment goes through the outbox too; the banner says what needs a connection. (On Today, with its subtask, it's a
+    // card now: its title opens it.)
+    await page.click(`:is(.row .body:has-text("${T('G')}"), .day-card:has(.card-title:has-text("${T('G')}")) > .card-head)`);
     await page.waitForSelector('#d-cin');
     await context.setOffline(true);
     await page.fill('#d-cin', T('comment'));
