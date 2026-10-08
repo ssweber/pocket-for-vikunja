@@ -73,6 +73,7 @@ async function step(name, fn){
 const signIn = (p, token) => signInAt(p, APP, token);
 // A card on Today (a run with steps still open), by its name.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
+const STRIP = '#step-card > .card-strip';                                  // the run's step card's, Today's card's strip
 const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 // A message in its place (lines.js): "checklists", "step", "sheet:subtasks"…
 const said = (where, text) => placeSays(page, where, text);
@@ -386,14 +387,16 @@ try {
     // Done, then the ✅: sent one after the other, so wait for both.
     await until('the step was never done with a ✅ from you', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done .did[aria-label^="Done by"][aria-label*=" at "]');   // and when
-    if (await page.textContent('#run-count') !== '1 of 3 done') throw new Error('count: ' + await page.textContent('#run-count'));
+    // The step card's strip: the step's place, 2 of 3; how many are done is its line's.
+    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 2 of 3');
+    await expect(page.locator(`${STRIP} .card-line`)).toHaveAttribute('aria-label', '1 of 3 steps done');
     // Both timed steps count down now: the next one on its card, the other pinned above it.
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');
     await page.waitForSelector('#run-timers .timer:has-text("First article check"):has-text("in 2h")');
     // Tapping a pinned countdown shows its step; then back to the one before.
     await page.click('#run-timers .timer:has-text("First article check")');
     await page.waitForSelector('#step-title:text-is("First article check")');
-    await page.click('#step-prev');
+    await page.click(`${STRIP} .pg.prev`);
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
     // Moved by hand in Vikunja after the tick (a second or more: one in the same second counts as before it).
     await new Promise(r => setTimeout(r, 1100));
@@ -426,6 +429,52 @@ try {
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (3h|2h 5[0-9]m)$")', { timeout: 15000 });
   });
 
+  /* The run's step card has Today's card's strip at its top (one-concept-plan, part 1): the run's line, the step on the
+     card marked, its place, and the way through the open steps, as on Today. And who's on that step, as its row says. */
+  await step('the-step-card-has-todays-strip', async () => {
+    await expect(page.locator('#run-bar')).toHaveCount(0);
+    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 2 of 3');
+    if (await page.$eval(`${STRIP} .card-track`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '1') throw new Error('the step marked is not the second');
+    // Its arrows go through the open steps, stopping at the ends, dimmed there: the guards, done, are passed over.
+    await expect(page.locator(`${STRIP} .pg.prev`)).toHaveAttribute('aria-disabled', 'true');
+    await page.click(`${STRIP} .pg.prev`, { force: true });                 // Playwright won't tap an aria-disabled button
+    if (await page.textContent('#step-title') !== 'Warm up the press') throw new Error('‹ on the first open step went to ' + await page.textContent('#step-title'));
+    await page.click(`${STRIP} .pg.next`);
+    await page.waitForSelector('#step-title:text-is("First article check")');
+    await expect(page.locator('#said')).toHaveText('Step 3 of 3: First article check');
+    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 3 of 3');
+    await expect(page.locator(`${STRIP} .pg.next`)).toHaveAttribute('aria-disabled', 'true');
+    // A tap on an open step's segment shows it, a done one's nothing; dragged along, it's a scrubber.
+    const box = await steady(page.locator(`${STRIP} .card-line`)), seg = k => [box.x + box.width * (k + .5) / 3, box.y + box.height / 2];
+    await page.mouse.click(...seg(0));
+    await page.mouse.click(...seg(1));
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    await page.mouse.move(...seg(1)); await page.mouse.down();
+    await page.mouse.move(...seg(2), { steps: 8 });
+    await page.waitForSelector('#step-title:text-is("First article check")');
+    await page.mouse.move(...seg(1), { steps: 8 }); await page.mouse.up();
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    await expect(page.locator('#said')).toHaveText('Step 2 of 3: Warm up the press');
+    // A done step comes on it from its row, saying who did it, with no slot to claim it; the strip goes on from there.
+    await page.click('#run-steps .row:nth-of-type(1) .body');
+    await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")');
+    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 1 of 3');
+    await expect(page.locator('#step-who')).toContainText('Done by');
+    await expect(page.locator('#step-card .claim')).toHaveCount(0);
+    await page.click(`${STRIP} .pg.next`);
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    // Who's on it: its row's slot, "+ me", on the card too; claimed there, it's yours on both.
+    const id = (await runStep(first.id, 1)).id, people = async () => ((await task(id)).assignees || []).map(u => u.id);
+    await page.click('#step-card .claim:has(.me)');
+    await page.waitForSelector('#step-card .claim.mine .av');
+    await page.waitForSelector('#run-steps .row:nth-of-type(2) .claim.mine .av');
+    await until('claiming on the card never reached Vikunja', async () => JSON.stringify(await people()) === JSON.stringify([me.id]));
+    await page.click('#step-card .claim');
+    await page.waitForSelector('#step-card .claim .me');
+    await until('never let go', async () => !(await people()).length);
+    await synced(page);
+  });
+
   await step('skip-with-a-reason', async () => {
     await page.fill('#step-note', 'Press 2 is down');
     await page.waitForSelector('#step-note-with:has-text("for Skip, as the reason")');           // Skip stays Skip, the same size
@@ -441,11 +490,12 @@ try {
   });
 
   await step('a-note-being-written-stays-with-its-step', async () => {
+    // Warm up the press, skipped, is shown by tapping its row; the strip's › goes on from there to the open step.
     await page.fill('#step-note', 'Only for this step');
-    await page.click('#step-prev');
+    await page.click('#run-steps .row:nth-of-type(2) .body');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
     if (await page.inputValue('#step-note') !== '') throw new Error('the note followed: ' + await page.inputValue('#step-note'));
-    await page.click('#step-next');
+    await page.click(`${STRIP} .pg.next`);
     await page.waitForSelector('#step-title:text-is("First article check")');
     if (await page.inputValue('#step-note') !== 'Only for this step') throw new Error('the note is gone');
     await page.fill('#step-note', '');
@@ -614,11 +664,11 @@ try {
     await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
     const radius = await page.$eval(`${row} > .check`, el => getComputedStyle(el).borderRadius);
     if (radius !== '7px') throw new Error("a step's box isn't square: " + radius);
-    const segs = await page.$eval('#run-bar .track', el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage]);
-    if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's bar isn't a segment per step: " + segs.join(' '));
+    const segs = await page.$eval(`${STRIP} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage]);
+    if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
     // Each segment filled by whether its own step is done (runLine's fill), not the first ones by count.
-    const barFill = await page.$eval('#run-bar .track', el => getComputedStyle(el).getPropertyValue('--fill').trim());
-    if (!/^linear-gradient\(to right,\S+ 0% .* 100%\)$/.test(barFill)) throw new Error("the run's bar isn't filled by its steps: " + barFill);
+    const barFill = await page.$eval(`${STRIP} .card-line`, el => getComputedStyle(el).getPropertyValue('--fill').trim());
+    if (!/^linear-gradient\(to right,\S+ 0% .* 100%\)$/.test(barFill)) throw new Error("the run's line isn't filled by its steps: " + barFill);
     try {
       await toastGone().catch(() => {});
       await slide(2.2);                                                      // 25%: yours, as the slide starts
@@ -814,7 +864,8 @@ try {
     third = await startRun();
     await page.waitForSelector('#run-last .comment:has-text("Press 2 is down")', { timeout: 15000 });
     for (const note of ['Looks good', 'Line 2 ran slow today']) await page.waitForSelector(`#run-last .comment:has-text("${note}")`);
-    // Its Undo is at the top of the run, until anything's done in it.
+    // Its Undo is at the top of the run, until anything's done in it. The run's name is the header's: not said again.
+    await expect(placeLine(page, 'run').locator('.what')).toHaveText('Started');
     await placeLine(page, 'run').getByRole('button', { name: 'Undo' }).click();
     await expect(page).toHaveURL(/#\/checklists$/, { timeout: 15000 });
     await synced(page);
@@ -1182,6 +1233,26 @@ try {
     await page.press('#step-insert-in', 'Enter');
     await page.waitForSelector('#step-title:text-is("Lock the back door")', { timeout: 15000 });
     await until('not added at the end', async () => (await subtasks(id)).map(s => s.title).pop() === 'Lock the back door');
+  });
+
+  await step('a-run-and-its-card-open-on-a-step-to-do-now', async () => {
+    // Opened, a run's screen and its card on Today go by the rule a tick does: the next step that can be done now, past
+    // those counting down. The guards done, the press and the check count down, so a step added after them is that one.
+    const { id } = await startRun();
+    await page.click('#step-done');
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    await page.click('#run-steps .row:nth-of-type(3) .ins-open');
+    await page.fill('#step-insert-in', 'Sweep the floor');
+    await page.press('#step-insert-in', 'Enter');
+    await until('the step was never added', async () => (await subtasks(id)).length === 4);
+    await until('the times were never set', async () => (await Promise.all((await subtasks(id)).slice(1, 3).map(s => task(s.id)))).every(t => !t.due_date.startsWith('0001')));
+    await synced(page);
+    await page.reload();
+    await page.waitForSelector('#step-title:text-is("Sweep the floor")', { timeout: 15000 });
+    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 4 of 4');
+    const title = (await api('/tasks/' + id)).title;
+    await page.click('nav.tabs a[data-tab=today]');
+    await expect(page.locator(`${cardOf(title)} .step-line .title > span:not(.sr)`)).toHaveText('Sweep the floor', { timeout: 15000 });
   });
 
   await step('hold-a-step-to-set-its-progress', async () => {
