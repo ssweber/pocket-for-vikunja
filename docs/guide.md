@@ -102,6 +102,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   back. Sliding a task, a subtask or a step no one is doing says you're doing it: **+ me** turns into your picture as
   you start, and it's assigned to you once you let go, if the slide changed its progress (let go where it started, and
   nothing is). Someone else's stays theirs. Sliding it back to 0% later keeps it yours: tap your picture to let it go.
+  The bar in a task's sheet does the same, slid or moved with the arrow keys, and its **Assigned** row shows you at
+  once. The first time, the first task on a screen that you can slide says "Hold and slide to start working on it",
+  until you first set a task's progress this way, or tap it away; the phone remembers. It fades where it is, so the
+  tasks under it don't move.
   On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
   trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
 - **Order:** a project's list is in the order of its **List view** in Vikunja's web app, each subtask under its

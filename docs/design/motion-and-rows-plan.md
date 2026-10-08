@@ -86,6 +86,8 @@ Progress means "I'm working on it" more than a precise number. Mostly built in p
   Someone else's claim is never replaced. Dragging back to 0% keeps the claim; letting go is a separate tap.
   Vikunja emails a task's creator when someone assigns themselves, so on a shared project, starting a task tells
   whoever made it. That's wanted.
+- **The sheet's progress bar claims too** (user, 2026-10-08: "same rule everywhere"): slid, or moved with the arrow
+  keys, on a task nobody has, it's yours, as a row's slide makes it, and the sheet's Assigned row shows you at once.
 - The percentage label stays as built: it sits on the side away from the finger.
 - **Bug to fix:** on a subtask, the fill drawn while dragging starts at the row's left edge, while its progress line
   starts at the indent. The line (`.row.sub::after`) already allows for the indent; the fill
