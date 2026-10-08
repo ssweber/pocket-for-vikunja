@@ -11,7 +11,7 @@
 // Every task it creates has the run's stamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright';   // BROWSER=webkit runs it on Safari's engine, as on an iPhone
-import { expect, placeSays, signIn, synced } from './helpers.mjs';
+import { expect, hintSeen, placeSays, signIn, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -35,6 +35,7 @@ const T = name => `Pocket offline ${name} ${stamp}`;
 const LABEL = 'pocket-smoke';                    // the label the end-to-end test uses too, so no new one is left behind
 const browser = process.env.BROWSER === 'webkit' ? await webkit.launch() : await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+await hintSeen(context);                         // the one-time hint: smoke.mjs
 const page = await context.newPage();
 page.on('dialog', d => d.accept());
 const errors = [];
@@ -74,7 +75,9 @@ try {
   await step('reads-dates-offline-straight-after-install', async () => {
     // The first page wasn't the service worker's: its saved copy of chrono must still be found offline, though Vikunja
     // answers "Vary: Origin" and the page asks for it with an Origin.
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } }), p = await ctx.newPage();
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await hintSeen(ctx);
+    const p = await ctx.newPage();
     try {
       await signIn(p, POCKET, TOKEN);
       await p.evaluate(() => navigator.serviceWorker.ready);

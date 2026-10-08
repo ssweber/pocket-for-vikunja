@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, hintSeen, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -48,6 +48,7 @@ async function until(what, fn, ms = 20000){
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+await hintSeen(context);                         // the one-time hint: smoke.mjs
 // The page's clock is Playwright's: it keeps the real time, and later() moves it on instead of waiting.
 await context.clock.install();
 const page = await context.newPage();
@@ -725,7 +726,9 @@ try {
     if (JSON.stringify(run.assignees?.map(u => u.id)) !== JSON.stringify([other.id])) throw new Error('assignees ' + JSON.stringify(run.assignees?.map(u => u.username)));
     if (!(await page.textContent('#run-for')).startsWith(`For ${other.name || other.username} · started by you`)) throw new Error('shows ' + await page.textContent('#run-for'));
     // Their Today has their run; theirs and yours are both under their Checklists tab, in progress.
-    const theirs = await context.browser().newContext({ viewport: { width: 390, height: 844 } }), p = await theirs.newPage();
+    const theirs = await context.browser().newContext({ viewport: { width: 390, height: 844 } });
+    await hintSeen(theirs);
+    const p = await theirs.newPage();
     p.on('pageerror', e => errors.push('(other) ' + e));
     p.on('console', m => m.type() === 'error' && console.log('  (other) console:', m.text()));
     const rows = () => p.$$eval('.row .title, .card-title', els => els.map(x => x.textContent));

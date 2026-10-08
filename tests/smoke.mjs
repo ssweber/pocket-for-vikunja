@@ -13,7 +13,7 @@
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, synced, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, hintSeen, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, synced, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -36,6 +36,7 @@ const api = async (path, init = {}) => {
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+await hintSeen(context);                         // the one-time hint has a step of its own, on a phone of its own
 // The page's clock is Playwright's: it keeps the real time, and later() moves it on instead of waiting.
 await context.clock.install();
 const page = await context.newPage();
@@ -1071,6 +1072,98 @@ try {
       if (JSON.stringify(await people(b.id)) !== JSON.stringify([other.id])) throw new Error("someone else's task was claimed: " + JSON.stringify(await people(b.id)));
       if (await page.$(`${B} .claim.mine`)) throw new Error("someone else's task shows as yours");
     } finally { for (const t of [a, b].filter(Boolean)) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* The sheet's bar claims as a row's slide does (user, 2026-10-08: the same rule everywhere): slid on a task no one is
+     doing, it's yours, in its Assigned row as the slide starts and in Vikunja once it's let go; someone else's stays
+     theirs. */
+  await step('the-sheets-bar-claims-a-task-no-one-is-doing', async () => {
+    const me = await (await api('/user')).json(), chip = `#d-assignees .label-chip:has-text("${me.name || me.username}")`;
+    const a = await make(`Pocket smoke bar claim ${stamp}`, { due_date: todayAt(21) });
+    const team = ASSIGNEE && projects2.find(p => p.title === ASSIGNEE_PROJECT);
+    const found = team && await api(`/projects/${team.id}/users/search?q=${encodeURIComponent(ASSIGNEE)}`);
+    const other = found?.ok ? ((await found.json()).items || []).find(u => u.username === ASSIGNEE) : null;
+    const b = other && await make(`Pocket smoke bar theirs ${stamp}`, { due_date: todayAt(21) }, team.id);
+    if (b) await api(`/tasks/${b.id}/assignees`, { method: 'POST', headers: json, body: JSON.stringify({ user_id: other.id }) });
+    const people = async id => ((await get(id)).assignees || []).map(u => u.id), pct = async id => Math.round((await get(id)).percent_done * 100);
+    // Its sheet opened from Today, and its bar held and slid to 25%; `check` while it's held.
+    const slideBar = async (t, check) => {
+      await page.click(`${rowOf(t.title)} > .body`, { timeout: 15000 });
+      await page.locator('#d-progress').scrollIntoViewIfNeeded();
+      const bar = await steady(page.locator('#d-progress .track')), x = bar.x + 20, y = bar.y + bar.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await page.waitForSelector('.d-head.setting', { timeout: 2000 });
+      await page.mouse.move(x + slideBy(x, 0, 25), y, { steps: 6 });
+      await check?.();
+      await page.mouse.up();
+      await synced(page);
+    };
+    const close = async () => { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); };
+    try {
+      await toastGone();
+      await refreshToday();
+      await slideBar(a, async () => { await expect(page.locator(chip), 'not in Assigned as the slide starts').toBeVisible(); });
+      if (JSON.stringify(await people(a.id)) !== JSON.stringify([me.id])) throw new Error('slid, assigned to ' + JSON.stringify(await people(a.id)));
+      if (await pct(a.id) !== 25) throw new Error('progress saved ' + await pct(a.id));
+      await expect(page.locator(chip), 'gone from Assigned once sent').toBeVisible();
+      await close();
+      if (!b) { console.log('  (no ASSIGNEE and ASSIGNEE_PROJECT: someone else\'s claim not checked)'); return; }
+      await slideBar(b);
+      if (await pct(b.id) !== 25) throw new Error('their task\'s progress saved ' + await pct(b.id));
+      if (JSON.stringify(await people(b.id)) !== JSON.stringify([other.id])) throw new Error("someone else's task was claimed: " + JSON.stringify(await people(b.id)));
+      if (await page.locator(chip).count()) throw new Error("someone else's task shows you in Assigned");
+      await close();
+    } finally { for (const t of [a, b].filter(Boolean)) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* The one-time hint (motion-and-rows-plan, section 8), on a phone that's never slid a row: on the first row that
+     takes a slide, drawn with it, so no row moves as it comes, nor as it goes (it fades, keeping its space). A tap puts
+     it away, and so does the first slide that sets progress; it stays away after a reload. */
+  await step('a-hint-to-hold-and-slide-once', async () => {
+    const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeHint${stamp}` }) })).json();
+    createdProjects.push(proj.id);
+    for (const n of [1, 2, 3]) await make(`Pocket smoke hint ${n} ${stamp}`, {}, proj.id);
+    const fresh = await browser.newContext({ viewport: { width: 390, height: 844 } }), p = await fresh.newPage();
+    p.on('pageerror', e => errors.push(String(e)));
+    const first = '#view .list > .row:first-of-type', hint = p.locator(`${first} .slide-hint`), shown = p.locator('.slide-hint:not(.gone)');
+    // Where each row of the list starts.
+    const rows = () => p.$$eval('#view .list > .row', els => els.map(el => Math.round(el.getBoundingClientRect().top)));
+    const open = async () => {
+      await p.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
+      await expect(p.locator('#view .list > .row')).toHaveCount(3, { timeout: 15000 });
+      await loaded(p);
+    };
+    try {
+      await signIn(p, APP, TOKEN);
+      await open();
+      await expect(hint).toHaveText('Hold and slide to start working on it');
+      if (await p.locator('.slide-hint').count() !== 1) throw new Error('more than one hint');
+      if (await p.evaluate(() => localStorage.getItem('pocket.hint.slide')) !== 'said') throw new Error('not said to a screen reader');
+      const at = await rows();
+      // A tap puts it away: it fades, its space kept, and the task doesn't open.
+      await hint.click();
+      await expect(hint).toHaveClass(/\bgone\b/);
+      if (await p.isVisible('#sheet')) throw new Error('a tap on the hint opened the task');
+      if (JSON.stringify(await rows()) !== JSON.stringify(at)) throw new Error(`rows moved as it went: ${at} then ${await rows()}`);
+      await p.reload();
+      await open();
+      if (await p.locator('.slide-hint').count()) throw new Error('back after a reload');
+      // A phone that's never slid one again: the first slide that sets progress puts it away.
+      await p.evaluate(() => localStorage.removeItem('pocket.hint.slide'));
+      await p.reload();
+      await open();
+      await expect(shown).toHaveCount(1);
+      const was = await rows();
+      const box = await p.locator(first).boundingBox(), x = box.x + box.width * .2, y = box.y + 24;
+      await p.mouse.move(x, y); await p.mouse.down();
+      await p.waitForSelector(`${first}.setting.held`, { timeout: 2000 });
+      await p.mouse.move(x + slideBy(x, 0, 25), y, { steps: 6 });
+      await p.mouse.up();
+      await expect(shown).toHaveCount(0);
+      if (JSON.stringify(await rows()) !== JSON.stringify(was)) throw new Error(`rows moved as it went: ${was} then ${await rows()}`);
+      await synced(p);
+      await p.reload();
+      await open();
+      if (await p.locator('.slide-hint').count()) throw new Error('back after a reload');
+    } finally { await fresh.close(); }
   });
   /* A label-and-value row in a task's sheet takes a tap anywhere (motion-and-rows-plan, section 7): Due opens the date's
      picker, Repeats and Project are a select over the whole row, Reminders opens its list, Labels and Assigned their

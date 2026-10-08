@@ -64,3 +64,7 @@ export async function steady(locator, timeout = 5000){
   }
   throw new Error('it never stopped moving');
 }
+
+/* The one-time hint to hold and slide put away, as on a phone that has slid a row: otherwise it adds a line to the
+   first row of each screen, which a test measuring rows doesn't expect. Every page of `context`, from the start. */
+export const hintSeen = context => context.addInitScript(() => { try { localStorage.setItem('pocket.hint.slide', 'done'); } catch {} });

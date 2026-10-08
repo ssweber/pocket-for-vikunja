@@ -107,3 +107,48 @@ test('a checklist step\'s box is square, on its run\'s screen, in its run\'s she
   Object.defineProperty(app, 'checklistRole', { get: () => null, configurable: true });
   assert.equal(app.isStepRow(sub, { depth: {}, sheet: true }), false);
 });
+
+/* The one-time hint (motion-and-rows-plan, section 8): on the first row of a screen that takes a slide, as the screen is
+   first drawn; on Today, a card's step line counts, the hint then being the card's, so its next step keeps it. */
+test('the hint goes on the first row that takes a slide, a card\'s step line counting, and is said once', () => {
+  const app = component(progress);
+  const ro = { id: 1, project_id: 9 }, done = { id: 2, done: true }, waiting = { id: 3, pending: true }, card = { id: 4 }, row = { id: 5 }, folded = { id: 6 };
+  const steps = { 4: { id: 40, done: true } };
+  Object.assign(app, { lines: {}, hint: { at: null, pick: true, done: false }, canTick: t => t.project_id !== 9, cardOf: t => steps[t.id] ? { id: t.id, step: steps[t.id] } : null });
+  Object.defineProperty(app, 'listGroups', { get: () => [{ fold: true, tasks: [folded] }, { tasks: [ro, done, waiting] }, { tasks: [card, row] }] });
+  localStorage.removeItem('pocket.hint.slide');
+  app.pickHint();
+  assert.equal(app.hint.at, 5, 'not read only, done, waiting to send, a folded Done section, nor a card on a step done');
+  assert.equal(app.hint.pick, false, 'picked once, as the screen is drawn');
+  assert.match(app.said, /hold a task, then slide it sideways/);
+  steps[4] = { id: 41 };
+  app.said = ''; app.hint.at = null;
+  app.pickHint();
+  assert.equal(app.hint.at, 4, 'a card whose step takes a slide: the card has it');
+  assert.equal(app.said, '', 'a screen reader hears it once');
+  assert.equal(app.hintOn({ id: 41 }, { depth: {}, card: { id: 4 } }), true, 'shown on its step line');
+  assert.equal(app.hintOn({ id: 42 }, { depth: {}, card: { id: 4 } }), true, 'and on its next step');
+  assert.equal(app.hintOn({ id: 4 }, { depth: {}, sheet: true }), false, 'never in a sheet');
+  app.hintSeen();
+  assert.equal(localStorage.getItem('pocket.hint.slide'), 'done', 'remembered on the phone');
+  app.hint.at = null;
+  app.pickHint();
+  assert.equal(app.hint.at, null, 'gone for good');
+});
+
+// The sheet's progress bar claims as a row's slide does (user, 2026-10-08: the same rule everywhere).
+test('the sheet\'s bar, slid or moved by a key, claims a task no one is doing, after its save; someone else\'s stays theirs', async () => {
+  const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, order = [];
+  const app = component(progress, claims);
+  const t = { id: 5, title: 'Wipe the menus', project_id: 1, percent_done: 0, assignees: [] };
+  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, sheet: { task: t, pct: null },
+    act: async a => { order.push(['claim', a.task]); }, sheetProgress: async (x, pct) => { order.push(['save', pct]); } });
+  app.nudgeProgress(1);
+  assert.deepEqual(app.peopleOf(5, t.assignees), [me], 'shown in Assigned at once');
+  await new Promise(r => setTimeout(r));
+  assert.deepEqual(order, [['save', 25], ['claim', 5]]);
+  t.assignees = [priya]; order.length = 0;
+  app.nudgeProgress(1);
+  await new Promise(r => setTimeout(r));
+  assert.deepEqual(order, [['save', 25]], 'someone else\'s is never replaced');
+});
