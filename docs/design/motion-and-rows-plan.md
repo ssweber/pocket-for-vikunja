@@ -65,6 +65,12 @@ than one rule per kind of row, and it keeps destructive swipes off the screen us
 | Tap the title | Open the task |
 
 - A delete, by tap or full swipe, goes straight into the deleted state of section 5, so Restore is one tap away.
+- **A delete follows through** (user, 2026-10-08: it snapped straight to Restore, which felt abrupt). Let go past
+  half, or tap Delete, and the row's content carries on sliding left off the screen (about 200ms, the red area
+  filling the row). **It doesn't come back** (user, 2026-10-08: the row returning read as "it didn't take"): its
+  space stays at full height as an empty slot holding only a quiet "Deleted · Restore", like the gap where it was,
+  and the gap closes with the batch. Tapping the slot restores the row. Its height never changes. With reduced motion,
+  no slide.
 - **No plain swipe right for done**, anywhere. It would share a direction with progress, and a mistaken done is
   expensive.
 - Search shows subtasks as rows, as Projects does, not as cards.
@@ -172,6 +178,11 @@ Part 4 made the tick, the claim slot and Delete 48px. Check and extend:
 
 Three clear zones on every row, no dead space, nothing under 44pt.
 
+**The sheet's label-and-value rows too** (user, 2026-10-08): tapping "Due" did nothing, since only the date box opens
+the calendar. A tap anywhere on such a row (Due, Next due, Repeats, Reminders, Project, Priority, and the rest in the
+Details card) works its control: `showPicker()` for a date, the select for a select. Buttons inside the row, like
+the × that clears a date, keep their own tap. Built with part 4.
+
 ## 8. Finding the gestures
 
 - **A one-time hint on the first row** that can take it: "Hold and slide to start working on it". It goes after the
@@ -186,7 +197,7 @@ Three clear zones on every row, no dead space, nothing under 44pt.
 | 1 | One row for subtasks and run steps (3a, last bullet): a refactor with no change in behaviour | |
 | 2 | Done and deleted in place, leaving together (5, 6), the subtask fill fix (3), tap targets (7) | Replaces part 4's Undo line |
 | 3 | Today's rules (2): no delete or reorder; search follows Projects | Changes part 4's swipe on every row |
-| 4 | Progress claims (3), square boxes and segmented run lines (3a) | |
+| 4 | Progress claims (3), square boxes and segmented run lines (3a), the sheet's rows taking a tap anywhere (7) | |
 | 5 | Today's card with its next step (4) | Changes #167 from part 9 |
 | 6 | The one-time hint (8) | |
 

@@ -98,20 +98,20 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   app**, under Checklists).
 - **Deleting:** on a project's list, in search or in a task's sheet (not on Today), swipe a task's row to the left,
   starting away from the screen's edge, and tap **Delete**; or swipe on past half the row, until the red fills it (and,
-  on a phone that can, you feel a tick), and let go. Back under half before you let go, it's only left open. Deleted,
-  the row carries on off the screen to the left, then comes back where it was, at the same height, faded, with
-  **Restore** where "+ me" was (with less motion asked for on the phone, it only changes): tap anywhere on the row to
-  bring it back. It leaves with the tasks you ticked, three seconds after the last, and it's
-  deleted in Vikunja then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with
-  subtasks asks first, and they go with it. Swipe back, or tap anywhere else, to leave it. The task's **⋯** deletes it
-  too, on any screen: the way on Today, and for a keyboard or a screen reader. Its row then shows **Restore** the same
-  way. Without a connection, it's deleted once Pocket reaches Vikunja.
+  on a phone that can, you feel a tick), and let go. Back under half before you let go, it's only left open. Swipe
+  back, or tap anywhere else, to leave it. Deleted, the row carries on off the screen to the left, and its place stays
+  as a gap, at the same height, so nothing moves, with only "Deleted" and **Restore** where "+ me" was: tap anywhere
+  on the gap to bring the row back, sliding in from the left. (With less motion asked for on the phone, it doesn't
+  slide.) The gap closes with the tasks you ticked, three seconds after the last, and the task is deleted in Vikunja
+  then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with subtasks asks first,
+  and they go with it. The task's **⋯** deletes it too, on any screen: the way on Today, and for a keyboard or a screen
+  reader. Its row turns into the same gap. Without a connection, it's deleted once Pocket reaches Vikunja.
 - **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
   comments. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
   project takes its subtasks along. The **⋯** at the top of the sheet shares its progress (see **Sharing progress**,
-  below), and deletes it, with its subtasks: its row in the list then has **Restore**. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
+  below), and deletes it, with its subtasks: its row in the list then is a gap with **Restore**. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
   on its row only, with no message. A change that isn't saved goes back, and the sheet says so under what it's about
   (at its top, under its notes, under its subtasks), with **Try again** where that helps.
 - **Sharing progress:** a task's **⋯**, a project's **⋯** and a run's **⋯** have **Share progress as a text**. It opens
