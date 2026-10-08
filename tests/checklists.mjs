@@ -714,10 +714,10 @@ try {
     await expect(page.locator(`${runCard} .pg`)).toHaveCount(0);
     await expect(page.locator(`${runCard} .step-line .title .sr`)).toHaveText('Step 3 of 3: ');
     if (await page.$eval(`${runCard} .card-mark`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '2') throw new Error('the step marked is not the third');
-    // Its strip under its heading, over the step line, a plain row with its tick at its left edge, 14px in, as a row's
-    // is; no priority, so no bars.
-    const stack = await page.$eval(runCard, el => ['.card-head', '.card-strip', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
-    if (!(stack[0][1] <= stack[1][0] + 0.5 && stack[1][1] <= stack[2][0] + 0.5)) throw new Error('its strip is not between its title and its step: ' + JSON.stringify(stack));
+    // Its heading, then the step line, a plain row with its tick at its left edge, 14px in, as a row's is, then its
+    // strip, at its foot; no priority, so no bars.
+    const stack = await page.$eval(runCard, el => ['.card-head', '.step-line', '.card-strip'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
+    if (!(stack[0][1] <= stack[1][0] + 0.5 && stack[1][1] <= stack[2][0] + 0.5)) throw new Error('its strip is not under its step: ' + JSON.stringify(stack));
     const tickAt = await page.$eval(`${runCard} .step-line`, el => el.querySelector(':scope > .check').getBoundingClientRect().left - el.getBoundingClientRect().left);
     if (tickAt !== 14) throw new Error("the step line's tick is not at its left edge, as a row's is: " + tickAt);
     await expect(page.locator(`${runCard} .card-head .bars`)).toHaveCount(0);
