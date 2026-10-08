@@ -55,7 +55,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   next date. On a card, its task and its subtasks that are overdue themselves are moved; a run's steps stay, as their
   run times them.
 - **Cards on Today:** a task with subtasks still open (or a checklist run with steps still open) shows on Today as a
-  card: its title, and under it one line for a step, with that step's own tick, **+ me** or who's on it, and progress.
+  card: its title, with its due date, priority and project under it, and below that one line for a step, with that
+  step's own tick, **+ me** or who's on it, and progress, its bar along the step line's bottom.
   Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
   its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
   own order), whoever it's for, or the subtask of yours that brought the card onto Today. Ticked, a step stays on the
@@ -65,10 +66,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   than one step open, **‹** and **›** at the ends of the step line page through the open ones, and so does a plain
   swipe left or right anywhere on the card (hold first, and it's progress instead): with the first two done, from 3 to
   4, 5, then back round to 3. Done steps are on the run's screen, or in the task's sheet. Leaving Today puts every card
-  back on its next step. Under the step line, a line in segments, one for each subtask, fills as they're done, and the
-  step showing is outlined on it, moving along as you page (past 12 steps, the line has a tick at each step, and the
-  outline is around that step's stretch): "2 of 5 subtasks done" to a screen reader, which hears the card named by its
-  title and the step line as "Step 3 of 5: Load chairs".
+  back on its next step. Under the card's title, above the step line, a line in segments, one for each subtask, fills
+  as they're done, and the step showing is outlined on it, moving along as you page (past 12 steps, the line has a
+  tick at each step, and the outline is around that step's stretch): "2 of 5 subtasks done" to a screen reader, which
+  hears the card named by its title and the step line as "Step 3 of 5: Load chairs".
 - **What brings a card onto Today:** its task being due (overdue, today or in the next 7 days); one of its open subtasks
   being due then; a subtask assigned to you that's due, or that was made today without a date (Vikunja doesn't keep when
   a task was assigned, so one made before today doesn't keep the card there); or, for a checklist run, its being yours

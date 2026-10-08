@@ -57,10 +57,11 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   `--segs` and `--done`, cut by a CSS mask; past `MANY_STEPS`, one line with ticks, `.many-steps`), as has the bar on
   its screen.
 - Today is cards and rows (`markup/today-item.html`, its lists' option `g.cards`, from `screenRows`): a task with open
-  subtasks, or a run with open steps, is a card (`.day-card`, `app/cards.js`), its title a heading that opens it, over
-  one step line, the task row with the card's options (`g.card`, `g.paging`): its own tick, slot and progress, "Step 3
-  of 5" to a screen reader, and `‹ ›` beside it (outside the keyed row, so they keep the focus); under it, its task's
-  line in segments, as a run's, the step showing outlined on it (`.card-mark`, at `--at`, sliding as it's paged). Its
+  subtasks, or a run with open steps, is a card (`.day-card`, `app/cards.js`), its title a heading that opens it, with
+  its due date, priority bars and project under it (`cardMeta`); then its task's line in segments, as a run's, the step
+  showing outlined on it (`.card-mark`, at `--at`, sliding as it's paged), kept with the heading; then one step line,
+  the task row with the card's options (`g.card`, `g.paging`): its own tick, slot and progress (its bar at the line's
+  bottom), "Step 3 of 5" to a screen reader, and `‹ ›` beside it (outside the keyed row, so they keep the focus). Its
   count, "3 of 5", at the right of its title's first line (`.card-n`), is the step's place among all its subtasks, done
   ones too (`placeOf`, `cards.js`), while paging goes through the open ones only. Subtasks are never rows of their own on Today. What's a card, and why, is `todayItems`
   (`cards.js`, beside `app/`, so the unit tests check it): a task due, a subtask due, a subtask of yours made today
@@ -308,7 +309,7 @@ With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo
 
 ## The task row's specimen
 
-`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each, and a row held (a subtask too), swiped to its Delete, ticked and deleted in place, a delete carrying on off the screen, the batch clearing, and a tick not saved in a line's place; and a run's steps on its screen: done by you or someone else, skipped, inserted, repeated, counting down, late, held, a tick waiting to send, and in a run finished or read only; a step's square box beside a task's round one, runs' lines in segments, of a few steps and of more than 12, and a row slid that's just become yours; and Today's cards: a task's subtask paged mid-way, 3 of 5 with one done, a run's step counting down, one step only, with no arrows, and one of 14 steps, on the 8th, its line with ticks), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
+`npm run specimen` makes `specimen/index.html`, a page for working on how a task's row looks: `markup/task-row.html` in every state (open, done, waiting to send, with progress, subtasks at each depth, due dates, priority, labels, people and comments, a run's row, read only, and a task's subtasks in its sheet with who's doing each, and a row held (a subtask too), swiped to its Delete, ticked and deleted in place, a delete carrying on off the screen, the batch clearing, and a tick not saved in a line's place; and a run's steps on its screen: done by you or someone else, skipped, inserted, repeated, counting down, late, held, a tick waiting to send, and in a run finished or read only; a step's square box beside a task's round one, runs' lines in segments, of a few steps and of more than 12, and a row slid that's just become yours; and Today's cards: a task's subtask paged mid-way, 3 of 5 with one done, of high priority, a run's step counting down, one step only, with no arrows, and one of 14 steps, on the 8th, its line with ticks, of low priority), in light and dark side by side. It uses the real stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), so it needs no server: open the file in a browser, and run it again after a change. It's for development only: git ignores `specimen/`, and nothing in `pocket/app/` refers to it, so it's never served or saved for offline.
 
 ## Upgrading the libraries
 

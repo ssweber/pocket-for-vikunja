@@ -135,6 +135,11 @@ off. A change to the row shows up in both places.
   the step's real place, and marks the step on the card's line.)
 - **The parent's progress** is a line under the step line, counted from its subtasks (steps done out of all of them),
   in segments as in section 3a. A task's own % still shows on Projects and in its sheet.
+- **The card's heading, again** (user, 2026-10-08): the card shows its task's priority bars under its title, as its
+  row did (only when it has a priority; nothing else of the row's for now), and the parent's segmented line moves to
+  just under the title, with a clear gap before the step line, whose own progress bar stays at its bottom. At the
+  bottom, the two lines read as one double line. Runs' cards the same. Both are where things are drawn, not moves
+  during a gesture: nothing moves under a finger.
 - **What brings a card onto Today:**
   - the parent being due, by Today's groups (overdue, today, the coming week); or
   - one of its open subtasks being due, by the same groups; or
