@@ -40,8 +40,8 @@
     </div>
     <!-- A step of a run, in the run's sheet: added during the run, on a line of its own -->
     <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta step-added-meta"><span x-text="addedText(t.description)"></span></div></template>
-    <!-- Once, on the first row of a screen that takes a slide (pickHint): gone, by a slide or a tap on it, it only fades, its
-         space kept until the screen is left, so nothing moves. A screen reader heard it as the screen opened. -->
+    <!-- Once, on the first row of a screen that takes a slide (pickHint): gone, by a slide or a tap on it, it fades, its
+         space kept while a finger may be on the list, then closes (closeHint). A screen reader heard it as the screen opened. -->
     <template x-if="hintOn(t, g)"><span class="slide-hint" :class="{gone: hint.done || !rowSlides(t)}" aria-hidden="true" @click.stop.prevent="hintSeen()">Hold and slide to start working on it<svg class="i"><use href="#i-close"/></svg></span></template>
   </button>
   <!-- A done step: who did it, ✓ on their picture (⏭ for a skip), and who else it's assigned to -->

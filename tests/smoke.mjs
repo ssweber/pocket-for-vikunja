@@ -1126,6 +1126,9 @@ try {
     const first = '#view .list > .row:first-of-type', hint = p.locator(`${first} .slide-hint`), shown = p.locator('.slide-hint:not(.gone)');
     // Where each row of the list starts.
     const rows = () => p.$$eval('#view .list > .row', els => els.map(el => Math.round(el.getBoundingClientRect().top)));
+    // Its three rows alike, the first at its own height again (but for the line above the others), once the hint's
+    // space has closed.
+    const sameHeights = () => p.$$eval('#view .list > .row', els => els.every(el => Math.abs(el.offsetHeight - els[1].offsetHeight) <= 1));
     const open = async () => {
       await p.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
       await expect(p.locator('#view .list > .row')).toHaveCount(3, { timeout: 15000 });
@@ -1143,6 +1146,18 @@ try {
       await expect(hint).toHaveClass(/\bgone\b/);
       if (await p.isVisible('#sheet')) throw new Error('a tap on the hint opened the task');
       if (JSON.stringify(await rows()) !== JSON.stringify(at)) throw new Error(`rows moved as it went: ${at} then ${await rows()}`);
+      // Its space stays while a finger is down (on the list's empty space below the rows): a real wait, past the second
+      // after which it closes, as this page has no clock of its own.
+      const below = await p.locator('#view .list > .row:last-of-type').boundingBox(), bx = below.x + below.width / 2, by = below.y + below.height + 60;
+      if (await p.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('button, a, input, textarea, .row'), [bx, by])) throw new Error('no empty space below the rows to hold');
+      await p.mouse.move(bx, by); await p.mouse.down();
+      await p.waitForTimeout(1500);
+      if (JSON.stringify(await rows()) !== JSON.stringify(at)) throw new Error(`rows moved under a finger: ${at} then ${await rows()}`);
+      // Lifted, it closes a second later: its row back at its own height, the rows below with it.
+      await p.mouse.up();
+      await expect(p.locator('.slide-hint')).toHaveCount(0, { timeout: 5000 });
+      await expect.poll(sameHeights).toBe(true);
+      if (!((await rows())[1] < at[1])) throw new Error('the rows below didn\'t close up');
       await p.reload();
       await open();
       if (await p.locator('.slide-hint').count()) throw new Error('back after a reload');
@@ -1159,6 +1174,8 @@ try {
       await p.mouse.up();
       await expect(shown).toHaveCount(0);
       if (JSON.stringify(await rows()) !== JSON.stringify(was)) throw new Error(`rows moved as it went: ${was} then ${await rows()}`);
+      await expect(p.locator('.slide-hint')).toHaveCount(0, { timeout: 5000 });       // then closed, a second after
+      await expect.poll(sameHeights).toBe(true);
       await synced(p);
       await p.reload();
       await open();

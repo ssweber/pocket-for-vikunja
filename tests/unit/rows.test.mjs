@@ -111,8 +111,8 @@ test('a checklist step\'s box is square, on its run\'s screen, in its run\'s she
 /* The one-time hint (motion-and-rows-plan, section 8): on the first row of a screen that takes a slide, as the screen is
    first drawn; on Today, a card's step line counts, the hint then being the card's, so its next step keeps it. */
 test('the hint goes on the first row that takes a slide, a card\'s step line counting, and is said once', () => {
-  const app = component(progress);
-  const ro = { id: 1, project_id: 9 }, done = { id: 2, done: true }, waiting = { id: 3, pending: true }, card = { id: 4 }, row = { id: 5 }, folded = { id: 6 };
+  const app = component(progress, leaving);
+  const ro ={ id: 1, project_id: 9 }, done = { id: 2, done: true }, waiting = { id: 3, pending: true }, card = { id: 4 }, row = { id: 5 }, folded = { id: 6 };
   const steps = { 4: { id: 40, done: true } };
   Object.assign(app, { lines: {}, hint: { at: null, pick: true, done: false }, canTick: t => t.project_id !== 9, cardOf: t => steps[t.id] ? { id: t.id, step: steps[t.id] } : null });
   Object.defineProperty(app, 'listGroups', { get: () => [{ fold: true, tasks: [folded] }, { tasks: [ro, done, waiting] }, { tasks: [card, row] }] });

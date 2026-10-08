@@ -259,9 +259,9 @@ export default {
   rowSlides(t){ return !this.lines[t.id] && !this.leaving[t.id] && !t.pending && !t.done && this.canTick(t) && !this.isRunTask(t); },
   /* A one-time hint, "Hold and slide to start working on it", on the first row of a list that takes a slide (on Today, a
      card's step line counts: the card is `at`, so its next step keeps it). It's picked once, as a screen is first drawn
-     (hint.pick, set by render), never later, so it can't push rows down under a finger; and it keeps its space until
-     the screen is left: gone (a slide that sets progress anywhere, or a tap on it), it only fades. Remembered on the
-     phone; a screen reader hears it once. */
+     (hint.pick, set by render), never later, so it can't push rows down under a finger. Gone (a slide that sets
+     progress anywhere, or a tap on it), it fades, keeping its space until no finger is down and the list is still,
+     then closes (hintAway, leaving.js). Remembered on the phone; a screen reader hears it once. */
   pickHint(){
     this.hint.pick = false;
     if (this.hint.done) return;
@@ -275,7 +275,7 @@ export default {
   },
   // Whether the row of `t` in list `g` has the hint's place: a card's step line for its card.
   hintOn(t, g){ return !g.sheet && !g.run && this.hint.at !== null && this.hint.at === (g.card ? g.card.id : t.id); },
-  hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); },
+  hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); this.hintAway(); },
   /* A card on Today (app/cards.js), touched: its step line's gesture `s` (rowGesture), whose slide is that step's alone
      and stops at 100% of it, the card then staying at its place for the next step to come in (pinCard); and, with more
      than one open step, a swipe either way pages it (pageOf). */

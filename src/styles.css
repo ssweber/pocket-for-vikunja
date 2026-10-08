@@ -132,8 +132,8 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .meta > span,.d-path .linkish,.d-parent,.d-title h2,#sheet h3,.sec > span,.kicker,.cl .title{min-width:0;overflow-wrap:anywhere}
 .meta .due.overdue{color:var(--overdue);font-weight:600}
 .meta .due.today{color:var(--today);font-weight:600}
-/* The one-time hint to hold and slide, under the first row's title: quiet, and gone, it only fades, keeping its space.
-   Its tap, which puts it away, reaches past it, to 44px tall. */
+/* The one-time hint to hold and slide, under the first row's title: quiet, and gone, it fades, keeping its space until
+   no finger is down (closeHint, leaving.js, then folds it). Its tap, which puts it away, reaches past it, to 44px tall. */
 .slide-hint{position:relative;display:flex;align-items:center;gap:6px;width:fit-content;margin-top:6px;padding:4px 8px 4px 10px;border-radius:10px;background:var(--sunk);color:var(--muted);font-size:13px;line-height:18px;transition:opacity .25s,visibility .25s}
 .slide-hint::after{content:"";position:absolute;inset:-8px -8px -12px}
 .slide-hint svg.i{width:14px;height:14px}

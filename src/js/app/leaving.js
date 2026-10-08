@@ -9,13 +9,17 @@
 import {app} from '../util.js';
 import {batchTimer} from '../batch.js';
 
+// The hint's space closes this long after it's put away, from when the finger lifts: sooner than rows leaving, as
+// nothing else is waiting on it.
+const HINT_MS = 1000;
 /* Each component's marks (task id -> its mark; the rows shown with a mark point to the same one) and its batch, kept
    by its `leaving`: `this` in a method called from the markup is the row's scope, not the component, but `leaving` is
-   the same object from either. */
+   the same object from either. `hint`: when the one-time hint, put away, gives its space back (closeHint), on the
+   component that first asked (initBatch, as Pocket starts). */
 const state = new WeakMap();
 const of = c => {
   let s = state.get(c.leaving);
-  if (!s) state.set(c.leaving, s = {marks: new Map(), batch: batchTimer(() => app.clearBatch())});
+  if (!s) state.set(c.leaving, s = {marks: new Map(), batch: batchTimer(() => app.clearBatch()), hint: batchTimer(() => c.closeHint(), HINT_MS)});
   return s;
 };
 const EXIT_MS = 250;
@@ -86,13 +90,27 @@ export default {
   },
   // Leaving the screen, or Pocket put away: the batch clears at once.
   clearNow(){ of(this).batch.now(); this.clearBatch(true); },
-  /* What holds the batch back: a finger down anywhere, and the list (or a sheet) scrolling. Each starts its wait again
-     once it's over. */
+  /* The one-time hint put away (hintSeen, progress.js): it has faded, keeping its space, and gives it back by the
+     batch's rules, never under a finger or while the list scrolls: HINT_MS after the finger lifts, its row closing to
+     its own height, the rows below with it (with less motion, at once). */
+  hintAway(){ of(this).hint.mark(); },
+  async closeHint(){
+    if (this.hint?.at == null) return;                     // the screen it was on has been left
+    if (motion()) await Promise.all([...document.querySelectorAll('.slide-hint')].map(el => {
+      el.style.overflow = 'hidden';
+      return el.animate([{height: el.offsetHeight + 'px'}, {height: '0px', marginTop: '0px', paddingTop: '0px', paddingBottom: '0px'}],
+        {duration: 200, easing: 'ease-in-out', fill: 'forwards'}).finished.catch(() => {});
+    }));
+    this.hint.at = null;
+  },
+  /* What holds the batch back (and the hint's space closing): a finger down anywhere, and the list (or a sheet)
+     scrolling. Each starts its wait again once it's over. */
   initBatch(){
-    const {batch} = of(this);
-    document.addEventListener('pointerdown', e => batch.down(e.pointerId), true);
-    for (const k of ['pointerup', 'pointercancel']) addEventListener(k, e => batch.up(e.pointerId), true);
+    const {batch, hint} = of(this), both = [batch, hint];
+    document.addEventListener('pointerdown', e => both.forEach(b => b.down(e.pointerId)), true);
+    for (const k of ['pointerup', 'pointercancel']) addEventListener(k, e => both.forEach(b => b.up(e.pointerId)), true);
     let still;
-    addEventListener('scroll', () => { batch.scroll(true); clearTimeout(still); still = setTimeout(() => batch.scroll(false), 150); }, {capture: true, passive: true});
+    const scroll = on => both.forEach(b => b.scroll(on));
+    addEventListener('scroll', () => { scroll(true); clearTimeout(still); still = setTimeout(() => scroll(false), 150); }, {capture: true, passive: true});
   },
 };
