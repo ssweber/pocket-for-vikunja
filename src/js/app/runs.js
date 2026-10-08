@@ -488,11 +488,6 @@ export default {
      step is ticked through its run (with its ✅), where a task or a subtask has a round one. On a run's screen, in the
      run's sheet, and on a list (a step you've claimed, on Today). */
   isStepRow(t, g){ return !!g.run || (g.sheet ? this.checklistRole === 'run' : !!this.stepRun(t)); },
-  // A run's steps done (waiting ticks too), and the next one: {steps: [{id, done, title}]}.
-  runCount(r){
-    const done = r.steps.map(x => this.stepDone(x.id, x.done));
-    return {done: done.filter(Boolean).length, total: r.steps.length, next: r.steps.find((x, i) => !done[i])?.title || ''};
-  },
   goProject(id){ this.closeSheet(true); this.go('#/project/' + id); },
   // A row in a list: a checklist run, or a step of one, opens the run; a template that comes round, its Start sheet;
   // any other task opens its sheet.

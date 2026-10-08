@@ -2,7 +2,7 @@
 import {cache, collapse, colorOf, PRIOS, store, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError, why} from '../api.js';
 import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
-import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
@@ -160,18 +160,15 @@ export default {
     // end of the row (rowSlot).
     if (this.isRunTask(t) && (t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
+    // Its subtasks done. Not a run's steps: its line, a segment per step, says how far it is (and its screen what's next).
     const subs = t.related_tasks?.subtask || [];
-    // A run's steps done, ticks waiting to be sent too, and the next one.
-    if (subs.length && this.isRunTask(t)) {
-      const c = this.runCount({steps: stepsOf(t)});
-      out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: c.done + '/' + c.total, label: 'Steps done'});
-      if (c.next && !t.done) out.push({key: 'next', text: 'Next: ' + c.next});
-    } else if (subs.length) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
+    if (subs.length && !this.isRunTask(t)) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done'});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments'});
     // Photos and files still uploading count too, so a photo added with a task shows on its row straight away.
     const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waitingByTask.get(t.id)?.length || 0;
     if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : '')});
-    if ((t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});
+    // (Not a run's step's: its reminder is Pocket's own, for the countdown it shows.)
+    if (!this.stepRun(t) && (t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});
     return out;
   },
 
@@ -376,7 +373,9 @@ export default {
      heads read besides, list: its open list, heads, positions, count: of its done tasks, finished: those, if `withDone`}. */
   async readProject(p, withDone){
     const q = {filter_timezone: TZ, expand: 'comment_count'}, id = p.id;
-    const count = api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', per_page: 1})).then(d => d?.total ?? null, () => null);
+    /* Its done tasks, counted by Vikunja. Not in a project for checklists: there, most are templates' and runs' steps,
+       which its Done leaves out (withoutTemplates), so it's counted once it's loaded. */
+    const count = this.checklistIds.has(id) ? null : api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', per_page: 1})).then(d => d?.total ?? null, () => null);
     const done = withDone ? this.doneTasks(p).catch(() => null) : null;
     let lv = listViewOf(p), tasks = null;
     // Its List view, as last loaded: gone, or not one Pocket can read, the project's views are looked up again, once.
@@ -390,14 +389,15 @@ export default {
     }
     if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})); }
     /* A done parent with subtasks still open is shown over them, struck through (doneParentIds): as the view gave it,
-       under an open task, or else read, all of them in one request; not read, as its subtasks name it. */
-    const headIds = doneParentIds(tasks, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
+       under an open task, or else read, all of them in one request; not read, as its subtasks name it. A run's steps
+       aren't on the list (withoutTemplates), so a run finished with steps not done is in Done, not over them. */
+    const shown = this.withoutTemplates(tasks, true), headIds = doneParentIds(shown, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
     const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).catch(() => []) : [];
     const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
     const heads = headIds.map(id => given.get(id) || read.find(t => t.id === id) || named(id));
     const [n, finished] = await Promise.all([count, done]);
     // The view gives each open task's subtasks, done ones too: those are in the Done section.
-    const list = [...tasks.filter(t => !t.done), ...heads], positions = {};
+    const list = [...shown.filter(t => !t.done), ...heads], positions = {};
     if (lv) {
       for (const t of tasks) positions[t.id] = t.position || 0;
       // A head the view didn't give has no position Pocket can read (the view leaves out what's done): it goes where
@@ -417,11 +417,11 @@ export default {
     return {key: 'done', cls: 'done-sec', title: 'Done', fold: true, open: !!open, loading: false, loaded: !!tasks, count: tasks ? tasks.length : count,
       tasks: (tasks || []).map(own)};
   },
-  // A project's done tasks, the most recently done first.
+  // A project's done tasks, the most recently done first: not templates, nor their steps or a run's (withoutTemplates).
   async doneTasks(p){
     const list = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}));
     for (const t of list) cache.set(t.id, t);
-    return list;
+    return this.withoutTemplates(list, true);
   },
   // The Done section opened, loading it the first time, or closed again. Each project's is kept as it was left.
   toggleDoneSection(){
@@ -487,7 +487,7 @@ export default {
     this.back(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
   },
   // Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the 50 most
-  // recently done.
+  // recently done. Not templates or their steps: they're on Checklists (withoutTemplates).
   async loadSearch(seq){
     const s = this.searchQ.trim();
     if (!s) { this.view.groups = []; return; }
@@ -497,8 +497,8 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
     this.view.groups = this.keepMarked([
-      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(opened).map(t => this.keep(t))},
-      {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: finished.map(t => this.keep(t))},
+      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.keep(t))},
+      {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: this.withoutTemplates(finished).map(t => this.keep(t))},
     ]);
   },
 

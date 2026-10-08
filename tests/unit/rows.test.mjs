@@ -9,6 +9,7 @@ import leaving from '../../src/js/app/leaving.js';
 import progress from '../../src/js/app/progress.js';
 import { rowGestures, screenRows } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
+import checklists from '../../src/js/app/checklists.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -33,6 +34,24 @@ test('under a step\'s title: Inserted or Repeated, its notes, and its countdown 
   assert.equal(meta[1].label, '2 notes');
   assert.equal(app.rowMeta(step({ notes: [{}] }), RUN)[0].label, 'A note');
   assert.deepEqual(app.rowMeta(step({ done: true, dueText: 'Due in 3m' }), RUN), [], 'a done step has no countdown');
+});
+
+/* A run's row, on a project's list, in search and under Checklists (one-concept-plan, part 3): its line, a segment per
+   step, says how far it is, so no count of its steps and no "Next: …"; who it's for stays. A run's step has no 🔔: its
+   reminder is Pocket's own, for the countdown the row shows. */
+test('a run\'s row says who it\'s for, not its steps done nor the next; a run\'s step has no 🔔, a task has', () => {
+  const app = component(views, runs, checklists), me = { id: 1, username: 'alex' }, soon = new Date(Date.now() + 18 * 6e4).toISOString();
+  Object.defineProperty(app, 'checklistIds', { get: () => new Set([2]) });
+  Object.assign(app, { user: me, perms: {}, pending: [], route: { name: 'project' }, waitingByTask: new Map() });
+  const run = { id: 20, title: 'Opening up', done: false, project_id: 2, assignees: [me], description: '', labels: [],
+    related_tasks: { copiedfrom: [{ id: 9 }], subtask: [{ id: 21, done: true, title: 'Turn on the machine' }, { id: 22, done: false, title: 'Unlock the door' }] } };
+  assert.deepEqual(app.rowMeta(run, { depth: {} }).map(m => [m.key, m.text]), [['for', 'For you']]);
+  const task = { id: 30, title: 'Pack the van', project_id: 1, description: '', related_tasks: { subtask: [{ id: 31, done: true }, { id: 32 }] } };
+  assert.deepEqual(app.rowMeta(task, { depth: {} }).map(m => [m.key, m.text]), [['sub', '1/2']], 'a task\'s subtasks done still show');
+  const step = { id: 22, title: 'Unlock the door', done: false, project_id: 2, due_date: soon, reminders: [{ reminder: soon }], description: '', labels: [],
+    related_tasks: { parenttask: [{ id: 20, title: 'Opening up' }], copiedfrom: [{ id: 3 }] } };
+  assert.deepEqual(app.rowMeta(step, { depth: {} }).map(m => m.key), ['due'], 'its countdown, and no 🔔');
+  assert.deepEqual(app.rowMeta({ ...step, project_id: 1, related_tasks: {} }, { depth: {} }).map(m => m.key), ['due', 'rem'], 'a task\'s reminder still to come');
 });
 
 test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who did it instead', () => {

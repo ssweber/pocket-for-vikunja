@@ -54,6 +54,20 @@ export default {
     if (p) return isRunStepTask(t) ? 'step' : hasTemplateLabel(cache.get(p.id)) || templatesKept[p.id] ? 'tplstep' : null;
     return (r.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t) ? 'run' : 'candidate';
   },
+  /* A list of tasks without what lives on Checklists: a template marked done, and a template's steps (Vikunja's tasks
+     marked done, with their steps' times written raw), for a project's Done and search. A template that comes round
+     stays: it's due. With `runSteps`, a run's steps too, for a project's lists: a run is one row there, as on Checklists,
+     its steps a tap away on its screen. Vikunja gives a task's parent without its labels, so a step's template is known
+     from what's at hand, never asked for: a template in the same list, one kept from Checklists or in the store, or a
+     title starting "TEMPLATE:", as Pocket names them. */
+  withoutTemplates(list, runSteps = false){
+    const ids = this.checklistIds;
+    if (!ids.size) return list;
+    const here = new Set(list.filter(isTemplate).map(t => t.id)), kept = {...saved.get('templates'), ...templatesKept};
+    const tpl = p => here.has(p.id) || !!kept[p.id] || hasTemplateLabel(cache.get(p.id)) || /^\s*template:/i.test(p.title || '');
+    return list.filter(t => !ids.has(t.project_id)
+      || !(t.done && isTemplate(t) || (t.related_tasks?.parenttask || []).some(tpl) || runSteps && this.stepRun(t)));
+  },
   // A template's "template" label stays: it's what makes it one. (Deleting the template is in its ⋯.)
   keepsLabel(l){ return this.checklistRole === 'template' && isTemplateLabel(l); },
   // A template and its steps are never done or not done: their sheets have no tick, progress, priority or due date.
