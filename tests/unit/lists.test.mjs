@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { doneParentIds, nestSubtasks, soonestFirst, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { addedToday, doneParentIds, nestSubtasks, soonestFirst, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z';                        // Vikunja's "no date"
@@ -89,3 +89,13 @@ test('Today’s groups in their order, a task not sent yet already in its place'
   assert.deepEqual(ids(added.sort(todayOrder.nodate)), ['pending-b', 7, 6], 'newest first, one not sent yet before them');
 });
 
+test('added today, no date: yours, and a subtask only if it is assigned to you', () => {
+  const me = { id: 1 }, other = { id: 2 }, under = { related_tasks: { parenttask: [{ id: 9 }] } };
+  assert.ok(addedToday({ id: 3, due_date: NONE, created_by: me }, me, {}), 'a task you made');
+  assert.ok(!addedToday({ id: 3, due_date: NONE, created_by: other }, me, {}), 'one someone else made');
+  assert.ok(!addedToday({ id: 3, due_date: '2026-10-09T10:00:00Z', created_by: me }, me, {}), 'one with a date is under it');
+  assert.ok(!addedToday({ id: 3, due_date: NONE, created_by: me }, me, { 3: true }), 'a run');
+  assert.ok(!addedToday({ id: 4, due_date: NONE, created_by: me, ...under }, me, {}), 'a subtask you made, not yours to do');
+  assert.ok(addedToday({ id: 4, due_date: NONE, created_by: other, assignees: [me], ...under }, me, {}), 'a subtask assigned to you');
+  assert.ok(!addedToday({ id: 4, due_date: NONE, created_by: me, assignees: [other], ...under }, me, {}), 'one assigned to someone else');
+});

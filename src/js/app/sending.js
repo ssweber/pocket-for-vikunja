@@ -334,7 +334,8 @@ export default {
     const r = this.route;
     if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
     if (r.name !== 'today') return null;
-    if (!isSet(t.due_date)) return t.child ? null : 'nodate';
+    // A subtask without a date only once it's loaded, if it's assigned to you (addedToday): who it's for is set as it's sent.
+    if (!isSet(t.due_date)) return t.child || t.parent ? null : 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
     return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },

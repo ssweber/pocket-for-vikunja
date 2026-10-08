@@ -46,6 +46,11 @@ export const doneParentIds = (tasks, pid) => {
   return [...out];
 };
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
+/* Whether a task made today (by Today's query) goes under "Added today, no date", with `me` the one signed in and `runs`
+   the open runs (by id): one without a date that isn't a run, made by you; a subtask only if it's assigned to you (a
+   pasted list's lines under its first, or subtasks added to a task, stay with their parent, unless they're yours to do). */
+export const addedToday = (t, me, runs) => !isSet(t.due_date) && !(t.id in runs)
+  && (parentIds(t).length ? (t.assignees || []).some(u => u.id === me?.id) : t.created_by?.id === me?.id);
 /* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
    days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task
    just added or sent goes straight to where the next load will put it, rather than to the bottom first. */

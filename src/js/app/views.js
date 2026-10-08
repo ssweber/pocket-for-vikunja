@@ -5,7 +5,7 @@ import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {addedToday, doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
 import {shared} from './core.js';
@@ -291,8 +291,8 @@ export default {
     for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push(own(t));
     for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) inRuns.tasks.push(own(t));
     this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(own));
-    // Yours, still without a date, and not a subtask: a pasted list shows only its first line.
-    for (const t of added) if (!isSet(t.due_date) && t.created_by?.id === this.user?.id && !t.related_tasks?.parenttask?.length && !(t.id in runs)) nodate.tasks.push(own(t));
+    // Yours, still without a date; a subtask only if it's yours to do, with its parent's name (rowMeta); a run's step is with its run.
+    for (const t of added) if (addedToday(t, this.user, runs) && !this.stepRun(t)) nodate.tasks.push(own(t));
     return groups;
   },
   /* A project's open tasks, in the order of its List view in Vikunja (order.js), each subtask under its parent in its
