@@ -836,11 +836,12 @@ try {
   });
 
   await step('finish-a-run', async () => {
-    // Opened from Checklists, so finishing goes back there. Its row there is Today's: its progress line, steps done and
-    // the next.
+    // Opened from Checklists, so finishing goes back there. Its row there is a project's: who it's for and its progress
+    // line, which says how far it is, so no count of its steps done nor the next (one-concept-plan, part 3).
     await page.evaluate(() => { location.hash = '#/checklists'; });
     const runRow = `.cl-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`;
-    await page.waitForSelector(`${runRow} .meta:has-text("Next: First article check")`, { timeout: 15000 });
+    await page.waitForSelector(`${runRow} .meta:has-text("For you")`, { timeout: 15000 });
+    await expect(page.locator(`${runRow} .meta`)).not.toHaveText(/Next:|\d+\/\d+/);
     const line = await page.$eval(runRow, el => [parseFloat(getComputedStyle(el).getPropertyValue('--pct')), parseFloat(getComputedStyle(el, '::after').width)]);
     if (!(line[0] > 0 && line[1] > 0)) throw new Error('no progress line under Checklists: ' + line);
     // In segments, one per step, the steps done filled (runLine).
@@ -947,22 +948,33 @@ try {
     if (!(await Promise.all([id, ...steps].map(gone))).every(Boolean)) throw new Error('the run or a step is still in Vikunja');
   });
 
+  /* A run is one row on its project's list, as under Checklists (one-concept-plan, part 3): its steps aren't under it nor
+     counted in Open, and its row says who it's for, not its steps done or the next. Templates, their steps and runs'
+     steps stay out of its Done too. */
   await step('a-run-ticked-in-its-project', async () => {
     // Ticked in its project's list with steps not done: it asks first, then finishes it as Finish run does, through the
     // outbox, and leaves its steps as they are. Its tick again, before the batch clears, opens it again.
     const { id } = await startRun();
     const title = (await api('/tasks/' + id)).title, asked = [], record = d => asked.push(d.message());
+    // The project's group headed `name`: its count, and its rows' titles.
+    const group = name => page.evaluate(name => {
+      const sec = [...document.querySelectorAll('#view .sec')].find(s => s.textContent.trim().startsWith(name)), g = sec.parentElement;
+      return { head: sec.textContent.trim(), n: +(sec.querySelector('.n')?.textContent || 0), titles: [...g.querySelectorAll('.list > .row > .body .title')].map(t => t.textContent.trim()) };
+    }, name);
     page.on('dialog', record);                                                // accepted by the handler at the top
     try {
       await page.evaluate(pid => { location.hash = '#/project/' + pid; }, project.id);
       await loaded(page);
       await page.click('#btn-refresh');                                       // its rows from Vikunja, not the copy shown first
       await page.waitForSelector('#btn-refresh:not([disabled])');
-      // Its steps under it in the run's order, not newest first.
-      await page.waitForSelector(`.row:has(> .body .title:has-text("${title}"))`, { timeout: 15000 });
-      const rows = await page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.replace(/^Subtask: /, '').trim()));
-      const at = rows.findIndex(t => t.includes(title)), want = (await subtasks(id)).map(s => s.title);
-      if (JSON.stringify(rows.slice(at + 1, at + 1 + want.length)) !== JSON.stringify(want)) throw new Error('its steps: ' + rows.slice(at + 1, at + 1 + want.length).join(' | '));
+      const row = `#view .row:has(> .body .title:has-text("${title}"))`, want = (await subtasks(id)).map(s => s.title);
+      await page.waitForSelector(row, { timeout: 15000 });
+      await expect(page.locator(`${row} .meta`)).toContainText('For you');
+      await expect(page.locator(`${row} .meta`)).not.toHaveText(/Next:|\d+\/\d+/);
+      // No run's step is a row, and Open counts its rows: each run one.
+      const open = await group('Open');
+      if (open.titles.some(t => want.some(s => t.endsWith(s)))) throw new Error('a run\'s steps on its project\'s list: ' + open.titles.join(' | '));
+      if (open.n !== open.titles.length) throw new Error(`Open says ${open.n}, with ${open.titles.length} rows`);
       await toastGone().catch(() => {});
       await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`, { timeout: 15000 });
       await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
@@ -972,20 +984,57 @@ try {
       await expect(page.locator(`.row.leaving:has(> .body .title:has-text("${title}"))`)).toHaveClass(/\bdone\b/);
       await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
       await until('its tick again never opened it', async () => !(await api('/tasks/' + id)).done);
-      // Finished again, once the batch has cleared it stays over its steps not done, struck through, rather than leave
-      // them on their own; its tick opens it again.
+      // Finished again, it goes with the batch, to Done, as a task does: its steps not done aren't on the list to stay
+      // over.
       await synced(page);
       await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
       await until('the run was never finished again', async () => (await api('/tasks/' + id)).done);
       await later(3000);
-      await expect(page.locator(`#view .row.head:has(> .body .title:has-text("${title}"))`).first()).toBeVisible();
-      const now = await page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.replace(/^Subtask: /, '').trim()));
-      const head = now.findIndex(t => t.includes(title));
-      if (JSON.stringify(now.slice(head + 1, head + 1 + want.length)) !== JSON.stringify(want)) throw new Error('under it: ' + now.slice(head + 1, head + 1 + want.length).join(' | '));
-      await page.click(`.row.head:has(> .body .title:has-text("${title}")) > .check`);
-      await until('its tick never opened it again', async () => !(await api('/tasks/' + id)).done);
+      await expect(page.locator(row)).toHaveCount(0);
+      /* Done isn't counted until it's opened: most of a project for checklists' done tasks are templates' and runs' steps,
+         which it leaves out. Opened: the run, and not a template, nor a template's step (with its times written raw), nor
+         a run's step, counted as it shows. */
+      await expect(page.locator('#sec-done')).toHaveText('Done');
+      await page.click('#sec-done');
+      await page.waitForSelector(`#view .row.done:has(> .body .title:has-text("${title}"))`, { timeout: 15000 });
+      await expect(page.locator('#sec-done')).toContainText(/Done \(\d+\)/);
+      const done = await group('Done'), n = +done.head.match(/\((\d+)\)/)[1];
+      const stray = done.titles.filter(t => t === TEMPLATE || /^TEMPLATE/i.test(t) || /T#|\{#/.test(t) || STEPS.includes(t) || want.includes(t));
+      if (stray.length) throw new Error('in Done: ' + stray.join(' | '));
+      if (n !== done.titles.length) throw new Error(`Done says ${n}, with ${done.titles.length} rows`);
+      await page.click('#sec-done');                                          // folded again, as the next steps expect
     } finally {
       page.off('dialog', record);
+      for (const x of await subtasks(id)) await api('/tasks/' + x.id, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + id, { method: 'DELETE' }).catch(() => {});
+    }
+  });
+
+  /* Templates and their steps stay out of search (one-concept-plan, part 3): they live on Checklists, and as Vikunja's
+     tasks marked done they'd fill its Done, with their times written raw. A run's step found there has no 🔔: its
+     reminder is Pocket's own, for the countdown its row shows. */
+  await step('templates-out-of-search-and-no-bell-on-a-step', async () => {
+    const { id } = await startRun();
+    const runTitle = (await api('/tasks/' + id)).title, [guards, warm] = await subtasks(id);
+    const titles = () => page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.trim()));
+    try {
+      await api('/tasks/' + guards.id, { method: 'PATCH', body: JSON.stringify({ done: true }) });
+      await until('the step after it never got its time and reminder', async () => ((await api('/tasks/' + warm.id)).reminders || []).some(r => Date.parse(r.reminder) > Date.now()));
+      await page.click('#btn-search');
+      // The template's name finds its runs, not the template.
+      await page.fill('#in-search', TEMPLATE);
+      await page.waitForSelector(`#view .row > .body .title:has-text("${runTitle}")`, { timeout: 15000 });
+      if ((await titles()).includes(TEMPLATE)) throw new Error('the template is in search: ' + (await titles()).join(' | '));
+      // A step's words find the runs' steps, not the template's, and the run's step counting down has no 🔔.
+      const stepRow = `#view .row:has(> .body .title:has-text("Warm up the press")):has(.meta:has-text("${runTitle}"))`;
+      await page.fill('#in-search', 'Warm up the press');
+      await page.waitForSelector(stepRow, { timeout: 15000 });
+      const raw = (await titles()).filter(t => /T#|\{#/.test(t));
+      if (raw.length) throw new Error('a template\'s step in search: ' + raw.join(' | '));
+      await expect(page.locator(`${stepRow} .meta .due`)).toHaveText(/^in (30|29)m$/);
+      await expect(page.locator(`${stepRow} [aria-label="A reminder is still to come"]`)).toHaveCount(0);
+    } finally {
+      await page.click('#btn-search-cancel').catch(() => {});
       for (const x of await subtasks(id)) await api('/tasks/' + x.id, { method: 'DELETE' }).catch(() => {});
       await api('/tasks/' + id, { method: 'DELETE' }).catch(() => {});
     }
