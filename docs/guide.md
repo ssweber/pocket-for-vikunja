@@ -45,21 +45,38 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
 ## Tasks
 
 - **Today** groups tasks into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task added without a
-  date stays in view until tonight instead of vanishing into a project. A subtask added today without a date shows
-  there only if it's assigned to you, with its parent's name under it ("↳ Pack the van"); the lines of a pasted list
-  under its first, and subtasks added to a task, otherwise stay with their parent. A task is overdue once its time has passed, as
+  date stays in view until tonight instead of vanishing into a project. A task with subtasks still open is a card
+  there (below), never rows of its subtasks. A task is overdue once its time has passed, as
   in Vikunja: "friday" is due at your default due time, noon unless you changed it. One due at midnight, as Vikunja's
   web app sets a day without a time, is overdue once that day is over. Left open, Today moves tasks to Overdue as their
   time passes, each lighting up for a moment as it moves. **Move all to today** brings every overdue task to today, each
   at the time of day it had, or the next whole hour if that time has gone today; a line under the Overdue heading says
   how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
-  next date.
+  next date. On a card, its task and its subtasks that are overdue themselves are moved; a run's steps stay, as their
+  run times them.
+- **Cards on Today:** a task with subtasks still open (or a checklist run with steps still open) shows on Today as a
+  card: its title, and under it one line for a step, with that step's own tick, **+ me** or who's on it, and progress.
+  Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
+  its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
+  own order), whoever it's for, or the subtask of yours that brought the card onto Today. Ticked, a step stays on the
+  card, ticked, until the ticks leave together; then the step after it comes in. Holding the step line and sliding sets
+  that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. With more
+  than one step open, **‹** and **›** at the ends of the step line page through them, with "2/5" under the step's title
+  saying which, and so does a plain swipe left or right anywhere on the card (hold first, and it's progress instead). It
+  goes round from the last to the first. Leaving Today puts every card back on its next step. Under the step line, a
+  line in segments, one for each subtask, fills as they're done: "2 of 5 subtasks done" to a screen reader, which hears
+  the card named by its title and the step line as "Step 2 of 5: Load chairs".
+- **What brings a card onto Today:** its task being due (overdue, today or in the next 7 days); one of its open subtasks
+  being due then; a subtask assigned to you that's due, or that was made today without a date (Vikunja doesn't keep when
+  a task was assigned, so one made before today doesn't keep the card there); or, for a checklist run, its being yours
+  or your being on one of its steps. A card sits in the group of the earliest date that brought it, as a task by its
+  due date; with no date, a run's is under **Checklist runs** and anything else under **Added today, no date**.
 - **A task's row** has three parts, each the row's full height: its left edge ticks it (the whole margin, not only the
   circle), its title opens it, and its right end says who's doing it, or **+ me** (see **Assigning**, below).
 - **Two screens, two jobs:** Today is for doing; Projects, search and a task's sheet are for managing. On Today, a
-  task's row is ticked, claimed, opened, and held and slid sideways for its progress, and that's all: a plain swipe
-  does nothing there, so nothing is deleted by a slip on the screen you use fastest, and holding a task doesn't move
-  it, since Today is in the order things are due. Its **⋯** still deletes it. On a project's list and in a task's
+  task's row (or a card's step line) is ticked, claimed, opened, and held and slid sideways for its progress, and that's
+  all: a plain swipe does nothing there but page a card, so nothing is deleted by a slip on the screen you use fastest,
+  and holding a task doesn't move it, since Today is in the order things are due. Its **⋯** still deletes it. On a project's list and in a task's
   sheet, a row can also be swiped left to **Delete** it, and held and moved up or down to move it; in search, swiped to
   **Delete**, but not moved, as search's results have no order of their own. No swipe ticks a task, anywhere.
 - **Ticking off:** a ticked task stays where it is, at the same height, ticked and struck through, so nothing moves
@@ -169,8 +186,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   subtasks open, or one of them opened again since) stays among the open tasks, struck through, over those subtasks,
   saying "Done, but 2 subtasks are still open", so they're never left on their own as if they had no parent. Tap it to
   open its sheet; tick it to open it again where it is (tick it again within a few seconds to make it done again). It can't be moved, nor be what the bottom box
-  adds to; its subtasks are like any others. A finished run with steps not done shows the same way. On Today and in
-  search, a subtask whose task isn't above it there says which task it's under: "↳ Pack the van". **New project** makes one, inside
+  adds to; its subtasks are like any others. A finished run with steps not done shows the same way. In search, a
+  subtask whose task isn't above it there says which task it's under: "↳ Pack the van". **New project** makes one, inside
   another if you like. A project's **⋯** shares its progress, and renames or archives it if it's shared with you to write, and deletes it if
   you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
 - **Signing in:** sign in once, with your usual Vikunja login, and Pocket and Vikunja's web app are both signed in on
@@ -254,7 +271,8 @@ run, has a slot at the end of its row (not a checklist run or a template, whose 
 shows who has it; to hand it over, open it and use **Assigned** (a run's step: the run's **⋯** → **Open as a task**,
 then tap the step). Two people who say they'll do a step
 at the same moment don't both get it: the first keeps it, and the other is told. Done or skipped is still recorded for whoever taps it,
-whoever has the step, and claiming never ticks anything. A step you claim in someone else's run shows on your Today.
+whoever has the step, and claiming never ticks anything. A step you claim in someone else's run brings the run onto
+your Today, as a card opened on your step.
 Sliding the progress of one no one is doing claims it for you too (see **Progress**, under Tasks).
 Vikunja tells the task's creator (for a step, whoever started the run) when you claim it.
 
@@ -322,11 +340,13 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   "Done by Priya at 4:46 PM". Vikunja lets each person take off only their own ✅, so marking someone else's step not
   done asks first: theirs stays on it. A step ticked on
   Today counts the same.
-- **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the
-  person who started the run and the person it's for. A run's row is the same there and under Checklists: its steps
-  done, the next one, and its progress line, in segments, one for each step, filled as steps are done (past 12 steps,
-  one line with a small mark at each step). The bar at the top of a run's screen is the same. A run has no tick on
-  Today: it's finished on its screen. Tapping a run opens it; tapping a step opens its run on that step.
+- **Today** shows your runs in progress, to the person who started the run and the person it's for, each as a card
+  (see **Cards on Today**, under Tasks): its name, who it's for, and its next step, with its countdown when the step is
+  timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
+  under **Checklist runs**, or with a step due, by that step's date. A run's line is in segments, one for each step,
+  filled as steps are done (past 12 steps, one line with a small mark at each step): on its card, on its row under
+  Checklists, and as the bar at the top of its screen. A run has no tick on Today: it's finished on its screen. Tapping
+  a run's name opens it; tapping a step opens its run on that step.
 - **A step has a square box**, wherever it shows: on its run's screen, in the run's sheet, and on Today. A task or a
   subtask has a round one. They work differently (a step's tick records who did it, with its ✅), so they look
   different. A template's numbered steps are square too.
