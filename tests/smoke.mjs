@@ -747,8 +747,8 @@ try {
   });
 
   /* Every row has who's doing it at its end, as a subtask in a sheet does; a subtask's tick shows on its row, which stays
-     until the batch clears; a row swiped left shows its Delete, which leaves the row dimmed, with Restore, and deletes
-     only once the batch clears. */
+     until the batch clears; on a project's list (not Today), a row swiped left shows its Delete, which leaves the row
+     dimmed, with Restore, and deletes only once the batch clears. */
   const swipe = async (sel, from = 200, by = -100) => {
     await page.locator(sel).scrollIntoViewIfNeeded();                       // once a sheet has slid in
     await page.$eval(sel, el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));    // and clear of the header
@@ -811,6 +811,10 @@ try {
         if (zones.wrong.length) throw new Error('taps land elsewhere: ' + zones.wrong.join('; '));
         if (zones.widths.tick < 48 || zones.widths.slot < 48) throw new Error('a zone under 48px: ' + JSON.stringify(zones.widths));
       }
+      // Swiped to its Delete on its project's list, a list for managing: Today has no swipe (today-is-for-doing).
+      await page.evaluate(id => { location.hash = '#/project/' + id; }, home2);
+      await loaded(page);
+      await page.waitForSelector(`${K}.sub`, { timeout: 15000 });
       // Not from the screen's edge, where the phone's Back starts; tapped elsewhere, an open row shuts.
       await swipe(K, 370);
       if (await page.$(`${K}.swiped`)) throw new Error('a swipe from the edge opened the row');
@@ -880,11 +884,13 @@ try {
       await page.getByRole('button', { name: 'Restore ' + k.title }).click();
       await page.waitForSelector(`${K}:not(.deleted)`);
       if (!await get(k.id)) throw new Error('Restore didn\'t keep it');
-      // Its ⋯ deletes the task, with its subtask, after asking: its row in the list is dimmed, with Restore.
+      // Its ⋯ deletes the task, with its subtask, after asking (on Today, which has no swipe, that's the way): its row
+      // on Today is dimmed, with Restore.
       await page.click('#d-more');
       await page.click('#d-delete');
       await page.waitForSelector('#sheet', { state: 'hidden' });
       await page.waitForSelector(`${rowOf(p.title)}.deleted`);
+      await expect(page.locator(rowOf(p.title)).getByRole('button', { name: 'Restore ' + p.title })).toBeVisible();
       await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is on the row`);
       await later(3000);
       await expect(page.locator(rowOf(p.title))).toHaveCount(0);
@@ -897,21 +903,105 @@ try {
   });
 
   await step('leaving-the-screen-sends-a-deletion-at-once', async () => {
-    // Deleted, then another tab tapped before the batch clears: it's sent then, not left waiting.
+    // Deleted on its project's list, then another tab tapped before the batch clears: it's sent then, not left waiting.
     const x = await make(`Pocket smoke leave ${stamp}`, { due_date: todayAt(23) }), X = rowOf(x.title);
     try {
       await toastGone();
       await refreshToday();
+      await page.evaluate(id => { location.hash = '#/project/' + id; }, home2);
+      await loaded(page);
       await swipe(X, 330, -260);
       await page.waitForSelector(`${X}.deleted`);
-      await page.click('nav.tabs a[data-tab=projects]');
-      await page.waitForFunction(() => location.hash === '#/projects');
+      await page.click('nav.tabs a[data-tab=today]');
+      await page.waitForFunction(() => location.hash.startsWith('#/today'));
       await synced(page);
       if (await get(x.id)) throw new Error('not sent on leaving the screen');
-      await page.click('nav.tabs a[data-tab=today]');
       await loaded(page);
       await expect(page.locator(X)).toHaveCount(0);
     } finally { await api('/tasks/' + x.id, { method: 'DELETE' }); }
+  });
+
+  /* Today is for doing: a plain swipe on a row does nothing there (Delete is in the task's ⋯), and a row held and moved
+     up or down stays where it is (Today's order is its due dates), while held and slid sideways, its progress is set
+     as anywhere. A row held and moved, let go: the list as it was, and no position written to Vikunja. */
+  const positionsSent = () => { const sent = [], see = r => /\/position$/.test(r.url()) && sent.push(r.url()); page.on('request', see); return { sent, off: () => page.off('request', see) }; };
+  const idsIn = (...ids) => page.locator(ids.map(id => `#view .row[data-id="${id}"]`).join(', ')).evaluateAll(els => els.map(el => +el.dataset.id));
+  // Held, then moved up or down onto the row `to`, and let go, as dragTo does on a project's list.
+  async function holdAndMove(sel, to){
+    await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const box = await steady(page.locator(sel)), x = box.x + box.width / 2, y0 = box.y + box.height / 2, y = (await page.locator(to).boundingBox()).y + 4;
+    await page.mouse.move(x, y0); await page.mouse.down();
+    await expect(page.locator(sel)).toHaveClass(/held/);
+    await page.mouse.move(x, y0 + Math.sign(y - y0) * 14, { steps: 3 });
+    await page.mouse.move(x, y, { steps: 12 });
+    const moving = await page.$('#view .list.reordering, #view .row.dragged');
+    await page.mouse.up();
+    if (moving) throw new Error('the row followed the finger');
+  }
+  await step('today-is-for-doing', async () => {
+    const a = await make(`Pocket smoke doing A ${stamp}`, { due_date: todayAt(21) }), b = await make(`Pocket smoke doing B ${stamp}`, { due_date: todayAt(22) });
+    const A = rowOf(a.title), B = rowOf(b.title), moves = positionsSent();
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(B)).toBeVisible({ timeout: 15000 });
+      if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('not in due order to start with');
+      // Swiped left, a little and past half the row: no Delete shows, nothing is deleted, and the task doesn't open.
+      for (const [from, by] of [[200, -100], [330, -260]]) {
+        await swipe(A, from, by);
+        await page.waitForTimeout(300);
+        if (await page.$(`${A}.swiped, ${A}.swiping, ${A}.deleted, ${A} > .row-del`)) throw new Error('a swipe on Today showed Delete');
+        if (await page.isVisible('#sheet')) throw new Error('a swipe opened the task');
+      }
+      // Held and moved up past the row above: let go, it's where it was, the task not opened.
+      await holdAndMove(B, A);
+      if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+      if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('moved on Today');
+      // Held and slid sideways: its progress, as on any screen.
+      await page.locator(B).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await slideProgress(B, 50);
+      await expect(page.locator('#said')).toHaveText(`Progress of ${b.title} set to 50%`);
+      await synced(page);
+      if (Math.round((await get(b.id)).percent_done * 100) !== 50) throw new Error('progress saved ' + (await get(b.id)).percent_done);
+      if (!await get(a.id)) throw new Error('the swipe deleted it');
+      await page.reload();
+      await expect(page.locator(B)).toBeVisible({ timeout: 15000 });
+      if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('moved on Today, after a reload');
+      if (moves.sent.length) throw new Error('a position was written: ' + moves.sent.join(', '));
+    } finally { moves.off(); for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* Search follows Projects, with subtasks as rows under their parents, swiped to Delete, but not moved: its results
+     have no order of their own. */
+  await step('search-swipes-to-delete-and-doesnt-move-a-row', async () => {
+    const w = `srch${stamp}`, p = await make(`Pocket smoke ${w} parent`), k = await make(`Pocket smoke ${w} kid`), c = await make(`Pocket smoke ${w} other`);
+    await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    const P = rowOf(p.title), K = rowOf(k.title), C = rowOf(c.title), moves = positionsSent();
+    try {
+      await toastGone();
+      await page.click('#btn-search');
+      await page.fill('#in-search', w);
+      await expect(page.locator(`${K}.sub`)).toBeVisible({ timeout: 10000 });
+      const was = await idsIn(p.id, k.id, c.id);
+      if (was.indexOf(k.id) !== was.indexOf(p.id) + 1) throw new Error('the subtask isn\'t under its parent: ' + was);
+      // Held and moved to the other end: let go, the results are as they were.
+      await holdAndMove(was[0] === c.id ? P : C, was[0] === c.id ? C : P);
+      if (JSON.stringify(await idsIn(p.id, k.id, c.id)) !== JSON.stringify(was)) throw new Error('moved in search');
+      if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+      // Swiped to its Delete: dimmed, with Restore, and deleted once the batch clears.
+      await swipe(C);
+      await tapDelete(C);
+      await expect(page.locator(C)).toHaveClass(/\bdeleted\b/);
+      await expect(page.locator(C).getByRole('button', { name: 'Restore ' + c.title })).toBeVisible();
+      await later(3000);
+      await expect(page.locator(C)).toHaveCount(0);
+      await synced(page);
+      if (await get(c.id)) throw new Error('never deleted');
+      if (moves.sent.length) throw new Error('a position was written: ' + moves.sent.join(', '));
+    } finally {
+      moves.off();
+      await page.click('#btn-search-cancel').catch(() => {});
+      for (const t of [k, p, c]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
   });
 
   // A phone's keyboard covers the bottom of the page without making it shorter: here visualViewport says it's h tall.
