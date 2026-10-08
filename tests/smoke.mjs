@@ -759,6 +759,18 @@ try {
     await page.mouse.move(from + by, y + 4, { steps: 8 });
     await page.mouse.up();
   };
+  /* Row `sel`, frame by frame for a second, from now: its height and width, how far its content is moved aside (x),
+     whether it's deleted, its gap showing, and its title in sight. framesSeen() waits for them. */
+  const watchFrames = sel => page.$eval(sel, el => {
+    const seen = window.__frames = [], t0 = performance.now(); window.__framed = false;
+    (function look(){
+      const x = new DOMMatrix(getComputedStyle(el).transform).m41, body = el.querySelector(':scope > .body'), gap = el.querySelector(':scope > .del-gap');
+      seen.push({ h: el.offsetHeight, w: el.clientWidth, x, deleted: el.classList.contains('deleted'), gap: !!gap,
+        shown: getComputedStyle(body).visibility === 'visible' && x > -el.clientWidth / 2 });
+      if (performance.now() - t0 < 1000) requestAnimationFrame(look); else window.__framed = true;
+    })();
+  });
+  const framesSeen = async () => { await page.waitForFunction(() => window.__framed, null, { polling: 100 }); return page.evaluate(() => window.__frames); };
   // Its Delete, once the row has moved aside for it: tapped where it is, as a finger would.
   const tapDelete = async sel => {
     await page.waitForSelector(`${sel}.swiped > .row-del`);
@@ -824,19 +836,26 @@ try {
       await page.click('#view .sec .n >> nth=0');                              // anything else, tapped
       await page.waitForSelector(`${P}.swiped`, { state: 'detached' });
       if (await page.isVisible('#sheet')) throw new Error('shutting the row opened a task');
-      // Delete: dimmed where it is, at its height, with Restore where "+ me" was, and nothing sent; a tap anywhere on it
-      // restores it.
+      // Delete: the row goes, leaving a gap at its height, holding only "Deleted" and Restore where "+ me" was, and
+      // nothing is sent; a tap anywhere on the gap brings the row back, sliding in from the left.
       const kh = await page.locator(K).evaluate(el => el.offsetHeight);
       await swipe(K);
       await tapDelete(K);
       await expect(page.locator(K)).toHaveClass(/\bdeleted\b/);
+      await expect(page.locator(`${K} > .del-gap`)).toContainText('Deleted');
       await expect(page.locator(K).getByRole('button', { name: 'Restore ' + k.title })).toBeVisible();
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${k.title}. Restore is on the row`);
+      await expect(page.locator(`${K} > .body`)).toBeHidden();
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${k.title}. Restore is in its place`);
       if (await page.$('#toast.show')) throw new Error('deleting said: ' + await page.textContent('#toast-msg'));
       if (await page.locator(K).evaluate(el => el.offsetHeight) !== kh) throw new Error('its height changed');
       if (!await get(k.id)) throw new Error('sent while it can be restored');
-      await page.locator(`${K} > .body`).click();
+      await watchFrames(K);
+      await page.locator(`${K} > .del-gap`).click({ position: { x: 40, y: 10 } });
       await expect(page.locator(K)).not.toHaveClass(/\bdeleted\b/);
+      await expect(page.locator(`${K} > .body`)).toBeVisible();
+      const slid = await framesSeen();
+      if (slid.some(s => s.h !== kh)) throw new Error('its height changed as it came back: ' + [...new Set(slid.map(s => s.h))]);
+      if (!slid.some(s => !s.deleted && s.x < -s.w / 2)) throw new Error("it didn't slide back in from the left");
       if (await page.isVisible('#sheet')) throw new Error('restoring it opened the task');
       await synced(page);
       if (!await get(k.id)) throw new Error('Restore didn\'t keep it');
@@ -853,26 +872,20 @@ try {
       await page.mouse.up();
       await page.waitForSelector(`${K}.swiped`);
       if (await page.$(`${K}.deleted`)) throw new Error('backed off, it was deleted');
-      // Carried on from there past half, and let go: it follows through, off the screen to the left, then comes back
-      // where it was, dimmed with Restore, at its height all along (watched frame by frame); deleted for good once the
-      // batch clears.
+      // Carried on from there past half, and let go: it follows through, off the screen to the left, and doesn't come
+      // back: its place is a gap, at its height all along (watched frame by frame); deleted for good once the batch
+      // clears.
       await page.mouse.move(250, ky); await page.mouse.down();
       await page.mouse.move(90, ky + 3, { steps: 10 });
-      await page.$eval(K, el => {
-        const seen = window.__sweep = [], t0 = performance.now();
-        (function look(){
-          seen.push({ h: el.offsetHeight, w: el.clientWidth, x: new DOMMatrix(getComputedStyle(el).transform).m41, deleted: el.classList.contains('deleted') });
-          if (performance.now() - t0 < 1000) requestAnimationFrame(look); else window.__swept = true;
-        })();
-      });
+      await watchFrames(K);
       await page.mouse.up();
       await page.waitForSelector(`${K}.deleted`);
-      await page.waitForFunction(() => window.__swept, null, { polling: 100 });
-      const seen = await page.evaluate(() => window.__sweep), far = seen.reduce((m, s, i) => s.x < seen[m].x ? i : m, 0);
+      const seen = await framesSeen(), far = seen.reduce((m, s, i) => s.x < seen[m].x ? i : m, 0);
       if (seen.some(s => s.h !== kh)) throw new Error('its height changed as it went: ' + [...new Set(seen.map(s => s.h))]);
       if (seen[far].x > -.9 * seen[far].w) throw new Error(`it went only to ${seen[far].x}px of ${seen[far].w}`);
-      const back = seen.slice(far).filter(s => Math.abs(s.x) < 1);
-      if (!back.length || back.some(s => !s.deleted)) throw new Error('it came back without its deleted state: ' + JSON.stringify(back.slice(0, 3)));
+      if (seen.slice(far).some(s => s.shown)) throw new Error('the row came back into sight');
+      if (!seen.at(-1).deleted || !seen.at(-1).gap) throw new Error('no gap where it was: ' + JSON.stringify(seen.at(-1)));
+      await expect(page.locator(`${K} > .body`)).toBeHidden();
       if (!await get(k.id)) throw new Error('deleted while it could be restored');
       await later(3000);
       await expect(page.locator(K)).toHaveCount(0);
@@ -907,7 +920,7 @@ try {
       await page.waitForSelector('#sheet', { state: 'hidden' });
       await page.waitForSelector(`${rowOf(p.title)}.deleted`);
       await expect(page.locator(rowOf(p.title)).getByRole('button', { name: 'Restore ' + p.title })).toBeVisible();
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is on the row`);
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is in its place`);
       await later(3000);
       await expect(page.locator(rowOf(p.title))).toHaveCount(0);
       await synced(page);
