@@ -57,6 +57,8 @@ function sections(){
     {title: 'Held at 50%, held at 100%, swiped to its Delete, and past half the row', depth: {}, delete: true, tasks: [
       task({title: 'Restock the napkins', percent_done: .5, state: {held: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {held: 100}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
+    {title: 'A full swipe let go, or Delete tapped: the row carries on off the screen, then comes back dimmed with Restore', depth: {}, delete: true,
+      tasks: [task({title: 'Wipe the menus', state: {sweep: .8}}), task({title: 'Wipe the menus', state: {leaving: 'deleted'}})]},
     // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
     // a deleted row with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
     {title: 'Ticked and deleted, in place: a parent with its subtask, a deleted row with Restore, a repeating task', depth: {[mover.id]: 0, [moverKid.id]: 1}, tasks: [
@@ -155,6 +157,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         if (t.state.held) { row.classList.add('held'); this.showSlide(row, t.state.held, 0); }
         if (t.state.swiped) { row.classList.add('swiped'); row.style.setProperty('--swipe', '-88px'); }
         if (t.state.full) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', '-240px'); }
+        // A still of a delete following through (progress.js: sweep), partway off the screen, the red filling behind it.
+        if (t.state.sweep) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', -row.clientWidth * t.state.sweep + 'px'); }
         if (t.state.drag) { row.classList.add('dragged', ...t.state.with ? [] : ['held']); row.style.transform = `translateY(${t.state.drag}px)`; row.parentElement.classList.add('reordering'); }
         if (t.state.shift) row.style.transform = `translateY(${t.state.shift}px)`;
         if (t.state.aimed) row.classList.add('aimed');

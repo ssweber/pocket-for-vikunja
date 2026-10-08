@@ -23,8 +23,9 @@ const shut = (row = opened) => {
 };
 /* A row swiped left, as on a phone's mail: it moves with the finger, from where it rests or, open, from its Delete. Let
    go a third of the way across the Delete button, it stays open on it; past half the row, the Delete fills it, a tick
-   is felt, and letting go there deletes it (`remove`); back under half, it doesn't. The Delete isn't in the page's tab
-   order until it's shown: a keyboard or a screen reader deletes from the task's ⋯ instead. */
+   is felt, and letting go there deletes it (`remove`, which carries it on off the screen: sweep); back under half, it
+   doesn't. The Delete isn't in the page's tab order until it's shown: a keyboard or a screen reader deletes from the
+   task's ⋯ instead. */
 const swipeOf = (row, remove) => ({
   base: opened === row ? -DELETE_W : 0,
   begin(){ if (opened !== row) shut(); row.classList.add('swiping'); },
@@ -36,12 +37,34 @@ const swipeOf = (row, remove) => ({
     this.to = to;
   },
   end(dx){
-    row.classList.remove('swiping', 'swipe-full');
     const to = dx === null ? 'shut' : swipeEnd(swipeOffset(this.base + dx, row.clientWidth), row.clientWidth);
-    if (to !== 'open') { shut(row); if (to === 'delete') remove(); return; }
+    if (to === 'delete') { remove(); return; }            // from where the finger left it (sweep)
+    row.classList.remove('swiping', 'swipe-full');
+    if (to !== 'open') { shut(row); return; }
     row.classList.add('swiped'); row.style.setProperty('--swipe', -DELETE_W + 'px'); opened = row; openAt = scrolled();
   },
 });
+
+/* A row deleted by a full swipe, or its Delete tapped, follows through: it carries on to the left, off the screen, the
+   red filling the row behind it, then comes back where it was, at the same height, dimmed with Restore, with a short
+   fade (removeTask, `removing`, marks it meanwhile). Only its content moves, so nothing around it does. With less
+   motion asked for, it only changes. Resolves to what `removing` did. */
+const SWEEP_MS = 200, BACK_MS = 150;
+async function sweep(row, removing){
+  if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
+  const del = row.querySelector(':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
+  const moving = del && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  row.classList.add('swiping', 'swipe-full');
+  // The row's offset and the red's width move together, so the red always reaches the list's edge.
+  const go = {duration: SWEEP_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
+    ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${-w}px)`}], go), del.animate([{width: -from + 'px'}, {width: w + 'px'}], go)] : [];
+  const [done] = await Promise.all([removing, ...anims.map(a => a.finished.catch(() => {}))]);
+  // Back in its place at once, not sliding back (.row's transition), then fading in.
+  row.style.transition = 'none'; shut(row); anims.forEach(a => a.cancel());
+  void row.offsetWidth; row.style.transition = '';
+  if (moving && row.isConnected) row.animate([{opacity: 0}, {opacity: 1}], {duration: BACK_MS, easing: 'ease-out'});
+  return done;
+}
 
 /* A row moved up or down after the hold, among its siblings: `blocks`, each the rows of one sibling (a task and its
    subtasks under it), in order, the one held `k`. Its rows follow the finger, and the siblings it passes the middle of
@@ -187,7 +210,7 @@ export default {
   rowGesture(t, row, sheet){
     if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
     const slides = !t.pending && !t.done && (sheet ? this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.canTick(t) && !this.isRunTask(t));
-    const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet)) : null;
+    const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row)) : null;
     const reorder = can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
     return {el: row, swipe, reorder, start: pctOf(t), width: row.clientWidth,
@@ -218,8 +241,13 @@ export default {
     if (blocks.some(b => !b.length)) return null;
     return {el: row, reorder: dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true))};
   },
-  // A row's Delete, once it's swiped open: the row shuts, and stays where it is, dimmed, with Restore (removeTask).
-  async swipeDelete(t, sheet){ shut(); if (await this.removeTask(t) && sheet) this.sheet.dirty = true; },
+  /* A row's Delete, tapped once it's swiped open (a tick felt then), or a full swipe let go (felt as it passed half): the
+     row carries on off the screen, and comes back where it was, dimmed, with Restore (sweep, removeTask). */
+  async swipeDelete(t, sheet, row = null){
+    if (!row) { row = opened; haptic('done'); }
+    const removing = this.removeTask(t);
+    if (await (row ? sweep(row, removing) : removing) && sheet) this.sheet.dirty = true;
+  },
   // A run's step held on its row: not one done, waiting to be sent, or in a finished run, nor from its buttons.
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
