@@ -334,13 +334,14 @@ export default {
     this.sheet.dirty = true;
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
-  get overdueMovable(){ return (this.view.groups.find(g => g.key === 'overdue')?.tasks || []).some(t => !repeats(t) && !hasTemplateLabel(t)); },
+  get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
   /* "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back. Not a
      repeating task: moved, its next times would follow the new date; ticked, it moves on to its next date. What it did
      is said under the Overdue heading, which stays meanwhile. */
   async moveOverdueToToday(){
     // Nor a checklist that comes round: moved, a weekly one would come round on another day from then on.
-    const overdue = this.view.groups.find(g => g.key === 'overdue')?.tasks || [], tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
+    // On a card, its task and subtasks that are overdue themselves (overdueTasks).
+    const overdue = this.overdueTasks, tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
     const tpl = overdue.filter(t => hasTemplateLabel(t)).length, stay = overdue.length - tasks.length - tpl;
     const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}: tick ${stay === 1 ? 'it' : 'them'} to move on to the next date.`,
       tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}: start ${tpl === 1 ? 'it' : 'them'} to move on to the next time.`].filter(Boolean).join(' ');

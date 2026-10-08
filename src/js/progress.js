@@ -50,6 +50,16 @@ export const swipeOffset = (dx, width) => Math.max(-width, Math.min(0, dx));
 /* Let go at `offset`: past half the row's width, it's deleted straight away (a full swipe, as on a phone's mail);
    past a third of the Delete button, it stays open on it; else it goes back. */
 export const swipeEnd = (offset, width) => offset < -width / 2 ? 'delete' : offset < -DELETE_W / 3 ? 'open' : 'shut';
+/* ---------- paging a card on Today ---------- */
+/* Whether a finger that has moved (dx, dy) from x0, before the hold, is paging a card (app/cards.js): mostly sideways,
+   either way, and not from the screen's edges, where the phone's own Back and forward start. Held first, it's progress
+   instead; mostly up or down, the page scrolls. */
+export const pageStarts = (dx, dy, x0, screen) => Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) && x0 > EDGE_GUARD && x0 < screen - EDGE_GUARD;
+export const PAGE_PX = 40;                              // swiped this far and let go, the card shows the next step
+// Let go `dx` from where it started: 1, the step after (swiped left, as a page is turned); -1, the one before; 0, none.
+export const pageTurn = dx => dx <= -PAGE_PX ? 1 : dx >= PAGE_PX ? -1 : 0;
+// How far the step line follows the finger meanwhile: half as far, and never more than 64px, so it reads as a pull.
+export const pageOffset = dx => Math.sign(dx) * Math.min(Math.abs(dx) / 2, 64);
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.
 export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;
 

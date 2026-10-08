@@ -247,19 +247,19 @@ export default {
   // Runs being set up, waiting for a connection or under way, in a project.
   startingIn(pid){ return this.pending.filter(e => e.kind === 'run' && !e.cancelled && e.template.project_id === pid); },
   /* The open runs in checklist projects, and whether each is yours: you started it, or it's for you. Today shows those,
-     and not everyone else's. `mine`: yours. */
+     and not everyone else's. `mine`: yours; `open`: every open task there, the runs' steps among them, for their cards. */
   async loadRunIndex(){
     const ws = this.checklistProjects;
-    if (!ws.length) return {index: {}, mine: []};
+    if (!ws.length) return {index: {}, mine: [], open: []};
     try {
-      const index = {}, mine = [];
-      for (const list of await Promise.all(ws.map(p => this.openTasks(p.id)))) for (const t of list) if (isRun(t)) {
+      const index = {}, mine = [], open = (await Promise.all(ws.map(p => this.openTasks(p.id)))).flat();
+      for (const t of open) if (isRun(t)) {
         index[t.id] = t.created_by?.id === this.user?.id || (t.assignees || []).some(u => u.id === this.user?.id);
         if (index[t.id]) mine.push(t);
       }
       saved.set('runs', index);
-      return {index, mine};
-    } catch (e) { if (e instanceof NetError) return {index: saved.get('runs') || {}, mine: []}; throw e; }
+      return {index, mine, open};
+    } catch (e) { if (e instanceof NetError) return {index: saved.get('runs') || {}, mine: [], open: []}; throw e; }
   },
   // Whether Today shows a task: in a checklist project, a run of yours, a step of one, or one assigned to you. Anything
   // else there that isn't part of a run shows as anywhere else.

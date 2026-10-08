@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedToday, doneParentIds, nestSubtasks, soonestFirst, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { doneParentIds, nestSubtasks, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z';                        // Vikunja's "no date"
@@ -82,20 +82,19 @@ test('Today\'s groups, in order, each new', () => {
 test('Today’s groups in their order, a task not sent yet already in its place', () => {
   const at = h => `2026-10-07T${String(h).padStart(2, '0')}:00:00Z`;
   const overdue = [{ id: 1, priority: 0, due_date: at(8) }, { id: 2, priority: 3, due_date: at(9) }, { id: 3, priority: 0, due_date: at(7) }];
-  assert.deepEqual(ids(overdue.sort(todayOrder.overdue)), [2, 3, 1], 'the most urgent, then the longest overdue');
+  assert.deepEqual(ids(overdue.sort(todayOrder().overdue)), [2, 3, 1], 'the most urgent, then the longest overdue');
   const today = [{ id: 4, due_date: at(15) }, { id: 'pending-a', pending: true, due_date: at(12) }, { id: 5, due_date: at(10) }];
-  assert.deepEqual(ids(today.sort(todayOrder.today)), [5, 'pending-a', 4], 'soonest first');
+  assert.deepEqual(ids(today.sort(todayOrder().today)), [5, 'pending-a', 4], 'soonest first');
   const added = [{ id: 6, created: at(9) }, { id: 7, created: at(11) }, { id: 'pending-b', pending: true }];
-  assert.deepEqual(ids(added.sort(todayOrder.nodate)), ['pending-b', 7, 6], 'newest first, one not sent yet before them');
+  assert.deepEqual(ids(added.sort(todayOrder().nodate)), ['pending-b', 7, 6], 'newest first, one not sent yet before them');
 });
 
-test('added today, no date: yours, and a subtask only if it is assigned to you', () => {
-  const me = { id: 1 }, other = { id: 2 }, under = { related_tasks: { parenttask: [{ id: 9 }] } };
-  assert.ok(addedToday({ id: 3, due_date: NONE, created_by: me }, me, {}), 'a task you made');
-  assert.ok(!addedToday({ id: 3, due_date: NONE, created_by: other }, me, {}), 'one someone else made');
-  assert.ok(!addedToday({ id: 3, due_date: '2026-10-09T10:00:00Z', created_by: me }, me, {}), 'one with a date is under it');
-  assert.ok(!addedToday({ id: 3, due_date: NONE, created_by: me }, me, { 3: true }), 'a run');
-  assert.ok(!addedToday({ id: 4, due_date: NONE, created_by: me, ...under }, me, {}), 'a subtask you made, not yours to do');
-  assert.ok(addedToday({ id: 4, due_date: NONE, created_by: other, assignees: [me], ...under }, me, {}), 'a subtask assigned to you');
-  assert.ok(!addedToday({ id: 4, due_date: NONE, created_by: me, assignees: [other], ...under }, me, {}), 'one assigned to someone else');
+test('a card goes in Today’s order by what brought it, a row by its own dates', () => {
+  const at = h => `2026-10-07T${String(h).padStart(2, '0')}:00:00Z`;
+  const cards = { 8: { when: at(9), made: null }, 9: { when: null, made: at(12) } }, by = todayAt(cards), order = todayOrder(by);
+  const today = [{ id: 4, due_date: at(10) }, { id: 8, due_date: at(20) }];
+  assert.deepEqual(ids(today.sort(order.today)), [8, 4], 'a card due later itself, but brought by a subtask due at 9');
+  const added = [{ id: 6, created: at(11) }, { id: 9, created: at(1) }];
+  assert.deepEqual(ids(added.sort(order.nodate)), [9, 6], 'a card made long ago, brought by a subtask of yours made at 12');
+  assert.equal(by({ id: 4, due_date: at(10) }).due_date, at(10));
 });

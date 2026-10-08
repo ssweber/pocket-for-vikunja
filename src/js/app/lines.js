@@ -16,8 +16,8 @@ import {UNDO_MS} from './toast.js';
 export const SAY_MS = 4000;                             // how long a message with nothing to tap shows
 const timers = new Map();
 const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
-// The rows of a task on the page: in the list, and in a task's sheet.
-const rowsOf = id => [...document.querySelectorAll(`.row[data-id="${id}"]`)];
+// The rows of a task on the page: in the list (its card, on Today), and in a task's sheet.
+const rowsOf = id => [...document.querySelectorAll(`:is(.row, .day-card)[data-id="${id}"]`)];
 // The places on a screen, and when each is on it. A sheet's ("sheet:notes") are there while it's open.
 const SCREEN = {
   overdue: a => a.route.name === 'today',

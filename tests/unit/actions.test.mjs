@@ -9,6 +9,7 @@ import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
 import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
+import cards from '../../src/js/app/cards.js';
 import { cache } from '../../src/js/util.js';
 import { sync } from '../../src/js/sync.js';
 
@@ -238,7 +239,7 @@ test('Move all to today: each overdue task to today at its own time, or the next
     { id: 2, title: 'Evening one', due_date: at(6, 18, 30) },
     { id: 3, title: 'Repeats', due_date: at(6, 8), repeat_after: DAY },
   ]);
-  const app = component(tasks, actions);
+  const app = component(tasks, actions, cards);
   app.view.groups = [{ key: 'overdue', tasks: [1, 2, 3].map(id => app.keep(v.task(id))) }];
   assert.equal(app.overdueMovable, true);
   await app.moveOverdueToToday();

@@ -35,10 +35,11 @@ export default () => ({
   positions: {},                               // task id -> its position in its project's List view, as last read or moved (order.js)
   // view
   route: currentRoute(),
+  // cards: Today's tasks shown as cards, by id: what brought each (cards.js)
   // listView: the id of the project's List view on screen, which its order is read from and moves are written to
   // savedAt: when the copy on screen was kept, while it's one kept on the phone; updating: it's being loaded afresh, behind
   // what's on screen; behind: that has taken over a second, which a line under the header says (views.js)
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null, updating: false, behind: false},
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null, updating: false, behind: false},
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
@@ -65,6 +66,7 @@ export default () => ({
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
+  cardPage: {},                                // Today's card id -> the step it's paged to: {id, i} (app/cards.js)
   slideClaim: null,                            // a task or step whose progress is being slid, which you'll be doing (claimOnSlide)
   places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
   said: '',                                    // the last of those, for a screen reader

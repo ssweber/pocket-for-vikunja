@@ -202,14 +202,15 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .did{flex:none;align-self:center;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
 .ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
-.list:not(.tree) > .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.list:not(.tree) > .row,.item > .row,.day-card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .row::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(var(--pct,0) * (100% - var(--row-inset)));background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
 /* A run's line: a segment per step (--segs), those done filled from the left (--done), the rest a faint track. Past
    12 steps (runLine), one line with a small tick above it at each step. Its steps are its progress: it isn't slid. */
-.row.cl-run::after{width:calc(100% - var(--row-inset));border-radius:0;background:linear-gradient(to right,var(--accent) calc(var(--done,0) / var(--segs,1) * 100%),var(--track) 0);
+.row.cl-run::after{width:calc(100% - var(--row-inset));border-radius:0}
+.row.cl-run::after,.card-line{background:linear-gradient(to right,var(--accent) calc(var(--done,0) / var(--segs,1) * 100%),var(--track) 0);
   -webkit-mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat;
   mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat}
-.row.cl-run.many-steps::after{-webkit-mask:none;mask:none;height:7px;background:
+.row.cl-run.many-steps::after,.card-line.many-steps{-webkit-mask:none;mask:none;height:7px;background:
   repeating-linear-gradient(to right,transparent 0 calc(100% / var(--segs) - 1px),var(--muted) 0 calc(100% / var(--segs))) 0 0/calc(100% + 1px) 4px no-repeat,
   linear-gradient(to right,var(--accent) calc(var(--done) / var(--segs) * 100%),var(--track) 0) 0 100%/100% 3px no-repeat}
 .row.setting{background:linear-gradient(to right,var(--surface) var(--row-inset),var(--accent-soft) 0 calc(var(--row-inset) + var(--slide) * (100% - var(--row-inset))),var(--surface) 0)}
@@ -236,7 +237,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 @media (prefers-reduced-motion:reduce){.setting::before,.setting button.check{animation:none!important}}
 /* Swiped left, the row moves aside for its Delete, which comes in from its end. A row can be swiped sideways without
    the page taking the move for a scroll. */
-.list:not(.tree) > .row,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
+.list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
 .row.swiping,.row.swiped{transform:translateX(var(--swipe,0px))}
 .row.swiping{transition:none}
 #d-subtasks:has(> .swiping,> .swiped){overflow-x:clip}
@@ -253,6 +254,40 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}
+/* Today's list (today-item.html): each thing an item, a row or a card, with a line between them */
+.item + .item{border-top:1px solid var(--line)}
+/* A card: anything with open subtasks or steps. Its title is a heading, quieter than its step, the next thing to do;
+   under it, one step on the shared row, with ‹ › at its ends when it has more than one open step; and its task's line,
+   a segment per subtask, as a run's is */
+.day-card{position:relative}
+.card-head{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:10px 14px 0;color:var(--ink)}
+.card-title{display:block;font-size:15px;font-weight:650;overflow-wrap:anywhere}
+.card-head .meta{margin-top:1px}
+.step-pager{position:relative}
+.day-card .step-line{border-top:0;min-height:52px}
+.card-line{height:3px;margin:2px 14px 10px}
+/* The arrows: drawn small, each a tap 48px wide over the step line's full height, at its ends. The step's own tick,
+   title and slot move in to make room, each zone still 48px across */
+.pg{position:absolute;top:0;bottom:0;z-index:1;width:48px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
+.pg.prev{left:0} .pg.next{right:0}
+.pg svg.i{width:16px;height:16px;stroke-width:2.4}
+.pg.prev svg.i{transform:scaleX(-1)}
+.day-card.paged .step-line{padding-left:58px;padding-right:48px}
+.day-card.paged .step-line > button.check::after{left:48px;width:48px}
+.day-card.paged .step-line > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:0;padding-right:0}
+.day-card.paged .step-line > .claim:not(:has(~ .icon-btn)){min-width:52px;margin-right:0;padding:12px 4px 0 6px}
+/* its percentage, while it's held, clear of the arrows too */
+.day-card.paged .step-line.setting:has(> .claim)::before{right:108px}
+.day-card.paged .step-line.setting[data-side=left]::before{right:auto;left:56px}
+/* swiped sideways before the hold: the step line follows the finger a little, then pages, or goes back */
+.row.step-line.paging{transform:translateX(var(--page,0px));transition:none}
+.day-card.deleted > :not(.del-gap){visibility:hidden}
+.day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
+.day-card.lined > :not(.row-line){display:none}
+.day-card.fresh{animation:fresh 1.6s ease-out}
+.day-card.came-due{animation:came-due 2s ease-out}
+.day-card.arrived{animation:arrived .4s ease-out}
+@media (prefers-reduced-motion:reduce){.day-card.fresh,.day-card.came-due,.day-card.arrived{animation:none}}
 /* A message in a row's place (lines.js): the row shrinks to a line, the task's title struck through, its action at the end */
 .row.lined{min-height:48px;padding-top:0;padding-bottom:0;align-items:center}
 .row.lined > :not(.row-line),.row.lined::after{display:none}

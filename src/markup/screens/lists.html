@@ -15,11 +15,17 @@
         </template>
         <template x-if="g.fold && g.open && g.loading"><div class="loading">Loading…</div></template>
         <template x-if="g.fold && g.open && g.loaded && !g.tasks.length"><p class="note sec-note">Nothing done here yet.</p></template>
-        <div class="list" x-show="!g.fold || (g.open && g.tasks.length)">
+        <template x-if="!g.cards"><div class="list" x-show="!g.fold || (g.open && g.tasks.length)">
           <template x-for="t in g.tasks" :key="t.id">
             <!-- include markup/task-row.html -->
           </template>
-        </div>
+        </div></template>
+        <!-- Today's: a row, or a card for anything with open subtasks or steps (today-item.html) -->
+        <template x-if="g.cards"><div class="list">
+          <template x-for="t in g.tasks" :key="t.id">
+            <!-- include markup/today-item.html -->
+          </template>
+        </div></template>
       </div></template>
       <template x-if="!listGroups.some(g => g.tasks.length || (g.fold && g.count !== 0))"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
     </div></template>

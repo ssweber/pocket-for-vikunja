@@ -14,13 +14,15 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
 /* What a finger can do on a screen's rows, besides ticking, claiming, opening and setting progress, which every row
    has. Today is for doing: no swipe to Delete and no holding to move a row, so nothing destructive is one slip away on
-   the screen used fastest (Delete stays in the task's ⋯), and Today is in the order things are due. A project's list is
-   for managing; search's results have no order of their own to move a row in. A task's sheet gives its subtasks both (sheet/task.html). Each list (`g`) has these
-   as its options, and a row writes them on itself for the gesture code (rowGestures). */
-export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}}[name] || {});
+   the screen used fastest (Delete stays in the task's ⋯), and Today is in the order things are due; anything with open
+   subtasks or steps is a card there, showing its next step (cards.js). A project's list is for managing; search's
+   results have no order of their own to move a row in. A task's sheet gives its subtasks both (sheet/task.html). Each
+   list (`g`) has these as its options, and a row writes them on itself for the gesture code (rowGestures). */
+export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}, today: {cards: true}}[name] || {});
 /* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
-   can't reach the list's `g`: "delete" (swiped left, its Delete), "reorder" (held and moved up or down). */
-export const rowGestures = g => ['delete', 'reorder'].filter(k => g?.[k]).join(' ');
+   can't reach the list's `g`: "delete" (swiped left, its Delete), "reorder" (held and moved up or down), "paging" (a
+   card's step line: swiped either way, the card's step before or after it). */
+export const rowGestures = g => ['delete', 'reorder', 'paging'].filter(k => g?.[k]).join(' ');
 // The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
 export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
 /* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's
@@ -55,21 +57,22 @@ export const doneParentIds = (tasks, pid) => {
   return [...out];
 };
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
-/* Whether a task made today (by Today's query) goes under "Added today, no date", with `me` the one signed in and `runs`
-   the open runs (by id): one without a date that isn't a run, made by you; a subtask only if it's assigned to you (a
-   pasted list's lines under its first, or subtasks added to a task, stay with their parent, unless they're yours to do). */
-export const addedToday = (t, me, runs) => !isSet(t.due_date) && !(t.id in runs)
-  && (parentIds(t).length ? (t.assignees || []).some(u => u.id === me?.id) : t.created_by?.id === me?.id);
 /* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
    days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task
-   just added or sent goes straight to where the next load will put it, rather than to the bottom first. */
-const due = t => +new Date(t.due_date), made = t => t.created ? +new Date(t.created) : Infinity;
-export const todayOrder = {
-  overdue: (a, b) => (b.priority || 0) - (a.priority || 0) || due(a) - due(b),
-  today: (a, b) => due(a) - due(b),
-  week: (a, b) => due(a) - due(b),
-  nodate: (a, b) => made(b) - made(a),
+   just added or sent goes straight to where the next load will put it, rather than to the bottom first. A card goes by
+   what brought it (`at`: a task's {due_date, created}, a card's those of what brought it, cards.js). */
+const made = t => t.created ? +new Date(t.created) : Infinity;
+export const todayOrder = (at = t => t) => {
+  const due = t => +new Date(at(t).due_date), born = t => made(at(t));
+  return {
+    overdue: (a, b) => (b.priority || 0) - (a.priority || 0) || due(a) - due(b),
+    today: (a, b) => due(a) - due(b),
+    week: (a, b) => due(a) - due(b),
+    nodate: (a, b) => born(b) - born(a),
+  };
 };
+// What Today places a task by: its own dates, or a card's, those of what brought it (`cards`: by task id, cards.js).
+export const todayAt = (cards = {}) => t => cards[t.id] ? {due_date: cards[t.id].when, created: cards[t.id].made || t.created} : t;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 export const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
   {key:'runs', cls:'', title:'Checklist runs', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];

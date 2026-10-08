@@ -5,7 +5,7 @@
 import {store} from '../util.js';
 import {serverTime} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
-import {todayOrder} from '../lists.js';
+import {todayAt, todayOrder} from '../lists.js';
 
 let sound = null;                                // the AudioContext, made on a tap so the browser lets it play
 let wakeLock = null, askingLock = false, lockFailed = 0;
@@ -49,12 +49,14 @@ export default {
     return dated;
   },
   /* Today's dated tasks, each in its group: Overdue once its time has passed (one due on a day, with no time of its own,
-     once that day is over), Today, or the next 7 days. The app's icon shows how many are overdue. */
-  placeDated(groups, tasks){
+     once that day is over), Today, or the next 7 days; a card by the earliest date that brought it (`cards`, cards.js).
+     The app's icon shows how many are overdue. */
+  placeDated(groups, tasks, cards = this.view.cards || {}){
     const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // a day of 23 or 25 hours too
+    const at = todayAt(cards), order = todayOrder(at);
     for (const g of [overdue, today, week]) g.tasks = [];
-    for (const t of tasks) (isLate(t.due_date, now) ? overdue : new Date(t.due_date) < t1 ? today : week).tasks.push(t);
-    for (const g of [overdue, today, week]) g.tasks.sort(todayOrder[g.key]);
+    for (const t of tasks) { const due = at(t).due_date; (isLate(due, now) ? overdue : new Date(due) < t1 ? today : week).tasks.push(t); }
+    for (const g of [overdue, today, week]) g.tasks.sort(order[g.key]);
     this.groupedAt = +now;
     this.setBadge(overdue.tasks.length);
   },

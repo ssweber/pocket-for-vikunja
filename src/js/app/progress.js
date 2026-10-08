@@ -1,7 +1,7 @@
 // What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar), or moved up or
 // down, it moves the row among its siblings; swiped left, it shows the row's Delete. The last two only where the row's
-// list allows them (rowGestures): not on Today.
-import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pctOf, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
+// list allows them (rowGestures): not on Today. There, a card is swiped either way to page through its steps.
+import {DELETE_W, HOLD_MS, lockDirection, nextSnap, pageOffset, pageStarts, pageTurn, pctOf, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 
@@ -42,6 +42,19 @@ const swipeOf = (row, remove) => ({
     row.classList.remove('swiping', 'swipe-full');
     if (to !== 'open') { shut(row); return; }
     row.classList.add('swiped'); row.style.setProperty('--swipe', -DELETE_W + 'px'); opened = row; openAt = scrolled();
+  },
+});
+
+/* A card on Today swiped either way, before the hold (app/cards.js): its step line follows the finger a little, and let
+   go far enough (pageTurn), the card shows the step after it or before it (`turn(dir)`), a tick felt; not far enough,
+   it goes back. */
+const pageOf = (el, turn) => ({
+  begin(){ el.classList.add('paging'); },
+  move(dx){ el.style.setProperty('--page', pageOffset(dx) + 'px'); },
+  end(dx){
+    el.classList.remove('paging'); el.style.removeProperty('--page');
+    const dir = dx === null ? 0 : pageTurn(dx);
+    if (dir) { haptic('tick'); turn(dir); }
   },
 });
 
@@ -124,8 +137,9 @@ export default {
      steps every second, for their countdowns), which would put the line back to what's saved under the finger. */
   /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
      swiped to its Delete (swipeOf), `reorder` if it can be moved (dragOf), and if its progress can be set, {el: the row,
-     start, width, show(pct, x: where the finger is), begin() as the slide starts, finish(pct, or null if nothing changed)}.
-     Moving before the hold ends is a scroll or a tap as usual, or, sideways to the left, the swipe; once the hold has
+     start, width, show(pct, x: where the finger is), begin() as the slide starts, finish(pct, or null if nothing changed)},
+     and `page` if it's a card on Today, which a swipe either way pages (pageOf).
+     Moving before the hold ends is a scroll or a tap as usual, or, sideways, the swipe or the paging; once the hold has
      ended (a tick is felt, and the row lifts), nothing scrolls or swipes until the finger lifts. The first LOCK_PX it
      moves then decide the way: sideways sets progress, from where it was, in snaps of 25% (slidePct), a tick felt at
      each and a stronger one at 100%. Up or down moves the row (`reorder`: start(y), move(dy, y), end(commit)). A way the
@@ -138,6 +152,7 @@ export default {
       const {s, mode, pct, dx} = g; g = null;
       s.el?.classList.remove('held');
       if (mode === 'swipe') { s.swipe.end(commit ? dx : null); return; }
+      if (mode === 'page') { s.page.end(commit ? dx : null); return; }
       if (mode === 'reorder') s.reorder.end(commit);
       if (mode !== 'wait') s.finish?.(commit && mode === 'slide' && pct !== s.start ? pct : null);
     };
@@ -156,12 +171,14 @@ export default {
       if (g.mode === 'wait') {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
+        // A card on Today, swiped either way: its steps, paged. Held first, it's progress instead.
+        if (s.page && pageStarts(dx, dy, g.x0, innerWidth)) { clearTimeout(g.timer); g.mode = 'page'; sliding = true; s.page.begin(); }
         // Not a swipe it can take (none on Today, or to the right): a sideways move does nothing, not even open the task
         // where a mouse lets go; up or down is a scroll.
-        if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
-        clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin();
+        else if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
+        else { clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin(); }
       }
-      if (g.mode === 'swipe') { g.dx = e.clientX - g.x0; s.swipe.move(g.dx); return; }
+      if (g.mode === 'swipe' || g.mode === 'page') { g.dx = e.clientX - g.x0; s[g.mode === 'swipe' ? 'swipe' : 'page'].move(g.dx); return; }
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
         if (!way) return;
@@ -202,11 +219,14 @@ export default {
     document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
-      const row = target.closest('.list:not(.tree) > .row');
+      // A card on Today: its step line held is that step's (cardGesture); anywhere else on the card, only its paging.
+      const step = target.closest('.step-line'), card = target.closest('.day-card');
+      const row = step || (card ? null : target.closest('.list:not(.tree) > .row, .item > .row'));
+      if (card && !step) return this.cardGesture(card, null);
       if (!row || target.closest('.row-del')) return null;
       if (row.parentElement.id === 'run-steps') return this.stepSlide(row, target);
-      const t = this.rowTask(+row.dataset.id);
-      return t && this.rowGesture(t, row, false);
+      const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
+      return card ? this.cardGesture(card, s) : s;
     });
   },
   /* A task's row, in a list or (sheet) a task's sheet. Held and slid, its progress: not one done, waiting to be sent, or
@@ -230,6 +250,17 @@ export default {
         this.endSlide(row);
         row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
       }};
+  },
+  /* A card on Today (app/cards.js), touched: its step line's gesture `s` (rowGesture), whose slide is that step's alone
+     and stops at 100% of it, the card then staying at its place for the next step to come in (pinCard); and, with more
+     than one open step, a swipe either way pages it (pageOf). */
+  cardGesture(card, s){
+    if (card.matches('.deleted, .lined')) return null;                     // only its Restore, or its line's action
+    const step = card.querySelector('.step-line'), id = +card.dataset.id;
+    const page = step && allows(step).has('paging') ? pageOf(step, dir => this.pageCardOf(id, dir)) : null;
+    if (!s) return page && {el: null, page};
+    const pin = () => { const t = this.tasks[id]; this.pinCard(t && this.cardOf(t, {cards: true})); };
+    return {...s, page, finish: s.finish && (pct => { if (pct !== null) pin(); s.finish(pct); })};
   },
   /* A task's row moved up or down, among its siblings (orderOf): on a project's list, or in a task's sheet. Let go
      somewhere else, it's moved there (reorder). */

@@ -6,7 +6,7 @@ import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
-import {nestSubtasks, saved, screenRows, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {nestSubtasks, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -335,8 +335,9 @@ export default {
     const r = this.route;
     if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
     if (r.name !== 'today') return null;
-    // A subtask without a date only once it's loaded, if it's assigned to you (addedToday): who it's for is set as it's sent.
-    if (!isSet(t.due_date)) return t.child || t.parent ? null : 'nodate';
+    // A subtask only once it's loaded, on its task's card (cards.js): Today never shows one as a row of its own.
+    if (t.child || t.parent) return null;
+    if (!isSet(t.due_date)) return 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
     return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
@@ -350,16 +351,17 @@ export default {
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
     let base = this.view.groups;
     if (this.route.name === 'today') {
-      // Every group, even in a list saved offline before "Added today, no date" existed, and in one saved yesterday only today's additions.
-      const t0 = startOfDay();
+      // Every group, even in a list saved offline before "Added today, no date" existed, and in one saved yesterday only
+      // today's additions (a card's, by what brought it).
+      const t0 = startOfDay(), at = todayAt(this.view.cards);
       base = todayGroups().map(g => {
         const b = base.find(x => x.key === g.key) || g;
-        return g.key === 'nodate' ? {...b, tasks: b.tasks.filter(t => new Date(t.created) >= t0)} : b;
+        return g.key === 'nodate' ? {...b, tasks: b.tasks.filter(t => new Date(at(t).created) >= t0)} : b;
       });
     } else if (!extra.length) return base;
     if (!base.length && this.route.name === 'project' && this.view.project) base = [{key:'open', cls:'', title:'Open', tasks:[]}];
     // Today's in each group's own order (a project's are put in its List view's by listGroups).
-    const order = this.route.name === 'today' ? todayOrder : {};
+    const order = this.route.name === 'today' ? todayOrder(todayAt(this.view.cards)) : {};
     return base.map(g => {
       const tasks = [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)];
       return {...g, tasks: order[g.key] ? tasks.sort(order[g.key]) : tasks};

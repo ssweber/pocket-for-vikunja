@@ -5,7 +5,8 @@ import {addDays, dueInfo, isSet, repeats, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, stepsOf, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {addedToday, doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {cardGroup, countdown, todayItems} from '../cards.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
 import {shared} from './core.js';
@@ -59,7 +60,7 @@ export default {
     shared.onClosedSheet = false;
     this.navigated();
   },
-  navigated(){ this.headerTucked = false; this.cursor = null; this.foldLines(); if (!this.signedIn) return; this.closeSheet(true); this.render(); },
+  navigated(){ this.headerTucked = false; this.cursor = null; this.resetCards(); this.foldLines(); if (!this.signedIn) return; this.closeSheet(true); this.render(); },
   // Pocket's own Back: the phone's Back when the screen before is that one, so the history doesn't grow; else go there.
   back(to){
     if (history.state?.from !== to || history.state?.sheet === true) { this.go(to); return; }
@@ -96,11 +97,12 @@ export default {
   },
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
-  // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, or a task, which
-  // then becomes the one quick add's box adds subtasks to (aimAfterTick). On a row marked done or not done, waiting for
-  // the batch to clear, it takes that back (unmark, leaving.js).
+  // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, or a task (a card's step
+  // too), which then becomes the one quick add's box adds subtasks to (aimAfterTick). On a row marked done or not done,
+  // waiting for the batch to clear, it takes that back (unmark, leaving.js).
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
+    if (g.card) this.pinCard(g.card);                    // the step after it comes in once it has gone (app/cards.js)
     if (this.unmark(t.id)) { if (!g.sheet) this.aimAfterTick(t); return; }
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
@@ -111,10 +113,16 @@ export default {
     if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A note' : t.notes.length + ' notes'},
       t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}].filter(Boolean);
-    const out = [], due = dueInfo(t.due_date);
+    const out = [], due = dueInfo(t.due_date), card = g?.card;
+    // A card's step line (cards.js): which of its open steps this is; a screen reader hears it with the title.
+    if (card?.n > 1) out.push({key: 'pg', cls: 'num pg-n', text: `${card.i + 1}/${card.n}`, hide: true});
     // A done task over its open subtasks: why it's on the open list.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});
-    if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
+    // A run's step not done yet, due within a day: its countdown, to the minute (on Today, its minute redraws it: groupedAt).
+    const now = this.route.name === 'today' && this.groupedAt || Date.now();
+    const left = due && !t.done && this.stepRun(t) && countdown(+new Date(t.due_date), now);
+    if (left) out.push({key: 'due', cls: 'due num ' + (left.late ? 'overdue' : 'today'), text: left.text, label: left.late ? 'Late: ' + left.text : 'Due ' + left.text});
+    else if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     /* A template that comes round: what tapping it does (starting it moves it on only once it's due today), its project,
@@ -126,10 +134,11 @@ export default {
       if ((t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
       return out;
     }
-    const p = (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
+    // (A card's step has its project and its run or task on the card, over it.)
+    const p = !card && (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
     // A step of a run on Today or in search: which run, instead of the project (the run's), so two runs' steps can be
     // told apart. (In a project's list, it's under its run already.)
-    const run = (this.route.name === 'today' || this.route.name === 'search') && this.stepRun(t) && t.related_tasks.parenttask[0];
+    const run = !card && (this.route.name === 'today' || this.route.name === 'search') && this.stepRun(t) && t.related_tasks.parenttask[0];
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     // A subtask with its parent not above it here (not due this week, say, or done): the parent's name, to know it by.
@@ -175,7 +184,7 @@ export default {
     const fresh = this.view.route !== location.hash;
     if (fresh) {
       const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
-      Object.assign(this.view, {loading: !s, groups: [], project: null, savedAt: null, checklists: [], run: null, listView: null});
+      Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null});
       if (s) this.showSaved(r, s);
       if (scrollY) scrollTo(0, 0);                       // a new screen starts at its top
     }
@@ -217,12 +226,14 @@ export default {
     const s = saved.get(viewKey(r));
     return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
   },
-  // A copy kept of screen `r`, on screen: its tasks the ones on screen already, where those are as new (keptRows).
+  // A copy kept of screen `r`, on screen: its tasks the ones on screen already, where those are as new (keptRows); Today's
+  // cards with their steps.
   showSaved(r, s){
+    this.keptRows(s.steps || []);
     const groups = (s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks)}));
     const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || [])}));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
-    Object.assign(this.view, {loading: false, groups, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
+    Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
     // Where its tasks are in its List view, unless this session knows better (a move since).
     for (const [id, pos] of Object.entries(s.positions || {})) if (!(id in this.positions)) this.positions[id] = pos;
     if (r.name === 'today') this.regroupToday();
@@ -253,7 +264,7 @@ export default {
   // What's loaded in the background: {hash: its screen, key: its copy's (viewKey), load: its copy}. Each row is a task as
   // Vikunja has it (`t => t`): the tasks on screen aren't touched.
   preloads(){
-    const out = [{hash: '#/today', key: 'today', load: async () => ({groups: this.todayFrom(await this.readToday(), t => t)})}];
+    const out = [{hash: '#/today', key: 'today', load: async () => this.todayFrom(await this.readToday(), t => t)}];
     const p = this.projById.get(saved.get('project.last')) || this.favorites[0];
     if (p) out.push({hash: '#/project/' + p.id, key: viewKey({name: 'project', id: p.id}), load: async () => {
       const open = doneOpen.all()[p.id], d = await this.readProject(p, open);
@@ -271,7 +282,7 @@ export default {
     if (this.view.loading) return seq === renderSeq;
     const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
     const gone = shown.filter(id => !now.has(id) && !this.lines[id] && !this.leaving[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
-    if (gone.length) await Promise.all(gone.flatMap(id => [...document.querySelectorAll(`#view .row[data-id="${id}"]`)]).map(collapse));
+    if (gone.length) await Promise.all(gone.flatMap(id => [...document.querySelectorAll(`#view :is(.row:not(.step-line), .day-card)[data-id="${id}"]`)]).map(collapse));
     if (seq !== renderSeq) return false;
     if (arrived.length) this.flash(arrived, 'arrived');
     return true;
@@ -289,14 +300,15 @@ export default {
   async loadToday(seq){
     const got = await this.readToday();
     if (seq !== renderSeq) return;
-    for (const t of [...got.tasks, ...got.added, ...got.mine]) cache.set(t.id, t);
-    const groups = this.todayFrom(got, t => { cache.set(t.id, t); return this.keep(t); });
+    const {groups, cards, steps, positions} = this.todayFrom(got, t => { cache.set(t.id, t); return this.keep(t); });
     if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
     this.todayDay = +startOfDay();
-    this.view.groups = this.keepMarked(groups);
-    saved.set('today', {groups, at: new Date().toISOString()});
+    Object.assign(this.positions, positions);
+    Object.assign(this.view, {cards, groups: this.keepMarked(groups)});
+    saved.set('today', {groups, cards, steps, positions, at: new Date().toISOString()});
   },
-  // What Today shows, from Vikunja: its tasks, not yet in their groups.
+  /* What Today shows, from Vikunja: its rows and its cards (todayItems), with each card's task and open subtasks
+     (readCards), not yet in their groups. */
   async readToday(){
     const end = addDays(startOfDay(), 8);
     const t0 = startOfDay();
@@ -304,20 +316,29 @@ export default {
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
     // And steps you've claimed in someone else's run, still open, which may have no date yet.
     const qMine = new URLSearchParams({filter: `done = false && assignees in ${this.user?.username}`, filter_timezone: TZ, expand: 'comment_count'});
-    const [all, allAdded, {index: runs, mine}, claimed] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
+    const [all, allAdded, {index: runs, mine, open = []}, claimed] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
       this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : []]);
-    return {tasks: all.filter(t => this.inToday(t, runs)), added: allAdded.filter(t => this.inToday(t, runs)), mine, claimed, runs};
+    const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
+    const theirs = claimed.filter(t => !isSet(t.due_date) && runs[this.stepRun(t)] === false);
+    const {rows, cards} = todayItems({tasks, added, mine, claimed: theirs}, this.user, t => this.isRunTask(t));
+    const read = cards.size ? await this.readCards(cards, [...tasks, ...added, ...mine, ...claimed, ...open]) : {parents: [], steps: [], positions: {}};
+    return {rows, cards, ...read};
   },
-  // Today's groups of those tasks, each task's row given by `own`: the one on screen, or (preload) Vikunja's as it is.
-  todayFrom({tasks, added, mine, claimed, runs}, own){
-    const groups = todayGroups(), [, , inRuns, nodate] = groups;
-    // Your runs in progress: a run has no due date, its timed steps have theirs.
-    for (const t of mine) if (!isSet(t.due_date)) inRuns.tasks.push(own(t));
-    for (const t of claimed) if (!isSet(t.due_date) && runs[this.stepRun(t)] === false && !inRuns.tasks.some(x => x.id === t.id)) inRuns.tasks.push(own(t));
-    this.placeDated(groups, tasks.filter(t => isSet(t.due_date)).map(own));
-    // Yours, still without a date; a subtask only if it's yours to do, with its parent's name (rowMeta); a run's step is with its run.
-    for (const t of added) if (addedToday(t, this.user, runs) && !this.stepRun(t)) nodate.tasks.push(own(t));
-    return groups;
+  /* Today's groups of those, each task's row given by `own`: the one on screen, or (preload) Vikunja's as it is. A card
+     goes where what brought it says (cardGroup); one whose task can't be read shows what brought it as rows instead.
+     Returns {groups, cards: by task id, as the screen keeps them, steps, positions}. */
+  todayFrom({rows, cards, parents, steps, positions}, own){
+    const groups = todayGroups(), at = Object.fromEntries(groups.map(g => [g.key, g])), dated = [], shown = {}, seen = new Set();
+    const put = (t, key) => { if (seen.has(t.id)) return; seen.add(t.id); if (key === 'dated') dated.push(own(t)); else at[key].tasks.push(own(t)); };
+    const byId = new Map(parents.map(p => [p.id, p]));
+    for (const [id, c] of cards) {
+      const p = byId.get(id);
+      if (p) { shown[id] = {when: c.when, made: c.made, focus: c.focus}; put(p, cardGroup(c, this.isRunTask(p))); }
+    }
+    for (const {t, key} of rows) put(t, key);
+    for (const [id, c] of cards) if (!byId.has(id)) for (const t of c.from) put(t, isSet(t.due_date) ? 'dated' : this.stepRun(t) ? 'runs' : 'nodate');
+    this.placeDated(groups, dated, shown);
+    return {groups, cards: shown, steps: steps.map(own), positions};
   },
   /* A project's open tasks, in the order of its List view in Vikunja (order.js), each subtask under its parent in its
      own order; its done tasks in a section of their own below, counted, and loaded once it's opened. A project with no

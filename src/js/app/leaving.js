@@ -31,7 +31,8 @@ function exit(els){
     return a.finished.catch(() => {}).then(() => a);
   }));
 }
-const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`.row[data-id="${id}"]`)]);
+// A task's rows, and its card on Today. Not a card's step line: it doesn't fold, the card's next step takes its place.
+const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`:is(.row:not(.step-line), .day-card)[data-id="${id}"]`)]);
 
 export default {
   /* Task `id`'s row marked, until the batch clears: {kind: 'done', 'open' (not done again) or 'deleted'; ids: the rows
