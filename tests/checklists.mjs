@@ -705,6 +705,10 @@ try {
     await page.waitForSelector(runCard, { timeout: 15000 });
     const line = await page.$eval(`${runCard} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).getPropertyValue('--done').trim(), el.getAttribute('aria-label')]);
     if (JSON.stringify(line) !== JSON.stringify(['3', '2', '2 of 3 steps done'])) throw new Error('its line: ' + line);
+    // Steps 1 and 2 done: its count is 3 of 3, the step's place in the run's order, and its segment the one marked.
+    await expect(page.locator(`${runCard} .card-head .card-n`)).toHaveText('3 of 3');
+    await expect(page.locator(`${runCard} .step-line .title .sr`)).toHaveText('Step 3 of 3: ');
+    if (await page.$eval(`${runCard} .card-mark`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '2') throw new Error('the step marked is not the third');
     await page.click(`${runCard} > .card-head`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
     if (await page.getAttribute('#btn-back', 'aria-label') !== 'Back to Today') throw new Error('back: ' + await page.getAttribute('#btn-back', 'aria-label'));

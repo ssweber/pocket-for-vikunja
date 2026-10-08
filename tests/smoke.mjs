@@ -2173,6 +2173,11 @@ ${footName('Hooks')}`);
     const cs = getComputedStyle(el);
     return [cs.getPropertyValue('--segs').trim(), cs.getPropertyValue('--done').trim(), /repeating-linear-gradient/.test(cs.maskImage || cs.webkitMaskImage), el.getAttribute('aria-label')];
   });
+  // Which segment of a card's line is marked, as drawn: the one under the middle of its outline (it slides there).
+  const markedSeg = t => page.locator(`${cardOf(t)} .card-mark`).evaluate(el => {
+    const l = el.parentElement.querySelector('.card-line').getBoundingClientRect(), m = el.getBoundingClientRect(), segs = +getComputedStyle(el).getPropertyValue('--segs');
+    return Math.floor((m.left + m.width / 2 - l.left) / ((l.width + 3) / segs));
+  });
   await step('a-task-with-subtasks-is-a-card-on-today-on-its-next-one', async () => {
     const P = await make(`Pocket smoke card ${stamp}`, { due_date: todayAt(23) });
     const [A, B, C] = [await make(`Pocket smoke card A ${stamp}`), await make(`Pocket smoke card B ${stamp}`), await make(`Pocket smoke card C ${stamp}`)];
@@ -2188,7 +2193,13 @@ ${footName('Hooks')}`);
       await expect(card).toHaveAttribute('aria-label', P.title);
       await expect(title).toHaveText(B.title);
       await expect(line.locator('.title .sr')).toHaveText('Step 1 of 3: ');
-      await expect(line.locator('.pg-n')).toHaveText('1/3');
+      // Its count at the right of its title's first line, the step's place among all its subtasks; its segment marked.
+      const count = card.locator('.card-head .card-n');
+      await expect(count).toHaveText('1 of 3');
+      await expect(line.locator('.meta')).not.toContainText('of 3');
+      const at = await card.locator('.card-head').evaluate(el => { const n = el.querySelector('.card-n').getBoundingClientRect(); return { title: el.querySelector('.card-title').getBoundingClientRect().top, top: n.top, gap: el.getBoundingClientRect().right - n.right }; });
+      if (Math.abs(at.top - at.title) > 6 || at.gap > 20) throw new Error('the count is not at the right of the title: ' + JSON.stringify(at));
+      await expect.poll(() => markedSeg(P.title)).toBe(0);
       for (const k of [A, B, C]) await expect(page.locator(`.item > .row:has(.title:has-text("${k.title}"))`)).toHaveCount(0);
       await expect(card.locator('.check')).toHaveCount(1);                     // the step's: the card's title has none
       // Its line, a segment per subtask, those done filled.
@@ -2219,14 +2230,21 @@ ${footName('Hooks')}`);
       await later(3000);
       await expect(title).toHaveText(C.title);
       await expect(line).not.toHaveClass(/\bdone\b/);
-      await expect(line.locator('.pg-n')).toHaveText('1/2');
-      // Paged by its arrows, round from the last to the first and back; a screen reader hears which.
+      // Its first subtask done: the next is 2 of 3, its real place, the done one counted.
+      await expect(count).toHaveText('2 of 3');
+      await expect(line.locator('.title .sr')).toHaveText('Step 2 of 3: ');
+      await expect.poll(() => markedSeg(P.title)).toBe(1);
+      // Paged by its arrows, through the open ones only, round from the last to the first and back; a screen reader
+      // hears which; the marked segment moves along.
       await card.locator('.pg.next').click();
       await expect(title).toHaveText(A.title);
-      await expect(page.locator('#said')).toHaveText(`Step 2 of 2: ${A.title}`);
-      await expect(line.locator('.pg-n')).toHaveText('2/2');
+      await expect(page.locator('#said')).toHaveText(`Step 3 of 3: ${A.title}`);
+      await expect(count).toHaveText('3 of 3');
+      await expect.poll(() => markedSeg(P.title)).toBe(2);
       await card.locator('.pg.next').click();
       await expect(title).toHaveText(C.title);
+      await expect(count).toHaveText('2 of 3');
+      await expect.poll(() => markedSeg(P.title)).toBe(1);
       await card.locator('.pg.prev').click();
       await expect(title).toHaveText(A.title);
       // And by a plain swipe on the card, either way, on the step line or its title; neither opens the task.
@@ -2263,9 +2281,9 @@ ${footName('Hooks')}`);
       if (!(await get(C.id)).done || (await get(A.id)).done || (await get(A.id)).percent_done || (await get(P.id)).done) throw new Error('more than that step was changed');
       await later(3000);
       await expect(title).toHaveText(A.title);
-      // One step open: no arrows, nor a count.
+      // One step open: no arrows; its count still says where it is.
       await expect(card.locator('.pg')).toHaveCount(0);
-      await expect(line.locator('.pg-n')).toHaveCount(0);
+      await expect(count).toHaveText('3 of 3');
       if (JSON.stringify(await lineSegs(P.title)) !== JSON.stringify(['3', '2', true, '2 of 3 subtasks done'])) throw new Error('its line: ' + await lineSegs(P.title));
     } finally { for (const t of [A, B, C, P]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
@@ -2293,7 +2311,7 @@ ${footName('Hooks')}`);
       await expect(page.locator(`${added} ${cardOf(P.title)}`)).toBeVisible({ timeout: 15000 });
       // Opened on yours, though another comes first.
       await expect(stepTitle(P.title)).toHaveText(mine.title);
-      await expect(page.locator(`${stepLine(P.title)} .pg-n`)).toHaveText('2/2');
+      await expect(page.locator(`${cardOf(P.title)} .card-n`)).toHaveText('2 of 2');
       await expect(page.locator(`${stepLine(P.title)} .claim.mine`)).toBeVisible();
       await expect(page.locator(cardOf(Q.title))).toHaveCount(0);
       await expect(page.locator(`.row .title:has-text("${old.title}")`)).toHaveCount(0);
