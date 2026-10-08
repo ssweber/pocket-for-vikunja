@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
 import gifenc from 'gifenc';
+import { hintSeen } from '../tests/helpers.mjs';
 const { GIFEncoder, quantize, applyPalette } = gifenc;
 
 const BASE = (process.env.VIKUNJA_URL || 'http://127.0.0.1:3456').replace(/\/+$/, '');
@@ -91,6 +92,7 @@ const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 
 // A phone: touch, the fixed clock, and a dot that shows where the finger is.
 async function phone({ scale = 2, height = 844 } = {}){
   const context = await browser.newContext({ viewport: { width: 390, height }, deviceScaleFactor: scale, hasTouch: true, isMobile: true });
+  await hintSeen(context);                       // the one-time hint left out of the pictures
   await context.addInitScript(() => addEventListener('DOMContentLoaded', () => {
     const dot = Object.assign(document.createElement('div'), { id: 'demo-finger' });
     dot.style.cssText = 'position:fixed;left:-99px;top:-99px;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;' +
