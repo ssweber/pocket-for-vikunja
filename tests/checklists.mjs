@@ -656,9 +656,9 @@ try {
     // A card: the run's name and who it's for, over its next step, with that step's countdown; its steps aren't rows of
     // their own.
     const card = page.locator(cardOf(`${TEMPLATE} · run`));
-    await expect(card.locator('.card-head .meta')).toContainText('For you', { timeout: 15000 });
+    await expect(card.locator('.card-head .sr')).toContainText('For you', { timeout: 15000 });
     await expect(card.locator('.step-line .title > span:not(.sr)')).toHaveText('First article check');
-    await expect(card.locator('.step-line .meta .due')).toHaveText(/^in \d+[hm]( \d+m)?$/);
+    await expect(card.locator('.step-line .when .due')).toHaveText(/^in \d+[hm]( \d+m)?$/);
     await expect(card.locator('.step-line > .check')).toHaveCSS('border-radius', '7px');   // a step's box: square
     await expect(page.locator('.item > .row .title:has-text("First article check")')).toHaveCount(0);
   });
@@ -712,7 +712,7 @@ try {
     // the one marked. One step open: no arrows.
     await expect(page.locator(`${runCard} .card-strip > .card-n`)).toHaveText('3 of 3');
     await expect(page.locator(`${runCard} .pg`)).toHaveCount(0);
-    await expect(page.locator(`${runCard} .step-line .title .sr`)).toHaveText('Step 3 of 3: ');
+    await expect(page.locator(`${runCard} .step-line .title .sr`).first()).toHaveText('Step 3 of 3: ');
     if (await page.$eval(`${runCard} .card-mark`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '2') throw new Error('the step marked is not the third');
     // Its heading, then the step line, a plain row with its tick at its left edge, 14px in, as a row's is, then its
     // strip, at its foot; no priority, so no bars.
@@ -1551,7 +1551,7 @@ try {
     await page.waitForSelector(`${dailyRow} .cl-when:has-text("Due now, since"):has-text("then every day")`, { timeout: 15000 });
     await page.evaluate(() => { location.hash = '#/today'; });
     const row = `#view .row:has(> .body .title:has-text("${DAILY}"))`;
-    await page.waitForSelector(`${row} .meta:has-text("Checklist: tap to start")`, { timeout: 15000 });
+    await page.waitForSelector(`${row} .title .sr:has-text("Checklist: tap to start")`, { state: 'attached', timeout: 15000 });
     if (await page.$(`${row} button.check`)) throw new Error('it has a tick on Today');
     // With only it overdue, there's no Move all to today: it would move nothing.
     const overdue = await page.$$eval('.sec.overdue ~ .list .row', els => els.length).catch(() => 0);

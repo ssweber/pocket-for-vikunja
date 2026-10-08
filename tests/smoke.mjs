@@ -253,9 +253,25 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click('#btn-refresh');
     await page.waitForSelector('#btn-refresh:not([disabled])');
-    const meta = await page.$$eval(`${row} .meta > span[aria-label]`, els => els.map(e => e.getAttribute('aria-label') + '=' + e.textContent.trim()));
+    // On Today, one line (motion-and-rows-plan, section 9): its priority the tick's ring, when it's due, short, and its
+    // project's dot at the right of its title; no labels or counts, which a screen reader doesn't need either, but its
+    // priority, when it's due in words and its project it hears.
+    const R = page.locator(row);
+    await expect(R).toHaveClass(/\bone-line\b/);
+    await expect(R.locator('> .check')).toHaveClass(/\bp3\b/);
+    await expect(R.locator('.when .due')).toHaveText(/\S/);
+    await expect(R.locator('.when .dot')).toHaveCount(1);
+    await expect(R.locator('.meta')).toHaveCount(0);
+    const said = await R.locator('.title .sr').allTextContents();
+    if (!said.some(s => /Priority: High/.test(s) && /Due |Late: /.test(s))) throw new Error('a screen reader hears ' + JSON.stringify(said));
+    if (await R.evaluate(el => el.offsetHeight) > 57) throw new Error('a row on Today is more than one line: ' + await R.evaluate(el => el.offsetHeight));
+    // On its project's list, its second line: its priority's bars, its comment and its attachment.
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, (await apiTask()).project_id);
+    await expect(page.locator(`#view ${row} .meta [aria-label="Comments"]`)).toHaveText('1', { timeout: 15000 });
+    const meta = await page.$$eval(`#view ${row} .meta > span[aria-label]`, els => els.map(e => e.getAttribute('aria-label') + '=' + e.textContent.trim()));
     for (const want of ['Priority: High=', 'Comments=1', 'Attachments=1']) if (!meta.includes(want)) throw new Error('row shows ' + JSON.stringify(meta));
-    await page.click(`.row .body:has-text("${title}")`);                 // back into the task, for the steps below
+    await page.click('nav.tabs a[data-tab=today]');
+    await page.click(`.row .body:has-text("${title}")`, { timeout: 15000 });   // back into the task, for the steps below
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
   });
   await step('sanitizer', async () => {
@@ -448,7 +464,8 @@ try {
     await page.click('#f-capture .go');
     await page.waitForSelector(`${noDate} :is(.row .title, .card-title):has-text("${t}")`, { timeout: 15000 });
     if (await page.isVisible(`.item > .row .title:has-text("${sub}")`)) throw new Error('the subtask is a row of its own on Today');
-    await expect(page.locator(`${noDate} ${cardOf(t)} .step-line .title`)).toHaveText(`Step 1 of 1: ${sub}`, { timeout: 15000 });
+    await expect(page.locator(`${noDate} ${cardOf(t)} .step-line .title > span:not(.sr)`)).toHaveText(sub, { timeout: 15000 });
+    await expect(page.locator(`${noDate} ${cardOf(t)} .step-line .title .sr`).first()).toHaveText('Step 1 of 1: ');
     await expect(page.locator(`.item > .row .title:has-text("${sub}")`)).toHaveCount(0);
     await page.click(`${cardOf(t)} > .card-head`);
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
@@ -1582,7 +1599,7 @@ try {
     // Shown done, with the date it had, until the batch clears; its tick before then puts its dates back, and its
     // reminder at a set time, which moved on with it, too.
     const r = await make(`Pocket smoke repeat undo ${stamp}`, { due_date: todayAt(9), repeat_after: 86400, reminders: [{ reminder: todayAt(8) }] });
-    const R = page.locator(rowOf(r.title)), due = () => R.locator('.meta .due').textContent();
+    const R = page.locator(rowOf(r.title)), due = () => R.locator('.when .due').textContent();
     try {
       await toastGone();
       await refreshToday();
@@ -2229,7 +2246,7 @@ ${footName('Hooks')}`);
       await expect(page.locator('#behind')).toBeVisible();
     } finally { answer(); await page.unroute(/\/api\/v2\/tasks\?/, slow); }
     // The change, in place: the same row, not one drawn again.
-    await expect(page.locator(`[data-mark="kept"] .title`)).toHaveText(`Instant renamed ${stamp}`, { timeout: 15000 });
+    await expect(page.locator(`[data-mark="kept"] .title > span:not(.sr)`)).toHaveText(`Instant renamed ${stamp}`, { timeout: 15000 });
     await expect(page.locator('#behind')).toBeHidden();
     await expect(page.locator('#view[aria-busy]')).toHaveCount(0);
   });
@@ -2331,29 +2348,34 @@ ${footName('Hooks')}`);
       await expect(card).toHaveAttribute('role', 'group');
       await expect(card).toHaveAttribute('aria-label', P.title);
       await expect(title).toHaveText(B.title);
-      await expect(line.locator('.title .sr')).toHaveText('Step 1 of 3: ');
+      await expect(line.locator('.title .sr').first()).toHaveText('Step 1 of 3: ');
       // Its strip, the card's footer: ‹, its line, ›, and its count at the end, the step's place among all its
       // subtasks, level with the line; its segment marked. Not on the title's row any more.
       const count = card.locator('.card-strip > .card-n');
       await expect(count).toHaveText('1 of 3');
       await expect(card.locator('.card-head .card-n')).toHaveCount(0);
-      await expect(line.locator('.meta')).not.toContainText('of 3');
+      await expect(line.locator('.when')).not.toContainText('of 3');
       const at = await card.locator('.card-strip').evaluate(el => {
         const r = k => el.querySelector(k).getBoundingClientRect(), [prev, l, next, n] = ['.pg.prev', '.card-line', '.pg.next', '.card-n'].map(r);
         return { order: prev.right <= l.left + 1 && l.right <= next.left + 1 && next.right <= n.left + 1, level: Math.abs((n.top + n.bottom) / 2 - (l.top + l.bottom) / 2), gap: el.getBoundingClientRect().right - n.right };
       });
       if (!at.order || at.level > 3 || at.gap > 20) throw new Error('the strip is not ‹, its line, › and its count: ' + JSON.stringify(at));
       await expect.poll(() => markedSeg(P.title)).toBe(0);
-      // Its priority's bars under its title, as its row showed them.
-      await expect(card.locator('.card-head .meta .bars.p3')).toBeVisible();
-      await expect(card.locator('.card-head .meta [aria-label="Priority: High"]')).toHaveCount(1);
+      // Its heading on one line: its title, its priority's bars, small, and when it's due, short; a screen reader hears
+      // its priority, when it's due in words and its project. Its step line on one line too, as a row on Today.
+      await expect(card.locator('.card-head .bars.p3')).toBeVisible();
+      await expect(card.locator('.card-head .due')).toHaveText(/\S/);
+      await expect(card.locator('.card-head .sr')).toContainText('Priority: High');
+      await expect(card.locator('.card-head .sr')).toContainText('Due Today');
+      await expect(line).toHaveClass(/\bone-line\b/);
+      if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 46 || await line.evaluate(el => el.offsetHeight) > 57) throw new Error('its heading or its step line is more than one line');
       // Its heading, then the step line, whose own bar is at its bottom, then its strip at the card's foot, its line a
       // clear gap under that bar: not one double line.
       const [head, stepAt, strip, whole] = await cardStack(P.title);
       if (!(head[1] <= stepAt[0] + 0.5 && stepAt[1] <= strip[0] + 0.5 && Math.abs(strip[1] - whole[1]) <= 1)) throw new Error('its strip is not at its foot, under its step: ' + JSON.stringify([head, stepAt, strip, whole]));
       const gap = await card.locator('.card-line').evaluate(el => el.getBoundingClientRect().top) - stepAt[1];
       if (gap < 16) throw new Error("its strip's line is too near the step's bar: " + gap);
-      if (await line.evaluate(el => getComputedStyle(el, '::after').bottom) !== '0px') throw new Error("the step's own bar is not at its bottom");
+      if (await line.evaluate(el => getComputedStyle(el, '::after').display) !== 'none') throw new Error('the step line has a bar of its own');
       for (const k of [A, B, C]) await expect(page.locator(`.item > .row:has(.title:has-text("${k.title}"))`)).toHaveCount(0);
       await expect(card.locator('.check')).toHaveCount(1);                     // the step's: the card's title has none
       // Its line, a segment per subtask, those done filled.
@@ -2403,7 +2425,7 @@ ${footName('Hooks')}`);
       if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height as the batch cleared');
       // Its first subtask done: the next is 2 of 3, its real place, the done one counted.
       await expect(count).toHaveText('2 of 3');
-      await expect(line.locator('.title .sr')).toHaveText('Step 2 of 3: ');
+      await expect(line.locator('.title .sr').first()).toHaveText('Step 2 of 3: ');
       await expect.poll(() => markedSeg(P.title)).toBe(1);
       // A tap on an open step's segment shows that step, the count and the mark following, the card's height kept; from
       // above the line too, within the strip. A done one's does nothing, and none opens the task.
@@ -2473,6 +2495,8 @@ ${footName('Hooks')}`);
       await steady(line);
       await slideProgress(stepLine(P.title), 50);
       await expect(page.locator('#said')).toHaveText(`Progress of ${C.title} set to 50%`);
+      // Its progress fills half its own segment of the strip, the second, after the first, done.
+      await expect.poll(() => card.locator('.card-track').evaluate(el => getComputedStyle(el).getPropertyValue('--fill').trim())).toMatch(/ 0% 50%,\S+ 50% 100%\)$/);
       await synced(page);
       if (Math.round((await get(C.id)).percent_done * 100) !== 50 || (await get(P.id)).percent_done) throw new Error(`progress: the step's ${(await get(C.id)).percent_done}, its task's ${(await get(P.id)).percent_done}`);
       // Held and slid past the end: 100% of that step, which ticks it, and no further; the next comes in once the batch
@@ -2538,7 +2562,7 @@ ${footName('Hooks')}`);
   // is a done step, whose tap does nothing; an open one's shows it.
   await step('a-card-fills-each-segment-by-its-own-step', async () => {
     const P = await make(`Pocket smoke gappy card ${stamp}`, { due_date: todayAt(23) });
-    const kids = [await make(`Pocket smoke gappy 1 ${stamp}`, { done: true }), await make(`Pocket smoke gappy 2 ${stamp}`), await make(`Pocket smoke gappy 3 ${stamp}`, { done: true }), await make(`Pocket smoke gappy 4 ${stamp}`)];
+    const kids = [await make(`Pocket smoke gappy 1 ${stamp}`, { done: true }), await make(`Pocket smoke gappy 2 ${stamp}`), await make(`Pocket smoke gappy 3 ${stamp}`, { done: true }), await make(`Pocket smoke gappy 4 ${stamp}`, { due_date: todayAt(22), priority: 4 })];
     await under(P, kids);
     await placeIn(await listView(home2), kids.map((k, i) => [k, 100 * (i + 1)]));
     const card = page.locator(cardOf(P.title)), count = card.locator('.card-strip > .card-n'), title = stepTitle(P.title);
@@ -2550,10 +2574,14 @@ ${footName('Hooks')}`);
       await expect(count).toHaveText('2 of 4');
       const f = await lineFills(P.title);
       if (JSON.stringify(f) !== '[true,false,true,false]') throw new Error('its segments are not filled by their own steps: ' + JSON.stringify(f));
-      // The fourth, open: it shows. The first and third, done: nothing. The second: back to it.
+      // The fourth, open: it shows, with its date, at the card's height without one. The first and third, done:
+      // nothing. The second: back to it.
+      const h = await card.evaluate(el => el.offsetHeight);
       await tapSeg(P.title, 3);
       await expect(title).toHaveText(kids[3].title);
       await expect(count).toHaveText('4 of 4');
+      await expect(page.locator(`${stepLine(P.title)} .when .due`)).toHaveText(/\S/);
+      if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height, paged to a step with a date');
       for (const k of [0, 2]) { await tapSeg(P.title, k); await later(300); }
       await expect(title).toHaveText(kids[3].title);
       await expect(count).toHaveText('4 of 4');
@@ -2630,15 +2658,18 @@ ${footName('Hooks')}`);
     const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: long }) })).json();
     createdProjects.push(proj.id);
     await make(long, { due_date: todayAt(23) }, proj.id);
-    // What's on screen and reaches past its right edge.
+    // What's on screen and reaches past its right edge (not the words inside a title on one line, which it cuts short).
     const past = () => page.evaluate(() => {
       const w = document.documentElement.clientWidth;
-      return [...document.querySelectorAll('#app *, #sheet *')].filter(el => el.offsetParent !== null && el.getBoundingClientRect().right > w + 1)
+      return [...document.querySelectorAll('#app *, #sheet *')].filter(el => el.offsetParent !== null && el.getBoundingClientRect().right > w + 1 && !el.parentElement.closest('.one-line .title, .card-title'))
         .map(el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className : '')).slice(0, 3);
     });
     await refreshToday();
     await expect(page.locator(rowOf(long))).toBeVisible();
     expect(await past(), 'past the edge on Today').toEqual([]);
+    // On one line, cut short with "…".
+    const cut = await page.locator(`${rowOf(long)} .title`).evaluate(el => [el.scrollWidth > el.clientWidth, getComputedStyle(el).textOverflow, el.offsetHeight]);
+    if (!cut[0] || cut[1] !== 'ellipsis' || cut[2] > 30) throw new Error('its title is not cut short on one line: ' + cut);
     await page.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
     await page.click('#btn-project', { timeout: 15000 });
     await expect(page.locator('#p-sharing')).toBeVisible();

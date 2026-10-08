@@ -151,7 +151,8 @@ try {
   await step('photo-added-offline-waits', async () => {
     await page.setInputFiles('#in-photo', photo('offline.png'));
     await capture(T('F'));
-    await page.waitForSelector(`${NO_DATE} ${pendingRow(T('F'))} [aria-label="Attachments, 1 waiting to upload"]`);
+    // On Today, on one line, a screen reader hears it (labels and counts are off Today)
+    await page.waitForSelector(`${NO_DATE} ${pendingRow(T('F'))} .title .sr:has-text("Attachments, 1 waiting to upload")`, { state: 'attached' });
     await placeSays(page, 'cap', 'Saved offline, with the photo. Both go to Vikunja');                // by the add box
   });
 
@@ -160,7 +161,7 @@ try {
     await page.waitForSelector(pendingRow(T('A')), { timeout: 15000 });
     await page.waitForSelector(pendingRow(T('P')));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
-    await page.waitForSelector(`${pendingRow(T('F'))} [aria-label^="Attachments"]`);
+    await page.waitForSelector(`${pendingRow(T('F'))} .title .sr:has-text("waiting to upload")`, { state: 'attached' });
   });
 
   await step('back-online-sends-everything', async () => {
@@ -208,8 +209,8 @@ try {
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
     await placeSays(page, 'cap', 'The photo uploads when the connection');
-    // The task is in Vikunja, so it's a normal row, with its photo counted.
-    await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) [aria-label="Attachments, 1 waiting to upload"]`);
+    // The task is in Vikunja, so it's a normal row, with its photo waiting (said, on Today's one line).
+    await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`, { state: 'attached' });
     await page.click(`.row .body:has-text("${T('G')}")`);
     await page.waitForSelector('#d-attachments .att.uploading:has-text("glitch.png"):has-text("Waiting for a connection")');
     cut = false;
@@ -376,7 +377,7 @@ try {
     await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
     await placeSays(page, 'cap', 'no room left on this phone to keep this until there\'s a connection. Keep Pocket open');
-    await page.waitForSelector(`.row:has(.title:has-text("${T('S')}")) [aria-label="Attachments, 1 waiting to upload"]`);
+    await page.waitForSelector(`.row:has(.title:has-text("${T('S')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`, { state: 'attached' });
     cut = false;
     await online();
     await synced(page);
