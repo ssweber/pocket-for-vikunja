@@ -442,7 +442,7 @@ try {
     await page.click('#f-capture .go');
     await page.waitForSelector(`${noDate} .row .title:has-text("${t}")`, { timeout: 15000 });
     if (await page.isVisible(`.row .title:has-text("${sub}")`)) throw new Error('the subtask is shown in Today');
-    await page.click(`.row .body:has-text("${t}")`);
+    await page.click(`.row:not(.pending) .body:has-text("${t}")`, { timeout: 15000 });   // a row not sent yet doesn't open
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     const d = new Date(Date.now() + 86400000), p = n => String(n).padStart(2, '0');
     await page.fill('#d-due', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T10:00`);
@@ -703,8 +703,9 @@ try {
       await page.getByRole('button', { name: 'Mark not done: ' + c.title, exact: true }).click();
       await expect(page.locator(C)).not.toHaveClass(/\bleaving\b/);
       // A finger down, anywhere, holds them; 3 seconds after it lifts, they go.
-      // (on a heading, on the screen: one scrolled off it would get no touch)
-      await page.locator('#view .sec').first().scrollIntoViewIfNeeded();
+      // (on a heading, in the middle of the screen: one scrolled off it would get no touch, and one under the header
+      // would put the finger on a tab, and tapping Today clears them at once)
+      await page.locator('#view .sec').first().evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       const sec = await page.locator('#view .sec').first().boundingBox();
       await page.mouse.move(sec.x + 4, sec.y + sec.height / 2);
       await page.mouse.down();
