@@ -20,8 +20,8 @@
      on the card, one inserted can be deleted. A finished run, or one shared with you to read (g.locked), has none of
      those, nor a tick. It's never swiped or moved: a run's order is its order line.
      On Today, a card's step line (g.card, today-item.html) is this row too, a subtask or a run's step: its own tick,
-     slot and progress, "Step 2 of 5" to a screen reader, and paged (g.paging) by a swipe; its step coming in slides or
-     fades in (cardEntered). -->
+     slot and progress, "Step 3 of 5" to a screen reader (its place among all the card's steps, done ones too), and
+     paged (g.paging) by a swipe; its step coming in slides or fades in (cardEntered). -->
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, 'ins-on': t.i === g.insertAt} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), 'many-steps': !!runLineOf(t)?.many, lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {order: t.i * 2, '--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3), '--segs': runLineOf(t)?.segs ?? null, '--done': runLineOf(t)?.done ?? null}"
      x-effect="!g.sheet && !g.run && cursor?.id === t.id && watchCursor($el)" x-init="g.card && cardEntered($el, g.card)"
@@ -34,9 +34,9 @@
   <!-- Alt+↑ and Alt+↓ move it among its siblings, as holding it and moving it up or down does, where that's allowed -->
   <button class="body" @click="g.run ? showStep(t.i, true) : t.pending || (g.sheet ? openTask(t.id) : openRow(t))" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
     <template x-if="g.sheet || g.run"><div class="title" x-text="t.title"></div></template>
-    <template x-if="!g.sheet && !g.run"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><template x-if="g.card"><span class="sr" x-text="'Step ' + (g.card.i + 1) + ' of ' + g.card.n + ': '"></span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template></div></template>
+    <template x-if="!g.sheet && !g.run"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><template x-if="g.card"><span class="sr" x-text="'Step ' + (g.card.at + 1) + ' of ' + g.card.total + ': '"></span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template></div></template>
     <div class="meta" x-show="rowMeta(t, g).length">
-      <template x-for="m in rowMeta(t, g)" :key="m.key"><span :class="m.cls" :aria-label="m.label" :aria-hidden="m.hide ? 'true' : null"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
+      <template x-for="m in rowMeta(t, g)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
     </div>
     <!-- A step of a run, in the run's sheet: added during the run, on a line of its own -->
     <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta step-added-meta"><span x-text="addedText(t.description)"></span></div></template>

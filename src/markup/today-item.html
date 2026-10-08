@@ -3,8 +3,9 @@
      tick: it's closed in its sheet, or on Projects); one line for a step, the shared row with the card's own options
      (c.g: paging, no Delete, no moving it), with ‹ › at its ends when there's more than one open step (each a 48px tap,
      drawn small; they stay put as the step changes, so the one tapped keeps the focus); and its task's line, a segment
-     per subtask. Deleted from its ⋯, a gap at its height with Restore, and a message about its task in its place, as a
-     row's are. -->
+     per subtask, the step showing marked on it. Its count, "3 of 5", is the step's place among all its subtasks, done
+     ones too, at the right of its title's first line; a screen reader hears it on the step line instead. Deleted from
+     its ⋯, a gap at its height with Restore, and a message about its task in its place, as a row's are. -->
 <div class="item">
   <template x-if="!cardOf(t, g)">
     <!-- include markup/task-row.html -->
@@ -13,7 +14,7 @@
     <div class="day-card" role="group" :aria-label="rowTitle(t)" :data-id="t.id"
          :class="{paged: c.n > 1, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
          @click.capture="if (leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
-      <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="rowTitle(t)"></span>
+      <button class="card-head" @click="openRow(t)"><span class="card-top"><span class="card-title" x-text="rowTitle(t)"></span><template x-if="c.total > 1"><span class="card-n num" aria-hidden="true" x-text="(c.at + 1) + ' of ' + c.total"></span></template></span>
         <span class="meta" x-show="cardMeta(t).length"><template x-for="m in cardMeta(t)" :key="m.key"><span :class="m.cls"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><span x-text="m.text"></span></span></template></span></button>
       <div class="step-pager">
         <template x-if="c.n > 1"><button class="pg prev" aria-label="Show the step before" @click="pageCard(c, -1)"><svg class="i"><use href="#i-chev"/></svg></button></template>
@@ -22,7 +23,8 @@
         </template>
         <template x-if="c.n > 1"><button class="pg next" aria-label="Show the step after" @click="pageCard(c, 1)"><svg class="i"><use href="#i-chev"/></svg></button></template>
       </div>
-      <div class="card-line" :class="{'many-steps': c.line.many}" role="img" :aria-label="c.lineText" x-style="{'--segs': c.line.segs, '--done': c.line.done}"></div>
+      <div class="card-track" :class="{'many-steps': c.line.many}" x-style="{'--segs': c.line.segs, '--done': c.line.done, '--at': c.at}">
+        <div class="card-line" :class="{'many-steps': c.line.many}" role="img" :aria-label="c.lineText"></div><i class="card-mark" aria-hidden="true"></i></div>
       <template x-for="line in lines[t.id] ? [lines[t.id]] : []" :key="0">
         <!-- include markup/row-line.html -->
       </template>

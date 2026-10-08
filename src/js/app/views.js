@@ -114,8 +114,6 @@ export default {
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A note' : t.notes.length + ' notes'},
       t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}].filter(Boolean);
     const out = [], due = dueInfo(t.due_date), card = g?.card;
-    // A card's step line (cards.js): which of its open steps this is; a screen reader hears it with the title.
-    if (card?.n > 1) out.push({key: 'pg', cls: 'num pg-n', text: `${card.i + 1}/${card.n}`, hide: true});
     // A done task over its open subtasks: why it's on the open list.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});
     // A run's step not done yet, due within a day: its countdown, to the minute (on Today, its minute redraws it: groupedAt).

@@ -268,11 +268,23 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    a segment per subtask, as a run's is */
 .day-card{position:relative}
 .card-head{display:block;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:10px 14px 0;color:var(--ink)}
-.card-title{display:block;font-size:15px;font-weight:650;overflow-wrap:anywhere}
+.card-top{display:flex;align-items:baseline;gap:10px}
+.card-title{display:block;flex:1;min-width:0;font-size:15px;font-weight:650;overflow-wrap:anywhere}
+/* its count, the step showing's place among all its subtasks: on the title's first line, at the right, however the
+   title wraps */
+.card-n{flex:none;color:var(--muted);font-size:13px;white-space:nowrap}
 .card-head .meta{margin-top:1px}
 .step-pager{position:relative}
 .day-card .step-line{border-top:0;min-height:52px}
-.card-line{height:3px;margin:2px 14px 10px}
+.card-track{position:relative;margin:2px 14px 10px}
+.card-line{height:3px}
+/* The step showing, outlined on its task's line, a little taller than it, so paging visibly moves along it: over its
+   segment (each (100% + 3px) / --segs wide, less the 3px gap), or past MANY_STEPS over its stretch between two ticks
+   (a 1px gap). It slides along as the card is paged, or with less motion, jumps */
+.card-mark{--gap:3px;position:absolute;top:-2.5px;bottom:-2.5px;left:calc(var(--at,0) * (100% + var(--gap)) / var(--segs,1) - 2.5px);
+  width:calc((100% + var(--gap)) / var(--segs,1) - var(--gap) + 5px);border:1.5px solid var(--accent);border-radius:4px;pointer-events:none;transition:left .15s ease-out}
+.card-track.many-steps .card-mark{--gap:1px}
+@media (prefers-reduced-motion:reduce){.card-mark{transition:none}}
 /* The arrows: drawn small, each a tap 48px wide over the step line's full height, at its ends. The step's own tick,
    title and slot move in to make room, each zone still 48px across */
 .pg{position:absolute;top:0;bottom:0;z-index:1;width:48px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}

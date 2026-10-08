@@ -6,7 +6,7 @@ import {colorOf, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet} from '../dates.js';
 import {stepsOf} from '../checklists.js';
-import {cardAt, openSubs, turnPage} from '../cards.js';
+import {cardAt, openSubs, placeOf, turnPage} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {runLine} from '../progress.js';
 
@@ -16,17 +16,19 @@ const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export default {
   /* A task on Today shown as a card (g.cards: Today's lists): {id, step: the step showing, i: which of its open steps,
-     n: how many, steps, line: its task's line, a segment per subtask (runLine), lineText, g: the step line's options};
-     null for any other row, and for one with no open step left, which is then a row like any other. A step ticked stays
-     on it, done, until the batch clears (leaving.js); then the one after it comes in. */
+     n: how many, steps, at: the step's place among all its subtasks, done ones too, of `total` (its count, "3 of 5", and
+     the segment marked on its line), all, line: its task's line, a segment per subtask (runLine), lineText, g: the step
+     line's options}; null for any other row, and for one with no open step left, which is then a row like any other. A
+     step ticked stays on it, done, until the batch clears (leaving.js); then the one after it comes in. */
   cardOf(t, g){
     const c = g?.cards && this.view.cards?.[t.id];
     if (!c) return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     const steps = all.filter(s => !done(s) || this.leaving[s.id]);
     if (!steps.length) return null;
-    const i = cardAt(steps, this.cardPage[t.id], c.focus), n = all.filter(done).length;
-    const card = {id: t.id, step: steps[i], i, n: steps.length, steps, line: runLine(all.length, n), lineText: `${n} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
+    const i = cardAt(steps, this.cardPage[t.id], c.focus), d = all.filter(done).length;
+    const card = {id: t.id, step: steps[i], i, n: steps.length, steps, at: placeOf(all, steps[i]), total: all.length, all,
+      line: runLine(all.length, d), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
     card.g = {depth: {}, card, paging: steps.length > 1};
     return card;
   },
@@ -53,7 +55,7 @@ export default {
     const i = turnPage(c.i, c.n, dir), s = c.steps[i];
     this.cardPage[c.id] = {id: s.id, i};
     entering.set(c.id, dir);
-    this.said = `Step ${i + 1} of ${c.n}: ${this.rowTitle(s)}`;
+    this.said = `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`;
   },
   pageCardOf(id, dir){ const t = this.tasks[id]; this.pageCard(t && this.cardOf(t, {cards: true}), dir); },
   // A tick or a slide on a card's step: the card stays at its place, so once that step has gone, the one after it comes in.
@@ -90,7 +92,8 @@ export default {
     for (const id of ids) {
       const t = have.get(id), pid = t?.project_id ?? cards.get(id).project;
       if (t && this.isRunTask(t)) continue;
-      byProject.set(pid, [...(byProject.get(pid) || []), id, ...openSubs(t).map(s => s.id)]);
+      // Its done subtasks too, for where they are: a card counts its step among all of them ("3 of 5").
+      byProject.set(pid, [...(byProject.get(pid) || []), id, ...(t?.related_tasks?.subtask || []).map(s => s.id)]);
     }
     await Promise.all([...byProject].map(async ([pid, list]) => {
       const lv = listViewOf(this.projById.get(pid));

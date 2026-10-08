@@ -35,8 +35,9 @@
         </div>
       </div></template>
       <!-- Today's cards (today-item.html): a task's subtask, paged mid-way, and a run's step counting down, each between
-           its ‹ ›; one with one open step, with no arrows; and the line under each, a segment per subtask -->
-      <div class="sec">Today’s cards: a task’s subtask, paged to 2 of 3; a run’s step, counting down; one step only, no arrows</div>
+           its ‹ ›; one with one open step, with no arrows; one past 12 steps; and the line under each, a segment per
+           subtask (past 12, ticks), the step showing marked on it, and its count at the right of the title -->
+      <div class="sec">Today’s cards: a task’s subtask, paged to 3 of 5 with 1 done; a run’s step, counting down; one step only, no arrows; one of 14, on 8</div>
       <template x-for="g in [{cards: true, depth: {}}]" :key="0"><div class="list">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/today-item.html -->

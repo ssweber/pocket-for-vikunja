@@ -3,7 +3,7 @@
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardAt, cardGroup, countdown, todayItems, turnPage } from '../../src/js/cards.js';
+import { cardAt, cardGroup, countdown, placeOf, todayItems, turnPage } from '../../src/js/cards.js';
 import { pageOffset, pageStarts, pageTurn } from '../../src/js/progress.js';
 import { rowGestures } from '../../src/js/lists.js';
 import cards from '../../src/js/app/cards.js';
@@ -101,10 +101,11 @@ test('a run’s step’s countdown, to the minute, within a day', () => {
   assert.equal(countdown(now + 864e5 * 2, now), null, 'further off: its date says it');
 });
 
-// The component, with Today's cards: `parent` with its subtasks in the store, at their positions in its List view.
+// The component, with Today's cards: `parent` with its subtasks in the store, at their positions in its List view: 14,
+// done, first, then Chairs, Tables and Lights.
 const today = () => {
   const app = component(cards, views, alerts, tasks, leaving);
-  Object.assign(app, { cardPage: {}, positions: { 11: 3, 12: 1, 13: 2 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, checklistIds: new Set(), waitingByTask: new Map() });
+  Object.assign(app, { cardPage: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, checklistIds: new Set(), waitingByTask: new Map() });
   const parent = app.keep(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
   for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.keep(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
@@ -115,18 +116,36 @@ test('a card: its open steps in its List view’s order, the first showing, its 
   const { app, parent, g } = today(), c = app.cardOf(parent, g);
   assert.deepEqual(c.steps.map(s => s.title), ['Chairs', 'Tables', 'Lights']);
   assert.deepEqual([c.step.title, c.i, c.n], ['Chairs', 0, 3]);
+  assert.deepEqual([c.at, c.total], [1, 4], 'its count, 2 of 4: its place among all its subtasks, the done one first');
   assert.deepEqual(c.line, { segs: 4, done: 1, many: false });
   assert.equal(c.lineText, '1 of 4 subtasks done');
   assert.deepEqual([c.g.paging, c.g.card === c], [true, true], 'the step line pages, and knows its card');
   assert.equal(app.cardOf(parent, { depth: {} }), null, 'only on Today’s lists');
-  assert.deepEqual(app.rowMeta(c.step, c.g).map(m => m.text), ['1/3'], 'which step it is, and not the project: that’s on the card');
+  assert.deepEqual(app.rowMeta(c.step, c.g).map(m => m.text), [], 'not which step it is (that’s on the card’s title now), nor the project');
+});
+
+test('a card’s count is its step’s real place, done steps included; paging skips the done ones and goes round; its line marks that place', () => {
+  const steps = [{ id: 1, done: true }, { id: 2, done: true }, { id: 3 }, { id: 4 }, { id: 5 }];
+  assert.deepEqual([placeOf(steps, steps[2]), placeOf(steps, { id: 9 }), placeOf(steps, null)], [2, -1, -1]);
+  const { app, parent, g } = today();
+  app.tasks[12].done = true;                                               // 14 and Chairs done: Tables is 3 of 4
+  const seen = [];
+  for (let k = 0; k < 4; k++) {
+    const c = app.cardOf(parent, g);
+    seen.push([c.step.title, c.at + 1, c.total, c.line.done]);
+    app.pageCard(c, 1);
+  }
+  assert.deepEqual(seen, [['Tables', 3, 4, 2], ['Lights', 4, 4, 2], ['Tables', 3, 4, 2], ['Lights', 4, 4, 2]], 'from 3 to 4, then back to 3: never a done one');
+  assert.equal(app.said, 'Step 3 of 4: Tables', 'a screen reader hears its real place');
+  app.pageCard(app.cardOf(parent, g), -1);
+  assert.equal(app.cardOf(parent, g).at, 3, 'back: the marked segment is the fourth');
 });
 
 test('paged round, a screen reader hears which step; ticked, a step stays until the batch clears, then the next comes in', () => {
   const { app, parent, g } = today();
   app.pageCard(app.cardOf(parent, g), -1);
   assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'from the first back round to the last');
-  assert.equal(app.said, 'Step 3 of 3: Lights');
+  assert.equal(app.said, 'Step 4 of 4: Lights', 'its place among all four, the done one too');
   app.pageCard(app.cardOf(parent, g), 1);
   let c = app.cardOf(parent, g);
   assert.equal(c.step.title, 'Chairs');

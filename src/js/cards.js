@@ -67,6 +67,9 @@ export function cardAt(steps, page, focus){
   if (page) return k(page.id) >= 0 ? k(page.id) : page.i < n ? page.i : 0;
   return Math.max(0, k(focus));
 }
+// Where step `s` is among all of a card's subtasks, done ones too (0 the first): its count, "3 of 5", and the segment
+// marked on its line. Paging goes through the open ones only, so from 3 it goes to 4, 5, then back to 3.
+export const placeOf = (all, s) => all.findIndex(x => x.id === s?.id);
 // Paging a card: the step `dir` (1 the next, -1 the one before) from `i`, of `n`, round from the last to the first.
 export const turnPage = (i, n, dir) => n ? ((i + dir) % n + n) % n : -1;
 /* A run's step's countdown on its card, to the minute, as Today redraws once a minute: "in 1h 5m", "12m late"; null more
