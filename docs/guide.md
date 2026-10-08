@@ -82,7 +82,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   else it lets go, changing nothing. The same works on the bar in a task's sheet (the arrow keys move it a stop
   at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
   run's steps are held and slid the same way. The bar is all that shows it, with no message: to take it back, slide it
-  back. On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
+  back. Sliding a task, a subtask or a step no one is doing says you're doing it: **+ me** turns into your picture as
+  you start, and it's assigned to you once you let go, if the slide changed its progress (let go where it started, and
+  nothing is). Someone else's stays theirs. Sliding it back to 0% later keeps it yours: tap your picture to let it go.
+  On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
   trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
 - **Order:** a project's list is in the order of its **List view** in Vikunja's web app, each subtask under its
   parent in its own order, so both show the same order; a task's subtasks in its sheet are in that order too. To move
@@ -113,7 +116,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   project takes its subtasks along. The **⋯** at the top of the sheet shares its progress (see **Sharing progress**,
   below), and deletes it, with its subtasks: its row in the list then is a gap with **Restore**. Tap the project above the title to open it. Adding a subtask, ticking one or setting its progress shows
   on its row only, with no message. A change that isn't saved goes back, and the sheet says so under what it's about
-  (at its top, under its notes, under its subtasks), with **Try again** where that helps.
+  (at its top, under its notes, under its subtasks), with **Try again** where that helps. A tap anywhere on a row
+  like **Due**, **Repeats**, **Reminders** or **Project** works it, not only on its box: the date's calendar, the
+  list to pick from, or **Add** for labels and people. The × that clears a date is still its own.
 - **Sharing progress:** a task's **⋯**, a project's **⋯** and a run's **⋯** have **Share progress as a text**. It opens
   the phone's share sheet, to send it in a message, as a few plain lines:
 
@@ -250,6 +255,7 @@ shows who has it; to hand it over, open it and use **Assigned** (a run's step: t
 then tap the step). Two people who say they'll do a step
 at the same moment don't both get it: the first keeps it, and the other is told. Done or skipped is still recorded for whoever taps it,
 whoever has the step, and claiming never ticks anything. A step you claim in someone else's run shows on your Today.
+Sliding the progress of one no one is doing claims it for you too (see **Progress**, under Tasks).
 Vikunja tells the task's creator (for a step, whoever started the run) when you claim it.
 
 ## Checklists
@@ -318,8 +324,12 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   Today counts the same.
 - **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the
   person who started the run and the person it's for. A run's row is the same there and under Checklists: its steps
-  done, the next one, and its progress line. A run has no tick on Today: it's finished on its screen. Tapping a
-  run opens it; tapping a step opens its run on that step.
+  done, the next one, and its progress line, in segments, one for each step, filled as steps are done (past 12 steps,
+  one line with a small mark at each step). The bar at the top of a run's screen is the same. A run has no tick on
+  Today: it's finished on its screen. Tapping a run opens it; tapping a step opens its run on that step.
+- **A step has a square box**, wherever it shows: on its run's screen, in the run's sheet, and on Today. A task or a
+  subtask has a round one. They work differently (a step's tick records who did it, with its ✅), so they look
+  different. A template's numbered steps are square too.
 - **The run on screen** updates by itself as teammates tick steps.
 - **A run's ⋯** shares its progress as a text, with who did each step (see **Sharing progress**, under Tasks), changes
   its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
