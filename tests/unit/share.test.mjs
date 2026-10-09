@@ -3,6 +3,13 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { bar, dueWords, firstName, markdownText, progress, shareText } from '../../src/js/share.js';
+import { component } from './fake.mjs';
+import sharing from '../../src/js/app/sharing.js';
+import cards from '../../src/js/app/cards.js';
+import runs from '../../src/js/app/runs.js';
+import claims from '../../src/js/app/claims.js';
+import checklists from '../../src/js/app/checklists.js';
+import views from '../../src/js/app/views.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
 const on = (d, h = 0) => new Date(2026, 9, d, h).toISOString();
@@ -107,4 +114,59 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
 test('the van as a Markdown list', () => {
   assert.equal(md(van), ['## Pack the van (60%)', '', '- [x] Load chairs', '- [ ] Tables (50%)', '- [ ] Sound system @priya', '- [ ] Lights'].join('\n'));
   assert.equal(md({ ...van, due: on(9), people: [priya] }).split('\n').slice(0, 2).join('\n'), `## Pack the van (60%)\nDue ${day(9)} · @priya`);
+});
+
+/* A parent's progress is the figure its ring shows (parent-tasks-plan, part 5): the average of its subtasks' progress, a
+   done one 100%, with a bar of one segment per subtask, filled for each done. */
+test('a parent: its ring\'s worked-out figure, and a bar of a segment per subtask, filled for each done', () => {
+  const doc = { kind: 'task', ...item('A test task', { due: on(7, 18), people: [sam], ring: { pct: 13, done: 0, total: 4 } }), items: [
+    item('One subtask', { pct: 50, due: on(7, 18), people: [sam] }), item('Another'), item('And another'), item('And another')] };
+  assert.equal(text(doc), ['A test task  ▱▱▱▱ 13% · due today · sam', '◐ One subtask 50% · due today · sam', '○ Another', '○ And another', '○ And another'].join('\n'));
+  assert.equal(md(doc).split('\n')[0], '## A test task (13%)');
+  assert.equal(bar(60, { pct: 60, done: 2, total: 3 }), '▰▰▱');
+  assert.deepEqual(progress(item('x', { pct: 40, ring: { pct: 70, done: 1, total: 2 } })).pct, 70, 'the ring\'s, not a figure of its own');
+  // A run: its skipped steps are done in its ring, and said apart.
+  const run = { kind: 'run', ...item('Close'), ring: { pct: 67, done: 2, total: 3 }, items: [item('a', { done: true }), item('b', { done: true, skipped: true }), item('c')] };
+  assert.equal(text(run).split('\n')[0], 'Close  ▰▰▱ 67% · 1 skipped');
+  // A project's parent: its ring, on its line's bar.
+  const project = { kind: 'project', title: 'Café', open: 1, doneCount: 0, items: [{ ...item('Deep clean'), items: [item('Fridge', { pct: 50 })], subs: { done: 2, total: 3 }, ring: { pct: 83, done: 2, total: 3 } }] };
+  assert.equal(text(project).split('\n')[1], '◐ Deep clean  ▰▰▱ 83%');
+});
+
+// The text shared from a task's sheet, and from a run's screen, against the ring the same task has on screen.
+const NONE = '0001-01-01T00:00:00Z';
+const shared = () => {
+  const app = component(sharing, cards, runs, claims, checklists, views);
+  Object.assign(app, { user: { id: 1 }, pending: [], slow: [], perms: {}, positions: {}, projects: [], hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), actTask: a => a.task });
+  return app;
+};
+test('the text shared from a task\'s sheet matches its ring: the percent and a segment per subtask, each done filled', () => {
+  const app = shared();
+  const sub = (id, f = {}) => ({ id, title: 'Sub ' + id, done: false, percent_done: 0, due_date: NONE, project_id: 5, assignees: [], related_tasks: {}, ...f });
+  const subs = [sub(2, { percent_done: .5 }), sub(3), sub(4, { done: true }), sub(5, { percent_done: .25 })];
+  const t = { id: 1, title: 'Paint the back wall', done: false, percent_done: 0, due_date: NONE, project_id: 5, assignees: [], related_tasks: { subtask: subs } };
+  for (const x of [t, ...subs]) app.tasks[x.id] = x;
+  Object.assign(app, { sheet: { task: t, subPeople: {} }, subtasks: subs, pendingSubtasks: [] });
+  const ring = app.ringOf(t), head = shareText(app.shareDoc('task'), NOW).split('\n')[0];
+  assert.deepEqual([ring.pct, ring.done, ring.total], [44, 1, 4], '(50 + 0 + 100 + 25) / 4');
+  assert.equal(head, `Paint the back wall  ${'▰'.repeat(ring.done)}${'▱'.repeat(ring.total - ring.done)} ${ring.pct}%`);
+  assert.equal(markdownText(app.shareDoc('task'), NOW).split('\n')[0], `## Paint the back wall (${ring.pct}%)`);
+  // A subtask with subtasks of its own: its ring's figure on its line.
+  subs[1].related_tasks = { subtask: [sub(6, { done: true }), sub(7)] }; app.tasks[6] = sub(6, { done: true }); app.tasks[7] = sub(7);
+  assert.equal(shareText(app.shareDoc('task'), NOW).split('\n')[2], `◐ Sub 3 ${app.ringOf(subs[1]).pct}%`);
+});
+
+test('the text shared from a run\'s screen matches its ring, a tick waiting to be sent counted as its ring counts it', () => {
+  const app = shared(), now = Date.now();
+  const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
+    project_id: 5, assignees: [], attachments: [], reactions: {}, comments: [], related_tasks: {}, ...f });
+  const steps = [step(51, 'Mop', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [{ id: 1 }] } }), step(52, 'Wipe', { percent_done: .5 }), step(53, 'Lock up'), step(54, 'Lights')];
+  const run = { id: 50, title: 'Closing up', done: false, project_id: 5, assignees: [], created_by: { id: 1 }, comments: [], description: '', related_tasks: { subtask: steps } };
+  app.isRunTask = t => t.id === 50;
+  for (const x of [run, ...steps]) app.tasks[x.id] = x;
+  app.view = { groups: [], run: { run: { id: 50, title: 'Closing up', done: false, project_id: 5, assignees: [], created_by: { id: 1 }, comments: [] }, steps, at: null, last: null } };
+  app.pending = [{ kind: 'act', id: 9, run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // Lock up ticked, not sent yet
+  const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
+  assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');
+  assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);
 });
