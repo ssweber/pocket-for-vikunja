@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, hintSeen, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, hintSeen, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -75,7 +75,6 @@ const signIn = (p, token) => signInAt(p, APP, token);
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 // A run's name on its card on Today: without the day it was started ("Line 4 · run 1 · Oct 8": "Line 4 · run 1").
 const dayless = t => t.split(' · ').slice(0, -1).join(' · ');
-const STRIP = '#step-card > .card-strip';                                  // the run's step card's, Today's card's strip
 const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 // A message in its place (lines.js): "checklists", "step", "sheet:subtasks"…
 const said = (where, text) => placeSays(page, where, text);
@@ -162,10 +161,10 @@ try {
       await page.waitForSelector('#step-title:text-is("Turn on the espresso machine")');
       await page.click('#step-done');
       await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")');
-      // Done: the next step counts down for 18 minutes, so the one after it, which can be done now, is on screen.
+      // Done: the next step in order is on screen, counting down its 18 minutes (parent-tasks-plan, part 2).
       await page.click('#step-done');
-      await page.waitForSelector('#step-title:text-is("Wipe down the tables")');
-      await page.waitForSelector('#run-timers .timer:has-text("Take the croissants out")');
+      await page.waitForSelector('#step-title:text-is("Take the croissants out")');
+      await expect(page.locator('#step-card .step-due')).toHaveText(/^Due in 1[78]m$/);
       // The card is gone once there's a project for checklists.
       await page.click('nav.tabs a[data-tab=projects]');
       await page.waitForSelector('.tree');
@@ -408,16 +407,13 @@ try {
     // Done, then the ✅: sent one after the other, so wait for both.
     await until('the step was never done with a ✅ from you', async () => { const t = await task(id); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done .did[aria-label^="Done by"][aria-label*=" at "]');   // and when
-    // The step card's strip: the step's place, 2 of 3; how many are done is its line's.
-    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 2 of 3');
-    await expect(page.locator(`${STRIP} .card-line`)).toHaveAttribute('aria-label', '1 of 3 steps done');
     // Both timed steps count down now: the next one on its card, the other pinned above it.
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');
     await page.waitForSelector('#run-timers .timer:has-text("First article check"):has-text("in 2h")');
     // Tapping a pinned countdown shows its step; then back to the one before.
     await page.click('#run-timers .timer:has-text("First article check")');
     await page.waitForSelector('#step-title:text-is("First article check")');
-    await page.click(`${STRIP} .pg.prev`);
+    await page.click('#run-steps .row:nth-of-type(2) .body');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
     // Moved by hand in Vikunja after the tick (a second or more: one in the same second counts as before it).
     await new Promise(r => setTimeout(r, 1100));
@@ -450,39 +446,21 @@ try {
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (3h|2h 5[0-9]m)$")', { timeout: 15000 });
   });
 
-  /* The run's step card has Today's card's strip at its top (one-concept-plan, part 1): the run's line, the step on the
-     card marked, its place, and the way through the open steps, as on Today. And who's on that step, as its row says. */
-  await step('the-step-card-has-todays-strip', async () => {
+  /* The run's step card has no strip (parent-tasks-plan, part 2): its steps, listed under it, say where the run is, and
+     a tap on one puts it on the card, a done one too. And who's on that step, as its row says. */
+  await step('the-step-card-and-the-steps-under-it', async () => {
     await expect(page.locator('#run-bar')).toHaveCount(0);
-    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 2 of 3');
-    if (await page.$eval(`${STRIP} .card-track`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '1') throw new Error('the step marked is not the second');
-    // Its arrows go through the open steps, stopping at the ends, dimmed there: the guards, done, are passed over.
-    await expect(page.locator(`${STRIP} .pg.prev`)).toHaveAttribute('aria-disabled', 'true');
-    await page.click(`${STRIP} .pg.prev`, { force: true });                 // Playwright won't tap an aria-disabled button
-    if (await page.textContent('#step-title') !== 'Warm up the press') throw new Error('‹ on the first open step went to ' + await page.textContent('#step-title'));
-    await page.click(`${STRIP} .pg.next`);
-    await page.waitForSelector('#step-title:text-is("First article check")');
-    await expect(page.locator('#said')).toHaveText('Step 3 of 3: First article check');
-    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 3 of 3');
-    await expect(page.locator(`${STRIP} .pg.next`)).toHaveAttribute('aria-disabled', 'true');
-    // A tap on an open step's segment shows it, a done one's nothing; dragged along, it's a scrubber.
-    const box = await steady(page.locator(`${STRIP} .card-line`)), seg = k => [box.x + box.width * (k + .5) / 3, box.y + box.height / 2];
-    await page.mouse.click(...seg(0));
-    await page.mouse.click(...seg(1));
-    await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    await page.mouse.move(...seg(1)); await page.mouse.down();
-    await page.mouse.move(...seg(2), { steps: 8 });
-    await page.waitForSelector('#step-title:text-is("First article check")');
-    await page.mouse.move(...seg(1), { steps: 8 }); await page.mouse.up();
-    await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    await expect(page.locator('#said')).toHaveText('Step 2 of 3: Warm up the press');
-    // A done step comes on it from its row, saying who did it, with no slot to claim it; the strip goes on from there.
+    await expect(page.locator('#step-card .card-strip, #step-card .card-n, #step-card .pg')).toHaveCount(0);
+    await expect(page.locator('#run-steps .row.current .title')).toHaveText('Warm up the press');
+    // A done step comes on it from its row, saying who did it, with no slot to claim it.
     await page.click('#run-steps .row:nth-of-type(1) .body');
     await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")');
-    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 1 of 3');
+    await expect(page.locator('#run-steps .row.current .title')).toHaveText('Check the guards at 3pm');
     await expect(page.locator('#step-who')).toContainText('Done by');
     await expect(page.locator('#step-card .claim')).toHaveCount(0);
-    await page.click(`${STRIP} .pg.next`);
+    await page.click('#run-steps .row:nth-of-type(3) .body');
+    await page.waitForSelector('#step-title:text-is("First article check")');
+    await page.click('#run-steps .row:nth-of-type(2) .body');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
     // Who's on it: its row's slot, "+ me", on the card too; claimed there, it's yours on both.
     const id = (await runStep(first.id, 1)).id, people = async () => ((await task(id)).assignees || []).map(u => u.id);
@@ -511,12 +489,12 @@ try {
   });
 
   await step('a-note-being-written-stays-with-its-step', async () => {
-    // Warm up the press, skipped, is shown by tapping its row; the strip's › goes on from there to the open step.
+    // Warm up the press, skipped, is shown by tapping its row; the open step's row goes back to it.
     await page.fill('#step-note', 'Only for this step');
     await page.click('#run-steps .row:nth-of-type(2) .body');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
     if (await page.inputValue('#step-note') !== '') throw new Error('the note followed: ' + await page.inputValue('#step-note'));
-    await page.click(`${STRIP} .pg.next`);
+    await page.click('#run-steps .row:nth-of-type(3) .body');
     await page.waitForSelector('#step-title:text-is("First article check")');
     if (await page.inputValue('#step-note') !== 'Only for this step') throw new Error('the note is gone');
     await page.fill('#step-note', '');
@@ -556,14 +534,15 @@ try {
   });
 
   await step('share-a-runs-progress', async () => {
-    // From the run's ⋯: who did each step, who skipped one, and who's on the one left (you, claimed for this).
+    // From the run's ⋯: who did each step, who skipped one, and who's on the one left (you, claimed for this). Its
+    // progress is its ring's, a skipped step done (parent-tasks-plan, part 5): 2 of 3, 67%, a segment per step.
     const run = await api('/tasks/' + first.id), my = (me.name || '').trim().split(/\s+/)[0] || me.username, row = '#run-steps .row:nth-of-type(3)';
     await page.click(`${row} .claim:has(.me)`);
     await page.waitForSelector(`${row} .claim.mine .av`);
     await page.click('#btn-run-more');
     await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
     await page.click('#r-share-text');
-    await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: run.title, text: [`${run.title}  ▰▰▰▱▱ 1 of 3 done · 1 skipped`,
+    await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: run.title, text: [`${run.title}  ▰▰▱ 67% · 1 skipped`,
       `✓ Check the guards at 3pm · ${my}`, `– Warm up the press · skipped by ${my}`, `○ First article check · ${my}`].join('\n') }]);
     await expect(page.locator('#r-open-vikunja')).toHaveAttribute('href', `${SERVER}/tasks/${first.id}`);
     await page.click('#btn-sheet-close');
@@ -659,6 +638,8 @@ try {
       await page.waitForSelector(`${row} .claim[aria-disabled=true] .av`, { timeout: 15000 });
       const said = await page.getAttribute(`${row} .claim`, 'aria-label');
       if (!said.startsWith(`${other.name || other.username} is doing`)) throw new Error('says ' + said);
+      // (in the middle of the screen: forced, the tap lands on whatever is there, and the bottom box's Repeat could be)
+      await page.locator(row).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       await page.click(`${row} .claim`, { force: true });                       // Playwright won't tap an aria-disabled button
       await new Promise(r => setTimeout(r, 1000));
       if (JSON.stringify(await people()) !== JSON.stringify([other.id])) throw new Error('a tap on their picture changed it');
@@ -671,37 +652,24 @@ try {
     await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
   });
 
-  /* Progress slid on a step no one is doing says you're doing it, as on a task's row (motion-and-rows-plan, section 3);
-     slid back to 0%, it stays yours, and someone else's stays theirs. A step's box is square, and the run's bar is in
-     segments, one per step. */
+  /* Progress swiped on a step no one is doing says you're doing it, once it's let go, as on a task's row
+     (motion-and-rows-plan, section 3; parent-tasks-plan, 1b); swiped back to 0%, it stays yours, and someone else's stays
+     theirs. A step's box is square. */
   await step('sliding-a-step-claims-it', async () => {
     const row = '#run-steps .row:nth-of-type(3)', id = (await runStep(first.id, 2)).id;
     const people = async () => ((await task(id)).assignees || []).map(u => u.id), pct = async () => Math.round((await task(id)).percent_done * 100);
-    const slide = async n => {
-      // In the middle of the screen: clear of its edges, and of the box at its foot.
-      await page.locator(row).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-      const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
-      await page.mouse.move(x, y); await page.mouse.down();
-      await later(450);                                                      // the hold's timer is the page's (hold-a-step-to-set-its-progress)
-      for (let i = 0; !await page.$(`${row}.setting`); i++) { if (i > 40) throw new Error('the hold never began'); await new Promise(r => setTimeout(r, 50)); }
-      await page.mouse.move(x + (n >= 0 ? page.viewportSize().width - 48 - x : x - 48) * n / 10, y, { steps: 10 });
-      await page.mouse.up();
-    };
+    // Swiped to `to`% from `from`% (swipeRow, in the middle of the screen: clear of its edges, and of the box at its foot).
+    const slide = (to, from = 0, check = null) => swipeRow(page, row, to, { start: from, check });
     await page.waitForSelector(`${row} .claim .me`, { timeout: 15000 });
     const radius = await page.$eval(`${row} > .check`, el => getComputedStyle(el).borderRadius);
     if (radius !== '7px') throw new Error("a step's box isn't square: " + radius);
-    const segs = await page.$eval(`${STRIP} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage]);
-    if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
-    // Each segment filled by whether its own step is done (runLine's fill), not the first ones by count.
-    const barFill = await page.$eval(`${STRIP} .card-line`, el => getComputedStyle(el).getPropertyValue('--fill').trim());
-    if (!/^linear-gradient\(to right,\S+ 0% .* 100%\)$/.test(barFill)) throw new Error("the run's line isn't filled by its steps: " + barFill);
     try {
       await toastGone().catch(() => {});
-      await slide(2.2);                                                      // 25%: yours, as the slide starts
+      await slide(25, 0, async () => { await expect(page.locator(`${row} .claim .me`)).toBeVisible(); });   // 25%: yours, once let go
       await page.waitForSelector(`${row} .claim.mine .av`);
       await until('sliding never claimed it', async () => JSON.stringify(await people()) === JSON.stringify([me.id]));
       await until('its progress never reached Vikunja', async () => await pct() === 25);
-      await slide(-10);                                                      // back to 0%: still yours
+      await slide(0, 25);                                                    // back to 0%: still yours
       await until('sliding back never put it back', async () => await pct() === 0);
       if (JSON.stringify(await people()) !== JSON.stringify([me.id])) throw new Error('slid back to 0%, it was let go');
       await page.click(`${row} .claim`);                                     // letting go is a tap of its own
@@ -713,7 +681,7 @@ try {
       await page.reload();
       await page.waitForSelector(`${row} .claim[aria-disabled=true] .av`, { timeout: 15000 });
       await toastGone().catch(() => {});
-      await slide(2.2);
+      await slide(25);
       await until('its progress never reached Vikunja', async () => await pct() === 25);
       await synced(page);
       if (JSON.stringify(await people()) !== JSON.stringify([other.id])) throw new Error("someone else's step was claimed: " + JSON.stringify(await people()));
@@ -747,15 +715,8 @@ try {
       await page.waitForSelector(`${row}:not(.done)`, { timeout: 15000 });
       await expect(page.locator(`${row} .claim`), '"+ me" in a project only you can see').toHaveCount(0);
       await expect(page.locator('#step-card .claim')).toHaveCount(0);
-      await page.locator(row).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-      const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
-      await page.mouse.move(x, y); await page.mouse.down();
-      await later(450);                                                      // the hold's timer is the page's
-      for (let i = 0; !await page.$(`${row}.setting`); i++) { if (i > 40) throw new Error('the hold never began'); await new Promise(r => setTimeout(r, 50)); }
-      await page.mouse.move(x + (page.viewportSize().width - 48 - x) * .3, y, { steps: 10 });
-      const shown = await page.$(`${row} .claim`);
-      await page.mouse.up();
-      if (shown) throw new Error('a slide put someone on it');
+      await swipeRow(page, row, 25, { check: async () => { if (await page.$(`${row} .claim`)) throw new Error('a swipe put someone on it'); } });
+      if (await page.$(`${row} .claim`)) throw new Error('a swipe put someone on it');
       await until('its progress never reached Vikunja', async () => Math.round((await task(id)).percent_done * 100) > 0);
       await synced(page);
       if ((await people()).length) throw new Error('a slide claimed it: ' + JSON.stringify(await people()));
@@ -785,12 +746,15 @@ try {
   });
 
   await step('today-run-has-no-tick-and-a-step-tick-says-who', async () => {
-    const runRow = `.row:has(> .body .title:has-text("${TEMPLATE} · run"))`, runCard = cardOf(`${TEMPLATE} · run`);
+    const runCard = cardOf(`${TEMPLATE} · run`);
     await page.waitForSelector(`${runCard} > .card-head`, { timeout: 15000 });
-    if (await page.$(`${runCard} .check:not(.step-line .check)`)) throw new Error('the run can be ticked on Today');
-    // In its project's own list it's an ordinary task, with a tick.
+    // A parent (parent-tasks-plan, part 3): its ring, not a tick, here and on its project's list, where it's an open card
+    // with its open steps.
+    await expect(page.locator(`${runCard} > .card-head > .check`)).toHaveCount(0);
+    await expect(page.locator(`${runCard} > .card-head > .ring`)).toBeVisible();
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
-    await page.waitForSelector(`${runRow} > button.check`, { timeout: 15000 });
+    await page.waitForSelector(`#view ${runCard}.open > .card-head > .ring`, { timeout: 15000 });
+    await expect(page.locator(`#view ${runCard} > .card-head > .check`)).toHaveCount(0);
     await page.click('#btn-back');
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
     // A step ticked on its card is ticked as on the run's screen: with a ✅ from you. No message: it stays on the card,
@@ -826,26 +790,22 @@ try {
   });
 
   await step('today-opens-the-run', async () => {
-    // A run's card has its line in segments, a step each, those done filled (2 of 3); its name opens the run's screen,
-    // not its sheet; Back comes back to Today.
-    const runCard = cardOf(`${TEMPLATE} · run`);
+    // A run's card has its ring, its count of steps done (skipped too) inside it, 2 of 3, its arc the worked-out figure,
+    // 67%; its top row its one open step, so no More; its name opens the run's screen, not its sheet; Back comes back to
+    // Today.
+    const runCard = cardOf(`${TEMPLATE} · run`), ring = page.locator(`${runCard} > .card-head > .ring`);
     await page.waitForSelector(runCard, { timeout: 15000 });
-    const line = await page.$eval(`${runCard} .card-line`, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), el.getAttribute('aria-label')]);
-    if (JSON.stringify(line) !== JSON.stringify(['3', '2 of 3 steps done'])) throw new Error('its line: ' + line);
-    // Steps 1 and 2 done: its count, at its strip's end, is 3 of 3, the step's place in the run's order, and its segment
-    // the one marked. One step open: no arrows.
-    await expect(page.locator(`${runCard} .card-strip > .card-n`)).toHaveText('3 of 3');
-    await expect(page.locator(`${runCard} .pg`)).toHaveCount(0);
-    await expect(page.locator(`${runCard} .step-line .title .sr`).first()).toHaveText('Step 3 of 3: ');
-    if (await page.$eval(`${runCard} .card-mark`, el => getComputedStyle(el).getPropertyValue('--at').trim()) !== '2') throw new Error('the step marked is not the third');
-    // Its heading, then the step line, a plain row with its tick at its left edge, 14px in, as a row's is, then its
-    // strip, at its foot; no priority, so no bars.
-    const stack = await page.$eval(runCard, el => ['.card-head', '.step-line', '.card-strip'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
-    if (!(stack[0][1] <= stack[1][0] + 0.5 && stack[1][1] <= stack[2][0] + 0.5)) throw new Error('its strip is not under its step: ' + JSON.stringify(stack));
-    const tickAt = await page.$eval(`${runCard} .step-line`, el => el.querySelector(':scope > .check').getBoundingClientRect().left - el.getBoundingClientRect().left);
-    if (tickAt !== 14) throw new Error("the step line's tick is not at its left edge, as a row's is: " + tickAt);
+    await expect(ring.locator('.n')).toHaveText('2/3');
+    await expect.poll(() => ring.evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--ring')) * 100))).toBe(67);
+    await expect(page.locator(`${runCard} .card-more`)).toHaveCount(0);
+    await expect(page.locator(`${runCard} .step-line .title > span:not(.sr)`)).toHaveText('First article check');
+    // Its header, then its top row, a plain row a level in, its tick under the header's title; no priority, so no bars.
+    const stack = await page.$eval(runCard, el => ['.card-head', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
+    if (!(stack[0][1] <= stack[1][0] + 0.5)) throw new Error('its top row is not under its header: ' + JSON.stringify(stack));
+    const under = await page.$eval(runCard, el => el.querySelector('.step-line > .check').getBoundingClientRect().left - el.querySelector('.card-title').getBoundingClientRect().left);
+    if (Math.abs(under) > 0.5) throw new Error("its top row's tick is not under its header's title: " + under);
     await expect(page.locator(`${runCard} .card-head .bars`)).toHaveCount(0);
-    await page.click(`${runCard} > .card-head`);
+    await page.click(`${runCard} > .card-head .card-open`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
     if (await page.getAttribute('#btn-back', 'aria-label') !== 'Back to Today') throw new Error('back: ' + await page.getAttribute('#btn-back', 'aria-label'));
     if (await page.isVisible('#sheet')) throw new Error('the sheet opened');
@@ -898,21 +858,15 @@ try {
   });
 
   await step('finish-a-run', async () => {
-    // Opened from Checklists, so finishing goes back there. Its row there is a project's: who it's for and its progress
-    // line, which says how far it is, so no count of its steps done nor the next (one-concept-plan, part 3).
+    // Opened from Checklists, so finishing goes back there. Its row there is a project's: who it's for, and its ring (a
+    // parent's: parent-tasks-plan, part 3), which says how far it is, so no count of its steps done nor the next under
+    // its title, and no line.
     await page.evaluate(() => { location.hash = '#/checklists'; });
     const runRow = `.cl-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`;
     await page.waitForSelector(`${runRow} .meta:has-text("For you")`, { timeout: 15000 });
     await expect(page.locator(`${runRow} .meta`)).not.toHaveText(/Next:|\d+\/\d+/);
-    const line = await page.$eval(runRow, el => [parseFloat(getComputedStyle(el).getPropertyValue('--pct')), parseFloat(getComputedStyle(el, '::after').width)]);
-    if (!(line[0] > 0 && line[1] > 0)) throw new Error('no progress line under Checklists: ' + line);
-    // In segments, one per step, the steps done filled (runLine).
-    const segs = await page.$eval(runRow, el => [getComputedStyle(el).getPropertyValue('--segs').trim(), getComputedStyle(el, '::after').maskImage || getComputedStyle(el, '::after').webkitMaskImage]);
-    if (segs[0] !== '3' || !/repeating-linear-gradient/.test(segs[1])) throw new Error("the run's line isn't a segment per step: " + segs.join(' '));
-    // Each segment filled by whether its own step is done, in the run's order: the first two.
-    const rowFill = await page.$eval(runRow, el => getComputedStyle(el).getPropertyValue('--fill').trim());
-    const fillOf = rowFill.match(/^linear-gradient\(to right,(\S+) 0% 66\.667%,(\S+) 66\.667% 100%\)$/);
-    if (!fillOf || fillOf[1] === fillOf[2]) throw new Error("the run's line isn't filled by its steps: " + rowFill);
+    await expect(page.locator(`${runRow} > .ring .n`)).toHaveText('2/3');
+    if (await page.$eval(runRow, el => getComputedStyle(el, '::after').content) !== 'none') throw new Error('a line under the run\'s row');
     await page.click(`.cl-run .body:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`, { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#step-done');
@@ -1014,46 +968,52 @@ try {
   /* A run is one row on its project's list, as under Checklists (one-concept-plan, part 3): its steps aren't under it nor
      counted in Open, and its row says who it's for, not its steps done or the next. Templates, their steps and runs'
      steps stay out of its Done too. */
-  await step('a-run-ticked-in-its-project', async () => {
-    // Ticked in its project's list with steps not done: it asks first, then finishes it as Finish run does, through the
-    // outbox, and leaves its steps as they are. Its tick again, before the batch clears, opens it again.
+  await step('a-run-finished-from-its-ring-in-its-project', async () => {
+    // On its project's list a run in progress is a card, open, its steps not done its rows (parent-tasks-plan, part 2).
+    // Its ring asks first, naming them in a sentence, then finishes it as Finish run does, through the outbox, and leaves
+    // its steps as they are: the card a gap with "Done" and Undo, which opens it again.
     const { id } = await startRun();
-    const title = (await api('/tasks/' + id)).title, asked = [], record = d => asked.push(d.message());
-    // The project's group headed `name`: its count, and its rows' titles.
+    const title = (await api('/tasks/' + id)).title, want = (await subtasks(id)).map(s => s.title);
+    // The project's group headed `name`: its count, and its tasks' titles, rows' and cards' (a card's rows too).
     const group = name => page.evaluate(name => {
       const sec = [...document.querySelectorAll('#view .sec')].find(s => s.textContent.trim().startsWith(name)), g = sec.parentElement;
-      return { head: sec.textContent.trim(), n: +(sec.querySelector('.n')?.textContent || 0), titles: [...g.querySelectorAll('.list > .row > .body .title')].map(t => t.textContent.trim()) };
+      const titles = [...g.querySelectorAll('.list :is(.row > .body .title > span:not(.sr), .card-head .card-title)')];
+      return { head: sec.textContent.trim(), n: +(sec.querySelector('.n')?.textContent || 0), titles: titles.map(t => t.textContent.trim()) };
     }, name);
-    page.on('dialog', record);                                                // accepted by the handler at the top
     try {
       await page.evaluate(pid => { location.hash = '#/project/' + pid; }, project.id);
       await loaded(page);
       await page.click('#btn-refresh');                                       // its rows from Vikunja, not the copy shown first
       await page.waitForSelector('#btn-refresh:not([disabled])');
-      const row = `#view .row:has(> .body .title:has-text("${title}"))`, want = (await subtasks(id)).map(s => s.title);
-      await page.waitForSelector(row, { timeout: 15000 });
-      await expect(page.locator(`${row} .meta`)).toContainText('For you');
-      await expect(page.locator(`${row} .meta`)).not.toHaveText(/Next:|\d+\/\d+/);
-      // No run's step is a row, and Open counts its rows: each run one.
+      const card = page.locator(`#view ${cardOf(dayless(title))}`), ring = card.locator('.card-head > .ring');
+      await expect(card).toHaveClass(/\bopen\b/, { timeout: 15000 });
+      await expect(card.locator('.card-head .sr')).toContainText('For you');
+      await expect(card.locator('.card-rows > .row .title > span:not(.sr)')).toHaveText(want);
+      await expect(ring.locator('.n')).toHaveText('0/3');
+      // Its steps are on its card, not rows of their own; Open counts every open task listed, a run and its steps.
       const open = await group('Open');
-      if (open.titles.some(t => want.some(s => t.endsWith(s)))) throw new Error('a run\'s steps on its project\'s list: ' + open.titles.join(' | '));
-      if (open.n !== open.titles.length) throw new Error(`Open says ${open.n}, with ${open.titles.length} rows`);
+      if (open.n !== open.titles.length) throw new Error(`Open says ${open.n}, with ${open.titles.length} listed: ${open.titles.join(' | ')}`);
       await toastGone().catch(() => {});
-      await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`, { timeout: 15000 });
+      await ring.click();
+      await expect(page.locator('#complete h2')).toHaveText('Finish this run with 3 steps not done?');
+      await expect(page.locator('#complete-note')).toHaveText(`“${dayless(title)}” is finished, and its 3 steps not done stay that way: ${want[0]}, ${want[1]} and ${want[2]}.`);
+      await expect(page.locator('#complete-open-run')).toBeVisible();
+      await page.click('#complete-yes');
       await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
-      if (!asked.some(m => m.includes('with 3 steps not done'))) throw new Error('asked ' + JSON.stringify(asked));
       if ((await subtasks(id)).some(x => x.done)) throw new Error('a step was ticked with it');
-      // Shown done where it is, as a task's tick is, until the batch clears: its tick meanwhile opens it again.
-      await expect(page.locator(`.row.leaving:has(> .body .title:has-text("${title}"))`)).toHaveClass(/\bdone\b/);
-      await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
-      await until('its tick again never opened it', async () => !(await api('/tasks/' + id)).done);
+      // Shown done where it is, a gap with Undo, until the batch clears: Undo opens it again.
+      await expect(card).toHaveClass(/\bswept\b/);
+      await card.getByRole('button', { name: 'Undo: ' + title }).click();
+      await until('Undo never opened it', async () => !(await api('/tasks/' + id)).done);
+      await expect(card).not.toHaveClass(/\bswept\b/);
       // Finished again, it goes with the batch, to Done, as a task does: its steps not done aren't on the list to stay
       // over.
       await synced(page);
-      await page.click(`.row:has(> .body .title:has-text("${title}")) > .check`);
+      await ring.click();
+      await page.click('#complete-yes');
       await until('the run was never finished again', async () => (await api('/tasks/' + id)).done);
       await later(3000);
-      await expect(page.locator(row)).toHaveCount(0);
+      await expect(card).toHaveCount(0);
       /* Done isn't counted until it's opened: most of a project for checklists' done tasks are templates' and runs' steps,
          which it leaves out. Opened: the run, and not a template, nor a template's step (with its times written raw), nor
          a run's step, counted as it shows. */
@@ -1067,7 +1027,6 @@ try {
       if (n !== done.titles.length) throw new Error(`Done says ${n}, with ${done.titles.length} rows`);
       await page.click('#sec-done');                                          // folded again, as the next steps expect
     } finally {
-      page.off('dialog', record);
       for (const x of await subtasks(id)) await api('/tasks/' + x.id, { method: 'DELETE' }).catch(() => {});
       await api('/tasks/' + id, { method: 'DELETE' }).catch(() => {});
     }
@@ -1079,14 +1038,14 @@ try {
   await step('templates-out-of-search-and-no-bell-on-a-step', async () => {
     const { id } = await startRun();
     const runTitle = (await api('/tasks/' + id)).title, [guards, warm] = await subtasks(id);
-    const titles = () => page.$$eval('#view .row > .body .title', ts => ts.map(t => t.textContent.trim()));
+    const titles = () => page.$$eval('#view :is(.row > .body .title, .card-title)', ts => ts.map(t => t.textContent.trim()));
     try {
       await api('/tasks/' + guards.id, { method: 'PATCH', body: JSON.stringify({ done: true }) });
       await until('the step after it never got its time and reminder', async () => ((await api('/tasks/' + warm.id)).reminders || []).some(r => Date.parse(r.reminder) > Date.now()));
       await page.click('#btn-search');
-      // The template's name finds its runs, not the template.
+      // The template's name finds its runs (cards, with their steps not done), not the template.
       await page.fill('#in-search', TEMPLATE);
-      await page.waitForSelector(`#view .row > .body .title:has-text("${runTitle}")`, { timeout: 15000 });
+      await page.waitForSelector(`#view ${cardOf(dayless(runTitle))}`, { timeout: 15000 });
       if ((await titles()).includes(TEMPLATE)) throw new Error('the template is in search: ' + (await titles()).join(' | '));
       // A step's words find the runs' steps, not the template's, and the run's step counting down has no 🔔.
       const stepRow = `#view .row:has(> .body .title:has-text("Warm up the press")):has(.meta:has-text("${runTitle}"))`;
@@ -1378,9 +1337,10 @@ try {
     await until('not added at the end', async () => (await subtasks(id)).map(s => s.title).pop() === 'Lock the back door');
   });
 
-  await step('a-run-and-its-card-open-on-a-step-to-do-now', async () => {
-    // Opened, a run's screen and its card on Today go by the rule a tick does: the next step that can be done now, past
-    // those counting down. The guards done, the press and the check count down, so a step added after them is that one.
+  await step('a-run-and-its-card-open-on-its-next-step-in-order', async () => {
+    // Opened, a run's screen and its card on Today go by one rule (parent-tasks-plan, part 2: whereNext): the next open
+    // step in order, even one counting down; a timed step whose time has come before it. The guards done, the press and
+    // the check count down: the press is next, not the step added after them.
     const { id } = await startRun();
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
@@ -1392,15 +1352,25 @@ try {
     await until('the times were never set', async () => (await Promise.all((await subtasks(id)).slice(1, 3).map(s => task(s.id)))).every(t => !t.due_date.startsWith('0001')));
     await synced(page);
     await page.reload();
-    await page.waitForSelector('#step-title:text-is("Sweep the floor")', { timeout: 15000 });
-    await expect(page.locator(`${STRIP} .card-n`)).toHaveText('Step 4 of 4');
-    const title = (await api('/tasks/' + id)).title;
+    await page.waitForSelector('#step-title:text-is("Warm up the press")', { timeout: 15000 });
+    await expect(page.locator('#step-card .step-due')).toHaveText(/^Due in /);
+    await expect(page.locator('#run-steps .row.current .title')).toHaveText('Warm up the press');
+    const title = (await api('/tasks/' + id)).title, card = cardOf(dayless(title));
     await page.click('nav.tabs a[data-tab=today]');
-    await expect(page.locator(`${cardOf(dayless(title))} .step-line .title > span:not(.sr)`)).toHaveText('Sweep the floor', { timeout: 15000 });
+    await expect(page.locator(`${card} .step-line .title > span:not(.sr)`)).toHaveText('Warm up the press', { timeout: 15000 });
+    await expect(page.locator(`${card} .step-line .when .due`)).toHaveText(/^in \d+[hm]/);
+    // The check's time come (moved back by hand): it comes first, on Today and on the run's screen.
+    const check = (await runStep(id, 2)).id;
+    await api('/tasks/' + check, { method: 'PATCH', body: JSON.stringify({ due_date: new Date(Date.now() - 60000).toISOString() }) });
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await expect(page.locator(`${card} .step-line .title > span:not(.sr)`)).toHaveText('First article check', { timeout: 15000 });
+    await page.click(`${card} > .card-head .card-open`);
+    await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
   });
 
-  await step('hold-a-step-to-set-its-progress', async () => {
-    // As on a task's row: hold, then slide, in snaps of 25%. Sent like a tick, with Undo; 100% is Done, with its ✅.
+  await step('swipe-a-step-to-set-its-progress', async () => {
+    // As on a task's row: a plain swipe, in snaps of 25%. Sent like a tick; a full swipe is Done, with its ✅ and Undo.
     // Last time's notes answer late this time, after the run is on screen: a step's go on its card, above the steps, so
     // they're held back from the card on screen, and nothing under a finger moves as they come.
     const last = ((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).filter(x => x.done).sort((a, b) => Date.parse(b.done_at) - Date.parse(a.done_at))[0];
@@ -1416,39 +1386,25 @@ try {
     await expect(page.locator('#run-last .loading')).toHaveCount(0);
     const after = await steady(page.locator(row));
     if (Math.abs(after.y - before.y) > 0.5) throw new Error(`the steps moved ${after.y - before.y}px as Last time came`);
-    const slide = async (n, check) => {
-      // The room to 48px short of the screen's edge is the rest of the way to 100% (EDGE): n tenths of it.
-      // In the middle of the screen: clear of its edges, and of the box at its foot.
-      await page.locator(row).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-      const box = await steady(page.locator(row)), x = box.x + box.width * .45, y = box.y + box.height / 2;
-      await page.mouse.move(x, y); await page.mouse.down();
-      // The hold's own timer is the page's, which follows its clock: an earlier step set that back, and it could wait
-      // seconds. So the clock is moved on through the hold (HOLD_MS, 450ms), and the row looked for from here.
-      await later(450);
-      for (let i = 0; !await page.$(`${row}.setting`); i++) { if (i > 40) throw new Error('the hold never began'); await new Promise(r => setTimeout(r, 50)); }
-      // Back to the left (n below 0), the room is to 48px short of the screen's left edge.
-      await page.mouse.move(x + (n >= 0 ? page.viewportSize().width - 48 - x : x - 48) * n / 10, y, { steps: 10 });
-      await check?.();
-      await page.mouse.up();
-    };
-    // The row's bar shows it, as a task's does.
-    const bar = () => page.$eval(row, el => [getComputedStyle(el).getPropertyValue('--pct').trim(), parseFloat(getComputedStyle(el, '::after').width)]);
+    // Swiped to `to`% from `from`% (swipeRow: in the middle of the screen, clear of its edges and of the box at its foot).
+    const slide = (to, from, check) => swipeRow(page, row, to, { start: from, check });
+    // Its tick shows it, as a task's does: its pie (--pct).
+    const pie = () => page.$eval(row, el => getComputedStyle(el).getPropertyValue('--pct').trim());
     await toastGone().catch(() => {});
-    await slide(2.2);                                                        // 22%: the snap nearest is 25%
-    // On its bar only, as a task's: a screen reader hears it, and sliding back is the undo.
+    await slide(25, 0, async () => { if (await pie() !== '0') throw new Error('its tick changed while it was held: ' + await pie()); });
+    // On its tick only, as a task's: a screen reader hears it, and swiping back is the undo.
     await expect(page.locator('#said')).toHaveText('Progress of Warm up the press set to 25%');
     await noToast(page);
     await until('its progress never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 25);
-    const [pct, width] = await bar();
-    if (pct !== '0.25' || !(width > 0)) throw new Error(`its bar: --pct ${pct}, ${width}px`);
+    await expect.poll(pie).toBe('0.25');
     if (await page.textContent('#step-title') !== 'Check the guards at 3pm') throw new Error('letting go opened the step');
-    await slide(-10);
-    await until('sliding back never put it back', async () => !(await api('/tasks/' + step2)).percent_done);
-    await page.waitForFunction(sel => getComputedStyle(document.querySelector(sel)).getPropertyValue('--pct').trim() === '0', row, { timeout: 10000 });
-    // With the bottom box focused, a step's row still slides, and the box stays aimed at the card's step.
+    await slide(0, 25);
+    await until('swiping back never put it back', async () => !(await api('/tasks/' + step2)).percent_done);
+    await expect.poll(pie).toBe('0');
+    // With the bottom box focused, a step's row still swipes, and the box stays aimed at the card's step.
     await toastGone().catch(() => {});
     await page.focus('#in-capture');
-    await slide(5);
+    await slide(50, 0);
     await expect(page.locator('#said')).toHaveText('Progress of Warm up the press set to 50%');
     await until('its progress never reached Vikunja with the box focused', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 50);
     await expect(page.locator('#cap-target .what')).toHaveText('Add a step after “Check the guards at 3pm”');
@@ -1456,7 +1412,7 @@ try {
     await toastGone().catch(() => {});
     // Offline, Waiting to send says what it is.
     await context.setOffline(true);
-    await slide(5);                                                          // from 50%, half the rest: 75%
+    await slide(75, 50);
     await page.waitForSelector('#btn-refresh.waits', { timeout: 5000 });
     await page.click('#btn-refresh');
     await page.waitForSelector('#outbox-rows .ob-row:has-text("Progress: 75% on “Warm up the press”")');
@@ -1465,16 +1421,16 @@ try {
     await online();
     await until('the progress set offline never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 75);
     await toastGone().catch(() => {});
-    // Pulled past 100% and held while the run's screen redraws (every second, for countdowns): it says 100%, and its
-    // line stays full.
-    await slide(12, async () => {
+    // Swiped all the way and held while the run's screen redraws (every second, for countdowns): still full; let go,
+    // done with its ✅, the gap in its place, "Done" and Undo, which unticks it.
+    await slide(100, 75, async () => {
       await page.waitForTimeout(1500);
-      const [shown, line, width] = await page.$eval(row, el => [el.dataset.pct, parseFloat(getComputedStyle(el, '::after').width), el.clientWidth]);
-      if (shown !== '100%' || line < width - 1) throw new Error(`held past 100%: says ${shown}, line ${line} of ${width}px`);
+      await expect(page.locator(`${row} > .row-prog`)).toHaveClass(/\bfull\b/);
     });
-    await until('100% never made it done', async () => { const t = await task(step2); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
-    // As for a task slid to 100%, Undo: on the step card.
-    await placeLine(page, 'step').getByRole('button', { name: 'Undo' }).click();
+    await until('a full swipe never made it done', async () => { const t = await task(step2); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
+    await expect(page.locator(row)).toHaveClass(/\bswept\b/);
+    await expect(page.locator(`${row} > .del-gap`)).toContainText('Done');
+    await page.locator(row).getByRole('button', { name: 'Undo: Warm up the press' }).click();
     await until('Undo never made it not done', async () => !(await task(step2)).done);
   });
 
@@ -1568,7 +1524,7 @@ try {
     const t = await make(`Deliveries ${stamp}`), a = await make('Check the delivery note'), b = await make('Put the milk in the fridge');
     for (const st of [a, b]) await api(`/tasks/${t.id}/relations`, { method: 'POST', body: JSON.stringify({ other_task_id: st.id, relation_kind: 'subtask' }) });
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
-    await page.click(`.row .body:has(.title:has-text("Deliveries ${stamp}"))`, { timeout: 15000 });
+    await page.click(`${cardOf(`Deliveries ${stamp}`)} > .card-head .card-open`, { timeout: 15000 });   // a card: it has open subtasks
     await page.waitForSelector('#d-subtasks .row');
     if (await page.$('#d-checklist')) throw new Error('a card for it shows on the task');
     await page.click('#d-more');
@@ -1880,7 +1836,7 @@ try {
     const t = await make(`Weekly clean ${stamp}`, { due_date: due.toISOString(), repeat_after: 604800 }), a = await make('Descale the kettle');
     await api(`/tasks/${t.id}/relations`, { method: 'POST', body: JSON.stringify({ other_task_id: a.id, relation_kind: 'subtask' }) });
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
-    await page.click(`.row .body:has(.title:has-text("Weekly clean ${stamp}"))`, { timeout: 15000 });
+    await page.click(`${cardOf(`Weekly clean ${stamp}`)} > .card-head .card-open`, { timeout: 15000 });   // a card: it has an open subtask
     await page.waitForSelector('#d-subtasks .row');
     await page.click('#d-more');
     await page.click('#d-make-template');
