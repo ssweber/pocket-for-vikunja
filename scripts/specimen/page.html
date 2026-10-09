@@ -36,20 +36,28 @@
           </template>
         </div>
       </div></template>
-      <!-- Today's cards (list-item.html), three lines each: the heading (its title, priority bars and time); the step
-           line, one line as a row on Today; and at its foot, its strip: ‹, its task's line, a segment per subtask (past
-           12, ticks), the step showing marked on it and filled by its progress, ›, and its count. A task's subtask,
-           paged mid-way; a run's step counting down; a run due at 6 PM, its heading as a task's, without the day it was
-           started; one with one open step, with no arrows; one past 12 steps -->
-      <div class="sec">Today’s cards: a task’s subtask, high priority, paged to 3 of 5 with 1 done; a run’s step, counting down, its name without its day; a run due at 6 PM, as a task’s; one step only, no arrows; one of 14, on 8, low priority</div>
-      <template x-for="g in [{cards: true, line: true, depth: {}}]" :key="0"><div class="list">
+      <!-- Today's stacked cards (list-item.html): the heading (its title, priority bars, time and count); its top row, the
+           most urgent, one line as a row on Today; and under it the peek at the next, "Interview · 1 more ⌄". A task of
+           high priority opened by its peek, with Show less at its foot; a run's, its next step counting down; a run due
+           at 6 PM, its heading as a task's, without the day it was started; one with one open subtask, no peek; one of
+           14, low priority -->
+      <div class="sec">Today’s stacked cards: a task’s, high priority, opened by its peek; a run’s next step, counting down, its name without its day; a run due at 6 PM, as a task’s; one open subtask, no peek; one of 14, low priority</div>
+      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
       </div></template>
-      <!-- A run's step card (step-card.html), with Today's card's strip at its top: the run's line, the card's step marked
-           and filled by its progress, and its place; then its title and who's on it -->
-      <div class="sec">A run’s step card: on a step of yours, counting down, 5 of 11; one Priya is on, half done; one done, tapped in the list</div>
+      <!-- A project's open list (screens/lists.html, cards 'list'): each card open, for good, its rows in its List
+           view's order, a run's steps in its order line -->
+      <div class="sec">A project’s list: a card open, its subtasks in their order (one with its own subtask, a row; one waiting to be sent); a row; a task done over a subtask still open; a run in progress, its open steps on it</div>
+      <template x-for="g in [specimenProject]" :key="0"><div class="list">
+        <template x-for="t in g.items" :key="t.id">
+          <!-- include markup/list-item.html -->
+        </template>
+      </div></template>
+      <!-- A run's step card (step-card.html): its title and who's on it, when it's due, Done and Skip. Where the run is,
+           its steps listed under it say -->
+      <div class="sec">A run’s step card: on a step of yours, counting down; one Priya is on, half done; one done, tapped in the list</div>
       <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
         <!-- include markup/step-card.html -->
       </div></template>

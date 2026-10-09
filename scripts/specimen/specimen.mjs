@@ -4,6 +4,8 @@ import {directives, globals, pocket} from '../../src/js/component.js';
 import {setApp} from '../../src/js/util.js';
 import {CHECKLIST_MARK} from '../../src/js/checklists.js';
 import {blankSheet} from '../../src/js/app/core.js';
+import {listItems, nestSubtasks} from '../../src/js/lists.js';
+import {positionOrder} from '../../src/js/order.js';
 
 const ZERO = '0001-01-01T00:00:00Z', HOUR = 36e5;
 const at = ms => new Date(Date.now() + ms).toISOString();
@@ -47,11 +49,11 @@ function sections(){
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
-  // Today's cards (cards.js): a task of high priority with one subtask of five done and four open (one of them yours),
-  // paged to the second open one, 3 of 5; a run with a step counting down; a run started from a template that came round,
-  // due when it was; a task with one subtask open; and one of 14, past MANY_STEPS, five done, paged to 8 of 14, of low
-  // priority. Their subtasks are in the store, as Today keeps them. A run's heading reads as a task's: its name without
-  // the day it was started (runWithoutDay), and when it's due at the right.
+  // Today's stacked cards (cards.js): a task of high priority with one subtask of five done and four open (one of them
+  // yours), opened by its peek; a run with a step counting down; a run started from a template that came round, due when
+  // it was; a task with one subtask open, so no peek; and one of 14, five done, of low priority. Their subtasks are in
+  // the store, as Today keeps them. A run's heading reads as a task's: its name without the day it was started
+  // (runWithoutDay), and when it's due at the right.
   const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
   const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), priority: 3, related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
@@ -77,7 +79,25 @@ function sections(){
     task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),
     task({title: 'Order the cups', due_date: dayAt(2, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(12, 0)}),
     task({title: 'Fix the till drawer', due_date: dayAt(0, 9), priority: 5, assignees: [me]})];
-  return {parent, steps: runSteps(), cards: [van2, opening, closing, sign, shelves], cardSubs, list: [
+  /* A project's open list (cards 'list'): a task whose open subtasks are on its card, open for good, in its List view's
+     order (one with a subtask of its own, a row that opens its sheet; one waiting to be sent, added from the add box);
+     a task with none, a row; a task done over a subtask still open, its title struck through; and a run in progress,
+     its open steps on it in its order. */
+  const launch = task({title: 'Plan the launch party', related_tasks: {subtask: [{id: 761}, {id: 762, done: true}, {id: 763}, {id: 764}]}});
+  const plain = task({title: 'Water the plants'});
+  const staff = task({title: 'Plan the staff party', done: true, related_tasks: {subtask: [{id: 771}]}});
+  const closing2 = task({title: `Closing up · run 6 · ${day}`, created: now.toISOString(), project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 896}], subtask: [{id: 781, done: true}, {id: 782}, {id: 783}]}});
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(17, 0, 0, 0);
+  const projectSubs = [kid(761, {under: launch.id, title: 'Book the band', assignees: [priya]}),
+    kid(763, {under: launch.id, title: 'Order the cake', percent_done: .5, related_tasks: {parenttask: [{id: launch.id}], subtask: [{id: 765}]}}),
+    kid(765, {under: 763, title: 'Pick a flavour'}), kid(764, {under: launch.id, title: 'Print the flyers', due_date: tomorrow.toISOString()}),
+    {...task({title: 'Hang the bunting'}), id: 'pending-specimen-1', pending: true, parent: launch.id, position: 2.5, entry: 'specimen-sub', index: 0},
+    kid(771, {under: staff.id, title: 'Book the back room', due_date: at(30 * HOUR)}),
+    kid(782, {under: closing2.id, project_id: 2, title: 'Stack the chairs', related_tasks: {parenttask: [{id: closing2.id}], copiedfrom: [{id: 6}]}}),
+    kid(783, {under: closing2.id, project_id: 2, title: 'Lock the door', related_tasks: {parenttask: [{id: closing2.id}], copiedfrom: [{id: 7}]}})];
+  const project = {list: [plain, launch, staff, closing2, ...projectSubs], heads: [staff.id],
+    positions: {[launch.id]: 10, [plain.id]: 20, [staff.id]: 30, [closing2.id]: 40, 761: 1, 763: 2, 764: 3, 765: 1, 771: 1}};
+  return {parent, steps: runSteps(), cards: [van2, opening, closing, sign, shelves], cardSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -170,7 +190,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
   c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
     {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
-  c.specimen = []; c.specimenCards = []; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
+  c.specimen = []; c.specimenCards = []; c.specimenProject = {items: []}; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -213,11 +233,15 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.view.run = {run, steps: inRow, at: 4, last: null};
     // (from the step before the card's to the run's next steps; other ids, so the states above stay on their own rows)
     this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4, target: {step: true, after: 'Stack the trays', repeat: this.runView.step.title, canRepeat: true}};
-    // Today's cards: their subtasks in the store, the van's paged to its second open step, the shelves' to their third.
+    // Today's cards: their subtasks in the store, the van's opened by its peek.
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
-    this.cardPage = {[s.cards[0].id]: {id: 703, i: 1}, [s.cards[4].id]: {id: 738, i: 2}};
+    this.cardOpen = {[s.cards[0].id]: true};
+    // A project's open list, as listGroups makes it: each subtask under its parent there, and what it shows.
+    Object.assign(this.positions, s.project.positions);
+    const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
+    this.specimenProject = {...g, items: listItems(g.tasks, g.depth, t => !!this.cardOf(t, g))};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped to 75%, late, waiting on another step, and a tick waiting to send',
         depth: {}, run: true, at: 4, locked: false, tasks: steps},
@@ -246,6 +270,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     });
   };
   c.loadPerms = () => {};                                  // nothing to ask Vikunja
+  c.watchCard = () => {};                                  // an opened card stays open, off the screen too
   return c;
 }));
 Object.assign(window, globals);
