@@ -123,7 +123,7 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
 {
   const { context, page } = await phone();
   await page.screenshot({ path: out('pocket-today.png') });
-  await page.locator('.day-card:has-text("Order oat milk") > .card-head').click();   // a card on Today: its title opens it
+  await page.locator('.day-card:has-text("Order oat milk") .card-open').click();     // a card on Today: its title opens it
   await page.waitForSelector('#d-comments .comment'); await page.waitForTimeout(500);
   await page.screenshot({ path: out('pocket-task.png') });
   await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -187,10 +187,10 @@ async function tap(sel){
 gif = await phone({ scale: 1.5, height: 760 });
 let { page, touch } = gif;
 
-await snap(1800);                                                    // Today, the oat milk order a card on its next step
-// 1. A card pages through its open steps: › shows the one after, and its place in the count and on the line moves.
-await tap('.day-card:has-text("Order oat milk") .pg.next');
-await page.waitForSelector('.day-card:has-text("Order oat milk") .card-n:text-is("3 of 3")'); await page.waitForTimeout(250);
+await snap(1800);                                                    // Today, the oat milk order a card folded to its next step
+// 1. A card opens where it is: the tab under its top row lists every open subtask, the rows below moving down.
+await tap('.day-card:has-text("Order oat milk") .card-more[aria-expanded=false]');
+await page.waitForSelector('.day-card:has-text("Order oat milk") .card-more[aria-expanded=true]'); await page.waitForTimeout(250);
 await snap(1500);
 // 2. Quick add: the words it reads are highlighted, and chips say what they'll save.
 await tap('#in-capture');
@@ -200,15 +200,16 @@ await tap('#f-capture .go');
 await page.waitForSelector('.row .title:has-text("Order 6 bags")');
 await page.locator('#in-capture').blur(); await page.waitForTimeout(150);   // the box's help goes with the keyboard
 await film(1500); hold(800);                                       // the new row lights up, then fades
-// 3. Progress: hold a task nobody has, then slide; "+ me" becomes Alex's A as it starts, and it stops at 25% and 50%.
+// 3. Progress: a plain swipe right on a task nobody has. The ring in the green space it uncovers fills to 25%, then
+//    50%; let go, the row springs back with its tick half filled, and "+ me" becomes Alex's A.
 {
   await page.waitForTimeout(250); await snap(300);
   const row = await page.locator('.row:has-text("Post next week")').boundingBox();
-  const x = row.x + 30, y = row.y + row.height / 2;        // so the finger ends at the edge of the fill
-  await touch('touchStart', x, y); await snap(250);
-  await page.waitForSelector('.row.setting'); await snap(350);
-  const width = row.width * .8;
-  for (let step = 1; step <= 6; step++) { await touch('touchMove', x + width * step / 10, y); await snap(130); }
+  const x = row.x + 30, y = row.y + row.height / 2;
+  // Sideways at once: held still for half a second, a row on Today would open the ring of dates instead.
+  await touch('touchStart', x, y); await touch('touchMove', x + 12, y);
+  const width = row.width * .3;                            // 50% is reached at a quarter of the row, done at half
+  for (let step = 1; step <= 6; step++) { await touch('touchMove', x + 12 + (width - 12) * step / 6, y); await snap(130); }
   hold(600);
   await touch('touchEnd');
   await page.waitForSelector('.row:has-text("Post next week") .claim.mine'); await page.waitForTimeout(300);
@@ -222,7 +223,7 @@ await film(1200); hold(1800);
 await gif.context.close();
 await writeGif('pocket-demo.gif');
 
-// ---------- the checklist GIF: opening up the café, its square steps, its line a segment a step, and its timed steps ----------
+// ---------- the checklist GIF: opening up the café, its own row with its ring, its square steps, and its timed steps ----------
 // Templates made as Pocket makes them: labelled "template", their steps done, then themselves done.
 const tplLabel = (await A('GET', '/labels')).items.find(l => l.title === 'template') || await A('POST', '/labels', { title: 'template' });
 async function template(title, steps){
@@ -252,7 +253,7 @@ await page.waitForSelector('#step-title'); await page.waitForTimeout(400);
 await snap(1800);                                                    // a run just started says so, with an Undo
 await tap('#step-done');
 await page.waitForSelector('#step-title:text-is("Put the croissants in the oven")'); await page.waitForTimeout(300); await snap(1200);
-await tap('#step-done');                                             // the grinder is due in 20m, and the croissants are pinned above it
+await tap('#step-done');                                             // next in order, the grinder, due in 20m; the croissants pinned above it
 await page.waitForSelector('#step-title:text-is("Dial in the grinder")'); await page.waitForSelector('#run-timers'); await page.waitForTimeout(400);
 await film(600); hold(3600);
 await page.screenshot({ path: out('pocket-run.png') });             // a still of the run, for the README
