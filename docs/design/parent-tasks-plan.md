@@ -153,6 +153,19 @@ Reported to the user, not changed:
 - **A parent can be due before its subtasks:** due today at 5 PM, its subtasks Monday, its card sits in Overdue
   showing a subtask that isn't. Which date puts a card in a section?
 
+## 6b. A task's sheet leads with its row (user, 2026-10-09: a mock in the specimen first, built after review)
+
+The sheet opened by tapping a task (not a checklist's) starts with one card: the task's row, then its notes and photos.
+
+- **The row as in a list:** its tick with its quarter (a parent's ring), its title, its slot, its line of when it's due;
+  swiped right and left with the same reveal. Its title is edited where it is, with a tap.
+- **The progress bar goes.** Progress is the tick's, set by a swipe. Its tap path (rule 3) is a "Progress" line in
+  Details: 0, 25, 50, 75%.
+- **Notes and Attachments fold into the card,** under the row: the notes (a tap edits them), then the photos and files
+  with Add a photo. Due and Reminders, Subtasks, Comments and Details stay below, as now.
+- **A full swipe right in the sheet ticks it in place:** the sheet is about this one task, so no gap. A swipe left at
+  0% deletes it: the sheet closes on the list, where the task's gap has Restore.
+
 ## 7. Tests, docs and pictures, after the user's review
 
 - **End-to-end tests** for: swiping right with no hold, its snaps and a full swipe; claiming; progress down past 0% into
