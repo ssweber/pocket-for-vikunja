@@ -136,6 +136,29 @@ A run is a parent too: its steps are its subtasks.
 - **A card moves only the parent's date. A repeating task moves only this occurrence.**
 - **It's "Move all to today" one at a time:** share its code and its Undo.
 
+### 4b. A ring to throw it at (user, 2026-10-09, replacing the drag across sections; to try after the polish)
+
+Built as above (36a3887), a drag through Today's sections is long, and a day with nothing on it can't be reached. The
+user's idea: holding a row should make it something small you throw, with no scrolling. Research on quick reschedule
+targets and on marking menus (Kurtenbach and Buxton) is in the git-ignored `scratchpad/parent-tasks/reschedule-targets.md`.
+
+- **Held, a row or a card shrinks to a small box under the finger,** and a ring of targets appears around it, always
+  in the same directions, so it becomes a flick that needs no looking. A flick made at once counts, before the ring has
+  even drawn. A tick is felt crossing into each target.
+- **Today to the left, Tomorrow to the right:** wide, quick flicks. Today is dimmed on a task already due today; a
+  target never moves or disappears.
+- **Above, an arc of five tiles, Mon to Fri,** each the next one of that day after tomorrow, with its date: early in
+  the week they're mostly this week, by Wednesday mostly next. Their places never move (Monday always at the left), and
+  next week's are shaded. "Same day next week" and "next Monday" are among them. Weekends are left to the sheet.
+- **No date is a long pull down,** past the ring, like dragging to a bin: it takes the task off Today, so it's never a
+  slip. Pick a date is the sheet's Due.
+- **The middle is "keep it here".** Let go in a target, and the task moves at once: no Undo line. This is rule 8's one
+  exception: a throw can be called off before it's let go, by letting go in the middle.
+- **Near an edge, the ring shifts onto the screen** and keeps its directions.
+- **The targets and their rule are one list in the code** (as the swipe's `SIDES`), so the set can be tried and changed:
+  "always next week's Mon to Fri" is one setting.
+- Kept from 4: the time of day, a card moving only its parent's date, and a repeating task staying put with its note.
+
 ## 5. Shared progress matches the screen
 
 - **"Share progress as a text" and the copied Markdown list use the worked-out figure,** with a bar of one segment per
