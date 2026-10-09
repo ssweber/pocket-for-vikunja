@@ -290,7 +290,7 @@ export default {
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
       // A stacked card: each of its rows as any row (cardGesture); its header the parent's (headGesture), and held, on a
-      // project's list, the card moved up or down (cardHold); its peek, Show less and Close, only a tap.
+      // project's list, the card moved up or down (cardHold); its footer (More, Less) and Close, only a tap.
       const card = target.closest('.day-card'), row = target.closest('.card-rows > .row, .list:not(.tree) > .row, .item > .row');
       if (card && !row) return target.closest('.card-head') && !target.closest('.row-del') ? this.cardGesture(card, this.headGesture(card), this.cardHold(card)) : null;
       if (!row || target.closest('.row-del')) return null;

@@ -71,7 +71,7 @@ export default () => ({
   swept: {},                                   // task id -> true: done by a full swipe, a gap with Undo in its place meanwhile (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
-  cardOpen: {},                                // a card's id -> true, opened by its peek, on Today or in search
+  cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: null,                            // a task or step whose progress is being slid, which you'll be doing (claimOnSlide)
   // The one-time hint to swipe right (progress.js): the row (or card) it's on, on this screen; whether to pick one as
   // the screen is first drawn; and whether it has done its job, on this phone.

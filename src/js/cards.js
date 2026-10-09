@@ -1,5 +1,5 @@
 /* The stacked card: anything with open subtasks or steps shows as a card, its title over its open subtasks, collapsed
-   on Today to the most urgent with a peek at the next; on Today never as rows of its subtasks. What brings one onto
+   on Today to the most urgent with "More" under it; on Today never as rows of its subtasks. What brings one onto
    Today, where it sits there, and which subtask is on top, is worked out here, apart from the screen, so the unit
    tests can check it; app/cards.js draws them. */
 import {isLate, isSet, startOfDay} from './dates.js';

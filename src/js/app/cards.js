@@ -2,8 +2,8 @@
    wherever it's listed. Its heading (its title, which opens the task, and its count, the subtasks done of all of them),
    then its open subtasks on the shared row (task-row.html) with the card's own options (g.card), each acting as any
    row does. On Today and in search it's collapsed: its top row, the most urgent (a run's, its next step), and under it
-   a peek at the next, a tap opening it in place; opened, it collapses again once scrolled off the screen, or by Show
-   less. Which tasks are cards on Today, and why, is cards.js; what a card needs is read once per project shown, not
+   a slim footer, "More", a tap opening it in place; opened, it collapses again once scrolled off the screen, or by
+   "Less". Which tasks are cards on Today, and why, is cards.js; what a card needs is read once per project shown, not
    once per card (readCards). */
 import {PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
@@ -25,8 +25,8 @@ export default {
      subtasks or steps. And anywhere, an open task (or run) whose subtasks are all done: a card with no rows, its header
      saying so with Close (`closes`: parent-tasks-plan, part 3; nothing closes behind your back). {id, run, step: its top
      row, steps: its open subtasks in the card's order (a step ticked stays, done, until the batch clears: leaving.js),
-     rows: those shown (the top one; opened, all), n, peek: the next, shown under a collapsed card, more: how many it
-     stands for, open, folds: whether it can be collapsed, all: every subtask, done ones too, ring: its ring (ringOf),
+     rows: those shown (the top one; opened, all), n, peek: the next, under a collapsed card (its footer, More, shows
+     for it), more: how many it stands for, open, folds: whether it can be collapsed, all: every subtask, done ones too, ring: its ring (ringOf),
      closes, g: its rows' options (a row's on that screen: Delete; on Today, one line)}. A task marked done in place
      (its ring, Close) stays a card until the batch clears. */
   cardOf(t, g){
@@ -180,10 +180,10 @@ export default {
   pinCard(c){ if (c?.step) this.cardPage[c.id] = c.step.id; },
   // Leaving the screen: every card back on its next step, and collapsed.
   resetCards(){ this.cardPage = {}; this.cardOpen = {}; shownStep.clear(); },
-  /* The peek tapped: the card opens in place, every open subtask listed, the rows below pushed down by that tap. It's
+  /* Its footer's More tapped: the card opens in place, every open subtask listed, the rows below pushed down by that tap. It's
      watched (watchCard) to collapse again once it's off the screen. */
   openCard(c){ this.cardOpen[c.id] = true; },
-  /* Collapsed again: by Show less, or (watchCard) once it's off the screen. Above it, out of sight, the screen is kept
+  /* Collapsed again: by its footer's Less, or (watchCard) once it's off the screen. Above it, out of sight, the screen is kept
      still as it shrinks: what's in sight doesn't move (the browser may do that itself, then this does nothing). */
   foldCard(id, el = null){
     const was = el?.getBoundingClientRect().bottom;
@@ -196,7 +196,7 @@ export default {
     cardIO ||= new IntersectionObserver(es => { for (const e of es) if (!e.isIntersecting) { cardIO.unobserve(e.target); if (this.cardOpen[e.target.dataset.id]) this.foldCard(e.target.dataset.id, e.target); } });
     cardIO.observe(el);
   },
-  /* A collapsed card's top row, new to it (the one before gone with the batch): it slides up from where the peek was,
+  /* A collapsed card's top row, new to it (the one before gone with the batch): it slides up from under it,
      fading in. Not when the card is first drawn, nor in an opened card, where the rows below close up instead, nor with
      less motion asked for. */
   cardEntered(el, c, t){

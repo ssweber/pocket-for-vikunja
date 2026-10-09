@@ -115,10 +115,10 @@ const today = () => {
   return { app, parent, g: { cards: 'today', line: true } };
 };
 
-test('a card: its open subtasks, the most urgent first, collapsed to its top row with a peek at the next, and its ring', () => {
+test('a card: its open subtasks, the most urgent first, collapsed to its top row with More under it, and its ring', () => {
   const { app, parent, g } = today(), c = app.cardOf(parent, g);
   assert.deepEqual(c.steps.map(s => s.title), ['Chairs', 'Tables', 'Lights'], 'none dated: its List view’s order');
-  assert.deepEqual([c.step.title, c.rows.map(s => s.title), c.peek.title, c.more, c.open], ['Chairs', ['Chairs'], 'Tables', 2, false], 'its top row, and a peek at the next: “Tables · 2 more”');
+  assert.deepEqual([c.step.title, c.rows.map(s => s.title), c.peek.title, c.more, c.open], ['Chairs', ['Chairs'], 'Tables', 2, false], 'its top row, and under it More (the next, and how many more, kept for it)');
   assert.deepEqual([c.ring.done, c.ring.total, c.ring.pct, c.ring.said], [1, 4, 25, '1 of 4 subtasks done, 25%'], 'its ring: the done one counted, and its figure worked out');
   assert.equal(c.ring.label, 'Complete “Pack the van” and its 3 open subtasks', 'what its tap does');
   assert.deepEqual([c.g.card, c.g.line, c.g.delete], [c, true, true], 'its rows know their card, are on one line, and have Delete, as Today’s rows do');
@@ -128,20 +128,20 @@ test('a card: its open subtasks, the most urgent first, collapsed to its top row
   assert.deepEqual(app.cardOf(parent, g).steps.map(s => s.title), ['Lights', 'Chairs', 'Tables'], 'Lights late: on top');
 });
 
-test('a card opened by its peek lists every open subtask, and collapses again; with one open subtask, no peek', () => {
+test('a card opened by its More lists every open subtask, and collapses again by its Less; with one open subtask, no footer', () => {
   const { app, parent, g } = today();
   app.openCard(app.cardOf(parent, g));
   let c = app.cardOf(parent, g);
   assert.deepEqual([c.open, c.rows.map(s => s.title), c.peek, c.folds], [true, ['Chairs', 'Tables', 'Lights'], null, true]);
   app.foldCard(c.id);
   c = app.cardOf(parent, g);
-  assert.deepEqual([c.open, c.rows.length, c.peek.title], [false, 1, 'Tables'], 'collapsed: the peek back');
+  assert.deepEqual([c.open, c.rows.length, c.peek.title], [false, 1, 'Tables'], 'collapsed: More back');
   app.openCard(c);
   app.resetCards();
   assert.equal(app.cardOf(parent, g).open, false, 'leaving the screen: collapsed');
   for (const id of [12, 13]) app.tasks[id].done = true;
   c = app.cardOf(parent, g);
-  assert.deepEqual([c.step.title, c.peek, c.more], ['Lights', null, 0], 'one open subtask: no peek');
+  assert.deepEqual([c.step.title, c.peek, c.more], ['Lights', null, 0], 'one open subtask: no footer');
   app.openCard(c);
   assert.equal(app.cardOf(parent, g).open, false, 'nor anything to open');
 });
@@ -180,7 +180,7 @@ test('on a project’s list a card is open, its rows the subtasks under it there
   const n = nestSubtasks([plain, app.tasks[11], parent, app.tasks[13], rope, app.tasks[12], deeper], positionOrder(app.positions));
   const g = { cards: 'list', delete: true, reorder: true, heads: [], ...n }, c = app.cardOf(parent, g);
   assert.deepEqual(c.rows.map(s => s.title), ['Chairs', 'Tables', 'Rope', 'Lights'], 'its subtasks there, one waiting to be sent among them');
-  assert.deepEqual([c.open, c.folds, c.peek], [true, false, null], 'open, for good: no peek, nor Show less');
+  assert.deepEqual([c.open, c.folds, c.peek], [true, false, null], 'open, for good: no More, nor Less');
   assert.deepEqual([c.ring.done, c.ring.total, c.ring.pct], [1, 5, 20], 'counting the one waiting to be sent, at 0%');
   assert.deepEqual([c.g.delete, c.g.reorder, c.g.depth], [true, true, {}], 'its rows deleted and moved as the list’s');
   assert.equal(app.cardOf(plain, g), null, 'a task with no subtasks there: a row');
