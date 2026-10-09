@@ -134,7 +134,9 @@ try {
     await noToast(page);
     if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
     await expect(page.locator(`${row} > .row-prog`)).toHaveCount(0);                // sprung back, the space gone
-    await expect.poll(() => tickPct(row)).toBe(50);                              // its tick shows it
+    await expect.poll(() => tickPct(row)).toBe(50);                              // its tick shows it: a half pie
+    const pie = await page.locator(`${row} > .check`).evaluate(el => getComputedStyle(el).backgroundImage);
+    if (!/^conic-gradient\(/.test(pie)) throw new Error('its tick has no pie: ' + pie);
     await synced(page);
     if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('saved percent_done ' + (await apiTask()).percent_done);
     // From the right of the row, a full swipe is still within reach before the screen's edge; dragged back to where it
