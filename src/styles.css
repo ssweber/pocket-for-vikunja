@@ -1,6 +1,6 @@
 :root{
   --bg:#EEF1EF; --surface:#FFFFFF; --sunk:#E3E8E5; --ink:#17201C; --muted:#5B6863; --line:#D6DDD9;
-  --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#E3E8E5;
+  --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#8C9692;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
   /* shadows, and the shade behind a sheet: the same in dark mode, whose block below redefines any that should differ */
   --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
@@ -8,19 +8,22 @@
   --shadow-lift:0 1px 3px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.2); --danger-ink:#FFFFFF;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
   --pad:16px; --cap-h:64px; --kb:0px;
+  /* A tick, a step's box and a ring are one size, and a row's title starts after it: the row's padding, the marker, the
+     gap. A subtask is indented by a marker and a gap, so its tick is under its parent's title. */
+  --tick:28px; --title-x:calc(14px + var(--tick) + 12px);
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
-  --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#2C3833;
+  --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#66726D;
   --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B; --danger-ink:#1A080C;
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}   /* so iOS doesn't enlarge text when the phone is turned */
-.focus-keeper{position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px;pointer-events:none}
-body{background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+.focus-keeper{position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:17px;pointer-events:none}
+body{background:var(--bg);color:var(--ink);font:17px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:8px}
@@ -119,27 +122,34 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row:first-of-type{border-top:0}
 /* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too,
    as does the fill while its progress is set (--row-inset, read by each) */
-.row.sub{--row-inset:calc(14px + var(--depth) * 38px);padding-left:var(--row-inset);border-top-color:transparent}
+.row.sub{--row-inset:calc(14px + var(--depth) * (var(--tick) + 12px));padding-left:var(--row-inset);border-top-color:transparent}
 .row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
-/* a row's title takes taps over the row's full height, and up to its edge when there's nothing after it */
-:not(.tree) > .row > button.body{align-self:stretch;margin:-12px 0;padding:14px 0}
+/* a row's title takes taps over the row's full height, and up to its edge when there's nothing after it. Its first line
+   is placed from the top, centred 28px down, on its tick's line, whatever's under it (a button would centre it all) */
+:not(.tree) > .row > button.body{align-self:stretch;margin:-12px 0;padding:16px 0 14px}
+:where(:not(.tree) > .row) > button.body{display:flex;flex-direction:column;justify-content:flex-start}
+.row > div.body:not(.step-in){padding:4px 0 2px}
+/* a row with no tick (a template, New template) has its icon and words in the middle */
+.row:is(.cl-tpl,.cl-new) > button.body{padding-top:14px}
 :not(.tree) > .row > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:-14px;padding-right:14px}
-.row .title{font-size:16.5px;overflow-wrap:anywhere}
+.row .title{font-size:17px;line-height:24px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
+/* a task's sheet leads with its row: its title the sheet's heading, over its subtasks, as a card's header is */
+.row.own .title{font-weight:650}
 /* On one line (Today): the title cut short with "…", and at its right, when it's due, short, and its project's dot. Its
    height is a row's with one line; a screen reader hears the rest (rowWhen) */
 .row.one-line .title-line{display:flex;align-items:baseline;gap:8px}
 .row.one-line .title{position:relative;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
 /* what only a screen reader hears, kept at the start, not past the end of a title cut short */
 .row.one-line .title .sr,.card-open > .sr{left:0}
-.when{flex:none;display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);white-space:nowrap}
+.when{flex:none;display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);white-space:nowrap}
 .when .dot{margin:0}
 /* its priority's bars, small, before its time, as on a card's heading (one-concept-plan, part 4) */
 .when .bars{height:9px}
 .when .due.overdue,.card-head .due.overdue{color:var(--overdue);font-weight:600}
 .when .due.today,.card-head .due.today{color:var(--today);font-weight:600}
-.meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:13.5px;color:var(--muted)}
+.meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:14px;line-height:19px;color:var(--muted)}
 /* A long name with no spaces (an address pasted as a title, say) breaks where it must, rather than widening a row or a sheet */
 .meta > span,.d-path .linkish,.d-parent,.d-title h2,#sheet h3,.sec > span,.kicker,.cl .title{min-width:0;overflow-wrap:anywhere}
 .meta .due.overdue{color:var(--overdue);font-weight:600}
@@ -152,13 +162,13 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .slide-hint.gone{opacity:0;visibility:hidden}
 @media (prefers-reduced-motion:reduce){.slide-hint{transition:none}}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
-.check{width:26px;height:26px;border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:1px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
+.check{width:var(--tick);height:var(--tick);border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:2px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
 /* a tick's touch target is 48px, past its circle; on a row, the whole left gutter, at the row's full height, up to its
    title (a subtask's from the row's edge) */
 button.check{position:relative}
 button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row > button.check{position:static;padding:3px}
-.row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + 38px)}
+.row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + var(--tick) + 12px)}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
 .row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
 .row.done .check svg,.check.on svg{opacity:1}
@@ -166,7 +176,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    through its run, with its ✅), so they look it. */
 .check.sq{border-radius:7px}
 .empty{text-align:center;color:var(--muted);padding:48px 12px}
-.empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
+.empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 .loading{padding:40px 0;text-align:center;color:var(--muted)}
 .offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* a task not sent yet, once it has waited a few seconds (or at once offline) */
@@ -192,8 +202,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .check.no-tick.ro{border:2px dotted var(--line)}
 /* Who's doing a subtask or a step, at the end of its row: "+ me" when no one is, else their pictures or initials */
 .claim{flex:none;display:flex;align-items:center;gap:2px;min-width:48px;height:48px;margin:-10px -8px -10px 0;padding:0 6px;border:0;background:transparent;color:var(--muted);justify-content:center}
-/* at a row's end, it takes taps over the row's full height, to its edge; what it shows stays beside the title */
-.row > .claim:not(:has(~ .icon-btn)){align-self:stretch;align-items:flex-start;height:auto;min-width:66px;margin:-12px -14px -12px -12px;padding:12px 12px 0 18px}
+/* at a row's end, it takes taps over the row's full height, to its edge; what it shows stays on the title's first line */
+.row > .claim:not(:has(~ .icon-btn)){align-self:stretch;align-items:flex-start;height:auto;min-width:66px;margin:-12px -14px -12px -12px;padding:14px 12px 0 18px}
+/* before a × (a task waiting to be sent), on the first line too, taking no more height than a tick */
+.row > .claim{margin:-8px -8px -12px 0}
+/* On one line (Today), one width, what it shows against the right edge, so the time and the dot before it make a
+   column down the list whether it holds "+ me" or a picture */
+.row.one-line > .claim:not(:has(~ .icon-btn)){min-width:84px;justify-content:flex-end}
 .claim[aria-disabled=true]{cursor:default}
 /* People's pictures on a row (pics.html): one size everywhere, two at most, a little overlapped, yours ringed; a done
    step's doer has a ✓ on the corner of theirs */
@@ -202,7 +217,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .pic + .pic{margin-left:-4px}
 .pic:has(> .badge) + .pic{margin-left:5px}                  /* the ✓ clear of the next picture, so it's plainly the doer's */
 .pic.mine{z-index:1}
-.pic .av{position:relative;width:28px;height:28px;border-radius:50%;background:var(--sunk);color:var(--ink);display:grid;place-items:center;font-size:11.5px;font-weight:700;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}
+.pic .av{position:relative;width:28px;height:28px;border-radius:50%;background:var(--sunk);color:var(--ink);display:grid;place-items:center;font-size:11.5px;font-weight:700;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}   /* off the scale: initials sized to the circle */
 /* a picture isn't dragged as an image: a row held there is held, its slide not cut off by the browser's own drag */
 .pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;-webkit-user-drag:none}
 .pic.mine .av{box-shadow:0 0 0 2px var(--accent)}
@@ -211,13 +226,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.current .badge{box-shadow:0 0 0 2px var(--accent-soft)}
 .badge svg.i{width:10px;height:10px;stroke-width:3.4;color:var(--accent-ink)}
 .badge.skip,.badge.wait{background:var(--muted)}
-.pics .more{padding-left:3px;font-size:12px;color:var(--muted)}
-.claim .me{height:28px;padding:0 9px;border-radius:14px;border:1.5px dashed color-mix(in srgb,var(--accent) 50%,var(--line));color:var(--accent);font-size:12.5px;font-weight:650;line-height:25px;white-space:nowrap}
+.pics .more{padding-left:3px;font-size:13px;color:var(--muted)}
+.claim .me{height:28px;padding:0 9px;border-radius:14px;border:1.5px dashed color-mix(in srgb,var(--accent) 50%,var(--line));color:var(--accent);font-size:13px;font-weight:650;line-height:25px;white-space:nowrap}
 .row.done .pic .av{opacity:.7}
 /* A done step: who did it and who had it, not tappable, so no ring for yours: the ✓ says it */
 .did .pic.mine .av{box-shadow:0 0 0 2px var(--surface)}
 .row.current .did .pic.mine .av{box-shadow:0 0 0 2px var(--accent-soft)}
-.did{flex:none;align-self:center;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
+.did{flex:none;align-self:flex-start;margin-top:2px;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
 .ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* Rows are held, slid, swiped and moved, so a long press never selects their words (nor shows the phone's menu for
    them); what's typed in one stays selectable. A phone's long press picks the nearest words it can select, so what's
@@ -233,18 +248,21 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* A parent's ring (parent-tasks-plan, part 3: ring.html), in place of a tick: a task with subtasks, or a run. Thin, its
    arc the worked-out figure (--ring) from 12 o'clock on a faint track, never a quarter's pie, so it isn't taken for a
    task's own tick; done of all inside it. With every subtask done, the count turns the accent's colour (it waits for
-   Close). On a row or a card's header, laid out a tick's size, its circle a little larger, centred where a tick's is,
-   and its touch target the whole left gutter, as a tick's. */
-.ring{position:relative;flex:none;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
+   Close). On a row or a card's header, a tick's size, drawn with a tick's line, its track as plain as a tick's edge
+   (3:1 on the card), so a ring at 0 still reads as a circle, centred where a tick's is, and its touch target the whole
+   left gutter, as a tick's. */
+.ring{position:relative;flex:none;display:grid;place-items:center;width:var(--tick);height:var(--tick);padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
 .ring > *{grid-area:1/1}
 .ring .arc{width:100%;height:100%;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),var(--track) 0);
-  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2.5px),var(--ink) calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 2.5px),var(--ink) calc(100% - 2px))}
-.ring .n{font-size:10.5px;font-weight:650;letter-spacing:-.03em;line-height:1}
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),var(--ink) calc(100% - 1.5px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),var(--ink) calc(100% - 1.5px))}
+.ring .n{font-size:10px;font-weight:650;letter-spacing:-.03em;line-height:1}
+/* off the scale, inside a ring only: 10px, and 8.5px with five characters (12/14), so they fit */
+.ring.long .n{font-size:8.5px;letter-spacing:-.05em}
 .ring.full .n{color:var(--accent);font-weight:750}
 .ring:disabled{opacity:.7}
 button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
-:is(.row,.card-head) > .ring{position:static;margin:-2px -3px}
-:is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + 38px)}
+:is(.row,.card-head) > .ring{position:static;margin:2px 0 0}
+:is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + var(--tick) + 12px)}
 /* Held, to be moved, the row lifts; swiped and let go, it springs back (with less motion, it's only back) */
 .row,.card-head{transition:box-shadow .15s,transform .2s ease}
 @media (prefers-reduced-motion:reduce){.row,.card-head{transition:box-shadow .15s}}
@@ -272,11 +290,13 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row-prog[data-side=left]{right:100%}
 .row-prog[data-side=right]{left:100%}
 /* the ring stays where it's uncovered, by the list's edge, rather than following the row: close to it, so it's in
-   sight by the first stop */
-.row-prog .ring{position:absolute;top:50%;width:36px;height:36px;margin-top:-18px;padding:4px;border:3px solid var(--accent);border-radius:50%;display:grid;place-items:center;
+   sight by the first stop; on the title's first line, where the tick is, not in the middle of a taller row */
+.row-prog .ring{position:absolute;top:10px;width:36px;height:36px;padding:4px;border:3px solid var(--accent);border-radius:50%;display:grid;place-items:center;
   background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
 .row-prog[data-side=left] .ring{left:10px}
 .row-prog[data-side=right] .ring{right:10px}
+/* a card's header uncovers only its 44px strip: its ring smaller there, so it isn't cut off at the strip's foot */
+.card-head > .row-prog .ring{top:12px;width:32px;height:32px;padding:3px}
 .row-prog.sq .ring{border-radius:10px}
 .row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
 .row-prog[data-tick=a] .ring{animation:pct-a .22s ease-out}
@@ -298,7 +318,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    indent, and Restore or Undo where who's doing it was, the same shape as "+ me". (What the swipe uncovered stays
    while the row carries on off the screen: sweep.) */
 .row:is(.deleted,.swept) > :not(.del-gap,.row-del,.row-prog),.row:is(.deleted,.swept)::after{visibility:hidden}
-.del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14.5px}
+.del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14px}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}
@@ -321,31 +341,32 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .item.drop-day::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:color-mix(in srgb,var(--accent-soft) 40%,transparent);box-shadow:inset 3px 0 0 var(--accent)}
 .drop-tag{position:absolute;top:12px;right:12px;z-index:4;padding:4px 10px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700;white-space:nowrap;pointer-events:none;box-shadow:var(--shadow-low)}
 .day-card.held{z-index:2;box-shadow:var(--shadow-lift);background:var(--surface)}
-/* The stacked card: anything with open subtasks or steps. Its title is a heading, quieter than its rows, the things to
-   do; under it, its rows, each the shared row, a plain row like any other */
+/* The stacked card: anything with open subtasks or steps. Its title is the heading of its rows, the things to do: their
+   size, heavier; under it, its rows, each the shared row, a plain row like any other */
 .day-card{position:relative}
 /* its header: the parent's ring, where its rows' ticks are, then its title, which opens it, on one line: the title cut
-   short with "…", its priority's bars, small, and when it's due, short */
+   short with "…", its priority's bars, small, and when it's due, short, on the title's baseline as on a row. The ring
+   and the title's line are centred 28px down, as a row's tick and title are. */
 .card-head{position:relative;display:flex;align-items:flex-start;gap:12px;min-height:44px;padding:12px 14px 0;background:var(--surface)}
-.card-open{flex:1;min-width:0;display:flex;align-items:center;gap:8px;align-self:stretch;margin:-12px -14px 0 0;padding:12px 14px 0 0;border:0;background:transparent;text-align:left;color:var(--ink)}
-.card-title{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:-12px -14px 0 0;padding:16px 14px 0 0;border:0;background:transparent;text-align:left;color:var(--ink)}
+.card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
-.card-head .due{flex:none;font-size:13.5px;color:var(--muted);white-space:nowrap}
+.card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
 .card-head:is(.swiping,.swiped,.revealing){z-index:1}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
 .day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
-.card-close{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px 6px 52px;color:var(--accent);font-size:14.5px;font-weight:600}
+.card-close{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
 .card-close > span{flex:1;min-width:0}
-.close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:14.5px;font-weight:700}
+.close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700}
 .close-btn:disabled{background:var(--sunk);color:var(--muted)}
 /* The question a parent's ring asks (sheet/complete.html): what goes with it, named in a sentence */
-.complete-note{margin:10px 0 18px;font-size:15.5px;color:var(--ink);overflow-wrap:anywhere}
+.complete-note{margin:10px 0 18px;font-size:17px;color:var(--ink);overflow-wrap:anywhere}
 /* A collapsed card's footer, "More ⌄" (opened, "Less ⌃"): small and quiet, its words where the rows' titles are, about
    28px of it drawn, but its tap the card's full width and 44px tall, reaching into the card's bottom padding */
-.card-more{display:flex;align-items:flex-start;gap:4px;width:100%;min-height:44px;padding:5px 14px 0 52px;border:0;background:transparent;color:var(--muted);font-size:13.5px;font-weight:600;text-align:left}
+.card-more{display:flex;align-items:flex-start;gap:4px;width:100%;min-height:44px;padding:5px 14px 0 var(--title-x);border:0;background:transparent;color:var(--muted);font-size:14px;font-weight:600;text-align:left}
 .card-more svg.i{width:14px;height:14px;margin-top:2px;transform:rotate(90deg)}
 .card-more[aria-expanded=true] svg.i{transform:rotate(-90deg)}
 .day-card:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
@@ -358,13 +379,13 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* A message in a row's place (lines.js): the row shrinks to a line, the task's title struck through, its action at the end */
 .row.lined{min-height:48px;padding-top:0;padding-bottom:0;align-items:center}
 .row.lined > :not(.row-line),.row.lined::after{display:none}
-.row-line{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:48px;color:var(--muted);font-size:14.5px}
+.row-line{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:48px;color:var(--muted);font-size:14px}
 .row-line .what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .line-act{flex:none;min-width:64px;height:48px;margin-right:-8px;padding:0 8px;border:0;background:transparent;color:var(--accent);font-size:15px;font-weight:700}
 /* a line saying something went wrong: a tick or a save not made */
 .row-line.failed,.place-line.failed{color:var(--danger)}
 /* a message in its place: under a heading, by the add box, in a sheet under what it's about, on a run's step card */
-.place-line{display:flex;align-items:center;gap:8px;min-height:44px;margin:6px 0;padding:0 14px;border-radius:12px;background:var(--sunk);color:var(--ink);font-size:14.5px}
+.place-line{display:flex;align-items:center;gap:8px;min-height:44px;margin:6px 0;padding:0 14px;border-radius:12px;background:var(--sunk);color:var(--ink);font-size:14px}
 .place-line .what{flex:1;min-width:0;padding:11px 0;overflow-wrap:anywhere}
 .place-line .line-act{height:44px}
 .place-line.failed{background:color-mix(in srgb,var(--danger) 12%,transparent)}
@@ -397,7 +418,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .getting-started .gs-act{display:block;width:fit-content;margin-top:2px;padding:4px 0;font-size:15px;font-weight:650;color:var(--accent);text-decoration:none}
 .getting-started .gs-hide{margin-top:10px;font-size:14px;color:var(--muted)}
 .setup-card p{margin:0 0 12px}
-.cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:14.5px;font-weight:650}
+.cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:15px;font-weight:650}
 .cl-hint{padding:14px;color:var(--muted);font-size:15px}
 a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
@@ -410,18 +431,18 @@ a.sec-act{text-decoration:none}
 .step-box{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)}
 .step-box:focus-within{border-color:var(--accent)}
 /* iOS Safari gives a textarea its own rounded corners and a shade along the top */
-.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;font-size:16px;line-height:1.3;padding:9px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
+.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;font-size:17px;line-height:1.3;padding:9px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
 .draft-in::placeholder{color:var(--muted);opacity:1}
 /* Quick add's marks behind the words of a template's box, as in .addbox */
 .step-box .cap-field{position:relative}
 .step-box .draft-in{position:relative;white-space:pre-wrap;overflow-wrap:break-word}
-.step-box .cap-marks{position:absolute;inset:0;font-size:16px;line-height:1.3;padding:9px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
+.step-box .cap-marks{position:absolute;inset:0;font-size:17px;line-height:1.3;padding:9px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
 .step-box .cap-marks mark{color:transparent;background:var(--accent-soft)}
 .box-chips{margin:6px 0 0 38px}
 .step-in .box-chips,.nt-name .box-chips{margin-left:0}
 .nt-name{margin-bottom:14px}
 .nt-name > label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
-.step-note{margin-top:3px;font-size:13.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.step-note{margin-top:3px;font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .draft-step{border-top:1px solid var(--line);padding:10px 10px 10px 14px}
 #new-steps > .draft-step:first-of-type{border-top:0}
 .draft-line{display:flex;align-items:flex-start;gap:4px}
@@ -441,7 +462,7 @@ a.sec-act{text-decoration:none}
 .chip-x{display:inline-flex;border:0;background:none;padding:0 0 0 2px;color:var(--muted);cursor:pointer}
 .draft-add{display:flex;align-items:center;gap:8px;width:100%;min-height:50px;padding:0 14px;border:0;border-top:1px solid var(--line);background:none;color:var(--accent);font:inherit;font-weight:650;cursor:pointer}
 .run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
-.timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:16px;color:var(--ink);text-align:left;cursor:pointer}
+.timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:17px;color:var(--ink);text-align:left;cursor:pointer}
 .timer + .timer{border-top:1px solid var(--line)}
 .timer .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .timer .num{flex:none;font-weight:650;color:var(--accent)}
@@ -451,7 +472,7 @@ a.sec-act{text-decoration:none}
 .step-title-line{display:flex;align-items:flex-start;gap:8px}
 .step-title-line h3{flex:1;min-width:0}
 .step-title-line > .claim{margin:-6px -8px -6px 0}
-.step-card h3{margin:4px 0 6px;font-size:24px;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
+.step-card h3{margin:4px 0 6px;overflow-wrap:anywhere}
 .step-card .desc{padding:0;margin:8px 0 0}
 .step-due{font-size:15px;color:var(--muted)}
 .step-due.late{color:var(--overdue);font-weight:650}
@@ -462,15 +483,17 @@ a.sec-act{text-decoration:none}
 .start-who{color:var(--muted);font-size:14px;white-space:nowrap}
 .step-who.waiting{color:var(--muted)}
 .step-acts{display:flex;gap:10px;margin-top:16px}
-.step-acts .btn{min-height:60px;font-size:19px}
+.step-acts .btn{min-height:60px}
 .step-acts .go-on{flex:1;max-width:360px}
 /* A step added during the run (from the bottom box: cap-target.html) */
 .step-added{font-size:14px;color:var(--muted);margin-bottom:4px}
 #run-steps .meta .added{color:var(--muted)}
-.row .step-del{align-self:center;width:34px;height:34px;color:var(--danger)}
+.row .step-del{margin:-1px 0;width:34px;height:34px;color:var(--danger)}
 /* a row's × (a step inserted, a task waiting to be sent) takes taps 48px across, past what's drawn */
 .row > .icon-btn{position:relative}
 .row > .icon-btn::after{content:"";position:absolute;inset:calc(50% - 24px)}
+/* centred on the title's first line, and taking a tick's height, so it doesn't make the row taller */
+.row > .icon-btn:not(.step-del){margin:-4px -8px -8px 0}
 #heading{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
 .step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
@@ -479,7 +502,7 @@ a.sec-act{text-decoration:none}
 .row.current{background:var(--accent-soft)}
 .row .skipped{color:var(--muted);font-style:italic}
 .finish-card{padding:16px}
-.finish-card h3{margin:0 0 4px;font-size:22px}
+.finish-card h3{margin:0 0 4px}
 .cl-card{padding:14px}
 .cl-card p{margin:0 0 12px;color:var(--muted);font-size:15px}
 .cl-card p:last-child{margin-bottom:0}
@@ -499,13 +522,13 @@ a.sec-act{text-decoration:none}
 .addbox .go{width:42px;height:42px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 .addbox .go[disabled]{opacity:.35}
 /* On a project's list, above the box: the task it adds subtasks to, with × (48px) to add a task instead */
-.cap-target{display:flex;align-items:center;gap:8px;margin:0 -6px 6px 2px;color:var(--muted);font-size:14.5px}
+.cap-target{display:flex;align-items:center;gap:8px;margin:0 -6px 6px 2px;color:var(--muted);font-size:14px}
 .cap-target > .i{width:18px;height:18px;flex:none;color:var(--accent)}
 .cap-target .what{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .cap-target b{color:var(--ink);font-weight:650}
 .cap-target .icon-btn{width:48px;height:48px;margin:-8px 0}
 /* On a run: Repeat, the card's step again, at the line's end; its taps 48px tall, past what's drawn */
-.cap-target .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:-4px 6px -4px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14.5px;font-weight:600}
+.cap-target .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:-4px 6px -4px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
 .cap-target .rep::after{content:"";position:absolute;inset:-6px 0}
 .cap-target .rep svg.i{width:16px;height:16px;color:var(--accent)}
 .cap-target .rep[disabled]{opacity:.4}
@@ -514,7 +537,7 @@ a.sec-act{text-decoration:none}
 .row ~ .addbox.sub{border-top:1px solid var(--line)}
 .addbox.sub form{border:1.5px solid var(--line);border-radius:12px;padding:2px 2px 2px 12px;background:var(--bg)}
 .addbox.sub form:focus-within{border-color:var(--accent)}
-.addbox.sub textarea,.addbox.sub .cap-marks{font-size:16px;padding:9px 0}
+.addbox.sub textarea,.addbox.sub .cap-marks{padding:9px 0}
 .addbox.sub .go{width:38px;height:38px;border-radius:10px}
 #capture .cam{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;color:var(--muted);cursor:pointer}
 #capture .cam.on{color:var(--accent);background:var(--accent-soft)}
@@ -522,7 +545,7 @@ a.sec-act{text-decoration:none}
 .chip.photo{cursor:pointer}
 .chip svg.i{width:15px;height:15px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.chip{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:14px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
 .chip:not(.tap){cursor:default}
 /* Words a box doesn't read, said so; and what @ and * suggest, outlined, unlike what was read */
@@ -533,7 +556,7 @@ a.sec-act{text-decoration:none}
 .chip.toggle{background:var(--sunk);color:var(--muted);font-weight:600}
 .chip.toggle[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
 .chip .x{font-weight:700;opacity:.6;margin-left:2px}
-.hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
 
 
 /* ---------- sheet ---------- */
@@ -552,7 +575,7 @@ a.sec-act{text-decoration:none}
 .task-id{color:var(--muted);font-size:14px;font-weight:650}
 .prio-pick{position:relative;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px 0 10px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted);font-size:14px;font-weight:650}
 .prio-pick:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
-.prio-pick select{position:absolute;inset:0;width:100%;opacity:0;font-size:16px;cursor:pointer}
+.prio-pick select{position:absolute;inset:0;width:100%;opacity:0;font-size:17px;cursor:pointer}
 .prio-pick.p1,.prio-pick.p2{color:var(--ink)}
 .prio-pick.p3,.prio-pick.p4,.prio-pick.p5{color:var(--overdue)}
 /* Priority as a level: five equal bars, filled up to it; red from High up. On the sheet and in list rows.
@@ -566,7 +589,7 @@ a.sec-act{text-decoration:none}
 .meta svg.i{width:14px;height:14px;stroke-width:2.2;vertical-align:-2px;margin-right:3px}
 /* The task sheet's ⋯ menu, under the bar on the right */
 #sheet .menu{position:absolute;right:12px;top:calc(100% - 2px);z-index:5;min-width:240px;max-width:calc(100% - 24px);background:var(--surface);border-radius:14px;padding:6px;box-shadow:var(--shadow-menu)}
-#sheet .menu button,#sheet .menu > a{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:0;background:none;padding:12px 14px;border-radius:10px;font-size:16px;font-weight:600;color:var(--ink);text-decoration:none}
+#sheet .menu button,#sheet .menu > a{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:0;background:none;padding:12px 14px;border-radius:10px;font-size:17px;font-weight:600;color:var(--ink);text-decoration:none}
 #sheet .menu button:hover,#sheet .menu button:focus-visible,#sheet .menu > a:hover,#sheet .menu > a:focus-visible{background:var(--sunk)}
 #sheet .menu button small{font-size:13px;font-weight:400;color:var(--muted)}
 #sheet .menu button.danger{color:var(--danger)}
@@ -589,32 +612,36 @@ body.sheet-open{overflow:hidden}
    the title. Swiped, what the row uncovers stays inside the card's rounded edge. A template's card has no row: its
    notes start at the card's edge. */
 .task-card{overflow:clip}
-.task-card-notes{position:relative;padding:0 0 2px 38px}
+.task-card-notes{position:relative;padding:0 0 2px calc(var(--tick) + 12px)}
 .task-card-notes .desc{padding-top:0;padding-right:44px}
 .task-card-notes .copy-btn{position:absolute;top:-12px;right:0}
-.task-card-notes .desc-edit{margin-left:-38px}
+.task-card-notes .desc-edit{margin-left:calc(-12px - var(--tick))}
 .task-card:not(:has(> .row)) .task-card-notes{padding-left:0}
 .task-card:not(:has(> .row)) .task-card-notes .desc{padding-top:14px}
 .task-card:not(:has(> .row)) .task-card-notes .copy-btn{top:0}
 .task-card:not(:has(> .row)) .task-card-notes .desc-edit{margin-left:0}
-.task-card .att{position:relative;gap:14px;padding-left:16px;border-top:0}
-.task-card .att::before{content:"";position:absolute;top:0;right:0;left:52px;height:1px;background:var(--line)}
+/* the 22px clip centred under the tick (14 + 3 + 11 = 28), the name at the title column (17 + 22 + 15 = 54) */
+.task-card .att{position:relative;gap:15px;padding-left:17px;border-top:0}
+.task-card .att::before{content:"";position:absolute;top:0;right:0;left:var(--title-x);height:1px;background:var(--line)}
 /* its title, tapped: a box to change it in, in the row's body, the title's size */
-.row > .title-in{align-self:center}
-.title-in textarea{display:block;width:100%;border:0;border-radius:6px;background:transparent;font-size:16.5px;line-height:1.35;resize:none;outline:2px solid var(--accent);outline-offset:3px;padding:0}
+.row > .title-in{align-self:flex-start}
+.title-in textarea{display:block;width:100%;border:0;border-radius:6px;background:transparent;font-size:17px;line-height:24px;font-weight:650;resize:none;outline:2px solid var(--accent);outline-offset:3px;padding:0}
 /* Details' Progress line, the tap path for a swipe's progress: a quarter each, the one it's at pressed */
 .d-quarters{gap:6px}
 .d-quarters .chip{min-width:52px;min-height:38px;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
-.d-title textarea{flex:1;border:0;background:transparent;font-size:24px;font-weight:750;line-height:1.2;letter-spacing:-.01em;resize:none;outline:0;padding:0;min-height:30px}
+/* A sheet's title, one size wherever it is: a question's, a template's, a step's, a run's step card, Finished */
+.d-title h2,.d-title textarea,.d-step-title,.step-card h3,.finish-card h3{font-size:22px;line-height:28px;font-weight:750;letter-spacing:-.01em}
+.d-title h2{margin:0}
+.d-title textarea{flex:1;border:0;background:transparent;resize:none;outline:0;padding:0;min-height:28px}
 /* A template's step in its own sheet: its name as the title would show it, and its number and time under it */
-.d-step-title{flex:1;margin:0;font-size:24px;font-weight:750;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
+.d-step-title{flex:1;margin:0;overflow-wrap:anywhere}
 .d-step-when{margin:0 0 6px}
 .card{background:var(--surface);border-radius:var(--r-row);margin-bottom:14px}
 .prop{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line);min-height:52px}
 .prop:first-of-type{border-top:0}
 .prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:6px 0;outline:0}
+.prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:17px;padding:6px 0;outline:0}
 .prop input[type=datetime-local]::-webkit-calendar-picker-indicator{margin-left:8px}
 /* A row takes a tap anywhere (propTap); one with only a select has it over the whole row, its words where they were
    (past the label: the row's padding, the label, the gap), so the phone's own list opens wherever it's tapped */
@@ -633,7 +660,7 @@ body.sheet-open{overflow:hidden}
 .label-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-radius:var(--r-chip);background:var(--sunk);font-size:14px;border:0}
 .label-chip .x{width:24px;height:24px;border-radius:12px;display:grid;place-items:center;color:var(--muted);border:0;background:transparent;padding:0}
 .add-label{border:1.5px dashed var(--line);background:transparent;color:var(--muted);border-radius:var(--r-chip);padding:4px 12px;font-size:14px}
-.desc{padding:14px;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
+.desc{padding:14px;font-size:17px;line-height:1.5;overflow-wrap:anywhere}
 .desc :first-child{margin-top:0} .desc :last-child{margin-bottom:0}
 .desc a{color:var(--accent)}
 .desc ul[data-type=taskList]{list-style:none;padding-left:4px}
@@ -642,18 +669,18 @@ body.sheet-open{overflow:hidden}
 .desc li[data-checked] > div,.desc li[data-checked] p{display:inline}
 .desc .ph{color:var(--muted)}
 .desc-edit{padding:10px}
-.desc-edit textarea{width:100%;min-height:140px;border:1.5px solid var(--accent);border-radius:10px;padding:10px;background:var(--bg);font-size:16px;line-height:1.45;outline:0;resize:vertical}
+.desc-edit textarea{width:100%;min-height:140px;border:1.5px solid var(--accent);border-radius:10px;padding:10px;background:var(--bg);font-size:17px;line-height:1.45;outline:0;resize:vertical}
 .row-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 .h3{font-size:15px;font-weight:700;margin:22px 2px 8px;display:flex;align-items:baseline;gap:8px}
 .h3 .n{color:var(--muted);font-weight:600}
 .comment{padding:12px 14px;border-top:1px solid var(--line)}
 .comment:first-of-type{border-top:0}
-.comment .who{font-size:13.5px;color:var(--muted);margin-bottom:3px}
+.comment .who{font-size:14px;color:var(--muted);margin-bottom:3px}
 .comment .who b{color:var(--ink);font-weight:650}
 .comment-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
 .comment-form{border-top:0} .comment ~ .comment-form,.row ~ .comment-form{border-top:1px solid var(--line)}
-.linkish{border:0;background:transparent;padding:0;color:var(--accent);font-size:16px;text-align:left}
-.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:16px;resize:none;min-height:42px;max-height:35vh;outline:0}
+.linkish{border:0;background:transparent;padding:0;color:var(--accent);font-size:17px;text-align:left}
+.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:17px;resize:none;min-height:42px;max-height:35vh;outline:0}
 .comment-form .go{align-self:flex-end}
 .comment-form textarea:focus{border-color:var(--accent)}
 .att{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left}
@@ -667,7 +694,7 @@ body.sheet-open{overflow:hidden}
 .danger-zone{margin-top:28px}
 /* A project's and a run's sheet: sharing its progress, copying it, its page in Vikunja, a row each, like a menu's */
 .share-card{display:flex;flex-direction:column}
-.share-card > button,.share-card > a{display:flex;align-items:center;min-height:48px;padding:0 16px;border:0;background:none;font-size:16px;font-weight:600;color:var(--accent);text-align:left;text-decoration:none}
+.share-card > button,.share-card > a{display:flex;align-items:center;min-height:48px;padding:0 16px;border:0;background:none;font-size:17px;font-weight:600;color:var(--accent);text-align:left;text-decoration:none}
 .share-card > :not(:first-child){border-top:1px solid var(--line)}
 /* Copy, by the notes' heading and on each comment: small and quiet, with a finger's room around it */
 .copy-btn{width:48px;height:48px;color:var(--muted)}

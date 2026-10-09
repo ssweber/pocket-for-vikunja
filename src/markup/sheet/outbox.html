@@ -1,6 +1,6 @@
     <!-- What's waiting to send, from the header's button: a row each, oldest first, and what Vikunja turned down (outbox.js) -->
     <template x-if="sheet.kind === 'outbox'"><div>
-      <div class="d-title"><h2 style="margin:0;font-size:24px">Waiting to send</h2></div>
+      <div class="d-title"><h2>Waiting to send</h2></div>
       <p class="note" id="outbox-status" style="margin:0 2px 12px" x-text="outboxStatus"></p>
       <template x-if="outboxRows.length"><div class="card" id="outbox-rows">
         <template x-for="r in outboxRows" :key="r.key"><div class="ob-row" :class="{failed: r.failed}">

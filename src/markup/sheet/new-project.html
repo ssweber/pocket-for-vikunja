@@ -1,6 +1,6 @@
     <!-- A new project: its name, where it goes, and whether it's for checklists -->
     <template x-if="sheet.kind === 'newproj' && sheet.newProj"><div id="new-project">
-      <div class="d-title"><h2 style="margin:0;font-size:24px">New project</h2></div>
+      <div class="d-title"><h2>New project</h2></div>
       <label class="field" style="margin-top:12px"><span>Name</span><input id="np-name" x-model="sheet.newProj.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="makeProject()"></label>
       <template x-if="projects.length"><label class="field"><span>Inside</span><select id="np-parent" x-model="sheet.newProj.parent">
         <option value="">No other project</option>

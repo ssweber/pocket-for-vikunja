@@ -1,6 +1,6 @@
     <!-- Starting a run from a template: who it's for, then Pocket sets it up step by step -->
     <template x-if="sheet.kind === 'start'"><div>
-      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="'Start ' + (sheet.start?.template?.title || 'a run')"></h2></div>
+      <div class="d-title"><h2 x-text="'Start ' + (sheet.start?.template?.title || 'a run')"></h2></div>
       <template x-if="sheet.loading"><div class="loading">Loading…</div></template>
       <template x-if="sheet.error"><div class="err" x-html="sheet.error"></div></template>
       <template x-if="sheet.start?.template"><div>

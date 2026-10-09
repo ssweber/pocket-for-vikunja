@@ -1,6 +1,6 @@
     <!-- A project's options: using it for checklists, so everyone it's shared with gets the Checklists tab -->
     <template x-if="sheet.kind === 'project' && sheet.project"><div>
-      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="sheet.project.title"></h2></div>
+      <div class="d-title"><h2 x-text="sheet.project.title"></h2></div>
       <!-- Its open tasks, to send or keep, and its page in Vikunja: for anyone who can see it, and offline too -->
       <div class="card share-card" id="p-sharing">
         <button type="button" id="p-share-text" @click="shareProgress('project')">Share progress as a text</button>
@@ -44,7 +44,7 @@
 
     <!-- A run's ⋯: the run as a task, and deleting it -->
     <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
-      <div class="d-title"><h2 style="margin:0;font-size:24px" x-text="view.run.run.title"></h2></div>
+      <div class="d-title"><h2 x-text="view.run.run.title"></h2></div>
       <!-- Its steps, who did each and who's on the rest, to send or keep, and its page in Vikunja -->
       <div class="card share-card" id="r-sharing">
         <button type="button" id="r-share-text" @click="shareProgress('run')">Share progress as a text</button>

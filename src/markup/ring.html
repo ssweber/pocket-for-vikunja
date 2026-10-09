@@ -3,6 +3,6 @@
      for a task's own tick; done of all inside it. Tapped (ringTap): with open subtasks, the question (sheet/complete.html),
      or, with one, it and the parent completed with an Undo; with every one done, Close; done, opened again. On a card's
      header, a row (a run's, under Checklists too), and in its own sheet. Its touch target is the whole left gutter, as a
-     tick's is. -->
-<button type="button" class="ring" :class="{full: !r.open, done: t.done}" :disabled="!canWrite(t.project_id) || !!t.pending" x-style="{'--ring': r.pct / 100}"
+     tick's is. Five characters (12/14) are set smaller (long), to fit inside it. -->
+<button type="button" class="ring" :class="{full: !r.open, done: t.done, long: (r.done + '/' + r.total).length > 4}" :disabled="!canWrite(t.project_id) || !!t.pending" x-style="{'--ring': r.pct / 100}"
         :aria-label="r.label" @click="ringTap(t, $el.closest('#sheet') ? null : $el.closest('.day-card, .row'), !!$el.closest('#sheet'))"><i class="arc" aria-hidden="true"></i><span class="n num" aria-hidden="true" x-text="r.done + '/' + r.total"></span></button>
