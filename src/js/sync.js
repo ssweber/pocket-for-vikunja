@@ -357,6 +357,8 @@ export const INSERT_STEPS = [
     });
     j.ordered = true;
   }},
+  // A new step at 0% lowers the run's worked-out progress (parent-tasks-plan, part 3): written once it's in the run.
+  {name: 'figure', done: j => !!j.figured, async run(j){ await app.writeFigure(j.run); j.figured = true; }},
 ];
 /* What's done on a run's screen: one outbox entry each, sent in the order they were done, with or without a
    connection. Each part can be sent again safely: setting done twice is the same, Vikunja keeps one reaction per person
@@ -381,8 +383,11 @@ export function slowness(entries, now, offline){
 }
 // The tasks with an act Vikunja turned down: later acts on them wait, so an untick never arrives before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
-export const ACTS = {progress: ['progress'], done: ['done', 'mark'], skip: ['done', 'markSkip', 'note'], undone: ['undone', 'unmark'], note: ['note'], finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note'],
-  claim: ['claim'], unclaim: ['unclaim'], delete: ['delete'], position: ['position']};
+/* Each act's parts, in order. `figure`, last: what it changed on a run's step (or a deleted subtask) changes its parent's
+   worked-out progress, written to the parent's percent_done in the same entry, so offline it waits with it
+   (parent-tasks-plan, part 3). */
+export const ACTS = {progress: ['progress', 'figure'], done: ['done', 'mark', 'figure'], skip: ['done', 'markSkip', 'note', 'figure'], undone: ['undone', 'unmark', 'figure'], note: ['note'],
+  finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note', 'figure'], claim: ['claim'], unclaim: ['unclaim'], delete: ['delete', 'figure'], position: ['position']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),
   undone: a => patchTask(a.task, {done: false}),
@@ -407,6 +412,10 @@ export const ACT_STEPS = {
   position: async a => { a.got = (await api(`/tasks/${a.task}/position`, {method: 'PUT', body: {project_view_id: a.view, position: a.pos}}))?.position; },
   // A task and its subtasks (a.ids, deepest first): one gone already, by a try cut off, say, is fine.
   delete: async a => { for (const id of a.ids) await api('/tasks/' + id, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }); },
+  /* The parent's figure, worked out from its subtasks as Vikunja has them now (figurePatch), written only if it
+     changed: a run's, after one of its steps (a.run), or a deleted subtask's parent (a.up). Sending it again writes the
+     same. */
+  figure: a => { const up = a.up ?? (a.run && a.task !== a.run ? a.run : null); return up ? app.writeFigure(up) : null; },
   unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },
   note: async (a, save) => {
     if (a.tried && await app.findNote(a.task, a.html, a.triedAt, a.at)) return;

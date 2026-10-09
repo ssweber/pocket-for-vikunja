@@ -5,7 +5,7 @@ import {repeats} from './dates.js';
    task done, its progress left as it was: marked not done again, it's back where it had got to (a step of a run too).
    A repeating task starts its next time at 0%. Done, it shows as 100% (shownPct). */
 export const pctOf = t => Math.round((t?.percent_done || 0) * 100);
-/* A task's subtasks still open, to mark done with it. Not for a repeating task, which only moves to its next date, and
+/* A task's subtasks still open, to mark done with it when it's completed (its ring, after asking: app/cards.js). Not for a repeating task, which only moves to its next date, and
    not a subtask that repeats: marked done, it would only move to its next date too. */
 export const openSubtasks = t => repeats(t) ? [] : (t.related_tasks?.subtask || []).filter(s => !s.done && !repeats(s));
 // An Undo putting back what was there: no message of its own.
@@ -80,14 +80,15 @@ export const swipeOffset = (dx, width) => Math.max(-width, Math.min(0, dx));
 export const swipeEnd = (offset, width) => offset < -width * SIDES.delete.full ? 'delete' : offset < -SIDES.delete.open / 3 ? 'open' : 'shut';
 /* A row swiped from its progress `start` (a done one from 100; null for a row whose progress isn't swiped, or one open
    on its Delete), put down at x and moved dx from where it rests (`base`: an open row's -DELETE_W), on a row `width`
-   wide and a screen `screen` wide; `del`, whether it has a Delete. Returns where its content is (`off`), the progress
+   wide and a screen `screen` wide; `del`, whether it has a Delete; `one`: a parent's header, whose right side has no
+   stops of its own, only its full point (it opens the question about its open subtasks). Returns where its content is (`off`), the progress
    letting go would set (`pct`), and what letting go does (`to`): 'stop' (set it, spring back), 'done' or 'delete' (the
    full action), 'open' or 'shut' (in its Delete: stay open on its button, or go back). */
-export function swipeAt({start = null, dx, x, width, screen, del = false, base = 0}){
+export function swipeAt({start = null, dx, x, width, screen, del = false, base = 0, one = false}){
   const d = base + dx;
   if (d > 0 || (start > 0 && d < 0)) {
     const up = d > 0, side = up ? SIDES.up : SIDES.down;
-    const stops = start === null ? [] : up ? SNAPS.filter(p => p > start) : SNAPS.filter(p => p < start).reverse();
+    const stops = start === null ? [] : up ? (one ? [100] : SNAPS.filter(p => p > start)) : SNAPS.filter(p => p < start).reverse();
     if (!stops.length) return start === null ? {off: 0, pct: null, to: 'shut'} : {off: 0, pct: start, to: 'stop'};   // nothing that way
     const n = stops.length, gap = Math.min(side.gap, side.full * width / n, roomTo(up ? screen - x : x, width) / n);
     const dist = Math.min(Math.abs(d), width), i = Math.min(Math.floor(dist / gap), n), pct = i ? stops[i - 1] : start;
@@ -117,31 +118,27 @@ export const trackMoves = (start, dx) => dx > 0 ? start < 100 : start > 0;
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.
 export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;
 
-/* ---------- who's doing it, and a run's line ---------- */
+/* ---------- who's doing it ---------- */
 // Whether sliding progress on a row says you're doing it: only where no one is yet and its slot can be tapped (not done,
 // not shared with you to read). Someone else's is never replaced, and yours is already yours (claimSlot, app/claims.js).
 export const claimsOnSlide = slot => !!slot?.can && !slot.users?.length;
-/* A run's progress line is in segments, one per step; past MANY_STEPS they'd be too short to read, so it's one line with
-   a small tick at each step instead. `segs` is at least 1, for the CSS to divide by. Given which steps are done
-   (`which`, in the line's order), each segment, or past MANY_STEPS each step's stretch between two ticks, is filled by
-   whether its own step is done (`fill`, the line's background), so a filled one is always a done step; a number from 0
-   to 1 instead fills that much of it from the left (a card's step showing, by its progress). With no steps, no fill:
-   the line is its track. */
-export const MANY_STEPS = 12;
-export const runLine = which => ({segs: Math.max(which.length, 1), many: which.length > MANY_STEPS, fill: which.length ? segFill(which) : null});
-/* The line's background, each step's stretch filled or not: a stop at k / n of the way, which always falls in the gap
-   before segment k (the CSS cuts each segment (100% + 3px) / n wide, less a 3px gap), or past MANY_STEPS on the tick
-   between two stretches; a step part done, a stop that far into its stretch. Stretches alike side by side are one. */
-const segFill = which => {
-  const n = which.length, at = x => +(x / n * 100).toFixed(3) + '%', parts = [];
-  const add = (on, a, b) => { const last = parts.at(-1); if (last && last[0] === on && last[2] === a) last[2] = b; else parts.push([on, a, b]); };
-  which.forEach((v, k) => {
-    const f = Math.max(0, Math.min(1, v === true ? 1 : +v || 0));
-    if (f > 0) add(true, k, k + f);
-    if (f < 1) add(false, k + f, k + 1);
-  });
-  return `linear-gradient(to right,${parts.map(([on, a, b]) => `var(${on ? '--accent' : '--track'}) ${at(a)} ${at(b)}`).join(',')})`;
-};
+
+/* ---------- a parent's progress, worked out (parent-tasks-plan, part 3) ---------- */
+/* A task with subtasks, or a run with steps, has no progress of its own to set (design rule 5): it's the average of
+   its subtasks', a done one counting 100% (a run's step skipped too, as it's out of the way), rounded. One subtask at
+   50% of four is 13%. `subs`: [{done, pct}]. {pct, done: how many are done, total}, or null with none: a task whose
+   subtasks are all removed keeps the figure it had, and is swiped as any task. */
+export function workedOut(subs){
+  if (!subs.length) return null;
+  const sum = subs.reduce((n, s) => n + (s.done ? 100 : Math.max(0, Math.min(100, s.pct || 0))), 0);
+  return {pct: Math.round(sum / subs.length), done: subs.filter(s => s.done).length, total: subs.length};
+}
+// A parent's figure, from Vikunja's copy of it: its subtasks as it gives them (related_tasks), each with its own
+// done and percent_done.
+export const figureOf = t => workedOut((t?.related_tasks?.subtask || []).map(s => ({done: !!s.done, pct: pctOf(s)})));
+/* The save that writes a parent's worked-out figure to its percent_done, given Vikunja's copy of it as it is now: only
+   when it changes (null: nothing to save), and never for one with no subtasks, which keeps its last figure. */
+export const figurePatch = now => { const w = figureOf(now); return w && w.pct !== pctOf(now) ? {percent_done: w.pct / 100} : null; };
 
 /* ---------- a nudge: a short, slow scroll that aims the add box (an experiment) ---------- */
 /* On a project's list, a touch that starts on a row and turns into a short, slow scroll makes that row the add box's

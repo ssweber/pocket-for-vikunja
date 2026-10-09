@@ -3,7 +3,9 @@
 // left, a row with progress, down, stopping at 0%; left, a row at 0%, its Delete, a full swipe deleted. Nothing changes
 // until it's let go. Held, then moved up or down, the row moves among its siblings. Delete and moving only where the
 // row's list allows them (rowGestures): Today's rows are deleted but not moved, search's the same, a project's and a
-// sheet's both. The sheet's bar is swiped for its progress too (trackAt).
+// sheet's both. The sheet's bar is swiped for its progress too (trackAt). A parent (a card's header, or a parent's
+// row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the way, its
+// ring's tap; left, its Delete.
 import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackAt, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
@@ -192,7 +194,8 @@ export default {
          point, the full action, the row carrying on off the screen (finish: done; the Delete's remove: deleted, its
          progress left as it was). Taken away from the finger (pointercancel), it goes back, changing nothing. */
       const to = commit ? r.to : 'shut', set = commit && to !== 'delete' && r.pct !== null && r.pct !== s.start;
-      if (RED.has(r.to)) s.swipe.end(to); else if (to !== 'done') ring.back();
+      if (s.springs && set) { s.finish(r.pct); ring.back(); return; }      // a parent's: its question, no progress set
+      if (RED.has(r.to)) s.swipe.end(to); else if (to !== 'done' || s.springs) ring.back();
       s.finish?.(set ? r.pct : null);
       if (set) this.hintSeen();                         // the first swipe that sets progress, anywhere: the hint has done its job
     };
@@ -204,12 +207,12 @@ export default {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false;                             // a new tap: its click is its own
       let s = find(e.target); if (!s) return;
-      if (s.swipe?.base) s = {el: s.el, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
+      if (s.swipe?.base) s = {el: s.el, slide: s.slide, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait', pct: s.start};
       if (s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); haptic('hold'); }, HOLD_MS);
     });
     // Where a row swiped `dx` is, and what letting go there does (swipeAt).
-    const at = (s, dx) => swipeAt({start: s.finish ? s.start : null, dx, x: g.x0, width: s.width ?? s.el.clientWidth, screen: innerWidth, del: !!s.swipe, base: s.swipe?.base || 0});
+    const at = (s, dx) => swipeAt({start: s.finish ? s.start : null, dx, x: g.x0, width: s.width ?? s.el.clientWidth, screen: innerWidth, del: !!s.swipe, base: s.swipe?.base || 0, one: !!s.one});
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
       if (!g || e.pointerId !== g.id) return;
@@ -224,12 +227,12 @@ export default {
         // down is a scroll.
         if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
         clearTimeout(g.timer); g.mode = way; sliding = true;
-        if (way === 'swipe') { g.ring = revealOf(s.el); g.r = at(s, 0); g.red = null; }
+        if (way === 'swipe') { g.ring = revealOf(s.slide || s.el); g.r = at(s, 0); g.red = null; }
       }
       if (g.mode === 'swipe') {
         const r = at(s, e.clientX - g.x0), red = RED.has(r.to);
         // A row at 0% swiped right, then back past where it started: its stops give way to its Delete, or back.
-        if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) shut(s.el); g.red = red; }
+        if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) shut(s.slide || s.el); g.red = red; }
         if (red) s.swipe.move(r); else g.ring.move(r);
         const feel = swipeFeel(g.r, r);
         if (feel) haptic(feel);
@@ -285,11 +288,10 @@ export default {
     document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
-      // A stacked card: each of its rows as any row (cardGesture); its heading a tap, a swipe there doing nothing (part 3
-      // makes it the parent's header), and held, on a project's list, the card moved up or down (cardHold); its peek,
-      // and Show less, only a tap.
+      // A stacked card: each of its rows as any row (cardGesture); its header the parent's (headGesture), and held, on a
+      // project's list, the card moved up or down (cardHold); its peek, Show less and Close, only a tap.
       const card = target.closest('.day-card'), row = target.closest('.card-rows > .row, .list:not(.tree) > .row, .item > .row');
-      if (card && !row) return target.closest('.card-head') ? this.cardGesture(card, null, this.cardHold(card)) : null;
+      if (card && !row) return target.closest('.card-head') && !target.closest('.row-del') ? this.cardGesture(card, this.headGesture(card), this.cardHold(card)) : null;
       if (!row || target.closest('.row-del')) return null;
       if (row.parentElement.id === 'run-steps') return this.stepSlide(row, target);
       const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
@@ -338,6 +340,8 @@ export default {
     const slides = sheet ? !t.pending && this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.rowSlides(t);
     const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row)) : null;
     const reorder = this.holdOf(t, row, sheet, can);
+    // A parent's row (its ring for a tick): no progress of its own, a full swipe its ring's tap (ringSwipe).
+    if (!sheet && this.rowRing(t, {depth: {}})) { const r = {el: row, swipe, reorder, ...this.ringSwipe(t, row)}; return (r.finish || swipe || reorder) && r; }
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
     return {el: row, swipe, reorder, start: t.done ? 100 : pctOf(t), width: row.clientWidth,
       finish: pct => {
@@ -353,8 +357,9 @@ export default {
      (parent-tasks-plan, part 4), given here as a dragOf whose drop sets its date. Search has no order of its own. */
   holdOf(t, row, sheet, can){ return can.has('reorder') ? this.reorderOf(t, row, sheet) : null; },
   // Whether a list's row takes a swipe for its progress (rowGesture): not one waiting to be sent, that can't be ticked
-  // (read only, a template), nor a run, nor one marked or with a line in its place. A done one does, down only.
-  rowSlides(t){ return !this.lines[t.id] && !this.leaving[t.id] && !t.pending && this.canTick(t) && !this.isRunTask(t); },
+  // (read only, a template), nor a parent (a run, or an open task with subtasks: its progress is theirs), nor one marked
+  // or with a line in its place. A done one does, down only.
+  rowSlides(t){ return !this.lines[t.id] && !this.leaving[t.id] && !t.pending && this.canTick(t) && !this.isRunTask(t) && !(!t.done && this.ringOf(t)); },
   /* A one-time hint, "Swipe right to start working on it", on the first open row of a list that takes a swipe for its
      progress (a card's top row counts: the card is `at`, so its next top row keeps it). It's picked once, as a
      screen is first drawn (hint.pick, set by render), never later, so it can't push rows down under a finger. Gone (a
@@ -365,7 +370,7 @@ export default {
     if (this.hint.done) return;
     for (const g of this.listGroups) if (!g.fold) for (const t of g.items || g.tasks) {
       const c = this.cardOf(t, g), x = c ? c.step : t;
-      if (x.done || !this.rowSlides(x)) continue;
+      if (!x || x.done || !this.rowSlides(x)) continue;
       this.hint.at = t.id;
       if (store.get('hint.slide') !== 'said') { this.said = 'Tip: swipe a task to the right to start working on it.'; store.set('hint.slide', 'said'); }
       return;
@@ -375,14 +380,25 @@ export default {
   hintOn(t, g){ return !g.sheet && !g.run && this.hint.at !== null && (g.card ? g.card.step.id === t.id && this.hint.at === g.card.id : this.hint.at === t.id); },
   hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); this.hintAway(); },
   /* A stacked card (app/cards.js), one of its rows touched: that row's gesture `s` (rowGesture), whose swipe is that
-     subtask's alone, and a run's card then staying on its top row until that has gone (pinCard). A plain swipe on its
-     heading (`s` null) does nothing, not even a tap; held, what a hold does to the card (`hold`: cardHold). */
+     subtask's alone, and a run's card then staying on its top row until that has gone (pinCard). Its header (`hold`:
+     what a hold does to the card, cardHold): the parent's swipe (headGesture), lifting the card when held. */
   cardGesture(card, s, hold = null){
-    if (card.matches('.deleted, .lined')) return null;                     // only its Restore, or its line's action
+    if (card.matches('.deleted, .lined, .swept')) return null;             // only its Restore or Undo, or its line's action
+    if (s?.slide) return {...s, el: hold ? card : s.slide, reorder: hold};
     if (!s) return {el: hold ? card : null, reorder: hold};
     // (Its top row is the same on any screen's card: 'found' asks only that it's an open task with open subtasks.)
     const id = +card.dataset.id, pin = () => { const t = this.tasks[id]; this.pinCard(t && this.cardOf(t, {cards: 'found'})); };
     return {...s, finish: s.finish && (pct => { if (pct !== null) pin(); s.finish(pct); })};
+  },
+  /* A card's header swiped (parent-tasks-plan, part 3): a parent has no progress of its own, so right it springs back,
+     unless all the way, which asks about its open subtasks, or closes it with them all done (ringSwipe, ringTap); left,
+     its Delete where its list has one, with the question about its subtasks (removeTask). What moves is the header (the
+     card stays, its rows under it). Null: nothing to swipe. */
+  headGesture(card){
+    const t = this.tasks[+card.dataset.id], head = card.querySelector(':scope > .card-head');
+    if (!t || !head || this.leaving[t.id] || this.lines[t.id]) return null;
+    const swipe = allows(card).has('delete') && this.canDelete(t) ? swipeOf(head, () => this.swipeDelete(t, false, head)) : null, r = this.ringSwipe(t, head, card);
+    return r.finish || swipe ? {slide: head, swipe, ...r} : null;
   },
   // A card's heading held, where its list allows (data-gestures, as a row's): the card moved up or down among the tasks
   // at the top of a project's list, as a row is (reorderOf).
@@ -454,7 +470,7 @@ export default {
         return st ? this.rowGesture(st, row, true) : null;
       }
       const head = target.closest('.d-head');
-      if (!head || !t || this.isRunTask(t) || this.ofTemplate || target.closest('textarea, button, a, select')) return null;
+      if (!head || !t || this.sheetRing || this.ofTemplate || target.closest('textarea, button, a, select')) return null;
       let claimed = null;
       return {start: this.shownPct(t), width: head.clientWidth,
         show: (pct, x) => { this.sheet.pct = pct; this.showSlide(head, pct, x); },
@@ -467,12 +483,14 @@ export default {
         }};
     });
   },
+  // The sheet's task's ring, when it's a parent (a task with subtasks, or a run): its progress is theirs.
+  get sheetRing(){ return this.sheet.kind === 'task' && !this.ofTemplate ? this.ringOf(this.sheet.task) : null; },
   // The sheet's task's slot for who's doing it, as its row has (claimSlot): its bar, slid or moved by a key, claims it
   // as a row's slide does, if no one is doing it; its Assigned row shows it (peopleOf).
   get sheetSlot(){ const t = this.sheet.task; return t && this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t)); },
   nudgeProgress(dir){                            // the arrow keys, on the focused bar: to the next snap
     const t = this.sheet.task;
-    if (this.isRunTask(t)) return;
+    if (this.sheetRing) return;                  // a parent's progress is its subtasks'
     const was = pctOf(t), pct = nextSnap(was, dir);
     if (pct === was) return;
     const claimed = this.claimOnSlide(this.sheetSlot);

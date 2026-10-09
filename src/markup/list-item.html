@@ -1,26 +1,38 @@
 <!-- One thing in a list with cards (screens/lists.html: Today, search's open tasks, a project's open list), task `t` in
      the list `g`: its row (task-row.html), or, with open subtasks or steps, the stacked card (cardOf, app/cards.js;
-     parent-tasks-plan, part 2). A card is a group named by its title. Its heading opens the task (no tick: part 3 makes
-     it the parent's header), and a swipe there does nothing; on a project's list, held, the card moves up or down, as a
-     row does, and it's lit up while the add box adds subtasks to it (the cursor, quickadd.js), watched meanwhile, as a
-     row is. On one line: its title (a run's without its day, struck through if it's done), its priority's bars, when it's
-     due, short, and its count, its subtasks done of all of them, its project too to a screen reader (cardHead and
-     cardCount, worked out once per card, as a row's slot is). Then its rows, the shared row with the card's own options
-     (c.g), each acting as any row does: collapsed, its top row only, and under it the peek, a shorter strip, one target,
-     "Interview · 1 more ⌄", its tick drawn, not a button, that opens it in place; opened, every open subtask, and Show
-     less at its foot, the peek's place, to collapse it again (as does scrolling it off the screen: watchCard). With one
-     open subtask, no peek. On a project's list it's always open, with no Show less. Deleted from its ⋯, a gap at its
-     height with Restore, and a message about its task in its place, as a row's are. -->
+     parent-tasks-plan, part 2). A card is a group named by its title. Its header is the parent's (part 3): its ring for a
+     tick (ring.html: the worked-out figure, done of all inside it), then its title, which opens the task; swiped right it
+     springs back, as a parent has no progress of its own, unless it's swiped all the way, its ring's tap; swiped left,
+     its Delete (headGesture); on a project's list, held, the card moves up or down, as a row does, and it's lit up while
+     the add box adds subtasks to it (the cursor, quickadd.js), watched meanwhile, as a row is. On one line: its title (a
+     run's without its day, struck through if it's done), its priority's bars, when it's due, short, and to a screen
+     reader its count and figure and its project (cardHead, worked out once per card, as a row's slot is). Then its rows,
+     the shared row with the card's own options (c.g), each acting as any row does: collapsed, its top row only, and under
+     it the peek, a shorter strip, one target, "Interview · 1 more ⌄", its tick drawn, not a button, that opens it in
+     place; opened, every open subtask, and Show less at its foot, the peek's place, to collapse it again (as does
+     scrolling it off the screen: watchCard). With one open subtask, no peek. On a project's list it's always open, with
+     no Show less. Every subtask done (c.closes): no rows, but "All subtasks done" and Close, which marks it done (nothing
+     closes behind your back). Deleted, or done from its ring or Close, a gap at its height with Restore or Undo, and a
+     message about its task in its place, as a row's are. -->
 <div class="item" :data-id="t.id">
   <template x-if="!cardOf(t, g)">
     <!-- include markup/task-row.html -->
   </template>
-  <template x-for="[c, h, n] in [cardOf(t, g)].filter(Boolean).map(c => [c, cardHead(t, g), cardCount(c)])" :key="0">
+  <template x-for="[c, h] in [cardOf(t, g)].filter(Boolean).map(c => [c, cardHead(t, g)])" :key="0">
     <div class="day-card" role="group" :aria-label="h.title" :data-id="t.id" :data-gestures="rowGestures(g)"
-         :class="{open: c.open, done: t.done, aimed: cursor?.id === t.id && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
+         :class="{open: c.open, done: t.done && !leaving[t.id], swept: !!swept[t.id], aimed: cursor?.id === t.id && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
          x-effect="c.open && c.folds && watchCard($el); cursor?.id === t.id && watchCursor($el)"
-         @click.capture="if (leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
-      <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="[h.said, n.said].filter(Boolean).map(x => ', ' + x).join('')"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template><span class="card-n num" aria-hidden="true"><svg class="i"><use href="#i-subtasks"/></svg><span x-text="n.text"></span></span></button>
+         @click.capture="if (leaving[t.id] === 'deleted' || swept[t.id]) { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
+      <div class="card-head">
+        <template x-for="r in [c.ring].filter(Boolean)" :key="0">
+          <!-- include markup/ring.html -->
+        </template>
+        <button class="card-open" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="h.said ? ', ' + h.said : ''"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template></button>
+        <!-- Off its end, shown only by a swipe left (headGesture), as a row's Delete -->
+        <template x-if="g.delete && canDelete(t)"><button class="row-del" :aria-label="'Delete ' + t.title" @click="swipeDelete(t, false)">Delete</button></template>
+      </div>
+      <!-- Every subtask done: it waits for Close (design rule 7), which is its ring's tap -->
+      <template x-if="c.closes"><div class="card-close"><span x-text="c.run ? 'All steps done' : 'All subtasks done'"></span><button type="button" class="close-btn" :disabled="!canWrite(t.project_id)" :aria-label="c.ring?.label" @click="ringTap(t, $el.closest('.day-card'))">Close</button></div></template>
       <div class="card-rows">
         <template x-for="[t, g] in c.rows.map(s => [s, c.g])" :key="t.id">
           <!-- include markup/task-row.html -->
@@ -32,7 +44,7 @@
       <template x-for="line in lines[t.id] ? [lines[t.id]] : []" :key="0">
         <!-- include markup/row-line.html -->
       </template>
-      <template x-if="leaving[t.id] === 'deleted'"><div class="del-gap"><span class="what">Deleted<span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="'Restore ' + t.title"><span class="me">Restore</span></button></div></template>
+      <template x-if="leaving[t.id] === 'deleted' || swept[t.id]"><div class="del-gap"><span class="what"><span x-text="swept[t.id] ? 'Done' : 'Deleted'"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="(swept[t.id] ? 'Undo: ' : 'Restore ') + t.title"><span class="me" x-text="swept[t.id] ? 'Undo' : 'Restore'"></span></button></div></template>
     </div>
   </template>
 </div>

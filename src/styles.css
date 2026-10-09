@@ -132,7 +132,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row.one-line .title-line{display:flex;align-items:baseline;gap:8px}
 .row.one-line .title{position:relative;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
 /* what only a screen reader hears, kept at the start, not past the end of a title cut short */
-.row.one-line .title .sr,.card-head > .sr{left:0}
+.row.one-line .title .sr,.card-open > .sr{left:0}
 .when{flex:none;display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);white-space:nowrap}
 .when .dot{margin:0}
 /* its priority's bars, small, before its time, as on a card's heading (one-concept-plan, part 4) */
@@ -230,23 +230,29 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    done, which fills it whole with its ✓. It changes once the swipe is let go: meanwhile what it'll be shows beside the
    row (.row-prog, below). */
 .row:not(.done) > button.check{background:conic-gradient(var(--accent) calc(var(--pct,0) * 1turn),transparent 0) content-box}
-/* A run's line, along its row's bottom edge: a segment per step (--segs), each filled by whether its step is done
-   (--fill, from runLine), on a faint track (all of it, with no steps). Past 12 steps (runLine), one line with a small
-   tick above it at each step, each step's stretch filled the same way. Its steps are its progress: it isn't swiped. */
-.row.cl-run::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(100% - var(--row-inset));pointer-events:none}
-.row.cl-run::after{background:var(--fill,var(--track));
-  -webkit-mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat;
-  mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat}
-.row.cl-run.many-steps::after{-webkit-mask:none;mask:none;height:7px;background:
-  repeating-linear-gradient(to right,transparent 0 calc(100% / var(--segs) - 1px),var(--muted) 0 calc(100% / var(--segs))) 0 0/calc(100% + 1px) 4px no-repeat,
-  var(--fill,linear-gradient(var(--track),var(--track))) 0 100%/100% 3px no-repeat}
+/* A parent's ring (parent-tasks-plan, part 3: ring.html), in place of a tick: a task with subtasks, or a run. Thin, its
+   arc the worked-out figure (--ring) from 12 o'clock on a faint track, never a quarter's pie, so it isn't taken for a
+   task's own tick; done of all inside it. With every subtask done, the count turns the accent's colour (it waits for
+   Close). On a row or a card's header, laid out a tick's size, its circle a little larger, centred where a tick's is,
+   and its touch target the whole left gutter, as a tick's. */
+.ring{position:relative;flex:none;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
+.ring > *{grid-area:1/1}
+.ring .arc{width:100%;height:100%;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),var(--track) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2.5px),var(--ink) calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 2.5px),var(--ink) calc(100% - 2px))}
+.ring .n{font-size:10.5px;font-weight:650;letter-spacing:-.03em;line-height:1}
+.ring.full .n{color:var(--accent);font-weight:750}
+.ring:disabled{opacity:.7}
+button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
+:is(.row,.card-head) > .ring{position:static;margin:-2px -3px}
+:is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + 38px)}
+.d-title .ring{width:34px;height:34px;margin:-2px}
 .d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
 /* the sheet's bar swiped on the right half: the percentage moves to the left, clear of the thumb */
 .d-head.setting[data-side=left]::before{right:auto;left:12px}
 /* Held, to be moved, the row lifts; swiped and let go, it springs back (with less motion, it's only back). The sheet's
    bar swiped: at each snap the percentage pulses (the tick, seen), and at 100% the tick fills, with its ✓ */
-.row{transition:box-shadow .15s,transform .2s ease}
-@media (prefers-reduced-motion:reduce){.row{transition:box-shadow .15s}}
+.row,.card-head{transition:box-shadow .15s,transform .2s ease}
+@media (prefers-reduced-motion:reduce){.row,.card-head{transition:box-shadow .15s}}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
 /* Moved up or down after the hold: the held row, and its subtasks with it, follow the finger above the rows making room */
 .row.dragged{z-index:3;transition:box-shadow .15s;background:var(--surface)}
@@ -266,8 +272,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    A row at 0% swiped left: its Delete instead (.row-del), which comes in from the row's end. A row can be swiped sideways without the page
    taking the move for a scroll. */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
-.row.swiping,.row.swiped,.row.revealing{transform:translateX(var(--swipe,0px))}
-.row.swiping,.row.revealing{transition:none}
+:is(.row,.card-head).swiping,:is(.row,.card-head).swiped,:is(.row,.card-head).revealing{transform:translateX(var(--swipe,0px))}
+:is(.row,.card-head).swiping,:is(.row,.card-head).revealing{transition:none}
 #d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow-x:clip}
 .row-prog{position:absolute;top:0;bottom:0;overflow:hidden;background:var(--accent-soft);pointer-events:none}
 .row-prog[data-side=left]{right:100%}
@@ -291,9 +297,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 @media (prefers-reduced-motion:reduce){.row-prog .ring{animation:none!important}}
 .row-del{display:none;position:absolute;top:0;bottom:0;left:100%;width:max(88px,calc(-1 * var(--swipe,0px)));border:0;background:var(--danger);color:var(--danger-ink);font-size:15px;font-weight:700;align-items:center;justify-content:center}
 .row-del:focus-visible{outline-color:var(--danger-ink);outline-offset:-6px}
-.row.swiping .row-del,.row.swiped .row-del{display:flex}
+:is(.row,.card-head):is(.swiping,.swiped) > .row-del{display:flex}
 /* past half the row, a full swipe: let go, it's deleted; the Delete fills what the row left, its word by the finger */
-.row.swipe-full .row-del{justify-content:flex-start;padding-left:28px}
+:is(.row,.card-head).swipe-full > .row-del{justify-content:flex-start;padding-left:28px}
 /* Deleted, or done by a full swipe, until the batch clears (leaving.js): gone from its place, which stays, at its
    height, so nothing moves: a gap holding only "Deleted" or "Done", in muted words, from the row's edge whatever its
    indent, and Restore or Undo where who's doing it was, the same shape as "+ me". (What the swipe uncovered stays
@@ -315,19 +321,23 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* The stacked card: anything with open subtasks or steps. Its title is a heading, quieter than its rows, the things to
    do; under it, its rows, each the shared row, a plain row like any other */
 .day-card{position:relative}
-/* its heading, one line: the title cut short with "…", its priority's bars, small, when it's due, short, and its count,
-   at the right */
-.card-head{position:relative;display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:12px 14px 0;color:var(--ink)}
+/* its header: the parent's ring, where its rows' ticks are, then its title, which opens it, on one line: the title cut
+   short with "…", its priority's bars, small, and when it's due, short */
+.card-head{position:relative;display:flex;align-items:flex-start;gap:12px;min-height:44px;padding:12px 14px 0;background:var(--surface)}
+.card-open{flex:1;min-width:0;display:flex;align-items:center;gap:8px;align-self:stretch;margin:-12px -14px 0 0;padding:12px 14px 0 0;border:0;background:transparent;text-align:left;color:var(--ink)}
 .card-title{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:13.5px;color:var(--muted);white-space:nowrap}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
+.card-head:is(.swiping,.swiped,.revealing){z-index:1}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
 .day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
-/* its count, at its right: its subtasks done of all of them, quiet (part 3 of parent-tasks-plan makes it its ring's) */
-.card-n{flex:none;display:flex;align-items:center;gap:3px;color:var(--muted);font-size:13px;white-space:nowrap}
-.card-n svg.i{width:14px;height:14px;stroke-width:2.2}
+/* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
+.card-close{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 6px 4px 52px;color:var(--accent);font-size:14.5px;font-weight:600}
+.card-close > span{flex:1;min-width:0}
+.close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:14.5px;font-weight:700}
+.close-btn:disabled{background:var(--sunk);color:var(--muted)}
 /* The peek, under a collapsed card's top row: the next subtask, shorter and quieter than a row, a little narrower, like
    a card stacked under it, its tick drawn small, not a button. One target, the strip's full size: a tap opens the card.
    Show less, at an opened card's foot, has its place and shape. Its words line up with the rows' titles */
@@ -338,7 +348,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-peek svg.i{width:16px;height:16px;margin-left:auto;transform:rotate(90deg)}
 .card-fold{padding-left:44px}
 .card-fold svg.i{transform:rotate(-90deg)}
-.day-card.deleted > :not(.del-gap){visibility:hidden}
+.day-card:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
 .day-card.lined > :not(.row-line){display:none}
 .day-card.fresh{animation:fresh 1.6s ease-out}

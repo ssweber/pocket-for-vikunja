@@ -10,6 +10,7 @@ import progress from '../../src/js/app/progress.js';
 import { rowGestures, screenRows } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
 import checklists from '../../src/js/app/checklists.js';
+import cards from '../../src/js/app/cards.js';
 import quickadd from '../../src/js/app/quickadd.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
@@ -41,14 +42,15 @@ test('under a step\'s title: Inserted or Repeated, its comments, and its countdo
    step, says how far it is, so no count of its steps and no "Next: …"; who it's for stays. A run's step has no 🔔: its
    reminder is Pocket's own, for the countdown the row shows. */
 test('a run\'s row says who it\'s for, not its steps done nor the next; a run\'s step has no 🔔, a task has', () => {
-  const app = component(views, runs, checklists), me = { id: 1, username: 'alex' }, soon = new Date(Date.now() + 18 * 6e4).toISOString();
+  const app = component(views, runs, checklists, cards), me = { id: 1, username: 'alex' }, soon = new Date(Date.now() + 18 * 6e4).toISOString();
   Object.defineProperty(app, 'checklistIds', { get: () => new Set([2]) });
-  Object.assign(app, { user: me, perms: {}, pending: [], route: { name: 'project' }, waitingByTask: new Map() });
+  Object.assign(app, { user: me, perms: {}, pending: [], positions: {}, route: { name: 'project' }, waitingByTask: new Map() });
   const run = { id: 20, title: 'Opening up', done: false, project_id: 2, assignees: [me], description: '', labels: [],
     related_tasks: { copiedfrom: [{ id: 9 }], subtask: [{ id: 21, done: true, title: 'Turn on the machine' }, { id: 22, done: false, title: 'Unlock the door' }] } };
   assert.deepEqual(app.rowMeta(run, { depth: {} }).map(m => [m.key, m.text]), [['for', 'For you']]);
   const task = { id: 30, title: 'Pack the van', project_id: 1, description: '', related_tasks: { subtask: [{ id: 31, done: true }, { id: 32 }] } };
-  assert.deepEqual(app.rowMeta(task, { depth: {} }).map(m => [m.key, m.text]), [['sub', '1/2']], 'a task\'s subtasks done still show');
+  assert.deepEqual(app.rowMeta(task, { depth: {} }).map(m => [m.key, m.text]), [], 'an open task\'s subtasks done: in its ring');
+  assert.deepEqual(app.rowMeta({ ...task, done: true }, { depth: {} }).map(m => [m.key, m.text]), [['sub', '1/2']], 'a done one has a tick, and its count under its title');
   const step = { id: 22, title: 'Unlock the door', done: false, project_id: 2, due_date: soon, reminders: [{ reminder: soon }], description: '', labels: [],
     related_tasks: { parenttask: [{ id: 20, title: 'Opening up' }], copiedfrom: [{ id: 3 }] } };
   assert.deepEqual(app.rowMeta(step, { depth: {} }).map(m => m.key), ['due'], 'its countdown, and no 🔔');
@@ -77,7 +79,7 @@ test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are
 
 test('a row swiped or held: its Delete and its move only where its list allows them, its progress everywhere', () => {
   const app = component(progress), asked = [];
-  Object.assign(app, { lines: {}, leaving: {}, canTick: () => true, canDelete: () => true, isRunTask: () => false, reorderOf: t => (asked.push(t.id), { start(){} }) });
+  Object.assign(app, { lines: {}, leaving: {}, canTick: () => true, canDelete: () => true, isRunTask: () => false, ringOf: () => null, rowRing: () => null, reorderOf: t => (asked.push(t.id), { start(){} }) });
   const row = gestures => ({ dataset: { gestures }, clientWidth: 360 }), t = { id: 5, percent_done: .25 };
   const today = app.rowGesture(t, row(screenRows('today').delete ? 'delete' : ''), false);
   assert.ok(today.swipe, 'Today: swiped left past 0%, its Delete');
@@ -205,7 +207,7 @@ test('the hint goes on the first open row that takes a swipe, a card\'s step lin
   const app = component(progress, leaving);
   const ro ={ id: 1, project_id: 9 }, done = { id: 2, done: true }, waiting = { id: 3, pending: true }, card = { id: 4 }, row = { id: 5 }, folded = { id: 6 };
   const steps = { 4: { id: 40, done: true } };
-  Object.assign(app, { lines: {}, hint: { at: null, pick: true, done: false }, canTick: t => t.project_id !== 9, cardOf: t => steps[t.id] ? { id: t.id, step: steps[t.id] } : null });
+  Object.assign(app, { lines: {}, hint: { at: null, pick: true, done: false }, canTick: t => t.project_id !== 9, ringOf: () => null, cardOf: t => steps[t.id] ? { id: t.id, step: steps[t.id] } : null });
   Object.defineProperty(app, 'listGroups', { get: () => [{ fold: true, tasks: [folded] }, { tasks: [ro, done, waiting] }, { tasks: [card, row] }] });
   localStorage.removeItem('pocket.hint.slide');
   app.pickHint();

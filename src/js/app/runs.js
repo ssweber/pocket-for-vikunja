@@ -2,7 +2,7 @@
 import {andList, cache, store, taskDrafts, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
-import {pctOf, runLine} from '../progress.js';
+import {pctOf} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
@@ -460,22 +460,16 @@ export default {
     const last = this.pending.filter(e => e.kind === 'act' && e.task === id && ['done', 'doneNote', 'skip', 'undone'].includes(e.op)).pop();
     return last ? last.op !== 'undone' : done;
   },
-  // Progress as shown: a run's steps done (ticks waiting to be sent too), any other task's as set.
+  // A step's progress, counting progress still waiting to be sent.
+  stepPct(s){
+    const last = this.pending.filter(e => e.kind === 'act' && e.task === s.id && e.op === 'progress').pop();
+    return last ? last.pct : pctOf(s);
+  },
+  // Progress as shown: a parent's (a task with subtasks, a run with steps) worked out from them (ringOf), any other
+  // task's as set.
   shownPct(t){
-    if (!this.isRunTask(t)) return t.done ? 100 : pctOf(t);
-    const {done, total} = this.runSteps(t);
-    return total ? Math.round(100 * done / total) : 0;
-  },
-  // A run's steps, and how many are done (ticks waiting to be sent too).
-  runSteps(t){
-    const steps = t.related_tasks?.subtask || [];
-    return {done: steps.filter(x => this.stepDone(x.id, x.done)).length, total: steps.length};
-  },
-  // A run's row's line, a segment for each step, in its order, each filled by whether its step is done (runLine); null
-  // for any other task, whose line is one.
-  runLineOf(t){
-    if (!this.isRunTask(t)) return null;
-    return runLine(stepsOf(t).map(x => this.stepDone(x.id, x.done)));
+    const r = this.ringOf(t);
+    return r ? r.pct : t.done ? 100 : pctOf(t);
   },
   /* Whether a row is a checklist run's step, whose box is square: things that behave differently look different, and a
      step is ticked through its run (with its ✅), where a task or a subtask has a round one. On a run's screen, in the
@@ -818,9 +812,11 @@ export default {
     // The box aims at the card's step again, if this was where the next would go.
     if (this.runAdded && this.actTask({task: this.runAdded.after}) === s.id) this.runAdded = null;
     if (s.pending) { await this.dropStep(s.pending, undo); return true; }
+    const run = this.view.run?.run.id;
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       cache.delete(s.id);
+      if (run) this.writeFigure(run).catch(() => {});                      // the run's worked-out progress, without it
       await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
       this.refreshPending();
       if (!undo) this.say('Step deleted', {place: ['sheet:top', 'step']});

@@ -1,5 +1,5 @@
 <div id="scrim" :hidden="!sheet.open" :class="{show: sheet.show}" @click="closeSheet()" hidden></div>
-<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', runopts: 'Run', start: 'Start a run', newtpl: 'New template', newproj: 'New project', outbox: 'Waiting to send'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
+<section id="sheet" x-ref="sheet" role="dialog" aria-modal="true" :aria-label="{account: 'Account', project: 'Project', runopts: 'Run', start: 'Start a run', newtpl: 'New template', newproj: 'New project', outbox: 'Waiting to send', complete: sheet.complete?.run ? 'Finish the run' : 'Complete subtasks'}[sheet.kind] || 'Task'" :hidden="!sheet.open" :class="{show: sheet.show}" hidden>
   <input id="focus-keeper" class="focus-keeper" aria-hidden="true" tabindex="-1" autocomplete="off">
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
@@ -44,5 +44,6 @@
     <!-- include markup/sheet/start.html -->
     <!-- include markup/sheet/account.html -->
     <!-- include markup/sheet/outbox.html -->
+    <!-- include markup/sheet/complete.html -->
   </div>
 </section>

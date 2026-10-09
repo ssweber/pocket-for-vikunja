@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isNudge, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, QUARTER_PX, releaseSpeed, runLine, SIDES, slidePct, snapPct, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, trackAt, trackMoves, undoing } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, figureOf, figurePatch, isNudge, isSubtask, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, QUARTER_PX, releaseSpeed, SIDES, slidePct, snapPct, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, trackAt, trackMoves, undoing, workedOut } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -181,18 +181,34 @@ test('sliding progress claims a task only where no one is on it and its slot can
   assert.equal(claimsOnSlide(null), false, 'no slot: a run, a template, a task waiting to be sent');
 });
 
-test('a run\'s line has a segment per step, each filled by whether its own step is done; past MANY_STEPS, one line with ticks, filled the same way', () => {
-  const none = n => Array(n).fill(false);
-  assert.deepEqual([runLine(none(MANY_STEPS)).segs, runLine(none(MANY_STEPS)).many], [12, false]);
-  assert.equal(runLine(none(MANY_STEPS + 1)).many, true);
-  assert.deepEqual(runLine([]), { segs: 1, many: false, fill: null }, 'no steps: nothing to fill, and nothing divided by 0');
-  assert.equal(runLine([true, false, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 25%,var(--track) 25% 50%,var(--accent) 50% 75%,var(--track) 75% 100%)', 'the first and third done: those two filled, not the first two');
-  assert.equal(runLine([true, true, false]).fill, 'linear-gradient(to right,var(--accent) 0% 66.667%,var(--track) 66.667% 100%)', 'steps alike side by side, one stretch');
-  assert.equal(runLine([false, false, false]).fill, 'linear-gradient(to right,var(--track) 0% 100%)');
-  const many = Array.from({ length: 14 }, (_, i) => i === 1 || i === 8);   // the 2nd and 9th of 14 done
-  assert.deepEqual([runLine(many).many, runLine(many).fill], [true, 'linear-gradient(to right,var(--track) 0% 7.143%,var(--accent) 7.143% 14.286%,var(--track) 14.286% 57.143%,var(--accent) 57.143% 64.286%,var(--track) 64.286% 100%)'], 'past MANY_STEPS too, each step’s stretch by its own step');
-  assert.equal(runLine([1, 0.5, 0, true]).fill, 'linear-gradient(to right,var(--accent) 0% 37.5%,var(--track) 37.5% 75%,var(--accent) 75% 100%)', 'a step half done: half its segment, from the left');
-  assert.equal(runLine([0, 0.25]).fill, 'linear-gradient(to right,var(--track) 0% 50%,var(--accent) 50% 62.5%,var(--track) 62.5% 100%)');
+/* A parent's progress is worked out from its subtasks (parent-tasks-plan, part 3; design rule 5): it has none of its own
+   to set. */
+test('a parent\'s figure is the average of its subtasks\', a done one 100%, rounded; with none, it has none', () => {
+  assert.deepEqual(workedOut([{ pct: 50 }, { pct: 0 }, { pct: 0 }, { pct: 0 }]), { pct: 13, done: 0, total: 4 }, 'one at 50% of four: 13%');
+  assert.deepEqual(workedOut([{ done: true }, { pct: 50 }, { done: true, pct: 20 }, { pct: 0 }]), { pct: 63, done: 2, total: 4 }, 'done counts 100%, whatever its progress was');
+  assert.deepEqual(workedOut([{ done: true }, { done: true }]), { pct: 100, done: 2, total: 2 });
+  assert.equal(workedOut([]), null, 'no subtasks: no figure, so it keeps its last');
+  assert.equal(workedOut([{ pct: 150 }]).pct, 100, 'never past 100%');
+});
+
+test('the figure written to a parent: from Vikunja\'s copy of its subtasks, only when it changes', () => {
+  const parent = (pct, ...subs) => ({ id: 1, percent_done: pct, related_tasks: { subtask: subs } });
+  const four = [{ id: 2, percent_done: 0.5 }, { id: 3 }, { id: 4 }, { id: 5 }];
+  assert.deepEqual(figureOf(parent(0, ...four)), { pct: 13, done: 0, total: 4 });
+  assert.deepEqual(figurePatch(parent(0, ...four)), { percent_done: 0.13 }, 'as the ring shows it, rounded');
+  assert.equal(figurePatch(parent(0.13, ...four)), null, 'already that: nothing to save');
+  assert.equal(figurePatch(parent(0.4)), null, 'its subtasks all removed: it keeps its last figure');
+  assert.deepEqual(figurePatch(parent(0.5, { id: 2, done: true }, { id: 3, done: true })), { percent_done: 1 }, 'every one done: 100%, though it stays open until Close');
+});
+
+test('a parent\'s header swiped right has one stop, its full point: it springs back before it, and has no progress to set', () => {
+  const at = dx => swipeAt({ start: 0, dx, x: 100, width: W, screen: SCREEN, del: true, one: true });
+  const half = W * SIDES.up.full;
+  assert.deepEqual(at(half / 4), { off: half / 4, pct: 0, to: 'stop' }, 'a quarter of the way: no 25%');
+  assert.deepEqual(at(half - 1), { off: half - 1, pct: 0, to: 'stop' }, 'just short: still nothing, let go it springs back');
+  assert.deepEqual(at(half), { off: half, pct: 100, to: 'done' }, 'all the way: its question (or Close)');
+  assert.equal(at(-200).to, 'delete', 'left: its Delete, as a row at 0%');
+  assert.deepEqual([swipeFeel(at(10), at(half / 2)), swipeFeel(at(half - 1), at(half))], [null, 'done'], 'nothing felt on the way, a firm tick at the full point');
 });
 
 test('a nudge: a touch moved up or down past a tap, within about a row, and slow as it lifts; else a tap or a fling', () => {

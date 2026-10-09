@@ -139,6 +139,8 @@ export default {
           made: t => { taken.add(t.id); tasks.push({...t, child, parent: under}); if (i === 0) entry.parentProject = t.project_id; }});
         ids.push(item.taskId);
       }
+      // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them.
+      if (entry.parent && !entry.figured) { await this.writeFigure(entry.parent.id); entry.figured = true; await save(); }
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
       if (files.length) { this.placeSent(tasks); this.refreshPending(); }    // the task shows while its photos upload

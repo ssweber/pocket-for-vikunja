@@ -1,7 +1,7 @@
 // The stacked card (src/js/cards.js, and app/cards.js on a pretend component): which tasks are cards on Today and what
 // brought each, where each sits there, which subtask is its top row, its peek, opening it, and its count; a card in
 // search; where a run goes next, the one rule its card and its screen go by, and the bottom box aimed at its step.
-import { component } from './fake.mjs';
+import { component, fakeVikunja } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
@@ -17,6 +17,7 @@ import progress from '../../src/js/app/progress.js';
 import runs from '../../src/js/app/runs.js';
 import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
+import actions from '../../src/js/app/actions.js';
 import { whereNext } from '../../src/js/checklists.js';
 
 const NONE = '0001-01-01T00:00:00Z', me = { id: 1 }, other = { id: 2 };
@@ -107,18 +108,19 @@ test('a run’s step’s countdown, to the minute, within a day', () => {
 // done, first, then Chairs, Tables and Lights.
 const today = () => {
   const app = component(cards, views, alerts, tasks, leaving);
-  Object.assign(app, { cardPage: {}, cardOpen: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, checklistIds: new Set(), waitingByTask: new Map() });
+  Object.assign(app, { cardPage: {}, cardOpen: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, stepPct: s => Math.round((s.percent_done || 0) * 100), checklistIds: new Set(), waitingByTask: new Map() });
   const parent = app.keep(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
   for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.keep(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
   return { app, parent, g: { cards: 'today', line: true } };
 };
 
-test('a card: its open subtasks, the most urgent first, collapsed to its top row with a peek at the next, and its count', () => {
+test('a card: its open subtasks, the most urgent first, collapsed to its top row with a peek at the next, and its ring', () => {
   const { app, parent, g } = today(), c = app.cardOf(parent, g);
   assert.deepEqual(c.steps.map(s => s.title), ['Chairs', 'Tables', 'Lights'], 'none dated: its List view’s order');
   assert.deepEqual([c.step.title, c.rows.map(s => s.title), c.peek.title, c.more, c.open], ['Chairs', ['Chairs'], 'Tables', 2, false], 'its top row, and a peek at the next: “Tables · 2 more”');
-  assert.deepEqual(app.cardCount(c), { text: '1/4', said: '1 of 4 subtasks done' }, 'its count, at the right of its heading: the done one counted');
+  assert.deepEqual([c.ring.done, c.ring.total, c.ring.pct, c.ring.said], [1, 4, 25, '1 of 4 subtasks done, 25%'], 'its ring: the done one counted, and its figure worked out');
+  assert.equal(c.ring.label, 'Complete “Pack the van” and its 3 open subtasks', 'what its tap does');
   assert.deepEqual([c.g.card, c.g.line, c.g.delete], [c, true, true], 'its rows know their card, are on one line, and have Delete, as Today’s rows do');
   assert.equal(app.cardOf(parent, { depth: {} }), null, 'only on a list with cards');
   assert.deepEqual(app.rowMeta(c.step, c.g).map(m => m.text), [], 'not which step it is, nor the project: those are on the card');
@@ -159,12 +161,12 @@ test('in search, any open task with open subtasks is a card, collapsed; its subt
 
 test('a card’s heading: its priority’s bars as its row shows them, only when it has one; said, its due date, its priority and its project', () => {
   const { app, parent } = today();
-  assert.deepEqual([app.cardHead(parent).title, app.cardHead(parent).prio, app.cardHead(parent).due, app.cardHead(parent).said], ['Pack the van', 0, null, 'Café'], 'no priority, no bars; no date, nothing at the right');
+  assert.deepEqual([app.cardHead(parent).title, app.cardHead(parent).prio, app.cardHead(parent).due, app.cardHead(parent).said], ['Pack the van', 0, null, '1 of 4 subtasks done, 25%, Café'], 'no priority, no bars; no date, nothing at the right; its ring said');
   const urgent = { ...parent, priority: 4, due_date: at(8, 10) }, row = app.rowMeta(urgent, { depth: {} }).find(m => m.key === 'prio'), h = app.cardHead(urgent);
   assert.equal(h.prio, 4);
   assert.equal(row.label, 'Priority: Urgent');
   const when = dueInfo(urgent.due_date);
-  assert.equal(h.said, `${when.cls === 'overdue' ? 'Late: ' : 'Due '}${when.label}, ${row.label}, Café`, 'when, in words, its priority as its row says it, and its project');
+  assert.equal(h.said, `1 of 4 subtasks done, 25%, ${when.cls === 'overdue' ? 'Late: ' : 'Due '}${when.label}, ${row.label}, Café`, 'when, in words, its priority as its row says it, and its project');
   Object.assign(app, { isRunTask: t => t.id === 10, forText: t => t.assignees.length ? 'For you' : '' });
   assert.equal(app.cardHead(urgent).said.split(', ').pop(), 'Checklist run', 'a run’s for no one: what it is, instead of its project');
   assert.equal(app.cardHead({ ...urgent, assignees: [me] }).said.split(', ').pop(), 'For you', 'or who it’s for');
@@ -179,7 +181,7 @@ test('on a project’s list a card is open, its rows the subtasks under it there
   const g = { cards: 'list', delete: true, reorder: true, heads: [], ...n }, c = app.cardOf(parent, g);
   assert.deepEqual(c.rows.map(s => s.title), ['Chairs', 'Tables', 'Rope', 'Lights'], 'its subtasks there, one waiting to be sent among them');
   assert.deepEqual([c.open, c.folds, c.peek], [true, false, null], 'open, for good: no peek, nor Show less');
-  assert.equal(app.cardCount(c).text, '1/5', 'counting the one waiting to be sent');
+  assert.deepEqual([c.ring.done, c.ring.total, c.ring.pct], [1, 5, 20], 'counting the one waiting to be sent, at 0%');
   assert.deepEqual([c.g.delete, c.g.reorder, c.g.depth], [true, true, {}], 'its rows deleted and moved as the list’s');
   assert.equal(app.cardOf(plain, g), null, 'a task with no subtasks there: a row');
   assert.equal(app.cardOf(app.tasks[12], g), null, 'Chairs, with a subtask of its own: a row on the card, which opens its sheet');
@@ -193,11 +195,13 @@ test('ticked, a card’s top row stays until the batch clears, then the next com
   assert.equal(c.step.title, 'Chairs');
   app.pinCard(c);
   app.tasks[12].done = true; app.leaving[12] = 'done';
-  assert.deepEqual([app.cardOf(parent, g).step.title, app.cardOf(parent, g).peek.title, app.cardCount(app.cardOf(parent, g)).text], ['Chairs', 'Tables', '2/4'], 'done, still on top, counted');
+  assert.deepEqual([app.cardOf(parent, g).step.title, app.cardOf(parent, g).peek.title, app.cardOf(parent, g).ring.done], ['Chairs', 'Tables', 2], 'done, still on top, counted');
   delete app.leaving[12];
   assert.deepEqual([app.cardOf(parent, g).step.title, app.cardOf(parent, g).peek.title, app.cardOf(parent, g).more], ['Tables', 'Lights', 1], 'the batch cleared: the next, up');
   for (const id of [11, 13]) app.tasks[id].done = true;
-  assert.equal(app.cardOf(parent, g), null, 'no open step left: a row like any other');
+  const all = app.cardOf(parent, g);
+  assert.deepEqual([all.closes, all.rows, all.peek, all.ring.open, all.ring.pct], [true, [], null, 0, 100], 'no open step left: it waits for Close, its ring full (nothing closes behind your back)');
+  assert.equal(all.ring.label, 'Close “Pack the van”: all its subtasks are done');
 });
 
 test('Today’s groups: a card by what brought it; one whose task can’t be read shows what brought it as rows', () => {
@@ -312,7 +316,7 @@ test('a run’s card on Today opens on the step its screen would, and goes by th
   const soon = m => new Date(Date.now() + m * 6e4).toISOString();
   app.tasks[11].due_date = soon(10); app.tasks[13].due_date = soon(20);   // Lights and Tables counting down
   const c = app.cardOf(parent, g);
-  assert.deepEqual([c.step.title, c.peek.title, app.cardCount(c)], ['Lights', 'Chairs', { text: '1/4', said: '1 of 4 steps done' }], 'the first in order, counting down; the next in order under it');
+  assert.deepEqual([c.step.title, c.peek.title, c.ring.said, c.ring.label], ['Lights', 'Chairs', '1 of 4 steps done, 25%', 'Finish “Pack the van”, with 3 steps not done'], 'the first in order, counting down; the next in order under it');
   app.pinCard(c);
   app.tasks[11].done = true; app.leaving[11] = 'done';
   assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'ticked, it stays until the batch clears');
@@ -388,4 +392,66 @@ test('Repeat copies the card’s step where the box aims, with an Undo that puts
   assert.equal(app.runAim.after, 'pending-' + added[1].id);
   await said[0].action.fn();
   assert.deepEqual([app.runAim.after, app.runAim.title, app.said], ['pending-' + added[0].id, 'X', 'Not repeated: C'], 'after X again');
+});
+
+/* A parent's ring (parent-tasks-plan, part 3; design rules 7 and 8): its tap never closes subtasks without asking, unless
+   there's one, which has an Undo; with every subtask done, it's Close. */
+const ringed = (c, list) => {
+  if (c) c.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja(list), app = component(cards, tasks, leaving, actions, runs);
+  Object.assign(app, { cardPage: {}, cardOpen: {}, positions: {}, lines: {}, pending: [], perms: {}, checklistIds: new Set(),
+    openSheet(kind){ this.sheet = { kind, open: true }; }, closeSheet(){ this.sheet = { kind: '', open: false }; } });
+  for (const t of list) app.keep(t);
+  return { v, app };
+};
+const ROW = {}, parentOf = (...kids) => ({ id: 10, title: 'Pack the van', done: false, project_id: 5, related_tasks: { subtask: kids.map(k => ({ id: k.id, done: !!k.done })) } });
+const kid = (id, f = {}) => ({ id, title: 'Kid ' + id, done: false, project_id: 5, related_tasks: under(10), ...f });
+
+test('a parent’s ring with one open subtask: it and the parent completed at once, shown as a gap with Undo', async c => {
+  const kids = [kid(11), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
+  await app.ringTap(app.tasks[10], ROW);
+  assert.deepEqual([v.task(10).done, v.task(11).done], [true, true]);
+  assert.deepEqual([app.leaving, app.swept], [{ 10: 'done', 11: 'done' }, { 10: true }], 'its card a gap holding Undo until the batch clears');
+  assert.equal(app.sheet.kind, undefined, 'nothing asked');
+  await app.ringTap(app.tasks[10], ROW);                                     // its ring again, or the gap's Undo
+  assert.deepEqual([v.task(10).done, v.task(11).done], [false, false], 'both open again');
+});
+
+test('a parent’s ring with more open subtasks asks first, listing them; confirmed, they and the parent are completed', async c => {
+  const kids = [kid(11), kid(12), kid(13, { repeat_after: 86400, due_date: '2026-10-09T09:00:00Z' }), kid(14, { done: true })];
+  const { v, app } = ringed(c, [parentOf(...kids), ...kids]);
+  await app.ringTap(app.tasks[10], ROW);
+  assert.deepEqual([app.sheet.kind, app.sheet.complete.n, app.sheet.complete.stay, app.sheet.complete.open.map(s => s.title)], ['complete', 2, 1, ['Kid 11', 'Kid 12', 'Kid 13']], 'Complete 2 open subtasks? The one that repeats stays');
+  assert.equal(v.task(10).done, false, 'nothing done while it asks');
+  app.cancelComplete();
+  assert.equal(app.sheet.open, false, 'Cancel: back where it was');
+  await app.ringTap(app.tasks[10], ROW);
+  await app.confirmComplete();
+  assert.deepEqual([10, 11, 12, 13].map(id => v.task(id).done), [true, true, true, false], 'the one that repeats left as it is');
+});
+
+test('a parent with every subtask done waits for Close; a repeating one is done as before, its subtasks as they are', async c => {
+  const kids = [kid(11, { done: true }), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
+  assert.equal(app.ringOf(app.tasks[10]).open, 0);
+  await app.ringTap(app.tasks[10], ROW);                                     // Close
+  assert.deepEqual([v.task(10).done, app.leaving[10], app.swept[10]], [true, 'done', true]);
+  const open = [kid(21), kid(22)], rep = { ...parentOf(...open), id: 20, repeat_after: 86400, due_date: '2026-10-09T09:00:00Z' };
+  const r = ringed(null, [rep, ...open]);
+  await r.app.ringTap(r.app.tasks[20], ROW);
+  assert.equal(r.app.sheet.kind, undefined, 'not asked: its subtasks aren\'t touched');
+  assert.notEqual(r.v.task(20).due_date, '2026-10-09T09:00:00Z', 'on to its next date');
+  assert.deepEqual([21, 22].map(id => r.v.task(id).done), [false, false]);
+});
+
+test('a run’s ring with steps not done asks first, and finishing it leaves them not done; a done parent’s ring opens it again', async c => {
+  const kids = [kid(11), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
+  app.isRunTask = t => t.id === 10;
+  await app.ringTap(app.tasks[10], ROW);
+  assert.deepEqual([app.sheet.kind, app.sheet.complete.run, app.sheet.complete.n], ['complete', true, 1], 'Finish this run with 1 step not done?');
+  assert.equal(app.ringOf(app.tasks[10]).label, 'Finish “Pack the van”, with 1 step not done');
+  app.isRunTask = () => false;
+  app.tasks[10].done = true;
+  await app.ringTap(app.tasks[10], ROW);
+  assert.equal(v.task(10).done, false, 'done elsewhere over a subtask still open: its ring opens it again');
+  assert.equal(v.task(11).done, false);
 });

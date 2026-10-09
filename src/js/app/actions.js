@@ -2,17 +2,19 @@
    moving, adding subtasks, people and labels, and saving a change. Each one makes the request, takes the subtasks along
    where they go too, changes what's on screen and offers the Undo, so the lists and the sheet call these, not api().
    A task is ticked one way, toggleDone, from a list or its sheet (sheetDone). A run and a run's step are ticked through
-   the outbox (act, in runs.js): toggleDone hands them to tickRunTask and tickRunStep, and tickRunTask keeps a run's own
-   rule, that finishing it with steps not done asks first and leaves them not done. Reordering: a task among its
+   the outbox (act, in runs.js): toggleDone hands them to tickRunTask and tickRunStep, and a run finished with steps not
+   done leaves them not done (its ring asks first: app/cards.js). A parent (a task with subtasks, a run) is closed from
+   its ring (ringTap, app/cards.js), and its progress is worked out from its subtasks, written to it with each change to
+   them (writeFigure). Reordering: a task among its
    siblings in its project's List view (reorder), and a template's steps by moveStep (checklists.js), which writes their
    order line. */
 import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {addDays, dueInfo, isLate, isSet, repeats, startOfDay} from '../dates.js';
-import {isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
+import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
 import {doneText, movedText, notMoved, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
-import {hasOwnOrder, hasTemplateLabel, patiently} from '../checklists.js';
+import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {parentIds} from '../lists.js';
 import {NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
@@ -89,23 +91,26 @@ export default {
   /* ---------- done, and not done again ---------- */
   /* Ticking a task done, or not done again: the one way it's done, from its row in a list (rowEl), its own sheet
      (extra.sheet: sheetDone), or a subtask's row in its parent's sheet (extra.sub). A run and a run's step are handed to
-     tickRunTask and tickRunStep, which go through the outbox. Done, its open subtasks are closed with it, without asking
-     (not those that repeat, nor a repeating task's), and its undo opens exactly those again, its progress as it was.
+     tickRunTask and tickRunStep, which go through the outbox. A parent's subtasks stay as they are (parent-tasks-plan,
+     part 3: its ring asks first, completeParent), unless `extra.close`: then its open subtasks are closed with it (not
+     those that repeat, nor a repeating task's), and its undo opens exactly those again, its progress as it was. A
+     subtask's tick changes its parent's worked-out progress, written to it right after (refigure).
      `extra` is saved along with it, and `undoExtra` with the undo: progress uses these to mark a task done at 100%.
      In a list, the row shows it where it is, with the subtasks closed with it, until the batch clears (markRow,
      leaving.js): then they leave Today, or move to Done in search and a project; its tick meanwhile is the undo. A
      repeating task shows done, then its next date. From its sheet, whose tick shows it, only subtasks closed are said,
      under them, with an Undo; a subtask in its parent's sheet stays where it is, done. Not saved, its row says so, with
      Try again. A done task shown over its open subtasks (isHead), opened again, stays where it is (reopenedHead).
-     `extra.gap`: done by a full swipe, its row a gap holding Undo until the batch clears (markRow), a subtask's in its
-     parent's sheet too, which then shows it done. */
+     `extra.gap`: done by a full swipe, or a parent completed, its row (or card) a gap holding Undo until the batch
+     clears (markRow), a subtask's in its parent's sheet too, which then shows it done. */
   async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl, extra.gap);
     if (this.isRunTask(t) && !extra.quiet) return this.tickRunTask(t, rowEl);
-    const {quiet, sub: inSheet, sheet, gap = false, ...patch} = extra, sub = inSheet || isSubtask(t), was = t.done, head = was && this.isHead(t);
+    const {quiet, sub: inSheet, sheet, gap = false, close = false, ...patch} = extra, sub = inSheet || isSubtask(t), was = t.done, head = was && this.isHead(t);
     const inList = !!rowEl && !quiet && !sheet && !inSheet;
-    const subs = was || quiet || this.isRunTask(t) ? [] : openSubtasks(t);    // a run's steps are ticked on its screen, with who did each
+    // Its open subtasks as they're shown (a run's steps are ticked on its screen, with who did each)
+    const subs = was || quiet || !close || this.isRunTask(t) ? [] : openSubtasks(t).map(s => this.tasks[s.id] || s).filter(s => !s.done);
     // A repeating task moves on its dates, and its reminders at a set time: the undo puts them back.
     const back = {due_date: t.due_date}, shown = {due_date: t.due_date, start_date: t.start_date, end_date: t.end_date, reminders: t.reminders};
     for (const k of ['start_date', 'end_date']) if (isSet(t[k])) back[k] = t[k];
@@ -114,6 +119,7 @@ export default {
     try {
       const saved = await this.saveTask(t.id, {done: !was, ...patch});
       Object.assign(t, saved);
+      if (sub) this.refigure(t, inSheet ? this.sheet.task?.id : null);
       if (sheet) this.sheet.dirty = true;
       if (!was && !saved.done) {                 // repeating task rolled forward: the undo puts its date back
         const err = {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'};
@@ -140,13 +146,15 @@ export default {
       const closed = was ? [] : await this.closeSubtasks(subs), ids = [t.id, ...closed];
       const mark = (list, done) => { for (const s of t.related_tasks?.subtask || []) if (list.includes(s.id)) s.done = done; };
       mark(closed, true);
+      if (closed.length) this.writeFigure(t.id).catch(() => {});             // its worked-out progress, with them done
       // Subtasks left open under it on a project's list (one that repeats, or one not saved): it stays over them.
       const over = !was && !sub && !sheet && this.leftOpenUnder(t) && this.makeHead(t);
-      const undo = was ? async () => { await this.toggleDone(t, null, {quiet: true, sheet}); this.render(); }
+      const undo = was ? async () => { await this.toggleDone(t, null, {quiet: true, sheet, sub: inSheet}); this.render(); }
         : async () => {
-          await this.toggleDone(t, null, {...undoExtra, quiet: true, sheet});
+          await this.toggleDone(t, null, {...undoExtra, quiet: true, sheet, sub: inSheet});
           const failed = await this.reopen(closed);
           mark(closed.filter(id => !failed.includes(id)), false);
+          if (closed.length) this.writeFigure(t.id).catch(() => {});
           if (failed.length) this.say(`Not all undone: ${failed.length} subtask${failed.length === 1 ? '' : 's'} couldn't be marked not done`, {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:subtasks'});
           this.render();
         };
@@ -171,6 +179,21 @@ export default {
       t.done = was;
       this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top', action: {label: 'Try again', fn: () => this.toggleDone(t, this.rowEl(t.id), extra, undoExtra)}});
     }
+  },
+  /* A parent's worked-out progress (parent-tasks-plan, part 3), written to its percent_done after a change to its
+     subtasks, with that change: in the same chain of saves, right after it, Vikunja's copy read first and only a figure
+     that changed saved, with nothing said (figurePatch). Not a template's. Resolves to Vikunja's copy. A run's step goes
+     through the outbox instead, its act's last part doing the same (`figure`, sync.js). */
+  writeFigure(id){ return this.saveTask(id, null, now => hasTemplateLabel(now) ? null : figurePatch(now)); },
+  // The task a subtask is under: its own copy says, or the sheet it's in, or the task on screen it's listed under.
+  parentIdOf(t){
+    const own = parentIds(t)[0], has = p => p?.related_tasks?.subtask?.some(s => s.id === t.id);
+    return own ?? (has(this.sheet.task) ? this.sheet.task.id : Object.values(this.tasks).find(has)?.id ?? null);
+  },
+  // After a subtask's tick or progress, in a list or its parent's sheet (`up`): its parent's figure, in the background.
+  refigure(t, up = null){
+    const id = up ?? this.parentIdOf(t);
+    if (typeof id === 'number') this.writeFigure(id).catch(() => {});
   },
   // A done task on a project's open list, struck through over its subtasks still open there (loadProject).
   isHead(t){ return !!t?.done && this.route.name === 'project' && !!this.view.groups.find(g => g.key === 'open')?.heads?.includes(t.id); },
@@ -207,12 +230,13 @@ export default {
     if (i >= 0) g.tasks.splice(i, 1);
     if ((i >= 0 || !g.loaded) && typeof g.count === 'number') g.count = Math.max(0, g.count - 1);
   },
-  /* A run ticked in its project's list or its sheet: finished, or opened again, as on its screen, through the outbox. Its
-     steps are ticked one by one on its screen, with who did each, so ticking the run leaves them as they are: with steps
-     not done, it asks first. In a list, it's shown in place until the batch clears, as a task's tick is. */
+  /* A run finished, or opened again, from its ring or its Close (parent-tasks-plan, part 3: a run is a parent, its steps
+     its subtasks), or its sheet, as on its screen, through the outbox. Its steps are ticked one by one on its screen, with
+     who did each, so finishing it leaves them as they are: with steps not done, its ring asks first (askComplete). In a
+     list, it's shown in place, its card a gap holding Undo, until the batch clears, as a task's tick is; its steps go
+     with it. */
   async tickRunTask(t, rowEl){
-    const was = t.done, head = was && this.isHead(t), open = (t.related_tasks?.subtask || []).filter(s => !s.done).length;
-    if (!was && open && !confirm(`Finish “${t.title}” with ${open} step${open === 1 ? '' : 's'} not done? ${open === 1 ? 'It stays' : 'They stay'} not done.`)) return;
+    const was = t.done, head = was && this.isHead(t);
     const r = await this.act({op: was ? 'reopen' : 'finish', task: t.id, run: t.id});
     if (r.status === 'error') return;
     t.done = !was;
@@ -221,13 +245,12 @@ export default {
     if (head) return this.outOfDone(t.id);
     const offline = r.status === 'offline', said = was ? 'Not done: ' + t.title : offline ? sentLater('Finished ' + t.title) : 'Finished ' + t.title;
     const undo = async () => { await this.act({op: was ? 'finish' : 'reopen', task: t.id, run: t.id}); t.done = was; this.render(); };
-    // From its sheet: said at its top, with its Undo.
+    // From its sheet: said at its top, with its Undo; with no row of it on screen, by the toast.
     if (!rowEl) { if (!was) this.say(offline ? sentLater('Finished') : said, {place: 'sheet:top', action: {label: 'Undo', fn: undo}}); return; }
-    // On a project's list, with steps not done under it, it stays over them.
-    const over = !was && this.leftOpenUnder(t) && this.makeHead(t), moves = () => !!this.searchGroups(t);
+    const moves = () => !!this.searchGroups(t), steps = () => stepsOf(t).map(s => s.id);
     if (was && !moves()) { this.said = said; return; }
-    this.markRow(t.id, {kind: was ? 'open' : 'done', undo, said, out: () => over || (this.bothWays && !moves()) ? [] : [t.id],
-      gone: () => { if (over) return; if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) this.removeRow(t.id); }});
+    this.markRow(t.id, {kind: was ? 'open' : 'done', undo, said, gap: !was, out: () => this.bothWays && !moves() ? [] : [t.id],
+      gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) [t.id, ...steps()].forEach(id => this.removeRow(id)); }});
   },
   /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
      waits without a connection. In a list, it's shown in place until the batch clears, as a task's tick is (by a full
@@ -311,6 +334,7 @@ export default {
     try {
       await this.saveTask(t.id, patch);
       this.said = `Progress of ${t.title} set to ${pct}%`;
+      if (sub || isSubtask(t)) this.refigure(t, sub ? this.sheet.task?.id : null);
     } catch (e) {
       t.percent_done = was / 100;
       this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, action: {label: 'Try again', fn: () => this.setProgress(t, pct, this.rowEl(t.id), {undoing, sub})}});
@@ -568,8 +592,10 @@ export default {
     const n = tree.length - 1, direct = (t.related_tasks?.subtask || []).filter(s => tree.includes(s.id)).length;
     const deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
     if (n && !confirm(`Delete “${t.title}” and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?`)) return null;
+    // A subtask deleted changes its parent's worked-out progress: written once it's sent (`up`, the act's last part).
+    const up = this.parentIdOf(t);
     const entry = {id: randomId(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), items: [], files: [], stage: 0, fails: 0,
-      run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + HELD_MS};
+      run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + HELD_MS, ...typeof up === 'number' && !tree.includes(up) && {up}};
     sync.held.add(entry.id);
     const added = sync.add(entry, []);
     show?.({id: entry.id, n, ids: tree});

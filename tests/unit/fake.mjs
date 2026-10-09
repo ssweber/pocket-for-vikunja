@@ -7,11 +7,18 @@ import { vikunjaNext } from '../../src/js/checklists.js';
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 /* Tasks by id, which GET, PATCH and DELETE /tasks/:id read and change, as Vikunja does: a repeating task marked done
-   moves on to its next date instead (where Pocket thinks Vikunja moves it, vikunjaNext). Every request is kept in
+   moves on to its next date instead (where Pocket thinks Vikunja moves it, vikunjaNext), and a task read has its
+   subtasks as they are now, one deleted gone (related_tasks). Every request is kept in
    `requests`. `trouble(request)` can make one go wrong: 'offline' (it never reaches Vikunja), 'lost' (it does, and the
    reply is lost on the way back), or an HTTP status to answer with. */
 export function fakeVikunja(tasks = []){
-  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), requests: [], trouble: () => null };
+  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), requests: [], trouble: () => null }, gone = new Set();
+  const withSubtasks = t => {
+    const subs = t.related_tasks?.subtask;
+    if (!subs) return t;
+    t.related_tasks.subtask = subs.filter(s => !gone.has(s.id)).map(s => v.tasks.has(s.id) ? { ...v.tasks.get(s.id), related_tasks: undefined } : s);
+    return t;
+  };
   v.task = id => v.tasks.get(id);
   globalThis.fetch = async (url, { method = 'GET', body } = {}) => {
     const req = { method, path: new URL(url).pathname.replace(/^\/api\/v2/, ''), body: body ? JSON.parse(body) : undefined };
@@ -23,8 +30,8 @@ export function fakeVikunja(tasks = []){
     let res;
     if (!id) res = reply({ message: `the fake has no ${method} ${req.path}` }, 404);
     else if (!t) res = reply({ message: 'The task does not exist.' }, 404);
-    else if (method === 'GET') res = reply(t);
-    else if (method === 'DELETE') { v.tasks.delete(id); res = reply({ message: 'Successfully deleted.' }); }
+    else if (method === 'GET') res = reply(withSubtasks(t));
+    else if (method === 'DELETE') { v.tasks.delete(id); gone.add(id); res = reply({ message: 'Successfully deleted.' }); }
     else if (method === 'PATCH') {
       const next = req.body.done && !t.done && vikunjaNext(t);
       Object.assign(t, req.body, next ? { done: false, due_date: new Date(next).toISOString() } : {}, { updated: new Date().toISOString() });

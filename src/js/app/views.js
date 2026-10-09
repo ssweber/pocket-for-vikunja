@@ -161,9 +161,9 @@ export default {
     // end of the row (rowSlot).
     if (this.isRunTask(t) && (t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
-    // Its subtasks done. Not a run's steps: its line, a segment per step, says how far it is (and its screen what's next).
+    // Its subtasks done (a done task's): one with a ring (a run, an open parent) has its count in it (rowRing).
     const subs = t.related_tasks?.subtask || [];
-    if (subs.length && !this.isRunTask(t)) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
+    if (subs.length && !this.isRunTask(t) && !this.rowRing(t, g || {})) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments', extra: true});
     // Photos and files still uploading count too, so a photo added with a task shows on its row straight away. (Said on
     // one line while some wait: that's not a count, it's work still to send.)
