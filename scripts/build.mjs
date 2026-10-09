@@ -8,6 +8,9 @@
 //   <link rel="stylesheet" href="styles.css">      that stylesheet from src/, minified, in a <style>
 //   <script type="module" src="js/main.js">        that script from src/ and everything it imports, as one minified
 //                                                  script, with a source map next to the page (pocket.js.map)
+//   <script defer src="alpine-3.17.4-pocket.1.min.js">
+//                                                  src/vendor/alpine-3.17.4.js, minified, written as that file
+//                                                  next to the page (vendor, below)
 // A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is.
 //
 // Everything Pocket's page needs is in that one file, so a phone never mixes a new page with old code, and sw.js and
@@ -77,6 +80,20 @@ async function build(){
     throw new Error('A </script> or </style> inside the inlined code would cut it short');
   write(join(OUT, 'index.html'), page);
   if (map) write(join(OUT, MAP), map);
+  await vendor(page);
+}
+
+/* A library Pocket patches is kept readable in src/vendor/ (alpine-3.17.4.js: Alpine as published, then patched, each
+   change marked "Pocket:") and minified here, as its own makers do, into the file the page names
+   (alpine-3.17.4-pocket.1.min.js). That name changes with each change to the patch: sw.js keeps the libraries by name,
+   so a changed file under an old name would never reach an installed Pocket. */
+async function vendor(page){
+  for (const [, name, lib] of page.matchAll(/<script[^>]* src="(([\w.-]+?)-pocket\.\d+\.min\.js)"/g)) {
+    const file = join(SRC, 'vendor', lib + '.js');
+    if (!existsSync(file)) throw new Error(`The page loads ${name}, but there's no src/vendor/${lib}.js to make it from`);
+    const { code } = await esbuild.transform(read(file), { minify: true, banner: `/* ${lib}.js, patched by Pocket: src/vendor/${lib}.js */` });
+    write(join(OUT, name), code);
+  }
 }
 
 // Only a file that changed is written: a new modification time is a new version of Pocket to every open copy of it,

@@ -1,11 +1,25 @@
 (() => {
   // packages/alpinejs/src/scheduler.js
+  // Pocket: patched for long lists (each change marked "Pocket:"). Alpine's own sorted the rest of the queue again
+  // before each job whenever an x-for/x-if job was queued meanwhile, working out each element's depth afresh for each
+  // sort, and searched the whole queue to queue a job or take one off: thousands of sorts for a list of a few hundred
+  // rows. The jobs run in the same order as before (tests/unit/alpine.test.mjs), as long as no element changes depth
+  // during a flush.
   var flushPending = false;
   var flushing = false;
   var queue = [];
   var lastFlushedIndex = -1;
   var queueNeedsSort = false;
   var transactionActive = false;
+  // Pocket: what's queued, without searching the queue: job -> 1 waiting, 2 run in this flush (not queued again in it,
+  // as before, when it stayed in the queue till the end).
+  var queued = /* @__PURE__ */ new Map();
+  // Pocket: a job taken off the queue stays in its place, to be skipped: job -> how many of its places to skip.
+  var skips = /* @__PURE__ */ new Map();
+  // Pocket: each element's depth, worked out once per flush rather than once per sort.
+  var flushDepths = /* @__PURE__ */ new Map();
+  // Pocket: the place in the queue of the job running.
+  var flushIndex = -1;
   function scheduler(callback) {
     queueJob(callback);
   }
@@ -17,17 +31,35 @@
     queueFlush();
   }
   function queueJob(job) {
-    if (!queue.includes(job)) {
-      queue.push(job);
-      if (job._x_schedulerPriority !== void 0)
-        queueNeedsSort = true;
+    if (!queued.has(job)) {
+      queued.set(job, 1);
+      // Pocket: during a flush the rest of the queue is kept sorted, an x-for/x-if job put in its place by binary
+      // search, after its equals, where the stable sort put it, instead of the queue being sorted before the next job.
+      if (flushing && !queueNeedsSort && isStructural(job)) {
+        let lo = flushIndex + 1, hi = queue.length;
+        while (lo < hi) {
+          let mid = lo + hi >> 1;
+          if (compareJobs(queue[mid], job, flushDepths) <= 0)
+            lo = mid + 1;
+          else
+            hi = mid;
+        }
+        queue.splice(lo, 0, job);
+      } else {
+        queue.push(job);
+        if (job._x_schedulerPriority !== void 0)
+          queueNeedsSort = true;
+      }
     }
     queueFlush();
   }
   function dequeueJob(job) {
-    let index = queue.indexOf(job);
-    if (index !== -1 && index > lastFlushedIndex)
-      queue.splice(index, 1);
+    // Pocket: a job waiting is skipped when its place comes, rather than searched for and spliced out. (Alpine's own
+    // took off the job running, too, which skipped the one after it; nothing does that.)
+    if (queued.get(job) === 1) {
+      queued.delete(job);
+      skips.set(job, (skips.get(job) || 0) + 1);
+    }
   }
   function queueFlush() {
     if (!flushing && !flushPending) {
@@ -43,16 +75,33 @@
     for (let i = 0; i < queue.length; i++) {
       if (queueNeedsSort)
         sortPendingJobs(i);
-      queue[i]();
+      // Pocket: a job taken off is skipped (dequeueJob); one run is marked so (queued).
+      flushIndex = i;
+      let job = queue[i], skip = skips.get(job);
+      if (skip) {
+        if (skip > 1)
+          skips.set(job, skip - 1);
+        else
+          skips.delete(job);
+        continue;
+      }
+      queued.set(job, 2);
+      job();
       lastFlushedIndex = i;
     }
     queue.length = 0;
+    // Pocket: the flush's own state cleared with it.
+    queued.clear();
+    skips.clear();
+    flushDepths.clear();
+    flushIndex = -1;
     lastFlushedIndex = -1;
     queueNeedsSort = false;
     flushing = false;
   }
   function sortPendingJobs(start2) {
-    let depths = /* @__PURE__ */ new Map();
+    // Pocket: the flush's depths, not a new map for each sort.
+    let depths = flushDepths;
     let sorted = queue.slice(start2).sort((a, b) => compareJobs(a, b, depths));
     for (let i = 0; i < sorted.length; i++) {
       queue[start2 + i] = sorted[i];
