@@ -12,6 +12,8 @@ import runs from '../../src/js/app/runs.js';
 import checklists from '../../src/js/app/checklists.js';
 import cards from '../../src/js/app/cards.js';
 import quickadd from '../../src/js/app/quickadd.js';
+import throwing from '../../src/js/app/throw.js';
+import { THROW_STAYS } from '../../src/js/throw.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -85,11 +87,11 @@ test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who
 
 /* What a finger can do on a row, besides its progress, by the screen its list is on (parent-tasks-plan, part 1): a row
    acts the same everywhere, so every screen's rows are swiped to Delete; a hold moves a row on a project's list and in
-   a task's sheet, on Today nothing (part 4's carry to another day is off until the ring, plan 4b), and search has no
-   order of its own. The row writes its list's options on itself, and the gesture code reads them there. */
-test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, Today\'s and search\'s not', () => {
+   a task's sheet, on Today throws it at a ring of dates (plan 4b), and search has no order of its own. The row writes
+   its list's options on itself, and the gesture code reads them there. */
+test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, Today\'s thrown, search\'s not', () => {
   const on = name => rowGestures({ depth: {}, ...screenRows(name) });
-  assert.equal(on('today'), 'delete', 'Today: a hold does nothing');
+  assert.equal(on('today'), 'delete reschedule', 'Today: a hold throws it at the ring');
   assert.equal(on('project'), 'delete reorder');
   assert.equal(on('search'), 'delete');
   assert.equal(on('checklists'), '', 'a screen that says nothing allows neither');
@@ -99,13 +101,14 @@ test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are
 
 test('a row swiped or held: its Delete and its move only where its list allows them, its progress everywhere', () => {
   const app = component(progress), asked = [];
-  Object.assign(app, { lines: {}, leaving: {}, canTick: () => true, canDelete: () => true, isRunTask: () => false, ringOf: () => null, rowRing: () => null, reorderOf: t => (asked.push(t.id), { start(){} }) });
-  const row = gestures => ({ dataset: { gestures }, clientWidth: 360 }), t = { id: 5, percent_done: .25 };
+  Object.assign(app, { lines: {}, leaving: {}, canTick: () => true, canDelete: () => true, isRunTask: () => false, ringOf: () => null, rowRing: () => null, reorderOf: t => (asked.push(t.id), { start(){} }),
+    rescheduleOf: t => (asked.push('ring ' + t.id), { lift(){} }) });
+  const row = gestures => ({ dataset: { gestures }, clientWidth: 360, closest: () => null }), t = { id: 5, percent_done: .25 };
   const today = app.rowGesture(t, row(rowGestures({ depth: {}, ...screenRows('today') })), false);
   assert.ok(today.swipe, 'Today: swiped left past 0%, its Delete');
-  assert.equal(today.reorder, null, 'not written as carried to another day: a hold does nothing');
+  assert.ok(today.reorder.lift, 'held: thrown at the ring of dates');
   assert.equal(today.start, 25, 'its progress swipes from where it is');
-  assert.deepEqual(asked, [], 'its place isn\'t even looked up');
+  assert.deepEqual(asked.splice(0), ['ring 5'], 'its place among its siblings isn\'t looked up');
   const search = app.rowGesture(t, row('delete'), false);
   assert.ok(search.swipe);
   assert.equal(search.reorder, null);
@@ -335,19 +338,20 @@ test('who can see each project: how many besides you, kept on the phone, and loa
   assert.notEqual(app.access['2:bob'], true, 'bob no longer seen to see it (asked again if typed)');
 });
 
-/* A hold on Today (parent-tasks-plan, part 4): a row or a card carried to another day; what Move all to today leaves
-   where it is, a hold leaves too, saying why in its place; one that can't be changed, nothing. Off for now (no list
-   gives `reschedule`): kept for the ring that replaces the drag (plan 4b). */
-test('a row held on Today is carried to another day, but not one that repeats, a checklist, or a run, which say why', () => {
-  const app = component(progress);
-  Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, isRunTask: t => t.id === 4 });
-  const el = { closest: () => null, parentElement: {}, dataset: {} };
-  for (const t of [{ id: 1, done: true }, { id: 1, pending: true }, { id: 1, project_id: 9 }]) assert.equal(app.rescheduleOf(t, el), null, 'done, waiting to be sent, or read only: nothing');
-  const carry = app.rescheduleOf({ id: 1, project_id: 1 }, el);
-  assert.ok(carry.start && carry.move && carry.end && !carry.refuse, 'carried');
-  assert.equal(carry.el, el, 'lifted: the row, or the card');
-  const why = { 2: { repeat_after: 86400 }, 3: { labels: [{ title: 'template' }] }, 4: {} };
-  for (const [id, more] of Object.entries(why)) app.rescheduleOf({ id: +id, project_id: 1, ...more }, el).refuse();
-  assert.deepEqual(app.toasts.map(m => [m.msg, m.row]), [['It repeats, so it stays: tick it to move on to the next date.', { id: 2, stays: true }],
-    ['A checklist stays: start it to move on to the next time.', { id: 3, stays: true }], ['A checklist run stays where it is.', { id: 4, stays: true }]]);
+/* A hold on Today (parent-tasks-plan, 4b): a row or a card thrown at a ring of dates (app/throw.js), a card's row
+   throwing its card; what Move all to today leaves where it is opens the ring with every target dimmed and a line saying
+   why; one that can't be changed, nothing. */
+test('a row held on Today is thrown at the ring, but one that repeats, a checklist, a run or its step can\'t be, and says why', () => {
+  const app = component(progress, throwing), thrown = [];
+  Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, isRunTask: t => t.id === 4, stepRun: t => t.id === 5 ? 4 : null,
+    tasks: { 9: { id: 9, project_id: 1 } }, throwOf: (t, el, why) => (thrown.push([t.id, el.name, why]), { lift(){} }) });
+  const row = { name: 'row', closest: () => null }, card = { name: 'card', dataset: { id: '9' } };
+  for (const t of [{ id: 1, done: true }, { id: 1, pending: true }, { id: 1, project_id: 9 }]) assert.equal(app.rescheduleOf(t, row), null, 'done, waiting to be sent, or read only: nothing');
+  app.lines[6] = { text: 'Not saved' };
+  assert.equal(app.rescheduleOf({ id: 6, project_id: 1 }, row), null, 'a line in its place: nothing');
+  for (const [id, more] of Object.entries({ 1: {}, 2: { repeat_after: 86400 }, 3: { labels: [{ title: 'template' }] }, 4: {}, 5: {} })) app.rescheduleOf({ id: +id, project_id: 1, ...more }, row);
+  app.holdOf({ id: 10, project_id: 1 }, { closest: () => card }, false, new Set(['reschedule']));
+  assert.deepEqual(thrown, [[1, 'row', null], [2, 'row', 'repeats'], [3, 'row', 'checklist'], [4, 'row', 'run'], [5, 'row', 'run'], [9, 'card', null]],
+    'a card\'s row throws its card, by its task');
+  assert.deepEqual(Object.keys(THROW_STAYS), ['repeats', 'checklist', 'run'], 'each says why in the ring');
 });

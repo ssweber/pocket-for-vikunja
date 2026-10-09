@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, movedText, movedTo, namesText, notMoved, notMovedBack, STAYS, notSaved, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -139,14 +139,14 @@ test('the question a parent’s ring asks names what goes with it in a sentence:
   assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, '“Closing up” is finished, and its step not done stays that way: Mop.');
 });
 
-test('a row dropped on another day says where it went, and a card kept by its subtask says why; Undo, what couldn\'t go back', () => {
+test('a card thrown to a new date but kept by its subtask says why; Move all to today\'s Undo, what couldn\'t go back', () => {
   assert.equal(movedTo('Friday'), 'Moved to Friday');
   assert.equal(movedTo('Today'), 'Moved to today');
   assert.equal(movedTo('Tomorrow', 'Buy paint'), 'Moved to tomorrow. Its subtask “Buy paint” is due sooner, so it stays here.');
+  assert.equal(movedTo(null, 'Buy paint'), 'Took its date off. Its subtask “Buy paint” has a date, so it stays here.');
   assert.equal(dayWord('Friday'), 'Friday');
   assert.equal(notMovedBack(1, 'today'), '1 task couldn\'t be moved back (changed since, or not saved) and is still due today.');
   assert.equal(notMovedBack(2, 'Friday'), '2 tasks couldn\'t be moved back (changed since, or not saved) and are still due Friday.');
-  assert.equal(STAYS.repeats, 'It repeats, so it stays: tick it to move on to the next date.');
 });
 
 // Who started a run, in its history (parent-tasks-plan, the run's row): its summary, today with the time only, and its ⋯,

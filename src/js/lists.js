@@ -14,15 +14,15 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
 /* What a finger can do on a screen's rows, besides ticking, claiming, opening and swiping their progress, which every
    row has (parent-tasks-plan, part 1: a row acts the same everywhere). Swiped left at 0%, a row's Delete, on every
-   screen. Held, moved up or down: on a project's list, its place; on Today, which is in the order things are due,
-   nothing for now (part 4's drag to another day, `reschedule`, is off until the ring that replaces it, plan 4b, is
-   built); search's results have no order of their own. A task's sheet gives its subtasks
+   screen. Held: on a project's list, moved up or down to its place; on Today, which is in the order things are due,
+   thrown at a ring of dates (`reschedule`: app/throw.js; without it, a hold there does nothing); search's results have
+   no order of their own. A task's sheet gives its subtasks
    delete and reorder (sheet/task.html). Each list (`g`) has these as its options, and a row writes them on itself for the
    gesture code (rowGestures). Today's rows are on one line (`line`: rowWhen, app/views.js). Anything with open subtasks
    or steps is a stacked card (`cards`: cardOf, app/cards.js; parent-tasks-plan, part 2), collapsed on Today ('today':
    what brought it is cards.js) and in search ('found'), open on a project's list ('list'); never on a list of done
    tasks (listGroups). */
-export const screenRows = name => ({project: {cards: 'list', delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true}}[name] || {});
+export const screenRows = name => ({project: {cards: 'list', delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true, reschedule: true}}[name] || {});
 /* A task's own row, leading its sheet (sheet/task-card.html: parent-tasks-plan, 6b): deleted from there (the sheet
    closing on the list), not moved; `own`, so its tick, swipe and title are the sheet's. Under its title only when it's
    due and how soon (OWN_META: due, priority, repeats, a reminder to come): its project, run or parent are in the path
@@ -49,7 +49,7 @@ export const listItems = (tasks, depth, isCard) => {
 };
 /* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
    can't reach the list's `g`: "delete" (swiped left at 0%, its Delete), "reorder" (held and moved up or down among its
-   siblings), "reschedule" (held and moved to another day). */
+   siblings), "reschedule" (held, thrown at a ring of dates: app/throw.js). */
 export const rowGestures = g => ['delete', 'reorder', 'reschedule'].filter(k => g?.[k]).join(' ');
 // The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
 export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);

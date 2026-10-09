@@ -344,16 +344,34 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
   --c-bl:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
   --c-br:radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
 .item.dragged{z-index:3;transition:none;background:var(--surface)}
-/* A row or a card held on Today and carried to another day (parent-tasks-plan, part 4): out of its list while it's
-   carried; the section it'd go to has its heading in the accent colour and its list ringed; in Next 7 days, the row or
-   card whose day it'd take has a tint and a bar down its side, as one the add box aims at; on what's carried, a tag
-   naming the day */
-.list.carrying{overflow:visible}
-.list.drop-room{min-height:56px;background:transparent;box-shadow:inset 0 0 0 2px var(--line)}
-[data-group].drop-on > .sec{color:var(--accent)}
-[data-group].drop-on > .list{box-shadow:0 0 0 2px var(--accent)}
-.item.drop-day::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:color-mix(in srgb,var(--accent-soft) 40%,transparent);box-shadow:inset 3px 0 0 var(--accent)}
-.drop-tag{position:absolute;top:12px;right:12px;z-index:4;padding:4px 10px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700;white-space:nowrap;pointer-events:none;box-shadow:var(--shadow-low)}
+/* The ring a task held on Today is thrown at (app/throw.js; where each target sits and what it means: throw.js), over
+   everything but a sheet, the page behind it quietened. Each target a card, its name and date; lit in the accent colour
+   while the finger is in it. The later week's tiles a quieter shade, its name over them, so it's never the colour alone.
+   Dimmed: a target that would change nothing, and every one, with the line saying why, for a task a hold can't move.
+   No date, the long pull down, dashed like a place to drop things. The box in the middle follows the finger; the task
+   it was stays faded in its place meanwhile. */
+.throw{position:fixed;inset:0;z-index:15;pointer-events:none;-webkit-user-select:none;user-select:none}
+.throw-veil{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 93%,transparent)}
+.throw-t{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:16px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow-menu);transition:background-color .1s,color .1s,transform .1s}
+.throw-t b{font-size:17px;font-weight:650;line-height:1.2}
+.throw-t span{font-size:13px;line-height:1.3;color:var(--muted)}
+.throw-t.arc b{font-size:14px;font-weight:600}
+.throw-t.arc span{font-size:20px;font-weight:700;color:inherit}
+.throw-t.later{background:color-mix(in srgb,var(--surface) 40%,var(--bg));color:var(--muted);box-shadow:inset 0 0 0 1.5px var(--line),var(--shadow-low)}
+.throw-t.down{flex-direction:row;gap:6px;background:var(--bg);box-shadow:none;border:2px dashed var(--muted);color:var(--muted)}
+.throw-t.down svg.i{width:20px;height:20px}
+.throw-t.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);transform:scale(1.08)}
+.throw-t.on span{color:inherit}
+/* dimmed, solid, so nothing behind shows through */
+.throw-t.dim{background:color-mix(in srgb,var(--surface) 30%,var(--bg));color:color-mix(in srgb,var(--muted) 50%,var(--bg));border-color:currentColor;box-shadow:inset 0 0 0 1.5px var(--line)}
+.throw-t.dim span{color:inherit}
+.throw-week{position:absolute;transform:translate(-50%,-100%);font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+.throw-box{position:absolute;width:112px;height:44px;display:flex;align-items:center;padding:0 12px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-lift),0 0 0 2px var(--accent);font-size:14px;font-weight:600}
+.throw-box span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.throw-box.to{justify-content:center;color:var(--accent);font-size:17px;font-weight:700}
+.throw-why{position:absolute;width:max-content;max-width:260px;margin:0;padding:8px 12px;transform:translateX(-50%);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-low);text-align:center;font-size:14px;font-weight:600;color:var(--ink)}
+.throw-from{opacity:.35}
+@media (prefers-reduced-motion:reduce){.throw-t{transition:none}.throw-t.on{transform:none}}
 .day-card.held{z-index:2;box-shadow:var(--shadow-lift);background:var(--surface)}
 /* The stacked card: anything with open subtasks or steps. Its title is the heading of its rows, the things to do: their
    size, heavier; under it, its rows, each the shared row, a plain row like any other */

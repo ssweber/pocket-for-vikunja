@@ -32,16 +32,14 @@ export function movedText(n, left, stays){
 // Move all to today's Undo, or a drop's, with `k` tasks changed since (or not saved), still due `still` ("today").
 export const notMovedBack = (k, still) => `${plural(k, 'task')} couldn't be moved back (changed since, or not saved) and ${k === 1 ? 'is' : 'are'} still due ${still}.`;
 
-/* A row or a card held on Today and dropped on another day (parent-tasks-plan, part 4), said in its place: "Moved to
-   Friday" (`day`: dueInfo's label, "Today", "Tomorrow", "Friday"). A card whose subtask is due sooner (`kept`, its title)
-   stays where that puts it, and says so. */
-export const movedTo = (day, kept = null) => kept ? `Moved to ${dayWord(day)}. Its subtask “${kept}” is due sooner, so it stays here.` : `Moved to ${dayWord(day)}`;
+/* A card thrown on Today to a new date (app/throw.js) whose subtask `kept` (its title) is due sooner, so the card stays
+   where that puts it, said in its place: "Moved to Friday. Its subtask “Buy paint” is due sooner, so it stays here."
+   (`day`: dueInfo's label or the ring's, "Today", "Tomorrow", "Thu 15"; null: its date taken off, "… has a date, so it
+   stays here.") Without `kept`, only the first sentence. */
+export const movedTo = (day, kept = null) => (day ? `Moved to ${dayWord(day)}` : 'Took its date off')
+  + (kept ? `. Its subtask “${kept}” ${day ? 'is due sooner' : 'has a date'}, so it stays here.` : '');
 // A day's name inside a sentence: "today", "tomorrow", "Friday".
 export const dayWord = day => /^(Today|Tomorrow)$/.test(day) ? day.toLowerCase() : day;
-/* What a hold on Today can't move, as Move all to today leaves them, and why: a repeating task (moved, its next times
-   would follow the new date), a checklist that comes round (the same), a checklist run. */
-export const STAYS = {repeats: 'It repeats, so it stays: tick it to move on to the next date.',
-  checklist: 'A checklist stays: start it to move on to the next time.', run: 'A checklist run stays where it is.'};
 
 /* A task ticked done, with the open subtasks it closed (`closed` of the `open` it had), as its row's line says it:
    {text, title, more}. None: "Done: Pack the van"; all of them: "Closed Pack the van + 4 subtasks"; some not saved,
