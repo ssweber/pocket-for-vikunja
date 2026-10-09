@@ -364,11 +364,22 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .close-btn:disabled{background:var(--sunk);color:var(--muted)}
 /* The question a parent's ring asks (sheet/complete.html): what goes with it, named in a sentence */
 .complete-note{margin:10px 0 18px;font-size:17px;color:var(--ink);overflow-wrap:anywhere}
-/* A collapsed card's footer, "More ⌄" (opened, "Less ⌃"): small and quiet, its words under its rows' titles, about
-   28px of it drawn, but its tap the card's full width and 44px tall, reaching into the card's bottom padding */
-.card-more{display:flex;align-items:flex-start;gap:4px;width:100%;min-height:44px;padding:5px 14px 0 calc(var(--title-x) + var(--tick) + 12px);border:0;background:transparent;color:var(--muted);font-size:14px;font-weight:600;text-align:left}
-.card-more svg.i{width:14px;height:14px;margin-top:2px;transform:rotate(90deg)}
+/* A collapsed card's footer: the card's own colour ends at its last row, and under it hangs a slim tab in the card's
+   colour, 12px in from each side, its bottom corners rounded and a line along its top, the edge of a card stacked
+   behind it, with ⌄ in the middle. Opened, no tab (it would say more is hidden): a plain ⌃ on the page in the same
+   place. Its tap: from the row's foot, the tab and the page under it, 48px in all, which is the gap to the next thing
+   listed (in place of the gap a card has above it), so it never reaches into a row. */
+.card-more{--tab:20px;position:relative;display:block;width:100%;height:calc(var(--tab) + 28px);margin:0;padding:0;border:0;background:var(--bg);color:var(--muted)}
+.item:has(> .day-card > .card-more) + .item{border-top:0}
+.card-more > .tab{position:absolute;left:12px;right:12px;top:0;height:var(--tab);display:block}
+.card-more[aria-expanded=false] > .tab{border-radius:0 0 12px 12px;background:var(--surface);box-shadow:inset 0 1px 0 var(--line)}
+.card-more svg.i{position:absolute;left:50%;top:calc(var(--tab) / 2 - 7px);width:14px;height:14px;margin-left:-7px;stroke-width:2.4;transform:rotate(90deg)}
 .card-more[aria-expanded=true] svg.i{transform:rotate(-90deg)}
+/* the last thing in a list a card with a footer: its last row's bottom corners rounded as the list's would be, the page
+   showing outside them */
+.list > .item:last-child .card-more::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:var(--r-row);pointer-events:none;
+  background:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) left top/var(--r-row) var(--r-row) no-repeat,
+    radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
 .day-card:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
 /* its rows, one level in, as a subtask under its parent: each tick under the header's title, the lines between them
    starting at the ticks (as .row.sub's), the tick's tap still the whole gutter and the swipe's space the whole row */
