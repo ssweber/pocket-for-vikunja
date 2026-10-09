@@ -128,9 +128,10 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 /* a row's title takes taps over the row's full height, and up to its edge when there's nothing after it. Its first line
    is placed from the top, centred 28px down, on its tick's line, whatever's under it (a button would centre it all) */
 :not(.tree) > .row > button.body{align-self:stretch;margin:-12px 0;padding:16px 0 14px}
-:where(:not(.tree) > .row) > button.body{display:flex;flex-direction:column;justify-content:flex-start}
+:where(:not(.tree) > .row:not(.cl-tpl,.cl-new)) > button.body{display:flex;flex-direction:column;justify-content:flex-start}
 .row > div.body:not(.step-in){padding:4px 0 2px}
-/* a row with no tick (a template, New template) has its icon and words in the middle */
+/* a row with no tick (a template, New template) has its icon at the left and its words beside it, in a line of their
+   own (.cl-tpl .body, .cl-new .body, below), centred on the row's height: left out of the column above */
 .row:is(.cl-tpl,.cl-new) > button.body{padding-top:14px}
 :not(.tree) > .row > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:-14px;padding-right:14px}
 .row .title{font-size:17px;line-height:24px;overflow-wrap:anywhere}
@@ -424,7 +425,10 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* ---------- checklists ---------- */
 .cl-tpl .body{display:flex;align-items:center;gap:10px}
 .cl-tpl .body .t{flex:1;min-width:0}
-.cl-start{flex:none;min-height:38px;padding:0 14px;font-size:15px}
+.cl-tpl .body > svg.i{flex:none}
+.cl-tpl .body .t .title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}   /* a long name: on one line, cut short */
+.cl-start{position:relative;flex:none;min-height:38px;padding:0 14px;font-size:15px;white-space:nowrap}
+.cl-start::after{content:"";position:absolute;inset:-5px -4px}       /* its tap 48px tall */
 /* Getting started, on Checklists, for a project's owner */
 .getting-started{padding:14px 16px;margin-bottom:10px}
 .getting-started h3{margin:0 0 8px;font-size:17px}
@@ -652,7 +656,16 @@ body.sheet-open{overflow:hidden}
 .prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
 .prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:17px;padding:6px 0;outline:0}
-.prop input[type=datetime-local]::-webkit-calendar-picker-indicator{margin-left:8px}
+/* no calendar icon: a tap anywhere on the row opens the picker (propTap), and the date needs the room */
+.prop input[type=datetime-local]::-webkit-calendar-picker-indicator{display:none}
+/* a date: no wider than its row lets it be (iOS gives it a width of its own it won't go under, which pushed the × onto a
+   line of its own), its value at the left; its line doesn't wrap, the date giving way to the × beside it. 17px: below 16
+   an iPhone zooms in on it. */
+.prop input[type=datetime-local]{-webkit-appearance:none;appearance:none;width:100%;min-width:0;text-align:left}
+.prop input[type=datetime-local]::-webkit-date-and-time-value{text-align:left}
+.prop .v:has(> input[type=datetime-local]){flex-wrap:nowrap}
+/* Remind me at, after the reminders there are: a line of its own */
+.prop .v > .v:has(> input[type=datetime-local]){flex-basis:100%}
 /* A row takes a tap anywhere (propTap); one with only a select has it over the whole row, its words where they were
    (past the label: the row's padding, the label, the gap), so the phone's own list opens wherever it's tapped */
 .prop:has([data-tap]),.prop.sel{cursor:pointer}
