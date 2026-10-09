@@ -330,6 +330,19 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .item + .item{border-top:1px solid var(--line)}
 .item:has(> .day-card) + .item,.item + .item:has(> .day-card){border-top:8px solid var(--bg)}
 .item{position:relative;transition:transform .2s ease}
+/* Cut by a card's gap, or by its footer, the list reads as blocks, each with its corners rounded as the list's ends are
+   (its overflow rounds only those): drawn over an item's corners in the page's colour. Its top corners after a gap or a
+   footer, its bottom ones before a gap; a card with a footer has its bottom ones at its last row (.card-more::after). */
+.item:is(.item:has(> .day-card) + .item,.item + .item:has(> .day-card),.item:has(+ .item > .day-card),.item:has(> .day-card):not(:has(> .day-card > .card-more)):has(+ .item))::before{
+  content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  background-image:var(--c-tl,none),var(--c-tr,none),var(--c-bl,none),var(--c-br,none);background-position:left top,right top,left bottom,right bottom;
+  background-size:var(--r-row) var(--r-row);background-repeat:no-repeat}
+.item:has(> .day-card) + .item,.item + .item:has(> .day-card){
+  --c-tl:radial-gradient(circle at 100% 100%,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
+  --c-tr:radial-gradient(circle at 0 100%,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
+.item:has(+ .item > .day-card),.item:has(> .day-card):not(:has(> .day-card > .card-more)):has(+ .item){
+  --c-bl:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
+  --c-br:radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
 .item.dragged{z-index:3;transition:none;background:var(--surface)}
 /* A row or a card held on Today and carried to another day (parent-tasks-plan, part 4): out of its list while it's
    carried; the section it'd go to has its heading in the accent colour and its list ringed; in Next 7 days, the row or
@@ -376,9 +389,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-more[aria-expanded=false] > .tab{border-radius:0 0 12px 12px;background:var(--surface);box-shadow:inset 0 1px 0 var(--line)}
 .card-more svg.i{position:absolute;left:50%;top:calc(var(--tab) / 2 - 7px);width:14px;height:14px;margin-left:-7px;stroke-width:2.4;transform:rotate(90deg)}
 .card-more[aria-expanded=true] svg.i{transform:rotate(-90deg)}
-/* the last thing in a list a card with a footer: its last row's bottom corners rounded as the list's would be, the page
-   showing outside them */
-.list > .item:last-child .card-more::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:var(--r-row);pointer-events:none;
+/* a card with a footer, wherever it is in its list: its last row's bottom corners rounded, the page showing outside
+   them, as the footer is the gap under it */
+.card-more::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:var(--r-row);pointer-events:none;
   background:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) left top/var(--r-row) var(--r-row) no-repeat,
     radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
 .day-card:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
