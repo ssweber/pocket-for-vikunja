@@ -160,6 +160,11 @@ targets and on marking menus (Kurtenbach and Buxton) is in the git-ignored `scra
 - **The targets and their rule are one list in the code** (as the swipe's `SIDES`), so the set can be tried and changed:
   "always next week's Mon to Fri" is one setting.
 - Kept from 4: the time of day, a card moving only its parent's date, and a repeating task staying put with its note.
+- **As built (f5e5708),** the ring is too wide to sit around the finger on a phone, so it opens centred across the
+  screen and the box follows the finger's movement, not its place. It works, but a top row is a little hard to throw
+  from (user, 2026-10-09). Kept as it is to see in daily use. If it doesn't hold up: a small ring of four on the axes,
+  Today, Tomorrow, Next week and No date, which fits around the finger anywhere. Opening it always mid-screen was
+  tried in thought and found odd: the finger and the box would be apart.
 
 ## 5. Shared progress matches the screen
 
