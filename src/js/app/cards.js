@@ -43,7 +43,8 @@ export default {
     const n = steps.length, open = n > 1 && !!this.cardOpen[t.id];
     const card = {id: t.id, run, step: steps[0], steps, rows: open ? steps : steps.slice(0, 1), n, peek: !open && n > 1 ? steps[1] : null, more: n - 1,
       open, folds: true, all, ring: this.ringOf(t), closes: false};
-    card.g = {depth: {}, card, line: g.line, key: g.key, delete: true};   // (its group: under Today's heading, "Today" goes unsaid)
+    // (its group: under Today's heading, "Today" goes unsaid; on Today, a row held carries the card to another day)
+    card.g = {depth: {}, card, line: g.line, key: g.key, delete: true, reschedule: g.reschedule};
     return card;
   },
   // An open task whose subtasks are all done, as a card: its header, its ring full, and "All subtasks done" with Close,

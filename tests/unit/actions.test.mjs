@@ -10,6 +10,9 @@ import runs from '../../src/js/app/runs.js';
 import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
 import cards from '../../src/js/app/cards.js';
+import alerts from '../../src/js/app/alerts.js';
+import { todayGroups } from '../../src/js/lists.js';
+import { movedDue } from '../../src/js/dates.js';
 import { cache } from '../../src/js/util.js';
 import { ACT_STEPS, ACTS, sync } from '../../src/js/sync.js';
 
@@ -461,4 +464,68 @@ test('the page says where sending stands: waiting while an Undo shows or offline
   v.trouble = () => null;
   await app.sendActs(app.pending[0].id);
   assert.equal(app.syncState, 'idle');
+});
+
+/* A row or a card held on Today and dropped on another day (parent-tasks-plan, part 4): Move all to today, one at a
+   time, with its Undo. */
+const onToday = (c, list, cardsBy = {}) => {
+  c?.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  const v = fakeVikunja(list), app = component(tasks, actions, cards, alerts);
+  Object.assign(app, { setBadge(){}, lines: {}, positions: {} });
+  app.view = { groups: todayGroups(), cards: cardsBy };
+  for (const t of list) app.keep(v.task(t.id));
+  return { v, app, at: (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString(), key: id => app.todayKey(app.tasks[id]) };
+};
+const dropOn = (app, t, key, day, label) => app.reschedule(t, { key, label, due: movedDue(t.due_date, day, new Date()) });
+
+test('a row dropped on another day: its date moves there at its own time, at once, said in its place with an Undo', async c => {
+  const { v, app, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() },
+    { id: 2, title: 'Order milk', due_date: new Date(2026, 9, 6, 9).toISOString() }, { id: 3, title: 'No date yet', due_date: '0001-01-01T00:00:00Z', created: new Date(2026, 9, 7, 9).toISOString() }]);
+  app.view.groups[1].tasks.push(app.tasks[1]); app.view.groups[0].tasks.push(app.tasks[2]); app.view.groups[3].tasks.push(app.tasks[3]);
+  const going = dropOn(app, app.tasks[1], 'week', new Date(2026, 9, 9), 'Friday');
+  assert.deepEqual([app.tasks[1].due_date, key(1)], [at(9, 16), 'week'], 'moved on screen at once, before Vikunja answers');
+  assert.equal(await going, true);
+  assert.equal(v.task(1).due_date, at(9, 16), 'Friday at 4 PM: its time of day kept');
+  assert.deepEqual([app.toast.msg, app.toast.row, app.toast.action.label], ['Moved to Friday', { id: 1, stays: true }, 'Undo']);
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(1).due_date, key(1)], [at(7, 16), 'today'], 'Undo: back to today at 4 PM, under Today');
+  await dropOn(app, app.tasks[2], 'today', new Date(), 'Today');
+  assert.deepEqual([v.task(2).due_date, key(2)], [at(7, 15), 'today'], 'overdue to today: its time gone, the next whole hour');
+  await dropOn(app, app.tasks[3], 'today', new Date(), 'Today');
+  assert.deepEqual([v.task(3).due_date, key(3)], [at(7, 0), 'today'], 'no date: today, with no time');
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(3).due_date, key(3)], ['0001-01-01T00:00:00Z', 'nodate'], 'Undo: no date again, back under Added today, no date');
+});
+
+test('a row dropped and not saved goes back, its place saying so with Try again; one changed since isn\'t undone', async c => {
+  const { v, app, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() }]);
+  app.view.groups[1].tasks.push(app.tasks[1]);
+  v.trouble = () => 'offline';
+  assert.equal(await dropOn(app, app.tasks[1], 'week', new Date(2026, 9, 9), 'Friday'), false);
+  assert.deepEqual([app.tasks[1].due_date, key(1)], [at(7, 16), 'today'], 'back where it was');
+  assert.deepEqual([app.toast.msg, app.toast.action.label, app.toast.cls], ['Not saved: no connection', 'Try again', 'failed']);
+  v.trouble = () => null;
+  await app.toast.action.fn();
+  assert.equal(v.task(1).due_date, at(9, 16), 'Try again: moved');
+  const undo = app.toast.action;
+  v.task(1).updated = '2026-10-07T13:00:00Z';                                // changed on the web meanwhile
+  await undo.fn();
+  assert.equal(v.task(1).due_date, at(9, 16), 'left as it is');
+  assert.equal(app.toast.msg, '1 task couldn\'t be moved back (changed since, or not saved) and is still due Friday.');
+});
+
+test('a card dropped on another day moves only its task\'s date; one whose subtask is due sooner stays, and says why', async c => {
+  const at = (d, h) => new Date(2026, 9, d, h).toISOString();
+  const sub = (id, due) => ({ id, title: 'Sub ' + id, done: false, due_date: due, related_tasks: { parenttask: [{ id: id - 1 }] } });
+  const { v, app, key } = onToday(c, [
+    { id: 10, title: 'Paint the hall', due_date: at(7, 17), related_tasks: { subtask: [{ id: 11 }] } }, sub(11, '0001-01-01T00:00:00Z'),
+    { id: 20, title: 'Fix the van', due_date: '0001-01-01T00:00:00Z', related_tasks: { subtask: [{ id: 21 }] } }, sub(21, at(7, 18)),
+  ], { 10: { when: at(7, 17), made: null, focus: null }, 20: { when: at(7, 18), made: null, focus: null } });
+  app.view.groups[1].tasks.push(app.tasks[10], app.tasks[20]);
+  await dropOn(app, app.tasks[10], 'week', new Date(2026, 9, 9), 'Friday');
+  assert.deepEqual([v.task(10).due_date, v.task(11).due_date, app.view.cards[10].when, key(10)], [at(9, 17), '0001-01-01T00:00:00Z', at(9, 17), 'week'], 'its task\'s date only; the card goes with it');
+  assert.equal(app.toast.msg, 'Moved to Friday');
+  await dropOn(app, app.tasks[20], 'week', new Date(2026, 9, 9), 'Friday');
+  assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [at(9, 0), at(7, 18), 'today'], 'Friday, with no time; its subtask due today keeps it under Today');
+  assert.equal(app.toast.msg, 'Moved to Friday. Its subtask “Sub 21” is due sooner, so it stays here.');
 });

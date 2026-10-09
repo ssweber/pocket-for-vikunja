@@ -1,13 +1,17 @@
 // What a finger does on a row (parent-tasks-plan, parts 1 and 1b): swiped, one mechanism with mirrored sides (swipeAt,
 // SIDES, in progress.js), each with one job, chosen as the swipe starts: right, its progress up, a full swipe done;
 // left, a row with progress, down, stopping at 0%; left, a row at 0%, its Delete, a full swipe deleted. Nothing changes
-// until it's let go. Held, then moved up or down, the row moves among its siblings. Delete and moving only where the
-// row's list allows them (rowGestures): Today's rows are deleted but not moved, search's the same, a project's and a
-// sheet's both. The sheet's bar is swiped for its progress too (trackAt). A parent (a card's header, or a parent's
-// row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the way, its
-// ring's tap; left, its Delete.
+// until it's let go. Held, then moved up or down, the row moves among its siblings, or on Today to another day (part
+// 4). Delete and moving only where the row's list allows them (rowGestures): Today's rows are deleted and carried to
+// another day, search's only deleted, a project's and a sheet's deleted and moved among their siblings. The sheet's bar
+// is swiped for its progress too (trackAt). A parent (a card's header, or a parent's row: parent-tasks-plan, part 3)
+// has no progress of its own: swiped right it springs back, unless all the way, its ring's tap; left, its Delete.
 import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackAt, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
+import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
+import {hasTemplateLabel} from '../checklists.js';
+import {todayAt} from '../lists.js';
+import {dayWord, STAYS} from '../messages.js';
 import {haptic} from '../haptics.js';
 import {store} from '../util.js';
 
@@ -112,49 +116,118 @@ async function sweep(row, going, right = false){
   return done;
 }
 
+/* Near the top or the bottom of the screen, or of the sheet (`scroller`), while a row is held there (`y()`: where the
+   finger is), the page scrolls on by itself, faster the nearer it is, and `moved()` places what's held again. */
+const ZONE = 72;                                        // px from an edge where the page scrolls by itself
+const edgeRoll = (scroller, y, moved) => {
+  let frame = null;
+  const top = () => scroller ? scroller.scrollTop : scrollY;
+  const view = () => { const r = scroller?.getBoundingClientRect(); return r ? [r.top, r.bottom] : [0, innerHeight - (document.getElementById('capture')?.offsetHeight || 0)]; };
+  const roll = () => {
+    const [lo, hi] = view(), at = y(), v = at < lo + ZONE ? -(lo + ZONE - at) / 6 : at > hi - ZONE ? (at - hi + ZONE) / 6 : 0;
+    if (v) { const was = top(); if (scroller) scroller.scrollTop += Math.max(-14, Math.min(14, v)); else scrollBy(0, Math.max(-14, Math.min(14, v))); if (top() !== was) moved(); }
+    frame = requestAnimationFrame(roll);
+  };
+  return {top, start(){ frame = requestAnimationFrame(roll); }, stop(){ cancelAnimationFrame(frame); }};
+};
+/* Let go, what was held slides from where it was (`was`: each one's top then) into its place, once it's drawn there:
+   its new one, or back where it was. One drawn again elsewhere (moved to another of Today's groups) is found by its id.
+   `before()`: first, once it's drawn. */
+const slideHome = (els, was, all = els, before = null) => requestAnimationFrame(() => {
+  before?.();
+  const slide = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  els.forEach((el, i) => {
+    const now = el.isConnected ? el : document.querySelector(`#view .list > [data-id="${el.dataset.id}"]`);
+    const d = now && was[i] - now.getBoundingClientRect().top;
+    if (slide && now && Math.abs(d) > 1) now.animate([{transform: `translateY(${d}px)`}, {transform: 'none'}], {duration: 160, easing: 'ease-out'});
+  });
+  for (const el of all) el.style.transition = '';
+});
+// What's on the screen at `el` kept where it is as something above it opens or closes: called once that's drawn, it
+// scrolls the page by what `el` moved.
+const steady = el => { const was = el.getBoundingClientRect().top; return () => { const d = el.isConnected ? el.getBoundingClientRect().top - was : 0; if (d) scrollBy(0, d); }; };
+
 /* A row moved up or down after the hold, among its siblings: `blocks`, each the rows of one sibling (a task and its
    subtasks under it), in order, the one held `k`. Its rows follow the finger, and the siblings it passes the middle of
    move aside to make room, a tick felt at each (dragPlace). Near the top or the bottom of the screen, or of the sheet
-   (`scroller`), the page scrolls on by itself. Let go, every row is put back as it was, and `drop(to)` is told where it
-   landed, if it moved, for the list to be drawn in its new order; the held rows then slide into their place. */
-const ZONE = 72;                                        // px from an edge where the page scrolls by itself
+   (`scroller`), the page scrolls on by itself (edgeRoll). Let go, every row is put back as it was, and `drop(to)` is
+   told where it landed, if it moved, for the list to be drawn in its new order; the held rows then slide into their
+   place (slideHome). */
 const dragOf = (blocks, k, scroller, drop, begin) => {
-  let boxes, fy = 0, y = 0, at = k, from = 0, frame = null;
+  let boxes, fy = 0, y = 0, at = k, from = 0;
   const all = blocks.flat(), mine = blocks[k], list = mine[0].parentElement;
-  const top = () => scroller ? scroller.scrollTop : scrollY;
-  const view = () => { const r = scroller?.getBoundingClientRect(); return r ? [r.top, r.bottom] : [0, innerHeight - (document.getElementById('capture')?.offsetHeight || 0)]; };
   const place = () => {
-    const p = dragPlace(boxes, k, fy + top() - from);
+    const p = dragPlace(boxes, k, fy + roll.top() - from);
     blocks.forEach((els, i) => { for (const el of els) el.style.transform = i === k ? `translateY(${p.dy}px)` : p.shifts[i] ? `translateY(${p.shifts[i]}px)` : ''; });
     if (p.at !== at) { at = p.at; haptic('tick'); }
   };
-  // Held near an edge, the page scrolls, faster the nearer it is, and the rows are placed again.
-  const roll = () => {
-    const [lo, hi] = view(), v = y < lo + ZONE ? -(lo + ZONE - y) / 6 : y > hi - ZONE ? (y - hi + ZONE) / 6 : 0;
-    if (v) { const was = top(); if (scroller) scroller.scrollTop += Math.max(-14, Math.min(14, v)); else scrollBy(0, Math.max(-14, Math.min(14, v))); if (top() !== was) place(); }
-    frame = requestAnimationFrame(roll);
-  };
+  const roll = edgeRoll(scroller, () => y, place);
   return {
     start(y0){
       begin?.();
-      y = y0; from = top();
+      y = y0; from = roll.top();
       boxes = blocks.map(els => { const a = els[0].getBoundingClientRect(), b = els.at(-1).getBoundingClientRect(); return {top: a.top, height: b.bottom - a.top}; });
       list.classList.add('reordering'); for (const el of mine) el.classList.add('dragged');
-      frame = requestAnimationFrame(roll);
+      roll.start();
     },
     move(dy, y1){ fy = dy; y = y1; place(); },
     end(commit){
-      cancelAnimationFrame(frame);
+      roll.stop();
       const was = mine.map(el => el.getBoundingClientRect().top);
       for (const el of all) { el.style.transition = 'none'; el.style.transform = ''; }
       list.classList.remove('reordering'); for (const el of mine) el.classList.remove('dragged');
       if (commit && at !== k) drop(at);
-      // Drawn in its new order by now: the held rows slide from where they were let go into their place.
-      requestAnimationFrame(() => {
-        const slide = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-        mine.forEach((el, i) => { const d = was[i] - el.getBoundingClientRect().top; if (slide && el.isConnected && Math.abs(d) > 1) el.animate([{transform: `translateY(${d}px)`}, {transform: 'none'}], {duration: 160, easing: 'ease-out'}); });
-        for (const el of all) el.style.transition = '';
-      });
+      slideHome(mine, was, all);                       // drawn in its new order by now
+    },
+  };
+};
+
+/* A row or a card held on Today and moved up or down, to another day (parent-tasks-plan, part 4): `item`, its place in
+   the list, follows the finger (`el` is what's lifted: the row, or the card), out of its list, the page scrolling near
+   the edges as for a move among siblings (edgeRoll); nothing else moves, as the drop is a day, not a place among the
+   rows, but for room made for it: as it starts, Today's and Next 7 days' sections show even with nothing in them
+   (`room(true)`), the page kept still where the finger is (steady). Where it would go is `aim(y, home)` (dropAt;
+   `home`: the finger is over the place it left), shown as it changes, a tick felt each time: the section lit
+   (.drop-on), in Next 7 days the row or card whose day it'd take (.drop-day), and a tag on what's held naming the day.
+   Let go there, `drop(to)`; anywhere else (Overdue, its own day, a section that isn't a day), it springs back
+   (slideHome). Either way the empty sections go again, the page kept still where it was let go. */
+const carryOf = (item, el, {aim, drop, room}) => {
+  let fy = 0, y = 0, top0 = 0, tr = 0, to = null, tag = null;
+  const list = item.parentElement;
+  const light = a => {
+    for (const x of document.querySelectorAll('#view .drop-on, #view .drop-day')) x.classList.remove('drop-on', 'drop-day');
+    a?.section.classList.add('drop-on'); a?.over?.classList.add('drop-day');
+    tag.hidden = !a; tag.textContent = a ? 'Move to ' + dayWord(a.label) : '';
+  };
+  // It follows the finger, however the page scrolls or what's above it opens: from where it is in the list now.
+  const place = () => {
+    const r = item.getBoundingClientRect(), at = r.top - tr;
+    tr = top0 + fy - at; item.style.transform = `translateY(${tr}px)`;
+    const a = aim(y, y >= at && y < at + r.height);
+    if (a?.due !== to?.due || a?.over !== to?.over) { light(a); if (a) haptic('tick'); }
+    to = a;
+  };
+  const roll = edgeRoll(null, () => y, place);
+  return {el,
+    start(y0){
+      y = y0; top0 = item.getBoundingClientRect().top;
+      tag = document.createElement('span'); tag.className = 'drop-tag'; tag.hidden = true; tag.setAttribute('aria-hidden', 'true'); item.append(tag);
+      list.classList.add('carrying'); item.classList.add('dragged');
+      const keep = steady(item);
+      room(true);
+      requestAnimationFrame(() => { keep(); place(); });
+      roll.start();
+    },
+    move(dy, y1){ fy = dy; y = y1; place(); },
+    end(commit){
+      roll.stop();
+      const was = [item.getBoundingClientRect().top], keep = steady(to?.section || item.closest('[data-group]') || item);
+      light(null); tag.remove();
+      item.style.transition = 'none'; item.style.transform = '';
+      list.classList.remove('carrying'); item.classList.remove('dragged');
+      if (commit && to) drop(to);
+      room(false);
+      slideHome([item], was, [item], keep);
     },
   };
 };
@@ -180,7 +253,7 @@ export default {
       if (!g) return;
       clearTimeout(g.timer); sliding = false;
       const {s, mode, pct, r, ring} = g; g = null;
-      s.el?.classList.remove('held');
+      s.el?.classList.remove('held'); s.reorder?.el?.classList.remove('held');
       if (mode === 'reorder') { s.reorder.end(commit); return; }
       if (mode === 'bar') {                             // its progress where the finger left it
         const set = commit && pct !== s.start;
@@ -209,7 +282,13 @@ export default {
       let s = find(e.target); if (!s) return;
       if (s.swipe?.base) s = {el: s.el, slide: s.slide, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait', pct: s.start};
-      if (s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); haptic('hold'); }, HOLD_MS);
+      // Held: lifted (what's lifted can be more than the row: on Today, its card), or, for what a hold can't move there,
+      // told why (refuse), and nothing more until the finger lifts.
+      if (s.reorder) g.timer = setTimeout(() => {
+        sliding = true; getSelection()?.removeAllRanges(); haptic('hold');
+        if (s.reorder.refuse) { g.mode = 'refused'; s.reorder.refuse(); return; }
+        g.mode = 'held'; (s.reorder.el || s.el)?.classList.add('held');
+      }, HOLD_MS);
     });
     // Where a row swiped `dx` is, and what letting go there does (swipeAt).
     const at = (s, dx) => swipeAt({start: s.finish ? s.start : null, dx, x: g.x0, width: s.width ?? s.el.clientWidth, screen: innerWidth, del: !!s.swipe, base: s.swipe?.base || 0, one: !!s.one, side: g.side});
@@ -253,7 +332,7 @@ export default {
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
         if (!way) return;
-        // A hold only moves a row up or down (on Today, later, to another day: parent-tasks-plan, part 4).
+        // A hold only moves a row up or down (on Today, to another day: parent-tasks-plan, part 4).
         if (way === 'x') { swallow(); stop(false); return; }
         g.mode = 'reorder'; s.reorder.start(e.clientY);
       }
@@ -354,9 +433,45 @@ export default {
       }};
   },
   /* What a row held does, where its list allows it: on a project's list and in a task's sheet, moved up or down, its
-     place among its siblings (reorderOf). Elsewhere nothing, as yet: on Today a hold will move a row to another day
-     (parent-tasks-plan, part 4), given here as a dragOf whose drop sets its date. Search has no order of its own. */
-  holdOf(t, row, sheet, can){ return can.has('reorder') ? this.reorderOf(t, row, sheet) : null; },
+     place among its siblings (reorderOf); on Today, carried to another day (rescheduleOf), a card's row lifting its
+     card. Search has no order of its own: nothing. */
+  holdOf(t, row, sheet, can){
+    if (can.has('reschedule')) { const card = row.closest('.day-card'); return card ? this.rescheduleOf(this.tasks[+card.dataset.id], card) : this.rescheduleOf(t, row); }
+    return can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
+  },
+  /* A row or a card held on Today (parent-tasks-plan, part 4: `el`, the row or the card): carried up or down and let go
+     on Today or a day in the week ahead (dropAt), its date moves there, as Move all to today does (reschedule). Not one
+     marked, with a line in its place, waiting to be sent or that can't be written to: nothing. What Move all to today
+     leaves where it is, a hold leaves too, saying why in its place (STAYS): a repeating task (moved, its next times would
+     follow the new date; ticked, it moves on to its next), a checklist that comes round, a checklist run. The tap path
+     is the sheet's Due. */
+  rescheduleOf(t, el){
+    if (!t || t.pending || t.done || this.leaving[t.id] || this.lines[t.id] || !this.canWrite(t.project_id)) return null;
+    const why = this.isRunTask(t) ? 'run' : hasTemplateLabel(t) ? 'checklist' : repeats(t) ? 'repeats' : null;
+    if (why) return {el, refuse: () => this.say(STAYS[why], {row: {id: t.id, stays: true}})};
+    return carryOf(el.closest('.item') || el, el, {aim: (y, home) => this.dropAt(t, y, home), drop: to => this.reschedule(t, to), room: on => { this.carrying = on; }});
+  },
+  /* Where task `t`, held on Today, would go if let go with the finger at `y` (on the screen): {key: its section's,
+     section, over: in Next 7 days, the row or card whose day it takes, due: its new date (movedDue), label: the day}, or
+     null where it stays. Today's section: today. Next 7 days: the day of the row or card under the finger (each shows
+     its day at its right), or tomorrow over its heading. Not Overdue, Checklist runs or Added today, no date; not where
+     it is (`home`: over the place it left), nor a day that gives it the date it has; not under the add box. */
+  dropAt(t, y, home){
+    if (home || y > innerHeight - (document.getElementById('capture')?.offsetHeight || 0)) return null;
+    const within = el => { const r = el.getBoundingClientRect(); return y >= r.top && y < r.bottom; };
+    const section = [...document.querySelectorAll('#view [data-group]')].find(within), key = section?.dataset.group;
+    if (key !== 'today' && key !== 'week') return null;
+    const now = new Date();
+    let day = startOfDay(now), over = null;
+    if (key === 'week') {
+      over = [...section.querySelectorAll(':scope .list > [data-id]')].find(x => +x.dataset.id !== t.id && within(x)) || null;
+      const o = over && this.tasks[+over.dataset.id], d = o && todayAt(this.view.cards)(o).due_date;
+      day = isSet(d) ? startOfDay(new Date(d)) : addDays(day, 1);
+    }
+    const due = movedDue(t.due_date, day, now);
+    if (isSet(t.due_date) && Date.parse(due) === Date.parse(t.due_date)) return null;
+    return {key, section, over, due, label: dueInfo(day.toISOString()).label};
+  },
   // Whether a list's row takes a swipe for its progress (rowGesture): not one waiting to be sent, that can't be ticked
   // (read only, a template), nor a parent (a run, or an open task with subtasks: its progress is theirs), nor one marked
   // or with a line in its place. A done one does, down only.
@@ -402,10 +517,10 @@ export default {
     return r.finish || swipe ? {slide: head, swipe, ...r} : null;
   },
   // A card's heading held, where its list allows (data-gestures, as a row's): the card moved up or down among the tasks
-  // at the top of a project's list, as a row is (reorderOf).
+  // at the top of a project's list, as a row is (reorderOf); on Today, carried to another day (rescheduleOf).
   cardHold(card){
-    const t = this.tasks[+card.dataset.id];
-    return t && allows(card).has('reorder') ? this.reorderOf(t, card, false) : null;
+    const t = this.tasks[+card.dataset.id], can = allows(card);
+    return !t ? null : can.has('reschedule') ? this.rescheduleOf(t, card) : can.has('reorder') ? this.reorderOf(t, card, false) : null;
   },
   /* A task's row moved up or down, among its siblings (orderOf): on a project's list, or in a task's sheet. Let go
      somewhere else, it's moved there (reorder). What moves for each sibling: at the top of a list with cards, its item,

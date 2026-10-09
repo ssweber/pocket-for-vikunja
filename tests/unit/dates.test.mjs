@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, dueInfo, fromLocalInput, isLate, isSet, repeats, shortDue, startOfDay, toLocalInput } from '../../src/js/dates.js';
+import { addDays, dueInfo, fromLocalInput, isLate, isSet, movedDue, repeats, shortDue, startOfDay, toLocalInput } from '../../src/js/dates.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
 const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
@@ -71,4 +71,16 @@ test('what repeats: every so often, or every month', () => {
   assert.equal(repeats({ repeat_after: 86400 }), true);
   assert.equal(repeats({ repeat_mode: 1 }), true);
   assert.equal(repeats({ repeat_after: 0, repeat_mode: 0 }), false);
+});
+
+test('a date moved to another day keeps its time of day, or none; today, a time gone is the next whole hour', () => {
+  const now = new Date(2026, 9, 7, 14, 20), at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString(), fri = new Date(2026, 9, 9);
+  assert.equal(movedDue(at(7, 16), fri, now), at(9, 16), 'Friday at 4 PM, as it was');
+  assert.equal(movedDue(at(5, 0), fri, now), at(9, 0), 'no time of its own: none on Friday either');
+  assert.equal(movedDue('0001-01-01T00:00:00Z', fri, now), at(9, 0), 'no date at all: Friday, with no time');
+  assert.equal(movedDue(at(5, 9), now, now), at(7, 15), 'today, its time gone: the next whole hour');
+  assert.equal(movedDue(at(5, 18, 30), now, now), at(7, 18, 30), 'today, its time still to come');
+  assert.equal(movedDue(at(5, 0), now, now), at(7, 0), 'today, with no time: due today, not late');
+  const late = new Date(2026, 9, 7, 23, 10);
+  assert.equal(movedDue(at(5, 9), late, late), at(7, 23, 59), 'in the day\'s last hour: 11:59 PM');
 });

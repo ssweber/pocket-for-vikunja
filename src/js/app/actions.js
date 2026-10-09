@@ -10,9 +10,9 @@
    order line. */
 import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
-import {addDays, dueInfo, isLate, isSet, repeats, startOfDay} from '../dates.js';
+import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
-import {doneText, movedText, notMoved, notSaved, sentLater} from '../messages.js';
+import {dayWord, doneText, movedText, movedTo, notMoved, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
@@ -369,9 +369,10 @@ export default {
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
-  /* "Move all to today": each overdue task to today, at the time of day it had. Undo puts every date back. Not a
-     repeating task: moved, its next times would follow the new date; ticked, it moves on to its next date. What it did
-     is said under the Overdue heading, which stays meanwhile. */
+  /* "Move all to today": each overdue task to today, at the time of day it had (movedDue). Undo puts every date back
+     (undoMoves). Not a repeating task: moved, its next times would follow the new date; ticked, it moves on to its next
+     date. What it did is said under the Overdue heading, which stays meanwhile. A row or a card held on Today and
+     dropped on another day is the same, one at a time (reschedule). */
   async moveOverdueToToday(){
     // Nor a checklist that comes round: moved, a weekly one would come round on another day from then on.
     // On a card, its task and subtasks that are overdue themselves (overdueTasks).
@@ -382,30 +383,61 @@ export default {
     if (!tasks.length && stays) { this.say(movedText(0, 0, stays), {place: 'overdue'}); return; }
     if (!tasks.length || this.movingOverdue) return;
     this.movingOverdue = true;
-    const now = new Date();
-    // Each at the time of day it had, or, if that time's gone today, the next whole hour (in the day's last hour, 11:59
-    // PM), so it isn't overdue again.
-    const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
-    if (next.getDate() !== now.getDate()) next.setTime(new Date(now).setHours(23, 59, 0, 0));
-    const moves = tasks.map(t => {
-      const d = new Date(t.due_date);
-      d.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
-      return {t, was: t.due_date, due: (isLate(d.toISOString(), now) ? next : d).toISOString()};
-    });
+    const now = new Date(), moves = tasks.map(t => ({t, was: t.due_date, due: movedDue(t.due_date, now, now)}));
     const moved = await this.saveEach(moves.map(m => [m.t, {due_date: m.due}]));
     this.movingOverdue = false;
     const left = moves.length - moved.length, n = moved.length;
-    const undo = {label: 'Undo', fn: async () => {
-      const still = [];                                                       // not changed since, elsewhere
-      for (const m of moves.filter(m => moved.includes(m.t))) if (await this.unchanged(m.t).catch(() => false)) still.push(m);
-      const back = await this.saveEach(still.map(m => [m.t, {due_date: m.was}]));
-      const k = n - back.length;
-      if (k) this.say(`${k === 1 ? '1 task' : k + ' tasks'} couldn't be moved back (changed since, or not saved) and ${k === 1 ? 'is' : 'are'} still due today.`, {place: 'overdue', cls: 'failed'});
-      this.render();
-    }};
     if (!n) return this.say(this.offline ? 'Not moved: no connection' : 'Not moved: Vikunja didn\'t save the changes', {place: 'overdue', cls: 'failed'});
-    this.say(movedText(n, left, stays), {place: 'overdue', action: undo});
+    this.say(movedText(n, left, stays), {place: 'overdue', action: this.undoMoves(moves.filter(m => moved.includes(m.t)), 'today', {place: 'overdue'}, () => this.render())});
     this.render();
+  },
+  /* The Undo of tasks moved to other dates (`moves`: {t, was}), Move all to today's and a drop's on Today: each put
+     back, unless it was changed since, elsewhere; those that couldn't be are said (`at`: where, as say's), still due
+     `still`. `after(back)`: given the moves put back, to show them. */
+  undoMoves(moves, still, at, after){
+    return {label: 'Undo', fn: async () => {
+      const same = [];                                                      // not changed since, elsewhere
+      for (const m of moves) if (await this.unchanged(m.t).catch(() => false)) same.push(m);
+      const back = await this.saveEach(same.map(m => [m.t, {due_date: m.was}]));
+      const k = moves.length - back.length;
+      if (k) this.say(notMovedBack(k, still), {...at, cls: 'failed'});
+      after(same.filter(m => back.includes(m.t)));
+    }};
+  },
+  /* A row or a card held on Today and dropped on another day (parent-tasks-plan, part 4: progress.js, rescheduleOf):
+     Move all to today, one at a time. `to`: {due: its new date (movedDue: its time of day kept), label: the day's
+     name}. A card's is its task's date only, its subtasks as they are. It's moved on screen at once (placeOnToday),
+     saved, and said in its place with an Undo; not saved, it goes back, and its place says so, with Try again. */
+  async reschedule(t, to){
+    const c = this.view.cards?.[t.id], m = {t, was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
+    this.placeOnToday(t, to.due);
+    try { await this.saveTask(t.id, {due_date: to.due}); }
+    catch (e) {
+      this.placeOnToday(t, m.was, m.when, m.key);
+      this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, action: {label: 'Try again', fn: () => this.reschedule(t, to)}});
+      return false;
+    }
+    // A card whose subtask is due sooner stays where that puts it (cards.js: the earliest date that brought it).
+    const kept = c && this.todayKey(t) !== to.key ? this.cardSubs(t, false).filter(s => !s.done && isSet(s.due_date)).sort((a, b) => Date.parse(a.due_date) - Date.parse(b.due_date))[0] : null;
+    const at = {row: {id: t.id, stays: true}};
+    this.say(movedTo(to.label, kept?.title), {...at, action: this.undoMoves([m], dayWord(to.label), at, back => back.forEach(b => this.placeOnToday(b.t, b.was, b.when, b.key)))});
+    return true;
+  },
+  // The group of Today's that task `t` is in (its key), or null.
+  todayKey(t){ return this.view.groups.find(g => g.tasks.some(x => x.id === t.id))?.key ?? null; },
+  /* Task `t` due `due` on Today's screen, at once: in the group its date puts it in, among the others there in their
+     order (regroupToday). A card goes by the earliest of its task's date and its open subtasks' (`when`, as cards.js
+     works it out as Today loads), or is given `when` (an Undo's). With no date, it goes back to `key` (Added today, no
+     date). */
+  placeOnToday(t, due, when, key = 'nodate'){
+    t.due_date = due;
+    const c = this.view.cards?.[t.id];
+    if (c) c.when = when !== undefined ? when : [due, ...this.cardSubs(t, false).filter(s => !s.done).map(s => s.due_date)].filter(isSet)
+      .reduce((a, b) => !a || Date.parse(b) < Date.parse(a) ? b : a, null);
+    const dated = c ? isSet(c.when) : isSet(due), groups = this.view.groups, into = groups.find(g => g.key === (dated ? 'today' : key));
+    for (const g of groups) g.tasks = g.tasks.filter(x => x.id !== t.id);
+    into?.tasks.push(t);
+    this.regroupToday();
   },
 
   /* ---------- reordering ---------- */
