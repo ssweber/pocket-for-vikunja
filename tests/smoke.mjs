@@ -1532,16 +1532,16 @@ try {
       const rows = page.locator(`${P} > .card-rows > .row`), more = page.locator(`${P} > .card-more`);
       await expect(rows).toHaveCount(1);
       await expect(page.locator(`#view .list > .item > .row:has(.title:has-text("${w} kid"))`)).toHaveCount(0);
-      await expect(more).toHaveText('More');
+      await expect(more).toHaveAccessibleName('More');
       await expect(more).toHaveAttribute('aria-expanded', 'false');
       await more.click();
       await expect(rows).toHaveCount(2);
-      await expect(more).toHaveText('Less');
+      await expect(more).toHaveAccessibleName('Show less');
       await expect(more).toHaveAttribute('aria-expanded', 'true');
       if (await page.isVisible('#sheet')) throw new Error('More opened the task');
       await more.click();
       await expect(rows).toHaveCount(1);
-      await expect(more).toHaveText('More');
+      await expect(more).toHaveAccessibleName('More');
       // Held and moved over the card: let go, the results are as they were.
       const order = () => page.locator('#view .list > .item').evaluateAll(els => els.map(el => +el.dataset.id));
       const was = await order();
@@ -2645,12 +2645,26 @@ ${footName('Hooks')}`);
       if (Object.values(zones.widths).some(w => w < 48) || zones.height < 48) throw new Error('a zone under 48px: ' + JSON.stringify(zones));
       const rowTick = await page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`).evaluate(el => el.querySelector(':scope > .check').getBoundingClientRect().left - el.getBoundingClientRect().left);
       if (Math.abs(zones.under) > 0.5 || zones.tick <= rowTick + 20) throw new Error(`its top row's tick isn't under the header's title, a level in: ${JSON.stringify(zones)}, a row's at ${rowTick}`);
-      // More: opened in place, every open subtask in the same order, the top one first; Less: collapsed again.
-      await expect(more).toHaveText('More');
+      // More, a slim tab hanging under its top row, ⌄ in it: its tap from the row's foot, 48px down to the next thing
+      // listed, never the row's. Opened in place, every open subtask in the same order, the
+      // top one first; then a plain ⌃ with no tab, "Show less", collapses it again.
+      await expect(more).toHaveAccessibleName('More');
+      const foot = () => card.evaluate(el => {
+        const m = el.querySelector(':scope > .card-more'), row = el.querySelector('.card-rows > .row:last-child').getBoundingClientRect(), x = row.left + row.width / 2;
+        const hit = y => document.elementFromPoint(x, y)?.closest('.card-more, .row, .day-card, .item');
+        const last = !el.closest('.item').nextElementSibling?.matches('.item'), tab = getComputedStyle(m.querySelector('.tab'));
+        return { row: hit(row.bottom - 1)?.matches('.row'), from: hit(row.bottom + 1) === m, to: hit(row.bottom + 47) === m, past: last || hit(row.bottom + 49) !== m,
+          tab: tab.backgroundColor, corners: tab.borderBottomLeftRadius };
+      });
+      await card.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const shut = await foot();
+      if (!shut.row || !shut.from || !shut.to || !shut.past || shut.tab === 'rgba(0, 0, 0, 0)' || shut.corners === '0px') throw new Error('its footer: ' + JSON.stringify(shut));
       await more.click();
       await expect(cardRows(P.title)).toHaveText([C.title, B.title, A.title]);
-      await expect(more).toHaveText('Less');
+      await expect(more).toHaveAccessibleName('Show less');
       if (await page.isVisible('#sheet')) throw new Error('More opened the task');
+      const opened = await foot();
+      if (!opened.from || !opened.to || opened.tab !== 'rgba(0, 0, 0, 0)') throw new Error('opened, its footer: ' + JSON.stringify(opened));
       await more.click();
       await expect(cardRows(P.title)).toHaveText([C.title]);
       // Ticked: done where it is, the card's height kept, until the batch clears; then the next comes in, and the ring
@@ -2720,7 +2734,7 @@ ${footName('Hooks')}`);
       await expect(rows).toHaveCount(1);
       await page.evaluate(() => { document.getElementById('view').style.paddingBottom = ''; });
       await card.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-      await expect(more).toHaveText('More');
+      await expect(more).toHaveAccessibleName('More');
       await more.click();
       await expect(rows).toHaveCount(3);
       await page.click('nav.tabs a[data-tab=projects]');
