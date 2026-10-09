@@ -108,7 +108,7 @@ test('a card goes in Today’s order by what brought it, a row by its own dates'
    has a run in progress as a card, with its open steps on it, and leaves out a finished run's (parent-tasks-plan, part 2). */
 test('templates marked done and their steps are left out, and in a project’s Done a run’s steps; anything else stays', () => {
   const app = component(checklists, runs), tpl = { title: 'template' }, DUE = '2026-10-09T09:00:00Z';
-  Object.defineProperty(app, 'checklistIds', { get: () => new Set([2]) });
+  app.checklistIds = new Set([2]);
   localStorage.setItem('pocket.saved.templates', JSON.stringify({ 40: { id: 40, title: 'Old one' } }));
   const t = (id, f = {}) => ({ id, title: 'Task ' + id, done: true, project_id: 2, labels: [], description: '', related_tasks: {}, ...f });
   const under = (id, title) => ({ parenttask: [{ id, title }] });
@@ -127,7 +127,7 @@ test('templates marked done and their steps are left out, and in a project’s D
     t(62, { done: false, related_tasks: { ...under(65, 'Opening up · run 0'), copiedfrom: [{ id: 31 }] } }), t(70, { done: false })];
   app.isRunTask = x => [60, 65].includes(x.id); app.stepRun = x => x.related_tasks.parenttask?.[0]?.id ?? null;
   assert.deepEqual(ids(app.onProjectList(open)), [60, 61, 70], 'a project’s open list: a run in progress with its steps, a card; not a finished run’s step');
-  Object.defineProperty(app, 'checklistIds', { get: () => new Set() });
+  app.checklistIds = new Set();
   assert.equal(app.withoutTemplates(list), list, 'no project for checklists: nothing to look at');
   localStorage.removeItem('pocket.saved.templates');
 });

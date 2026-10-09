@@ -27,7 +27,13 @@ export default {
     this.setProjects(list.filter(p => p.id > 0 && !p.is_archived).sort((a,b) => (a.position||0) - (b.position||0) || a.title.localeCompare(b.title)));
     saved.set('projects', this.projects);
   },
-  setProjects(list){ this.projects = list; this.projById = new Map(list.map(p => [p.id, p])); setTimeout(() => this.loadPerms()); },
+  // Which are for checklists is worked out here, once, as every row asks it (isRunTask): each project's description is
+  // read as HTML for it. Every change to the projects comes through here, with new objects.
+  setProjects(list){
+    this.projects = list; this.projById = new Map(list.map(p => [p.id, p]));
+    this.checklistProjects = list.filter(p => this.isChecklistProject(p)); this.checklistIds = new Set(this.checklistProjects.map(p => p.id));
+    setTimeout(() => this.loadPerms());
+  },
   async loadLabels(force){
     if (this.labelsLoaded && !force) return this.labels;
     this.labels = await allPages('/labels'); this.labelsLoaded = true; return this.labels;

@@ -39,8 +39,6 @@ export default {
     keepTemplate(t); saved.set('templates', templatesKept);
   },
   isChecklistProject(p){ return isChecklistDesc(p?.description); },
-  get checklistProjects(){ return this.projects.filter(p => this.isChecklistProject(p)); },
-  get checklistIds(){ return new Set(this.checklistProjects.map(p => p.id)); },
   // The lit tab: Checklists for a run as well, Projects for a project and the list of them.
   get tab(){ return ['checklists', 'run'].includes(this.route.name) ? 'checklists' : this.route.name === 'today' ? 'today' : 'projects'; },
   /* What the open task is in a checklist project: a template, one of its steps ('tplstep'), a run, one of a run's steps,

@@ -54,13 +54,28 @@ test('under a step\'s title: Inserted or Repeated, its comments, and its countdo
   assert.deepEqual(app.rowMeta(step({ done: true, dueText: 'Due in 3m' }), RUN), [], 'a done step has no countdown');
 });
 
+// Which projects are for checklists is worked out once, as the projects are set, not each time a row asks (isRunTask):
+// it reads each project's description as HTML.
+test('the projects for checklists are worked out when the projects are set, not each time a row asks', () => {
+  const app = component(views, runs, checklists);
+  let read = 0;
+  Object.assign(app, { loadPerms(){}, isChecklistProject: p => { read++; return p.description === 'marked'; } });
+  app.setProjects([{ id: 1, description: '' }, { id: 2, description: 'marked' }]);
+  assert.deepEqual([[...app.checklistIds], app.checklistProjects.map(p => p.id), read], [[2], [2], 2]);
+  const run = { id: 20, project_id: 2, description: '', labels: [], related_tasks: { copiedfrom: [{ id: 9 }] } };
+  for (let i = 0; i < 100; i++) assert.equal(app.isRunTask(run), true);
+  assert.equal(read, 2, 'not read again for each row');
+  app.setProjects([{ id: 1, description: 'marked' }, { id: 2, description: '' }]);
+  assert.deepEqual([...app.checklistIds], [1], 'a project made one, another one no longer');
+});
+
 /* A run's row, on a project's list, in search and under Checklists (one-concept-plan, part 3): its ring says how far it
    is, so no count of its steps and no "Next: …"; who it's for is its slot's pictures, said to a screen reader as its
    line said it, and not on a project only you can see. A run's step has no 🔔: its reminder is Pocket's own, for the
    countdown the row shows. */
 test('a run\'s row shows who it\'s for in its slot, not under its title; a run\'s step has no 🔔, a task has', () => {
   const app = component(views, runs, checklists, cards, claims), me = { id: 1, username: 'alex' }, soon = new Date(Date.now() + 18 * 6e4).toISOString();
-  Object.defineProperty(app, 'checklistIds', { get: () => new Set([2]) });
+  app.checklistIds = new Set([2]);
   Object.assign(app, { user: me, perms: {}, pending: [], positions: {}, route: { name: 'project' }, waitingByTask: new Map() });
   const run = { id: 20, title: 'Opening up', done: false, project_id: 2, assignees: [me], description: '', labels: [],
     related_tasks: { copiedfrom: [{ id: 9 }], subtask: [{ id: 21, done: true, title: 'Turn on the machine' }, { id: 22, done: false, title: 'Unlock the door' }] } };

@@ -137,7 +137,7 @@ test('a parent: its ring\'s worked-out figure, and a bar of a segment per subtas
 const NONE = '0001-01-01T00:00:00Z';
 const shared = () => {
   const app = component(sharing, cards, runs, claims, checklists, views);
-  Object.assign(app, { user: { id: 1 }, pending: [], slow: [], perms: {}, positions: {}, projects: [], hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), actTask: a => a.task });
+  Object.assign(app, { user: { id: 1 }, pending: [], slow: [], perms: {}, positions: {}, projects: [], checklistIds: new Set(), hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), actTask: a => a.task });
   return app;
 };
 test('the text shared from a task\'s sheet matches its ring: the percent and a segment per subtask, each done filled', () => {

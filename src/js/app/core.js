@@ -30,6 +30,7 @@ export default () => ({
   login: {method: 'token', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false, waiting: false},
   // data
   projects: [], projById: new Map(),
+  checklistProjects: [], checklistIds: new Set(),  // the projects for checklists, and their ids (setProjects)
   labels: [], labelsLoaded: false,
   tasks: {},                                   // the tasks on screen, one copy of each, by id (tasks.js)
   positions: {},                               // task id -> its position in its project's List view, as last read or moved (order.js)
