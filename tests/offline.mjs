@@ -303,13 +303,14 @@ try {
   });
 
   await step('a-subtask-from-the-add-box-waits-offline', async () => {
-    // On its project's list, the add box adds subtasks to the task whose sheet was opened: offline, one waits under it.
+    // On its project's list, the add box adds subtasks to the task whose sheet was opened: offline, one waits under it,
+    // on its card (a task with an open subtask is a stacked card there, open).
     const [g] = await byTitle(T('G'));
     await page.evaluate(id => { location.hash = '#/project/' + id; }, g.project_id);
-    const row = page.locator(`#view .row[data-id="${g.id}"]`);
-    await row.evaluate(el => el.scrollIntoView({ block: 'center' }), null, { timeout: 15000 });
-    await row.locator('> .body').click();
-    await page.waitForSelector('#d-title');
+    const card = page.locator(`#view .day-card[data-id="${g.id}"]`);
+    await card.evaluate(el => el.scrollIntoView({ block: 'center' }), null, { timeout: 15000 });
+    await card.locator('> .card-head .card-open').click();
+    await page.waitForSelector('#sheet .row.own');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}`);
@@ -317,9 +318,9 @@ try {
     await page.fill('#in-capture', T('G2'));
     await page.press('#in-capture', 'Enter');
     // Waiting, under it, after its other subtask; nothing said, and the box keeps the focus.
-    const waiting = page.locator(`#view .row.pending:has-text("${T('G2')}")`);
+    const waiting = card.locator(`.card-rows > .row.pending:has-text("${T('G2')}")`);
     await expect(waiting).toBeVisible();
-    const order = await page.locator('#view .row').evaluateAll(els => els.map(el => el.querySelector('.title')?.textContent || ''));
+    const order = await page.locator('#view :is(.card-title, .row .title)').evaluateAll(els => els.map(el => el.textContent || ''));
     const at = order.findIndex(t => t.includes(T('G')) && !t.includes(T('G1')) && !t.includes(T('G2')));
     if (!order[at + 1]?.includes(T('G1')) || !order[at + 2]?.includes(T('G2'))) throw new Error('rows: ' + order.slice(at, at + 3).join(' | '));
     if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
