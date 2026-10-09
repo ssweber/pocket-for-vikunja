@@ -54,9 +54,15 @@ Swiping right works as Delete does to the left: the row doesn't change until it'
 - **Let go past half: a full done.** The row carries on off the screen to the right, as a full delete does to the left,
   and leaves a gap at its height holding "Done · Undo", which closes with the batch. A tap on the tick still leaves the
   row ticked in place.
-- **Swiped left, a row with progress:** the space uncovered on the right first shows the large ring emptying a quarter
-  at a time; past 0% it turns into the red Delete, and on past half the row is deleted, as now. A row at 0% goes
-  straight to Delete.
+- **Swiped left, a row with progress: two swipes to delete** (user, 2026-10-09, after the specimen showed the ring
+  emptying with little room before Delete). This replaces section 1's "continues past 0% into the same delete track".
+  The first swipe only lowers it: the space uncovered on the right shows the large ring emptying, with the same room
+  per quarter as filling has, and it stops at 0% with a firm tick, no red, however far it's pulled. Let go, the progress
+  is set and the row springs back. A done row swiped left opens again the same way. A row at 0% swiped left is Delete,
+  as now. A slip can't delete, and each side does one thing, chosen by the row as the swipe starts.
+- **One mechanism, mirrored:** Delete and progress are the same swipe, each side configured in one place
+  (`src/js/progress.js`): what's uncovered, its stops, its full point, and what letting go does. Giving progress more
+  room is changing its numbers.
 - **Full width for subtasks:** the space uncovered, the sweep and the gap span the whole row, whatever its indent, so
   nothing gets cramped.
 
