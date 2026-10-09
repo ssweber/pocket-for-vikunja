@@ -118,10 +118,10 @@ function sections(){
     kid(1131, {under: till.id, title: 'Unbox it', done: true}), kid(1132, {under: till.id, title: 'Plug it in', done: true}), kid(1133, {under: till.id, title: 'Test a sale', done: true}),
     kid(1141, {under: bins.id, title: 'Kitchen', done: true}), kid(1142, {under: bins.id, title: 'Yard', done: true}),
     kid(1151, {under: floor.id, title: 'Sweep first'}), kid(1152, {under: floor.id, title: 'Mop'}), kid(1161, {under: sink.id, title: 'Buy a washer'}), kid(1162, {under: sink.id, title: 'Fit it'})];
-  /* A task's sheet led by its row (parent-tasks-plan, 6b, a mock): a task at 50% with notes and two photos, Priya on
-     it, the whole sheet under it; a subtask with no notes or photos, its parent in the path; a parent, its ring at 13%
-     (one subtask of four at 50%), its subtasks below; the card's row swiped right from 25% to 50%, still held; and a
-     done task. `parts`: what of the rest of the sheet is drawn under the card. */
+  /* A task's sheet led by its row (parent-tasks-plan, 6b): a task at 50% with notes and two photos, Priya on it, the
+     whole sheet under it; a subtask with no notes or photos, its parent in the path; a parent, its ring at 13% (one
+     subtask of four at 50%), its subtasks below; the card's row swiped right from 25% to 50%, still held; its title
+     tapped, a box to change it in; and a done task. `parts`: what of the rest of the sheet is drawn under the card. */
   const photo = (id, name, size) => ({id, file: {name, size}});
   const notes = '<p>Use the green from the shed: <strong>two coats</strong>, a day apart.</p><ul><li>Sand the old paint off first</li><li>Tape round the letterbox</li></ul>';
   const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, related_tasks: {parenttask: [{id: 1200}]}}),
@@ -129,7 +129,7 @@ function sections(){
     task({id: 1204, title: 'Second coat', related_tasks: {parenttask: [{id: 1200}]}})]}, description: '<p>The side facing the car park.</p>'});
   fence.id = 1200;
   const sheets = [
-    {spec: 'A task’s sheet led by its row (a mock): at 50%, with notes and two photos, Priya on it; under the card, what stays: Due and Reminders, Subtasks, Comments (stand-ins), and Details (a stand-in, but its new Progress line)',
+    {spec: 'A task’s sheet led by its row: at 50%, with notes and two photos, Priya on it; under the card, what stays: Due and Reminders, Subtasks, Comments (stand-ins), and Details (a stand-in, but its Progress line, as the sheet has it)',
       parts: ['due', 'subtasks', 'comments', 'details'], task: task({title: 'Repaint the front door', percent_done: .5, due_date: dayAt(1, 9), priority: 2, assignees: [priya], comment_count: 1,
         labels: [label(1, 'Front', 'e07a5f')], description: notes, attachments: [photo(1, 'door-before.jpg', 2.4e6), photo(2, 'paint-tin-label.jpg', 1.1e6)]})},
     {spec: 'A subtask’s sheet with no notes or photos: its parent in the path over the card; the card is its row, “Add notes”, and “Add a photo or file”', parts: [],
@@ -138,6 +138,8 @@ function sections(){
       parts: ['subtasks', 'details'], subPeople: {1201: [me], 1202: [priya]}, task: fence},
     {spec: 'The card’s row swiped right from 25%, still held at 50%: only the row moves; its notes and photo stay', parts: [], state: {reveal: .22},
       task: task({title: 'Restock the napkins', percent_done: .25, assignees: [me], description: '<p>The big packs, from the cash and carry.</p>', attachments: [photo(3, 'shelf.jpg', 0.9e6)]})},
+    {spec: 'Its title tapped: a box to change it in, in the row’s place, saved once it’s left', parts: [], titleEdit: true, title: 'Restock the napkins and the straws',
+      task: task({title: 'Restock the napkins', due_date: dayAt(1, 0), description: '<p>The big packs.</p>'})},
     {spec: 'A done task: its row as a done row in a list; Details’ Progress line has no quarter pressed', parts: ['details'],
       task: task({title: 'Clean the grinder', done: true, percent_done: .5, due_date: dayAt(-1, 17), description: '<p>Burrs out, brush, then rice through it.</p>', attachments: [photo(4, 'burrs.jpg', 1.6e6)]})},
   ];
@@ -268,13 +270,6 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
   c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
     {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
-  /* The sheet's own row (sheet/task-card.html, a mock): a list's row, deleted from there (its Delete closes the sheet
-     on the list) but not moved. Under its title, when it's due and how soon (due, priority, repeats, a reminder to
-     come): not its project, run or parent, which the path over the card says, nor its labels and counts, which the
-     sheet has below. Built for real, `own` is a kind of list in rowMeta (app/views.js); here, a wrapper. */
-  c.sheetRowG = {depth: {}, delete: true, own: true};
-  const rowMeta = c.rowMeta;
-  c.rowMeta = function(t, g){ const out = rowMeta.call(this, t, g); return g?.own ? out.filter(m => ['due', 'prio', 'rep', 'rem'].includes(m.key)) : out; };
   c.specimenSheets = [];
   c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
@@ -338,7 +333,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimenComplete = [ask(s.parents[2].title, false, titles('Ask for holidays', 'Draft it', 'Post it')),
       ask(s.parents[0].title, false, titles('Sand it', 'Tape the edges', 'First coat', 'Second coat', {title: 'Water the plants', stays: true})),
       ask('Closing up', true, titles('Stack the chairs', 'Lock the door'))];
-    // A task's sheet led by its row (parent-tasks-plan, 6b, a mock): each its own sheet, as the app's is for one task.
+    // A task's sheet led by its row (parent-tasks-plan, 6b): each its own sheet, as the app's is for one task.
     for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.keep(x);
     this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.keep(sh.task)}));
     /* Holding to reschedule on Today: each still's sections as Today's are, with data-group (screens/lists.html), and
