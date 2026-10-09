@@ -112,7 +112,9 @@ worth at a time, after the first paint. So the first screen takes the same time 
 - End-to-end tests for what changed, in the file for each area: the kept copy of a project with Done closed after it
   was open; a screen's rows all there after the batches; Pocket opening on its kept screen with Vikunja slow to answer.
   Then the full `npm run test:local`, and fix what fails.
-- `development.md`: the patched Alpine and its script, drawing in batches (for whoever adds a list), and how to measure.
+- `development.md`: the patched Alpine, both patches (the scheduler, part 1; x-for keeping the keys and scopes of the
+  items at the start of a list that are where they were, part 5) and its script, drawing in batches (for whoever adds a
+  list: hand x-for the list unwatched, keyed by a path into the item), and how to measure.
 - The harness moves from `scratchpad/perf/` to `scripts/perf/` with an `npm run perf`, so a change can be measured
   later: its numbers, before this plan and after, in `development.md` or the harness's README.
 

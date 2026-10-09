@@ -1,6 +1,6 @@
-// Pocket's copy of Alpine (src/vendor/, its scheduler patched) runs reactive updates in the same order as Alpine's own:
-// both are given the same updates, queued and taken off the queue at random, before and during a flush, and must run
-// them in the same order.
+// Pocket's copy of Alpine (src/vendor/, its scheduler and its x-for patched) runs reactive updates in the same order as
+// Alpine's own: both are given the same updates, queued and taken off the queue at random, before and during a flush,
+// and must run them in the same order.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -150,4 +150,65 @@ test('updates run in the same order as in Alpine\'s own scheduler', () => {
     ran += want.length;
   }
   assert.ok(ran > 10000, 'enough updates run: ' + ran);
+});
+
+/* Its x-for (patched too): a key that's a path into the item (`t.id`) is read off the item, and the items at the start
+   of the list that are the same objects in the same places keep their key and scope from the last time, rather than
+   being worked out again (a long list drawn a batch at a time went over every row drawn for each batch). Run here on a
+   pretend DOM: after every change, each element in its place, with the scope of the item there, whatever moved. */
+const XFOR = vendor.slice(vendor.indexOf('  // packages/alpinejs/src/directives/x-for.js'), vendor.indexOf('  // packages/alpinejs/src/directives/x-ref.js'));
+class El {
+  constructor(parent = null){ this.parent = parent; if (parent) parent.kids.push(this); }
+  get nextElementSibling(){ const k = this.parent.kids; return k[k.indexOf(this) + 1] || null; }
+  remove(){ const k = this.parent.kids; k.splice(k.indexOf(this), 1); this.parent = null; }
+  after(el){ if (el.parent) el.remove(); const k = this.parent.kids; k.splice(k.indexOf(this) + 1, 0, el); el.parent = this.parent; }
+  replaceWith(el){ if (el.parent) el.remove(); const k = this.parent.kids; k.splice(k.indexOf(this), 1, el); el.parent = this.parent; this.parent = null; }
+}
+// An x-for over `items`, keyed by `key`: set(list) draws it, rows() its elements in order, keyRuns how many times
+// Alpine's own evaluation worked out a key.
+const xfor = (expression, key) => {
+  const box = { kids: [] }, tpl = new El(box), state = { items: [], keyRuns: 0 };
+  tpl.content = { children: { length: 1 } }; tpl._x_keyExpression = key;
+  let run, made;
+  const evaluateLater = (el, expr) => (receiver, { scope = {} } = {}) => {
+    if (expr === 'items') return receiver(state.items);
+    state.keyRuns++;
+    receiver(new Function(...Object.keys(scope), 'return (' + expr + ')')(...Object.values(scope)));
+  };
+  const stubs = { directive: (name, f) => { made = f; }, skipDuringClone: f => f, evaluateLater, mutateDom: f => f(), destroyTree(){}, initTree(){},
+    addScopeToNode: (el, scope) => { el.scope = scope; }, reactive: x => x, warn(){}, document: { importNode: () => ({ firstElementChild: new El() }) } };
+  new Function(...Object.keys(stubs), XFOR)(...Object.values(stubs));
+  made(tpl, { expression }, { effect: f => { run = f; f(); }, cleanup(){} });
+  return { state, set(list){ state.items = list; run(); }, rows: () => box.kids.slice(1) };
+};
+const drawn = (x, list, what) => {
+  const rows = x.rows();
+  assert.equal(rows.length, list.length, what + ': as many rows');
+  rows.forEach((el, i) => { assert.equal(el.scope.t, list[i], `${what}: row ${i}'s item`); if ('i' in el.scope) assert.equal(el.scope.i, i, `${what}: row ${i}'s index`); });
+};
+
+test('x-for keyed by a path into the item: each row with its item, wherever it moved; keys read off the item', () => {
+  assert.ok(XFOR.includes('Pocket:'), 'the patch is there');
+  const a = { id: 1 }, b = { id: 2 }, c = { id: 3 }, d = { id: 4 }, x = xfor('(t, i) in items', 't.id');
+  x.set([a, b]); drawn(x, [a, b], 'first');
+  const first = x.rows()[0];
+  x.set([a, b, c]); drawn(x, [a, b, c], 'one added at the end');
+  assert.equal(x.rows()[0], first, 'the rows already drawn are kept');
+  x.set([b, a, c]); drawn(x, [b, a, c], 'the same objects, moved');
+  const b2 = { id: 2 };
+  x.set([b2, a, c]); drawn(x, [b2, a, c], 'another object at the same place, with the same key');
+  x.set([a, c]); drawn(x, [a, c], 'one taken off the front');
+  x.set([d, a, c]); drawn(x, [d, a, c], 'one put at the front');
+  x.set([d, a, c].slice()); drawn(x, [d, a, c], 'the same, in a new list');
+  x.set([]); drawn(x, [], 'none');
+  assert.equal(x.state.keyRuns, 0, 'no key worked out in Alpine\'s scope');
+});
+
+test('x-for keyed any other way, or with the list named, works out every key as Alpine does', () => {
+  const a = { id: 1 }, b = { id: 2 };
+  for (const [expression, key] of [['t in items', 't.id + 0'], ['(t, i, all) in items', 't.id']]) {
+    const x = xfor(expression, key);
+    x.set([a, b]); x.set([b, a]); drawn(x, [b, a], expression + ' by ' + key);
+    assert.equal(x.state.keyRuns, 4, expression + ' by ' + key + ': each key, each time');
+  }
 });

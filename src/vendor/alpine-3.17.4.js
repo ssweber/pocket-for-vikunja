@@ -4151,6 +4151,15 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       // the x-bind:key expression is stored for our use instead of evaluated.
       el._x_keyExpression || "index"
     );
+    // Pocket: a key that's a path into the item (`t.id`, for `t in ...`) is read off the item, rather than evaluated in
+    // Alpine's scope; and then the items at the start of the list that are where they were last time keep their key and
+    // their scope as they were (loop). A long list drawn a batch at a time went over every row drawn for each batch.
+    let keyPath = /^\s*([A-Za-z_$][\w$]*)((?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*$/.exec(el._x_keyExpression || "");
+    if (keyPath && keyPath[1] === iteratorNames.item && !iteratorNames.collection) {
+      let path = keyPath[2].split(".").slice(1).map((k) => k.trim());
+      evaluateKey = (receiver, { scope: scope2 }) => receiver(path.reduce((o, k) => o == null ? o : o[k], scope2[keyPath[1]]));
+      el._x_keyOf = true;
+    }
     el._x_lookup = /* @__PURE__ */ new Map();
     effect3(() => loop(el, iteratorNames, evaluateItems, evaluateKey), { priority: "structural" });
     cleanup(() => {
@@ -4185,9 +4194,20 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
       let lookup = /* @__PURE__ */ new Map();
       templateEl._x_lookup = lookup;
       let hasStringKeys = isObject2(items);
+      // Pocket: how many items at the start are the same as last time, each where it was (its key read off it: the
+      // directive's keyOf), so their keys and scopes are as they were.
+      let wasItems = templateEl._x_items || [], wasKeys = templateEl._x_keys || [], same = 0;
+      if (templateEl._x_keyOf && Array.isArray(items))
+        while (same < items.length && same < wasItems.length && items[same] === wasItems[same] && oldLookup.has(wasKeys[same])) same++;
       let scopeEntries = Object.entries(items).map(([index, item]) => {
         if (!hasStringKeys)
           index = parseInt(index);
+        if (index < same) {
+          let key = wasKeys[index];
+          lookup.set(key, oldLookup.get(key));
+          oldLookup.delete(key);
+          return [key, null];
+        }
         let scope2 = getIterationScopeVariables(iteratorNames, item, index, items);
         let key;
         evaluateKey((innerKey) => {
@@ -4201,6 +4221,10 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
         }, { scope: { index, ...scope2 } });
         return [key, scope2];
       });
+      if (templateEl._x_keyOf) {
+        templateEl._x_items = Array.isArray(items) ? items.slice() : [];
+        templateEl._x_keys = scopeEntries.map(([key]) => key);
+      }
       mutateDom(() => {
         oldLookup.forEach((el) => {
           destroyTree(el);
@@ -4211,7 +4235,8 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
         scopeEntries.forEach(([key, scope2]) => {
           if (lookup.has(key)) {
             let el = lookup.get(key);
-            el._x_refreshXForScope(scope2);
+            if (scope2)
+              el._x_refreshXForScope(scope2);
             if (prev.nextElementSibling !== el) {
               if (prev.nextElementSibling)
                 el.replaceWith(prev.nextElementSibling);
