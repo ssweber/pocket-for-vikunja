@@ -80,6 +80,11 @@
               <div class="prop"><span class="k">Assigned</span><span class="v">
                 <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
                 <button class="add-label">Add</button></span></div>
+              <div class="prop sel prio"><span class="k">Priority</span><span class="v">
+                <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+                <span x-text="PRIOS[sheet.task.priority || 0].label"></span>
+                <svg class="i prio-chev" aria-hidden="true"><use href="#i-chev"/></svg>
+                <select aria-label="Priority"><option x-text="PRIOS[sheet.task.priority || 0].label"></option></select></span></div>
               <template x-if="!sheetRing"><div class="prop"><span class="k">Progress</span><span class="v d-quarters" role="group" aria-label="Progress">
                 <template x-for="q in QUARTERS" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(quarterOn(sheet.task) === q)" :aria-label="q + '% done'" x-text="q + '%'"></button></template>
               </span></div></template>
