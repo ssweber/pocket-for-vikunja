@@ -60,6 +60,8 @@ Swiping right works as Delete does to the left: the row doesn't change until it'
   per quarter as filling has, and it stops at 0% with a firm tick, no red, however far it's pulled. Let go, the progress
   is set and the row springs back. A done row swiped left opens again the same way. A row at 0% swiped left is Delete,
   as now. A slip can't delete, and each side does one thing, chosen by the row as the swipe starts.
+- **A swipe keeps the side it started on** (user, 2026-10-09): one that starts as progress, dragged back past where it
+  started, stops there; it never turns into a Delete, nor a Delete into progress.
 - **One mechanism, mirrored:** Delete and progress are the same swipe, each side configured in one place
   (`src/js/progress.js`): what's uncovered, its stops, its full point, and what letting go does. Giving progress more
   room is changing its numbers.
