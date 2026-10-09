@@ -3,18 +3,11 @@
   <input id="focus-keeper" class="focus-keeper" aria-hidden="true" tabindex="-1" autocomplete="off">
   <div class="bar">
     <div class="bar-meta"><template x-if="sheet.kind === 'task' && sheet.task"><div class="bar-meta-in">
-      <!-- Priority as a level, 1 to 5 bars; the phone's own picker, laid over it, changes it -->
-      <template x-if="!ofTemplate"><label class="prio-pick" :class="'p' + (sheet.task.priority || 0)">
-        <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-        <span x-text="sheet.task.priority ? PRIOS[sheet.task.priority].label : 'Priority'"></span>
-        <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
-          <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
-        </select>
-      </label></template>
+      <!-- Its number in Vikunja, at the left, clear of the grab, ⋯ and ×; not for a checklist's template, run or step,
+           which are found by name -->
+      <template x-if="sheet.task.identifier && !checklistRole?.match(/template|tplstep|run|step/)"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
     </div></template></div>
     <div class="grab"><i></i></div>
-    <!-- Its number in Vikunja; not for a checklist's template, run or step, which are found by name -->
-    <template x-if="sheet.kind === 'task' && sheet.task?.identifier && !checklistRole?.match(/template|tplstep|run|step/)"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
     <!-- What's done to the task as a whole: sharing its progress, opening it in Vikunja, and, with write access, moving it
          up or down its list, making it a checklist template, deleting it -->
     <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>

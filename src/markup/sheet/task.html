@@ -219,6 +219,16 @@
             </template></div>
           </div></template>
         </span></div>
+        <!-- Priority as a level, 1 to 5 bars, and its word; the phone's own picker lies over the whole row (.prop.sel), as
+             Safari can't open a select from code. Not a template's. -->
+        <template x-if="!ofTemplate"><div class="prop sel prio"><span class="k">Priority</span><span class="v">
+          <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          <span x-text="PRIOS[sheet.task.priority || 0].label"></span>
+          <svg class="i prio-chev" aria-hidden="true"><use href="#i-chev"/></svg>
+          <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
+            <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
+          </select>
+        </span></div></template>
         <!-- Progress, the tap path for a swipe on the row (design rule 3): the quarters, the one it's at pressed (none for
              progress set elsewhere, 30% say, nor for a done task, which a quarter opens again at). Done is the tick. Not
              a parent's (a run's too): its progress is worked out from its subtasks (rule 5). Claims it as a swipe does

@@ -570,14 +570,9 @@ a.sec-act{text-decoration:none}
 #sheet .bar{position:relative;display:flex;align-items:center;gap:8px;padding:12px 12px 6px}
 #sheet .bar .bar-meta{flex:1;min-width:0}
 #sheet .bar .grab{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex}
-/* the task's number and priority, top left */
+/* the task's number, top left */
 .bar-meta-in{display:flex;align-items:center;gap:10px;padding-left:4px}
 .task-id{color:var(--muted);font-size:14px;font-weight:650}
-.prio-pick{position:relative;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px 0 10px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted);font-size:14px;font-weight:650}
-.prio-pick:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
-.prio-pick select{position:absolute;inset:0;width:100%;opacity:0;font-size:17px;cursor:pointer}
-.prio-pick.p1,.prio-pick.p2{color:var(--ink)}
-.prio-pick.p3,.prio-pick.p4,.prio-pick.p5{color:var(--overdue)}
 /* Priority as a level: five equal bars, filled up to it; red from High up. On the sheet and in list rows.
    Equal, not rising, so it doesn't read as phone signal; shorter than the text, so it doesn't read as |||||. */
 .bars{display:inline-flex;gap:2px;height:11px}
@@ -649,6 +644,10 @@ body.sheet-open{overflow:hidden}
 .prop.sel{position:relative}
 .prop.sel select{position:absolute;inset:0;width:100%;height:100%;padding:0 14px 0 98px}
 .prop.sel:has(select:focus-visible){box-shadow:inset 0 0 0 2px var(--accent)}
+/* Priority shows its bars and its word, and a chevron where Project's and Repeats' selects draw theirs; its select,
+   over the row, is unseen. */
+.prop.sel.prio select{opacity:0}
+.prop.prio .prio-chev{margin:0 -9px 0 auto;width:14px;height:14px;stroke-width:3;transform:rotate(90deg)}
 .chip.rem{cursor:default;padding-right:6px}
 .prop-note{margin:0;padding:0 14px 12px}
 .assign-pick{flex:1 1 100%;min-width:0}
