@@ -11,13 +11,15 @@
 //   <script defer src="alpine-3.17.4-pocket.2.min.js">
 //                                                  src/vendor/alpine-3.17.4.js, minified, written as that file
 //                                                  next to the page (vendor, below)
-// A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is.
+// A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The page is also written
+// compressed, as index.html.br and index.html.gz, for main.go to send a browser that takes one (compressed, below).
 //
 // Everything Pocket's page needs is in that one file, so a phone never mixes a new page with old code, and sw.js and
 // main.go need nothing more. Edit src/, never pocket/app/index.html: the build overwrites it, and CI checks it's the
 // build of src/.
 import { existsSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 
@@ -79,6 +81,7 @@ async function build(){
   for (const [, to] of parts) if (/<\/(script|style)/i.test(to.replace(/^<(script|style)[^>]*>/, '').replace(/<\/(script|style)>$/, '')))
     throw new Error('A </script> or </style> inside the inlined code would cut it short');
   write(join(OUT, 'index.html'), page);
+  compressed(join(OUT, 'index.html'), page);
   if (map) write(join(OUT, MAP), map);
   await vendor(page);
 }
@@ -93,6 +96,21 @@ async function vendor(page){
     if (!existsSync(file)) throw new Error(`The page loads ${name}, but there's no src/vendor/${lib}.js to make it from`);
     const { code } = await esbuild.transform(read(file), { minify: true, banner: `/* ${lib}.js, patched by Pocket: src/vendor/${lib}.js */` });
     write(join(OUT, name), code);
+  }
+}
+
+/* The page compressed, which main.go sends a browser that takes it: brotli (a fifth of the size) and gzip. Each is made
+   again only when what's there doesn't decode to the page, so a build that changes nothing is quick, and it's the same
+   bytes on every computer: gzip's header has no time in it, and its "made on" byte is set, not this computer's. */
+export function compressed(file, page){
+  const text = Buffer.from(page);
+  const ways = {
+    '.br': [brotliDecompressSync, () => brotliCompressSync(text, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT, [constants.BROTLI_PARAM_SIZE_HINT]: text.length } })],
+    '.gz': [gunzipSync, () => { const gz = gzipSync(text, { level: 9 }); gz.writeUInt32LE(0, 4); gz[9] = 255; return gz; }],   // 255: made on "unknown"
+  };
+  for (const [ext, [unzip, zip]] of Object.entries(ways)) {
+    try { if (unzip(readFileSync(file + ext)).equals(text)) continue; } catch {}
+    writeFileSync(file + ext, zip());
   }
 }
 

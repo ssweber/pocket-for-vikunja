@@ -120,7 +120,12 @@ func (p *Pocket) serve(c *echo.Context) error {
 	if !strings.HasPrefix(file, p.dir+string(filepath.Separator)) {
 		return echo.NewHTTPError(http.StatusNotFound, "not found")
 	}
-	if st, err := os.Stat(file); err != nil || st.IsDir() {
+	// The compressed copies of the page are sent only in its place (below), never under their own names.
+	if ext := path.Ext(name); ext == ".br" || ext == ".gz" {
+		return echo.NewHTTPError(http.StatusNotFound, "not found")
+	}
+	st, err := os.Stat(file)
+	if err != nil || st.IsDir() {
 		return echo.NewHTTPError(http.StatusNotFound, "not found")
 	}
 	h := c.Response().Header()
@@ -132,8 +137,44 @@ func (p *Pocket) serve(c *echo.Context) error {
 	h.Set("Referrer-Policy", "no-referrer")
 	if name == "/index.html" {
 		h.Set("Cache-Control", "no-cache") // pick up a new version as soon as it's uploaded
+		h.Set("Vary", "Accept-Encoding")
+		// The build also writes the page compressed (index.html.br and .gz, a fifth and a quarter of its size): sent to
+		// a browser that takes it, with the page's own time, which Pocket asks by whether there's a new version.
+		if enc, ext := pageEncoding(c.Request().Header.Get("Accept-Encoding")); enc != "" {
+			if f, err := os.Open(file + ext); err == nil {
+				defer f.Close()
+				h.Set("Content-Encoding", enc)
+				http.ServeContent(c.Response(), c.Request(), "index.html", st.ModTime(), f)
+				return nil
+			}
+		}
 	}
 	return c.File(file)
+}
+
+// The compressed page to send for an Accept-Encoding header ("gzip, deflate, br"): brotli if it's taken, then gzip,
+// and "" for the page as it is. One with q=0 ("br;q=0") isn't taken.
+func pageEncoding(accept string) (string, string) {
+	taken := map[string]bool{}
+	for _, part := range strings.Split(accept, ",") {
+		f := strings.Split(part, ";")
+		name := strings.ToLower(strings.TrimSpace(f[0]))
+		taken[name] = true
+		for _, p := range f[1:] {
+			if q := strings.TrimSpace(p); strings.HasPrefix(q, "q=") {
+				if v, err := strconv.ParseFloat(q[2:], 64); err == nil && v == 0 {
+					taken[name] = false
+				}
+			}
+		}
+	}
+	if taken["br"] {
+		return "br", ".br"
+	}
+	if taken["gzip"] {
+		return "gzip", ".gz"
+	}
+	return "", ""
 }
 
 /* ---------- step times ---------- */

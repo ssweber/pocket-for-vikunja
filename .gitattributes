@@ -7,3 +7,5 @@
 *.jpg binary
 *.woff binary
 *.woff2 binary
+*.br binary
+*.gz binary

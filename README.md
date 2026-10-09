@@ -78,7 +78,7 @@ Pocket needs Vikunja 2.7 or later.
 
    Vikunja's log should now include `pocket: serving … at /api/v1/plugins/pocket/`. With step times on, the plugin sets
    the due dates of checklist steps, and changes nothing else: see [Step times](docs/guide.md#step-times). Read
-   [`pocket/main.go`](pocket/main.go) first if you like; it's about 350 lines.
+   [`pocket/main.go`](pocket/main.go) first if you like; it's about 600 lines.
 
 3. **Open Pocket on your phone** at `https://<your Vikunja>/api/v1/plugins/pocket/` and sign in the way you sign in to
    Vikunja. You're then signed in to both on that phone.
