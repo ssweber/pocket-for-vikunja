@@ -4,7 +4,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['pocket/app/**', 'node_modules/**', 'test-results/**'] },
+  { ignores: ['pocket/app/**', 'node_modules/**', 'test-results/**', 'src/vendor/**'] },   // vendor/: Alpine as published
   js.configs.recommended,
   {
     rules: {
