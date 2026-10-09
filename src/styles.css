@@ -283,9 +283,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}
 /* A list with cards (list-item.html: Today, search's open tasks, a project's open list): each thing an item, a row or a
-   card, with a line between them. Held and moved up or down (a project's list), an item moves whole, a card with its
-   rows, as a row does (dragOf) */
+   card, with a line between them, and a card apart from what's above and below it by a gap, so where its rows end is
+   plain. Held and moved up or down (a project's list), an item moves whole, a card with its rows, as a row does
+   (dragOf) */
 .item + .item{border-top:1px solid var(--line)}
+.item:has(> .day-card) + .item,.item + .item:has(> .day-card){border-top:8px solid var(--bg)}
 .item{position:relative;transition:transform .2s ease}
 .item.dragged{z-index:3;transition:none;background:var(--surface)}
 .day-card.held{z-index:2;box-shadow:var(--shadow-lift);background:var(--surface)}
