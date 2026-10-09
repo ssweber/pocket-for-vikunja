@@ -35,8 +35,11 @@ export default {
     if (already) this.$nextTick(() => { sh.querySelector('.scroll').scrollTop = 0; });
     else this.$nextTick(() => { void sh.offsetHeight; this.sheet.show = true; });   // reflow so the slide-in animates
   },
+  /* The ×, a slide down, the shade, Escape and the phone's Back all come here. The question a ring asks, asked from a
+     task's sheet, goes back to that sheet, as Cancel does; `instant` (confirmed, or leaving for a screen) closes it. */
   closeSheet(instant){
     if (!this.sheet.open) return;
+    if (!instant && this.sheet.kind === 'complete' && this.sheet.complete?.back) return this.cancelComplete();
     this.leaveTask();
     const dirty = this.sheet.dirty;
     this.sheet.show = false;

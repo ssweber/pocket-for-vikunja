@@ -18,6 +18,7 @@ import runs from '../../src/js/app/runs.js';
 import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
+import sheetPart from '../../src/js/app/sheet.js';
 import { whereNext } from '../../src/js/checklists.js';
 
 const NONE = '0001-01-01T00:00:00Z', me = { id: 1 }, other = { id: 2 };
@@ -430,6 +431,36 @@ test('a parent’s ring with more open subtasks asks first, listing them; confir
   await app.ringTap(app.tasks[10], ROW);
   await app.confirmComplete();
   assert.deepEqual([10, 11, 12, 13].map(id => v.task(id).done), [true, true, true, false], 'the one that repeats left as it is');
+});
+
+test('the question asked from a task’s sheet goes back to that sheet however it’s closed, and Back then closes the sheet', async c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const kids = [kid(11), kid(12)], v = fakeVikunja([parentOf(...kids), ...kids]), app = component(cards, tasks, leaving, actions, runs, sheetPart);
+  // the phone's history, as much of it as a sheet uses: its entry pushed, marked closed, or gone back from
+  globalThis.history = { state: null, pushState(s){ this.state = s; }, replaceState(s){ this.state = s; } };
+  document.getElementById = () => ({ querySelector: () => ({}) });
+  const opened = [];
+  Object.assign(app, { cardPage: {}, cardOpen: {}, positions: {}, lines: {}, pending: [], perms: {}, checklistIds: new Set(), $nextTick(){},
+    openTask(id){ opened.push(id); this.openSheet('task'); this.sheet.show = true; } });
+  for (const t of [parentOf(...kids), ...kids]) app.keep(t);
+  const ask = sheet => { app.openSheet('task'); app.sheet.show = true; app.askComplete(app.tasks[10], sheet); assert.equal(app.sheet.kind, 'complete'); };
+  ask(true);
+  app.closeSheet();                                                          // the ×, the slide down, the shade, Escape
+  assert.deepEqual([opened, app.sheet.kind, app.sheet.open], [[10], 'task', true], 'back on the task’s sheet, as Cancel goes');
+  ask(true);
+  history.state = null;                                                      // the phone's Back: the sheet's entry gone
+  app.closeSheet();                                                          // (core.js's popstate)
+  assert.deepEqual([opened, app.sheet.kind, history.state?.sheet], [[10, 10], 'task', true], 'the task’s sheet, with an entry of its own for Back');
+  app.closeSheet();
+  assert.equal(app.sheet.open, true, 'still showing as it slides down');
+  c.mock.timers.tick(300);
+  assert.deepEqual([app.sheet.open, history.state.sheet], [false, 'closed'], 'Back, or the ×, then closes the task’s sheet');
+  ask(true);
+  app.closeSheet(true);                                                      // confirmed, or a screen opened: closed outright
+  assert.deepEqual([app.sheet.open, opened.length], [false, 2]);
+  ask(false);                                                                // asked from a list: closing it closes it
+  app.closeSheet(); c.mock.timers.tick(300);
+  assert.deepEqual([app.sheet.open, opened.length, v.task(10).done], [false, 2, false]);
 });
 
 test('a parent with every subtask done waits for Close; a repeating one is done as before, its subtasks as they are', async c => {
