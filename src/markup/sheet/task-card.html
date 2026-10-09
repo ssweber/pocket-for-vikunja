@@ -1,0 +1,53 @@
+<!-- A task's sheet leads with one card (parent-tasks-plan, 6b): the task's own row, then its notes, then its photos and
+     files. A MOCK, drawn only by the specimen (scripts/specimen/) for the user to look at: nothing in Pocket includes it
+     yet. Built for real, sheet/task.html includes it in place of its title, progress bar, Notes and Attachments, and
+     drops its own copy of what's marked "copied" below, so there's one of each.
+     The row is the row in a list (task-row.html, `g` the sheet's own: sheetRowG), so it looks and acts the same as
+     everywhere (design rule 4): its tick with its quarter, or a parent's ring; its title; its slot; its line of when it's
+     due. Swiped right it sets progress (a full swipe ticks it in place: the sheet is about this one task, so no gap);
+     swiped left at 0%, its Delete, which closes the sheet on the list, where its gap has Restore. No progress bar: a
+     swipe sets progress, and the tap path for it is the Progress line in Details. -->
+<div class="card task-card" id="d-card">
+  <template x-for="g in [sheetRowG]" :key="0"><template x-for="t in [sheet.task]" :key="t.id">
+    <!-- include markup/task-row.html -->
+  </template></template>
+  <!-- Its notes, under its title (copied from sheet/task.html's Notes card): a tap edits them. With none, "Add notes"
+       (descHtml), quiet, as the way to add them. Copy sits at their top right, as on a comment, in place of the
+       heading's. -->
+  <div class="task-card-notes">
+    <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || (canEdit && editDesc())" @keydown.enter="canEdit && editDesc()"></div></template>
+    <template x-if="!sheet.editingDesc && notesText(sheet.task).trim()"><button class="icon-btn plain copy-btn" id="d-desc-copy" aria-label="Copy the notes" @click="copyNotes()"><svg class="i"><use href="#i-copy"/></svg></button></template>
+    <template x-if="sheet.editingDesc"><div class="desc-edit">
+      <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())"></textarea>
+      <template x-if="sheet.descUnsaved"><p class="note" id="d-desc-unsaved" style="margin:6px 2px">Not saved yet: these notes are kept on this phone until they're saved.</p></template>
+      <template x-if="sheet.descConflict !== null"><p class="note" id="d-desc-conflict" style="margin:6px 2px; white-space:pre-wrap">They were changed elsewhere while you wrote. The notes in Vikunja now:
+<span x-text="sheet.descConflict || '(none)'"></span>
+Save to replace them with yours, or Cancel to keep them.</p></template>
+      <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>
+      <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="cancelDesc()">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
+    </div></template>
+    <template x-for="line in placeLines('sheet:notes')" :key="line.n">
+      <!-- include markup/place-line.html -->
+    </template>
+  </div>
+  <!-- Its photos and files, then Add a photo or file (copied from sheet/task.html's Attachments card): each a line,
+       its clip where the row's tick is, so the card reads as one column under its title -->
+  <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div class="task-card-files" id="d-attachments">
+    <template x-for="a in sheet.task.attachments || []" :key="a.id">
+      <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+    </template>
+    <!-- Added here or with the task, not in Vikunja yet: they wait on the phone while there's no connection -->
+    <template x-for="f in waitingByTask.get(sheet.task.id) || []" :key="f.key">
+      <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span>
+        <button class="icon-btn plain" :aria-label="'Don\'t upload ' + f.name" @click="cancelFile(f.entry, f.key)"><svg class="i"><use href="#i-close"/></svg></button></div>
+    </template>
+    <!-- The phone offers its own choices here: a photo from the library, a new one, or a file -->
+    <template x-if="attachmentsOn && canEdit"><label class="att add-att">
+      <svg class="i"><use href="#i-plus"/></svg><span class="nm">Add a photo or file</span>
+      <input type="file" id="d-file" class="sr" multiple aria-label="Add a photo or file" @change="addFiles($event.target.files); $event.target.value = ''">
+    </label></template>
+    <template x-for="line in placeLines('sheet:files')" :key="line.n">
+      <!-- include markup/place-line.html -->
+    </template>
+  </div></template>
+</div>

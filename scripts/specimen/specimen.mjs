@@ -116,7 +116,30 @@ function sections(){
     kid(1131, {under: till.id, title: 'Unbox it', done: true}), kid(1132, {under: till.id, title: 'Plug it in', done: true}), kid(1133, {under: till.id, title: 'Test a sale', done: true}),
     kid(1141, {under: bins.id, title: 'Kitchen', done: true}), kid(1142, {under: bins.id, title: 'Yard', done: true}),
     kid(1151, {under: floor.id, title: 'Sweep first'}), kid(1152, {under: floor.id, title: 'Mop'}), kid(1161, {under: sink.id, title: 'Buy a washer'}), kid(1162, {under: sink.id, title: 'Fit it'})];
-  return {parent, steps: runSteps(), cards: [van2, opening, closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
+  /* A task's sheet led by its row (parent-tasks-plan, 6b, a mock): a task at 50% with notes and two photos, Priya on
+     it, the whole sheet under it; a subtask with no notes or photos, its parent in the path; a parent, its ring at 13%
+     (one subtask of four at 50%), its subtasks below; the card's row swiped right from 25% to 50%, still held; and a
+     done task. `parts`: what of the rest of the sheet is drawn under the card. */
+  const photo = (id, name, size) => ({id, file: {name, size}});
+  const notes = '<p>Use the green from the shed: <strong>two coats</strong>, a day apart.</p><ul><li>Sand the old paint off first</li><li>Tape round the letterbox</li></ul>';
+  const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, related_tasks: {parenttask: [{id: 1200}]}}),
+    task({id: 1202, title: 'Tape the edges', assignees: [priya], related_tasks: {parenttask: [{id: 1200}]}}), task({id: 1203, title: 'First coat', due_date: dayAt(1, 0), related_tasks: {parenttask: [{id: 1200}]}}),
+    task({id: 1204, title: 'Second coat', related_tasks: {parenttask: [{id: 1200}]}})]}, description: '<p>The side facing the car park.</p>'});
+  fence.id = 1200;
+  const sheets = [
+    {spec: 'A task’s sheet led by its row (a mock): at 50%, with notes and two photos, Priya on it; under the card, what stays: Due and Reminders, Subtasks, Comments (stand-ins), and Details (a stand-in, but its new Progress line)',
+      parts: ['due', 'subtasks', 'comments', 'details'], task: task({title: 'Repaint the front door', percent_done: .5, due_date: dayAt(1, 9), priority: 2, assignees: [priya], comment_count: 1,
+        labels: [label(1, 'Front', 'e07a5f')], description: notes, attachments: [photo(1, 'door-before.jpg', 2.4e6), photo(2, 'paint-tin-label.jpg', 1.1e6)]})},
+    {spec: 'A subtask’s sheet with no notes or photos: its parent in the path over the card; the card is its row, “Add notes”, and “Add a photo or file”', parts: [],
+      task: task({title: 'Buy masking tape', related_tasks: {parenttask: [{id: 1200, title: 'Paint the side fence'}]}})},
+    {spec: 'A parent’s sheet: its ring for a tick (one subtask of four at 50%, so 13%), and its subtasks below, the real rows; no Progress line in Details, as its progress is worked out',
+      parts: ['subtasks', 'details'], subPeople: {1201: [me], 1202: [priya]}, task: fence},
+    {spec: 'The card’s row swiped right from 25%, still held at 50%: only the row moves; its notes and photo stay', parts: [], state: {reveal: .22},
+      task: task({title: 'Restock the napkins', percent_done: .25, assignees: [me], description: '<p>The big packs, from the cash and carry.</p>', attachments: [photo(3, 'shelf.jpg', 0.9e6)]})},
+    {spec: 'A done task: its row as a done row in a list; Details’ Progress line has no quarter pressed', parts: ['details'],
+      task: task({title: 'Clean the grinder', done: true, percent_done: .5, due_date: dayAt(-1, 17), description: '<p>Burrs out, brush, then rice through it.</p>', attachments: [photo(4, 'burrs.jpg', 1.6e6)]})},
+  ];
+  return {parent, steps: runSteps(), sheets, cards: [van2, opening, closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -218,6 +241,14 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
   c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
     {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
+  /* The sheet's own row (sheet/task-card.html, a mock): a list's row, deleted from there (its Delete closes the sheet
+     on the list) but not moved. Under its title, when it's due and how soon (due, priority, repeats, a reminder to
+     come): not its project, run or parent, which the path over the card says, nor its labels and counts, which the
+     sheet has below. Built for real, `own` is a kind of list in rowMeta (app/views.js); here, a wrapper. */
+  c.sheetRowG = {depth: {}, delete: true, own: true};
+  const rowMeta = c.rowMeta;
+  c.rowMeta = function(t, g){ const out = rowMeta.call(this, t, g); return g?.own ? out.filter(m => ['due', 'prio', 'rep', 'rem'].includes(m.key)) : out; };
+  c.specimenSheets = [];
   c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
@@ -273,6 +304,9 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const ask = (t, run) => ({kind: 'complete', complete: {id: t.id, run, title: t.title, n: run ? 2 : 3, stay: run ? 0 : 1,
       open: run ? [{id: 1, title: 'Stack the chairs'}, {id: 2, title: 'Lock the door'}] : [{id: 1, title: 'Tape the edges'}, {id: 2, title: 'First coat'}, {id: 3, title: 'Second coat'}, {id: 4, title: 'Water the plants', stays: true}]}});
     this.specimenComplete = [ask(s.parents[0], false), ask({id: 0, title: 'Closing up · run 5'}, true)];
+    // A task's sheet led by its row (parent-tasks-plan, 6b, a mock): each its own sheet, as the app's is for one task.
+    for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.keep(x);
+    this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.keep(sh.task)}));
     // A project's open list, as listGroups makes it: each subtask under its parent there, and what it shows.
     Object.assign(this.positions, s.project.positions);
     const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
@@ -298,6 +332,10 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       for (const t of s.parents) for (const head of document.querySelectorAll(`.day-card[data-id="${t.id}"] > .card-head`)) {
         if (t.state?.head === 'delete') { head.classList.add('swiped'); head.style.setProperty('--swipe', '-88px'); }
         else if (t.state?.head) { const w = head.clientWidth; revealOf(head).move(swipeAt({start: 0, dx: t.state.head * w, x: w / 2, width: w, screen: 1e4, one: true})); }
+      }
+      // The sheet's own row swiped, still held, as a list's row is (below).
+      for (const sh of this.specimenSheets) if (sh.state?.reveal) for (const row of document.querySelectorAll(`.task-card > .row[data-id="${sh.task.id}"]`)) {
+        const w = row.clientWidth; revealOf(row).move(swipeAt({start: Math.round(sh.task.percent_done * 100), dx: sh.state.reveal * w, x: w / 2, width: w, screen: 1e4}));
       }
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
         // A still of a swipe, held (progress.js: revealOf, swipeAt), put down where its room isn't cut short by the edge.

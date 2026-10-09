@@ -17,6 +17,24 @@
   .spec-box{margin-top:16px}
   /* the question a ring asks, as the sheet shows it */
   .spec-sheet{margin-bottom:16px;padding:16px;border-radius:20px;background:var(--surface)}
+  /* a task's sheet, as its scrolling part shows it: the page's colour, set apart from the next by a dashed line */
+  .spec-task-sheet{margin:0 -16px 8px;padding:12px 16px 4px;border-bottom:2px dashed var(--line)}
+  .spec-task-sheet .h3 small{font-weight:500;color:var(--muted)}
+
+  /* A task's sheet led by its row (parent-tasks-plan, 6b): a MOCK, for src/styles.css once it's built (here for now,
+     since the stylesheet is part of Pocket's page, which must stay as it is). One card: the task's row, its notes
+     under its title, its files in the same column, each file's clip where the row's tick is, the lines between them
+     starting at the title. Swiped, what the row uncovers stays inside the card's rounded edge. */
+  .task-card{overflow:clip}
+  .task-card-notes{position:relative;padding:0 0 2px 38px}
+  .task-card-notes .desc{padding-top:0;padding-right:44px}
+  .task-card-notes .copy-btn{position:absolute;top:-12px;right:0}
+  .task-card-notes .desc-edit{margin-left:-38px}
+  .task-card .att{position:relative;gap:14px;padding-left:16px;border-top:0}
+  .task-card .att::before{content:"";position:absolute;top:0;right:0;left:52px;height:1px;background:var(--line)}
+  /* Details' Progress line, the tap path for a swipe's progress: a quarter each, the one it's at pressed */
+  .d-quarters{gap:6px}
+  .d-quarters .chip{min-width:52px;min-height:38px;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body x-data="specimen">
@@ -27,6 +45,65 @@
   <template x-for="theme in ['light', 'dark']" :key="theme">
     <section class="theme" :class="'theme-' + theme" inert>
       <h1 x-text="theme === 'light' ? 'Light' : 'Dark'"></h1>
+      <!-- A task's sheet led by its row (parent-tasks-plan, 6b), a MOCK: the card is sheet/task-card.html, the real row
+           (task-row.html) and a copy of the sheet's notes and files. Above it, the sheet's path (a copy of its markup);
+           below it, what stays, as stand-ins but the subtasks' rows, which are the real row. Each is the sheet of its
+           own task: `sheet` here is that sheet, as the app's is. -->
+      <template x-for="sheet in specimenSheets" :key="sheet.task.id"><div class="spec-task-sheet">
+        <div class="sec" x-text="sheet.spec"></div>
+        <div class="d-path">
+          <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
+          <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" x-text="parentTitle"></button></span></template>
+        </div>
+        <!-- include markup/sheet/task-card.html -->
+        <template x-if="sheet.parts.length"><div>
+          <!-- Stand-in: the Due card (Due and Reminders), as sheet/task.html has it -->
+          <template x-if="sheet.parts.includes('due')"><div class="card">
+            <div class="prop"><span class="k">Due</span><span class="v"><input type="datetime-local" aria-label="Due date" :value="isSet(sheet.task.due_date) ? toLocalInput(sheet.task.due_date) : ''"></span></div>
+            <div class="prop"><span class="k">Reminders</span><span class="v"><select aria-label="Add a reminder"><option>Add a reminder</option></select></span></div>
+          </div></template>
+          <!-- The subtasks: the real rows, as the sheet has them (g.sheet); the add box under them, a stand-in -->
+          <template x-if="sheet.parts.includes('subtasks')"><div>
+            <div class="h3"><span>Subtasks</span><span class="n num" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
+            <div class="card">
+              <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true}]" :key="0"><template x-for="t in subtasks" :key="t.id">
+                <!-- include markup/task-row.html -->
+              </template></template>
+              <div class="addbox sub"><form><div class="cap-field"><textarea rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks"></textarea></div>
+                <button class="go" type="button" disabled aria-label="Add subtasks"><svg class="i"><use href="#i-plus"/></svg></button></form></div>
+            </div>
+          </div></template>
+          <!-- Stand-in: Comments -->
+          <template x-if="sheet.parts.includes('comments')"><div>
+            <div class="h3">Comments<span class="n num" x-text="sheet.task.comment_count || ''"></span><small>stand-in</small></div>
+            <div class="card">
+              <template x-if="sheet.task.comment_count"><div class="comment"><div class="who"><b>Priya</b> · <span class="num">Yesterday, 4:12 PM</span></div><div class="desc" style="padding:0">The green tin is nearly empty: I'll pick up another.</div></div></template>
+              <form class="comment-form"><textarea rows="1" placeholder="Write a comment" aria-label="Comment"></textarea>
+                <button class="go btn" type="button" style="width:44px;padding:0" aria-label="Post comment"><svg class="i"><use href="#i-up"/></svg></button></form>
+            </div>
+          </div></template>
+          <!-- Details, a stand-in but for its new Progress line (the tap path for a swipe's progress: 0, 25, 50, 75%; done
+               is the tick). Not for a parent: its progress is worked out from its subtasks (design rule 5). -->
+          <template x-if="sheet.parts.includes('details')"><div>
+            <div class="h3">Details<small>stand-in, but Progress</small></div>
+            <div class="card">
+              <div class="prop sel"><span class="k">Project</span><span class="v"><select aria-label="Project"><option x-text="projById.get(sheet.task.project_id)?.title"></option></select></span></div>
+              <div class="prop"><span class="k">Labels</span><span class="v">
+                <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><button class="x" :aria-label="'Remove label ' + l.title"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+                <button class="add-label">Add</button></span></div>
+              <div class="prop"><span class="k">Assigned</span><span class="v">
+                <template x-for="u in sheet.task.assignees || []" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+                <button class="add-label">Add</button></span></div>
+              <!-- New: the quarter it's at pressed; tapped, that progress (sheetProgress, claiming it as a swipe does); on a
+                   done task, none pressed, and a tap opens it again at that -->
+              <template x-if="!sheetRing"><div class="prop"><span class="k">Progress</span><span class="v d-quarters" role="group" aria-label="Progress">
+                <template x-for="q in [0, 25, 50, 75]" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(!sheet.task.done && shownPct(sheet.task) === q)" x-text="q + '%'"></button></template>
+              </span></div></template>
+              <div class="prop sel"><span class="k">Repeats</span><span class="v"><select aria-label="Repeats"><option>Doesn’t repeat</option></select></span></div>
+            </div>
+          </div></template>
+        </div></template>
+      </div></template>
       <template x-for="g in specimen" :key="g.title"><div>
         <div class="sec" x-text="g.title"></div>
         <!-- A project's Done section (screens/lists.html): its heading folded, and open -->
