@@ -43,6 +43,23 @@ slide for progress, no plain swipe right) and section 3's "hold first".
 - A run's step swiped left: only where a step can be deleted now (an inserted one); elsewhere a left swipe lowers its
   progress and stops at 0%. A template's steps keep their own editor row.
 
+### 1b. A swipe shows what it'll do before it does it (user, 2026-10-09, after trying part 1's design)
+
+Swiping right works as Delete does to the left: the row doesn't change until it's let go.
+
+- **The row's content slides right,** and the space it uncovers on the left is green, holding a large ring. Over the
+  first half of the row the ring fills to 25%, 50% and 75%, a tick felt at each; past half it's full, and the green
+  fills the row, as Delete's red does. No fill or percentage on the row itself.
+- **Let go before half:** the progress shown is set, and the row springs back, its tick showing the quarter.
+- **Let go past half: a full done.** The row carries on off the screen to the right, as a full delete does to the left,
+  and leaves a gap at its height holding "Done · Undo", which closes with the batch. A tap on the tick still leaves the
+  row ticked in place.
+- **Swiped left, a row with progress:** the space uncovered on the right first shows the large ring emptying a quarter
+  at a time; past 0% it turns into the red Delete, and on past half the row is deleted, as now. A row at 0% goes
+  straight to Delete.
+- **Full width for subtasks:** the space uncovered, the sweep and the gap span the whole row, whatever its indent, so
+  nothing gets cramped.
+
 ## 2. The stacked card
 
 A task with open subtasks, or a run with open steps, is one component everywhere it appears: the stacked card.
