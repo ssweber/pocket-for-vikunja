@@ -136,15 +136,13 @@ async function tokenWorks(){
   try { return (await fetch(app.server + '/api/v2/user', {headers: {Authorization: 'Bearer ' + app.token}})).ok; }
   catch { return false; }
 }
+/* Every item of a list, to its end: page 1, then all the rest at once, as many to a page as Vikunja gives (its
+   max_items_per_page, from /info; 50, Vikunja's own, if it doesn't say). If any page fails, the whole read does. */
 export async function allPages(path){
-  const out = [];
-  for (let page = 1; page <= 40; page++) {
-    const data = await api(path + (path.includes('?') ? '&' : '?') + 'page=' + page + '&per_page=50');
-    const items = data?.items || [];
-    out.push(...items);
-    if (!items.length || page >= (data.total_pages || 1)) break;
-  }
-  return out;
+  const per = app?.info?.max_items_per_page || 50, at = page => path + (path.includes('?') ? '&' : '?') + 'page=' + page + '&per_page=' + per;
+  const first = await api(at(1)), pages = first?.total_pages || 1;
+  const rest = await Promise.all(Array.from({length: Math.max(0, pages - 1)}, (_, k) => api(at(k + 2))));
+  return [first, ...rest].flatMap(items);
 }
 // The items of one page of a list.
 export const items = data => data?.items || [];

@@ -74,7 +74,12 @@ Pocket needs Vikunja 2.7 or later.
      loader: yaegi
      pocket:
        steptimes: true   # timed checklist steps get due dates in Vikunja; leave this line out to keep the plugin read-only
+   service:
+     maxitemsperpage: 500   # Pocket loads a long list in fewer requests; Vikunja's web app is unaffected
    ```
+
+   If your `config.yml` has a `service:` section already, put the `maxitemsperpage` line in it rather than adding a
+   second one.[^env]
 
    Vikunja's log should now include `pocket: serving … at /api/v1/plugins/pocket/`. With step times on, the plugin sets
    the due dates of checklist steps, and changes nothing else: see [Step times](docs/guide.md#step-times). Read
@@ -84,6 +89,8 @@ Pocket needs Vikunja 2.7 or later.
    Vikunja. You're then signed in to both on that phone.
 
 4. **Add it to your home screen** from the browser's Share or menu button.
+
+[^env]: Vikunja set up with environment variables instead (in Docker, say) takes `VIKUNJA_SERVICE_MAXITEMSPERPAGE=500`.
 
 **Updating:** unzip a newer release over `plugins/pocket/`, then reopen Pocket while online. Vikunja needs a restart
 only for a changed `main.go`, and the version in its log comes from there: a restart shows the new one.
