@@ -364,12 +364,16 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .close-btn:disabled{background:var(--sunk);color:var(--muted)}
 /* The question a parent's ring asks (sheet/complete.html): what goes with it, named in a sentence */
 .complete-note{margin:10px 0 18px;font-size:17px;color:var(--ink);overflow-wrap:anywhere}
-/* A collapsed card's footer, "More ⌄" (opened, "Less ⌃"): small and quiet, its words where the rows' titles are, about
+/* A collapsed card's footer, "More ⌄" (opened, "Less ⌃"): small and quiet, its words under its rows' titles, about
    28px of it drawn, but its tap the card's full width and 44px tall, reaching into the card's bottom padding */
-.card-more{display:flex;align-items:flex-start;gap:4px;width:100%;min-height:44px;padding:5px 14px 0 var(--title-x);border:0;background:transparent;color:var(--muted);font-size:14px;font-weight:600;text-align:left}
+.card-more{display:flex;align-items:flex-start;gap:4px;width:100%;min-height:44px;padding:5px 14px 0 calc(var(--title-x) + var(--tick) + 12px);border:0;background:transparent;color:var(--muted);font-size:14px;font-weight:600;text-align:left}
 .card-more svg.i{width:14px;height:14px;margin-top:2px;transform:rotate(90deg)}
 .card-more[aria-expanded=true] svg.i{transform:rotate(-90deg)}
 .day-card:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
+/* its rows, one level in, as a subtask under its parent: each tick under the header's title, the lines between them
+   starting at the ticks (as .row.sub's), the tick's tap still the whole gutter and the swipe's space the whole row */
+.card-rows > .row{--row-inset:var(--title-x);padding-left:var(--row-inset);border-top-color:transparent}
+.card-rows > .row:not(:first-of-type) > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
 .day-card.lined > :not(.row-line){display:none}
 .day-card.fresh{animation:fresh 1.6s ease-out}
