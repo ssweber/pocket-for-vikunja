@@ -105,10 +105,10 @@
         </div>
       </div></template>
       <!-- Today's stacked cards (list-item.html): the header (its ring, title, priority bars and time); its top row, the
-           most urgent, one line as a row on Today; and under it the footer, "More ⌄". A task of high priority opened by
-           More, with "Less ⌃" in its footer; a run's, its next step counting down; a run due at 6 PM, its heading as a
+           most urgent, one line as a row on Today; and under it the footer, a slim tab with ⌄. A task of high priority
+           opened by it, a plain ⌃ in its place; a run's, its next step counting down; a run due at 6 PM, its heading as a
            task's, without the day it was started; one with one open subtask, no footer; one of 14, low priority -->
-      <div class="sec">Today’s stacked cards: a task’s, high priority, opened by More, its footer Less; a run’s next step, counting down, its name without its day, its footer More; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority</div>
+      <div class="sec">Today’s stacked cards: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority</div>
       <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
