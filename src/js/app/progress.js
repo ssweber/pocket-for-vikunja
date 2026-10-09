@@ -240,10 +240,11 @@ export default {
     document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
-      // A stacked card: each of its rows as any row (cardGesture); its heading only a tap, a swipe there doing nothing
-      // (part 3 makes it the parent's header); its peek, and Show less, only a tap.
+      // A stacked card: each of its rows as any row (cardGesture); its heading a tap, a swipe there doing nothing (part 3
+      // makes it the parent's header), and held, on a project's list, the card moved up or down (cardHold); its peek,
+      // and Show less, only a tap.
       const card = target.closest('.day-card'), row = target.closest('.card-rows > .row, .list:not(.tree) > .row, .item > .row');
-      if (card && !row) return target.closest('.card-head') ? this.cardGesture(card, null) : null;
+      if (card && !row) return target.closest('.card-head') ? this.cardGesture(card, null, this.cardHold(card)) : null;
       if (!row || target.closest('.row-del')) return null;
       if (row.parentElement.id === 'run-steps') return this.stepSlide(row, target);
       const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
@@ -261,7 +262,9 @@ export default {
     area.addEventListener('touchstart', e => {
       n = null;
       const run = this.route.name === 'run';
-      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !e.target.closest('.row-del') && e.target.closest('.list:not(.tree) > .row');
+      // (a row, a card's row, or a card's heading, for its task)
+      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !e.target.closest('.row-del')
+        && (e.target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || e.target.closest('.card-head')?.closest('.day-card'));
       if (!row) return;
       const p = e.touches[0];
       n = {id: run ? row.dataset.id : +row.dataset.id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
@@ -329,20 +332,28 @@ export default {
   hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); this.hintAway(); },
   /* A stacked card (app/cards.js), one of its rows touched: that row's gesture `s` (rowGesture), whose swipe is that
      subtask's alone, and a run's card then staying on its top row until that has gone (pinCard). A plain swipe on its
-     heading (`s` null) does nothing, not even a tap. */
-  cardGesture(card, s){
+     heading (`s` null) does nothing, not even a tap; held, what a hold does to the card (`hold`: cardHold). */
+  cardGesture(card, s, hold = null){
     if (card.matches('.deleted, .lined')) return null;                     // only its Restore, or its line's action
-    if (!s) return {el: null};
+    if (!s) return {el: hold ? card : null, reorder: hold};
     // (Its top row is the same on any screen's card: 'found' asks only that it's an open task with open subtasks.)
     const id = +card.dataset.id, pin = () => { const t = this.tasks[id]; this.pinCard(t && this.cardOf(t, {cards: 'found'})); };
     return {...s, finish: s.finish && (pct => { if (pct !== null) pin(); s.finish(pct); })};
   },
+  // A card's heading held, where its list allows (data-gestures, as a row's): the card moved up or down among the tasks
+  // at the top of a project's list, as a row is (reorderOf).
+  cardHold(card){
+    const t = this.tasks[+card.dataset.id];
+    return t && allows(card).has('reorder') ? this.reorderOf(t, card, false) : null;
+  },
   /* A task's row moved up or down, among its siblings (orderOf): on a project's list, or in a task's sheet. Let go
-     somewhere else, it's moved there (reorder). */
+     somewhere else, it's moved there (reorder). What moves for each sibling: at the top of a list with cards, its item,
+     a row or a card with its rows; on a card, or in a sheet, its row. */
   reorderOf(t, row, sheet){
     const o = this.orderOf(t, sheet ? 'sheet' : 'list');
     if (!o || o.sibs.length < 2) return null;
-    const box = row.parentElement, rows = id => [...box.querySelectorAll(`:scope > .row[data-id="${id}"]`)];
+    const el = row.parentElement.matches('.item') ? row.parentElement : row;
+    const box = el.parentElement, rows = id => [...box.querySelectorAll(`:scope > [data-id="${id}"]`)];
     const blocks = (o.blocks || o.sibs.map(s => ({ids: [s.id]}))).map(b => b.ids.flatMap(rows));
     if (blocks.some(b => !b.length)) return null;
     return dragOf(blocks, o.sibs.findIndex(s => s.id === t.id), sheet ? this.$refs.sheet.querySelector('.scroll') : null,

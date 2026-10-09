@@ -20,8 +20,8 @@
             <!-- include markup/task-row.html -->
           </template>
         </div></template>
-        <!-- A list with cards (Today, search's open tasks): a row, or the stacked card for anything with open subtasks or
-             steps, its subtasks on it (list-item.html) -->
+        <!-- A list with cards (Today, search's open tasks, a project's open list): a row, or the stacked card for anything
+             with open subtasks or steps, its subtasks on it (list-item.html) -->
         <template x-if="g.cards"><div class="list">
           <template x-for="t in g.items" :key="t.id">
             <!-- include markup/list-item.html -->

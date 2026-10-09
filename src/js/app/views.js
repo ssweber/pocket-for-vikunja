@@ -392,10 +392,11 @@ export default {
       }
     }
     if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})); }
-    /* A done parent with subtasks still open is shown over them, struck through (doneParentIds): as the view gave it,
-       under an open task, or else read, all of them in one request; not read, as its subtasks name it. A run's steps
-       aren't on the list (withoutTemplates), so a run finished with steps not done is in Done, not over them. */
-    const shown = this.withoutTemplates(tasks, true), headIds = doneParentIds(shown, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
+    /* A done parent with subtasks still open is shown over them, a card with its heading struck through (doneParentIds):
+       as the view gave it, under an open task, or else read, all of them in one request; not read, as its subtasks name
+       it. A run in progress is a card, its open steps on it (parent-tasks-plan, part 2); a finished one's steps aren't
+       on the list, so a run finished with steps not done is in Done, not over them. */
+    const shown = this.onProjectList(tasks), headIds = doneParentIds(shown, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
     const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).catch(() => []) : [];
     const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
     const heads = headIds.map(id => given.get(id) || read.find(t => t.id === id) || named(id));

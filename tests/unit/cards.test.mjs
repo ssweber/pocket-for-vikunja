@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo } from '../../src/js/dates.js';
-import { listItems, rowGestures } from '../../src/js/lists.js';
+import { listItems, nestSubtasks, rowGestures } from '../../src/js/lists.js';
+import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
 import views from '../../src/js/app/views.js';
 import alerts from '../../src/js/app/alerts.js';
@@ -169,6 +170,23 @@ test('a card’s heading: its priority’s bars as its row shows them, only when
   assert.equal(app.cardHead({ ...urgent, assignees: [me] }).said.split(', ').pop(), 'For you', 'or who it’s for');
 });
 
+test('on a project’s list a card is open, its rows the subtasks under it there, in its List view’s order, with those waiting to be sent', () => {
+  const { app, parent } = today();
+  app.route = { name: 'project' };
+  const rope = { id: 'pending-x-0', pending: true, parent: 10, position: 2.5, title: 'Rope', project_id: 5, related_tasks: {} };
+  const plain = app.keep(task(20)), deeper = app.keep(task(30, { related_tasks: under(12) }));
+  const n = nestSubtasks([plain, app.tasks[11], parent, app.tasks[13], rope, app.tasks[12], deeper], positionOrder(app.positions));
+  const g = { cards: 'list', delete: true, reorder: true, heads: [], ...n }, c = app.cardOf(parent, g);
+  assert.deepEqual(c.rows.map(s => s.title), ['Chairs', 'Tables', 'Rope', 'Lights'], 'its subtasks there, one waiting to be sent among them');
+  assert.deepEqual([c.open, c.folds, c.peek], [true, false, null], 'open, for good: no peek, nor Show less');
+  assert.equal(app.cardCount(c).text, '1/5', 'counting the one waiting to be sent');
+  assert.deepEqual([c.g.delete, c.g.reorder, c.g.depth], [true, true, {}], 'its rows deleted and moved as the list’s');
+  assert.equal(app.cardOf(plain, g), null, 'a task with no subtasks there: a row');
+  assert.equal(app.cardOf(app.tasks[12], g), null, 'Chairs, with a subtask of its own: a row on the card, which opens its sheet');
+  assert.ok(app.cardOf({ ...parent, done: true }, g), 'done, over subtasks still open: a card too');
+  assert.deepEqual(listItems(n.tasks, n.depth, t => !!app.cardOf(t, g)).map(t => t.id), [10, 20], 'the card, with all under it on it, then the row');
+});
+
 test('ticked, a card’s top row stays until the batch clears, then the next comes up', () => {
   const { app, parent, g } = today();
   const c = app.cardOf(parent, g);
@@ -206,7 +224,9 @@ test('a finger on a card: its row swiped is that subtask’s slide, which keeps 
   assert.ok(g.show, 'its slide');
   g.finish(null); g.finish(50);
   assert.deepEqual([pinned, finished], [[10], [null, 50]], 'pinned only by a slide that changed something');
-  assert.deepEqual(app.cardGesture(card(), null), { el: null }, 'its heading: a swipe does nothing, not even a tap');
+  assert.deepEqual(app.cardGesture(card(), null), { el: null, reorder: null }, 'its heading: a swipe does nothing, not even a tap');
+  const hold = { start(){} }, c = card();
+  assert.deepEqual(app.cardGesture(c, null, hold), { el: c, reorder: hold }, 'on a project’s list, held: the card moved up or down');
   assert.equal(app.cardGesture(card('.deleted'), s), null, 'deleted: only its Restore');
   assert.equal(rowGestures({ depth: {}, card: {}, delete: true }), 'delete', 'a card’s row: its Delete, as its list’s rows');
 });

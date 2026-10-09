@@ -19,8 +19,9 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
    subtasks both (sheet/task.html). Each list (`g`) has these as its options, and a row writes them on itself for the
    gesture code (rowGestures). Today's rows are on one line (`line`: rowWhen, app/views.js). Anything with open subtasks
    or steps is a stacked card (`cards`: cardOf, app/cards.js; parent-tasks-plan, part 2), collapsed on Today ('today':
-   what brought it is cards.js) and in search ('found'); never on a list of done tasks (listGroups). */
-export const screenRows = name => ({project: {delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true}}[name] || {});
+   what brought it is cards.js) and in search ('found'), open on a project's list ('list'); never on a list of done
+   tasks (listGroups). */
+export const screenRows = name => ({project: {cards: 'list', delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true}}[name] || {});
 /* What a list with cards shows, in its order (`tasks`, each subtask under its parent, `depth` by id: nestSubtasks): each
    task at the top, and, under one that isn't a card (`isCard`), its subtasks as rows of their own, indented; a card's
    are on it, so they're left out. */
@@ -41,9 +42,10 @@ export const rowGestures = g => ['delete', 'reorder'].filter(k => g?.[k]).join('
 // The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
 export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
 /* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's
-   steps as on its screen), and depth: task id -> how many parents up it has there. The others stay where they were, or,
-   given `order` (a project's List view: positionOrder, in order.js), are put in it, and so are an ordinary task's
-   subtasks. A task waiting to be sent names its parent in `parent`, and goes after the rest. */
+   steps as on its screen), and depth: task id -> how many parents up it has there; kids: task id -> its subtasks there,
+   in that order. The others stay where they were, or, given `order` (a project's List view: positionOrder, in
+   order.js), are put in it, and so are an ordinary task's subtasks. A task waiting to be sent names its parent in
+   `parent`, and goes after the rest. */
 export const nestSubtasks = (tasks, order = null) => {
   const ids = new Map(tasks.map(t => [t.id, t])), kids = new Map(), top = [];
   for (const t of tasks) {
@@ -60,7 +62,7 @@ export const nestSubtasks = (tasks, order = null) => {
   const walk = (t, d) => { if (t.id in depth) return; depth[t.id] = d; out.push(t); for (const k of kids.get(t.id) || []) walk(k, d + 1); };
   for (const t of top) walk(t, 0);
   for (const t of tasks) walk(t, 0);             // tasks that are each other's subtasks: nothing above them to go under
-  return {tasks: out, depth};
+  return {tasks: out, depth, kids};
 };
 /* The parents a project's open list shows though they're done: a task done with subtasks still open (ticked done in
    Vikunja's web app, say, or a subtask opened again under it). Each is shown struck through, over those subtasks, so

@@ -1,22 +1,24 @@
-<!-- One thing in a list with cards (screens/lists.html: Today, search's open tasks), task `t` in the list `g`: its row
-     (task-row.html), or, with open subtasks or steps, the stacked card (cardOf, app/cards.js; parent-tasks-plan, part 2).
-     A card is a group named by its title. Its heading opens the task (no tick: part 3 makes it the parent's header),
-     and a swipe there does nothing; on one line: its title (a run's without its day), its priority's bars, when it's
+<!-- One thing in a list with cards (screens/lists.html: Today, search's open tasks, a project's open list), task `t` in
+     the list `g`: its row (task-row.html), or, with open subtasks or steps, the stacked card (cardOf, app/cards.js;
+     parent-tasks-plan, part 2). A card is a group named by its title. Its heading opens the task (no tick: part 3 makes
+     it the parent's header), and a swipe there does nothing; on a project's list, held, the card moves up or down, as a
+     row does, and it's lit up while the add box adds subtasks to it (the cursor, quickadd.js), watched meanwhile, as a
+     row is. On one line: its title (a run's without its day, struck through if it's done), its priority's bars, when it's
      due, short, and its count, its subtasks done of all of them, its project too to a screen reader (cardHead and
      cardCount, worked out once per card, as a row's slot is). Then its rows, the shared row with the card's own options
      (c.g), each acting as any row does: collapsed, its top row only, and under it the peek, a shorter strip, one target,
      "Interview · 1 more ⌄", its tick drawn, not a button, that opens it in place; opened, every open subtask, and Show
      less at its foot, the peek's place, to collapse it again (as does scrolling it off the screen: watchCard). With one
-     open subtask, no peek. Deleted from its ⋯, a gap at its height with Restore, and a message about its task in its
-     place, as a row's are. -->
+     open subtask, no peek. On a project's list it's always open, with no Show less. Deleted from its ⋯, a gap at its
+     height with Restore, and a message about its task in its place, as a row's are. -->
 <div class="item" :data-id="t.id">
   <template x-if="!cardOf(t, g)">
     <!-- include markup/task-row.html -->
   </template>
   <template x-for="[c, h, n] in [cardOf(t, g)].filter(Boolean).map(c => [c, cardHead(t, g), cardCount(c)])" :key="0">
-    <div class="day-card" role="group" :aria-label="h.title" :data-id="t.id"
-         :class="{open: c.open, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
-         x-effect="c.open && c.folds && watchCard($el)"
+    <div class="day-card" role="group" :aria-label="h.title" :data-id="t.id" :data-gestures="rowGestures(g)"
+         :class="{open: c.open, done: t.done, aimed: cursor?.id === t.id && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
+         x-effect="c.open && c.folds && watchCard($el); cursor?.id === t.id && watchCursor($el)"
          @click.capture="if (leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
       <button class="card-head" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="[h.said, n.said].filter(Boolean).map(x => ', ' + x).join('')"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template><span class="card-n num" aria-hidden="true"><svg class="i"><use href="#i-subtasks"/></svg><span x-text="n.text"></span></span></button>
       <div class="card-rows">

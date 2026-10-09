@@ -381,7 +381,7 @@ export default {
      On a run's screen, a step's row nudged puts that step on the card, as a tap on it does (without scrolling up to
      it), so the box aims there: one current step, never two. Only while the box shows. */
   nudged(id){
-    const run = this.route.name === 'run', row = document.querySelector(`#view .row[data-id="${id}"]`);
+    const run = this.route.name === 'run', row = document.querySelector(`#view :is(.row, .day-card)[data-id="${id}"]`);
     const t = run ? this.runAim && this.runView.steps.find(s => String(s.id) === String(id)) : this.tasks[id];
     if (!row || (run ? !t : this.leaving[id] || this.lines[id] || !this.canAim(t))) return;
     const r = row.getBoundingClientRect(), top = Math.max(0, this.$refs.header?.getBoundingClientRect().bottom || 0);

@@ -104,8 +104,9 @@ test('a card goes in Today’s order by what brought it, a row by its own dates'
 
 /* What lives on Checklists stays out of a project's lists and search (one-concept-plan, part 3): a template marked done,
    and its steps, known with no request: a template in the same list, one kept from Checklists, or "TEMPLATE:" in its
-   title. A template that comes round stays, as it's due. A project's lists leave out a run's steps too: a run is one row. */
-test('templates marked done and their steps are left out, and on a project’s list a run’s steps; anything else stays', () => {
+   title. A template that comes round stays, as it's due. A project's Done leaves out a run's steps too; its open list
+   has a run in progress as a card, with its open steps on it, and leaves out a finished run's (parent-tasks-plan, part 2). */
+test('templates marked done and their steps are left out, and in a project’s Done a run’s steps; anything else stays', () => {
   const app = component(checklists, runs), tpl = { title: 'template' }, DUE = '2026-10-09T09:00:00Z';
   Object.defineProperty(app, 'checklistIds', { get: () => new Set([2]) });
   localStorage.setItem('pocket.saved.templates', JSON.stringify({ 40: { id: 40, title: 'Old one' } }));
@@ -121,7 +122,11 @@ test('templates marked done and their steps are left out, and on a project’s l
     t(80, { project_id: 1, labels: [tpl] }), t(81, { project_id: 1, related_tasks: under(80, 'TEMPLATE: Not here') }),   // not a project for checklists
   ];
   assert.deepEqual(ids(app.withoutTemplates(list)), [50, 60, 61, 70, 71, 80, 81], 'search: a run’s steps stay');
-  assert.deepEqual(ids(app.withoutTemplates(list, true)), [50, 60, 70, 71, 80, 81], 'a project’s list: a run is one row');
+  assert.deepEqual(ids(app.withoutTemplates(list, true)), [50, 60, 70, 71, 80, 81], 'a project’s Done: its steps are on its screen');
+  const open = [t(60, { done: false, related_tasks: { copiedfrom: [{ id: 30 }] } }), t(61, { done: false, related_tasks: { ...under(60, 'Opening up · run 1'), copiedfrom: [{ id: 31 }] } }),
+    t(62, { done: false, related_tasks: { ...under(65, 'Opening up · run 0'), copiedfrom: [{ id: 31 }] } }), t(70, { done: false })];
+  app.isRunTask = x => [60, 65].includes(x.id); app.stepRun = x => x.related_tasks.parenttask?.[0]?.id ?? null;
+  assert.deepEqual(ids(app.onProjectList(open)), [60, 61, 70], 'a project’s open list: a run in progress with its steps, a card; not a finished run’s step');
   Object.defineProperty(app, 'checklistIds', { get: () => new Set() });
   assert.equal(app.withoutTemplates(list), list, 'no project for checklists: nothing to look at');
   localStorage.removeItem('pocket.saved.templates');

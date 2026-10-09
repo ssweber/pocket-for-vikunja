@@ -26,6 +26,7 @@ export default {
      rows' options (a row's on that screen: Delete; on Today, one line)}. */
   cardOf(t, g){
     const kind = g?.cards;
+    if (kind === 'list') return this.listCard(t, g);
     if (!kind || t.pending || t.done || (kind === 'today' ? !this.view.cards?.[t.id] : hasTemplateLabel(t))) return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     let steps = all.filter(s => !done(s) || this.leaving[s.id]);
@@ -37,6 +38,21 @@ export default {
     const card = {id: t.id, run, step: steps[0], steps, rows: open ? steps : steps.slice(0, 1), n, peek: !open && n > 1 ? steps[1] : null, more: n - 1,
       open, folds: true, all, done: all.filter(done).length, total: all.length};
     card.g = {depth: {}, card, line: g.line, key: g.key, delete: true};   // (its group: under Today's heading, "Today" goes unsaid)
+    return card;
+  },
+  /* On a project's list ('list'), a card is open, and can't be collapsed: its rows are its subtasks on the list, under
+     it there (g.kids: nestSubtasks), in its List view's order (a run's steps in its order line), each moved up or down
+     among them as on the list, and new ones from the add box, waiting to be sent, among them. One of those with open
+     subtasks of its own is a row as any, its count under its title, which opens its sheet: it isn't a card itself, and
+     its own subtasks aren't on this one. A task done with subtasks still open (g.heads) is a card too, its heading struck through. Not a task
+     waiting to be sent, or a template. Its count is its subtasks as Vikunja has them, and those waiting to be sent. */
+  listCard(t, g){
+    const rows = g.kids?.get(t.id) || [];
+    if (!rows.length || g.depth?.[t.id] || t.pending || hasTemplateLabel(t)) return null;
+    const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run), waiting = rows.filter(s => s.pending).length;
+    const card = {id: t.id, run, step: rows[0], steps: rows, rows, n: rows.length, peek: null, more: rows.length - 1, open: true, folds: false,
+      all, done: all.filter(done).length, total: all.length + waiting};
+    card.g = {depth: {}, card, key: g.key, delete: g.delete, reorder: g.reorder, heads: g.heads, tasks: g.tasks};
     return card;
   },
   // A card's count, at the right of its heading: its subtasks done, of all of them ("1/4"; a run's skipped steps count
@@ -63,12 +79,12 @@ export default {
   /* A card's heading, on one line, worked out once per card (list-item.html): its title, a run's without the day it
      was started, which its name ends with (runWithoutDay), so it reads as a task's; its priority's bars, small, as a row
      on Today has them; and when it's due, short, at the right (shortDue: nothing for today with no time under the Today
-     heading, `g`'s key). A screen reader hears the rest (`said`): when it's due, in words, its priority, and its
-     project, or for a run, who it's for. */
+     heading, `g`'s key). A screen reader hears the rest (`said`): done, on a project's list over subtasks still open;
+     when it's due, in words, its priority, and its project (not on its own list), or for a run, who it's for. */
   cardHead(t, g){
     const run = this.isRunTask(t), when = dueInfo(t.due_date), p = this.projById.get(t.project_id);
-    const said = [when && (when.cls === 'overdue' ? 'Late: ' : 'Due ') + when.label, t.priority && 'Priority: ' + PRIOS[t.priority].label,
-      run ? ((t.assignees || []).length ? this.forText(t) : 'Checklist run') : p?.title];
+    const said = [t.done && 'Done, with subtasks still open', when && (when.cls === 'overdue' ? 'Late: ' : 'Due ') + when.label, t.priority && 'Priority: ' + PRIOS[t.priority].label,
+      run ? ((t.assignees || []).length ? this.forText(t) : 'Checklist run') : this.route.name !== 'project' && p?.title];
     return {title: run ? runWithoutDay(t.title, t.created) : this.rowTitle(t), prio: t.priority || 0,
       due: shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'}), said: said.filter(Boolean).join(', ')};
   },

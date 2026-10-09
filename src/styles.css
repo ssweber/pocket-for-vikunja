@@ -282,9 +282,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}
-/* A list with cards (list-item.html: Today, search's open tasks): each thing an item, a row or a card, with a line
-   between them */
+/* A list with cards (list-item.html: Today, search's open tasks, a project's open list): each thing an item, a row or a
+   card, with a line between them. Held and moved up or down (a project's list), an item moves whole, a card with its
+   rows, as a row does (dragOf) */
 .item + .item{border-top:1px solid var(--line)}
+.item{position:relative;transition:transform .2s ease}
+.item.dragged{z-index:3;transition:none;background:var(--surface)}
+.day-card.held{z-index:2;box-shadow:var(--shadow-lift);background:var(--surface)}
 /* The stacked card: anything with open subtasks or steps. Its title is a heading, quieter than its rows, the things to
    do; under it, its rows, each the shared row, a plain row like any other */
 .day-card{position:relative}
@@ -294,6 +298,10 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-title{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:13.5px;color:var(--muted);white-space:nowrap}
+/* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
+.day-card.done .card-title{color:var(--muted);text-decoration:line-through}
+/* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
+.day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
 /* its count, at its right: its subtasks done of all of them, quiet (part 3 of parent-tasks-plan makes it its ring's) */
 .card-n{flex:none;display:flex;align-items:center;gap:3px;color:var(--muted);font-size:13px;white-space:nowrap}
 .card-n svg.i{width:14px;height:14px;stroke-width:2.2}

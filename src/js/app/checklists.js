@@ -56,8 +56,8 @@ export default {
   },
   /* A list of tasks without what lives on Checklists: a template marked done, and a template's steps (Vikunja's tasks
      marked done, with their steps' times written raw), for a project's Done and search. A template that comes round
-     stays: it's due. With `runSteps`, a run's steps too, for a project's lists: a run is one row there, as on Checklists,
-     its steps a tap away on its screen. Vikunja gives a task's parent without its labels, so a step's template is known
+     stays: it's due. With `runSteps`, a run's steps too, for a project's Done: they're on its screen (and a run in
+     progress is a card on its project's list, with its open steps on it: readProject). Vikunja gives a task's parent without its labels, so a step's template is known
      from what's at hand, never asked for: a template in the same list, one kept from Checklists or in the store, or a
      title starting "TEMPLATE:", as Pocket names them. */
   withoutTemplates(list, runSteps = false){
@@ -67,6 +67,13 @@ export default {
     const tpl = p => here.has(p.id) || !!kept[p.id] || hasTemplateLabel(cache.get(p.id)) || /^\s*template:/i.test(p.title || '');
     return list.filter(t => !ids.has(t.project_id)
       || !(t.done && isTemplate(t) || (t.related_tasks?.parenttask || []).some(tpl) || runSteps && this.stepRun(t)));
+  },
+  /* What a project's open list shows of what its List view gave (withoutTemplates): a run in progress with its open
+     steps, a stacked card there (parent-tasks-plan, part 2); not a finished run's steps, so one finished with steps not
+     done is in Done, not over them. */
+  onProjectList(list){
+    const runs = new Set(list.filter(t => !t.done && this.isRunTask(t)).map(t => t.id));
+    return this.withoutTemplates(list).filter(t => { const r = this.stepRun(t); return !r || runs.has(r); });
   },
   // A template's "template" label stays: it's what makes it one. (Deleting the template is in its ⋯.)
   keepsLabel(l){ return this.checklistRole === 'template' && isTemplateLabel(l); },
