@@ -18,7 +18,7 @@ let swallowClick = false;
 const allows = row => new Set((row.dataset.gestures || '').split(' '));
 // The click a hold, a swipe, or a tap that shut a row ends with isn't a tap on the row.
 const swallow = () => { swallowClick = true; setTimeout(() => swallowClick = false, 400); };
-// A row held, swiped or paged is a gesture, not text: no selection starts meanwhile, anywhere the finger goes (the
+// A row held or swiped is a gesture, not text: no selection starts meanwhile, anywhere the finger goes (the
 // phone's long press would otherwise select the words under it, or the nearest it can, around a sheet's subtasks), and
 // one made is cleared as the hold ends and as the row moves. One function, so it's added once.
 const noSelect = e => { if (sliding) e.preventDefault(); };

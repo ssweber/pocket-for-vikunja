@@ -18,12 +18,13 @@ const later = (a, b) => !a ? b : !b ? a : Date.parse(b) > Date.parse(a) ? b : a;
    onto Today:
    - a task due, with no open subtasks: itself, a row (`rows`, `key` 'dated');
    - a task due with open subtasks, or a subtask due (a run's step too): the card of the task (or run) it's under;
-   - a subtask of yours, made today, with no date: its parent's card, opened on it (`focus`); one made before today
+   - a subtask of yours, made today, with no date: its parent's card (`focus`); one made before today
      doesn't keep a card on Today (Vikunja doesn't say when a task was assigned, so made today is what counts);
    - a task of yours made today with no date: itself, under "Added today, no date" (`key` 'nodate'), or its card;
    - a run of yours in progress: its card, or with no open step, its row under Checklist runs (`key` 'runs');
-   - a step you're on in someone else's run in progress: the run's card, opened on it.
-   A template that comes round is never a card: its steps are done, and it's started from its row.
+   - a step you're on in someone else's run in progress: the run's card.
+   (A card's top row is its most urgent subtask, or a run's next step, not the one that brought it: `focus` is kept, as
+   yet unused. parent-tasks-plan, part 2.) A template that comes round is never a card: its steps are done, and it's started from its row.
    `cards`: parent id -> {when: the earliest date that brought it (null: none), made: when the latest subtask of yours
    that brought it was made, focus: that subtask's id, project: its project as far as known, from: the tasks that brought
    it, to show as rows if the parent can't be read}. `isRun(t)`: whether it's a checklist run. */

@@ -107,7 +107,7 @@ export default {
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
   },
-  /* A row on one line (g.line: Today, and a card's step line there; motion-and-rows-plan, section 9): at its right, its
+  /* A row on one line (g.line: Today, and a card's rows there; motion-and-rows-plan, section 9): at its right, its
      priority's bars, small, as on a card's heading (one-concept-plan, part 4), when it's due, short (shortDue; a run's
      step's countdown, "in 18m", "12m late"; nothing for today with no time under the Today heading, g.key), red when
      late, and its project's colour dot. Labels and counts are off Today (rowMeta's `extra`), and all of what's under its
