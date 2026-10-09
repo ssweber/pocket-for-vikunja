@@ -2,7 +2,8 @@
 
 A mobile web app for tasks and checklists in Vikunja, served by Vikunja itself through a plugin (`pocket/main.go`).
 Read `docs/development.md` for the layout, running it locally and the tests, and `docs/roadmap.md` before changing how
-the code is organised.
+the code is organised. Check any change to how Pocket looks or what a finger does on it against
+`docs/design-rules.md`.
 
 ## The code
 

@@ -11,8 +11,8 @@ like opening up and closing down, into checklists that you and your team tick of
     <th>Checklists</th>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Today, with 'Order oat milk from Riverside Dairy' overdue as a card: under its title, its next step, 'Ask about the October price', and at its foot a strip with ‹, a line in three segments, › and 2 of 3; › pages it on to 'Set up the standing order', 3 of 3, the outline on the line moving along. Typing 'Order 6 bags of house blend at 4 +orders !3' highlights the words Pocket reads, chips show Orders, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger holds 'Post next week's rota' and slides it: its '+ me' turns into Alex's A as the slide starts, and it stops at 25% and then 50%. Last, 'Pick up change from the bank' is ticked: it stays where it is, ticked and struck through, and leaves 3 seconds later, the rows below closing up."></td>
-    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the café's Opening up checklist, which says it's started, with an Undo; its steps have square boxes, and its line has a segment for each step. Once the espresso machine is on and the croissants are in, two segments are filled, 'Dial in the grinder' is due in 20 minutes, and 'Take the croissants out', due in 18, is pinned at the top."></td>
+    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Today, with 'Order oat milk from Riverside Dairy' overdue as a card: a ring with 1/3 inside it beside its title, and under it its next subtask, 'Ask about the October price', with a small tab under that; a tap on the tab opens the card, showing 'Set up the standing order' as well, the rows below moving down. Typing 'Order 6 bags of house blend at 4 +orders !3' highlights the words Pocket reads, chips show Orders, Today 4:00 PM and Priority 3, and the task appears under Today. Then a finger swipes 'Post next week's rota' to the right: the space it uncovers is green, with a large ring filling to a quarter, then a half; let go, the row springs back, its tick half filled, and its '+ me' turns into Alex's A. Last, 'Pick up change from the bank' is ticked: it stays where it is, ticked and struck through, and leaves 3 seconds later, the rows below closing up."></td>
+    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the café's Opening up checklist, which says it's started, with an Undo. At the top of its screen is the run's own row: its ring, its name and Alex's picture; its steps have square boxes. Once the espresso machine is on and the croissants are in, the ring shows 2/4, 'Dial in the grinder' is on the card, due in 20 minutes, and 'Take the croissants out', due in 18, is pinned at the top."></td>
   </tr>
 </table>
 
@@ -26,19 +26,22 @@ Vikunja.</sub>
 
 Type a task the way you'd say it: "Order 6 bags of house blend fri at 9 +orders !3". Pocket highlights what it read and
 shows it in chips before you send. **Today** has what's overdue, what's due today and the week ahead, and anything
-with subtasks or steps still open is a card showing its next step. A task you tick stays where it is, ticked, and the
-ones you ticked leave together a few seconds later; tick it again to take it back. Hold a task and slide it sideways to
-say how far along it is. Today is for doing, so nothing is deleted or moved there: on a project's list, swipe a task
-left to delete it, and its place stays as a gap with **Restore** until the gap closes.
+with subtasks or steps still open is a card showing the one to do next. A task you tick stays where it is, ticked, and
+the ones you ticked leave together a few seconds later; tick it again to take it back. Swipe a task right to say how
+far along it is, a quarter at a time, or all the way to finish it; swipe it left to lower that, or, at 0%, to delete
+it, its place staying as a gap with **Restore** until the gap closes. A row works the same on every screen. On Today,
+hold a task and flick it at a ring of dates, Today, Tomorrow or a weekday, to move it there. A task with subtasks is
+finished by its ring once its subtasks are done: it waits for **Close**, and never closes behind your back.
 
-<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, a card with its urgent priority's bars under its title, then its next step, 'Ask about the October price', and at its foot a strip with ‹, a line in three segments, › and 2 of 3; 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end; and the café's week ahead">
+<img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, a card headed by a ring with 1/3 inside it, its title and its urgent priority's bars, then its next subtask, 'Ask about the October price', with a small tab under it; 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end; and the café's week ahead">
 
 ## Hand it off
 
-Add `@priya` and the task is Priya's, in a project Priya can see. A checklist run can be for anyone on the team, and
-Vikunja tells them about it once, not once per step. To keep someone posted, **Share progress as a text**, in a task's,
-a project's or a run's ⋯, sends a few plain lines through the phone's share sheet: "Pack the van ▰▰▰▱▱ 50%", then a
-line for each subtask and who's on it.
+Add `@priya` and the task is Priya's, in a project Priya can see. A checklist run can be for anyone on the team, its
+row showing their pictures, and Vikunja tells them about it once, not once per step. To keep someone posted, **Share
+progress as a text**, in a task's, a project's or a run's ⋯, sends a few plain lines through the phone's share sheet,
+with the figure its ring shows: "Pack the van ▰▱▱▱ 38%", a segment for each subtask, then a line for each subtask and
+who's on it.
 
 <img src="docs/screenshots/pocket-assign.png" width="320" alt="'Clean the milk steamer tomorrow @priya', with chips showing Café, Tomorrow and @priya">
 
@@ -48,7 +51,7 @@ Write the steps once, as a template: "Turn on the espresso machine", "Put the cr
 croissants out in 18 min". Then start a run each morning, for yourself or someone on shift, and work through it one
 step at a time, with a comment or a photo where it helps. Timed steps count down, and everyone sees who did what.
 
-<img src="docs/screenshots/pocket-run.png" width="300" alt="A run of Opening up, 2 of 4 steps done, two of its line's four segments filled: 'Dial in the grinder' is due in 20 minutes, 'Take the croissants out', due in 18, is pinned above it, and the two steps done are ticked in their square boxes">
+<img src="docs/screenshots/pocket-run.png" width="300" alt="A run of Opening up, its own row at the top with its ring showing 2/4 and Alex's picture: 'Dial in the grinder' is on the card, due in 20 minutes, 'Take the croissants out', due in 18, is pinned above it, and the two steps done are ticked in their square boxes">
 
 Pocket works offline, and keeps whatever you're writing until it's sent. It follows the phone's light or dark mode.
 Timers ring while Pocket is open; reminders arrive by email when it's closed, so the server needs mail set up (see

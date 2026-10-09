@@ -54,7 +54,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   how many moved, "Moved 6 to today", with **Undo**. A repeating task stays where it is: tick it to move it on to its
   next date. On a card, its task and its subtasks that are overdue themselves are moved; a run's steps stay, as their
   run times them.
-- **Today is on one line:** each task there is one line, as Today is for doing, and the sheet has the rest. Its title
+- **Today is on one line:** each task there is one line, and the sheet has the rest. Its title
   is cut short with "…" when it's too long, and at the right are its priority's bars, small, as everywhere else (one
   to five, red from high up; none for no priority), then when it's due, short: the time today ("11:55 AM"), the
   weekday this week ("Fri"), or the date beyond ("Oct 20"), red when it's late, with a run's step's countdown instead
@@ -63,75 +63,91 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   **+ me** or who's on it. A tick is never coloured: red means late, or Delete. Labels and counts (comments, attachments, subtasks) are left off Today: they're on Projects, in
   search and in the sheet, which keep their second line. A screen reader hears it all: the whole title, when it's due
   in words, its priority and its project.
-- **Cards on Today:** a task with subtasks still open (or a checklist run with steps still open) shows on Today as a
-  card of three lines: its title, with its priority's bars and when it's due (nothing for today with no time, under
-  the Today heading, as a row; a run's name without the day it was started, "Opening up · run 3"); one line for a step, as a task's line on
-  Today, with that step's own tick and **+ me** or who's on it; and its strip, below. Every card is the same height,
-  whatever its steps hold.
-  Tap the title to open the task; it has no tick, so close it in its sheet, or on Projects, where ticking a task closes
-  its subtasks. The step showing is the next one still open, in the order of its project's **List view** (a run's in its
-  own order), whoever it's for, or the subtask of yours that brought the card onto Today. A run's card goes by its
-  screen's rule instead: the next step that can be done now, not one still counting down. Ticked, a step stays on the
-  card, ticked, until the ticks leave together; then the step after it comes in (on a run's, the next by that rule). Holding the step line and sliding sets
-  that step's progress, never the task's, and stops at 100%, which ticks it: the next step only comes in after. Under
-  the step line, at the card's foot, is its strip: a line in segments, one for each subtask, each filled once its step
-  is done, with the step showing outlined on it and filled as far as its progress (the step line has no bar of its
-  own), and "3 of 5" at its end, where that step is among all the subtasks, done ones too. With more than one step open, the strip is how to get round them: press on it and slide your finger
-  along, and the step under your finger shows as you go, skipping the done ones, and stays when you let go; tap a
-  step's segment to show that step, if it's still open (a done one's does nothing); or tap **‹** and **›** at its ends,
-  which go through the open ones and stop at the first and the last (dimmed there): with the first two done, from 3 to
-  4, then 5. A plain swipe on the step line or the title does nothing. Done steps are on the run's screen, or in the
-  task's sheet. Leaving Today puts every card back on its next step. Past 12 steps, the line has a tick at each step
-  instead of segments, each step's stretch filled once it's done, and the outline is around that step's stretch; those
-  are too small to tap, so slide along the strip or use the arrows. A screen reader hears the line as "2 of 5 subtasks
-  done", the card named by its title, and the step line as "Step 3 of 5: Load chairs".
+- **Cards:** a task with subtasks still open (or a checklist run with steps still open) is a card wherever it's
+  listed: its header, then its subtasks as rows, a little indented, each working as any task's row does. The header
+  has the task's ring where a tick would be (see **Finishing a task with subtasks**, below), its title, which opens
+  it, its priority's bars and when it's due (a run's name without the day it was started, "Opening up · run 3"). On
+  Today and in search a card is folded to its top row, the subtask to do next: the most urgent, overdue first, then
+  due today, then the earliest date, then in its project's **List view** order. A run's top row is its next step in
+  order, even one still counting down, with its countdown; a timed step whose time has come goes before it. Under the
+  top row, a small tab with ⌄ opens the card where it is, listing every open subtask, and ⌃ folds it again; it also
+  folds by itself once you scroll it off the screen, and every card folds when you leave the screen. A card with one
+  open subtask has no tab. Ticked, the top row stays on the card, ticked, until the ticks leave together; then the next
+  slides up. On a project's list a card is always open, its subtasks in their order, and it moves, held by its header,
+  as a task does. A card is set apart from the rows around it by a small gap. Done subtasks are in the task's sheet, or
+  on a run's screen. A screen reader hears the card named by its title, with its ring's figure: "1 of 4 subtasks done,
+  25%".
 - **What brings a card onto Today:** its task being due (overdue, today or in the next 7 days); one of its open subtasks
   being due then; a subtask assigned to you that's due, or that was made today without a date (Vikunja doesn't keep when
   a task was assigned, so one made before today doesn't keep the card there); or, for a checklist run, its being yours
   or your being on one of its steps. A card sits in the group of the earliest date that brought it, as a task by its
   due date; with no date, a run's is under **Checklist runs** and anything else under **Added today, no date**.
 - **A task's row** has three parts, each the row's full height: its left edge ticks it (the whole margin, not only the
-  circle), its title opens it, and its right end says who's doing it, or **+ me** (see **Assigning**, below).
-- **Two screens, two jobs:** Today is for doing; Projects, search and a task's sheet are for managing. On Today, a
-  task's row (or a card's step line) is ticked, claimed, opened, and held and slid sideways for its progress, and that's
-  all: a plain swipe does nothing there, so nothing is deleted by a slip on the screen you use fastest,
-  and holding a task doesn't move it, since Today is in the order things are due. Its **⋯** still deletes it. On a project's list and in a task's
-  sheet, a row can also be swiped left to **Delete** it, and held and moved up or down to move it; in search, swiped to
-  **Delete**, but not moved, as search's results have no order of their own. No swipe ticks a task, anywhere.
+  circle), its title opens it, and its right end says who's doing it, or **+ me** (see **Assigning**, below). Its
+  progress shows in its tick: a quarter, a half or three quarters filled.
+- **A row works the same everywhere:** on Today, a project's list, search, a task's sheet and a run's steps. Swipe it
+  right to say how far along it is, swipe it left to lower that or delete it, tap its tick to tick it, tap its title to
+  open it, and hold it to move it: up or down on a project's list and in a task's sheet, to another day on Today (see
+  **Moving a task on Today**), and nowhere in search, whose results have no order of their own. Every swipe and hold has
+  a tap that does the same: the tick, the slot, the task's **⋯** and its sheet.
 - **Ticking off:** a ticked task stays where it is, at the same height, ticked and struck through, so nothing moves
   under your finger. Tick it again to take it back. Three seconds after your last tick (counted from when your finger
   lifts, and not while it's still on the screen or the list is scrolling), everything you ticked leaves together, the
-  tasks below closing up once; leaving the screen sends them at once. A task's open subtasks are closed with it, without
-  asking, show ticked under it, and leave with it; ticking it again opens only those, not one that was done before,
-  with the progress each had. A subtask that repeats is left alone, since closing it would only move it to its next
-  date. On a project's list, ticked tasks go to its **Done** section, whose count goes up; in search, from Open to Done;
-  ticked again in a list of done tasks, they move back the same way. A repeating task shows ticked, then comes back
-  open, at its next date, or leaves Today if that's more than a week away; ticking it again before then puts its date
-  back. In a task's sheet, a subtask ticked stays there, ticked; the sheet's own tick says under its subtasks how many
-  it closed, with an Undo. An Undo leaves alone a task that was changed elsewhere since. A screen reader hears each
-  tick: "Done: Call Ana". With less motion asked for on the phone, ticked tasks fade out rather than fold away.
-- **Progress:** hold a task until it lifts (and, on a phone that can, you feel a tick), then slide sideways to set how
-  far along it is. It stops at 0, 25, 50, 75 and 100%, with a tick at each; progress set elsewhere (40%, say) stays as it
-  is until you slide it, then goes to the nearest of those. Sliding to 100% fills the tick and marks the task done;
-  100% is reached a little short of the screen's edge, so it's in easy reach from wherever you hold. Moving up or down
-  after the hold moves the task instead, on a project's list and in a task's sheet (see **Order**, below); anywhere
-  else it lets go, changing nothing. Holding a task never selects text, the task's or any near it; a task's notes and
-  comments can still be selected to copy, by holding them. The same works on the bar in a task's sheet (the arrow keys move it a stop
-  at a time), and on a subtask's row there. A checklist run's bar shows how many of its steps are done instead, and a
-  run's steps are held and slid the same way. The bar is all that shows it, with no message: to take it back, slide it
-  back. Sliding a task, a subtask or a step no one is doing, in a project shared with someone, says you're doing it: **+ me** turns into your picture as
-  you start, and it's assigned to you once you let go, if the slide changed its progress (let go where it started, and
-  nothing is). Someone else's stays theirs. Sliding it back to 0% later keeps it yours: tap your picture to let it go.
-  The bar in a task's sheet does the same, slid or moved with the arrow keys, and its **Assigned** row shows you at
-  once. The first time, the first task on a screen that you can slide says "Hold and slide to start working on it",
-  until you first set a task's progress this way, or tap it away; the phone remembers. It fades where it is, and its
-  space closes a second after your finger lifts, so the tasks under it never move while you're touching the list.
-  On an iPhone, Safari has no way to make the phone tick, so Pocket uses a
-  trick that works since iOS 18 and may stop working; the percentage always pulses at each stop as well.
+  tasks below closing up once; leaving the screen sends them at once. Tapping a tick ticks it whatever its progress;
+  tapping it again takes it back, with the progress it had. On a project's list, ticked tasks go to its **Done**
+  section, whose count goes up; in search, from Open to Done; ticked again in a list of done tasks, they move back the
+  same way. A repeating task shows ticked, then comes back open, at its next date, or leaves Today if that's more than a
+  week away; ticking it again before then puts its date back. In a task's sheet, a subtask ticked stays there, ticked.
+  An Undo leaves alone a task that was changed elsewhere since. A screen reader hears each tick: "Done: Call Ana". With
+  less motion asked for on the phone, ticked tasks fade out rather than fold away.
+- **Progress:** swipe a task to the right, with no need to hold it first. As it slides, the space it leaves on the left
+  is green, with a large ring that fills to 25%, then 50%, then 75% over the first half of the row, with a tick at each
+  on a phone that can. Nothing changes until you let go: then the progress shown is set, and the row springs back, its
+  tick showing the quarter. Swipe on past half the row, until the green fills it and the ring shows ✓, and let go: the
+  task is done, the row carries on off the screen to the right, and its place stays as a gap with "Done" and **Undo**
+  until the ticks leave together. Near the screen's right edge, the stops come closer, so done is always within reach.
+  To lower it, swipe a task with progress to the left: the ring empties a quarter at a time and stops at 0%, however far
+  you pull, and lets go the same way. A done task swiped left opens again, at 75% and on down. The swipe takes over only
+  once your finger is clearly going sideways, so a scroll never catches, and not from the screen's very edge, where the
+  phone's Back starts; a swipe keeps the side it started on, so pulling back past where you started changes nothing.
+  Progress set elsewhere (40%, say) shows as it is until you swipe it. A task with subtasks has no progress of its own
+  to swipe: its ring adds up its subtasks'. In a task's sheet, **Details** has **Progress**, 0, 25, 50 and 75%, to tap
+  instead. Swiping a task, a subtask or a step no one is doing, in a project shared with someone, says you're doing it:
+  once you let go having changed its progress, **+ me** turns into your picture, and it's assigned to you. Someone
+  else's stays theirs. Swiping it back to 0% later keeps it yours: tap your picture to let it go. The first time, the
+  first task on a screen that you can swipe says "Swipe right to start working on it", until you first set a task's
+  progress this way, or tap it away; the phone remembers. It fades where it is, and its space closes a second after
+  your finger lifts, so the tasks under it never move while you're touching the list. Swiping never selects text, the
+  task's or any near it; a task's notes and comments can still be selected to copy, by holding them. On an iPhone,
+  Safari has no way to make the phone tick, so Pocket uses a trick that works since iOS 18 and may stop working; the
+  ring always pulses at each stop as well.
+- **Finishing a task with subtasks:** its ring is its progress, worked out from its subtasks: each counts its own
+  progress, a done one 100%, and the ring shows the average, with how many are done inside it ("1/4"). One subtask at
+  50% of four is 13%. Pocket writes that figure to the task's progress in Vikunja too, as its subtasks change. Ticking
+  a subtask never closes its task: once they're all done, the card says "All subtasks done" with **Close**, and waits
+  for you, so nothing closes behind your back. A subtask added takes **Close** away again. Tapping the ring, or
+  swiping the header all the way to the right, completes the task: with one subtask left open, it and the task are
+  done at once, with **Undo**; with more, Pocket asks first, naming them: "Its 3 open subtasks will be marked done too:
+  Load chairs, Book the hall and Wipe the tables", with **Complete all 4** and **Cancel**. A subtask that repeats is
+  left as it is, and the question says so. A partial swipe on the header springs back, as the task has no progress of
+  its own; swiped left, the header is its **Delete**. A task done in Vikunja's web app with subtasks still open is a
+  card struck through; tap its ring to open it again. A repeating task's ring moves it on to its next date, its
+  subtasks as they are.
+- **Moving a task on Today:** hold a task's row, or a card, until it lifts: it shrinks to a small box, and a ring of
+  dates opens around it, always in the same places, so with practice it's a flick that needs no looking. **Today** is
+  to the left and **Tomorrow** to the right; above, an arc of five tiles, Monday to Friday, each the next one of that
+  day after tomorrow, with its date (early in the week most are this week's, by Wednesday most are next week's, with a
+  gap and a label, "this week" and "next week", where the week changes); and **No date** is a long pull down, past the
+  ring, so it's never a slip. Move the box onto one, with a tick felt as you cross into it, and let go: the task moves
+  there at once, keeping its time of day, with no Undo; let go in the middle and nothing changes. A target that would
+  change nothing (Today, for a task due later today) is dimmed. A card moves only its task's date. A repeating task, a
+  checklist that comes round and a run stay where they are, and the ring says why. Weekends, and any other date, are
+  the sheet's **Due**.
 - **Order:** a project's list is in the order of its **List view** in Vikunja's web app, each subtask under its
   parent in its own order, so both show the same order; a task's subtasks in its sheet are in that order too. To move
   a task, hold it until it lifts, then move it up or down: it follows your finger, with its subtasks, the tasks it
-  passes move aside to make room, with a tick at each, and near the top or bottom of the screen the list scrolls on.
+  passes move aside to make room, with a tick at each, and near the top or bottom of the screen the list scrolls on. A
+  card moves the same way, held by its header, with its subtasks.
   Let go, and it's there, in Vikunja too. A task moves only among the tasks at its level: a top-level task among the
   top-level ones, a subtask among its parent's subtasks (moving one to another parent is for later). Today and search
   keep their own order, and a done task, one waiting to be sent, or one in a project shared with you to read stays
@@ -140,18 +156,21 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   the ways for a keyboard or a screen reader. A project whose List view was deleted in Vikunja is in the order its
   tasks were made, and can't be reordered. A checklist's steps keep an order of their own (see **In Vikunja's web
   app**, under Checklists).
-- **Deleting:** on a project's list, in search or in a task's sheet (not on Today), swipe a task's row to the left,
-  starting away from the screen's edge, and tap **Delete**; or swipe on past half the row, until the red fills it (and,
-  on a phone that can, you feel a tick), and let go. Back under half before you let go, it's only left open. Swipe
+- **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
+  past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. A task with
+  progress first swipes down to 0% (see **Progress**), so it takes a second swipe to delete: a slip can't. Back under half before you let go, it's only left open. Swipe
   back, or tap anywhere else, to leave it. Deleted, the row carries on off the screen to the left, and its place stays
   as a gap, at the same height, so nothing moves, with only "Deleted" and **Restore** where "+ me" was: tap anywhere
   on the gap to bring the row back, sliding in from the left. (With less motion asked for on the phone, it doesn't
   slide.) The gap closes with the tasks you ticked, three seconds after the last, and the task is deleted in Vikunja
   then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with subtasks asks first,
-  and they go with it. The task's **⋯** deletes it too, on any screen: the way on Today, and for a keyboard or a screen
-  reader. Its row turns into the same gap. Without a connection, it's deleted once Pocket reaches Vikunja.
-- **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
-  comments. **Notes** are the task's own description in Vikunja; **Comments** are Vikunja's comments, a conversation
+  and they go with it. The task's **⋯** deletes it too, the way for a keyboard or a screen reader. Its row turns into the same gap. Without a connection, it's deleted once Pocket reaches Vikunja.
+- **The task sheet** starts with the task's own row, as it is in the list, then its notes and its photos and files
+  under it, in one card. The row works as in a list: tap the tick, swipe it for its progress (all the way ticks it,
+  right there), or swipe it left at 0% to delete it, which closes the sheet on the list, where its gap has **Restore**.
+  Tap the title to change it where it is. Then due date and reminders, subtasks, comments, and **Details**: project,
+  priority, progress (0, 25, 50 or 75%, a tap each; none for a task with subtasks, whose ring says it), people, labels
+  and repeat. **Notes** are the task's own description in Vikunja; **Comments** are Vikunja's comments, a conversation
   under it, as on a checklist run. Changes save as you make them. Subtasks are added with the same box as quick add, except `+project`: a
   subtask stays in its task's project. In a project for checklists it doesn't read dates either, as a task's subtasks
   there may become a template's steps, whose time is their own; a chip says so. Moving a task to another
@@ -165,14 +184,15 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   the phone's share sheet, to send it in a message, as a few plain lines:
 
   ```
-  Pack the van  ▰▰▰▱▱ 50%
+  Pack the van  ▰▱▱▱ 38%
   ✓ Load chairs
   ◐ Tables 50%
   ○ Sound system · Priya
   ○ Lights
   ```
 
-  The bar is the task's own progress, or, when it has none, how many of its subtasks are done: "1 of 4 done". Each
+  A task with subtasks says what its ring says: the same figure, with a segment for each subtask, filled once it's
+  done. A task without has its own progress, on a bar of five. Each
   subtask is ✓ done, ◐ under way (with how far), or ○ not begun, with its own subtasks under it, two spaces in. A person
   is the first word of their name in Vikunja, or their username, and a due date is a few words: "due Fri", "overdue
   since Mon". On a long list, more than 10 lines with more than 5 done, the done ones are one line: "✓ 8 done". A
@@ -181,12 +201,12 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   included. Where there's no share sheet (on most computers), the text is copied instead, and the sheet says "Copied:
   paste it into a message".
 - **Copying:** beside it, **Copy as a Markdown list** copies the same as a list to paste into notes or a document, with
-  nothing collapsed: `## Pack the van (50%)`, then `- [x] Load chairs`, `- [ ] Tables (50%)`, `- [ ] Sound system
+  nothing collapsed: `## Pack the van (38%)`, then `- [x] Load chairs`, `- [ ] Tables (50%)`, `- [ ] Sound system
   @priya`. **Open in Vikunja ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
-  number. A ticked result moves from Open to Done. A subtask is a row, under its task when that's found too, as on a
-  project's list. Checklist templates and their steps aren't in it: they're under **Checklists** (a template that comes
+  number. A ticked result moves from Open to Done. A task found with open subtasks is a card, folded to its top row, as on
+  Today; a subtask whose task isn't found is a row of its own, saying which task it's under: "↳ Pack the van". Checklist templates and their steps aren't in it: they're under **Checklists** (a template that comes
   round, due, is found).
 - **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
   shows on the task's row itself, which stays until they leave together; a tick that couldn't be saved goes back, and
@@ -196,7 +216,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   own: a countdown reaching zero, a screen that couldn't load, and what's done once its sheet has closed. A screen
   reader hears each message.
 - **Adding subtasks from the bottom box:** on a project's list, the box at the bottom says "Add a task to Moving
-  day" and adds tasks to that project. Touch a task (open its sheet and close it, tick it, or slide its progress) and
+  day" and adds tasks to that project. Touch a task (open its sheet and close it, tick it, or swipe its progress) and
   its row lights up, and the box says "Add a subtask to Pack the van": what you type there now goes under that task,
   after its last subtask. Touch a subtask instead, and they go right after it, under its parent: "Add a subtask to
   Pack the van, after Load chairs". A nudge touches a task too. Put your finger on it and
@@ -212,13 +232,11 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. Tick
   one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
   its Done section open. A done task with subtasks still open (ticked done in Vikunja's web app, which leaves its
-  subtasks open, or one of them opened again since) stays among the open tasks, struck through, over those subtasks,
-  saying "Done, but 2 subtasks are still open", so they're never left on their own as if they had no parent. Tap it to
-  open its sheet; tick it to open it again where it is (tick it again within a few seconds to make it done again). It can't be moved, nor be what the bottom box
-  adds to; its subtasks are like any others. In search, a
-  subtask whose task isn't above it there says which task it's under: "↳ Pack the van". In a project for checklists,
-  a checklist run is one row, as under **Checklists**: its steps are on its screen, a tap away, not under it, and they
-  aren't counted among the open tasks. Its templates and their steps live under **Checklists** too, so they're not in
+  subtasks open, or one of them opened again since) stays among the open tasks, a card with its title struck through,
+  over those subtasks, so they're never left on their own as if they had no parent. Tap its title to open its sheet;
+  tap its ring to open it again where it is. It can't be moved, nor be what the bottom box adds to; its subtasks are
+  like any others. In a project for checklists, a run in progress is a card, open, its steps not done its rows; a
+  finished one goes to **Done**. Its templates and their steps live under **Checklists** too, so they're not in
   its **Done**, nor are runs' steps. Most of such a project's done tasks are those, so its **Done** says how many once
   it's opened. **New project** makes one, inside
   another if you like. A project's **⋯** shares its progress, and renames or archives it if it's shared with you to write, and deletes it if
@@ -300,18 +318,19 @@ in a project they can see.
   not once per step.
 
 **Who's doing a task, a subtask or a step:** every task's row, every subtask in a task's sheet, and every step of a
-run, has a slot at the end of its row (not a checklist run or a template, whose row says who they're for). **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
+run, has a slot at the end of its row. A checklist run's, and a template's that comes round, shows who it's for instead,
+as their pictures, and isn't tapped: change it from the run's **⋯**. **+ me** says you'll do it, which assigns it to you; tap your picture to let it go. Someone else's picture
 shows who has it. **+ me** shows only where someone else could take it: in a project shared with someone (a person or
 a team, there or in a project it's under). In a project only you can see, the slot is empty, your picture isn't shown
-either, and sliding progress claims nothing; someone else assigned to it (in a shared project, before it was moved there, say) still shows.
+either, and swiping progress claims nothing; someone else assigned to it (in a shared project, before it was moved there, say) still shows.
 Pocket finds out who can see each project once you're signed in, keeps it on the phone, so Today opens with it, and
 looks again as you use it, at most every 10 minutes; until it first knows (or with an API token that can't search a
 project's users), every slot shows as in a shared project. To hand one over, open it and use **Assigned** (a run's step: the run's **⋯** → **Open as a task**,
 then tap the step). Two people who say they'll do a step
 at the same moment don't both get it: the first keeps it, and the other is told. Done or skipped is still recorded for whoever taps it,
 whoever has the step, and claiming never ticks anything. A step you claim in someone else's run brings the run onto
-your Today, as a card opened on your step.
-Sliding the progress of one no one is doing claims it for you too (see **Progress**, under Tasks).
+your Today, as a card.
+Swiping the progress of one no one is doing claims it for you too (see **Progress**, under Tasks).
 Vikunja tells the task's creator (for a step, whoever started the run) when you claim it.
 
 ## Checklists
@@ -319,7 +338,7 @@ Vikunja tells the task's creator (for a step, whoever started the run) when you 
 Checklists are the things done the same way again and again: opening up, closing down, a delivery check. Each start of
 one is a run, with who did each step and when. They're ordinary Vikunja projects and tasks.
 
-<p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a run of the café's Opening up template: its steps have square boxes, and its line a segment for each step. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' is due in 20 minutes, and 'Take the croissants out', due in 18, is pinned at the top."></p>
+<p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a run of the café's Opening up template: its own row at the top of its screen has its ring, its name and Alex's picture, and its steps have square boxes. Once the espresso machine is on and the croissants are in, the ring shows 2/4, 'Dial in the grinder' is on the card, due in 20 minutes, and 'Take the croissants out', due in 18, is pinned at the top."></p>
 
 1. **Use a project for checklists.** Under Projects, **Set up checklists** makes a project called Checklists with an
    example template to try, "Example: Opening up": start it, then change it into your own or delete it. Or open a
@@ -348,19 +367,23 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    seen under Checklists, and is set up once Pocket reaches Vikunja. A step assigned to someone in the template stays
    assigned to them in every run.
 4. **Work through it.** One step at a time, on its card: **Done**, or **Skip**. A comment typed on the step goes with
-   either: Done posts it on the step, and Skip makes it the reason. The run opens on the next step that can be done
-   now, and after Done that's the step on screen: not one still counting down. Add a photo or a comment to a step, or a
+   either: Done posts it on the step, and Skip makes it the reason. The run opens on its next step in order, even one
+   still counting down, and after Done the next in order is on the card; a timed step whose time has come goes before
+   it. Add a photo or a comment to a step, or a
    comment to the whole run (they're Vikunja's comments, which its web app shows too); a step with comments has a mark
    on its row. **Last time** shows the comments from the last finished run of the same template, as a handover, and each step's card shows the ones left on it (ones that come after the
-   run is on screen from the next step on, so the steps don't move). At the top of the step's card is the strip a card
-   on Today has: the run's line, a segment for each step, the step on the card outlined and filled by its progress,
-   and "3 of 6", the step's place in the run. Its **‹** and **›**, a tap on an open step's segment, or a finger dragged
-   along it, go through the steps not done yet; a done step is shown by tapping its row under **Steps**. Who's on the
+   run is on screen from the next step on, so the steps don't move). The steps listed under the card, under **Steps**,
+   say where the run is: tap one to put it on the card, a done one too, and swipe one for its progress as a task's. Who's on the
    step is beside its title, as on its row: **+ me** says you're doing it. A skipped step counts as skipped, not done.
    A run just started says **Started** at its top, with an Undo, until anything's done in it. After the last step, **Finish run**,
-   with an Undo. Ticking a run in its project's list, or in its sheet, finishes it too, shown as a task's tick is (in
-   its sheet, with an Undo); with steps not done, it asks first, and they stay not done. On the list, it then goes to
-   **Done** with the other ticks, as a task does.
+   with an Undo.
+   The run's own row is at the top of its screen, between Back and **⋯**: its ring, which counts its steps done (a
+   skipped one too), its name, which opens its sheet, and who it's for, as their pictures. Tap its ring, or swipe the
+   row all the way right, to finish it: with steps not done, it asks first, "Finish this run with 2 steps not done?",
+   and they stay not done; with every step done, it's finished at once, with an Undo. A run's ring on Today, on its
+   project's list and under Checklists does the same, and with every step done its card says "All steps done" with
+   **Close**. On a project's list it then goes to **Done** with the ticks, as a task does. Who started the run, and
+   when, is in its **⋯** and at the top of its summary once it's finished.
 
 - **A checklist that comes round:** give the template a date in its sheet, under **When it's due**, and how it
   **Repeats**: every day at 8:00, say. It's then Vikunja's repeating task: at its time it shows on Today, without a tick,
@@ -390,13 +413,12 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
   done asks first: theirs stays on it. A step ticked on
   Today counts the same.
 - **Today** shows your runs in progress, to the person who started the run and the person it's for, each as a card
-  (see **Cards on Today**, under Tasks): its heading as a task card's, its name without the day it was started and,
-  if it's due (one started from a template that came round), when, at the right; then its next step, the one its screen opens on (not one
-  counting down), with its countdown when the step is timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
-  under **Checklist runs**, or with a step due, by that step's date. A run's line is in segments, one for each step,
-  filled as steps are done (past 12 steps, one line with a small mark at each step): on its card, on its row under
-  Checklists, on its project's list and in search, and on the strip at the top of its screen's step card. The line says
-  how far it is, so a run's row says who it's for, not how many steps are done or which is next. A run has no tick on Today: it's finished on its screen. Tapping
+  (see **Cards**, under Tasks): its heading as a task card's, its ring, its name without the day it was started and,
+  if it's due (one started from a template that came round), when, at the right; then its next step, the one its
+  screen opens on, with its countdown when the step is timed ("in 18m", "5m late"). A step ticked there is ticked as on the run's screen, with your ✅. A run's card is
+  under **Checklist runs**, or with a step due, by that step's date. A run's ring says how far it is, wherever it shows (on
+  its card, on its row under Checklists, on its project's list, in search and atop its screen), so a run's row shows who
+  it's for, not how many steps are done or which is next. Tapping
   a run's name opens it; tapping a step opens its run on that step.
 - **A step has a square box**, wherever it shows: on its run's screen, in the run's sheet, and on Today. A task or a
   subtask has a round one. They work differently (a step's tick records who did it, with its ✅), so they look
