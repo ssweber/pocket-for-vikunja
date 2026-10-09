@@ -56,7 +56,8 @@ function sections(){
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
   // Today's stacked cards (cards.js): a task of high priority with one subtask of five done and four open (one of them
   // yours), opened by its footer's More; a run with a step counting down; a run started from a template that came round, due
-  // when it was; a task with one subtask open, so no footer; and one of 14, five done, of low priority. Their subtasks are in
+  // when it was; a task with one subtask open, so no footer; and one of 14, twelve done, of low priority
+  // (its ring's 12/14 set smaller, to fit). Their subtasks are in
   // the store, as Today keeps them. A run's heading reads as a task's: its name without the day it was started
   // (runWithoutDay), and when it's due at the right.
   const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
@@ -65,7 +66,7 @@ function sections(){
   const opening = task({title: `Opening up · run 2 · ${day}`, created: now.toISOString(), project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
   const closing = task({title: `Closing up · run 5 · ${day}`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, priya], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
-  const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 5}))}});
+  const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 12}))}});
   const cardSubs = [kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
     kid(703, {under: van2.id, title: 'Sound system', assignees: [me], percent_done: .5}), kid(704, {under: van2.id, title: 'Lights'}), kid(705, {under: van2.id, title: 'The extension leads'}),
     kid(711, {under: opening.id, project_id: 2, title: 'Turn on the espresso machine', done: true, related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 1}]}}),
@@ -74,7 +75,7 @@ function sections(){
     kid(751, {under: closing.id, project_id: 2, title: 'Stack the chairs', related_tasks: {parenttask: [{id: closing.id}], copiedfrom: [{id: 4}]}}),
     kid(752, {under: closing.id, project_id: 2, title: 'Lock the door', related_tasks: {parenttask: [{id: closing.id}], copiedfrom: [{id: 5}]}}),
     kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]}),
-    ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 5}))];
+    ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 12}))];
   // Today's rows, on one line (line: section 9): the title cut short; and at the right its priority's bars, small, from
   // none to do now (one-concept-plan, part 4), when it's due, short (a time today, a weekday this week, a date beyond,
   // red when late), and the project's dot.
