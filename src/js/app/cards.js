@@ -1,44 +1,40 @@
 /* Today's cards on screen (which tasks are cards, and why, is cards.js): a task with open subtasks or steps, its title
-   over one line for a step, the shared row (task-row.html) with the card's own options (g.card: no Delete, no
-   moving it). The card pages through its open steps on its strip only: its ‹ ›, a tap on a step's segment, or a finger
-   dragged along it (cardScrub); a tick or a slide on its step line is that step's alone. A run's screen has the same
-   strip on its step card (runView.card, runs.js), paged by the same code. What a card needs is read once per project
-   shown, not once per card (readCards). */
+   over one line for a step, the shared row (task-row.html) with the card's own options (g.card); a tick or a slide on
+   its step line is that step's alone. Its count, the subtasks done of all of them, is at the right of its heading
+   (parent-tasks-plan, part 2: the strip that paged through its steps is gone). What a card needs is read once per
+   project shown, not once per card (readCards). */
 import {PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, shortDue} from '../dates.js';
 import {runWithoutDay, stepsOf, whereNext} from '../checklists.js';
-import {cardAt, countdown, openSubs, placeOf, scrubTo, segmentOf} from '../cards.js';
-import {haptic} from '../haptics.js';
+import {cardAt, countdown, openSubs} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
-import {MANY_STEPS, pctOf, runLine} from '../progress.js';
 
-const entering = new Map();                      // card id -> the way its next step comes in: 1 from the right, -1 the left
 const shownStep = new Map();                     // card id -> the step it showed last, to tell a new one
 const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export default {
   /* A task on Today shown as a card (g.cards: Today's lists): {id, step: the step showing, i: which of its open steps,
-     n: how many, steps, at: the step's place among all its subtasks, done ones too, of `total` (its count, "3 of 5", and
-     the segment marked on its line), all, line: its task's line, a segment per subtask (runLine), lineText, g: the step
-     line's options}; null for any other row, and for one with no open step left, which is then a row like any other. A
-     step ticked stays on it, done, until the batch clears (leaving.js); then the one after it comes in. */
+     n: how many, steps, all: every subtask, done ones too, done: how many of those are done, total, g: the step line's
+     options}; null for any other row, and for one with no open step left, which is then a row like any other. A step
+     ticked stays on it, done, until the batch clears (leaving.js); then the one after it comes in. */
   cardOf(t, g){
     const c = g?.cards && this.view.cards?.[t.id];
     if (!c) return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     const steps = all.filter(s => !done(s) || this.leaving[s.id]);
     if (!steps.length) return null;
-    const i = cardAt(steps, this.cardPage[t.id], c.focus, run ? this.runPick(all, done) : null), d = all.filter(done).length, step = steps[i];
-    // Its line: each done step's segment full, the one showing filled by its progress (the step line has no bar of its own).
-    const fill = all.map(s => done(s) ? 1 : s.id === step.id ? pctOf(s) / 100 : 0);
-    const card = {id: t.id, step, i, n: steps.length, steps, at: placeOf(all, step), total: all.length, all,
-      line: runLine(fill), lineText: `${d} of ${all.length} ${run ? 'steps' : 'subtasks'} done`};
+    const i = cardAt(steps, this.cardPage[t.id], c.focus, run ? this.runPick(all, done) : null);
+    const card = {id: t.id, step: steps[i], i, n: steps.length, steps, all, done: all.filter(done).length, total: all.length, run};
     card.g = {depth: {}, card, line: true, key: g.key};          // (its group: under Today's heading, "Today" goes unsaid)
     return card;
   },
-  /* A run's card picks its step by the run's own rule, as its screen does (whereNext): the next it can do now, past any
-     still counting down, as Today shows it (countdown); given the step that has gone (its id), or null as it opens. */
+  // A card's count, at the right of its heading: its subtasks done, of all of them ("1/4"; a run's skipped steps count
+  // as done, as its line did), and said in words.
+  cardCount(c){ return {text: `${c.done}/${c.total}`, said: `${c.done} of ${c.total} ${c.run ? 'steps' : 'subtasks'} done`}; },
+  /* A run's card picks its step by the run's own rule, as its screen does (whereNext): the next open one in order, even
+     counting down, or a timed one whose time has come, as Today shows it (countdown); given the step that has gone (its
+     id), or null as it opens. */
   runPick(all, done){
     return from => {
       const now = this.groupedAt || Date.now();
@@ -66,76 +62,17 @@ export default {
     return {title: run ? runWithoutDay(t.title, t.created) : this.rowTitle(t), prio: t.priority || 0,
       due: shortDue(t.due_date, new Date(this.groupedAt || Date.now()), {underToday: g?.key === 'today'}), said: said.filter(Boolean).join(', ')};
   },
-  /* Paged by its ‹ ›: the step after it (dir 1) or before it (-1), stopping at the first and the last, where that arrow
-     is dimmed and does nothing. A screen reader hears which. The arrows stay where they are, so the one tapped keeps the
-     focus. */
-  pageCard(c, dir){
-    if (!c || c.n < 2) return;
-    const i = Math.max(0, Math.min(c.n - 1, c.i + dir));
-    if (i !== c.i) this.showCardStep(c, i, dir);
-  },
-  /* A segment of its line tapped, at the pointer's `x`: that step, if it's open (a done one is skipped, as paging skips
-     it: the open step nearest, scrubTo, has to be the one tapped), coming in from the side it's on. Past MANY_STEPS a
-     step's stretch is too narrow to tap, so nothing. A pointer's shortcut only: the arrows are a keyboard's and a screen
-     reader's way, rather than a stop for each step. */
-  tapSegment(c, x, line){
-    if (!c || c.n < 2 || !line || c.total > MANY_STEPS) return;
-    const r = line.getBoundingClientRect(), k = segmentOf(x - r.left, r.width, c.total), i = scrubTo(c.all, c.steps, k);
-    if (i >= 0 && i !== c.i && placeOf(c.all, c.steps[i]) === k) this.showCardStep(c, i, Math.sign(k - c.at) || 1);
-  },
-  /* The card on its open step `i`: paged, coming in from the side `dir` says (1 the right, -1 the left), its place among
-     all said to a screen reader; scrubbed (no `dir`), just there, with nothing said until the finger lifts (stripScrub).
-     The run screen's step card (runView.card, runs.js) has the same strip: there, the step goes on the card (showStep). */
-  showCardStep(c, i, dir = 0){
-    const s = c.steps[i];
-    if (c.runScreen) this.showStep(s.i);
-    else {
-      this.cardPage[c.id] = {id: s.id, i};
-      // Scrubbed, the card shows it already, as far as cardEntered goes, so it doesn't slide in.
-      if (dir) entering.set(c.id, dir); else { entering.delete(c.id); shownStep.set(c.id, s.id); }
-    }
-    if (dir) this.said = this.stepSaid(c, s);
-  },
-  stepSaid(c, s = c.step){ return `Step ${placeOf(c.all, s) + 1} of ${c.total}: ${this.rowTitle(s)}`; },
-  /* A finger pressed on a card's strip and dragged along it, mostly sideways (holdToSlide's `scrub`, app/progress.js):
-     the step under it shows, the marker following, from open step to open step (scrubTo), a tick felt at each, the step
-     line switching to it as it goes; let go, it stays there, and a screen reader hears where. Past MANY_STEPS too: it's
-     a drag, not a tap. With one open step, nothing. On Today, the card `card`; on a run's screen, its step card
-     (stripScrub with runView.card). */
-  cardScrub(card){
-    if (card.matches('.deleted, .lined')) return null;
-    const id = +card.dataset.id;
-    return this.stripScrub(card, () => { const t = this.tasks[id]; return t && this.cardOf(t, {cards: true}); });
-  },
-  // The strip in `el` scrubbed, `now()` giving its card as it is at each move: move(dx, x), the finger `dx` along from
-  // where it went down, at `x`; then end().
-  stripScrub(el, now){
-    const line = el.querySelector('.card-line'), c0 = now();
-    if (!c0 || c0.n < 2 || !line) return null;
-    let last = 0, moved = false;
-    return {scrub: {
-      move: (dx, x) => {
-        const c = now(), r = line.getBoundingClientRect(), dir = Math.sign(dx - last) || 1;
-        last = dx;
-        const i = c ? scrubTo(c.all, c.steps, segmentOf(x - r.left, r.width, c.total), dir) : -1;
-        if (i < 0 || i === c.i) return;
-        haptic('tick'); this.showCardStep(c, i); moved = true;
-      },
-      end: () => { const c = moved && now(); if (c) this.said = this.stepSaid(c); },
-    }};
-  },
   // A tick or a slide on a card's step: the card stays at its place, so once that step has gone, the one after it comes in.
   pinCard(c){ if (c) this.cardPage[c.id] = {id: c.step.id, i: c.i}; },
   // Leaving Today: every card back on its next step.
-  resetCards(){ this.cardPage = {}; entering.clear(); shownStep.clear(); },
-  /* A card's step line, new to it (paged, or the step before gone with the batch): it slides in from the way it was paged,
-     or fades in. Not when the card is first drawn, nor while scrubbing (showCardStep marks it shown already), nor with
-     less motion asked for. */
+  resetCards(){ this.cardPage = {}; shownStep.clear(); },
+  /* A card's step line, new to it (the step before gone with the batch): it fades in. Not when the card is first drawn,
+     nor with less motion asked for. */
   cardEntered(el, c){
-    const was = shownStep.get(c.id), dir = entering.get(c.id) || 0;
-    shownStep.set(c.id, c.step.id); entering.delete(c.id);
+    const was = shownStep.get(c.id);
+    shownStep.set(c.id, c.step.id);
     if (was === undefined || was === c.step.id || !motion()) return;
-    el.animate([{transform: `translateX(${dir * 32}px)`, opacity: 0}, {transform: 'none', opacity: 1}], {duration: 180, easing: 'ease-out'});
+    el.animate([{opacity: 0}, {opacity: 1}], {duration: 180, easing: 'ease-out'});
   },
   // What Move all to today moves: each overdue row, and on an overdue card its task and its open subtasks overdue
   // themselves. A run's steps are timed by the run, so they stay.

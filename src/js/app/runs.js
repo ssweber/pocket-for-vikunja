@@ -384,12 +384,12 @@ export default {
       const left = due ? due - now : 0, soon = Math.abs(left) < 864e5;
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
       s.counting = !s.done && t.offset !== null && !!due && soon;      // a countdown: pinned at the top while it runs
-      s.waitsFor = from && !from.done && t.offset ? from.id : null;    // a time after a step not done yet: its id
       s.dueAt = due ? +due : Infinity;
       s.countText = !s.counting ? '' : left >= 0 ? 'in ' + durText(left < 6e4 ? Math.ceil(left / 1e3) * 1e3 : Math.ceil(left / 6e4) * 6e4) : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
       s.dueText = waitsOn ? 'Due ' + waitsOn : s.counting ? (left >= 0 ? 'Due ' : '') + s.countText : due ? 'Due ' + dueInfo(due.toISOString()).label : '';
     });
-    // On the step a tick would go to (whereNext): the next one that can be done now, unless a step was put on the card.
+    // On the step a tick would go to (whereNext): the next open one in order, or a timed one whose time has come, unless
+    // a step was put on the card.
     const total = steps.length, doneCount = steps.filter(s => s.done).length, next = whereNext(steps, now);
     const allDone = total > 0 && doneCount === total, at = r.at ?? (next >= 0 ? next : total - 1);
     // Skipped steps are out of the way (doneCount, for the line), but not done (didCount, in words).
@@ -398,15 +398,9 @@ export default {
     const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
     const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish';
     // Finished, or every step done, no step is on screen until one is tapped.
+    // (Where the run is, the steps listed under the card say: tapping one puts it on the card.)
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
-    /* The step card's strip (card-strip.html), Today's card's: ‹, the run's line, a segment per step, each done one's
-       full and the card's step's filled by its progress, that step marked, ›, and "3 of 6", its place. It pages through
-       the open steps, and the step on the card if it's done (tapped in the list), as Today's card does (showCardStep). */
-    const pages = step ? steps.filter(s => !s.done || s === step) : [];
-    const card = step && {runScreen: true, id: r.run.id, step, i: pages.indexOf(step), n: pages.length, steps: pages, all: steps, at, total,
-      line: runLine(steps.map(s => s.done ? 1 : s === step ? s.pct / 100 : 0)),
-      lineText: `${didCount} of ${total} steps done` + (skippedN ? `, ${skippedN} skipped` : '')};
-    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, card, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
+    return {steps, total, doneCount, didCount, skippedN, allDone, at, step, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
       forText: forText && forText[0].toUpperCase() + forText.slice(1)};
@@ -526,8 +520,8 @@ export default {
     await this.act({op, task: s.id, html});
   },
   /* Where the run goes after a step is done or skipped on screen (whereNext, which a run's card on Today goes by too):
-     the next step after it that can be done now, not one still counting down, nor one that starts counting down with
-     this tick; then one before it; then any not done. Null once every other step is done: the finish card. */
+     the next open step after it in order, even one counting down, or before it a timed step whose time has come; round
+     to the first open one. Null once every other step is done: the finish card. */
   nextStep(s){
     const i = this.runView ? whereNext(this.runView.steps, serverTime(this.clock), s) : -1;
     return i < 0 ? null : i;

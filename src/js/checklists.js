@@ -204,16 +204,16 @@ export function durText(ms){
   for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60], ['s', 1]]) if (left >= n) { parts.push(Math.floor(left / n) + u); left %= n; }
   return parts.slice(0, 2).join(' ') || '0s';
 }
-/* Where a run goes next, the one rule for it: the run's screen after a tick and as it opens, and a run's card on Today as
-   it opens and once the step it showed has gone. Of its `steps` in order ({id, done, counting: a countdown running,
-   dueAt: when it ends, waitsFor: the step its time counts from, not done yet}), the first open one after `from` (the
-   step just done, or null) that can be done now: not one still counting down, nor one that starts counting down with
-   that tick; then one before it; then any open one. Its index, or -1 with none open but `from`. */
+/* Where a run goes next, the one rule for it (parent-tasks-plan, part 2): the run's screen after a tick and as it opens,
+   and a run's card on Today, as it opens and once the step it showed has gone. Steps go in order: of its `steps`
+   ({id, done, counting: a countdown running, dueAt: when it ends}), the next open one after `from` (the step just done,
+   or null), even one still counting down, which shows its countdown; round to the first open one. A timed step whose
+   time has come (its countdown at zero, or late) comes before it, the first of those in order. Its index, or -1 with
+   none open but `from`. */
 export function whereNext(steps, now, from = null){
   const k = from ? steps.findIndex(x => x.id === from.id) : -1;
   const open = steps.map((x, i) => ({x, i})).filter(({x}) => !x.done && x.id !== from?.id);
-  const ready = ({x}) => !(x.counting && x.dueAt > now) && !(from && x.waitsFor === from.id);
-  return (open.find(o => o.i > k && ready(o)) || open.find(ready) || open[0])?.i ?? -1;
+  return (open.find(({x}) => x.counting && x.dueAt <= now) || open.find(o => o.i > k) || open[0])?.i ?? -1;
 }
 // The step a timed step counts from, by index, in a list of parsed steps: -1 for the start of the run, null for none.
 export function stepFrom(steps, i){

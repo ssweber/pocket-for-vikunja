@@ -57,11 +57,11 @@ export function todayItems({tasks = [], added = [], mine = [], claimed = []}, me
    none, a run under Checklist runs, anything else under "Added today, no date". */
 export const cardGroup = (c, run) => c.when ? 'dated' : run ? 'runs' : 'nodate';
 
-/* The step a card shows, of its open `steps` in order: where it was paged to (`page`: {id, i}), or, once that step has
-   gone (done, the batch cleared), the one that came after it, now in its place, round to the first after the last;
-   unpaged, the subtask of yours that brought it (`focus`), else the first. A run's card has `pick` instead of "the one
-   after" and "the first": the run's own rule (whereNext, checklists.js), given the step that has gone, or null, and
-   giving the id of the step to show. -1 with none. */
+/* The step a card shows, of its open `steps` in order: the one a tick or a slide left it on (`page`: {id, i}, pinCard),
+   or, once that step has gone (done, the batch cleared), the one that came after it, now in its place, round to the
+   first after the last; else the subtask of yours that brought it (`focus`), else the first. A run's card has `pick`
+   instead of "the one after" and "the first": the run's own rule (whereNext, checklists.js), given the step that has
+   gone, or null, and giving the id of the step to show. -1 with none. */
 export function cardAt(steps, page, focus, pick = null){
   const n = steps.length;
   if (!n) return -1;
@@ -70,26 +70,6 @@ export function cardAt(steps, page, focus, pick = null){
   const picked = pick ? k(pick(page?.id ?? null)) : -1;
   if (page) return picked >= 0 ? picked : page.i < n ? page.i : 0;
   return k(focus) >= 0 ? k(focus) : Math.max(0, picked);
-}
-// Where step `s` is among all of a card's subtasks, done ones too (0 the first): its count, "3 of 5", and the segment
-// marked on its line. Paging goes through the open ones only, so with the first two done, from 3 it goes to 4, then 5.
-export const placeOf = (all, s) => all.findIndex(x => x.id === s?.id);
-/* A point on a card's line, `x` px from its left, the line `w` wide in `n` segments, each (w + 3) / n with its 3px gap,
-   as the CSS cuts it: which segment, 0 the first, a gap counting with the segment before it, held to the ends; -1 with
-   no line. Where a finger drags along it (scrubTo), or taps it (tapSegment, which does nothing past MANY_STEPS, where a
-   step's stretch is too narrow to tap). */
-export const segmentOf = (x, w, n) => !(w > 0) || !(n > 0) ? -1 : Math.min(n - 1, Math.max(0, Math.floor(x * n / (w + 3))));
-/* A finger on a card's strip, over segment `k`: the open step nearest it, as its index among the open `steps`, so it
-   goes from open step to open step, done ones skipped; between two as near, the one the finger is moving towards (`dir`:
-   1 right, -1 left). -1 with none. `all`: every subtask, in the order the line draws them. A tap takes it only when it's
-   the step tapped (tapSegment). */
-export function scrubTo(all, steps, k, dir = 1){
-  let best = -1, far = Infinity;
-  steps.forEach((s, i) => {
-    const d = all.findIndex(x => x.id === s.id) - k;
-    if (Math.abs(d) < far || (Math.abs(d) === far && Math.sign(d) === dir)) { best = i; far = Math.abs(d); }
-  });
-  return k < 0 ? -1 : best;
 }
 /* A run's step's countdown on its card, to the minute, as Today redraws once a minute: "in 1h 5m", "12m late"; null more
    than a day either way, where its date says it better. `due` and `now` in ms. */

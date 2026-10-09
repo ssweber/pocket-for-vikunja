@@ -2,7 +2,7 @@
 // (also on the sheet's bar); swiped left, it goes down, and past 0% on into the row's Delete, one track (trackAt); held,
 // then moved up or down, the row moves among its siblings. Delete and moving only where the row's list allows them
 // (rowGestures): Today's rows are deleted but not moved, search's the same, a project's and a sheet's both.
-import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, swipeEnd, SWIPE_PX, SWIPE_SLOPE, swipeOffset, swipeStarts, scrubStarts, trackAt, trackMoves} from '../progress.js';
+import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, swipeEnd, SWIPE_PX, SWIPE_SLOPE, swipeOffset, swipeStarts, trackAt, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {store} from '../util.js';
@@ -131,8 +131,7 @@ export default {
   /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
      swiped to its Delete (swipeOf), `reorder` if it can be held and moved (dragOf), and if its progress can be set, {el:
      the row, start (a done one's 100), width, show(pct, x: where the finger is), begin() as its progress starts to move,
-     finish(pct, or null if nothing changed)}, or `scrub` if it's a card's strip, which a finger dragged along it scrubs
-     through (stripScrub, app/cards.js).
+     finish(pct, or null if nothing changed)}.
      A plain swipe, clearly sideways (swipeStarts), with no hold: on a row whose progress can be set, one track (trackAt,
      `track`): right, up in snaps of 25%, a tick felt at each and a stronger one at 100%; left, down, and past 0% on into
      its Delete, if it has one (`off`: how far it's moved aside). A row whose progress can't be set is only swiped left,
@@ -149,7 +148,6 @@ export default {
       const {s, mode, pct, dx, off} = g; g = null;
       s.el?.classList.remove('held');
       if (mode === 'swipe') { s.swipe.end(commit ? dx : null); return; }
-      if (mode === 'scrub') { s.scrub.end(); return; }
       if (mode === 'reorder') { s.reorder.end(commit); return; }
       if (mode !== 'track') return;
       // Let go past half the row, it's deleted, its progress left as it was; anywhere else, its progress is where the
@@ -178,16 +176,14 @@ export default {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
         // More sideways than not, but not clearly (SWIPE_SLOPE): not decided yet, until it is, or the page scrolls.
-        if (!s.scrub && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) <= Math.abs(dy) * SWIPE_SLOPE) { g.moved = true; return; }
-        const way =swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe?.base) && wayOf(s, dx);
-        // A card's strip, dragged along, mostly sideways: its steps, scrubbed through (stripScrub).
-        if (s.scrub && scrubStarts(dx, dy, g.x0, innerWidth)) { clearTimeout(g.timer); g.mode = 'scrub'; sliding = true; }
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) <= Math.abs(dy) * SWIPE_SLOPE) { g.moved = true; return; }
+        const way = swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe?.base) && wayOf(s, dx);
         // Not a swipe it can take: a sideways move does nothing, not even open the task where a mouse lets go; up or
         // down is a scroll.
-        else if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
+        if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
         else { clearTimeout(g.timer); g.mode = way; sliding = true; if (way === 'swipe') s.swipe.begin(); }
       }
-      if (g.mode === 'swipe' || g.mode === 'scrub') { g.dx = e.clientX - g.x0; s[g.mode].move(g.dx, e.clientX); return; }
+      if (g.mode === 'swipe') { g.dx = e.clientX - g.x0; s.swipe.move(g.dx); return; }
       if (g.mode === 'track') {
         g.dx = e.clientX - g.x0;
         const {pct, off} = trackAt({start: s.start, dx: g.dx, x: g.x0, width: s.width, screen: innerWidth, del: !!s.swipe});
@@ -244,13 +240,11 @@ export default {
     document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
-      // A card on Today: its step line swiped is that step's (cardGesture); its strip dragged along, its steps
-      // (cardScrub); its heading only a tap, a swipe there doing nothing (part 3 makes it the parent's header).
-      // A run's step card has the same strip, scrubbed the same way.
-      if (target.closest('#step-card > .card-strip')) return this.stripScrub(target.closest('#step-card'), () => this.runView?.card);
+      // A card on Today: its step line swiped is that step's (cardGesture); its heading only a tap, a swipe there doing
+      // nothing (part 3 makes it the parent's header).
       const step = target.closest('.step-line'), card = target.closest('.day-card');
       const row = step || (card ? null : target.closest('.list:not(.tree) > .row, .item > .row'));
-      if (card && !step) return target.closest('.card-strip') ? this.cardScrub(card) : this.cardGesture(card, null);
+      if (card && !step) return this.cardGesture(card, null);
       if (!row || target.closest('.row-del')) return null;
       if (row.parentElement.id === 'run-steps') return this.stepSlide(row, target);
       const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
@@ -337,8 +331,7 @@ export default {
   /* A card on Today (app/cards.js), its step line touched: that step's gesture `s` (rowGesture), whose swipe is that
      step's alone and stops at 100% of it, the card then staying at its place for the next step to come in (pinCard);
      swiped left, it stops at 0% (the card's options have no Delete, until part 2 of parent-tasks-plan makes its rows
-     a list's). A plain swipe on its heading (`s` null) does nothing, not even a tap: the card pages on its strip only
-     (cardScrub). */
+     a list's). A plain swipe on its heading (`s` null) does nothing, not even a tap. */
   cardGesture(card, s){
     if (card.matches('.deleted, .lined')) return null;                     // only its Restore, or its line's action
     if (!s) return {el: null};

@@ -66,11 +66,6 @@ export function trackAt({start, dx, x, width, screen, del = false}){
 }
 // Whether a swipe that way (dx) changes a row's progress, from `start`: not up from done, nor down from 0%.
 export const trackMoves = (start, dx) => dx > 0 ? start < 100 : start > 0;
-/* ---------- scrubbing a card's strip on Today ---------- */
-/* Whether a finger that has moved (dx, dy) from x0 on a card's strip is scrubbing it (cardScrub, app/cards.js): mostly
-   sideways, either way, and not from the screen's edges, where the phone's own Back and forward start; mostly up or
-   down, the page scrolls. */
-export const scrubStarts = (dx, dy, x0, screen) => Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) && x0 > EDGE_GUARD && x0 < screen - EDGE_GUARD;
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.
 export const isSubtask = t => !!t?.related_tasks?.parenttask?.length;
 

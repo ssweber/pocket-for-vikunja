@@ -1,11 +1,8 @@
-<!-- A run's step card (screens/run.html), the step `runView.step`, "the card's step": at its top, Today's card's strip
-     (card-strip.html, runView.card), the run's line with that step marked, its place, "3 of 6", and the way to page
-     through the open steps; a done step comes on it by a tap on its row. Then its title and who's on it, when it's due,
-     its notes, Done and Skip (or Not done), its photos, its comments, one being written on it, and Last time's. -->
+<!-- A run's step card (screens/run.html), the step `runView.step`, "the card's step": its title and who's on it, when
+     it's due, its notes, Done and Skip (or Not done), its photos, its comments, one being written on it, and Last time's.
+     Where the run is, its steps listed under it say (parent-tasks-plan, part 2): a tap on one puts it on the card, a done
+     one too. -->
 <template x-if="runView.step"><div class="card step-card" id="step-card" :data-id="runView.step.id">
-  <template x-for="c in [runView.card]" :key="0">
-    <!-- include markup/card-strip.html -->
-  </template>
   <template x-for="line in placeLines('step')" :key="line.n">
     <!-- include markup/place-line.html -->
   </template>

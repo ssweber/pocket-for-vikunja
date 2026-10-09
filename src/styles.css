@@ -236,10 +236,10 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    (--fill, from runLine), on a faint track (all of it, with no steps). Past 12 steps (runLine), one line with a small
    tick above it at each step, each step's stretch filled the same way. Its steps are its progress: it isn't swiped. */
 .row.cl-run::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(100% - var(--row-inset));pointer-events:none}
-.row.cl-run::after,.card-line{background:var(--fill,var(--track));
+.row.cl-run::after{background:var(--fill,var(--track));
   -webkit-mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat;
   mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat}
-.row.cl-run.many-steps::after,.card-line.many-steps{-webkit-mask:none;mask:none;height:7px;background:
+.row.cl-run.many-steps::after{-webkit-mask:none;mask:none;height:7px;background:
   repeating-linear-gradient(to right,transparent 0 calc(100% / var(--segs) - 1px),var(--muted) 0 calc(100% / var(--segs))) 0 0/calc(100% + 1px) 4px no-repeat,
   var(--fill,linear-gradient(var(--track),var(--track))) 0 100%/100% 3px no-repeat}
 .row.setting{background:linear-gradient(to right,var(--surface) var(--row-inset),var(--accent-soft) 0 calc(var(--row-inset) + var(--slide) * (100% - var(--row-inset))),var(--surface) 0)}
@@ -285,40 +285,17 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* Today's list (today-item.html): each thing an item, a row or a card, with a line between them */
 .item + .item{border-top:1px solid var(--line)}
 /* A card: anything with open subtasks or steps. Its title is a heading, quieter than its step, the next thing to do;
-   under it, one step on the shared row, a plain row like any other; then, as its footer, its strip, how to get round
-   its steps */
+   under it, one step on the shared row, a plain row like any other */
 .day-card{position:relative}
-/* its heading, one line: the title cut short with "…", its priority's bars, small, and when it's due, short, at the right */
+/* its heading, one line: the title cut short with "…", its priority's bars, small, when it's due, short, and its count,
+   at the right */
 .card-head{position:relative;display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:0;background:transparent;text-align:left;padding:12px 14px 0;color:var(--ink)}
 .card-title{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:13.5px;color:var(--muted);white-space:nowrap}
-/* The strip, the card's footer: ‹, its task's line, a segment per subtask, as a run's is, ›, and its count, the step
-   showing's place among all its subtasks. Its controls are 48px tall, the strip's height, so they never reach the step
-   line's taps; its line in their middle, a clear gap under the step's own bar, so the two never read as one. The arrows'
-   places stay when they're not there, so the line keeps its length as steps go, and the count's is wide enough for
-   most, so cards' lines line up */
-.card-strip{display:grid;grid-template-columns:48px minmax(0,1fr) 48px minmax(48px,auto);height:48px;padding-right:14px}
-.card-strip > *{grid-row:1;align-self:start;height:48px}
-.card-track{grid-column:2;position:relative;display:flex;align-items:center}
-.card-line{flex:1;height:3px}
-/* an open step's segment shows that step: its stretch of the line, the strip's full height, takes the tap (tapSegment) */
-.card-track.jumps{cursor:pointer}
-.card-n{grid-column:4;color:var(--muted);font-size:13px;line-height:48px;text-align:right;white-space:nowrap}
-/* The step showing, outlined on its task's line, a little taller than it, so paging visibly moves along it: over its
-   segment (each (100% + 3px) / --segs wide, less the 3px gap), or past MANY_STEPS over its stretch between two ticks
-   (a 1px gap). It slides along as the card is paged, or with less motion, jumps */
-.card-mark{--gap:3px;position:absolute;top:calc(50% - 4px);bottom:calc(50% - 4px);left:calc(var(--at,0) * (100% + var(--gap)) / var(--segs,1) - 2.5px);
-  width:calc((100% + var(--gap)) / var(--segs,1) - var(--gap) + 5px);border:1.5px solid var(--accent);border-radius:4px;pointer-events:none;transition:left .15s ease-out}
-.card-track.many-steps .card-mark{--gap:1px;top:calc(50% - 6px);bottom:calc(50% - 6px)}
-@media (prefers-reduced-motion:reduce){.card-mark{transition:none}}
-/* The arrows: drawn small, each a tap 48px wide and tall, at the strip's ends */
-.pg{grid-column:1;width:48px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
-.pg.next{grid-column:3}
-.pg svg.i{width:16px;height:16px;stroke-width:2.4}
-.pg.prev svg.i{transform:scaleX(-1)}
-/* at the first open step, ‹, and at the last, ›: dimmed, in their places, and a tap does nothing */
-.pg[aria-disabled=true]{opacity:.3;cursor:default}
+/* its count, at its right: its subtasks done of all of them, quiet (part 3 of parent-tasks-plan makes it its ring's) */
+.card-n{flex:none;display:flex;align-items:center;gap:3px;color:var(--muted);font-size:13px;white-space:nowrap}
+.card-n svg.i{width:14px;height:14px;stroke-width:2.2}
 .day-card > .step-line{border-top:0}
 .day-card.deleted > :not(.del-gap){visibility:hidden}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
@@ -419,9 +396,6 @@ a.sec-act{text-decoration:none}
 .timer .num{flex:none;font-weight:650;color:var(--accent)}
 .timer .num.late{color:var(--overdue)}
 .step-card{padding:16px}
-/* Today's card's strip at its top (card-strip.html): its arrows' taps at the card's edges, and dragged along it, it
-   scrubs, so the page doesn't take the move, nor a long press its words */
-.step-card > .card-strip{margin:-10px -16px 2px;padding-right:16px;touch-action:pan-y pinch-zoom;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 /* its title, and who's on it at its right, as on its row */
 .step-title-line{display:flex;align-items:flex-start;gap:8px}
 .step-title-line h3{flex:1;min-width:0}
