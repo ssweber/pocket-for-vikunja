@@ -6,6 +6,8 @@ import {CHECKLIST_MARK} from '../../src/js/checklists.js';
 import {blankSheet} from '../../src/js/app/core.js';
 import {listItems, nestSubtasks} from '../../src/js/lists.js';
 import {positionOrder} from '../../src/js/order.js';
+import {revealOf} from '../../src/js/app/progress.js';
+import {swipeAt} from '../../src/js/progress.js';
 
 const ZERO = '0001-01-01T00:00:00Z', HOUR = 36e5;
 const at = ms => new Date(Date.now() + ms).toISOString();
@@ -35,7 +37,8 @@ function sections(){
   const party = task({title: 'Plan the staff party', done: true}), cake = task({title: 'Order the cake', related_tasks: {parenttask: [{id: party.id}]}});
   const mover = task({title: 'Pack the van', done: true, assignees: [me], state: {leaving: 'done'}});
   const moverKid = task({title: 'Load chairs', done: true, related_tasks: {parenttask: [{id: mover.id}]}, state: {leaving: 'done'}});
-  const tent = task({title: 'Put up the tent'}), pegs = task({title: 'Hammer in the pegs', percent_done: .5, state: {slid: 50}, related_tasks: {parenttask: [{id: tent.id}]}});
+  const tent = task({title: 'Put up the tent'}), pegs = task({title: 'Hammer in the pegs', percent_done: .5, state: {reveal: .3}, related_tasks: {parenttask: [{id: tent.id}]}});
+  const poles = task({title: 'Tie down the poles', related_tasks: {parenttask: [{id: tent.id}]}, done: true, state: {swept: true}});
   const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
   // A long run: past 12 steps, its line is one, with a tick at each step (runLine).
@@ -124,13 +127,20 @@ function sections(){
       task({title: 'Call the plumber', reminders: [{reminder: at(5 * HOUR)}]})]},
     {title: 'A checklist’s step has a square box (a step you’ve claimed, on Today), a task or a subtask a round one', depth: {}, tasks: [stepRow, subRow]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
-    // Held and slid (progress.js), swiped to its Delete (a project's list, which has one: delete), and a line in a
-    // row's place (lines.js): shown by `state`.
-    {title: 'Swiped right to 50%, to 100% (done), a done row swiped left to 75% (opened again), swiped left past 0% to its Delete, and past half the row', depth: {}, delete: true, tasks: [
-      task({title: 'Restock the napkins', percent_done: .25, state: {slid: 50}}), task({title: 'Clean the grinder', percent_done: .75, state: {slid: 100}}),
-      task({title: 'Sweep the yard', done: true, state: {slid: 75}}),
+    // Swiped (progress.js: swipeAt, revealOf), still held: the row's content moved by `reveal` of its width, and what's
+    // uncovered says what letting go there does. Swiped to its Delete (a project's list, which has one: delete), and a
+    // line in a row's place (lines.js): shown by `state`.
+    {title: 'Swiped right, still held: the ring in the space uncovered says what letting go sets, 25%, 50%, 75%, and past half the row, done; the row itself unchanged', depth: {}, delete: true, tasks: [
+      task({title: 'Restock the napkins', state: {reveal: .15}}), task({title: 'Restock the napkins', state: {reveal: .27}}),
+      task({title: 'Restock the napkins', state: {reveal: .4}}), task({title: 'Clean the grinder', percent_done: .75, state: {reveal: .55}})]},
+    {title: 'Let go past half: done, the row carrying on off to the right, leaving a gap with Done and Undo until the batch clears', depth: {}, delete: true,
+      tasks: [task({title: 'Clean the grinder', state: {sweepRight: .8}}), task({title: 'Clean the grinder', done: true, state: {swept: true}})]},
+    {title: 'Swiped left from 75%, still held: the ring empties to 50% and 25%, then past 0% the red Delete, open on its button if let go, and past half the row, deleted', depth: {}, delete: true, tasks: [
+      task({title: 'Order more cups', percent_done: .75, state: {reveal: -.17}}), task({title: 'Order more cups', percent_done: .75, state: {reveal: -.3}}),
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
-    {title: 'A full swipe let go, or Delete tapped: the row carries on off the screen, leaving a gap with Restore', depth: {}, delete: true,
+    {title: 'A done row swiped left: the ring a done tick, then 75% (open again), on down to its Delete; a row at 0% goes straight there', depth: {}, delete: true, tasks: [
+      task({title: 'Sweep the yard', done: true, state: {reveal: -.08}}), task({title: 'Sweep the yard', done: true, state: {reveal: -.13}})]},
+    {title: 'A full swipe left, or Delete tapped: the row carries on off the screen, leaving a gap with Restore', depth: {}, delete: true,
       tasks: [task({title: 'Wipe the menus', state: {sweep: .8}}), task({title: 'Wipe the menus', state: {leaving: 'deleted'}})]},
     // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
     // a deleted row's gap with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
@@ -140,9 +150,9 @@ function sections(){
     {title: 'The batch clearing: the rows ticked and deleted fold together, and the row below closes up once', depth: {}, tasks: [
       task({title: 'Sweep the yard', done: true, state: {leaving: 'done', folding: .45}}), task({title: 'Wipe the menus', state: {leaving: 'deleted', folding: .45}}),
       task({title: 'Light the heaters'})]},
-    // Slid on a task no one was doing: your initials in place of "+ me" as the slide starts (claimOnSlide).
-    {title: 'Swiped on a task no one was doing: yours as the swipe starts', depth: {}, tasks: [task({title: 'Restock the napkins', state: {slid: 25, claim: true}})]},
-    {title: 'A subtask swiped to 50%: its fill starts at its indent', depth: {[tent.id]: 0, [pegs.id]: 1}, tasks: [tent, pegs]},
+    // Let go on a task no one was doing: yours, as the swipe set its progress (claimOnSlide).
+    {title: 'Let go at 25% on a task no one was doing: it\'s yours, its tick a quarter', depth: {}, tasks: [task({title: 'Restock the napkins', percent_done: .25, state: {claim: true}})]},
+    {title: 'A subtask swiped from 50% to 75%, and one done by a full swipe: what\'s uncovered, and the gap, span the whole row, not from its indent', delete: true, depth: {[tent.id]: 0, [pegs.id]: 1, [poles.id]: 1}, tasks: [tent, pegs, poles]},
     {title: 'A line in a row\'s place: a tick not saved', depth: {}, tasks: [
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
     // The task quick add's box adds subtasks to (quickadd.js: the cursor), lit up: a task, and a subtask.
@@ -222,7 +232,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     // list): each as runView has it then, to draw step-card.html with.
     this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
     const steps = this.runView.steps;
-    steps[7] = {...steps[7], state: {slid: 75}};
+    steps[7] = {...steps[7], state: {reveal: .4}};
     steps[5] = {...steps[5], state: {swiped: true}};                 // inserted during the run: it has a Delete
     /* Steps added from the bottom box, one after another, after the step on the card: two sent, the third waiting to
        be sent, and the line above the box naming it (runAim). */
@@ -243,8 +253,10 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
     this.specimenProject = {...g, items: listItems(g.tasks, g.depth, t => !!this.cardOf(t, g))};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
-      {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped to 75%, late, waiting on another step, and a tick waiting to send',
+      {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped right to 75%, late, waiting on another step, and a tick waiting to send',
         depth: {}, run: true, at: 4, locked: false, tasks: steps},
+      {title: 'A run’s step done by a full swipe: a gap with Undo, which unticks it, until the batch clears; then done in its place', depth: {}, run: true, at: null, locked: false,
+        tasks: [{...steps[3], id: steps[3].id + 3000, state: {swept: true}}]},
       // (other ids, so the states above stay on their own rows)
       {title: 'The same steps in a run finished, or shared with you to read only', depth: {}, run: true, at: null, locked: true,
         tasks: finished.map(x => ({...x, id: x.id + 1000}))}];
@@ -252,11 +264,14 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
     for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', action: {label: 'Undo', fn(){}}, ...t.state.line};
     for (const t of all) if (t.state.leaving) this.leaving[t.id] = t.state.leaving;
+    for (const t of all) if (t.state.swept) { this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
     for (const t of all) if (t.state.claim) this.slideClaim = t.id;
     this.$nextTick(() => {
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
-        if (t.state.slid) this.showSlide(row, t.state.slid, 0);
+        // A still of a swipe, held (progress.js: revealOf, swipeAt), on a screen wide enough not to cut its room short.
+        if (t.state.reveal) { const w = row.clientWidth; revealOf(row).move(swipeAt({start: t.done ? 100 : t.pct ?? Math.round(t.percent_done * 100), dx: t.state.reveal * w, x: w / 2, width: w, screen: 1e4})); }
+        if (t.state.sweepRight) revealOf(row).move({off: row.clientWidth * t.state.sweepRight, pct: 100, to: 'done'});
         if (t.state.swiped) { row.classList.add('swiped'); row.style.setProperty('--swipe', '-88px'); }
         if (t.state.full) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', '-240px'); }
         // A still of a delete following through (progress.js: sweep), partway off the screen, the red filling behind it.
