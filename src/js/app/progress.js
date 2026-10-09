@@ -1,8 +1,9 @@
-// What a finger does on a row (parent-tasks-plan, parts 1 and 1b): swiped, one mechanism with two mirrored sides
-// (swipeAt, SIDES, in progress.js): right, its progress up, a full swipe done; left, down, and past 0% on into its
-// Delete, a full swipe deleted; nothing changing until it's let go. Held, then moved up or down, the row moves among its
-// siblings. Delete and moving only where the row's list allows them (rowGestures): Today's rows are deleted but not
-// moved, search's the same, a project's and a sheet's both. The sheet's bar is swiped for its progress too (trackAt).
+// What a finger does on a row (parent-tasks-plan, parts 1 and 1b): swiped, one mechanism with mirrored sides (swipeAt,
+// SIDES, in progress.js), each with one job, chosen as the swipe starts: right, its progress up, a full swipe done;
+// left, a row with progress, down, stopping at 0%; left, a row at 0%, its Delete, a full swipe deleted. Nothing changes
+// until it's let go. Held, then moved up or down, the row moves among its siblings. Delete and moving only where the
+// row's list allows them (rowGestures): Today's rows are deleted but not moved, search's the same, a project's and a
+// sheet's both. The sheet's bar is swiped for its progress too (trackAt).
 import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackAt, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
@@ -30,7 +31,7 @@ const shut = (row = opened) => {
 };
 // What's uncovered as a row is swiped (swipeAt's `to`): its Delete, red, or its stops, the ring on green.
 const RED = new Set(['shut', 'open', 'delete']);
-/* A row's Delete, uncovered as it's swiped left past 0%, as on a phone's mail: the row moves with the finger, from
+/* A row's Delete, uncovered as it's swiped left at 0%, as on a phone's mail: the row moves with the finger, from
    where it rests or, open, from its Delete (`base`). Let go a third of the way across the Delete button, it stays open
    on it; past the left side's full point, the Delete fills what the row left, and letting go there deletes it
    (`remove`, which carries it on off the screen: sweep). The Delete isn't in the page's tab order until it's shown: a
@@ -74,7 +75,7 @@ export const revealOf = row => {
       const was = el; el = null;
       if (was) { was.classList.add('going'); setTimeout(() => was.remove(), SPRING_MS + 50); }   // (not the next swipe's)
     },
-    // Gone at once: past 0%, its Delete takes the space (swipeOf).
+    // Gone at once: its Delete takes the space (swipeOf), swiped back left past where a row at 0% started.
     drop(){ el?.remove(); el = null; row.classList.remove('revealing'); },
   };
 };
@@ -163,8 +164,9 @@ export default {
      sheet's bar has start, width, finish, show(pct, x: where the finger is), and begin() as its progress starts to move.
      A plain swipe, clearly sideways (swipeStarts), with no hold: on a row, one mechanism either way (`swipe`: swipeAt):
      its content moves with the finger, what's uncovered shows what letting go does, its stops (revealOf) or its Delete
-     (swipeOf), a tick felt at each (swipeFeel), and nothing changes until it's let go. A row whose progress can't be
-     swiped has only its Delete, to the left, as has one already open on it, either way. The sheet's bar shows its
+     (swipeOf), a tick felt at each (swipeFeel), and nothing changes until it's let go. Left, a row with progress is
+     only lowered, to 0%; at 0%, it has its Delete. A row whose progress can't be swiped has only its Delete, to the
+     left, as has one already open on it, either way. The sheet's bar shows its
      progress as it goes (`bar`: trackAt, show). Up or down is a scroll, as is a sideways move the row can't take (doing
      nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved up or down
      (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and moved
@@ -186,7 +188,7 @@ export default {
       }
       if (mode !== 'swipe') return;
       /* Let go on a stop, its progress is set, and the row springs back, its tick showing it (on its own, nothing
-         changes); in its Delete, its progress is 0% and it stays open on its button, or goes back; past a side's full
+         changes); in its Delete (a row at 0%), it stays open on its button, or goes back; past a side's full
          point, the full action, the row carrying on off the screen (finish: done; the Delete's remove: deleted, its
          progress left as it was). Taken away from the finger (pointercancel), it goes back, changing nothing. */
       const to = commit ? r.to : 'shut', set = commit && to !== 'delete' && r.pct !== null && r.pct !== s.start;
@@ -226,7 +228,7 @@ export default {
       }
       if (g.mode === 'swipe') {
         const r = at(s, e.clientX - g.x0), red = RED.has(r.to);
-        // From its stops into its Delete, or back: one gives way to the other.
+        // A row at 0% swiped right, then back past where it started: its stops give way to its Delete, or back.
         if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) shut(s.el); g.red = red; }
         if (red) s.swipe.move(r); else g.ring.move(r);
         const feel = swipeFeel(g.r, r);
@@ -330,7 +332,7 @@ export default {
      be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; a done one only down, opened again
      (setProgress). Let go having changed it, with no one on it, it's then yours (claimOnSlide); a full swipe is done,
      the row carrying on off the screen and leaving a gap with "Done" and Undo (sweep, setProgress's `gap`). Where its
-     list allows (allows), swiped left past 0%, its Delete, and held, what a hold does there (holdOf). */
+     list allows (allows), swiped left at 0%, its Delete, and held, what a hold does there (holdOf). */
   rowGesture(t, row, sheet){
     if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
     const slides = sheet ? !t.pending && this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.rowSlides(t);
@@ -428,7 +430,7 @@ export default {
   /* A run's step swiped on its row, as a task's is: not one waiting to be sent, or in a finished run, or done by a full
      swipe and waiting for the batch (its gap: only its Undo); a done one only down, not done again (stepProgress). With
      no one on it, it's then yours, as a task's is; a full swipe is done, through the outbox, leaving a gap whose Undo
-     unticks it. Swiped left past 0%, only a step inserted or repeated during the run, not done, has a Delete
+     unticks it. Swiped left at 0%, only a step inserted or repeated during the run, not done, has a Delete
      (swipeDeleteStep); a template's step stops at 0%. */
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);

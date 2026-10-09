@@ -97,13 +97,14 @@ test('let go, a swiped row goes back, stays open on its Delete, or past half its
   assert.equal(swipeEnd(swipeOffset(-DELETE_W - 100, w), w), 'delete', 'carried on from the open row');
 });
 
-/* Swiping a row is one mechanism with two mirrored sides (parent-tasks-plan, 1b; SIDES): the content moves with the
-   finger, and what letting go does is shown, not done, until then. Right: the stops above where it is spread over the
-   first half of the row, then done. Left: a quarter each QUARTER_PX, within the first third, then the row's Delete. */
+/* Swiping a row is one mechanism with mirrored sides (parent-tasks-plan, 1b; SIDES), each with one job, chosen as the
+   swipe starts: the content moves with the finger, and what letting go does is shown, not done, until then. Right
+   (up): the stops above where it is spread over the first half of the row, then done. Left, a row with progress
+   (down): the stops below it the same way, stopping at 0%. Left, a row at 0% (delete): its Delete. */
 const W = 358, SCREEN = 390;
 test('swiped right, the stops above its progress spread over the first half of the row, and past it, done', () => {
   const at = (dx, start = 0, x = 100) => swipeAt({ start, dx, x, width: W, screen: SCREEN, del: true });
-  const half = W * SIDES.right.full;
+  const half = W * SIDES.up.full;
   assert.deepEqual(at(10), { off: 10, pct: 0, to: 'stop' }, 'a little: the content moves, its progress not yet');
   assert.deepEqual(at(half / 4), { off: half / 4, pct: 25, to: 'stop' });
   assert.deepEqual([at(half / 2).pct, at(half * .75).pct, at(half - 1).pct], [50, 75, 75]);
@@ -116,20 +117,24 @@ test('swiped right, the stops above its progress spread over the first half of t
   assert.equal(near.to, 'done');
 });
 
-test('swiped left, a row with progress empties a quarter at a time, then goes on into its Delete; a row at 0% straight there', () => {
-  const at = (dx, start, del = true, x = 300) => swipeAt({ start, dx, x, width: W, screen: SCREEN, del });
-  const q = SIDES.left.gap;
+test('swiped left, a row with progress only goes down, spread the same way, and stops at 0% however far it’s pulled', () => {
+  const at = (dx, start, x = 300) => swipeAt({ start, dx, x, width: W, screen: SCREEN, del: true });
+  const half = W * SIDES.down.full;
   assert.deepEqual(at(-10, 50), { off: -10, pct: 50, to: 'stop' });
-  assert.deepEqual(at(-q, 50), { off: -q, pct: 25, to: 'stop' });
-  assert.deepEqual(at(-q * 2, 50), { off: -q * 2, pct: 0, to: 'open' }, 'past 0%: its Delete, open on its button if let go');
-  assert.equal(at(-W / 2 - 1, 50).to, 'delete', 'past half the row: deleted');
-  assert.deepEqual(at(-200, 50, false), { off: -q * 2, pct: 0, to: 'stop' }, 'no Delete (a template\'s step): it stops at 0%');
-  assert.deepEqual(at(-20, 0), { off: -20, pct: 0, to: 'shut' }, 'at 0%, straight into its Delete');
-  assert.equal(at(-40, 0).to, 'open');
-  // A done row empties from full, its stops all within the first third, so its Delete has room before half.
-  const third = W * SIDES.left.stops, g = third / 4;
-  assert.deepEqual([at(-g + 1, 100).pct, at(-g, 100).pct, at(-g * 3, 100).pct, at(-third, 100).to], [100, 75, 25, 'open']);
+  assert.deepEqual(at(-half / 2, 50), { off: -half / 2, pct: 25, to: 'stop' });
+  assert.deepEqual(at(-half, 50), { off: -half, pct: 0, to: 'stop' }, 'at half the row: 0%');
+  assert.deepEqual(at(-W, 50), { off: -half, pct: 0, to: 'stop' }, 'pulled further: still 0%, no Delete, the row no further');
+  assert.deepEqual([at(-half / 4 + 1, 100).pct, at(-half / 4, 100).pct, at(-half * .75, 100).pct, at(-half, 100).pct], [100, 75, 25, 0],
+    'a done row: open again at 75%, on down, a quarter of the way each');
   assert.equal(swipeAt({ start: 100, dx: -45, x: 60, width: W, screen: SCREEN }).pct, 0, 'put down near the left edge: the stops closer, so 0% is still within reach');
+});
+
+test('swiped left at 0%, a row has its Delete: open on its button, and deleted past half the row', () => {
+  const at = (dx, del = true) => swipeAt({ start: 0, dx, x: 300, width: W, screen: SCREEN, del });
+  assert.deepEqual(at(-20), { off: -20, pct: 0, to: 'shut' }, 'under a third of its button: it goes back');
+  assert.deepEqual(at(-40), { off: -40, pct: 0, to: 'open' });
+  assert.equal(at(-W * SIDES.delete.full - 1).to, 'delete');
+  assert.deepEqual(at(-100, false), { off: 0, pct: 0, to: 'stop' }, 'no Delete (a template’s step): nothing');
 });
 
 test('a row with no progress to swipe, or open on its Delete, has only its Delete', () => {
@@ -140,13 +145,14 @@ test('a row with no progress to swipe, or open on its Delete, has only its Delet
   assert.equal(at(-W / 2, -DELETE_W).to, 'delete', 'swiped on: deleted');
 });
 
-test('a tick is felt at each stop and at a Delete\'s button, a stronger one at a full swipe', () => {
+test('a tick is felt at each stop and at a Delete’s button, a firmer one at a full swipe and at 0%', () => {
   const stop = pct => ({ to: 'stop', pct });
   assert.equal(swipeFeel(stop(0), stop(0)), null);
   assert.equal(swipeFeel(stop(0), stop(25)), 'tick');
   assert.equal(swipeFeel(stop(75), { to: 'done', pct: 100 }), 'done');
   assert.equal(swipeFeel({ to: 'done', pct: 100 }, { to: 'done', pct: 100 }), null, 'once');
-  assert.equal(swipeFeel(stop(25), { to: 'open', pct: 0 }), 'tick', 'into its Delete');
+  assert.equal(swipeFeel(stop(25), stop(0)), 'done', 'lowered to 0%, where it stops: firmer');
+  assert.equal(swipeFeel({ to: 'shut', pct: 0 }, { to: 'open', pct: 0 }), 'tick', 'at its Delete’s button');
   assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'delete', pct: 0 }), 'done');
   assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'shut', pct: 0 }), null);
 });

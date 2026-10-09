@@ -258,12 +258,12 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .setting.full button.check svg{opacity:1}
 @keyframes check-pop{0%{scale:.7}55%{scale:1.2}100%{scale:1}}
 @media (prefers-reduced-motion:reduce){.setting::before,.setting button.check{animation:none!important}}
-/* Swiped (parent-tasks-plan, 1b): one mechanism, two mirrored sides (SIDES, progress.js). Nothing on the row changes
-   until it's let go: its content moves with the finger (--swipe), and the space it uncovers, the row's full height and
-   width whatever its indent, shows what letting go there does. Its stops (.row-prog, made by the swipe, revealOf): a
-   large ring, the tick's shape (square for a step), on green, filling a quarter at a time to the right, emptying to the
-   left, pulsing at each; past the right side's full point, the green solid, the ring full with its ✓. Past 0% to the
-   left, the Delete instead (.row-del), which comes in from the row's end. A row can be swiped sideways without the page
+/* Swiped (parent-tasks-plan, 1b): one mechanism, mirrored sides (SIDES, progress.js). Nothing on the row changes until
+   it's let go: its content moves with the finger (--swipe), and the space it uncovers, the row's full height and width
+   whatever its indent, shows what letting go there does. Its stops (.row-prog, made by the swipe, revealOf): a large
+   ring, the tick's shape (square for a step), on green, filling a quarter at a time to the right, emptying to the left
+   (a row with progress), pulsing at each; past the right side's full point, the green solid, the ring full with its ✓.
+   A row at 0% swiped left: its Delete instead (.row-del), which comes in from the row's end. A row can be swiped sideways without the page
    taking the move for a scroll. */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
 .row.swiping,.row.swiped,.row.revealing{transform:translateX(var(--swipe,0px))}

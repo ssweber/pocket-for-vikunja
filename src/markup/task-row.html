@@ -5,7 +5,7 @@
      in its tick, a pie filling a quarter at a time as a swipe right sets it (--pct), not under the row: swiped, it shows
      what letting go will do beside it, not on it (progress.js); tapped, the tick ticks it whatever its progress, and
      again, takes it back with its progress as it was. Where its list allows (g.delete: Today, a project, search, a
-     sheet), swiped left past 0%, its Delete (canDelete; also in the task's ⋯, the way for a keyboard or a screen
+     sheet), swiped left at 0%, its Delete (canDelete; also in the task's ⋯, the way for a keyboard or a screen
      reader); where it allows g.reorder (a project, a sheet), held and moved up or down, its place. The gesture code
      reads those off the row (data-gestures, rowGestures). Ticked, or deleted, it stays where it is until the batch
      clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap at its height, holding only
@@ -21,7 +21,7 @@
      mark, comments and countdown (rowMeta), and, done, who did or skipped it, ✅ or ⏭️ on their picture. A step's box is
      square, wherever it's shown (isStepRow), and a run's own row has its line in segments, one per step (runLineOf). The step on its
      card is lit (g.at), and the bottom box adds steps after it; while it's on the card, one inserted can be deleted by
-     its ×, and swiped left past 0%, any inserted one not done (stepSlide). A finished run, or one shared with you to
+     its ×, and swiped left at 0%, any inserted one not done (stepSlide). A finished run, or one shared with you to
      read (g.locked), has no tick. It's never moved: a run's order is its order line.
      On a stacked card (g.card, list-item.html), each of its rows is this row too, a subtask or a run's step: its own
      tick, slot and progress, and its Delete, as any row's. A collapsed card's top row (.step-line) doesn't fold with the
