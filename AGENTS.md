@@ -28,4 +28,5 @@ the code is organised.
 - Commits follow conventional commits: `feat(checklists): let a step whose step to count from is gone pick the start`.
   Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`. Work happens on `dev`, merged into `main` by
   pull request; a release is a GitHub release with a tag like `v0.1.0` (see `docs/roadmap.md`).
-- Discuss a change to the UI before building it. Plans for features go in `docs/design/`.
+- Discuss a change to the UI before building it. Plans for features go in `docs/design/`, and every change is checked
+  against `docs/design-rules.md`.
