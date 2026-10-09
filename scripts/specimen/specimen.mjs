@@ -41,7 +41,7 @@ function sections(){
   const poles = task({title: 'Tie down the poles', related_tasks: {parenttask: [{id: tent.id}]}, done: true, state: {swept: true}});
   const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
-  // A long run: past 12 steps, its line is one, with a tick at each step (runLine).
+  // A long run, of 16 steps: its ring, as any run's.
   const long = task({title: 'Deep clean · Oct 5', project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 899}],
     subtask: Array.from({length: 16}, (_, i) => ({id: 950 + i, title: 'Step ' + (i + 1), done: i < 5}))}});
   // A step of a run you've claimed, on Today, beside a task: square and round.
@@ -100,7 +100,23 @@ function sections(){
     kid(783, {under: closing2.id, project_id: 2, title: 'Lock the door', related_tasks: {parenttask: [{id: closing2.id}], copiedfrom: [{id: 7}]}})];
   const project = {list: [plain, launch, staff, closing2, ...projectSubs], heads: [staff.id],
     positions: {[launch.id]: 10, [plain.id]: 20, [staff.id]: 30, [closing2.id]: 40, 761: 1, 763: 2, 764: 3, 765: 1, 771: 1}};
-  return {parent, steps: runSteps(), cards: [van2, opening, closing, sign, shelves], cardSubs, project, list: [
+  /* A parent's ring (parent-tasks-plan, part 3), on Today's cards: one subtask of four at 50%, so 13%; two of four done,
+     50%; none of three; every one done, waiting for Close; one closed by its ring, a gap with Undo; a header swiped right
+     part way (it springs back: no progress of its own), and one swiped left onto its Delete. */
+  const wall = task({title: 'Paint the back wall', related_tasks: {subtask: [{id: 1101}, {id: 1102}, {id: 1103}, {id: 1104}]}});
+  const menu = task({title: 'Print the new menus', priority: 2, related_tasks: {subtask: [{id: 1111, done: true}, {id: 1112, done: true}, {id: 1113}, {id: 1114}]}});
+  const rota = task({title: 'Write the summer rota', related_tasks: {subtask: [{id: 1121}, {id: 1122}, {id: 1123}]}});
+  const till = task({title: 'Set up the new till', related_tasks: {subtask: [{id: 1131, done: true}, {id: 1132, done: true}, {id: 1133, done: true}]}});
+  const bins = task({title: 'Empty the bins', related_tasks: {subtask: [{id: 1141, done: true}, {id: 1142, done: true}]}, state: {swept: true}});
+  const floor = task({title: 'Mop the floor', related_tasks: {subtask: [{id: 1151}, {id: 1152}]}, state: {head: .3}});
+  const sink = task({title: 'Fix the sink', related_tasks: {subtask: [{id: 1161}, {id: 1162}]}, state: {head: 'delete'}});
+  const parentSubs = [kid(1101, {under: wall.id, title: 'Sand it', percent_done: .5}), kid(1102, {under: wall.id, title: 'Tape the edges'}), kid(1103, {under: wall.id, title: 'First coat'}), kid(1104, {under: wall.id, title: 'Second coat'}),
+    kid(1111, {under: menu.id, title: 'Write them', done: true}), kid(1112, {under: menu.id, title: 'Check the prices', done: true}), kid(1113, {under: menu.id, title: 'Send to the printer'}), kid(1114, {under: menu.id, title: 'Pick them up'}),
+    kid(1121, {under: rota.id, title: 'Ask for holidays'}), kid(1122, {under: rota.id, title: 'Draft it'}), kid(1123, {under: rota.id, title: 'Post it'}),
+    kid(1131, {under: till.id, title: 'Unbox it', done: true}), kid(1132, {under: till.id, title: 'Plug it in', done: true}), kid(1133, {under: till.id, title: 'Test a sale', done: true}),
+    kid(1141, {under: bins.id, title: 'Kitchen', done: true}), kid(1142, {under: bins.id, title: 'Yard', done: true}),
+    kid(1151, {under: floor.id, title: 'Sweep first'}), kid(1152, {under: floor.id, title: 'Mop'}), kid(1161, {under: sink.id, title: 'Buy a washer'}), kid(1162, {under: sink.id, title: 'Fit it'})];
+  return {parent, steps: runSteps(), cards: [van2, opening, closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -122,7 +138,7 @@ function sections(){
       task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, priya], comment_count: 3, repeat_after: 86400}),
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
     {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
-    {title: 'Checklist runs, as under Checklists, on a project’s list and in search: one row, who it’s for, and a line in segments, a step each (past 12 steps, one line with a tick at each), with no count of its steps or the next', depth: {}, tasks: [run, long]},
+    {title: 'Checklist runs, as under Checklists, on a project’s list and in search: one row, who it’s for, and its ring for a tick, its steps done of all inside it (past 12 steps too)', depth: {}, tasks: [run, long]},
     {title: 'A run’s step counting down, with no 🔔 for the reminder Pocket gave it; a task’s reminder still to come has one', depth: {}, tasks: [timed,
       task({title: 'Call the plumber', reminders: [{reminder: at(5 * HOUR)}]})]},
     {title: 'A checklist’s step has a square box (a step you’ve claimed, on Today), a task or a subtask a round one', depth: {}, tasks: [stepRow, subRow]},
@@ -202,7 +218,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
   c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
     {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
-  c.specimen = []; c.specimenCards = []; c.specimenProject = {items: []}; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
+  c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -250,6 +266,13 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
     this.cardOpen = {[s.cards[0].id]: true};
+    // The parents' rings, on Today's cards; and the question their ring asks (sheet/complete.html), for a task's and a run's.
+    for (const x of s.parentSubs) this.keep(x);
+    this.specimenParents = s.parents.map(t => this.keep(t));
+    Object.assign(this.view.cards, Object.fromEntries(s.parents.map(t => [t.id, {when: null, made: null, focus: null}])));
+    const ask = (t, run) => ({kind: 'complete', complete: {id: t.id, run, title: t.title, n: run ? 2 : 3, stay: run ? 0 : 1,
+      open: run ? [{id: 1, title: 'Stack the chairs'}, {id: 2, title: 'Lock the door'}] : [{id: 1, title: 'Tape the edges'}, {id: 2, title: 'First coat'}, {id: 3, title: 'Second coat'}, {id: 4, title: 'Water the plants', stays: true}]}});
+    this.specimenComplete = [ask(s.parents[0], false), ask({id: 0, title: 'Closing up · run 5'}, true)];
     // A project's open list, as listGroups makes it: each subtask under its parent there, and what it shows.
     Object.assign(this.positions, s.project.positions);
     const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
@@ -269,7 +292,13 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const t of all) if (t.state.swept) { this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
     for (const t of all) if (t.state.claim) this.slideClaim = t.id;
+    for (const t of s.parents) if (t.state?.swept) { t.done = true; this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
     this.$nextTick(() => {
+      // A parent's header swiped: part way right (the empty ring, as it springs back short of the full point), or left onto its Delete.
+      for (const t of s.parents) for (const head of document.querySelectorAll(`.day-card[data-id="${t.id}"] > .card-head`)) {
+        if (t.state?.head === 'delete') { head.classList.add('swiped'); head.style.setProperty('--swipe', '-88px'); }
+        else if (t.state?.head) { const w = head.clientWidth; revealOf(head).move(swipeAt({start: 0, dx: t.state.head * w, x: w / 2, width: w, screen: 1e4, one: true})); }
+      }
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
         // A still of a swipe, held (progress.js: revealOf, swipeAt), put down where its room isn't cut short by the edge.
         if (t.state.reveal) { const w = row.clientWidth; revealOf(row).move(swipeAt({start: t.done ? 100 : t.pct ?? Math.round(t.percent_done * 100), dx: t.state.reveal * w, x: t.state.reveal < 0 ? w : w / 2, width: w, screen: 1e4})); }

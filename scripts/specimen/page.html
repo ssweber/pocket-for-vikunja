@@ -15,6 +15,8 @@
   .row.fresh,.row.came-due{animation-play-state:paused}
   /* the bottom box, as it sits under a run's steps, not fixed to the page's foot */
   .spec-box{margin-top:16px}
+  /* the question a ring asks, as the sheet shows it */
+  .spec-sheet{margin-bottom:16px;padding:16px;border-radius:20px;background:var(--surface)}
 </style>
 </head>
 <body x-data="specimen">
@@ -46,6 +48,21 @@
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
+      </div></template>
+      <!-- A parent's ring (parent-tasks-plan, part 3): on a card's header, in place of a tick, its arc the worked-out
+           figure and done of all inside it; every subtask done, "All subtasks done" with Close; closed, a gap with Undo;
+           its header swiped right part way (it springs back), and left onto its Delete -->
+      <div class="sec">A parent’s ring: one of four subtasks at 50%, 13%; two of four done; none of three; all done, waiting for Close; closed by its ring, a gap with Undo; its header swiped right part way (it springs back), and left onto its Delete</div>
+      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list">
+        <template x-for="t in specimenParents" :key="t.id">
+          <!-- include markup/list-item.html -->
+        </template>
+      </div></template>
+      <!-- The question a parent's ring asks (sheet/complete.html), as its sheet shows it: a task's, listing its open
+           subtasks (one that repeats stays); and a run's, which finishes it with its steps not done -->
+      <div class="sec">The question a ring asks: a task’s open subtasks, completed with it (one that repeats stays); a run’s, finished with its steps not done</div>
+      <template x-for="sheet in specimenComplete" :key="sheet.complete.title"><div class="spec-sheet">
+        <!-- include markup/sheet/complete.html -->
       </div></template>
       <!-- A project's open list (screens/lists.html, cards 'list'): each card open, for good, its rows in its List
            view's order, a run's steps in its order line -->
