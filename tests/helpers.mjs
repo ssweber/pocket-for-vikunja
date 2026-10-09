@@ -1,6 +1,7 @@
 // What the end-to-end tests share: Playwright's assertions that try again, waiting until Pocket has sent everything,
 // and signing in. Not a test file itself.
 import { expect as base } from 'playwright/test';
+import { swipeAt } from '../src/js/progress.js';
 
 /* Playwright's own expect, without its test runner: `await expect(locator).toBeVisible()` tries again until it passes
    or 10 seconds go by, so a test needn't wait for the page and then check it. */
@@ -68,3 +69,30 @@ export async function steady(locator, timeout = 5000){
 /* The one-time hint to hold and slide put away, as on a phone that has slid a row: otherwise it adds a line to the
    first row of each screen, which a test measuring rows doesn't expect. Every page of `context`, from the start. */
 export const hintSeen = context => context.addInitScript(() => { try { localStorage.setItem('pocket.hint.slide', 'done'); } catch {} });
+
+/* A finger swiped across row `sel` (pressed, moved, lifted, as a phone's touch does with no hold), to where letting go
+   does `to`: a quarter of progress, or 100, done (a full swipe right); 'open' or 'delete' (a row at 0% swiped left into
+   its Delete, resting open on it, or past half the row, deleted); 'back' (a parent's header swiped right a little, which
+   springs back). Where that is comes from the app's own sums (swipeAt), so a change to its numbers (SIDES) changes no
+   test: the finger is let go in the middle of the stretch that does it, or a little past a full point. Right from near
+   the row's left, left from near its right, so each side has its room. `start`: its progress as the swipe starts (a done
+   row's 100); `one`: a parent's header or row, whose right side has only its full point; `check` runs while it's held. */
+export async function swipeRow(page, sel, to, { start = 0, one = false, check = null } = {}){
+  const el = page.locator(sel);
+  await el.evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  const box = await steady(el), width = await el.evaluate(e => e.clientWidth), screen = page.viewportSize().width;
+  const right = to === 'back' || (typeof to === 'number' && to > start), x = right ? box.x + 60 : box.x + box.width - 40, y = box.y + Math.min(box.height / 2, 28);
+  const wants = r => to === 'back' ? r.to === 'stop' && r.off > 20 : to === 'open' || to === 'delete' ? r.to === to
+    : to >= 100 ? r.to === 'done' : r.to === 'stop' && r.pct === to;
+  const band = [];
+  for (let d = 1; d <= width; d++) {
+    const r = swipeAt({ start, dx: right ? d : -d, x, width, screen, del: true, one, side: right ? 'right' : 'left' });
+    if (wants(r)) band.push(d); else if (band.length) break;
+  }
+  if (!band.length) throw new Error(`no swipe of ${sel} from ${start}% does ${to}`);
+  const full = to === 'delete' || to >= 100 || (to === 0 && start > 0), dx = full ? band[0] + 16 : band[Math.floor(band.length / 2)];
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + (right ? dx : -dx), y + 2, { steps: 10 });
+  await check?.();
+  await page.mouse.up();
+}
