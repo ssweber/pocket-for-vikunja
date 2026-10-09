@@ -2,12 +2,14 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { doneParentIds, keptGroups, nestSubtasks, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { doneParentIds, drawnOf, FIRST_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
 import views from '../../src/js/app/views.js';
 import tasks from '../../src/js/app/tasks.js';
+import sending from '../../src/js/app/sending.js';
+import lines from '../../src/js/app/lines.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z';                        // Vikunja's "no date"
@@ -149,4 +151,84 @@ test('a project\'s kept copy has Done\'s count, not its tasks, and opens Done on
   app.showSaved({ name: 'project', id: 5 }, { ...copy, groups: [open, { ...done, open: false }] });
   assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length, g.loaded]), [['open', undefined, 1, undefined], ['done', true, 0, false]], 'open now: open, loaded afresh');
   localStorage.removeItem('pocket.done.open');
+});
+
+/* A long screen drawn a batch at a time (performance-plan, part 5): its first rows at once, then the rest down its lists
+   in order, a batch a frame, each about a frame's work; scrolling near the end of what's drawn draws the rest. */
+test('a list draws the rows of the screen’s first rows that are its own', () => {
+  const list = [1, 2, 3, 4, 5];
+  assert.deepEqual(drawnOf(list, 0, 3), [1, 2, 3]);
+  assert.deepEqual(drawnOf(list, 4, 6), [1, 2], 'a list further down: what’s left of them');
+  assert.deepEqual(drawnOf(list, 10, 6), [], 'none left');
+  assert.equal(drawnOf(list, 2, Infinity), list, 'all of it: the list itself');
+});
+
+test('a batch is about a frame’s work: more rows when it took less, fewer when more, a few at least', () => {
+  assert.equal(nextBatch(20, 20), 40, 'twice as fast as wanted: twice the rows, no more');
+  assert.equal(nextBatch(20, 1), 40, 'nothing to it: no more than twice');
+  assert.equal(nextBatch(20, 80), 10);
+  assert.equal(nextBatch(20, 1000), 4, 'a slow phone still draws a few a frame');
+});
+
+test('a screen draws its first rows, the rest a batch a frame, then everything', async () => {
+  const frames = [], listening = new Map();
+  Object.assign(globalThis, { requestAnimationFrame: f => frames.push(f), scrollY: 0, innerHeight: 800,
+    addEventListener: (k, f) => listening.set(k, f), removeEventListener: k => listening.delete(k) });
+  document.documentElement = { scrollHeight: 5000 };
+  const frame = async () => { const f = frames.splice(0); for (const x of f) x(); await new Promise(r => setTimeout(r)); };
+  const app = component(views);
+  Object.assign(app, { drawTo: Infinity, drawing: false, view: { loading: false, groups: [{ key: 'a', tasks: Array.from({ length: 30 }) }, { key: 'b', tasks: Array.from({ length: 200 }) }] } });
+  app.drawFrom(0);
+  assert.equal(app.drawTo, FIRST_ROWS, 'its first rows at once');
+  assert.equal(app.drawing, true, 'busy meanwhile');
+  await frame();
+  assert.equal(app.drawTo, FIRST_ROWS, 'nothing more until they’re painted');
+  const seen = [];
+  while (app.drawing && seen.length < 100) { await frame(); seen.push(app.drawTo); }
+  assert.ok(seen.length > 2 && seen.slice(0, -1).every((x, i) => !i || x > seen[i - 1]), 'more each frame: ' + seen);
+  assert.equal(app.drawTo, Infinity, 'then everything, and anything added later at once');
+  assert.equal(listening.has('scroll'), false, 'no longer watching the scroll');
+
+  app.drawFrom(0); await frame(); await frame();
+  assert.ok(app.drawTo < 230 && listening.has('scroll'));
+  globalThis.scrollY = 3500; listening.get('scroll')();
+  assert.equal(app.drawTo, Infinity, 'scrolled within a screen of the end of what’s drawn: the rest at once');
+  assert.equal(app.drawing, false);
+  await frame();
+  assert.equal(app.drawTo, Infinity, 'the batches stopped');
+  globalThis.scrollY = 0;
+});
+
+test('a list worked out again as it was is the same object, so its rows have nothing to do', () => {
+  const t = id => ({ id }), a = t(1), b = t(2), c = t(3);
+  const g = { key: 'open', title: 'Open', tasks: [a, b], depth: { 1: 0, 2: 1 }, kids: new Map([[1, [b]]]), before: 0, delete: true };
+  assert.equal(sameGroup(g, { ...g, tasks: [a, b], depth: { 1: 0, 2: 1 }, kids: new Map([[1, [b]]]) }), true);
+  assert.equal(sameGroup(g, { ...g, tasks: [a, c] }), false, 'another task');
+  assert.equal(sameGroup(g, { ...g, tasks: [b, a] }), false, 'in another order');
+  assert.equal(sameGroup(g, { ...g, depth: { 1: 0, 2: 0 } }), false, 'not under it now');
+  assert.equal(sameGroup(g, { ...g, kids: new Map([[1, [b, c]]]) }), false);
+  assert.equal(sameGroup(g, { ...g, before: 4 }), false, 'further down the screen');
+  assert.equal(sameGroup(g, { ...g, open: true }), false, 'a field more');
+  assert.equal(sameGroup(undefined, g), false);
+
+  const app = component(views, sending, lines);
+  Object.assign(app, { route: { name: 'search' }, pending: [], deleting: [], positions: {}, cardOf: () => null,
+    view: { groups: [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [c] }] } });
+  const [open, done] = app.listGroups;
+  assert.deepEqual([open.before, done.before], [0, 2], 'how many rows are above each');
+  app.view.groups = [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [] }];
+  const again = app.listGroups;
+  assert.equal(again[0], open, 'loaded again, unchanged: the same');
+  assert.notEqual(again[1], done, 'changed: a new one');
+});
+
+test('the other screens aren’t loaded in the background while a screen’s rows are still being drawn', async () => {
+  const app = component(views);
+  let asked = 0, loaded = 0;
+  Object.assign(app, { drawing: true, user: { id: 1 }, schedulePreload(){ asked++; }, refreshPeople: async () => { loaded++; }, preloads: () => [] });
+  await app.preload();
+  assert.deepEqual([asked, loaded], [1, 0], 'asked again later, nothing loaded');
+  app.drawing = false;
+  await app.preload();
+  assert.equal(loaded, 1, 'once they’re drawn');
 });

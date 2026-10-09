@@ -89,6 +89,25 @@ export const doneParentIds = (tasks, pid) => {
    are loaded when it's opened, as they are without a copy. Thousands of them would fill the phone's storage, and be
    drawn again with the copy. */
 export const keptGroups = groups => groups.map(g => g.key === 'done' ? {...g, tasks: [], loaded: false, loading: false} : g);
+/* A screen's rows drawn a few at a time (performance-plan, part 5), so its first screenful takes the same time however
+   long its lists are: the first FIRST_ROWS at once, enough to fill a phone, then the rest in batches after the first
+   paint, across the screen's lists in order (drawFrom, app/views.js). `to`: how many of the screen's rows are drawn; a
+   list `before` rows down the screen draws what's left of them. */
+export const FIRST_ROWS = 20;
+export const drawnOf = (list, before, to) => to >= before + list.length ? list : list.slice(0, Math.max(0, to - before));
+/* How many rows the next batch draws, from the last (`rows`, which took `ms` to draw): about BATCH_MS of work, so a
+   phone keeps scrolling meanwhile; at least a few rows, and no more than twice the last. */
+export const BATCH_MS = 40;
+export const nextBatch = (rows, ms) => Math.max(4, Math.min(rows * 2, Math.round(rows * BATCH_MS / Math.max(ms, 1))));
+/* Whether two groups of listGroups show the same: each field the same, a list (its tasks, items, heads) item by item, a
+   map of lists (kids) list by list, an object (depth) entry by entry. Then the one drawn already is kept, so a list
+   worked out again, by a load that changed nothing in it, say, gives its rows nothing to do: each row reads its group. */
+const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+const sameField = (a, b) => a === b || (Array.isArray(a) ? Array.isArray(b) && sameList(a, b)
+  : a instanceof Map ? b instanceof Map && a.size === b.size && [...a].every(([k, v]) => b.has(k) && sameField(v, b.get(k)))
+  : !!a && !!b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(b) && !(b instanceof Map) && sameKeys(a, b, (x, y) => x === y));
+const sameKeys = (a, b, same) => { const ks = Object.keys(a); return ks.length === Object.keys(b).length && ks.every(k => k in b && same(a[k], b[k])); };
+export const sameGroup = (a, b) => !!a && !!b && sameKeys(a, b, sameField);
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 /* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
    days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task

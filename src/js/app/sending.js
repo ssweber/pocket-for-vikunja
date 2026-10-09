@@ -6,10 +6,11 @@ import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
-import {keptGroups, listItems, nestSubtasks, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
+const lastGroups = new Map();                    // each list's group as listGroups last gave it, by its key
 // What createLines keeps of each line: an earlier try's, for a line that's the same, or a new one.
 export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
 
@@ -345,13 +346,20 @@ export default {
   },
   /* The current list, with waiting tasks added where they belong, and subtasks under their parents: a project's open
      tasks in its List view's order. Each group has what a finger can do on its rows on this screen (screenRows), and,
-     where it has cards (not a list of done tasks), what it shows (`items`: listItems, each a row or a card). */
+     where it has cards (not a list of done tasks), what it shows (`items`: listItems, each a row or a card). `before`:
+     how many rows the screen has above it, for drawing a long screen a batch at a time (drawn, app/views.js). A group
+     that comes out as it did last time is that same object (sameGroup), so its rows have nothing to do. */
   get listGroups(){
     const hidden = this.hiddenRows, order = this.route.name === 'project' ? positionOrder(this.positions) : null, can = screenRows(this.route.name);
+    let before = 0;
     return this.listBase.map(g => {
-      const out = {...g, ...can, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null)};
+      const out = {...g, ...can, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null), before};
       if (g.key === 'done') out.cards = null;
       if (out.cards) out.items = listItems(out.tasks, out.depth, t => !!this.cardOf(t, out));
+      before += (out.cards ? out.items : out.tasks).length;
+      const was = lastGroups.get(g.key);
+      if (sameGroup(was, out)) return was;
+      lastGroups.set(g.key, out);
       return out;
     });
   },

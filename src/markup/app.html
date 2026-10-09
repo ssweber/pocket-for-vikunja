@@ -24,7 +24,8 @@
     <div class="behind" id="behind" x-show="view.behind" aria-hidden="true"></div>
   </header>
 
-  <main id="view" aria-live="polite" :aria-busy="view.updating ? 'true' : null">
+  <!-- Busy while it's loaded afresh, or its rows are still being drawn a batch at a time (drawFrom, views.js) -->
+  <main id="view" aria-live="polite" :aria-busy="view.updating || drawing ? 'true' : null">
     <!-- A project's name, or a run's own row (its ring, its name and who it's for: RUN_ROW, the task row) between Back and
          ⋯, in the place its name had, so the run's screen is no taller for it. Its project is said in its sheet. -->
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title" :class="{'run-top': !!runOwn}">

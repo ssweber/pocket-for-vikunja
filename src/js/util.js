@@ -39,6 +39,8 @@ export const taskDrafts = {
   clear(){ store.del('drafts'); },
 };
 export const userCache = new Map();                   // lowercased username -> user
+// An object Alpine watches, as it is: read without Alpine noting each read (in Node's tests, there's no Alpine).
+export const raw = x => globalThis.Alpine?.raw(x) ?? x;
 export let app;                                       // the Alpine component, set in init()
 export const setApp = a => { app = a; };
 /* Collapse a list row before it's removed, so ticked-off tasks slide away instead of vanishing. */

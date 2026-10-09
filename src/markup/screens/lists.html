@@ -1,5 +1,6 @@
     <!-- Today and a single project share the task-list markup. A project's done tasks are a section of their own, under
-         the open ones, folded until it's tapped (loaded then), and kept open or folded for each project. -->
+         the open ones, folded until it's tapped (loaded then), and kept open or folded for each project. A long screen's
+         rows are drawn a batch at a time, its first screenful first (drawn, views.js). -->
     <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div x-effect="hint.pick && pickHint()">
       <template x-for="g in listGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
         <!-- Nothing open: said above the Done section -->
@@ -16,14 +17,14 @@
         <template x-if="g.fold && g.open && g.loading"><div class="loading">Loading…</div></template>
         <template x-if="g.fold && g.open && g.loaded && !g.tasks.length"><p class="note sec-note">Nothing done here yet.</p></template>
         <template x-if="!g.cards"><div class="list" x-show="!g.fold || (g.open && g.tasks.length)">
-          <template x-for="t in g.tasks" :key="t.id">
+          <template x-for="t in drawn(g)" :key="t.id">
             <!-- include markup/task-row.html -->
           </template>
         </div></template>
         <!-- A list with cards (Today, search's open tasks, a project's open list): a row, or the stacked card for anything
              with open subtasks or steps, its subtasks on it (list-item.html) -->
         <template x-if="g.cards"><div class="list">
-          <template x-for="t in g.items" :key="t.id">
+          <template x-for="t in drawn(g)" :key="t.id">
             <!-- include markup/list-item.html -->
           </template>
         </div></template>

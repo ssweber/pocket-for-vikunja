@@ -1,11 +1,11 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
-import {cache, collapseRows, colorOf, PRIOS, store, TZ} from '../util.js';
+import {cache, collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError, why} from '../api.js';
 import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {doneParentIds, keptGroups, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {doneParentIds, drawnOf, FIRST_ROWS, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
@@ -13,7 +13,7 @@ import {shared} from './core.js';
 import {pendingSaves} from './sheet.js';
 
 export let renderSeq = 0;
-let behindTimer, preloadTimer, preloading = false;
+let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null;
 const PRELOAD_AGE = 60e3;                        // a copy kept younger than this isn't loaded again in the background
 // The projects whose Done section was left open, kept on the phone: project id -> true.
 const doneOpen = {
@@ -202,6 +202,7 @@ export default {
        with a thin line under the header (view.behind), not over what's on screen. */
     const fresh = this.view.route !== location.hash;
     if (fresh) {
+      this.drawFrom(0);                                  // its first rows at once, the rest a batch at a time
       const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
       Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null});
       if (s) this.showSaved(r, s);
@@ -239,6 +240,39 @@ export default {
       if (seq === renderSeq) { clearTimeout(behindTimer); this.view.updating = this.view.behind = false; }
     }
   },
+  /* ---------- drawing a long screen (performance-plan, part 5) ---------- */
+  /* A screen's rows from row `n` on, drawn a few at a time: FIRST_ROWS at once, then, after that's painted, a batch a
+     frame, each about BATCH_MS of work (nextBatch), down the screen's lists in order (drawn, listGroups' `before`), until
+     every row is drawn. Meanwhile the screen counts as busy (#view[aria-busy], app.html), so the tests wait for it.
+     Scrolling to within a screen of the end of what's drawn draws the rest at once, so the end of what's drawn is never
+     taken for the end of the list; and so does holding a row to move it (reorderOf), which needs all its siblings. */
+  drawFrom(n){
+    this.drawTo = Math.min(this.drawTo, n + FIRST_ROWS);
+    if (this.drawing) return;
+    this.drawing = true;
+    const seq = ++drawSeq;
+    let rows = FIRST_ROWS, took = null, y = scrollY;
+    // (only scrolling down: going to a screen's top, as a new screen does, isn't nearing its end)
+    nearEnd = () => { const down = scrollY > y; y = scrollY; if (down && scrollY + 2 * innerHeight >= document.documentElement.scrollHeight) this.drawAll(); };
+    const step = () => {
+      if (seq !== drawSeq) return;
+      if (!this.view.loading) {                          // (with no copy kept, its rows come with the load)
+        if (this.drawTo >= this.view.groups.reduce((k, g) => k + g.tasks.length, 0)) return this.drawAll();
+        if (took !== null) rows = nextBatch(rows, took);
+        this.drawTo += rows;
+        // How long the batch took to draw: Alpine draws it straight after this, before anything queued after it.
+        const t0 = performance.now(); took = null; queueMicrotask(() => { took = performance.now() - t0; });
+      }
+      requestAnimationFrame(step);
+    };
+    addEventListener('scroll', nearEnd, {passive: true});
+    requestAnimationFrame(() => requestAnimationFrame(step));   // the second frame: after the first rows are painted
+  },
+  // Every row drawn: the rest of a screen being drawn a batch at a time, and anything added later, at once.
+  drawAll(){ drawSeq++; this.drawTo = Infinity; this.drawing = false; removeEventListener('scroll', nearEnd); nearEnd = null; },
+  /* What list `g` (listGroups) draws of its rows or cards, so far. The list as it is, not as Alpine watches it: x-for
+     going over a watched list reads each item through Alpine, for each batch, every row drawn so far. */
+  drawn(g){ return drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo); },
   /* The copy of a screen kept on the phone, to show while it loads: Today, a project and Checklists, as last loaded (or
      loaded in the background: preload), and only ever this account's. */
   savedView(r){
@@ -265,13 +299,15 @@ export default {
      are loaded afresh behind it, one at a time, when the phone has nothing else to do: switching to one then shows a
      fresh copy at once; first, who can see each project, now and then (refreshPeople). Only reads: nothing is changed
      in Vikunja, nor on the screen. Not without a connection, nor on one the phone says is slow or to be sparing with
-     (Save-Data), nor a copy kept less than a minute ago. */
+     (Save-Data), nor a copy kept less than a minute ago; and not while the screen's rows are still being drawn (drawFrom),
+     which it would only slow. */
   schedulePreload(){
     clearTimeout(preloadTimer);
     const idle = window.requestIdleCallback || (f => setTimeout(f));
     preloadTimer = setTimeout(() => idle(() => this.preload(), {timeout: 5000}), 2000);
   },
   async preload(){
+    if (this.drawing) return this.schedulePreload();
     const c = navigator.connection;
     if (preloading || this.offline || !this.signedIn || !this.user || document.visibilityState !== 'visible' || c?.saveData || /2g/.test(c?.effectiveType || '')) return;
     preloading = true;
@@ -457,6 +493,7 @@ export default {
     try {
       const list = await this.doneTasks(p);
       if (this.view.project?.id !== p.id) return;
+      this.drawFrom(this.listGroups.find(x => x.key === 'done')?.before ?? 0);   // its first rows at once, the rest in batches
       Object.assign(g, {tasks: list.map(t => this.keep(t)), loaded: true, count: list.length});
       this.saveProject();
     } catch (e) { g.open = false; this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'done', cls: 'failed'}); }

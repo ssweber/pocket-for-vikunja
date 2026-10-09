@@ -41,6 +41,8 @@ export default () => ({
   // savedAt: when the copy on screen was kept, while it's one kept on the phone; updating: it's being loaded afresh, behind
   // what's on screen; behind: that has taken over a second, which a line under the header says (views.js)
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null, updating: false, behind: false},
+  // How many of the screen's rows are drawn, and whether more are still to come, a batch at a time (drawFrom, views.js)
+  drawTo: Infinity, drawing: false,
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
