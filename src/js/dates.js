@@ -44,8 +44,8 @@ export function shortDue(due, now = new Date(), {underToday = false} = {}){
 export const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 export const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
-/* A task due `due` moved to `day` (Move all to today, and a row held and dropped on another day of Today's: parent-
-   tasks-plan, part 4): at the time of day it had, or with no time if it had none (or no date at all). Today, if that
+/* A task due `due` moved to `day` (Move all to today, and a row or a card held on Today and thrown at a date: parent-
+   tasks-plan, 4b): at the time of day it had, or with no time if it had none (or no date at all). Today, if that
    time has gone, the next whole hour instead, or in the day's last hour 11:59 PM, so it isn't late again at once. */
 export function movedDue(due, day, now = new Date()){
   const d = isSet(due) ? new Date(due) : startOfDay(day);
