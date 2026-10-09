@@ -5,7 +5,7 @@ import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.j
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {doneParentIds, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {doneParentIds, keptGroups, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
@@ -247,10 +247,12 @@ export default {
     return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
   },
   // A copy kept of screen `r`, on screen: its tasks the ones on screen already, where those are as new (keptRows); Today's
-  // cards with their steps.
+  // cards with their steps. A project's Done is open only if it's open now, not as it was when the copy was kept (and
+  // has no tasks till it's loaded: keptGroups).
   showSaved(r, s){
     this.keptRows(s.steps || []);
-    const groups = (s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks)}));
+    const open = r.name === 'project' && !!doneOpen.all()[r.id];
+    const groups = keptGroups(s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks), ...g.key === 'done' && {open}}));
     const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || [])}));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
     Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
@@ -289,8 +291,8 @@ export default {
     const out = [{hash: '#/today', key: 'today', load: async () => this.todayFrom(await this.readToday(), t => t)}];
     const p = this.projById.get(saved.get('project.last')) || this.favorites[0];
     if (p) out.push({hash: '#/project/' + p.id, key: viewKey({name: 'project', id: p.id}), load: async () => {
-      const open = doneOpen.all()[p.id], d = await this.readProject(p, open);
-      return {groups: [{key: 'open', cls: '', title: 'Open', tasks: d.list, heads: d.heads}, this.doneGroup(d.finished, d.count, open, t => t)],
+      const d = await this.readProject(p, false);         // Done's count only (keptGroups)
+      return {groups: [{key: 'open', cls: '', title: 'Open', tasks: d.list, heads: d.heads}, this.doneGroup(null, d.count, false, t => t)],
         project: d.project, listView: d.listView, positions: d.positions};
     }});
     if (this.checklistProjects.length) out.push({hash: '#/checklists', key: 'checklists', load: async () => ({checklists: await this.readChecklists(t => t)})});
@@ -376,7 +378,9 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [...d.tasks, ...d.read]) cache.set(t.id, t);
     const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.keep(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
-    if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
+    // Done's tasks over a copy that kept only its count (keptGroups) come as Done's do when it's opened, not faded in as new.
+    const shown = this.view.groups.find(g => g.key === 'done'), quiet = g => g.key === 'done' && shown && !shown.loaded;
+    if (!await this.settle(groups.flatMap(g => quiet(g) ? [] : g.tasks.map(t => t.id)), seq)) return;
     Object.assign(this.positions, d.positions);
     for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;   // a move made meanwhile
     Object.assign(this.view, {project: d.project, listView: d.listView, groups: this.keepMarked(groups)});
@@ -462,8 +466,8 @@ export default {
   saveProject(){
     const p = this.view.project;
     if (!p || this.route.name !== 'project') return;
-    const ids = this.view.groups.flatMap(g => g.tasks.map(t => t.id)).filter(id => id in this.positions);
-    saved.set(viewKey(this.route), {groups: this.view.groups, project: p, listView: this.view.listView, at: new Date().toISOString(),
+    const groups = keptGroups(this.view.groups), ids = groups.flatMap(g => g.tasks.map(t => t.id)).filter(id => id in this.positions);
+    saved.set(viewKey(this.route), {groups, project: p, listView: this.view.listView, at: new Date().toISOString(),
       positions: Object.fromEntries(ids.map(id => [id, this.positions[id]]))});
   },
   /* Load a newer Pocket if the server has one, when nothing would be lost by reloading; otherwise the next refresh or

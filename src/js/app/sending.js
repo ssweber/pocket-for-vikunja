@@ -6,7 +6,7 @@ import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
-import {listItems, nestSubtasks, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {keptGroups, listItems, nestSubtasks, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -221,7 +221,7 @@ export default {
     }
     // And in the copy kept for opening offline.
     const k = viewKey(this.route), s = saved.get(k);
-    if (placed && s) saved.set(k, {...s, groups: this.view.groups});
+    if (placed && s) saved.set(k, {...s, groups: keptGroups(this.view.groups)});
   },
   // The task a cut-off try added, if it got there: this title, in this project, added by you since that try, and not
   // one of the capture's other tasks or one Pocket added for another line.

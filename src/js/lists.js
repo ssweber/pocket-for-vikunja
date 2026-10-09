@@ -85,6 +85,10 @@ export const doneParentIds = (tasks, pid) => {
   for (const t of tasks) if (!t.done) for (const p of t.related_tasks?.parenttask || []) if (p.done && p.project_id === pid && !open.has(p.id)) out.add(p.id);
   return [...out];
 };
+/* A screen's groups as its copy is kept on the phone: a project's Done section with its count and not its tasks, which
+   are loaded when it's opened, as they are without a copy. Thousands of them would fill the phone's storage, and be
+   drawn again with the copy. */
+export const keptGroups = groups => groups.map(g => g.key === 'done' ? {...g, tasks: [], loaded: false, loading: false} : g);
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 /* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
    days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task

@@ -2,10 +2,12 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { doneParentIds, nestSubtasks, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { doneParentIds, keptGroups, nestSubtasks, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
+import views from '../../src/js/app/views.js';
+import tasks from '../../src/js/app/tasks.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z';                        // Vikunja's "no date"
@@ -130,4 +132,21 @@ test('templates marked done and their steps are left out, and in a project’s D
   app.checklistIds = new Set();
   assert.equal(app.withoutTemplates(list), list, 'no project for checklists: nothing to look at');
   localStorage.removeItem('pocket.saved.templates');
+});
+
+/* A project's copy kept on the phone (performance-plan, part 4): its Done section's count and not its tasks, which are
+   loaded when it's opened; and shown, its Done is open only if it's open now, not as it was when the copy was kept. */
+test('a project\'s kept copy has Done\'s count, not its tasks, and opens Done only if it\'s open now', () => {
+  const open = { key: 'open', tasks: [{ id: 1 }] }, done = { key: 'done', fold: true, open: true, loaded: true, count: 2, tasks: [{ id: 8 }, { id: 9 }] };
+  assert.deepEqual(keptGroups([open, done]), [open, { ...done, tasks: [], loaded: false, loading: false }]);
+  assert.equal(done.tasks.length, 2, 'the groups on screen are left as they are');
+  const app = component(views, tasks);
+  Object.assign(app, { projById: new Map([[5, { id: 5, title: 'Big' }]]), positions: {}, view: { groups: [] } });
+  const copy = { groups: [open, done], project: { id: 5 }, at: new Date().toISOString() };
+  app.showSaved({ name: 'project', id: 5 }, copy);
+  assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length]), [['open', undefined, 1], ['done', false, 0]], 'closed since: closed, none drawn');
+  localStorage.setItem('pocket.done.open', JSON.stringify({ 5: true }));
+  app.showSaved({ name: 'project', id: 5 }, { ...copy, groups: [open, { ...done, open: false }] });
+  assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length, g.loaded]), [['open', undefined, 1, undefined], ['done', true, 0, false]], 'open now: open, loaded afresh');
+  localStorage.removeItem('pocket.done.open');
 });
