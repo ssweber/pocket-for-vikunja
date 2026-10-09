@@ -36,8 +36,8 @@ long list makes thousands of sorts: 56% of the project screen's time.
   `scratchpad/perf/patch-alpine.mjs` is the version measured (9.9 s → 4.65 s); the dequeue part is new.
 - The patched file gets a new name (`alpine-3.17.4-pocket.1.min.js`, say): `sw.js` keeps the libraries by name, so a
   changed file under the old name would never reach an installed Pocket.
-- The patch is made by a script in `scripts/` from Alpine's published file, so it can be made again for a newer Alpine,
-  and `development.md` says so. It fails loudly if a piece it replaces isn't there.
+- Alpine's readable build is kept in `src/vendor/`, committed first as published and then patched in its own commit,
+  each change marked; `npm run build` minifies it into `pocket/app/`. An upgrade replaces the file and redoes the changes.
 - Later, the user's call: offer the fix to Alpine upstream.
 
 ## 2. Work done once, not per row
