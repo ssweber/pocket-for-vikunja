@@ -81,11 +81,14 @@ export const swipeEnd = (offset, width) => offset < -width * SIDES.delete.full ?
 /* A row swiped from its progress `start` (a done one from 100; null for a row whose progress isn't swiped, or one open
    on its Delete), put down at x and moved dx from where it rests (`base`: an open row's -DELETE_W), on a row `width`
    wide and a screen `screen` wide; `del`, whether it has a Delete; `one`: a parent's header, whose right side has no
-   stops of its own, only its full point (it opens the question about its open subtasks). Returns where its content is (`off`), the progress
+   stops of its own, only its full point (it opens the question about its open subtasks); `side`, the side it started
+   on ('right' or 'left', by its first sideways move): it stays there, so dragged back past where it started it stops at
+   the start, changing nothing, and never turns into the other side's job (user, 2026-10-09). Returns where its content is (`off`), the progress
    letting go would set (`pct`), and what letting go does (`to`): 'stop' (set it, spring back), 'done' or 'delete' (the
    full action), 'open' or 'shut' (in its Delete: stay open on its button, or go back). */
-export function swipeAt({start = null, dx, x, width, screen, del = false, base = 0, one = false}){
-  const d = base + dx;
+export function swipeAt({start = null, dx, x, width, screen, del = false, base = 0, one = false, side = null}){
+  const raw = base + dx, d = side === 'right' ? Math.max(0, raw) : side === 'left' ? Math.min(0, raw) : raw;
+  if (d === 0 && (side === 'right' || start > 0)) return {off: 0, pct: start, to: 'stop'};   // back where it started
   if (d > 0 || (start > 0 && d < 0)) {
     const up = d > 0, side = up ? SIDES.up : SIDES.down;
     const stops = start === null ? [] : up ? (one ? [100] : SNAPS.filter(p => p > start)) : SNAPS.filter(p => p < start).reverse();

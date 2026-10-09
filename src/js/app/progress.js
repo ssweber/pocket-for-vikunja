@@ -212,7 +212,7 @@ export default {
       if (s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); haptic('hold'); }, HOLD_MS);
     });
     // Where a row swiped `dx` is, and what letting go there does (swipeAt).
-    const at = (s, dx) => swipeAt({start: s.finish ? s.start : null, dx, x: g.x0, width: s.width ?? s.el.clientWidth, screen: innerWidth, del: !!s.swipe, base: s.swipe?.base || 0, one: !!s.one});
+    const at = (s, dx) => swipeAt({start: s.finish ? s.start : null, dx, x: g.x0, width: s.width ?? s.el.clientWidth, screen: innerWidth, del: !!s.swipe, base: s.swipe?.base || 0, one: !!s.one, side: g.side});
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
       if (!g || e.pointerId !== g.id) return;
@@ -227,11 +227,12 @@ export default {
         // down is a scroll.
         if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
         clearTimeout(g.timer); g.mode = way; sliding = true;
-        if (way === 'swipe') { g.ring = revealOf(s.slide || s.el); g.r = at(s, 0); g.red = null; }
+        // The side it starts on, by this first sideways move, is the side it stays on (an open row's: its Delete's).
+        if (way === 'swipe') { g.side = s.swipe?.base || dx < 0 ? 'left' : 'right'; g.ring = revealOf(s.slide || s.el); g.r = at(s, 0); g.red = null; }
       }
       if (g.mode === 'swipe') {
         const r = at(s, e.clientX - g.x0), red = RED.has(r.to);
-        // A row at 0% swiped right, then back past where it started: its stops give way to its Delete, or back.
+        // Its Delete (red) or its stops, as the side it started on has them.
         if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) shut(s.slide || s.el); g.red = red; }
         if (red) s.swipe.move(r); else g.ring.move(r);
         const feel = swipeFeel(g.r, r);
