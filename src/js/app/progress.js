@@ -1,9 +1,10 @@
 // What a finger does on a row (parent-tasks-plan, parts 1 and 1b): swiped, one mechanism with mirrored sides (swipeAt,
 // SIDES, in progress.js), each with one job, chosen as the swipe starts: right, its progress up, a full swipe done;
 // left, a row with progress, down, stopping at 0%; left, a row at 0%, its Delete, a full swipe deleted. Nothing changes
-// until it's let go. Held, then moved up or down, the row moves among its siblings, or on Today to another day (part
-// 4). Delete and moving only where the row's list allows them (rowGestures): Today's rows are deleted and carried to
-// another day, search's only deleted, a project's and a sheet's deleted and moved among their siblings. A task's sheet
+// until it's let go. Held, then moved up or down, the row moves among its siblings. Delete and moving only where the
+// row's list allows them (rowGestures): Today's and search's rows are only deleted, a project's and a sheet's deleted
+// and moved among their siblings. (Part 4's carry to another day on Today, `reschedule`, is off: no list gives it now.
+// Its code is kept, unreachable, for the ring that replaces it, plan 4b: rescheduleOf, carryOf, dropAt.) A task's sheet
 // leads with its own row, swiped as any (sheetRowGesture: parent-tasks-plan, 6b). A parent (a card's header, or a
 // parent's row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the
 // way, its ring's tap; left, its Delete.
@@ -406,8 +407,8 @@ export default {
       }};
   },
   /* What a row held does, where its list allows it: on a project's list and in a task's sheet, moved up or down, its
-     place among its siblings (reorderOf); on Today, carried to another day (rescheduleOf), a card's row lifting its
-     card. Search has no order of its own: nothing. */
+     place among its siblings (reorderOf); with `reschedule` (no list gives it now: plan 4b's ring will), carried to
+     another day (rescheduleOf), a card's row lifting its card. Today and search: nothing. */
   holdOf(t, row, sheet, can){
     if (can.has('reschedule')) { const card = row.closest('.day-card'); return card ? this.rescheduleOf(this.tasks[+card.dataset.id], card) : this.rescheduleOf(t, row); }
     return can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
@@ -490,7 +491,7 @@ export default {
     return r.finish || swipe ? {slide: head, swipe, ...r} : null;
   },
   // A card's heading held, where its list allows (data-gestures, as a row's): the card moved up or down among the tasks
-  // at the top of a project's list, as a row is (reorderOf); on Today, carried to another day (rescheduleOf).
+  // at the top of a project's list, as a row is (reorderOf); with `reschedule` (off for now), to another day.
   cardHold(card){
     const t = this.tasks[+card.dataset.id], can = allows(card);
     return !t ? null : can.has('reschedule') ? this.rescheduleOf(t, card) : can.has('reorder') ? this.reorderOf(t, card, false) : null;

@@ -79,11 +79,11 @@ test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who
 
 /* What a finger can do on a row, besides its progress, by the screen its list is on (parent-tasks-plan, part 1): a row
    acts the same everywhere, so every screen's rows are swiped to Delete; a hold moves a row on a project's list and in
-   a task's sheet, on Today it carries the row to another day (part 4), and search has no order of its own. The row
-   writes its list's options on itself, and the gesture code reads them there. */
-test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, and Today\'s to another day', () => {
+   a task's sheet, on Today nothing (part 4's carry to another day is off until the ring, plan 4b), and search has no
+   order of its own. The row writes its list's options on itself, and the gesture code reads them there. */
+test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, Today\'s and search\'s not', () => {
   const on = name => rowGestures({ depth: {}, ...screenRows(name) });
-  assert.equal(on('today'), 'delete reschedule');
+  assert.equal(on('today'), 'delete', 'Today: a hold does nothing');
   assert.equal(on('project'), 'delete reorder');
   assert.equal(on('search'), 'delete');
   assert.equal(on('checklists'), '', 'a screen that says nothing allows neither');
@@ -95,7 +95,7 @@ test('a row swiped or held: its Delete and its move only where its list allows t
   const app = component(progress), asked = [];
   Object.assign(app, { lines: {}, leaving: {}, canTick: () => true, canDelete: () => true, isRunTask: () => false, ringOf: () => null, rowRing: () => null, reorderOf: t => (asked.push(t.id), { start(){} }) });
   const row = gestures => ({ dataset: { gestures }, clientWidth: 360 }), t = { id: 5, percent_done: .25 };
-  const today = app.rowGesture(t, row(screenRows('today').delete ? 'delete' : ''), false);
+  const today = app.rowGesture(t, row(rowGestures({ depth: {}, ...screenRows('today') })), false);
   assert.ok(today.swipe, 'Today: swiped left past 0%, its Delete');
   assert.equal(today.reorder, null, 'not written as carried to another day: a hold does nothing');
   assert.equal(today.start, 25, 'its progress swipes from where it is');
@@ -330,7 +330,8 @@ test('who can see each project: how many besides you, kept on the phone, and loa
 });
 
 /* A hold on Today (parent-tasks-plan, part 4): a row or a card carried to another day; what Move all to today leaves
-   where it is, a hold leaves too, saying why in its place; one that can't be changed, nothing. */
+   where it is, a hold leaves too, saying why in its place; one that can't be changed, nothing. Off for now (no list
+   gives `reschedule`): kept for the ring that replaces the drag (plan 4b). */
 test('a row held on Today is carried to another day, but not one that repeats, a checklist, or a run, which say why', () => {
   const app = component(progress);
   Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, isRunTask: t => t.id === 4 });
