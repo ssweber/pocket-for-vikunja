@@ -57,7 +57,8 @@ function sections(){
   // Today's stacked cards (cards.js): a task of high priority with one subtask of five done and four open (one of them
   // yours), opened by its footer's More; a run with a step counting down; a run started from a template that came round, due
   // when it was; a task with one subtask open, so no footer; and one of 14, twelve done, of low priority
-  // (its ring's 12/14 set smaller, to fit). Their subtasks are in
+  // (its ring's 12/14 set smaller, to fit). Plain rows between them: two after the opened card, one after the run's
+  // tab, each a block of its own with its corners rounded where a card's gap or footer cuts the list. Their subtasks are in
   // the store, as Today keeps them. A run's heading reads as a task's: its name without the day it was started
   // (runWithoutDay), and when it's due at the right.
   const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
@@ -169,7 +170,8 @@ function sections(){
   const moved = task({title: 'Order the cups', due_date: dayAt(3, 0), priority: 2}), water = task({title: 'Water the plants', due_date: dayAt(0, 0), repeat_after: 86400});
   carries.push({spec: 'Said in its place: dropped on a day, “Moved to <day>” with Undo; a repeating task held, why it stays',
     groups: [carry('today', 'Today', [water, soon()]), carry('week', 'Next 7 days', [moved])], said: [[moved.id, 'moved'], [water.id, 'repeats']]});
-  return {parent, steps: runSteps(), sheets, carries, carrySubs: shedSubs, cards: [van2, opening, closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
+  return {parent, steps: runSteps(), sheets, carries, carrySubs: shedSubs, cards: [van2, task({title: 'Fix the other air con', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}), opening,
+    task({title: 'Order the milk', priority: 2}), closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
