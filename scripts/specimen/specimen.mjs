@@ -191,7 +191,7 @@ function sections(){
       task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, priya], comment_count: 3, repeat_after: 86400}),
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
     {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
-    {title: 'Checklist runs, as under Checklists, on a project’s list and in search: one row, who it’s for, and its ring for a tick, its steps done of all inside it (past 12 steps too)', depth: {}, tasks: [run, long]},
+    {title: 'Checklist runs, as under Checklists, on a project’s list and in search: one row, its ring for a tick, its steps done of all inside it (past 12 steps too), who it’s for as pictures in its slot, no line under it', depth: {}, tasks: [run, long]},
     {title: 'A run’s step counting down, with no 🔔 for the reminder Pocket gave it; a task’s reminder still to come has one', depth: {}, tasks: [timed,
       task({title: 'Call the plumber', reminders: [{reminder: at(5 * HOUR)}]})]},
     {title: 'A checklist’s step has a square box (a step you’ve claimed, on Today), a task or a subtask a round one', depth: {}, tasks: [stepRow, subRow]},
@@ -272,7 +272,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
     {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
   c.specimenSheets = [];
-  c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
+  c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenRunTops = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -315,6 +315,12 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.view.run = {run, steps: inRow, at: 4, last: null};
     // (from the step before the card's to the run's next steps; other ids, so the states above stay on their own rows)
     this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4, target: {step: true, after: 'Stack the trays', repeat: this.runView.step.title, canRepeat: true}};
+    /* A run's screen's top (app.html): its own row between Back and ⋯ (RUN_ROW), its ring the screen's (runRing, the run
+       above), who it's for in its slot: you; you and Priya; on a project only you can see, no slot. */
+    const top = this.view.run.run;
+    this.specimenRunTops = [{spec: 'For you', run: {...top, id: ++n, assignees: [me]}},
+      {spec: 'For you and Priya, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Front counter and the till · Oct 7'}},
+      {spec: 'On a project only you can see: no slot', run: {...top, id: ++n, project_id: 5, assignees: [me]}}];
     // Today's cards: their subtasks in the store, the van's opened by its footer's More.
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));

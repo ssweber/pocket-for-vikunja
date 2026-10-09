@@ -159,6 +159,19 @@
       <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
         <!-- include markup/step-card.html -->
       </div></template>
+      <!-- A run's screen's top (app.html, a copy of its .page-title): Back, the run's own row (task-row.html, RUN_ROW) in
+           the place its name had, and ⋯ -->
+      <div class="sec">A run’s screen’s top: its own row between Back and ⋯, its ring, its name, who it’s for in its slot</div>
+      <template x-for="top in specimenRunTops" :key="top.run.id"><div style="margin-bottom:12px">
+        <div class="note" style="margin:0" x-text="top.spec"></div>
+        <div class="page-title run-top">
+          <button class="icon-btn plain" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+          <div id="run-own"><template x-for="g in [RUN_ROW]" :key="0"><template x-for="t in [top.run]" :key="t.id">
+            <!-- include markup/task-row.html -->
+          </template></template></div>
+          <button class="icon-btn plain" aria-label="Run options"><svg class="i"><use href="#i-more"/></svg></button>
+        </div>
+      </div></template>
       <!-- A run's screen adding steps from the bottom box (app.html, capW 'ins'): the step on its card lit, two steps
            added after it, one after the other, a third waiting to send, and the line above the box naming the last,
            with Repeat (cap-target.html) -->
