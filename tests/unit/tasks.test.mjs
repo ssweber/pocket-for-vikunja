@@ -13,6 +13,17 @@ test('a task loaded again is the same object, as Vikunja has it now', () => {
   assert.deepEqual(first, { id: 1, title: 'Call Jo back', labels: [] }, 'a field Vikunja no longer gives is gone');
 });
 
+test('a task loaded again has only what changed written to it, so an unchanged row has nothing to do', () => {
+  const app = component(tasks), was = { id: 1, title: 'Call Jo', labels: [{ id: 3 }], related_tasks: { subtask: [{ id: 2, done: false }] }, pending: true };
+  const t = app.keep(was), written = [];
+  app.tasks[1] = new Proxy(t, { set(o, k, v){ written.push(k); o[k] = v; return true; }, deleteProperty(o, k){ written.push('-' + k); delete o[k]; return true; } });
+  app.keep({ id: 1, title: 'Call Jo', labels: [{ id: 3 }], related_tasks: { subtask: [{ id: 2, done: false }] } });
+  assert.deepEqual(written, ['-pending'], 'new lists, the same in them: left as they were');
+  app.keep({ id: 1, title: 'Call Jo', labels: [{ id: 3 }], related_tasks: { subtask: [{ id: 2, done: true }] } });
+  assert.deepEqual(written, ['-pending', 'related_tasks'], 'a subtask ticked, its parent’s `updated` as it was: written');
+  assert.equal(t.related_tasks.subtask[0].done, true);
+});
+
 test('a task kept is a copy: changing what was loaded leaves it alone', () => {
   const app = component(tasks), loaded = { id: 1, title: 'Call Jo' };
   app.keep(loaded).title = 'Changed on screen';

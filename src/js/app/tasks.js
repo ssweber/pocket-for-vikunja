@@ -3,17 +3,24 @@
    `cache` (util.js) is apart from it: Vikunja's last copy of each task, as it said it, which an Undo compares against
    and a failed save puts back. Not yet here: a task's sheet has a copy of its own (sheet.task), its subtasks are
    Vikunja's copies inside it, and a run's screen has its own steps (view.run). */
-import {cache} from '../util.js';
+import {cache, raw} from '../util.js';
 
 const forgotten = new Set();                     // tasks deleted this session, still in copies kept on the phone
+// A field as Vikunja gave it again: the same, a list or an object by what's in it (Vikunja writes them in one order).
+const same = (a, b) => a === b || (!!a && !!b && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
 
 export default {
-  // A task as Vikunja has it now, in place of what was kept of it (a list loaded again): the object its rows show.
+  /* A task as Vikunja has it now, in place of what was kept of it (a list loaded again): the object its rows show. Only
+     the fields that changed are written, so the row of a task that didn't change has nothing to do: a list or an object
+     from Vikunja is a new one each time, though nothing in it changed. (Not by its `updated` alone: a subtask ticked
+     leaves its parent's as it was, and its ring shows it.) */
   keep(t){
     const had = this.tasks[t.id];
     if (!had) { this.tasks[t.id] = {...t}; return this.tasks[t.id]; }
-    for (const k of Object.keys(had)) if (!(k in t)) delete had[k];
-    return Object.assign(had, t);
+    const was = raw(had);
+    for (const k of Object.keys(was)) if (!(k in t)) delete had[k];
+    for (const [k, v] of Object.entries(t)) if (!same(was[k], v)) had[k] = v;
+    return had;
   },
   /* Tasks from a copy kept on the phone (a screen shown before it's loaded): each the one on screen already, unless the
      kept copy is newer (loaded in the background since); none deleted since. */
