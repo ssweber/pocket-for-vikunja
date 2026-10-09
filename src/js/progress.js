@@ -13,7 +13,7 @@ export const undoing = extra => 'percent_done' in extra && !extra.done;
 export const progressPatch = (t, pct) => pct >= 100 ? {done: true, ...repeats(t) && {percent_done: 0}} : {percent_done: pct / 100};
 export const HOLD_MS = 450;                             // hold this long to pick a row up, to move it up or down
 
-/* ---------- swiping a row: its progress, then its Delete ---------- */
+/* ---------- progress in snaps ---------- */
 // Progress set by a swipe stops at these, the quarters: few enough that each is felt, as a tick, on the way.
 export const SNAPS = [0, 25, 50, 75, 100];
 export const EDGE = 48;                                 // px short of the screen's edge where 100% (or 0%) is reached
@@ -31,14 +31,15 @@ export const nextSnap = (pct, dir) => dir > 0 ? SNAPS.find(p => p > pct) ?? 100 
    isn't jumpy, but never more than the finger has before the edge: held near it, 100% (or 0%) is still reached, closer
    to the edge. */
 export function slidePct({start, dx, x, width, screen}){
-  const edge = dx > 0 ? screen - x : x, room = Math.max(edge - EDGE, Math.min(width * .25, edge * .75), 1);
+  const room = roomTo(dx > 0 ? screen - x : x, width);
   return snapPct(start, Math.max(0, Math.min(100, start + dx / room * (dx > 0 ? 100 - start : start))));
 }
+// The room a finger has, `edge` from the screen's edge it's going towards, on a row `width` wide (slidePct).
+const roomTo = (edge, width) => Math.max(edge - EDGE, Math.min(width * .25, edge * .75), 1);
 // Which way a finger went after a hold: once it's LOCK_PX away, 'x' (nothing: a hold only moves a row) or 'y'
 // (moving it); null until then.
 export const lockDirection = (dx, dy) => Math.hypot(dx, dy) < LOCK_PX ? null : Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
 
-export const DELETE_W = 88;                             // px: the Delete button a row slides aside for
 export const SWIPE_PX = 8;                              // moved this far before the hold, a finger is scrolling or swiping
 export const SWIPE_SLOPE = 1.2;                         // a swipe is this much more sideways than up or down (within ~40°)
 export const EDGE_GUARD = 24;                           // a swipe starting this close to the screen's edge is the phone's (Back)
@@ -48,21 +49,64 @@ export const EDGE_GUARD = 24;                           // a swipe starting this
    Which way it can go is the row's (holdToSlide, app/progress.js). */
 export const swipeStarts = (dx, dy, x0, screen, open = false) => Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_SLOPE
   && (open || (x0 > EDGE_GUARD && x0 < screen - EDGE_GUARD));
+
+/* ---------- swiping a row: one mechanism, two mirrored sides (parent-tasks-plan, 1b) ----------
+   A row swiped either way works the same: its content moves with the finger, the space it uncovers shows what letting
+   go there does, and nothing changes until it's let go. Each side has
+   - its stops: the quarters of progress on the way, from where it is, a tick felt at each. They're at most `gap` px
+     apart, and all within `stops` of the row's width (less put down too near the screen's edge to get that far:
+     slidePct's room, so the last is always within reach). The last is where progress runs out: 100% or 0%.
+   - its full point, `full` of the row's width: let go past it, the full action, the row carrying on off the screen and
+     leaving a gap at its height, with Undo or Restore (sweep, app/progress.js).
+   - what's past its last stop: right, 100% is done, the full action, so its stops end at its full point; left, 0%,
+     then the row's Delete (if it has one, else it stops there), open on its button, `open` px wide, if let go there
+     (or shut, under a third of it).
+   Let go on a stop, that progress is set and the row springs back, its tick showing it.
+   What's uncovered (styles.css, "Swiped"): right, green, with a large ring, the tick's shape, filling a quarter at a
+   time, then solid with its ✓ past the full point; left, the ring on green, emptying, then the red Delete.
+   To tune either side, change its numbers here: */
+export const SIDES = {
+  right: {gap: Infinity, full: .5},                     // progress up: 25, 50, 75 spread over the first half; done past it
+  left: {gap: QUARTER_PX, stops: 1 / 3, full: .5, open: 88},   // progress down a finger each, in the first third; Delete
+};
+export const DELETE_W = SIDES.left.open;                // px: the Delete button a row slides aside for, and rests open on
 // How far a row `width` wide is moved aside, `dx` from where it rests: with the finger, to the left only.
 export const swipeOffset = (dx, width) => Math.max(-width, Math.min(0, dx));
-/* Let go at `offset`: past half the row's width, it's deleted straight away (a full swipe, as on a phone's mail);
-   past a third of the Delete button, it stays open on it; else it goes back. */
-export const swipeEnd = (offset, width) => offset < -width / 2 ? 'delete' : offset < -DELETE_W / 3 ? 'open' : 'shut';
-/* A row swiped from its progress `start` (a done one from 100), put down at x and moved dx: progress and Delete are
-   one track. To the right, progress goes up (slidePct: the room is the rest of the way to the screen's edge, so 100% is
-   always within reach), a done row staying done. To the left, it goes down a quarter each QUARTER_PX (closer together
-   put down near the left edge, so 0% is still reached), and past 0%, a row that can be deleted (`del`) carries on into
-   its Delete: `off`, how far it's moved aside (swipeOffset), measured from where 0% was reached. */
-export function trackAt({start, dx, x, width, screen, del = false}){
-  if (dx >= 0) return {pct: start >= 100 ? 100 : slidePct({start, dx, x, width, screen}), off: 0};
-  const reach = start > 0 ? Math.min(start / 25 * QUARTER_PX, Math.max(x - EDGE, Math.min(width * .25, x * .75), 1)) : 0;
-  if (-dx < reach) return {pct: snapPct(start, start + dx / reach * start), off: 0};
-  return {pct: 0, off: del ? swipeOffset(dx + reach, width) : 0};
+/* Let go at `offset`, in its Delete: past the left side's full point, deleted straight away (a full swipe, as on a
+   phone's mail); past a third of the Delete button, it stays open on it; else it goes back. */
+export const swipeEnd = (offset, width) => offset < -width * SIDES.left.full ? 'delete' : offset < -SIDES.left.open / 3 ? 'open' : 'shut';
+/* A row swiped from its progress `start` (a done one from 100; null for a row whose progress isn't swiped, or one open
+   on its Delete), put down at x and moved dx from where it rests (`base`: an open row's -DELETE_W), on a row `width`
+   wide and a screen `screen` wide; `del`, whether it has a Delete. Returns where its content is (`off`), the progress
+   letting go would set (`pct`), and what letting go does (`to`): 'stop' (set it, spring back), 'done' or 'delete' (the
+   full action), 'open' or 'shut' (in its Delete: stay open on its button, or go back). */
+export function swipeAt({start = null, dx, x, width, screen, del = false, base = 0}){
+  const right = base + dx > 0, side = right ? SIDES.right : SIDES.left;
+  const stops = start === null ? [] : right ? SNAPS.filter(p => p > start) : SNAPS.filter(p => p < start).reverse();
+  const n = stops.length, gap = n ? Math.min(side.gap, (side.stops ?? side.full) * width / n, roomTo(right ? screen - x : x, width) / n) : 0;
+  const dist = Math.min(Math.abs(base + dx), width), at = i => i ? stops[i - 1] : start;
+  if (right) {
+    if (!n) return start === null ? {off: 0, pct: null, to: 'shut'} : {off: 0, pct: start, to: 'stop'};   // nothing that way
+    const i = Math.floor(dist / gap);
+    return i >= n ? {off: dist, pct: 100, to: 'done'} : {off: dist, pct: at(i), to: 'stop'};
+  }
+  if (dist < n * gap) return {off: -dist, pct: at(Math.floor(dist / gap)), to: 'stop'};
+  if (!del) return {off: -n * gap, pct: at(n), to: 'stop'};
+  return {off: -dist, pct: start === null ? null : 0, to: swipeEnd(-dist, width)};
+}
+/* What's felt as a swipe goes from `was` to `now` (swipeAt's): a stronger tick on reaching the full point, a tick on
+   each stop passed and on reaching its Delete's button. */
+export const swipeFeel = (was, now) => now.to === 'done' || now.to === 'delete' ? (was.to !== now.to ? 'done' : null)
+  : now.to === 'open' ? (was.to !== 'open' ? 'tick' : null)
+  : now.to === 'stop' && now.pct !== was.pct ? 'tick' : null;
+/* The sheet's bar swiped from its progress `start` (a done task from 100), put down at x and moved dx: it shows as it
+   goes, being the bar itself. To the right, up (slidePct: the room is the rest of the way to the screen's edge, so
+   100% is always within reach), done staying done; to the left, down a quarter each QUARTER_PX (closer together put
+   down near the left edge, so 0% is still reached). */
+export function trackAt({start, dx, x, width, screen}){
+  if (dx >= 0) return start >= 100 ? 100 : slidePct({start, dx, x, width, screen});
+  const reach = start > 0 ? Math.min(start / 25 * QUARTER_PX, roomTo(x, width)) : 0;
+  return -dx < reach ? snapPct(start, start + dx / reach * start) : 0;
 }
 // Whether a swipe that way (dx) changes a row's progress, from `start`: not up from done, nor down from 0%.
 export const trackMoves = (start, dx) => dx > 0 ? start < 100 : start > 0;

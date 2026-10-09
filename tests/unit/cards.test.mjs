@@ -219,9 +219,9 @@ test('a finger on a card: its row swiped is that subtask’s slide, which keeps 
   const app = component(progress), pinned = [], finished = [];
   Object.assign(app, { tasks: { 10: { id: 10 } }, cardOf: () => ({ id: 10 }), pinCard: c => pinned.push(c.id) });
   const card = (cls = '') => ({ dataset: { id: '10' }, matches: sel => sel.split(', ').some(c => cls.includes(c.slice(1))) });
-  const s = { el: 'row', start: 0, show(){}, finish: pct => finished.push(pct) };
+  const s = { el: 'row', start: 0, finish: pct => finished.push(pct) };
   const g = app.cardGesture(card(), s);
-  assert.ok(g.show, 'its slide');
+  assert.equal(g.start, 0, 'its swipe');
   g.finish(null); g.finish(50);
   assert.deepEqual([pinned, finished], [[10], [null, 50]], 'pinned only by a slide that changed something');
   assert.deepEqual(app.cardGesture(card(), null), { el: null, reorder: null }, 'its heading: a swipe does nothing, not even a tap');

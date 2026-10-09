@@ -1,11 +1,11 @@
 /* Done and deleted, in place: a row ticked done, not done again, or deleted keeps its height and its place until the
    batch clears (batch.js), so nothing moves under a finger; then every row waiting goes at once, and the rows below
    close up once. Meanwhile the mark can be taken back from the row itself: its tick opens it again (or ticks it again),
-   and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it. So it needs no Undo of its
-   own. What happens when the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done
-   in search and a project, a repeating task shows its next date, a deletion is sent (held in the outbox until then:
-   holdDelete). Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from
-   #said. */
+   and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it; a row done by a
+   full swipe is the same gap, holding Undo (`gap`, kept in `swept`). So it needs no Undo of its own. What happens when
+   the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
+   project, a repeating task shows its next date, a deletion is sent (held in the outbox until then: holdDelete).
+   Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from #said. */
 import {app} from '../util.js';
 import {batchTimer} from '../batch.js';
 
@@ -43,10 +43,13 @@ export default {
   /* Task `id`'s row marked, until the batch clears: {kind: 'done', 'open' (not done again) or 'deleted'; ids: the rows
      shown with it (the subtasks closed with a task, or deleted with it); out: those that leave when it clears (all of
      them unless said; a function, to be worked out then); undo: what its tick (or Restore) does meanwhile; gone: what's
-     done when it clears; said: for a screen reader}. A row marked again keeps only the new mark. */
-  markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = ''}){
+     done when it clears; said: for a screen reader; gap: done by a full swipe, its row (`id`'s, not those shown with it)
+     a gap at its height holding "Done" and Undo, as a deleted one's holds Restore}. A row marked again keeps only the
+     new mark. */
+  markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = '', gap = false}){
     const {marks, batch} = of(this), m = {id, kind, ids, out, undo, gone, going: false};
     for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); this.leaving[x] = kind; }
+    if (gap) this.swept[id] = true;
     if (said) this.said = said;
     batch.mark();
   },
@@ -63,16 +66,18 @@ export default {
     this.said = m.kind === 'deleted' ? 'Restored: ' + title : m.kind === 'done' ? 'Not done: ' + title : 'Done: ' + title;
     return m.undo?.() || true;
   },
-  // A deleted row's gap tapped: restored (unmark), its rows sliding back in from the left, where the delete took them.
+  /* A gap tapped: a deleted row restored (unmark), its rows sliding back in from the left, where the delete took them;
+     a row done by a full swipe not done again, sliding back in from the right. */
   restoreRow(id){
-    const m = of(this).marks.get(id), els = m && !m.going && motion() ? rowsOf(m.ids) : [], r = this.unmark(id);
-    for (const el of els) el.animate([{transform: `translateX(${-el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
+    const m = of(this).marks.get(id), back = m?.kind === 'deleted' ? -1 : 1;
+    const els = m && !m.going && motion() ? back < 0 ? rowsOf(m.ids) : [...document.querySelectorAll(`.row[data-id="${id}"]`)] : [], r = this.unmark(id);
+    for (const el of els) el.animate([{transform: `translateX(${back * el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
     return r;
   },
   // A mark taken off its rows (or off row `only`); with none left waiting, the batch has nothing to clear.
   dropMark(m, only){
     const {marks, batch} = of(this);
-    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; }
+    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; delete this.swept[x]; }
     if (only !== undefined) m.ids = m.ids.filter(x => x !== only);
     if (!marks.size) batch.stop();
   },

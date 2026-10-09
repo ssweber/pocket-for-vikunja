@@ -227,11 +227,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 :is(.row,#d-subtasks) :is(input,textarea){-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 /* Progress is drawn in the tick (parent-tasks-plan, part 1), not under the row: a pie filling clockwise from the top,
    a quarter at a time as a swipe sets it (--pct, from the row), inside the ring with a gap, so part done never reads as
-   done, which fills it whole with its ✓. While it's swiped (--slide), the pie follows the finger, a done row's too as
-   it's opened again, and the row fills like a volume bar, its percentage showing (below). */
+   done, which fills it whole with its ✓. It changes once the swipe is let go: meanwhile what it'll be shows beside the
+   row (.row-prog, below). */
 .row:not(.done) > button.check{background:conic-gradient(var(--accent) calc(var(--pct,0) * 1turn),transparent 0) content-box}
-.row.setting:not(.full) > button.check{background:conic-gradient(var(--accent) calc(var(--slide) * 1turn),transparent 0) content-box;border-color:var(--muted)}
-.row.setting:not(.full) > button.check svg{opacity:0}
 /* A run's line, along its row's bottom edge: a segment per step (--segs), each filled by whether its step is done
    (--fill, from runLine), on a faint track (all of it, with no steps). Past 12 steps (runLine), one line with a small
    tick above it at each step, each step's stretch filled the same way. Its steps are its progress: it isn't swiped. */
@@ -242,43 +240,66 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.cl-run.many-steps::after{-webkit-mask:none;mask:none;height:7px;background:
   repeating-linear-gradient(to right,transparent 0 calc(100% / var(--segs) - 1px),var(--muted) 0 calc(100% / var(--segs))) 0 0/calc(100% + 1px) 4px no-repeat,
   var(--fill,linear-gradient(var(--track),var(--track))) 0 100%/100% 3px no-repeat}
-.row.setting{background:linear-gradient(to right,var(--surface) var(--row-inset),var(--accent-soft) 0 calc(var(--row-inset) + var(--slide) * (100% - var(--row-inset))),var(--surface) 0)}
-.row.current.setting{background:linear-gradient(to right,var(--accent-fill) calc(var(--slide) * 100%),var(--accent-soft) 0)}
-.row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
-/* swiped on the right half, the percentage moves to the left, clear of the thumb; on the right, it stays clear of
-   who's doing it, which a swipe on a task no one is doing turns into you (claimOnSlide) */
-.row.setting:has(> .claim)::before{right:80px}
-.row.setting[data-side=left]::before,.d-head.setting[data-side=left]::before{right:auto;left:12px}
-/* Held, to be moved, the row lifts. Swiped, at each snap the percentage pulses (the tick, seen), and at 100% the tick
-   fills, with its ✓ */
+.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
+/* the sheet's bar swiped on the right half: the percentage moves to the left, clear of the thumb */
+.d-head.setting[data-side=left]::before{right:auto;left:12px}
+/* Held, to be moved, the row lifts; swiped and let go, it springs back (with less motion, it's only back). The sheet's
+   bar swiped: at each snap the percentage pulses (the tick, seen), and at 100% the tick fills, with its ✓ */
 .row{transition:box-shadow .15s,transform .2s ease}
+@media (prefers-reduced-motion:reduce){.row{transition:box-shadow .15s}}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
 /* Moved up or down after the hold: the held row, and its subtasks with it, follow the finger above the rows making room */
 .row.dragged{z-index:3;transition:box-shadow .15s;background:var(--surface)}
-.row.setting[data-tick=a]::before,.d-head.setting[data-tick=a]::before{animation:pct-a .22s ease-out}
-.row.setting[data-tick=b]::before,.d-head.setting[data-tick=b]::before{animation:pct-b .22s ease-out}
+.d-head.setting[data-tick=a]::before{animation:pct-a .22s ease-out}
+.d-head.setting[data-tick=b]::before{animation:pct-b .22s ease-out}
 @keyframes pct-a{40%{scale:1.15}}
 @keyframes pct-b{40%{scale:1.15}}
 .setting.full button.check{background:var(--accent);border-color:var(--accent);animation:check-pop .32s ease-out}
 .setting.full button.check svg{opacity:1}
 @keyframes check-pop{0%{scale:.7}55%{scale:1.2}100%{scale:1}}
 @media (prefers-reduced-motion:reduce){.setting::before,.setting button.check{animation:none!important}}
-/* Swiped left past 0%, the row moves aside for its Delete, which comes in from its end. A row can be swiped sideways without
-   the page taking the move for a scroll. */
+/* Swiped (parent-tasks-plan, 1b): one mechanism, two mirrored sides (SIDES, progress.js). Nothing on the row changes
+   until it's let go: its content moves with the finger (--swipe), and the space it uncovers, the row's full height and
+   width whatever its indent, shows what letting go there does. Its stops (.row-prog, made by the swipe, revealOf): a
+   large ring, the tick's shape (square for a step), on green, filling a quarter at a time to the right, emptying to the
+   left, pulsing at each; past the right side's full point, the green solid, the ring full with its ✓. Past 0% to the
+   left, the Delete instead (.row-del), which comes in from the row's end. A row can be swiped sideways without the page
+   taking the move for a scroll. */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
-.row.swiping,.row.swiped{transform:translateX(var(--swipe,0px))}
-.row.swiping{transition:none}
-#d-subtasks:has(> .swiping,> .swiped){overflow-x:clip}
+.row.swiping,.row.swiped,.row.revealing{transform:translateX(var(--swipe,0px))}
+.row.swiping,.row.revealing{transition:none}
+#d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow-x:clip}
+.row-prog{position:absolute;top:0;bottom:0;overflow:hidden;background:var(--accent-soft);pointer-events:none}
+.row-prog[data-side=left]{right:100%}
+.row-prog[data-side=right]{left:100%}
+/* the ring stays where it's uncovered, by the list's edge, rather than following the row: close to it, so it's in
+   sight by the first stop */
+.row-prog .ring{position:absolute;top:50%;width:36px;height:36px;margin-top:-18px;padding:4px;border:3px solid var(--accent);border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
+.row-prog[data-side=left] .ring{left:10px}
+.row-prog[data-side=right] .ring{right:10px}
+.row-prog.sq .ring{border-radius:10px}
+.row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
+.row-prog[data-tick=a] .ring{animation:pct-a .22s ease-out}
+.row-prog[data-tick=b] .ring{animation:pct-b .22s ease-out}
+/* at 100% (a done row swiped left, before its first stop), the ring is a done tick: filled, with its ✓ */
+.row-prog[data-pct="100"]:not(.full) .ring{background:var(--accent)}
+.row-prog[data-pct="100"]:not(.full) .ring svg{opacity:1;stroke:var(--accent-ink)}
+.row-prog.full{background:var(--accent)}
+.row-prog.full .ring{border-color:var(--accent-ink);background:var(--accent-ink);animation:check-pop .32s ease-out}
+.row-prog.full .ring svg{opacity:1}
+@media (prefers-reduced-motion:reduce){.row-prog .ring{animation:none!important}}
 .row-del{display:none;position:absolute;top:0;bottom:0;left:100%;width:max(88px,calc(-1 * var(--swipe,0px)));border:0;background:var(--danger);color:var(--danger-ink);font-size:15px;font-weight:700;align-items:center;justify-content:center}
 .row-del:focus-visible{outline-color:var(--danger-ink);outline-offset:-6px}
 .row.swiping .row-del,.row.swiped .row-del{display:flex}
 /* past half the row, a full swipe: let go, it's deleted; the Delete fills what the row left, its word by the finger */
 .row.swipe-full .row-del{justify-content:flex-start;padding-left:28px}
-/* Deleted, until the batch clears (leaving.js): gone from its place, which stays, at its height, so nothing moves: a
-   gap holding only "Deleted", in muted words, and Restore where who's doing it was, the same shape as "+ me" */
-.row.deleted > :not(.del-gap),.row.deleted::after{visibility:hidden}
-.del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:calc(14px + var(--depth,0) * 38px);background:var(--sunk);color:var(--muted);font-size:14.5px}
-.row:not(.sub) > .del-gap{padding-left:14px}
+/* Deleted, or done by a full swipe, until the batch clears (leaving.js): gone from its place, which stays, at its
+   height, so nothing moves: a gap holding only "Deleted" or "Done", in muted words, from the row's edge whatever its
+   indent, and Restore or Undo where who's doing it was, the same shape as "+ me". (What the swipe uncovered stays
+   while the row carries on off the screen: sweep.) */
+.row:is(.deleted,.swept) > :not(.del-gap,.row-del,.row-prog),.row:is(.deleted,.swept)::after{visibility:hidden}
+.del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14.5px}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}

@@ -92,7 +92,7 @@ test('a row swiped or held: its Delete and its move only where its list allows t
   assert.deepEqual(asked, [5]);
   const done = app.rowGesture({ id: 6, done: true, percent_done: .5 }, row('delete'), false);
   assert.equal(done.start, 100, 'a done row swipes down from 100%, opened again on the way');
-  assert.ok(done.show && done.swipe);
+  assert.ok(done.finish && done.swipe);
   assert.equal(app.rowGesture({ id: 7, pending: true }, row(''), false), null, 'one waiting to be sent: only its tap');
 });
 
@@ -122,6 +122,22 @@ test('a done step swiped down is not done again first, then at that progress; as
   assert.deepEqual(sent, [], 'someone else\'s ✅ kept: nothing sent');
   await app.stepProgress(step({}), 50);
   assert.deepEqual(sent, [['progress', 50]], 'an open step: only its progress');
+});
+
+/* A step swiped right past half its row is done (parent-tasks-plan, 1b), through the outbox, and its row a gap holding
+   Undo until the batch clears, as a task's row is; Undo unticks it. The batch over, it's done in its place. */
+test('a step done by a full swipe: its row a gap with Undo, which unticks it; the batch over, done in its place', async c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = component(runs, leaving), sent = [];
+  Object.assign(app, { tickStep: async (s, op) => { sent.push(op); } });
+  await app.stepProgress(step({ id: 4, title: 'Wipe the tables' }), 100);
+  assert.deepEqual([sent, app.swept, app.leaving], [['done'], { 4: true }, { 4: 'done' }]);
+  assert.equal(app.said, 'Done: Wipe the tables');
+  await app.unmark(4);
+  assert.deepEqual([sent, app.swept], [['done', 'undone'], {}], 'Undo: not done, the gap gone');
+  await app.stepProgress(step({ id: 4, title: 'Wipe the tables' }), 100);
+  await app.clearBatch(true);
+  assert.deepEqual([app.swept, app.leaving], [{}, {}], 'the batch over: no gap, the step done in its place');
 });
 
 /* Progress slid on a row no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture as the

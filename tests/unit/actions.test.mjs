@@ -193,6 +193,31 @@ test('progress taken to 100% marks the task done, and its tick again puts back t
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.4]);
 });
 
+/* A full swipe right is done (parent-tasks-plan, 1b): the row carries on off the screen and leaves a gap at its height
+   holding "Done" and Undo, the same mark as a tick's, so Undo is the tick's undo; it closes with the batch. In a sheet,
+   a subtask's row is the gap until then, and done in its place after. */
+test('a full swipe is done, its row a gap with Undo until the batch clears, and Undo puts back the progress it had', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c);
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
+  await app.setProgress(app.tasks[1], 100, ROW, { gap: true });
+  assert.deepEqual([app.leaving, app.swept, v.task(1).done], [{ 1: 'done' }, { 1: true }, true]);
+  await app.unmark(1);
+  assert.deepEqual([app.leaving, app.swept], [{}, {}]);
+  assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.5 }], 'Undo: open, at the progress it had');
+  await app.setProgress(app.tasks[1], 100, ROW, { gap: true });
+  await app.toggleDone(app.tasks[2], ROW);
+  assert.deepEqual(app.swept, { 1: true }, 'a tick leaves its row ticked in place, no gap');
+  await app.clearBatch(true);
+  assert.deepEqual([app.view.groups[0].tasks, app.swept], [[], {}], 'both gone with the batch');
+  // A subtask in its parent's sheet: the gap, then done where it is.
+  v.tasks.set(3, { id: 3, title: 'Prime it', done: false });
+  const inSheet = { id: 3, title: 'Prime it', done: false };
+  await app.setProgress(inSheet, 100, null, { sub: true, gap: true });
+  assert.deepEqual([app.swept, app.leaving], [{ 3: true }, { 3: 'done' }]);
+  await app.clearBatch(true);
+  assert.deepEqual([app.swept, inSheet.done], [{}, true]);
+});
+
 test('progress below 100% is saved as it is, shown on its bar alone; not saved, it goes back and its row says so', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]), app = component(tasks, actions);
   const t = app.keep(v.task(1));

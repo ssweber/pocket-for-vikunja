@@ -757,14 +757,15 @@ export default {
     }
     this.said = `Not repeated: ${title}`;
   },
-  /* A step's progress, swiped on its row as a task's is: through the outbox, as a tick is. 100% is done, with its ✅, as
-     Done is; a done step swiped down is not done again first, then at that progress. `undoing`: putting back what it
-     was. */
+  /* A step's progress, swiped on its row as a task's is: through the outbox, as a tick is. 100%, a full swipe, is done,
+     with its ✅, as Done is, its row a gap holding Undo, which unticks it, until the batch clears (markRow, leaving.js),
+     then done in its place; a done step swiped down is not done again first, then at that progress. `undoing`: putting
+     back what it was. */
   async stepProgress(s, pct, undoing = false){
     if (s.done && pct < 100 && !undoing && await this.tickStep(s, 'undone') === false) return;
     if (pct >= 100 && !undoing) {
       await this.tickStep(s, 'done');
-      this.say(`Done: ${s.title}`, {place: 'step', action: {label: 'Undo', fn: () => this.tickStep(s, 'undone')}});
+      this.markRow(s.id, {kind: 'done', out: [], gap: true, said: `Done: ${s.title}`, undo: () => this.tickStep(s, 'undone')});
       return;
     }
     // Below 100%, on its row only, as a task's: its bar is what was set, and sliding it back is the undo.

@@ -1,8 +1,9 @@
-// What a finger does on a row (parent-tasks-plan, part 1): swiped right, its progress goes up, and a full swipe is done
-// (also on the sheet's bar); swiped left, it goes down, and past 0% on into the row's Delete, one track (trackAt); held,
-// then moved up or down, the row moves among its siblings. Delete and moving only where the row's list allows them
-// (rowGestures): Today's rows are deleted but not moved, search's the same, a project's and a sheet's both.
-import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, swipeEnd, SWIPE_PX, SWIPE_SLOPE, swipeOffset, swipeStarts, trackAt, trackMoves} from '../progress.js';
+// What a finger does on a row (parent-tasks-plan, parts 1 and 1b): swiped, one mechanism with two mirrored sides
+// (swipeAt, SIDES, in progress.js): right, its progress up, a full swipe done; left, down, and past 0% on into its
+// Delete, a full swipe deleted; nothing changing until it's let go. Held, then moved up or down, the row moves among its
+// siblings. Delete and moving only where the row's list allows them (rowGestures): Today's rows are deleted but not
+// moved, search's the same, a project's and a sheet's both. The sheet's bar is swiped for its progress too (trackAt).
+import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackAt, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {store} from '../util.js';
@@ -27,23 +28,18 @@ const shut = (row = opened) => {
   row.classList.remove('swiping', 'swiped', 'swipe-full'); row.style.removeProperty('--swipe');
   if (opened === row) opened = null;
 };
-/* A row swiped left past 0% (trackAt), as on a phone's mail: it moves with the finger, from where it rests or, open,
-   from its Delete. Let go a third of the way across the Delete button, it stays open on it; past half the row, the
-   Delete fills it, a tick is felt, and letting go there deletes it (`remove`, which carries it on off the screen:
-   sweep); back under half, it doesn't. The Delete isn't in the page's tab order until it's shown: a keyboard or a
-   screen reader deletes from the task's ⋯ instead. */
+// What's uncovered as a row is swiped (swipeAt's `to`): its Delete, red, or its stops, the ring on green.
+const RED = new Set(['shut', 'open', 'delete']);
+/* A row's Delete, uncovered as it's swiped left past 0%, as on a phone's mail: the row moves with the finger, from
+   where it rests or, open, from its Delete (`base`). Let go a third of the way across the Delete button, it stays open
+   on it; past the left side's full point, the Delete fills what the row left, and letting go there deletes it
+   (`remove`, which carries it on off the screen: sweep). The Delete isn't in the page's tab order until it's shown: a
+   keyboard or a screen reader deletes from the task's ⋯ instead. */
 const swipeOf = (row, remove) => ({
   base: opened === row ? -DELETE_W : 0,
   begin(){ if (opened !== row) shut(); row.classList.add('swiping'); },
-  move(dx){
-    const w = row.clientWidth, to = swipeEnd(swipeOffset(this.base + dx, w), w);
-    row.style.setProperty('--swipe', swipeOffset(this.base + dx, w) + 'px');
-    row.classList.toggle('swipe-full', to === 'delete');
-    if (to !== this.to && this.to !== undefined && to !== 'shut') haptic(to === 'delete' ? 'done' : 'tick');
-    this.to = to;
-  },
-  end(dx){
-    const to = dx === null ? 'shut' : swipeEnd(swipeOffset(this.base + dx, row.clientWidth), row.clientWidth);
+  move({off, to}){ row.style.setProperty('--swipe', off + 'px'); row.classList.toggle('swipe-full', to === 'delete'); },
+  end(to){
     if (to === 'delete') { remove(); return; }            // from where the finger left it (sweep)
     row.classList.remove('swiping', 'swipe-full');
     if (to !== 'open') { shut(row); return; }
@@ -51,29 +47,64 @@ const swipeOf = (row, remove) => ({
   },
 });
 
+/* A row's stops, uncovered as it's swiped for its progress, either way: a large ring, the tick's shape, filling (right)
+   or emptying (left) a quarter at a time, pulsing at each, the tick seen where it can't be felt; past the right side's
+   full point, full with its ✓, the green solid. The space is the whole row's height, from the list's edge whatever the
+   row's indent. It's an element of its own, made as the swipe starts and gone once the row is back, so a list's rows
+   don't each carry one. (The specimen draws its stills with it.) */
+const BACK_MS = 150, SPRING_MS = 200;                    // the row's own transition back: .row, styles.css
+export const revealOf = row => {
+  let el = null;
+  return {
+    move({off, pct, to}){
+      if (!el) {
+        el = document.createElement('span'); el.className = 'row-prog'; el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = '<span class="ring"><svg class="i"><use href="#i-check"/></svg></span>';
+        el.classList.toggle('sq', !!row.querySelector(':scope > .check.sq'));
+        row.append(el);
+      }
+      row.classList.add('revealing'); row.style.setProperty('--swipe', off + 'px');
+      if (el.dataset.pct && el.dataset.pct !== String(pct)) el.dataset.tick = el.dataset.tick === 'a' ? 'b' : 'a';
+      el.dataset.pct = pct; el.dataset.side = off > 0 ? 'left' : 'right'; el.classList.toggle('full', to === 'done');
+      el.style.width = Math.abs(off) + 'px'; el.style.setProperty('--ring', pct / 100);
+    },
+    // Back in its place: it springs back (.row's transition), the space shrinking with it, then goes.
+    back(){
+      row.classList.remove('revealing'); row.style.removeProperty('--swipe');
+      const was = el; el = null;
+      if (was) { was.classList.add('going'); setTimeout(() => was.remove(), SPRING_MS + 50); }   // (not the next swipe's)
+    },
+    // Gone at once: past 0%, its Delete takes the space (swipeOf).
+    drop(){ el?.remove(); el = null; row.classList.remove('revealing'); },
+  };
+};
+
 /* A row deleted by a full swipe, or its Delete tapped, follows through: it carries on to the left, off the screen, the
    red filling the row behind it, and doesn't come back. Its place stays, at its height, as a gap (removeTask,
-   `removing`, marks it meanwhile: task-row.html), the red fading into it, holding only "Deleted" and Restore. Only its
-   content moves, so nothing around it does. With less motion asked for, it only changes. Resolves to what `removing`
-   did: not deleted after all (a question about its subtasks said no), the row fades back in. */
-const SWEEP_MS = 200, BACK_MS = 150;
-async function sweep(row, removing){
+   `going`, marks it meanwhile: task-row.html), the red fading into it, holding only "Deleted" and Restore. A full swipe
+   right (`right`) is done the same way: on off to the right, the green filling the row, a gap with "Done" and Undo
+   (setProgress, `gap`). Only its content moves, so nothing around it does. With less motion asked for, it only
+   changes. Resolves to what `going` did: not deleted after all (a question about its subtasks said no), or no gap (a
+   tick not saved), the row fades back in. */
+const SWEEP_MS = 200;
+async function sweep(row, going, right = false){
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
-  const del = row.querySelector(':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
-  const moving = del && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  row.classList.add('swiping', 'swipe-full');
-  // The row's offset and the red's width move together, so the red always reaches the list's edge.
+  const fill = row.querySelector(right ? ':scope > .row-prog:not(.going)' : ':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
+  const moving = fill && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!right) row.classList.add('swiping', 'swipe-full');
+  // The row's offset and the fill's width move together, so the fill always reaches the list's edge.
   const go = {duration: SWEEP_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
-    ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${-w}px)`}], go), del.animate([{width: -from + 'px'}, {width: w + 'px'}], go)] : [];
-  const [done] = await Promise.all([removing, ...anims.map(a => a.finished.catch(() => {}))]);
+    ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${right ? w : -w}px)`}], go), fill.animate([{width: Math.abs(from) + 'px'}, {width: w + 'px'}], go)] : [];
+  const [done] = await Promise.all([going, ...anims.map(a => a.finished.catch(() => {}))]);
   // Its content back in its place at once, unseen under the gap, not sliding back (.row's transition).
-  const red = del && getComputedStyle(del).backgroundColor;
+  const color = fill && getComputedStyle(fill).backgroundColor;
   row.style.transition = 'none'; shut(row); anims.forEach(a => a.cancel());
+  if (right) { fill?.remove(); row.classList.remove('revealing'); row.style.removeProperty('--swipe'); }
   void row.offsetWidth; row.style.transition = '';
   if (!moving || !row.isConnected) return done;
   const gap = row.querySelector(':scope > .del-gap'), fade = {duration: BACK_MS, easing: 'ease-out'};
   if (!gap) { row.animate([{opacity: 0}, {opacity: 1}], fade); return done; }
-  gap.animate([{backgroundColor: red}, {backgroundColor: getComputedStyle(gap).backgroundColor}], fade);
+  gap.animate([{backgroundColor: color}, {backgroundColor: getComputedStyle(gap).backgroundColor}], fade);
   for (const el of gap.children) el.animate([{opacity: 0}, {opacity: 1}], fade);
   return done;
 }
@@ -126,48 +157,57 @@ const dragOf = (blocks, k, scroller, drop, begin) => {
 };
 
 export default {
-  /* While sliding, the row is drawn from --slide, not --pct: the screen redraws a row's --pct as it updates (a run's
-     steps every second, for their countdowns), which would put the line back to what's saved under the finger. */
-  /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
-     swiped to its Delete (swipeOf), `reorder` if it can be held and moved (dragOf), and if its progress can be set, {el:
-     the row, start (a done one's 100), width, show(pct, x: where the finger is), begin() as its progress starts to move,
-     finish(pct, or null if nothing changed)}.
-     A plain swipe, clearly sideways (swipeStarts), with no hold: on a row whose progress can be set, one track (trackAt,
-     `track`): right, up in snaps of 25%, a tick felt at each and a stronger one at 100%; left, down, and past 0% on into
-     its Delete, if it has one (`off`: how far it's moved aside). A row whose progress can't be set is only swiped left,
-     to its Delete (`swipe`), as is one already open on it, either way. Up or down is a scroll, as is a sideways move the
-     row can't take (doing nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved
-     up or down (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and
-     moved sideways, it's let go, changing nothing. */
+  /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: on a row, {el: the row,
+     swipe: its Delete if it has one (swipeOf), reorder: if it can be held and moved (dragOf), and if its progress can
+     be swiped, start (a done one's 100), width, finish(pct, or null if nothing changed; 100 is a full swipe)}. The
+     sheet's bar has start, width, finish, show(pct, x: where the finger is), and begin() as its progress starts to move.
+     A plain swipe, clearly sideways (swipeStarts), with no hold: on a row, one mechanism either way (`swipe`: swipeAt):
+     its content moves with the finger, what's uncovered shows what letting go does, its stops (revealOf) or its Delete
+     (swipeOf), a tick felt at each (swipeFeel), and nothing changes until it's let go. A row whose progress can't be
+     swiped has only its Delete, to the left, as has one already open on it, either way. The sheet's bar shows its
+     progress as it goes (`bar`: trackAt, show). Up or down is a scroll, as is a sideways move the row can't take (doing
+     nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved up or down
+     (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and moved
+     sideways, it's let go, changing nothing. */
   holdToSlide(area, find){
     let g = null;
     document.addEventListener('selectstart', noSelect, true);
     const stop = commit => {
       if (!g) return;
       clearTimeout(g.timer); sliding = false;
-      const {s, mode, pct, dx, off} = g; g = null;
+      const {s, mode, pct, r, ring} = g; g = null;
       s.el?.classList.remove('held');
-      if (mode === 'swipe') { s.swipe.end(commit ? dx : null); return; }
       if (mode === 'reorder') { s.reorder.end(commit); return; }
-      if (mode !== 'track') return;
-      // Let go past half the row, it's deleted, its progress left as it was; anywhere else, its progress is where the
-      // finger left it (0% with its Delete open), and the row goes back or stays open on its Delete.
-      const gone = commit && off < 0 && swipeEnd(off, s.el.clientWidth) === 'delete', set = commit && !gone && pct !== s.start;
-      s.finish?.(set ? pct : null);
-      if (off < 0) s.swipe.end(commit ? off : null);
+      if (mode === 'bar') {                             // its progress where the finger left it
+        const set = commit && pct !== s.start;
+        s.finish(set ? pct : null);
+        if (set) this.hintSeen();
+        return;
+      }
+      if (mode !== 'swipe') return;
+      /* Let go on a stop, its progress is set, and the row springs back, its tick showing it (on its own, nothing
+         changes); in its Delete, its progress is 0% and it stays open on its button, or goes back; past a side's full
+         point, the full action, the row carrying on off the screen (finish: done; the Delete's remove: deleted, its
+         progress left as it was). Taken away from the finger (pointercancel), it goes back, changing nothing. */
+      const to = commit ? r.to : 'shut', set = commit && to !== 'delete' && r.pct !== null && r.pct !== s.start;
+      if (RED.has(r.to)) s.swipe.end(to); else if (to !== 'done') ring.back();
+      s.finish?.(set ? r.pct : null);
       if (set) this.hintSeen();                         // the first swipe that sets progress, anywhere: the hint has done its job
     };
-    // Which way a sideways swipe takes the row (dx: which way it went): its progress, then its Delete, on one track;
-    // only its Delete; or nothing.
-    const wayOf = (s, dx) => s.swipe?.base ? 'swipe' : s.show && (trackMoves(s.start, dx) || (dx < 0 && s.swipe)) ? 'track' : dx < 0 && s.swipe ? 'swipe' : null;
+    // Whether a sideways swipe that way (dx) is one the row takes: its progress, if that moves that way, or its Delete,
+    // to the left; on the sheet's bar, its progress.
+    const wayOf = (s, dx) => s.show ? (trackMoves(s.start, dx) ? 'bar' : null)
+      : s.swipe?.base || (s.finish && trackMoves(s.start, dx)) || (dx < 0 && s.swipe) ? 'swipe' : null;
     area.addEventListener('pointerdown', e => {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false;                             // a new tap: its click is its own
-      const s = find(e.target); if (!s) return;
-      if (s.swipe?.base) { delete s.show; delete s.reorder; }   // an open row is swiped on, or tapped shut: not held
-      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, dx: 0, off: 0, mode: 'wait', pct: s.start};
+      let s = find(e.target); if (!s) return;
+      if (s.swipe?.base) s = {el: s.el, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
+      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait', pct: s.start};
       if (s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); haptic('hold'); }, HOLD_MS);
     });
+    // Where a row swiped `dx` is, and what letting go there does (swipeAt).
+    const at = (s, dx) => swipeAt({start: s.finish ? s.start : null, dx, x: g.x0, width: s.width ?? s.el.clientWidth, screen: innerWidth, del: !!s.swipe, base: s.swipe?.base || 0});
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
       if (!g || e.pointerId !== g.id) return;
@@ -181,24 +221,26 @@ export default {
         // Not a swipe it can take: a sideways move does nothing, not even open the task where a mouse lets go; up or
         // down is a scroll.
         if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
-        else { clearTimeout(g.timer); g.mode = way; sliding = true; if (way === 'swipe') s.swipe.begin(); }
+        clearTimeout(g.timer); g.mode = way; sliding = true;
+        if (way === 'swipe') { g.ring = revealOf(s.el); g.r = at(s, 0); g.red = null; }
       }
-      if (g.mode === 'swipe') { g.dx = e.clientX - g.x0; s.swipe.move(g.dx); return; }
-      if (g.mode === 'track') {
-        g.dx = e.clientX - g.x0;
-        const {pct, off} = trackAt({start: s.start, dx: g.dx, x: g.x0, width: s.width, screen: innerWidth, del: !!s.swipe});
-        if (off < 0) {
-          // Past 0%, into its Delete: the fill gives way to the row moving aside.
-          if (!(g.off < 0)) { this.endSlide(s.el); s.swipe.begin(); }
-          s.swipe.move(off);
-        } else {
-          if (g.off < 0) shut(s.el);                  // back out of its Delete, to its progress
-          // Its progress starts to move: shown from then on, and the claim with it (begin).
-          if (!g.shown && trackMoves(s.start, g.dx)) { g.shown = true; s.begin?.(); s.show(pct, e.clientX); }
-          else if (g.shown && (pct !== g.pct || g.off < 0)) s.show(pct, e.clientX);
-          if (pct !== g.pct) haptic(pct === 100 ? 'done' : 'tick');
-        }
-        g.pct = pct; g.off = off;
+      if (g.mode === 'swipe') {
+        const r = at(s, e.clientX - g.x0), red = RED.has(r.to);
+        // From its stops into its Delete, or back: one gives way to the other.
+        if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) shut(s.el); g.red = red; }
+        if (red) s.swipe.move(r); else g.ring.move(r);
+        const feel = swipeFeel(g.r, r);
+        if (feel) haptic(feel);
+        g.r = r;
+        return;
+      }
+      if (g.mode === 'bar') {
+        const dx = e.clientX - g.x0, pct = trackAt({start: s.start, dx, x: g.x0, width: s.width, screen: innerWidth});
+        // Its progress starts to move: shown from then on, and the claim with it (begin).
+        if (!g.shown && trackMoves(s.start, dx)) { g.shown = true; s.begin?.(); s.show(pct, e.clientX); }
+        else if (g.shown && pct !== g.pct) s.show(pct, e.clientX);
+        if (pct !== g.pct) haptic(pct === 100 ? 'done' : 'tick');
+        g.pct = pct;
         return;
       }
       if (getSelection()?.rangeCount) getSelection().removeAllRanges();     // whatever the long press selected near the row
@@ -223,8 +265,9 @@ export default {
     area.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
     area.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
   },
-  // What's being set, filled to `pct`, with its percentage on the side away from the finger (at `x`). The percentage
-  // pulses at each snap, the tick seen (where it can't be felt), and at 100% the tick fills.
+  // The sheet's bar being set (a row shows what it'll do beside it instead: revealOf): filled to `pct`, with its
+  // percentage on the side away from the finger (at `x`). The percentage pulses at each snap, the tick seen (where it
+  // can't be felt), and at 100% the tick fills.
   showSlide(el, pct, x){
     if (el.dataset.pct && el.dataset.pct !== pct + '%') el.dataset.tick = el.dataset.tick === 'a' ? 'b' : 'a';
     el.classList.add('setting'); el.classList.toggle('full', pct >= 100);
@@ -233,7 +276,7 @@ export default {
     el.dataset.side = x > r.left + r.width / 2 ? 'left' : 'right';
   },
   endSlide(el){ el.classList.remove('setting', 'full'); delete el.dataset.tick; delete el.dataset.pct; },
-  // In the list: the row fills, and at 100% the task is done. A run's step the same, through the outbox.
+  // In the list: a row swiped for its progress, its Delete, or held to move it. A run's step the same, through the outbox.
   initProgressDrag(){
     // A row swiped open shuts again when anything else is touched, or anything scrolls. (Touched itself, it's swiped on,
     // or tapped shut: holdToSlide.)
@@ -285,23 +328,22 @@ export default {
   },
   /* A task's row, in a list or (sheet) a task's sheet. Swiped, its progress: not one waiting to be sent, or that can't
      be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; a done one only down, opened again
-     (setProgress); with no one on it, it's then yours (claimOnSlide). Where its list allows (allows), swiped left past
-     0%, its Delete, and held, what a hold does there (holdOf). */
+     (setProgress). Let go having changed it, with no one on it, it's then yours (claimOnSlide); a full swipe is done,
+     the row carrying on off the screen and leaving a gap with "Done" and Undo (sweep, setProgress's `gap`). Where its
+     list allows (allows), swiped left past 0%, its Delete, and held, what a hold does there (holdOf). */
   rowGesture(t, row, sheet){
     if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
     const slides = sheet ? !t.pending && this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.rowSlides(t);
     const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row)) : null;
     const reorder = this.holdOf(t, row, sheet, can);
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
-    let claimed = null;
     return {el: row, swipe, reorder, start: t.done ? 100 : pctOf(t), width: row.clientWidth,
-      show: (pct, x) => this.showSlide(row, pct, x),
-      begin: () => { claimed = this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {})); },
       finish: pct => {
-        claimed?.(pct !== null);
-        if (pct !== null) { this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined}); if (sheet) this.sheet.dirty = true; else this.aimAfterTick(t); }
-        this.endSlide(row);
-        row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
+        if (pct === null) return;
+        this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {}))(true);
+        const setting = this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined, gap: pct >= 100});
+        if (pct >= 100) sweep(row, setting, true);
+        if (sheet) this.sheet.dirty = true; else this.aimAfterTick(t);
       }};
   },
   /* What a row held does, where its list allows it: on a project's list and in a task's sheet, moved up or down, its
@@ -357,7 +399,7 @@ export default {
     const blocks = (o.blocks || o.sibs.map(s => ({ids: [s.id]}))).map(b => b.ids.flatMap(rows));
     if (blocks.some(b => !b.length)) return null;
     return dragOf(blocks, o.sibs.findIndex(s => s.id === t.id), sheet ? this.$refs.sheet.querySelector('.scroll') : null,
-      to => this.reorder(t, o.sibs, to, o.view), () => this.endSlide(row));
+      to => this.reorder(t, o.sibs, to, o.view));
   },
   // A template's step held and moved up or down: its place in the template's order line (moveStep). Not while a step
   // is being changed, or the template is saving.
@@ -383,17 +425,21 @@ export default {
     const removing = this.deleteAddedStep(s).then(ok => { if (ok && row) row.style.visibility = 'hidden'; return ok; });
     await (row ? sweep(row, removing) : removing);
   },
-  /* A run's step swiped on its row, as a task's is: not one waiting to be sent, or in a finished run; a done one only
-     down, not done again (stepProgress). With no one on it, it's then yours, as a task's is. Swiped left past 0%, only a
-     step inserted or repeated during the run, not done, has a Delete (swipeDeleteStep); a template's step stops at 0%. */
+  /* A run's step swiped on its row, as a task's is: not one waiting to be sent, or in a finished run, or done by a full
+     swipe and waiting for the batch (its gap: only its Undo); a done one only down, not done again (stepProgress). With
+     no one on it, it's then yours, as a task's is; a full swipe is done, through the outbox, leaving a gap whose Undo
+     unticks it. Swiped left past 0%, only a step inserted or repeated during the run, not done, has a Delete
+     (swipeDeleteStep); a template's step stops at 0%. */
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
-    if (!s || s.pending || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('.step-del')) return null;
-    let claimed = null;
+    if (!s || s.pending || this.swept[s.id] || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('.step-del')) return null;
     return {el: row, start: s.done ? 100 : s.pct, width: row.clientWidth, swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row)) : null,
-      show: (pct, x) => this.showSlide(row, pct, x),
-      begin: () => { claimed = this.claimOnSlide(s.slot); },
-      finish: pct => { claimed?.(pct !== null); this.endSlide(row); if (pct !== null) this.stepProgress(s, pct); }};
+      finish: pct => {
+        if (pct === null) return;
+        this.claimOnSlide(s.slot)(true);
+        const setting = this.stepProgress(s, pct);
+        if (pct >= 100) sweep(row, setting, true);
+      }};
   },
   // In a task's sheet: swipe the progress bar, or around the title (not what's typed there); and its subtasks' rows, as
   // in a list.

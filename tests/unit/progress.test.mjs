@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isNudge, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, QUARTER_PX, releaseSpeed, runLine, slidePct, snapPct, SWIPE_SLOPE, swipeEnd, swipeOffset, swipeStarts, trackAt, trackMoves, undoing } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isNudge, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, QUARTER_PX, releaseSpeed, runLine, SIDES, slidePct, snapPct, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, trackAt, trackMoves, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -97,31 +97,67 @@ test('let go, a swiped row goes back, stays open on its Delete, or past half its
   assert.equal(swipeEnd(swipeOffset(-DELETE_W - 100, w), w), 'delete', 'carried on from the open row');
 });
 
-/* Progress and Delete are one track (parent-tasks-plan, part 1): swiped right, progress goes up, the room being the
-   rest of the way to the screen's edge; left, down a quarter each QUARTER_PX, then on into the row's Delete. */
-test('a swipe right sets progress up in snaps, a full swipe is done, and a done row stays done', () => {
-  const at = (dx, start = 0, x = 100) => trackAt({ start, dx, x, width: 358, screen: 390, del: true });
-  const room = 390 - EDGE - 100;
-  assert.deepEqual(at(room * .3), { pct: 25, off: 0 });
-  assert.deepEqual(at(room), { pct: 100, off: 0 }, 'a full swipe: done');
-  assert.deepEqual(at(room * .3, 50), { pct: 75, off: 0 }, 'from where it was');
-  assert.deepEqual(at(80, 100), { pct: 100, off: 0 }, 'done stays done');
-  assert.equal(trackMoves(100, 1), false, 'so a swipe right on a done row isn\'t taken');
-  assert.equal(trackMoves(0, 1), true);
+/* Swiping a row is one mechanism with two mirrored sides (parent-tasks-plan, 1b; SIDES): the content moves with the
+   finger, and what letting go does is shown, not done, until then. Right: the stops above where it is spread over the
+   first half of the row, then done. Left: a quarter each QUARTER_PX, within the first third, then the row's Delete. */
+const W = 358, SCREEN = 390;
+test('swiped right, the stops above its progress spread over the first half of the row, and past it, done', () => {
+  const at = (dx, start = 0, x = 100) => swipeAt({ start, dx, x, width: W, screen: SCREEN, del: true });
+  const half = W * SIDES.right.full;
+  assert.deepEqual(at(10), { off: 10, pct: 0, to: 'stop' }, 'a little: the content moves, its progress not yet');
+  assert.deepEqual(at(half / 4), { off: half / 4, pct: 25, to: 'stop' });
+  assert.deepEqual([at(half / 2).pct, at(half * .75).pct, at(half - 1).pct], [50, 75, 75]);
+  assert.deepEqual(at(half), { off: half, pct: 100, to: 'done' }, 'past half: a full swipe, done');
+  assert.equal(at(W + 50).off, W, 'never further than the row');
+  assert.deepEqual([at(half / 2 - 1, 50).pct, at(half / 2, 50).pct, at(half, 50).to], [50, 75, 'done'], 'from 50%: 75% halfway, done at half');
+  assert.deepEqual([at(30, 30).pct, at(half / 3, 30).pct], [30, 50], 'progress set elsewhere: from where it is, to the next stop');
+  // Put down near the right edge, the stops come closer, so done is still within reach (slidePct's room).
+  const near = swipeAt({ start: 0, dx: 50, x: 330, width: W, screen: SCREEN });
+  assert.equal(near.to, 'done');
 });
 
-test('a swipe left lowers progress a quarter at a time, then goes on into the row\'s Delete; a done row opens again at 75%', () => {
-  const at = (dx, start, x = 300, del = true) => trackAt({ start, dx, x, width: 358, screen: 390, del });
-  assert.deepEqual(at(-QUARTER_PX, 50), { pct: 25, off: 0 });
-  assert.deepEqual(at(-QUARTER_PX * 1.6, 50), { pct: 0, off: 0 }, 'at 0%, a stop before its Delete');
-  assert.deepEqual(at(-QUARTER_PX * 2 - 40, 50), { pct: 0, off: -40 }, 'past 0%, its Delete, measured from there');
-  assert.equal(swipeEnd(at(-QUARTER_PX * 2 - 200, 50).off, 358), 'delete', 'a full swipe from 50% deletes it');
-  assert.deepEqual(at(-QUARTER_PX, 100), { pct: 75, off: 0 }, 'a done row: open again, at 75%');
-  assert.deepEqual(at(-QUARTER_PX * 4 - 10, 100), { pct: 0, off: -10 }, 'and on down, into its Delete');
-  assert.deepEqual(at(-30, 0), { pct: 0, off: -30 }, 'at 0%, straight into its Delete, as before');
-  assert.deepEqual(at(-200, 50, 300, false), { pct: 0, off: 0 }, 'a row with no Delete (a run\'s template step, a card\'s step) stops at 0%');
-  // Put down near the left edge, the quarters come closer together, so 0% is still within reach.
-  assert.equal(trackAt({ start: 100, dx: -40, x: 60, width: 358, screen: 390 }).pct, 0);
+test('swiped left, a row with progress empties a quarter at a time, then goes on into its Delete; a row at 0% straight there', () => {
+  const at = (dx, start, del = true, x = 300) => swipeAt({ start, dx, x, width: W, screen: SCREEN, del });
+  const q = SIDES.left.gap;
+  assert.deepEqual(at(-10, 50), { off: -10, pct: 50, to: 'stop' });
+  assert.deepEqual(at(-q, 50), { off: -q, pct: 25, to: 'stop' });
+  assert.deepEqual(at(-q * 2, 50), { off: -q * 2, pct: 0, to: 'open' }, 'past 0%: its Delete, open on its button if let go');
+  assert.equal(at(-W / 2 - 1, 50).to, 'delete', 'past half the row: deleted');
+  assert.deepEqual(at(-200, 50, false), { off: -q * 2, pct: 0, to: 'stop' }, 'no Delete (a template\'s step): it stops at 0%');
+  assert.deepEqual(at(-20, 0), { off: -20, pct: 0, to: 'shut' }, 'at 0%, straight into its Delete');
+  assert.equal(at(-40, 0).to, 'open');
+  // A done row empties from full, its stops all within the first third, so its Delete has room before half.
+  const third = W * SIDES.left.stops, g = third / 4;
+  assert.deepEqual([at(-g + 1, 100).pct, at(-g, 100).pct, at(-g * 3, 100).pct, at(-third, 100).to], [100, 75, 25, 'open']);
+  assert.equal(swipeAt({ start: 100, dx: -45, x: 60, width: W, screen: SCREEN }).pct, 0, 'put down near the left edge: the stops closer, so 0% is still within reach');
+});
+
+test('a row with no progress to swipe, or open on its Delete, has only its Delete', () => {
+  const at = (dx, base = 0) => swipeAt({ start: null, dx, x: 200, width: W, screen: SCREEN, del: true, base });
+  assert.deepEqual(at(-60), { off: -60, pct: null, to: 'open' });
+  assert.deepEqual(at(0, -DELETE_W), { off: -DELETE_W, pct: null, to: 'open' }, 'open, where it rests');
+  assert.deepEqual(at(DELETE_W + 40, -DELETE_W), { off: 0, pct: null, to: 'shut' }, 'swiped back: shut, never on to the right');
+  assert.equal(at(-W / 2, -DELETE_W).to, 'delete', 'swiped on: deleted');
+});
+
+test('a tick is felt at each stop and at a Delete\'s button, a stronger one at a full swipe', () => {
+  const stop = pct => ({ to: 'stop', pct });
+  assert.equal(swipeFeel(stop(0), stop(0)), null);
+  assert.equal(swipeFeel(stop(0), stop(25)), 'tick');
+  assert.equal(swipeFeel(stop(75), { to: 'done', pct: 100 }), 'done');
+  assert.equal(swipeFeel({ to: 'done', pct: 100 }, { to: 'done', pct: 100 }), null, 'once');
+  assert.equal(swipeFeel(stop(25), { to: 'open', pct: 0 }), 'tick', 'into its Delete');
+  assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'delete', pct: 0 }), 'done');
+  assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'shut', pct: 0 }), null);
+});
+
+test('the sheet\'s bar: right up to the screen\'s edge, left a quarter each QUARTER_PX, done staying done', () => {
+  const at = (dx, start, x = 300) => trackAt({ start, dx, x, width: W, screen: SCREEN });
+  assert.equal(trackAt({ start: 0, dx: SCREEN - EDGE - 100, x: 100, width: W, screen: SCREEN }), 100);
+  assert.equal(at(80, 100), 100);
+  assert.equal(at(-QUARTER_PX, 50), 25);
+  assert.equal(at(-QUARTER_PX * 4, 50), 0);
+  assert.equal(trackMoves(100, 1), false, 'a done row isn\'t swiped up');
   assert.equal(trackMoves(0, -1), false, 'nothing to lower at 0%');
 });
 

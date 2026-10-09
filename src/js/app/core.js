@@ -68,6 +68,7 @@ export default () => ({
   failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
+  swept: {},                                   // task id -> true: done by a full swipe, a gap with Undo in its place meanwhile (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
   cardOpen: {},                                // a card's id -> true, opened by its peek, on Today or in search
