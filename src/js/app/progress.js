@@ -240,11 +240,10 @@ export default {
     document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
-      // A card on Today: its step line swiped is that step's (cardGesture); its heading only a tap, a swipe there doing
-      // nothing (part 3 makes it the parent's header).
-      const step = target.closest('.step-line'), card = target.closest('.day-card');
-      const row = step || (card ? null : target.closest('.list:not(.tree) > .row, .item > .row'));
-      if (card && !step) return this.cardGesture(card, null);
+      // A stacked card: each of its rows as any row (cardGesture); its heading only a tap, a swipe there doing nothing
+      // (part 3 makes it the parent's header); its peek, and Show less, only a tap.
+      const card = target.closest('.day-card'), row = target.closest('.card-rows > .row, .list:not(.tree) > .row, .item > .row');
+      if (card && !row) return target.closest('.card-head') ? this.cardGesture(card, null) : null;
       if (!row || target.closest('.row-del')) return null;
       if (row.parentElement.id === 'run-steps') return this.stepSlide(row, target);
       const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
@@ -310,14 +309,14 @@ export default {
   // (read only, a template), nor a run, nor one marked or with a line in its place. A done one does, down only.
   rowSlides(t){ return !this.lines[t.id] && !this.leaving[t.id] && !t.pending && this.canTick(t) && !this.isRunTask(t); },
   /* A one-time hint, "Swipe right to start working on it", on the first open row of a list that takes a swipe for its
-     progress (on Today, a card's step line counts: the card is `at`, so its next step keeps it). It's picked once, as a
+     progress (a card's top row counts: the card is `at`, so its next top row keeps it). It's picked once, as a
      screen is first drawn (hint.pick, set by render), never later, so it can't push rows down under a finger. Gone (a
      swipe that sets progress anywhere, or a tap on it), it fades, keeping its space until no finger is down and the list is still,
      then closes (hintAway, leaving.js). Remembered on the phone; a screen reader hears it once. */
   pickHint(){
     this.hint.pick = false;
     if (this.hint.done) return;
-    for (const g of this.listGroups) if (!g.fold) for (const t of g.tasks) {
+    for (const g of this.listGroups) if (!g.fold) for (const t of g.items || g.tasks) {
       const c = this.cardOf(t, g), x = c ? c.step : t;
       if (x.done || !this.rowSlides(x)) continue;
       this.hint.at = t.id;
@@ -325,17 +324,17 @@ export default {
       return;
     }
   },
-  // Whether the row of `t` in list `g` has the hint's place: a card's step line for its card.
-  hintOn(t, g){ return !g.sheet && !g.run && this.hint.at !== null && this.hint.at === (g.card ? g.card.id : t.id); },
+  // Whether the row of `t` in list `g` has the hint's place: a card's top row for its card.
+  hintOn(t, g){ return !g.sheet && !g.run && this.hint.at !== null && (g.card ? g.card.step.id === t.id && this.hint.at === g.card.id : this.hint.at === t.id); },
   hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); this.hintAway(); },
-  /* A card on Today (app/cards.js), its step line touched: that step's gesture `s` (rowGesture), whose swipe is that
-     step's alone and stops at 100% of it, the card then staying at its place for the next step to come in (pinCard);
-     swiped left, it stops at 0% (the card's options have no Delete, until part 2 of parent-tasks-plan makes its rows
-     a list's). A plain swipe on its heading (`s` null) does nothing, not even a tap. */
+  /* A stacked card (app/cards.js), one of its rows touched: that row's gesture `s` (rowGesture), whose swipe is that
+     subtask's alone, and a run's card then staying on its top row until that has gone (pinCard). A plain swipe on its
+     heading (`s` null) does nothing, not even a tap. */
   cardGesture(card, s){
     if (card.matches('.deleted, .lined')) return null;                     // only its Restore, or its line's action
     if (!s) return {el: null};
-    const id = +card.dataset.id, pin = () => { const t = this.tasks[id]; this.pinCard(t && this.cardOf(t, {cards: true})); };
+    // (Its top row is the same on any screen's card: 'found' asks only that it's an open task with open subtasks.)
+    const id = +card.dataset.id, pin = () => { const t = this.tasks[id]; this.pinCard(t && this.cardOf(t, {cards: 'found'})); };
     return {...s, finish: s.finish && (pct => { if (pct !== null) pin(); s.finish(pct); })};
   },
   /* A task's row moved up or down, among its siblings (orderOf): on a project's list, or in a task's sheet. Let go

@@ -16,10 +16,25 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
    row has (parent-tasks-plan, part 1: a row acts the same everywhere). Swiped left past 0%, a row's Delete, on every
    screen. Held, moved up or down: on a project's list, its place; search's results have no order of their own, and
    Today is in the order things are due (a hold there will move a row to another day: part 4). A task's sheet gives its
-   subtasks both (sheet/task.html). Anything with open subtasks or steps is a card on Today, showing its next step
-   (cards.js). Each list (`g`) has these as its options, and a row writes them on itself for the gesture code
-   (rowGestures). Today's rows are on one line (`line`: rowWhen, app/views.js). */
-export const screenRows = name => ({project: {delete: true, reorder: true}, search: {delete: true}, today: {cards: true, line: true, delete: true}}[name] || {});
+   subtasks both (sheet/task.html). Each list (`g`) has these as its options, and a row writes them on itself for the
+   gesture code (rowGestures). Today's rows are on one line (`line`: rowWhen, app/views.js). Anything with open subtasks
+   or steps is a stacked card (`cards`: cardOf, app/cards.js; parent-tasks-plan, part 2), collapsed on Today ('today':
+   what brought it is cards.js) and in search ('found'); never on a list of done tasks (listGroups). */
+export const screenRows = name => ({project: {delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true}}[name] || {});
+/* What a list with cards shows, in its order (`tasks`, each subtask under its parent, `depth` by id: nestSubtasks): each
+   task at the top, and, under one that isn't a card (`isCard`), its subtasks as rows of their own, indented; a card's
+   are on it, so they're left out. */
+export const listItems = (tasks, depth, isCard) => {
+  const out = [];
+  let under = -1;                                // the depth of the card whose subtasks are being passed over
+  for (const t of tasks) {
+    const d = depth[t.id] || 0;
+    if (under >= 0 && d > under) continue;
+    out.push(t);
+    under = isCard(t) ? d : -1;
+  }
+  return out;
+};
 /* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
    can't reach the list's `g`: "delete" (swiped left past 0%, its Delete), "reorder" (held and moved up or down). */
 export const rowGestures = g => ['delete', 'reorder'].filter(k => g?.[k]).join(' ');

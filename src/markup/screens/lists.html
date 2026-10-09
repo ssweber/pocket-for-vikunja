@@ -20,10 +20,11 @@
             <!-- include markup/task-row.html -->
           </template>
         </div></template>
-        <!-- Today's: a row, or a card for anything with open subtasks or steps (today-item.html) -->
+        <!-- A list with cards (Today, search's open tasks): a row, or the stacked card for anything with open subtasks or
+             steps, its subtasks on it (list-item.html) -->
         <template x-if="g.cards"><div class="list">
-          <template x-for="t in g.tasks" :key="t.id">
-            <!-- include markup/today-item.html -->
+          <template x-for="t in g.items" :key="t.id">
+            <!-- include markup/list-item.html -->
           </template>
         </div></template>
       </div></template>

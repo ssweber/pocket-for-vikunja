@@ -35,7 +35,8 @@ function exit(els){
     return a.finished.catch(() => {}).then(() => a);
   }));
 }
-// A task's rows, and its card on Today. Not a card's step line: it doesn't fold, the card's next step takes its place.
+// A task's rows, and its card. Not a collapsed card's top row (.step-line): it doesn't fold, the next slides up into its
+// place (cardEntered).
 const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`:is(.row:not(.step-line), .day-card)[data-id="${id}"]`)]);
 
 export default {

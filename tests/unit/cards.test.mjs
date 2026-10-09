@@ -1,12 +1,12 @@
-// Today's cards (src/js/cards.js, and app/cards.js on a pretend component): which tasks are cards and what brought each,
-// where each sits on Today, which step a card shows, and its count; where a run goes next, the one rule its card and its
-// screen go by, and the bottom box aimed at its step.
+// The stacked card (src/js/cards.js, and app/cards.js on a pretend component): which tasks are cards on Today and what
+// brought each, where each sits there, which subtask is its top row, its peek, opening it, and its count; a card in
+// search; where a run goes next, the one rule its card and its screen go by, and the bottom box aimed at its step.
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardAt, cardGroup, countdown, todayItems } from '../../src/js/cards.js';
+import { cardGroup, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo } from '../../src/js/dates.js';
-import { rowGestures } from '../../src/js/lists.js';
+import { listItems, rowGestures } from '../../src/js/lists.js';
 import cards from '../../src/js/app/cards.js';
 import views from '../../src/js/app/views.js';
 import alerts from '../../src/js/app/alerts.js';
@@ -75,15 +75,23 @@ test('a template that comes round is a row: its steps are done, and it’s start
   assert.deepEqual(ids(todayItems({ tasks: [tpl] }, me).rows), [50]);
 });
 
-test('which step a card shows: the one it was left on, or the next once that has gone', () => {
-  const steps = [{ id: 1 }, { id: 2 }, { id: 3 }];
-  assert.equal(cardAt(steps, null, null), 0, 'the next step in order');
-  assert.equal(cardAt(steps, null, 3), 2, 'the subtask of yours that brought it');
-  assert.equal(cardAt(steps, null, 9), 0, 'that one gone: the next in order');
-  assert.equal(cardAt(steps, { id: 2, i: 1 }, 3), 1, 'left on it by a tick or a slide');
-  assert.equal(cardAt([{ id: 1 }, { id: 3 }], { id: 2, i: 1 }, null), 1, 'that step gone: the one after it, in its place');
-  assert.equal(cardAt([{ id: 1 }, { id: 2 }], { id: 3, i: 2 }, null), 0, 'the last gone: round to the first');
-  assert.equal(cardAt([], null, null), -1);
+test('a card’s top row: the most urgent, overdue first, then due today, then the earliest date, then list order', () => {
+  const now = new Date(2026, 9, 8, 12), day = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const order = (a, b) => a.pos - b.pos, s = (id, pos, due = NONE) => ({ id, pos, due_date: due });
+  const list = [s(1, 1), s(2, 2, day(12, 9)), s(3, 3, day(8, 18)), s(4, 4, day(7, 9)), s(5, 5, day(8, 0)), s(6, 6, day(8, 9)), s(7, 7), s(8, 8, day(10, 9))];
+  assert.deepEqual([...list].sort(urgentFirst(+now, order)).map(x => x.id), [4, 6, 5, 3, 8, 2, 1, 7],
+    'late (yesterday, then 9 this morning), today (with no time, then 6 PM), then later dates, then the rest in list order');
+});
+
+test('a run’s card’s top row: the step a tick left it on until it has gone, then the run’s rule from there', () => {
+  const steps = [{ id: 1 }, { id: 2 }, { id: 3 }], asked = [];
+  const pick = from => { asked.push(from); return from === null ? 2 : 3; };
+  assert.equal(runTop(steps, null, pick), 1, 'as it opens: the rule, from nowhere');
+  assert.equal(runTop(steps, 1, pick), 0, 'left on its top row, still there (waiting for the batch, say)');
+  assert.equal(runTop(steps.slice(1), 1, pick), 1, 'that one gone: the rule, from it');
+  assert.equal(runTop(steps, null, () => null), 0, 'none by the rule: the first');
+  assert.equal(runTop([], null, pick), -1);
+  assert.deepEqual(asked, [null, 1]);
 });
 
 test('a run’s step’s countdown, to the minute, within a day', () => {
@@ -98,21 +106,54 @@ test('a run’s step’s countdown, to the minute, within a day', () => {
 // done, first, then Chairs, Tables and Lights.
 const today = () => {
   const app = component(cards, views, alerts, tasks, leaving);
-  Object.assign(app, { cardPage: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, checklistIds: new Set(), waitingByTask: new Map() });
+  Object.assign(app, { cardPage: {}, cardOpen: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, checklistIds: new Set(), waitingByTask: new Map() });
   const parent = app.keep(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
   for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.keep(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
-  return { app, parent, g: { cards: true } };
+  return { app, parent, g: { cards: 'today', line: true } };
 };
 
-test('a card: its open steps in its List view’s order, the first showing, and its count', () => {
+test('a card: its open subtasks, the most urgent first, collapsed to its top row with a peek at the next, and its count', () => {
   const { app, parent, g } = today(), c = app.cardOf(parent, g);
-  assert.deepEqual(c.steps.map(s => s.title), ['Chairs', 'Tables', 'Lights']);
-  assert.deepEqual([c.step.title, c.i, c.n], ['Chairs', 0, 3]);
+  assert.deepEqual(c.steps.map(s => s.title), ['Chairs', 'Tables', 'Lights'], 'none dated: its List view’s order');
+  assert.deepEqual([c.step.title, c.rows.map(s => s.title), c.peek.title, c.more, c.open], ['Chairs', ['Chairs'], 'Tables', 2, false], 'its top row, and a peek at the next: “Tables · 2 more”');
   assert.deepEqual(app.cardCount(c), { text: '1/4', said: '1 of 4 subtasks done' }, 'its count, at the right of its heading: the done one counted');
-  assert.deepEqual([c.g.card, c.g.line], [c, true], 'the step line knows its card, and is on one line');
-  assert.equal(app.cardOf(parent, { depth: {} }), null, 'only on Today’s lists');
+  assert.deepEqual([c.g.card, c.g.line, c.g.delete], [c, true, true], 'its rows know their card, are on one line, and have Delete, as Today’s rows do');
+  assert.equal(app.cardOf(parent, { depth: {} }), null, 'only on a list with cards');
   assert.deepEqual(app.rowMeta(c.step, c.g).map(m => m.text), [], 'not which step it is, nor the project: those are on the card');
+  app.tasks[11].due_date = new Date(Date.now() - 36e5).toISOString();
+  assert.deepEqual(app.cardOf(parent, g).steps.map(s => s.title), ['Lights', 'Chairs', 'Tables'], 'Lights late: on top');
+});
+
+test('a card opened by its peek lists every open subtask, and collapses again; with one open subtask, no peek', () => {
+  const { app, parent, g } = today();
+  app.openCard(app.cardOf(parent, g));
+  let c = app.cardOf(parent, g);
+  assert.deepEqual([c.open, c.rows.map(s => s.title), c.peek, c.folds], [true, ['Chairs', 'Tables', 'Lights'], null, true]);
+  app.foldCard(c.id);
+  c = app.cardOf(parent, g);
+  assert.deepEqual([c.open, c.rows.length, c.peek.title], [false, 1, 'Tables'], 'collapsed: the peek back');
+  app.openCard(c);
+  app.resetCards();
+  assert.equal(app.cardOf(parent, g).open, false, 'leaving the screen: collapsed');
+  for (const id of [12, 13]) app.tasks[id].done = true;
+  c = app.cardOf(parent, g);
+  assert.deepEqual([c.step.title, c.peek, c.more], ['Lights', null, 0], 'one open subtask: no peek');
+  app.openCard(c);
+  assert.equal(app.cardOf(parent, g).open, false, 'nor anything to open');
+});
+
+test('in search, any open task with open subtasks is a card, collapsed; its subtasks found with it are on it, not rows of their own', () => {
+  const { app, parent } = today(), g = { cards: 'found', delete: true };
+  app.route = { name: 'search' };
+  const c = app.cardOf(parent, g);
+  assert.deepEqual([c.step.title, c.peek.title, c.g.line, c.g.delete], ['Chairs', 'Tables', undefined, true], 'its rows with their second line, as search’s are');
+  assert.equal(app.cardOf({ ...parent, done: true }, g), null, 'not a done one');
+  assert.equal(app.cardOf({ ...parent, labels: [{ title: 'template' }] }, g), null, 'nor a template');
+  assert.equal(app.cardOf(app.tasks[11], g), null, 'nor one with no subtasks');
+  const found = [parent, app.tasks[12], app.tasks[11], { id: 30 }, { id: 31 }, { id: 32 }];
+  const depth = { 10: 0, 12: 1, 11: 1, 30: 0, 31: 1, 32: 2 };
+  assert.deepEqual(listItems(found, depth, t => t.id === 10).map(t => t.id), [10, 30, 31, 32], 'a card’s subtasks are on it; another task’s, rows under it');
 });
 
 test('a card’s heading: its priority’s bars as its row shows them, only when it has one; said, its due date, its priority and its project', () => {
@@ -128,17 +169,15 @@ test('a card’s heading: its priority’s bars as its row shows them, only when
   assert.equal(app.cardHead({ ...urgent, assignees: [me] }).said.split(', ').pop(), 'For you', 'or who it’s for');
 });
 
-test('ticked, a step stays until the batch clears, then the next comes in', () => {
+test('ticked, a card’s top row stays until the batch clears, then the next comes up', () => {
   const { app, parent, g } = today();
   const c = app.cardOf(parent, g);
   assert.equal(c.step.title, 'Chairs');
   app.pinCard(c);
   app.tasks[12].done = true; app.leaving[12] = 'done';
-  assert.deepEqual([app.cardOf(parent, g).step.title, app.cardCount(app.cardOf(parent, g)).text], ['Chairs', '2/4'], 'done, still showing, counted');
+  assert.deepEqual([app.cardOf(parent, g).step.title, app.cardOf(parent, g).peek.title, app.cardCount(app.cardOf(parent, g)).text], ['Chairs', 'Tables', '2/4'], 'done, still on top, counted');
   delete app.leaving[12];
-  assert.equal(app.cardOf(parent, g).step.title, 'Tables', 'the batch cleared: the one after it');
-  app.resetCards();
-  assert.equal(app.cardOf(parent, g).step.title, 'Tables', 'leaving Today: on its next step');
+  assert.deepEqual([app.cardOf(parent, g).step.title, app.cardOf(parent, g).peek.title, app.cardOf(parent, g).more], ['Tables', 'Lights', 1], 'the batch cleared: the next, up');
   for (const id of [11, 13]) app.tasks[id].done = true;
   assert.equal(app.cardOf(parent, g), null, 'no open step left: a row like any other');
 });
@@ -158,7 +197,7 @@ test('Today’s groups: a card by what brought it; one whose task can’t be rea
   assert.deepEqual(out.steps.map(t => t.id), [3, 7]);
 });
 
-test('a finger on a card: its step line swiped is that step’s slide, which keeps the card at its place; on its heading, nothing', () => {
+test('a finger on a card: its row swiped is that subtask’s slide, which keeps a run’s card on its top row; on its heading, nothing', () => {
   const app = component(progress), pinned = [], finished = [];
   Object.assign(app, { tasks: { 10: { id: 10 } }, cardOf: () => ({ id: 10 }), pinCard: c => pinned.push(c.id) });
   const card = (cls = '') => ({ dataset: { id: '10' }, matches: sel => sel.split(', ').some(c => cls.includes(c.slice(1))) });
@@ -167,9 +206,16 @@ test('a finger on a card: its step line swiped is that step’s slide, which kee
   assert.ok(g.show, 'its slide');
   g.finish(null); g.finish(50);
   assert.deepEqual([pinned, finished], [[10], [null, 50]], 'pinned only by a slide that changed something');
-  assert.deepEqual(app.cardGesture(card(), null), { el: null }, 'its heading, or nothing to slide: a swipe does nothing, not even a tap');
+  assert.deepEqual(app.cardGesture(card(), null), { el: null }, 'its heading: a swipe does nothing, not even a tap');
   assert.equal(app.cardGesture(card('.deleted'), s), null, 'deleted: only its Restore');
-  assert.equal(rowGestures({ depth: {}, card: {} }), '', 'a card’s step line: no Delete of its own, as yet');
+  assert.equal(rowGestures({ depth: {}, card: {}, delete: true }), 'delete', 'a card’s row: its Delete, as its list’s rows');
+});
+
+test('the one-time hint goes on a card’s top row only', () => {
+  const app = component(progress);
+  app.hint = { at: 10 };
+  const card = { id: 10, step: { id: 12 } };
+  assert.deepEqual([app.hintOn({ id: 12 }, { card }), app.hintOn({ id: 13 }, { card }), app.hintOn({ id: 10 }, {})], [true, false, true]);
 });
 
 test('a row on Today, on one line: when it is due, short, its project’s dot, and the rest said to a screen reader', () => {
@@ -246,8 +292,7 @@ test('a run’s card on Today opens on the step its screen would, and goes by th
   const soon = m => new Date(Date.now() + m * 6e4).toISOString();
   app.tasks[11].due_date = soon(10); app.tasks[13].due_date = soon(20);   // Lights and Tables counting down
   const c = app.cardOf(parent, g);
-  assert.deepEqual([c.step.title, app.cardCount(c)], ['Lights', { text: '1/4', said: '1 of 4 steps done' }], 'the first in order, counting down');
-  assert.equal(cardAt([{ id: 1 }, { id: 2 }], null, 2, () => 1), 1, 'a step of yours that brought it still comes first');
+  assert.deepEqual([c.step.title, c.peek.title, app.cardCount(c)], ['Lights', 'Chairs', { text: '1/4', said: '1 of 4 steps done' }], 'the first in order, counting down; the next in order under it');
   app.pinCard(c);
   app.tasks[11].done = true; app.leaving[11] = 'done';
   assert.equal(app.cardOf(parent, g).step.title, 'Lights', 'ticked, it stays until the batch clears');

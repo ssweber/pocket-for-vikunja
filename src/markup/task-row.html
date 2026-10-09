@@ -22,11 +22,12 @@
      card is lit (g.at), and the bottom box adds steps after it; while it's on the card, one inserted can be deleted by
      its ×, and swiped left past 0%, any inserted one not done (stepSlide). A finished run, or one shared with you to
      read (g.locked), has no tick. It's never moved: a run's order is its order line.
-     On Today, a card's step line (g.card, today-item.html) is this row too, a subtask or a run's step: its own tick,
-     slot and progress (swiped, with no Delete); its step coming in fades in (cardEntered). -->
-<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), 'many-steps': !!runLineOf(t)?.many, lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
+     On a stacked card (g.card, list-item.html), each of its rows is this row too, a subtask or a run's step: its own
+     tick, slot and progress, and its Delete, as any row's. A collapsed card's top row (.step-line) doesn't fold with the
+     batch: the next slides up into its place (cardEntered). -->
+<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), 'many-steps': !!runLineOf(t)?.many, lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3), '--segs': runLineOf(t)?.segs ?? null, '--fill': runLineOf(t)?.fill ?? null}"
-     x-effect="!g.sheet && !g.run && cursor?.id === t.id && watchCursor($el)" x-init="g.card && cardEntered($el, g.card)"
+     x-effect="!g.sheet && !g.run && cursor?.id === t.id && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
      @click.capture="if (!g.run && leaving[t.id] === 'deleted') { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
   <template x-if="g.run || g.sheet || canTick(t)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
   <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->

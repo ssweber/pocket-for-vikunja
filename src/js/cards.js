@@ -1,7 +1,8 @@
-/* Today's cards: anything with open subtasks or steps shows on Today as a card, its title over one line for its next
-   step, never as rows of its subtasks. What brings one onto Today, and where it sits there, is worked out here from
-   what Today read, apart from the screen, so the unit tests can check it; app/cards.js draws them. */
-import {isSet} from './dates.js';
+/* The stacked card: anything with open subtasks or steps shows as a card, its title over its open subtasks, collapsed
+   on Today to the most urgent with a peek at the next; on Today never as rows of its subtasks. What brings one onto
+   Today, where it sits there, and which subtask is on top, is worked out here, apart from the screen, so the unit
+   tests can check it; app/cards.js draws them. */
+import {isLate, isSet, startOfDay} from './dates.js';
 import {durText, hasTemplateLabel} from './checklists.js';
 
 // A task's subtasks still open, as its own copy lists them.
@@ -57,19 +58,24 @@ export function todayItems({tasks = [], added = [], mine = [], claimed = []}, me
    none, a run under Checklist runs, anything else under "Added today, no date". */
 export const cardGroup = (c, run) => c.when ? 'dated' : run ? 'runs' : 'nodate';
 
-/* The step a card shows, of its open `steps` in order: the one a tick or a slide left it on (`page`: {id, i}, pinCard),
-   or, once that step has gone (done, the batch cleared), the one that came after it, now in its place, round to the
-   first after the last; else the subtask of yours that brought it (`focus`), else the first. A run's card has `pick`
-   instead of "the one after" and "the first": the run's own rule (whereNext, checklists.js), given the step that has
-   gone, or null, and giving the id of the step to show. -1 with none. */
-export function cardAt(steps, page, focus, pick = null){
-  const n = steps.length;
-  if (!n) return -1;
+/* A stacked card's open subtasks on Today and in search (parent-tasks-plan, part 2), its top row the most urgent:
+   overdue first, then due today, then the earliest date, then the rest in list order (`order`: positionOrder, order.js).
+   `now`: when, in ms. A sort's comparison. */
+export const urgentFirst = (now, order) => {
+  const day = +startOfDay(new Date(now)), next = day + 864e5;
+  const due = t => isSet(t.due_date) ? +new Date(t.due_date) : Infinity;
+  const rank = t => !isSet(t.due_date) ? 3 : isLate(t.due_date, new Date(now)) ? 0 : due(t) < next && due(t) >= day ? 1 : 2;
+  return (a, b) => rank(a) - rank(b) || (due(a) < Infinity ? due(a) - due(b) : 0) || order(a, b);
+};
+/* The top of a run's card, of its open `steps` in its order: the step a tick or a slide left it on (`pinned`: its id,
+   pinCard) while it's still there, done or not, waiting for the batch; else the run's own rule (`pick`: whereNext,
+   checklists.js), given the step that has gone, or null, and giving the id of the step to show. Its index; the first
+   if the rule gives none, -1 with no steps. */
+export function runTop(steps, pinned, pick){
+  if (!steps.length) return -1;
   const k = id => steps.findIndex(s => s.id === id);
-  if (page && k(page.id) >= 0) return k(page.id);
-  const picked = pick ? k(pick(page?.id ?? null)) : -1;
-  if (page) return picked >= 0 ? picked : page.i < n ? page.i : 0;
-  return k(focus) >= 0 ? k(focus) : Math.max(0, picked);
+  if (pinned != null && k(pinned) >= 0) return k(pinned);
+  return Math.max(0, k(pick(pinned ?? null)));
 }
 /* A run's step's countdown on its card, to the minute, as Today redraws once a minute: "in 1h 5m", "12m late"; null more
    than a day either way, where its date says it better. `due` and `now` in ms. */

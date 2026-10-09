@@ -6,7 +6,7 @@ import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../che
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
-import {cardGroup, countdown, todayItems} from '../cards.js';
+import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
 import {shared} from './core.js';
@@ -490,8 +490,10 @@ export default {
     this.searchQ = '';
     this.back(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
   },
-  // Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the 50 most
-  // recently done. Not templates or their steps: they're on Checklists (withoutTemplates).
+  /* Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the 50 most
+     recently done. Not templates or their steps: they're on Checklists (withoutTemplates). An open task found with open
+     subtasks is a stacked card, collapsed (cardOf), so its subtasks are read with it, as Today's cards' are (readCards):
+     who's on each, and where each is in its project's List view. */
   async loadSearch(seq){
     const s = this.searchQ.trim();
     if (!s) { this.view.groups = []; return; }
@@ -499,6 +501,11 @@ export default {
     const done = new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50, expand: 'comment_count'});
     const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(items)]);
     if (seq !== renderSeq) return;
+    const parents = opened.filter(t => openSubs(t).length && !hasTemplateLabel(t));
+    const read = parents.length ? await this.readCards(new Map(parents.map(t => [t.id, {project: t.project_id}])), [...opened, ...finished]) : {steps: [], positions: {}};
+    if (seq !== renderSeq) return;
+    for (const t of read.steps) { cache.set(t.id, t); this.keep(t); }
+    Object.assign(this.positions, read.positions);
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
     this.view.groups = this.keepMarked([
       {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.keep(t))},

@@ -201,8 +201,9 @@ test('the hint goes on the first open row that takes a swipe, a card\'s step lin
   app.pickHint();
   assert.equal(app.hint.at, 4, 'a card whose step takes a slide: the card has it');
   assert.equal(app.said, '', 'a screen reader hears it once');
-  assert.equal(app.hintOn({ id: 41 }, { depth: {}, card: { id: 4 } }), true, 'shown on its step line');
-  assert.equal(app.hintOn({ id: 42 }, { depth: {}, card: { id: 4 } }), true, 'and on its next step');
+  assert.equal(app.hintOn({ id: 41 }, { depth: {}, card: { id: 4, step: { id: 41 } } }), true, 'shown on its top row');
+  assert.equal(app.hintOn({ id: 42 }, { depth: {}, card: { id: 4, step: { id: 42 } } }), true, 'and on its next top row');
+  assert.equal(app.hintOn({ id: 43 }, { depth: {}, card: { id: 4, step: { id: 42 } } }), false, 'not on its other rows, opened');
   assert.equal(app.hintOn({ id: 4 }, { depth: {}, sheet: true }), false, 'never in a sheet');
   app.hintSeen();
   assert.equal(localStorage.getItem('pocket.hint.slide'), 'done', 'remembered on the phone');
