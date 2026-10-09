@@ -150,6 +150,8 @@ targets and on marking menus (Kurtenbach and Buxton) is in the git-ignored `scra
 - **Above, an arc of five tiles, Mon to Fri,** each the next one of that day after tomorrow, with its date: early in
   the week they're mostly this week, by Wednesday mostly next. Their places never move (Monday always at the left), and
   next week's are shaded. "Same day next week" and "next Monday" are among them. Weekends are left to the sheet.
+  This week's tiles are always the arc's right end and next week's its left, so the arc has a gap where the week
+  changes and a small label over each group, "next week" and "this week", besides the shade: never colour alone.
 - **No date is a long pull down,** past the ring, like dragging to a bin: it takes the task off Today, so it's never a
   slip. Pick a date is the sheet's Due.
 - **The middle is "keep it here".** Let go in a target, and the task moves at once: no Undo line. This is rule 8's one
