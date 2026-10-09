@@ -135,11 +135,13 @@ function sections(){
       task({title: 'Restock the napkins', state: {reveal: .4}}), task({title: 'Clean the grinder', percent_done: .75, state: {reveal: .55}})]},
     {title: 'Let go past half: done, the row carrying on off to the right, leaving a gap with Done and Undo until the batch clears', depth: {}, delete: true,
       tasks: [task({title: 'Clean the grinder', state: {sweepRight: .8}}), task({title: 'Clean the grinder', done: true, state: {swept: true}})]},
-    {title: 'Swiped left from 75%, still held: the ring empties to 50% and 25%, then past 0% the red Delete, open on its button if let go, and past half the row, deleted', depth: {}, delete: true, tasks: [
-      task({title: 'Order more cups', percent_done: .75, state: {reveal: -.17}}), task({title: 'Order more cups', percent_done: .75, state: {reveal: -.3}}),
+    {title: 'Swiped left from 75%, still held: the ring empties to 50% and 25%, and stops at 0% however far it’s pulled, with no Delete; let go, its progress is set and the row springs back', depth: {}, delete: true, tasks: [
+      task({title: 'Order more cups', percent_done: .75, state: {reveal: -.2}}), task({title: 'Order more cups', percent_done: .75, state: {reveal: -.38}}),
+      task({title: 'Order more cups', percent_done: .75, state: {reveal: -.7}})]},
+    {title: 'Then, at 0%, a second swipe left: its Delete, open on its button if let go, and past half the row, deleted', depth: {}, delete: true, tasks: [
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
-    {title: 'A done row swiped left: the ring a done tick, then 75% (open again), on down to its Delete; a row at 0% goes straight there', depth: {}, delete: true, tasks: [
-      task({title: 'Sweep the yard', done: true, state: {reveal: -.08}}), task({title: 'Sweep the yard', done: true, state: {reveal: -.13}})]},
+    {title: 'A done row swiped left: the ring a done tick, then 75% (open again), on down to 0%', depth: {}, delete: true, tasks: [
+      task({title: 'Sweep the yard', done: true, state: {reveal: -.09}}), task({title: 'Sweep the yard', done: true, state: {reveal: -.15}})]},
     {title: 'A full swipe left, or Delete tapped: the row carries on off the screen, leaving a gap with Restore', depth: {}, delete: true,
       tasks: [task({title: 'Wipe the menus', state: {sweep: .8}}), task({title: 'Wipe the menus', state: {leaving: 'deleted'}})]},
     // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
@@ -269,8 +271,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const t of all) if (t.state.claim) this.slideClaim = t.id;
     this.$nextTick(() => {
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
-        // A still of a swipe, held (progress.js: revealOf, swipeAt), on a screen wide enough not to cut its room short.
-        if (t.state.reveal) { const w = row.clientWidth; revealOf(row).move(swipeAt({start: t.done ? 100 : t.pct ?? Math.round(t.percent_done * 100), dx: t.state.reveal * w, x: w / 2, width: w, screen: 1e4})); }
+        // A still of a swipe, held (progress.js: revealOf, swipeAt), put down where its room isn't cut short by the edge.
+        if (t.state.reveal) { const w = row.clientWidth; revealOf(row).move(swipeAt({start: t.done ? 100 : t.pct ?? Math.round(t.percent_done * 100), dx: t.state.reveal * w, x: t.state.reveal < 0 ? w : w / 2, width: w, screen: 1e4})); }
         if (t.state.sweepRight) revealOf(row).move({off: row.clientWidth * t.state.sweepRight, pct: 100, to: 'done'});
         if (t.state.swiped) { row.classList.add('swiped'); row.style.setProperty('--swipe', '-88px'); }
         if (t.state.full) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', '-240px'); }
