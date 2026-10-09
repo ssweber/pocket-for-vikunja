@@ -224,6 +224,19 @@ try {
     // Its title says it's a template wherever Vikunja shows it; Pocket shows its name (tplRow).
     for (const title of [`TEMPLATE: ${TEMPLATE}`, ...STEPS]) if (await named(title) !== 1) throw new Error(`${await named(title)} tasks “${title}”`);
     await page.waitForSelector(tplRow, { timeout: 15000 });
+    // Its row, and New template's, on a 375px phone too: the icon at the left, the words beside it, Start at the right, on
+    // one line.
+    for (const width of [390, 375]) {
+      await page.setViewportSize({ width, height: 844 });
+      const laid = await page.$eval(tplRow, el => {
+        const box = s => el.querySelector(s).getBoundingClientRect(), icon = box('.body > svg'), title = box('.title'), start = box('.cl-start');
+        const n = el.parentElement.querySelector('.cl-new'), plus = n.querySelector('svg').getBoundingClientRect(), words = n.querySelector('.title').getBoundingClientRect();
+        return { tpl: icon.right <= title.left && title.right <= start.left && icon.top < title.bottom && title.top < icon.bottom, start: start.height + 10 >= 48,
+          add: plus.right <= words.left && plus.top < words.bottom && words.top < plus.bottom };
+      });
+      if (!laid.tpl || !laid.add || !laid.start) throw new Error(`at ${width}px: ` + JSON.stringify(laid));
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     template = (await api('/tasks?q=' + encodeURIComponent(TEMPLATE))).items.find(t => t.title === `TEMPLATE: ${TEMPLATE}`);
     // In the order they were made: Vikunja's own order of a task's subtasks can change as they're saved.
     const t = await api('/tasks/' + template.id), steps = (t.related_tasks?.subtask || []).sort((a, b) => a.id - b.id);

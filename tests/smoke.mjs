@@ -1484,6 +1484,13 @@ try {
       await refreshToday();
       await page.click(`${rowOf(t.title)} > .body`, { timeout: 15000 });
       await page.waitForSelector('#d-due-card');
+      // Due: its date and its × on one line, at 375px too, the date giving way (an iPhone's date has a width of its own).
+      for (const width of [390, 375]) {
+        await page.setViewportSize({ width, height: 844 });
+        const one = await page.evaluate(() => { const i = document.getElementById('d-due').getBoundingClientRect(), x = document.getElementById('d-due-clear').getBoundingClientRect(); return i.right <= x.left + 1 && Math.abs((i.top + i.bottom) / 2 - (x.top + x.bottom) / 2) < 4 && x.right <= innerWidth; });
+        if (!one) throw new Error(`at ${width}px, Due's date and its × aren't on one line`);
+      }
+      await page.setViewportSize({ width: 390, height: 844 });
       // showPicker, as the page has it, only noted: a headless browser shows no picker.
       await page.evaluate(() => {
         window.picked = [];
