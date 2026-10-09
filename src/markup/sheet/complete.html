@@ -2,12 +2,12 @@
          actions confirm): its ring tapped, or its header swiped right all the way (askComplete, app/cards.js). They're
          named in a sentence (completeAsk, messages.js), not listed as rows, which looked like boxes to pick from. A
          run's is its finish: its steps not done stay not done, as a run's steps are ticked on its screen, with who did
-         each; or it's opened, to work through them. Cancel goes back where it was asked from: the parent's sheet, or the
-         list. -->
+         each; or it's opened, to work through them (not when asked on its own screen). Cancel goes back where it was
+         asked from: the parent's sheet, the list, or the run's screen. -->
     <template x-if="sheet.kind === 'complete' && sheet.complete"><div id="complete">
       <div class="d-title"><h2 x-text="sheet.complete.ask.head"></h2></div>
       <p class="note complete-note" id="complete-note" x-text="sheet.complete.ask.body"></p>
       <button class="btn block" id="complete-yes" @click="confirmComplete()" x-text="sheet.complete.ask.yes"></button>
-      <template x-if="sheet.complete.run"><button class="btn ghost block" id="complete-open-run" style="margin-top:10px" @click="openRun(sheet.complete.id)">Open the run</button></template>
+      <template x-if="sheet.complete.run && !sheet.complete.screen"><button class="btn ghost block" id="complete-open-run" style="margin-top:10px" @click="openRun(sheet.complete.id)">Open the run</button></template>
       <button class="btn ghost block" id="complete-no" style="margin-top:10px" @click="cancelComplete()">Cancel</button>
     </div></template>

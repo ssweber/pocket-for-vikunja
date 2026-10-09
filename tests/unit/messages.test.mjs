@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, movedText, movedTo, namesText, notMoved, notMovedBack, STAYS, notSaved, sentLater } from '../../src/js/messages.js';
+import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, movedText, movedTo, namesText, notMoved, notMovedBack, STAYS, notSaved, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -147,4 +147,16 @@ test('a row dropped on another day says where it went, and a card kept by its su
   assert.equal(notMovedBack(1, 'today'), '1 task couldn\'t be moved back (changed since, or not saved) and is still due today.');
   assert.equal(notMovedBack(2, 'Friday'), '2 tasks couldn\'t be moved back (changed since, or not saved) and are still due Friday.');
   assert.equal(STAYS.repeats, 'It repeats, so it stays: tick it to move on to the next date.');
+});
+
+// Who started a run, in its history (parent-tasks-plan, the run's row): its summary, today with the time only, and its ⋯,
+// always with the day; who alone when its time isn't known, nothing when who isn't.
+test('a run says who started it and when, with the day when it was another day or at the top of its ⋯', () => {
+  const now = new Date(2026, 9, 9, 14, 0), at = new Date(2026, 9, 9, 6, 2), before = new Date(2026, 9, 8, 6, 2);
+  const time = d => d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}), full = d => d.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+  assert.equal(startedText('Priya', at.toISOString(), {now}), 'Started by Priya at ' + time(at));
+  assert.equal(startedText('you', before.toISOString(), {now}), 'Started by you, ' + full(before));
+  assert.equal(startedText('Priya', at.toISOString(), {now, day: true}), 'Started by Priya, ' + full(at));
+  assert.equal(startedText('Priya', null, {now}), 'Started by Priya');
+  assert.equal(startedText(null, at.toISOString(), {now}), '');
 });

@@ -1,6 +1,5 @@
     <!-- A run: the step it's on, the list of steps, its comments, and the comments from the last run of the same template -->
     <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
-      <p class="run-for" id="run-for" x-text="runView.forText"></p>
       <!-- A start just made, "Started", with its Undo until anything's done in it -->
       <template x-for="line in placeLines('run')" :key="line.n">
         <!-- include markup/place-line.html -->

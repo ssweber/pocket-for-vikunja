@@ -480,7 +480,19 @@ a.sec-act{text-decoration:none}
 .draft-time select{border:0;background:transparent;font:inherit;color:var(--accent);font-weight:650;max-width:13em;padding:0;text-overflow:ellipsis}
 .chip-x{display:inline-flex;border:0;background:none;padding:0 0 0 2px;color:var(--muted);cursor:pointer}
 .draft-add{display:flex;align-items:center;gap:8px;width:100%;min-height:50px;padding:0 14px;border:0;border-top:1px solid var(--line);background:none;color:var(--accent);font:inherit;font-weight:650;cursor:pointer}
-.run-for{margin:2px 0 10px;color:var(--muted);font-size:14px}
+/* A run's own row between Back and ⋯ (app.html, RUN_ROW): on the page, not in a card, and closer than a list's row, its
+   ring and its name's first line on Back's line, its name on two lines at most: the screen's top is no taller than the
+   name and "For you" under it were. Swiped, its colour stays between Back and ⋯. */
+.page-title.run-top{align-items:flex-start;margin-bottom:8px}
+#run-own{flex:1;min-width:0;overflow:hidden;border-radius:var(--r-row)}
+#run-own > .row{padding:4px 0;min-height:0;border:0;background:transparent}
+#run-own > .row > button.body{margin:-4px 0;padding:8px 0 6px}
+#run-own > .row > .ring::after{width:calc(var(--tick) + 12px)}
+#run-own .title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#run-own > .row > .claim{margin:-4px 0;padding:6px 4px 0 8px;min-width:0}
+#run-own .pic .av{box-shadow:0 0 0 2px var(--bg)}
+#run-own .row-prog .ring{top:2px}                     /* on its ring's line, inside the closer row */
+.run-started{margin:0 0 4px}
 .timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:17px;color:var(--ink);text-align:left;cursor:pointer}
 .timer + .timer{border-top:1px solid var(--line)}
 .timer .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

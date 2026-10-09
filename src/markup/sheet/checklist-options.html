@@ -42,8 +42,9 @@
       </div></template>
     </div></template>
 
-    <!-- A run's ⋯: the run as a task, and deleting it -->
+    <!-- A run's ⋯: who started it and when (its history: who it's for is its row's slot), the run as a task, and deleting it -->
     <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
+      <template x-if="runStarted"><p class="note run-started" id="r-started" x-text="runStarted"></p></template>
       <div class="d-title"><h2 x-text="view.run.run.title"></h2></div>
       <!-- Its steps, who did each and who's on the rest, to send or keep, and its page in Vikunja -->
       <div class="card share-card" id="r-sharing">

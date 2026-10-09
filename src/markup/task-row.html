@@ -19,6 +19,9 @@
      list but about this one task: its tick is the sheet's (sheetDone), a swipe sets its progress there (a full one ticks
      it in place, with no gap), swiped left at 0% it's deleted and the sheet closes on the list (sheetRowGesture), and a
      tap on its title changes it where it is (editTitle). Marks, lines and gaps are its list row's, not this one's.
+     A run's own row atop its screen (g.top, RUN_ROW in lists.js) is this row too, the run as the screen has it: its ring
+     (runRing), whose tap or a full swipe right asks to finish the run (runRowGesture), its name, which opens the run's
+     sheet, and who it's for in its slot (forSlot); nothing under its name, no Delete, and no marks, lines or gaps.
      A step on a run's screen (g.run) is this row too, `t` being the step as the screen has it (runView, runs.js): ticked
      and held through the outbox (tickRow, stepSlide), its words alone for a title, under them its Inserted or Repeated
      mark, comments and countdown (rowMeta), and, done, who did or skipped it, ✅ or ⏭️ on their picture. A step's box is
@@ -31,23 +34,23 @@
      On a stacked card (g.card, list-item.html), each of its rows is this row too, a subtask or a run's step: its own
      tick, slot and progress, and its Delete, as any row's. A collapsed card's top row (.step-line) doesn't fold with the
      batch: the next slides up into its place (cardEntered). -->
-<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, swept: !!swept[t.id]} : g.own ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', swept: !!swept[t.id], head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
+<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, swept: !!swept[t.id]} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', swept: !!swept[t.id], head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
-     x-effect="!g.sheet && !g.run && !g.own && cursor?.id === t.id && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
-     @click.capture="if (!g.own && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))) { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
+     x-effect="!g.sheet && !g.run && !g.own && !g.top && cursor?.id === t.id && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
+     @click.capture="if (!g.own && !g.top && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))) { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
   <!-- A parent (a run, done or not, or an open task with subtasks): its ring, not a tick (ring.html, rowRing) -->
   <template x-for="r in [rowRing(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/ring.html -->
   </template>
-  <template x-if="(g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
+  <template x-if="!g.top && (g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
   <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->
-  <template x-if="!g.run && !g.sheet && !canTick(t) && !rowRing(t, g)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Shared with you to read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
+  <template x-if="!g.run && !g.sheet && !g.top && !canTick(t) && !rowRing(t, g)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Shared with you to read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
   <!-- Alt+↑ and Alt+↓ move it among its siblings, as holding it and moving it up or down does, where that's allowed -->
   <!-- The sheet's own row: its title, tapped, is a box to change it in, in the body's place, until it's left (saveTitle) -->
   <template x-if="g.own && sheet.titleEdit"><div class="body title-in"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
     x-init="$nextTick(() => { grow($el); $el.focus(); $el.setSelectionRange($el.value.length, $el.value.length); })" x-effect="sheet.title; $nextTick(() => grow($el))"
     @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(t); $el.blur()" @blur="saveTitle(); sheet.titleEdit = false"></textarea></div></template>
-  <button class="body" x-show="!g.own || !sheet.titleEdit" @click="g.run ? showStep(t.i, true) : t.pending || (g.own ? editTitle() : g.sheet ? openTask(t.id) : openRow(t))" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
+  <button class="body" x-show="!g.own || !sheet.titleEdit" @click="g.run ? showStep(t.i, true) : t.pending || (g.own ? editTitle() : g.sheet || g.top ? openTask(t.id) : openRow(t))" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
     <template x-if="g.sheet || g.run"><div class="title" x-text="t.title"></div></template>
     <!-- On one line (g.line), what's at its right and said after its title (rowWhen), worked out once, as its slot is -->
     <template x-for="w in !g.sheet && !g.run ? [g.line ? rowWhen(t, g) : null] : []" :key="0"><div class="title-line"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t) && !rowRing(t, g)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template><template x-if="w?.said"><span class="sr" x-text="', ' + w.said"></span></template><template x-if="g.own && canEdit"><span class="sr">, tap to change the title</span></template></div>
@@ -72,11 +75,11 @@
   <!-- Deleted, or done by a full swipe, until the batch clears: a gap where it was, at its height, so nothing moves,
        holding only "Deleted" and Restore, or "Done" and Undo, where who's doing it was (the row's tap, above, takes it
        back) -->
-  <template x-if="!g.own && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))"><div class="del-gap"><span class="what"><span x-text="swept[t.id] ? 'Done' : 'Deleted'"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="(swept[t.id] ? 'Undo: ' : 'Restore ') + t.title"><span class="me" x-text="swept[t.id] ? 'Undo' : 'Restore'"></span></button></div></template>
+  <template x-if="!g.own && !g.top && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))"><div class="del-gap"><span class="what"><span x-text="swept[t.id] ? 'Done' : 'Deleted'"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="(swept[t.id] ? 'Undo: ' : 'Restore ') + t.title"><span class="me" x-text="swept[t.id] ? 'Undo' : 'Restore'"></span></button></div></template>
   <!-- A step inserted during the run, on its card and not done: likely a mistake, so it can go -->
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="'Cancel ' + t.title + (t.index === 0 && pendingNested(t.entry) ? ': the lines under it become tasks of their own' : '')" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
-  <template x-for="line in !g.run && !g.own && lines[t.id] ? [lines[t.id]] : []" :key="0">
+  <template x-for="line in !g.run && !g.own && !g.top && lines[t.id] ? [lines[t.id]] : []" :key="0">
     <!-- include markup/row-line.html -->
   </template>
   <!-- Off the row's end, shown only by a swipe (progress.js); on a run, a step inserted or repeated during it, not done -->

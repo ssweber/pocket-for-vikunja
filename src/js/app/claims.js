@@ -1,7 +1,7 @@
 // Who's doing a subtask or a step: claiming one assigns it to you, and people's pictures.
 import {cache} from '../util.js';
 import {allPages, api, ApiError, NetError} from '../api.js';
-import {hasTemplateLabel, parseStep} from '../checklists.js';
+import {comesRound, hasTemplateLabel, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
 
@@ -28,6 +28,13 @@ export default {
     if (mine) return {id, run, users, more, can: true, mine: true, label: `You're doing ${title}${others ? ', with ' + others : ''}. Tap to let it go`};
     if (all.length) return {id, run, users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
     return {id, run, users: [], more: 0, can: true, label: `Tap to say you'll do ${title}`};
+  },
+  /* Who a run is for (or a template that comes round, its runs), in its row's slot: their pictures, shown as anyone's
+     on a done step are (claimSlot), so not yours on a project only you can see. Never tapped: who a run is for is
+     changed in its ⋯, a template's in its sheet. A screen reader hears it as the row's line said it: "For you and Jo". */
+  forSlot(t){
+    const slot = (t.assignees || []).length ? this.claimSlot(t, t.assignees, true) : null;
+    return slot && {...slot, label: this.forText(t)};
   },
   // Whether no one but you can see a project, as last loaded (seenBy, loadPeople): not until that's known, nor for an API
   // token that can't ask (accessBlocked), when its slots show as anywhere else.
@@ -81,13 +88,16 @@ export default {
     }
   },
   /* A row's slot for who's doing it: in a sheet (g.sheet), its subtask's; on a run's screen (g.run), its step's, until
-     it's done (then its row shows who did it); in a list, the task's own, from its assignees. None on a row waiting to
-     be sent, a run (its row says who it's for), or a template that comes round. A row ticked or opened again in a list,
-     waiting for the batch (leaving.js), keeps the slot it had, so its title doesn't move; it can't be tapped meanwhile. */
+     it's done (then its row shows who did it); in a list, the task's own, from its assignees. A run's (its own row
+     atop its screen, g.top, too), and a template's that comes round, who it's for (forSlot). None on a row waiting to
+     be sent, or another template. A row ticked or opened again in a list, waiting for the batch (leaving.js), keeps the
+     slot it had, so its title doesn't move; it can't be tapped meanwhile. */
   rowSlot(t, g){
     if (g.run) return t.done ? null : t.slot;
     if (g.sheet) return this.subSlots[t.id] || null;
-    if (t.pending || this.isRunTask(t) || (this.checklistIds.has(t.project_id) && hasTemplateLabel(t))) return null;
+    if (t.pending) return null;
+    if (g.top || this.isRunTask(t)) return this.forSlot(t);
+    if (this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) return comesRound(t) ? this.forSlot(t) : null;
     const mark = this.leaving[t.id], was = mark === 'done' ? false : mark === 'open' ? true : t.done;
     const slot = this.claimSlot(t, this.peopleOf(t.id, t.assignees), was, this.stepRun(t));
     return slot && was !== t.done ? {...slot, can: false, label: (t.done ? 'Done: ' : 'Not done: ') + t.title} : slot;

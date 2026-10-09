@@ -29,6 +29,10 @@ export const screenRows = name => ({project: {cards: 'list', delete: true, reord
    over it, and its labels, comments and files in the sheet under it. */
 export const SHEET_ROW = {depth: {}, delete: true, own: true};
 export const OWN_META = ['due', 'prio', 'rep', 'rem'];
+/* A run's own row, atop its screen in the header's place for its name (parent-tasks-plan, the run's row): its ring, its
+   name, who it's for in its slot, and nothing under its name, so the screen's top is no taller than the name and "For
+   you" were. `top`: its ring and its swipe finish the run (runRing, runRowGesture), its tap opens its sheet. */
+export const RUN_ROW = {depth: {}, top: true};
 /* What a list with cards shows, in its order (`tasks`, each subtask under its parent, `depth` by id: nestSubtasks): each
    task at the top, and, under one that isn't a card (`isCard`), its subtasks as rows of their own, indented; a card's
    are on it, so they're left out. */

@@ -125,10 +125,11 @@ export default {
   rowNow(){ return this.route.name === 'today' && this.groupedAt || Date.now(); },
   /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. The sheet's own
      row (g.own) only when it's due and how soon (OWN_META): its project, run or parent are in the path over it, and its
-     labels and counts in the sheet under it. A step on a run's screen (g.run): Inserted or Repeated, its comments, and,
+     labels and counts in the sheet under it. A run's own row atop its screen (g.top), nothing: who it's for is its slot. A step on a run's screen (g.run): Inserted or Repeated, its comments, and,
      not done, its countdown or when it's due. Labels and counts are `extra`: a row on one line leaves them out, and
      doesn't say them (rowWhen). */
   rowMeta(t, g){
+    if (g?.top) return [];
     if (g?.own) return this.rowMeta(t, {depth: {}}).filter(m => OWN_META.includes(m.key));
     if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},
@@ -143,12 +144,12 @@ export default {
     if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     /* A template that comes round: what tapping it does (starting it moves it on only once it's due today), its project,
-       so two projects' "Opening up" can be told apart, and who it's for, instead of its label and steps. */
+       so two projects' "Opening up" can be told apart, instead of its label and steps. Who it's for is its slot's
+       pictures, as a run's are (forSlot). */
     if (comesRound(t) && this.checklistIds.has(t.project_id)) {
       out.push({key: 'tpl', text: !this.canWrite(t.project_id) ? 'Checklist' : this.tickOf(t) ? 'Checklist: tap to start' : 'Checklist, for then'});
       const tp = this.projById.get(t.project_id);
       if (tp && this.route.name !== 'project') out.push({key: 'p', color: colorOf(tp.hex_color), text: tp.title});
-      if ((t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
       return out;
     }
     // (A card's step has its project and its run or task on the card, over it.)
@@ -162,9 +163,6 @@ export default {
     const up = !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true});
-    // A run: who it's for, as its screen says ("For you and Jo"). Any other task shows who's doing it in its slot, at the
-    // end of the row (rowSlot).
-    if (this.isRunTask(t) && (t.assignees || []).length) out.push({key: 'for', text: this.forText(t)});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     // Its subtasks done (a done task's): one with a ring (a run, an open parent) has its count in it (rowRing).
     const subs = t.related_tasks?.subtask || [];

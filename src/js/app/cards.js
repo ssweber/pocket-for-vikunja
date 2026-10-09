@@ -89,8 +89,8 @@ export default {
     return {...w, open, run, said: `${w.done} of ${n(w.total, what)} done, ${w.pct}%`, label};
   },
   // A row's ring, in place of its tick: a run's, done or not, and an open task's with subtasks, wherever it's listed (a
-  // card's own rows too). Not in a sheet, nor a run's steps.
-  rowRing(t, g){ return g.run || g.sheet || (t.done && !this.isRunTask(t)) ? null : this.ringOf(t); },
+  // card's own rows too). Not in a sheet, nor a run's steps. A run's own row atop its screen, the screen's (runRing).
+  rowRing(t, g){ if (g.top) return this.runRing; return g.run || g.sheet || (t.done && !this.isRunTask(t)) ? null : this.ringOf(t); },
   /* A parent's ring tapped, or its header (or row) swiped right all the way, or its Close (`el`: its card or row;
      `sheet`: from its own sheet). Design rules 7 and 8: nothing closes behind your back; bulk actions confirm, single
      ones undo. Marked in place, waiting for the batch: taken back. Done (a done task over its open subtasks, a finished
@@ -130,12 +130,14 @@ export default {
     this.sheet.complete = {id: t.id, task: t, run, back, title, open, n, stay: open.length - n,
       ask: completeAsk({title, run, names: open.filter(s => !s.stays).map(s => s.title), stay: open.length - n})};
   },
-  // Confirmed: the parent and its open subtasks completed (a run finished), shown on its card or row as a tap would.
+  /* Confirmed: the parent and its open subtasks completed (a run finished), shown on its card or row as a tap would.
+     Asked on the run's own screen (`screen`, runRingTap): finished as its Finish run does, off its screen, with Undo. */
   async confirmComplete(){
     const c = this.sheet.complete;
     if (!c) return;
     const t = this.tasks[c.id] || c.task;
     this.closeSheet(true);
+    if (c.screen) return this.finishRun();
     await this.closeParent(t, this.rowEl(t.id), {close: !c.run});
   },
   cancelComplete(){ const c = this.sheet.complete; if (c?.back) this.openTask(c.id); else this.closeSheet(); },

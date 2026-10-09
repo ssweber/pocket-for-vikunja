@@ -367,7 +367,7 @@ export function runWithoutDay(title, created){
 }
 // What a run's screen keeps of a run and its steps, also saved for opening it offline.
 export const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,
-  comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: stepsOf(t).map(s => s.id)});
+  created: t.created || null, comments: t.comments || [], from: t.related_tasks?.copiedfrom?.[0]?.id || null, steps: stepsOf(t).map(s => s.id)});
 export const plainStep = t => ({id: t.id, title: t.title, done: t.done, done_at: t.done_at, due_date: t.due_date, updated: t.updated, percent_done: t.percent_done || 0, description: t.description || '', assignees: t.assignees || [],
   attachments: t.attachments || [], reactions: t.reactions || {}, comments: t.comments || [], tpl: stepLine(t.description) ?? t.related_tasks?.copiedfrom?.[0]?.title ?? null,
   added: addedText(t.description), from: t.related_tasks?.copiedfrom?.[0]?.id ?? null});

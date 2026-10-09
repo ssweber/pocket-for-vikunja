@@ -1,7 +1,7 @@
 // What Pocket says when something happens, as plain sentences. Where each is shown is lines.js's; these only say it, so
 // the unit tests can check them.
 import {NetError} from './api.js';
-import {dueInfo} from './dates.js';
+import {dueInfo, fmtTime} from './dates.js';
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
@@ -61,6 +61,17 @@ export const headText = n => n ? `Done, but ${n === 1 ? '1 subtask is' : n + ' s
 
 // A run's step done or skipped without a connection: when it goes.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
+
+/* Who started a run, and when, as its history says it: in a finished run's summary, "Started by Priya at 6:02 AM" (on
+   another day, "Started by Priya, Oct 8, 6:02 AM"); at the top of its ⋯ (`day`), always with the day. `who`: their name,
+   or "you". '' when it isn't known who; with no time known, only who. */
+export function startedText(who, at, {now = new Date(), day = false} = {}){
+  if (!who) return '';
+  const d = at ? new Date(at) : null;
+  if (!d || !(d.getTime() > 0)) return `Started by ${who}`;
+  const today = d.toDateString() === new Date(now).toDateString();
+  return `Started by ${who}` + (today && !day ? ' at ' + fmtTime(d) : ', ' + d.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}));
+}
 
 // Something copied, said where it was copied from: progress as a text (where there's no share sheet), a Markdown list, a
 // task's notes, a comment; or that the browser wouldn't allow it.

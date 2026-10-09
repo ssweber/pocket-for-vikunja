@@ -2,13 +2,13 @@
 import {andList, cache, store, taskDrafts, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
-import {pctOf} from '../progress.js';
+import {pctOf, workedOut} from '../progress.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
-import {sentLater} from '../messages.js';
+import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 
@@ -394,16 +394,48 @@ export default {
     const allDone = total > 0 && doneCount === total, at = r.at ?? (next >= 0 ? next : total - 1);
     // Skipped steps are out of the way (doneCount, for the line), but not done (didCount, in words).
     const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length, didCount = doneCount - skippedN;
-    const by = r.run.created_by, starter = by && (by.id === me?.id ? 'you' : by.name || by.username);
-    const forText = [this.forText(r.run), starter && 'started by ' + starter].filter(Boolean).join(' · ');
+    // Who started it is its history: in the summary once every step is done, and at the top of its ⋯ (runStarted). Who
+    // it's for is in its row's slot, at the top of the screen (forSlot).
+    const started = startedText(this.runStarter(r.run), r.run.created, {now: new Date(serverTime(this.clock))});
     const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish';
     // Finished, or every step done, no step is on screen until one is tapped.
     // (Where the run is, the steps listed under the card say: tapping one puts it on the card.)
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
     return {steps, total, doneCount, didCount, skippedN, allDone, at, step, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
-      summary: [`${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
+      summary: [started, `${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
       notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
-      forText: forText && forText[0].toUpperCase() + forText.slice(1)};
+      ring: {...workedOut(steps.map(s => ({done: s.done, pct: s.pct}))), run: true}};
+  },
+  // Who started a run: "you", or their name; null when Vikunja didn't say.
+  runStarter(run){ const by = run?.created_by; return by ? (by.id === this.user?.id ? 'you' : by.name || by.username) : null; },
+  // At the top of the run's ⋯: "Started by Priya, Oct 8, 6:02 AM".
+  get runStarted(){ const run = this.view.run?.run; return run ? startedText(this.runStarter(run), run.created, {day: true}) : ''; },
+  /* The run's own row, at the top of its screen in the header's place for its name (screens/run.html: the task row, `g`
+     RUN_ROW): its ring, its name, and who it's for in its slot. The ring is worked out from the steps as the screen has
+     them, ticks waiting to be sent too, as its card's is on Today (ringOf). Tapped, or the row swiped right all the way
+     (runRowGesture), it asks to finish the run, as a run's ring does anywhere (askComplete): with every step done, it's
+     finished at once, with Undo; finished, it's opened again. */
+  // The run as its own row has it: done once it's finished, a finish waiting to be sent too. Only once its screen is
+  // drawn (not while it loads, or failed to).
+  get runOwn(){
+    const run = this.view.run?.run, v = this.route.name === 'run' && !this.view.loading && !this.view.error && this.runView;
+    return v && run ? {...run, done: v.finished} : null;
+  },
+  get runRing(){
+    const v = this.runView, run = this.view.run?.run;
+    if (!v || !run || !v.total) return null;
+    const open = v.total - v.ring.done, title = `“${run.title}”`, n = open === 1 ? '1 step' : open + ' steps';
+    return {...v.ring, open, said: `${v.ring.done} of ${v.total} ${v.total === 1 ? 'step' : 'steps'} done, ${v.ring.pct}%`, tap: () => this.runRingTap(),
+      label: v.finished ? 'Reopen ' + run.title : !open ? `Finish ${title}: all its steps are done` : `Finish ${title}, with ${n} not done`};
+  },
+  runRingTap(){
+    const run = this.view.run?.run, v = this.runView;
+    if (!run || !v || !this.canWrite(run.project_id)) return;
+    if (v.finished) return this.reopenRun(run.id);
+    if (v.allDone) return this.finishRun();
+    const open = v.steps.filter(s => !s.done).map(s => s.title), title = runWithoutDay(run.title, run.created);
+    this.openSheet('complete');
+    this.sheet.complete = {id: run.id, task: run, run: true, screen: true, back: false, title, open, n: open.length, stay: 0, ask: completeAsk({title, run: true, names: open})};
   },
   // What was noted on this step last time, from the last finished run of the same template.
   lastNotes(s){ const l = this.view.run?.last; return s?.tpl && s.id !== l?.held ? (l?.notes || []).filter(n => n.tpl === s.tpl) : []; },

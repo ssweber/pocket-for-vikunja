@@ -344,6 +344,7 @@ export default {
     this.holdToSlide(document.getElementById('view'), target => {
       // A stacked card: each of its rows as any row (cardGesture); its header the parent's (headGesture), and held, on a
       // project's list, the card moved up or down (cardHold); its footer (More, Less) and Close, only a tap.
+      if (target.closest('#run-own > .row')) return this.runRowGesture(target.closest('.row'));
       const card = target.closest('.day-card'), row = target.closest('.card-rows > .row, .list:not(.tree) > .row, .item > .row');
       if (card && !row) return target.closest('.card-head') && !target.closest('.row-del') ? this.cardGesture(card, this.headGesture(card), this.cardHold(card)) : null;
       if (!row || target.closest('.row-del')) return null;
@@ -574,6 +575,14 @@ export default {
     const swipe = this.canDelete(t) ? swipeOf(row, () => sweep(row, this.deleteTask())) : null;
     if (this.sheetRing) { const r = this.ringSwipe(t, row, row, true); return (r.finish || swipe) && {el: row, swipe, ...r}; }
     return {el: row, swipe, start: t.done ? 100 : pctOf(t), width: row.clientWidth, springs: true, finish: pct => { if (pct !== null) this.setSheetProgress(pct); }};
+  },
+  /* A run's own row atop its screen (RUN_ROW), swiped as a parent's row is: right, it springs back, unless it's swiped
+     all the way, which is its ring's tap, asking to finish the run (runRingTap); no Delete (a run is deleted from its
+     ⋯, which asks first, as its steps go too). Not a finished run, nor one shared with you to read (ringSwipe). */
+  runRowGesture(row){
+    const run = this.runOwn;
+    if (!run || run.done || !this.canWrite(run.project_id) || !this.runRing) return null;
+    return {el: row, start: 0, one: true, springs: true, width: row.clientWidth, finish: pct => { if (pct === 100) this.runRingTap(); }};
   },
   // The sheet's task's ring, when it's a parent (a task with subtasks, or a run): its progress is theirs.
   get sheetRing(){ return this.sheet.kind === 'task' && !this.ofTemplate ? this.ringOf(this.sheet.task) : null; },

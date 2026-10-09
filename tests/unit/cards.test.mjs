@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo } from '../../src/js/dates.js';
-import { listItems, nestSubtasks, rowGestures } from '../../src/js/lists.js';
+import { listItems, nestSubtasks, rowGestures, RUN_ROW } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
 import views from '../../src/js/app/views.js';
@@ -353,6 +353,32 @@ test('the step card shows who’s on its step, as its row does, until it’s don
   const app = runScreen(), v = app.runView;
   assert.deepEqual(app.rowSlot(v.step, { run: true }), v.step.slot);
   assert.equal(app.rowSlot(v.steps[0], { run: true }), null, 'done: its row and card say who did it instead');
+});
+
+/* The run's own row atop its screen (RUN_ROW): its ring from the steps as the screen has them, its tap (or a full swipe)
+   asking to finish it there, with no way to open the run it's on; who it's for in its slot; who started it in its
+   history: the summary once every step is done, and its ⋯. */
+test('a run’s own row: its ring asks to finish it on its screen, its slot says who it’s for, and who started it is its history', async () => {
+  const app = runScreen(), made = new Date(Date.now() - 36e5).toISOString(), calls = [];
+  Object.assign(app.view.run.run, { created: made });
+  Object.assign(app, { sheet: {}, route: { name: 'run' }, openSheet: k => { app.sheet = { kind: k }; }, closeSheet: () => calls.push('close'), finishRun: () => calls.push('finish'),
+    reopenRun: id => calls.push('reopen ' + id) });
+  const r = app.rowRing(app.runOwn, RUN_ROW);
+  assert.deepEqual([r.done, r.total, r.pct, r.open, r.label], [1, 4, 38, 3, 'Finish “Opening up”, with 3 steps not done'], 'C at 50% counts, as on its card');
+  assert.deepEqual(app.rowMeta(app.runOwn, RUN_ROW), [], 'nothing under its name');
+  assert.equal(app.rowSlot(app.runOwn, RUN_ROW).label, 'For you');
+  r.tap();
+  assert.deepEqual([app.sheet.kind, app.sheet.complete.screen, app.sheet.complete.ask.head], ['complete', true, 'Finish this run with 3 steps not done?']);
+  await app.confirmComplete();
+  assert.deepEqual(calls, ['close', 'finish'], 'confirmed: finished as Finish run does');
+  assert.match(app.runView.summary, /^Started by you at .+ · 1 of 4 done · 3 not done$/, 'in the summary, which shows once every step is done');
+  for (const s of app.view.run.steps) s.done = true;
+  assert.match(app.runView.summary, /^Started by you at .+ · 4 of 4 done$/);
+  app.rowRing(app.runOwn, RUN_ROW).tap();
+  assert.equal(calls.at(-1), 'finish', 'every step done: finished at once, with its Undo');
+  assert.match(app.runStarted, /^Started by you, \w+ \d+, /);
+  app.view.run.run.created_by = { id: 9, username: 'priya', name: 'Priya' };
+  assert.match(app.runView.summary, /^Started by Priya at /);
 });
 
 test('a run’s bottom box aims at the card’s step; steps added go each after the last, until the card’s step changes', async () => {
