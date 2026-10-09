@@ -762,7 +762,7 @@ export default {
       this.markRow(s.id, {kind: 'done', out: [], gap: true, said: `Done: ${s.title}`, undo: () => this.tickStep(s, 'undone')});
       return;
     }
-    // Below 100%, on its row only, as a task's: its bar is what was set, and sliding it back is the undo.
+    // Below 100%, on its row only, as a task's: its tick shows what was set, and swiping it back is the undo.
     const r = await this.act({op: 'progress', task: s.id, pct});
     if (r.status !== 'error' && !undoing) this.said = `Progress of ${s.title} set to ${pct}%`;
   },

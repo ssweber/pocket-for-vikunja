@@ -17,7 +17,8 @@ export const SAY_MS = 4000;                             // how long a message wi
 const timers = new Map();
 const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The rows of a task on the page: in the list (its card, on Today), and in a task's sheet.
-const rowsOf = id => [...document.querySelectorAll(`:is(.row, .day-card)[data-id="${id}"]`)];
+// (Not a sheet's own row, its task's head: what's said about the task in a sheet goes in the sheet's places.)
+const rowsOf = id => [...document.querySelectorAll(`:is(.row:not(.own), .day-card)[data-id="${id}"]`)];
 // The places on a screen, and when each is on it. A sheet's ("sheet:notes") are there while it's open.
 const SCREEN = {
   overdue: a => a.route.name === 'today',

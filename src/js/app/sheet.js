@@ -218,6 +218,9 @@ export default {
       return false;
     });
   },
+  // The title of the task the sheet leads with, tapped on its row: a box in its place to change it (task-row.html, g.own),
+  // saved once it's left (saveTitle). Not one shared with you to read.
+  editTitle(){ if (this.canEdit) { this.sheet.title = this.rowTitle(this.sheet.task); this.sheet.titleEdit = true; } },
   // A template's name: its title keeps "TEMPLATE: " before it.
   saveTitle(){
     const t = this.sheet.task, v = this.sheet.title.trim();

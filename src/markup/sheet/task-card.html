@@ -1,19 +1,17 @@
 <!-- A task's sheet leads with one card (parent-tasks-plan, 6b): the task's own row, then its notes, then its photos and
-     files. A MOCK, drawn only by the specimen (scripts/specimen/) for the user to look at: nothing in Pocket includes it
-     yet. Built for real, sheet/task.html includes it in place of its title, progress bar, Notes and Attachments, and
-     drops its own copy of what's marked "copied" below, so there's one of each.
-     The row is the row in a list (task-row.html, `g` the sheet's own: sheetRowG), so it looks and acts the same as
-     everywhere (design rule 4): its tick with its quarter, or a parent's ring; its title; its slot; its line of when it's
-     due. Swiped right it sets progress (a full swipe ticks it in place: the sheet is about this one task, so no gap);
-     swiped left at 0%, its Delete, which closes the sheet on the list, where its gap has Restore. No progress bar: a
-     swipe sets progress, and the tap path for it is the Progress line in Details. -->
+     files, so a tap on a task opens the same row it was, with all of it under it. The row is the row in a list
+     (task-row.html, `g` the sheet's own: SHEET_ROW), so it looks and acts the same as everywhere (design rule 4): its
+     tick with its quarter, or a parent's ring; its title, tapped, a box to change it in (editTitle); its slot; its line
+     of when it's due. Swiped right it sets progress (a full swipe ticks it in place: the sheet is about this one task,
+     so no gap); swiped left at 0%, its Delete, which closes the sheet on the list, where its gap has Restore
+     (sheetRowGesture). The tap path for its progress is the Progress line in Details. A template and its step have no
+     row (they're never ticked: their name is a heading over the card), only their notes and files. -->
 <div class="card task-card" id="d-card">
-  <template x-for="g in [sheetRowG]" :key="0"><template x-for="t in [sheet.task]" :key="t.id">
+  <template x-for="g in ofTemplate ? [] : [SHEET_ROW]" :key="0"><template x-for="t in [sheet.task]" :key="t.id">
     <!-- include markup/task-row.html -->
   </template></template>
-  <!-- Its notes, under its title (copied from sheet/task.html's Notes card): a tap edits them. With none, "Add notes"
-       (descHtml), quiet, as the way to add them. Copy sits at their top right, as on a comment, in place of the
-       heading's. -->
+  <!-- Its notes, under its title, sanitized as everything from Vikunja is (descHtml): a tap edits them. With none, "Add
+       notes", quiet, as the way to add them. Copy sits at their top right, as on a comment. -->
   <div class="task-card-notes">
     <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || (canEdit && editDesc())" @keydown.enter="canEdit && editDesc()"></div></template>
     <template x-if="!sheet.editingDesc && notesText(sheet.task).trim()"><button class="icon-btn plain copy-btn" id="d-desc-copy" aria-label="Copy the notes" @click="copyNotes()"><svg class="i"><use href="#i-copy"/></svg></button></template>
@@ -30,7 +28,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
       <!-- include markup/place-line.html -->
     </template>
   </div>
-  <!-- Its photos and files, then Add a photo or file (copied from sheet/task.html's Attachments card): each a line,
+  <!-- Its photos and files, then Add a photo or file: each a line,
        its clip where the row's tick is, so the card reads as one column under its title -->
   <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div class="task-card-files" id="d-attachments">
     <template x-for="a in sheet.task.attachments || []" :key="a.id">

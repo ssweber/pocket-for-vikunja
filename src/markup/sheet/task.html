@@ -8,31 +8,22 @@
           <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheet.task.project_id)" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
           <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTitle"></button></span></template>
         </div>
-        <div class="d-title">
-          <!-- A parent's: its ring (ring.html), as on its card -->
-          <template x-for="r in [sheetRing].filter(Boolean)" :key="0">
-            <!-- include markup/ring.html -->
-          </template>
-          <template x-if="!ofTemplate && canEdit && !sheetRing"><button class="check" id="d-done" :class="{on: sheet.task.done, sq: checklistRole === 'step'}" :aria-label="sheet.task.done ? 'Mark not done' : 'Mark done'" @click="sheetDone()"><svg class="i"><use href="#i-check"/></svg></button></template>
-          <template x-if="checklistRole !== 'tplstep'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title"
+        <!-- A template and its step have no row (they're never ticked, nor have progress): their name, as a heading over
+             the card of their notes and files. A template's is changed here; a step's in the template. -->
+        <template x-if="ofTemplate"><div class="d-title">
+          <template x-if="checklistRole === 'template'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title"
                     x-effect="sheet.title; $nextTick(() => grow($el))"
                     @keydown.enter.prevent="$el.blur()" @change="saveTitle()"></textarea></template>
           <!-- A template's step: its name without its time, which is changed in the template, with the steps it can count from -->
           <template x-if="checklistRole === 'tplstep'"><h2 class="d-step-title" id="d-step-title" x-text="tplStep?.title || sheet.task.title"></h2></template>
-        </div>
+        </div></template>
         <template x-if="checklistRole === 'tplstep' && tplStep"><div class="meta d-step-when num" id="d-step-when">
           <span x-text="'Step ' + tplStep.no + ' of ' + tplStep.of"></span><template x-if="tplStep.problem || tplStep.text"><span :class="{'due overdue': tplStep.problem}" x-text="tplStep.problem || tplStep.text"></span></template>
         </div></template>
-        <!-- Progress, as in the list: swipe the bar, or around the title (initSheetProgress). A parent's (a run's too) is
-             worked out from its subtasks, and only shown. -->
-        <template x-if="!ofTemplate && canEdit"><div class="d-progress" id="d-progress" :role="sheetRing ? 'progressbar' : 'slider'" tabindex="0" :aria-label="sheetRing ? (sheetRing.run ? 'Steps done' : 'Subtasks done') : 'Progress'" aria-valuemin="0" aria-valuemax="100"
-             :aria-valuenow="sheet.pct ?? shownPct(sheet.task)" :aria-valuetext="(sheet.pct ?? shownPct(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
-             x-style="{'--pct': (sheet.pct ?? shownPct(sheet.task)) / 100}"
-             @keydown.right.prevent="nudgeProgress(1)" @keydown.left.prevent="nudgeProgress(-1)">
-          <span class="track"><i></i></span><span class="num" x-text="(sheet.pct ?? shownPct(sheet.task)) + '%'"></span>
-        </div></template>
+        <!-- Saving…, Saved: at the right of the path's line, so the card stays right under it -->
+        <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
       </div>
-      <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
+      <!-- include markup/sheet/task-card.html -->
 
       <!-- In a checklist project: make the task a template, start a run from it, or go to the run it's part of -->
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
@@ -80,46 +71,6 @@
         </template>
       </div></template>
       <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
-
-      <!-- Copy: the notes as plain text, to paste anywhere -->
-      <div class="h3">Notes<template x-if="!sheet.editingDesc && notesText(sheet.task).trim()"><button class="icon-btn plain copy-btn" id="d-desc-copy" aria-label="Copy the notes" @click="copyNotes()"><svg class="i"><use href="#i-copy"/></svg></button></template></div>
-      <div class="card" id="d-desc-card">
-        <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || (canEdit && editDesc())" @keydown.enter="canEdit && editDesc()"></div></template>
-        <template x-if="sheet.editingDesc"><div class="desc-edit">
-          <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())"></textarea>
-          <template x-if="sheet.descUnsaved"><p class="note" id="d-desc-unsaved" style="margin:6px 2px">Not saved yet: these notes are kept on this phone until they're saved.</p></template>
-          <template x-if="sheet.descConflict !== null"><p class="note" id="d-desc-conflict" style="margin:6px 2px; white-space:pre-wrap">They were changed elsewhere while you wrote. The notes in Vikunja now:
-<span x-text="sheet.descConflict || '(none)'"></span>
-Save to replace them with yours, or Cancel to keep them.</p></template>
-          <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>
-          <div class="row-actions"><button class="btn ghost" id="d-desc-cancel" @click="cancelDesc()">Cancel</button><button class="btn" id="d-desc-save" @click="saveDesc()">Save notes</button></div>
-        </div></template>
-        <template x-for="line in placeLines('sheet:notes')" :key="line.n">
-          <!-- include markup/place-line.html -->
-        </template>
-      </div>
-
-      <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div>
-        <div class="h3">Attachments<span class="n num" x-text="(sheet.task.attachments || []).length + (waitingByTask.get(sheet.task.id) || []).length || ''"></span></div>
-        <div class="card" id="d-attachments">
-          <template x-for="a in sheet.task.attachments || []" :key="a.id">
-            <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
-          </template>
-          <!-- Added here or with the task, not in Vikunja yet: they wait on the phone while there's no connection -->
-          <template x-for="f in waitingByTask.get(sheet.task.id) || []" :key="f.key">
-            <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span>
-              <button class="icon-btn plain" :aria-label="'Don\'t upload ' + f.name" @click="cancelFile(f.entry, f.key)"><svg class="i"><use href="#i-close"/></svg></button></div>
-          </template>
-          <!-- The phone offers its own choices here: a photo from the library, a new one, or a file -->
-          <template x-if="attachmentsOn && canEdit"><label class="att add-att">
-            <svg class="i"><use href="#i-plus"/></svg><span class="nm">Add a photo or file</span>
-            <input type="file" id="d-file" class="sr" multiple aria-label="Add a photo or file" @change="addFiles($event.target.files); $event.target.value = ''">
-          </label></template>
-          <template x-for="line in placeLines('sheet:files')" :key="line.n">
-            <!-- include markup/place-line.html -->
-          </template>
-        </div>
-      </div></template>
 
       <!-- A template's subtasks are its steps: in order, with when each is due in a run; tapped, changed, moved or removed -->
       <template x-if="checklistRole !== 'tplstep'"><div class="h3"><span x-text="checklistRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="checklistRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div></template>
@@ -268,6 +219,13 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
             </template></div>
           </div></template>
         </span></div>
+        <!-- Progress, the tap path for a swipe on the row (design rule 3): the quarters, the one it's at pressed (none for
+             progress set elsewhere, 30% say, nor for a done task, which a quarter opens again at). Done is the tick. Not
+             a parent's (a run's too): its progress is worked out from its subtasks (rule 5). Claims it as a swipe does
+             (setSheetProgress). -->
+        <template x-if="!ofTemplate && !sheetRing && canEdit"><div class="prop"><span class="k">Progress</span><span class="v d-quarters" id="d-progress" role="group" aria-label="Progress">
+          <template x-for="q in QUARTERS" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(quarterOn(sheet.task) === q)" :aria-label="q + '% done'" @click="setSheetProgress(q)" x-text="q + '%'"></button></template>
+        </span></div></template>
         <!-- Not for a step: a template's steps and a run's are copied, not repeated -->
         <template x-if="!['template', 'tplstep', 'step'].includes(checklistRole)"><div class="prop sel"><span class="k">Repeats</span><span class="v">
           <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">

@@ -22,6 +22,12 @@ export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).so
    what brought it is cards.js) and in search ('found'), open on a project's list ('list'); never on a list of done
    tasks (listGroups). */
 export const screenRows = name => ({project: {cards: 'list', delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true, reschedule: true}}[name] || {});
+/* A task's own row, leading its sheet (sheet/task-card.html: parent-tasks-plan, 6b): deleted from there (the sheet
+   closing on the list), not moved; `own`, so its tick, swipe and title are the sheet's. Under its title only when it's
+   due and how soon (OWN_META: due, priority, repeats, a reminder to come): its project, run or parent are in the path
+   over it, and its labels, comments and files in the sheet under it. */
+export const SHEET_ROW = {depth: {}, delete: true, own: true};
+export const OWN_META = ['due', 'prio', 'rep', 'rem'];
 /* What a list with cards shows, in its order (`tasks`, each subtask under its parent, `depth` by id: nestSubtasks): each
    task at the top, and, under one that isn't a card (`isCard`), its subtasks as rows of their own, indented; a card's
    are on it, so they're left out. */

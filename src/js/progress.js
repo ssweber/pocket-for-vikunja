@@ -18,23 +18,13 @@ export const HOLD_MS = 450;                             // hold this long to pic
 export const SNAPS = [0, 25, 50, 75, 100];
 export const EDGE = 48;                                 // px short of the screen's edge where 100% (or 0%) is reached
 export const LOCK_PX = 10;                              // after a hold, this far decides the way: up and down moves it
-export const QUARTER_PX = 48;                           // the sheet's bar swiped left: a quarter less progress each this far
-/* Where a slide puts progress: the snap nearest the finger, or where it started, so progress set elsewhere (40%, say)
-   stays as it is until it's slid, then moves to the nearest snap. */
-export const snapPct = (start, raw) => [start, ...SNAPS].reduce((best, p) => Math.abs(p - raw) < Math.abs(best - raw) ? p : best);
-// The next snap up (dir 1) or down (-1) from pct: the arrow keys on the sheet's bar.
-export const nextSnap = (pct, dir) => dir > 0 ? SNAPS.find(p => p > pct) ?? 100 : SNAPS.findLast(p => p < pct) ?? 0;
-/* The progress under the finger, put down at x on a row `width` wide, on a screen `screen` wide, and moved dx since. It
-   moves from where it was, like a volume bar: the room the finger has is the rest of the way, so from 60% held on the
-   right of a row, 100% is still within reach. It ends EDGE short of the screen's edge, clear of the phone's own edge
-   gestures and easy for a thumb; past it stays at 100% (or 0%). At least a quarter of the row's width, so a little room
-   isn't jumpy, but never more than the finger has before the edge: held near it, 100% (or 0%) is still reached, closer
-   to the edge. */
-export function slidePct({start, dx, x, width, screen}){
-  const room = roomTo(dx > 0 ? screen - x : x, width);
-  return snapPct(start, Math.max(0, Math.min(100, start + dx / room * (dx > 0 ? 100 - start : start))));
-}
-// The room a finger has, `edge` from the screen's edge it's going towards, on a row `width` wide (slidePct).
+/* The tap path for a swipe's progress, a task sheet's Progress line (sheet/task.html): the quarters below done (done is
+   the tick), and the one a task is at, pressed: none for progress set elsewhere (30%, say), nor for a done task. */
+export const QUARTERS = SNAPS.slice(0, -1);
+export const quarterOn = t => !t?.done && QUARTERS.includes(pctOf(t)) ? pctOf(t) : null;
+/* The room a finger has, `edge` from the screen's edge it's going towards, on a row `width` wide: the rest of the way,
+   EDGE short of the edge, clear of the phone's own edge gestures; at least a quarter of the row's width, but never more
+   than the finger has before the edge, so the last stop is always within reach (swipeAt). */
 const roomTo = (edge, width) => Math.max(edge - EDGE, Math.min(width * .25, edge * .75), 1);
 // Which way a finger went after a hold: once it's LOCK_PX away, 'x' (nothing: a hold only moves a row) or 'y'
 // (moving it); null until then.
@@ -63,7 +53,7 @@ export const swipeStarts = (dx, dy, x0, screen, open = false) => Math.abs(dx) >=
      if let go past a third of it; past its full point, deleted (the gap with Restore).
    Let go on a stop, that progress is set and the row springs back, its tick showing it.
    Each side's stops are at most `gap` px apart and end at its full point, `full` of the row's width (or sooner, put
-   down too near the screen's edge to get that far: slidePct's room, so the last is always within reach).
+   down too near the screen's edge to get that far: roomTo, so the last is always within reach).
    What's uncovered (styles.css, "Swiped"): up, green, with a large ring, the tick's shape, filling a quarter at a
    time, then solid with its ✓ past the full point; down, the ring on green, emptying; delete, the red Delete.
    To tune a side, change its numbers here: */
@@ -107,15 +97,6 @@ export function swipeAt({start = null, dx, x, width, screen, del = false, base =
 export const swipeFeel = (was, now) => now.to === 'done' || now.to === 'delete' ? (was.to !== now.to ? 'done' : null)
   : now.to === 'open' ? (was.to !== 'open' ? 'tick' : null)
   : now.to === 'stop' && now.pct !== was.pct ? (now.pct === 0 && was.pct > 0 ? 'done' : 'tick') : null;
-/* The sheet's bar swiped from its progress `start` (a done task from 100), put down at x and moved dx: it shows as it
-   goes, being the bar itself. To the right, up (slidePct: the room is the rest of the way to the screen's edge, so
-   100% is always within reach), done staying done; to the left, down a quarter each QUARTER_PX (closer together put
-   down near the left edge, so 0% is still reached). */
-export function trackAt({start, dx, x, width, screen}){
-  if (dx >= 0) return start >= 100 ? 100 : slidePct({start, dx, x, width, screen});
-  const reach = start > 0 ? Math.min(start / 25 * QUARTER_PX, roomTo(x, width)) : 0;
-  return -dx < reach ? snapPct(start, start + dx / reach * start) : 0;
-}
 // Whether a swipe that way (dx) changes a row's progress, from `start`: not up from done, nor down from 0%.
 export const trackMoves = (start, dx) => dx > 0 ? start < 100 : start > 0;
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.

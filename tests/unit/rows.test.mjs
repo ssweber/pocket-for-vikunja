@@ -7,7 +7,7 @@ import views from '../../src/js/app/views.js';
 import claims from '../../src/js/app/claims.js';
 import leaving from '../../src/js/app/leaving.js';
 import progress from '../../src/js/app/progress.js';
-import { rowGestures, screenRows } from '../../src/js/lists.js';
+import { rowGestures, screenRows, SHEET_ROW } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
 import checklists from '../../src/js/app/checklists.js';
 import cards from '../../src/js/app/cards.js';
@@ -25,7 +25,21 @@ test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a t
   app.tickRow(step({ done: true }), RUN);
   app.tickRow({ id: 3 }, { depth: {}, sheet: true });
   app.tickRow({ id: 4 }, { depth: {} }, 'row');
-  assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4]]);
+  app.sheetDone = () => calls.push(['sheet']);
+  app.tickRow({ id: 5 }, SHEET_ROW, 'row');
+  assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
+});
+
+/* A task's sheet leads with its row (parent-tasks-plan, 6b): under its title only when it's due and how soon, as its
+   project, run or parent are in the path over it, and its labels and counts in the sheet under it. */
+test('the sheet\'s own row says only when it\'s due, its priority, that it repeats and a reminder to come', () => {
+  const app = component(views, claims), soon = new Date(Date.now() + 5 * 36e5).toISOString();
+  Object.assign(app, { route: { name: 'today' }, projById: new Map([[1, { id: 1, title: 'Café', hex_color: '1d6b52' }]]), waitingByTask: new Map(),
+    stepRun: () => null, isRunTask: () => false, rowRing: () => null, checklistIds: new Set() });
+  const t = { id: 5, title: 'Repaint the door', project_id: 1, due_date: soon, priority: 2, repeat_after: 86400, comment_count: 2, attachments: [{ id: 1 }],
+    labels: [{ id: 1, title: 'Front' }], reminders: [{ reminder: soon }], related_tasks: { parenttask: [{ id: 4, title: 'Café front' }] } };
+  assert.deepEqual(app.rowMeta(t, { depth: {} }).map(m => m.key), ['due', 'prio', 'p', 'up', 'l1', 'rep', 'com', 'att', 'rem'], 'on Today: all of it');
+  assert.deepEqual(app.rowMeta(t, SHEET_ROW).map(m => m.key), ['due', 'prio', 'rep', 'rem']);
 });
 
 test('under a step\'s title: Inserted or Repeated, its comments, and its countdown until it\'s done', () => {
@@ -223,6 +237,9 @@ test('the hint goes on the first open row that takes a swipe, a card\'s step lin
   assert.equal(app.hintOn({ id: 42 }, { depth: {}, card: { id: 4, step: { id: 42 } } }), true, 'and on its next top row');
   assert.equal(app.hintOn({ id: 43 }, { depth: {}, card: { id: 4, step: { id: 42 } } }), false, 'not on its other rows, opened');
   assert.equal(app.hintOn({ id: 4 }, { depth: {}, sheet: true }), false, 'never in a sheet');
+  app.hint.at = 9;
+  assert.equal(app.hintOn({ id: 9 }, SHEET_ROW), false, 'nor on a sheet\'s own row, its task the list\'s first');
+  app.hint.at = 4;
   app.hintSeen();
   assert.equal(localStorage.getItem('pocket.hint.slide'), 'done', 'remembered on the phone');
   app.hint.at = null;
@@ -230,21 +247,64 @@ test('the hint goes on the first open row that takes a swipe, a card\'s step lin
   assert.equal(app.hint.at, null, 'gone for good');
 });
 
-// The sheet's progress bar claims as a row's slide does (user, 2026-10-08: the same rule everywhere).
-test('the sheet\'s bar, slid or moved by a key, claims a task no one is doing, after its save; someone else\'s stays theirs', async () => {
+/* The sheet's own row (parent-tasks-plan, 6b) swiped as a list's row, about this one task: its progress from where it
+   is, springing back whatever it set (a full swipe ticks it in place, with no gap); left at 0%, its Delete, which
+   deletes it as the sheet's ⋯ does. A parent's: no progress, all the way its ring's tap from the sheet. Not a template's,
+   one shared with you to read, nor while its title is being changed. */
+test('the sheet\'s own row: swiped for its progress, springing back; at 0% its Delete; a parent\'s is its ring\'s', () => {
+  const app = component(progress, cards), taps = [];
+  const t = { id: 5, title: 'Wipe the menus', project_id: 1, percent_done: 0.25 };
+  let ring = null, role = null, edit = true;
+  Object.defineProperty(app, 'sheetRing', { get: () => ring });
+  Object.defineProperty(app, 'ofTemplate', { get: () => ['template', 'tplstep'].includes(role) });
+  Object.defineProperty(app, 'canEdit', { get: () => edit });
+  Object.assign(app, { sheet: { task: t, titleEdit: false }, canDelete: () => true, canWrite: () => true, ringTap: (x, el, sheet) => taps.push([x.id, el, sheet]) });
+  const row = { clientWidth: 360, classList: { add(){}, remove(){}, toggle(){} }, style: { setProperty(){}, removeProperty(){} } };
+  const s = app.sheetRowGesture(row);
+  assert.deepEqual([s.start, s.springs, !!s.swipe, s.reorder], [25, true, true, undefined], 'from 25%, springing back; its Delete; not held to move');
+  t.done = true;
+  assert.equal(app.sheetRowGesture(row).start, 100, 'done: swiped down from 100%, opened again');
+  t.done = false;
+  ring = { pct: 13 };
+  const p = app.sheetRowGesture(row);
+  assert.deepEqual([p.start, p.one, p.springs], [0, true, true], 'a parent: one stop, its full point');
+  p.finish(100);
+  assert.deepEqual(taps, [[5, null, true]], 'its ring\'s tap, asked from the sheet');
+  ring = null;
+  app.sheet.titleEdit = true;
+  assert.equal(app.sheetRowGesture(row), null, 'its title being changed: the box takes the finger');
+  app.sheet.titleEdit = false; role = 'template';
+  assert.equal(app.sheetRowGesture(row), null, 'a template has no row');
+  role = null; edit = false;
+  assert.equal(app.sheetRowGesture(row), null, 'shared with you to read');
+});
+
+// Progress set in the sheet, by a swipe on its row or a quarter in Details, claims as a row's swipe does (user,
+// 2026-10-08: the same rule everywhere), after its save, whose reply would otherwise be shown over the claim.
+test('the sheet\'s progress, swiped or a quarter tapped, claims a task no one is doing, after its save; someone else\'s stays theirs', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, order = [];
   const app = component(progress, claims);
   const t = { id: 5, title: 'Wipe the menus', project_id: 1, percent_done: 0, assignees: [] };
-  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, sheet: { task: t, pct: null },
+  let ring = null;
+  Object.defineProperty(app, 'sheetRing', { get: () => ring });
+  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, sheet: { task: t }, stepRun: () => null,
     act: async a => { order.push(['claim', a.task]); }, sheetProgress: async (x, pct) => { order.push(['save', pct]); } });
-  app.nudgeProgress(1);
+  const setting = app.setSheetProgress(25);
   assert.deepEqual(app.peopleOf(5, t.assignees), [me], 'shown in Assigned at once');
-  await new Promise(r => setTimeout(r));
+  await setting;
   assert.deepEqual(order, [['save', 25], ['claim', 5]]);
-  t.assignees = [priya]; order.length = 0;
-  app.nudgeProgress(1);
-  await new Promise(r => setTimeout(r));
-  assert.deepEqual(order, [['save', 25]], 'someone else\'s is never replaced');
+  order.length = 0;
+  assert.equal(app.setSheetProgress(0), undefined, 'the quarter it\'s at: nothing to set');
+  assert.deepEqual(order, []);
+  t.assignees = [priya];
+  await app.setSheetProgress(50);
+  assert.deepEqual(order, [['save', 50]], 'someone else\'s is never replaced');
+  order.length = 0; t.done = true;
+  await app.setSheetProgress(0);
+  assert.deepEqual(order, [['save', 0]], 'a done task: its quarter opens it again at that, even 0%');
+  order.length = 0; t.done = false; ring = { pct: 50 };
+  await app.setSheetProgress(75);
+  assert.deepEqual(order, [], 'a parent\'s progress is its subtasks\'');
 });
 
 // Who can see each project is loaded in the background once signed in, and kept (seenBy), so the claim slots are right

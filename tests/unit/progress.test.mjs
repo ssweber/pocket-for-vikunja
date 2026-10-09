@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, figureOf, figurePatch, isNudge, isSubtask, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, QUARTER_PX, releaseSpeed, SIDES, slidePct, snapPct, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, trackAt, trackMoves, undoing, workedOut } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE_GUARD, figureOf, figurePatch, isNudge, isSubtask, LOCK_PX, lockDirection, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, quarterOn, QUARTERS, releaseSpeed, SIDES, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, trackMoves, undoing, workedOut } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -31,38 +31,12 @@ test('an Undo putting progress back says nothing of its own', () => {
   assert.equal(undoing({}), false);
 });
 
-test('a slide snaps to the quarters, and progress set elsewhere stays until it\'s slid nearer a snap', () => {
-  assert.equal(snapPct(0, 11), 0);
-  assert.equal(snapPct(0, 13), 25);
-  assert.equal(snapPct(50, 62), 50);
-  assert.equal(snapPct(50, 63), 75);
-  assert.equal(snapPct(0, 100), 100);
-  assert.equal(snapPct(40, 41), 40, 'set elsewhere: still 40% just after the hold');
-  assert.equal(snapPct(40, 46), 50, 'slid right, to the nearest snap');
-  assert.equal(snapPct(40, 32), 25, 'slid left, to the nearest snap');
-  assert.equal(snapPct(40, 45), 40, 'halfway between: where it was');
-});
-
-test('the arrow keys go to the next snap', () => {
-  assert.equal(nextSnap(0, 1), 25);
-  assert.equal(nextSnap(40, 1), 50);
-  assert.equal(nextSnap(40, -1), 25);
-  assert.equal(nextSnap(75, 1), 100);
-  assert.equal(nextSnap(100, 1), 100);
-  assert.equal(nextSnap(0, -1), 0);
-});
-
-test('the room to slide in is the rest of the way to the screen\'s edge, less EDGE', () => {
-  const at = (dx, start = 0, x = 100) => slidePct({ start, dx, x, width: 358, screen: 390 });
-  const room = 390 - EDGE - 100;
-  assert.equal(at(room), 100);
-  assert.equal(at(room * .5), 50);
-  assert.equal(at(room * .3), 25);
-  assert.equal(at(room + 40), 100, 'past the edge stays at 100%');
-  assert.equal(at(-50), 0, 'left of where it was, from 0%: still 0%');
-  assert.equal(at(-100, 50), 0, 'from 50%, the room on the left is the rest of the way to 0%');
-  // Held close to the edge, there's still a quarter of the row's width, or most of what's left, to slide in.
-  assert.equal(slidePct({ start: 0, dx: 30, x: 350, width: 358, screen: 390 }), 100);
+test('the sheet\'s Progress line: the quarters below done, the one a task is at pressed, none when done or set elsewhere', () => {
+  assert.deepEqual(QUARTERS, [0, 25, 50, 75], 'done is the tick');
+  assert.equal(quarterOn({ percent_done: 0 }), 0);
+  assert.equal(quarterOn({ percent_done: 0.5 }), 50);
+  assert.equal(quarterOn({ percent_done: 0.3 }), null, 'set on the web at 30%: none pressed');
+  assert.equal(quarterOn({ percent_done: 0.5, done: true }), null, 'a done task: none pressed, a tap opens it again at that');
 });
 
 test('after a hold, the first few pixels decide the way: up or down moves the row, sideways lets it go', () => {
@@ -168,12 +142,7 @@ test('a tick is felt at each stop and at a Delete’s button, a firmer one at a 
   assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'shut', pct: 0 }), null);
 });
 
-test('the sheet\'s bar: right up to the screen\'s edge, left a quarter each QUARTER_PX, done staying done', () => {
-  const at = (dx, start, x = 300) => trackAt({ start, dx, x, width: W, screen: SCREEN });
-  assert.equal(trackAt({ start: 0, dx: SCREEN - EDGE - 100, x: 100, width: W, screen: SCREEN }), 100);
-  assert.equal(at(80, 100), 100);
-  assert.equal(at(-QUARTER_PX, 50), 25);
-  assert.equal(at(-QUARTER_PX * 4, 50), 0);
+test('a swipe moves a row\'s progress only where it can go: not up from done, nor down from 0%', () => {
   assert.equal(trackMoves(100, 1), false, 'a done row isn\'t swiped up');
   assert.equal(trackMoves(0, -1), false, 'nothing to lower at 0%');
 });

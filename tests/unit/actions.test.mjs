@@ -11,6 +11,7 @@ import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
 import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
+import sheet from '../../src/js/app/sheet.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
 import { cache } from '../../src/js/util.js';
@@ -200,7 +201,7 @@ test('progress taken to 100% marks the task done, and its tick again puts back t
   assert.equal(v.task(1).done, true);
   await app.unmark(1);
   assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.4 }]);
-  // From the sheet's bar, the same, shown by its tick: ticked again, it's back with the progress it had.
+  // From the sheet (its row, or its Progress line), the same, shown by its tick: ticked again, it's back with its progress.
   const n = app.toasts.length;
   app.sheet = { task: structuredClone(v.task(1)) };
   await app.sheetProgress(app.sheet.task, 100);
@@ -253,7 +254,7 @@ test('progress below 100% is saved as it is, shown on its bar alone; not saved, 
 });
 
 /* A done row swiped left opens again at the progress it's let go at (parent-tasks-plan, part 1), as its tick would open
-   it, in one save; its tick again makes it done. The sheet's bar the same. */
+   it, in one save; its tick again makes it done. The sheet's row and Progress line the same. */
 test('a done task swiped down is open again, at that progress, in one save', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: true, percent_done: 0.4 }]), app = listed(c);
   const t = app.keep(v.task(1));
@@ -349,6 +350,18 @@ test('a subtask ticked, or its progress set, writes its parent\'s worked-out fig
   await app.toggleDone({ id: 4, title: 'Step 4', done: false }, null, { sub: true });
   await app.saveTask(1, null, () => null);
   assert.deepEqual(patches(v), [[4, { done: true }], [1, { percent_done: 0.5 }]]);
+});
+
+// A subtask's own sheet: its progress set by a swipe on its row, or a quarter in Details (parent-tasks-plan, 6b).
+test('a subtask\'s progress set in its own sheet writes its parent\'s figure right after', async () => {
+  const kid = id => ({ id, title: 'Step ' + id, done: false, percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } });
+  const v = fakeVikunja([{ id: 1, title: 'Open up', percent_done: 0, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, kid(2), kid(3)]);
+  const app = component(tasks, actions, sheet);
+  Object.assign(app, { keepTemplate(){}, rowTitle: t => t.title, unsay(){} });
+  app.sheet = { task: structuredClone(v.task(2)) };
+  await app.sheetProgress(app.sheet.task, 50);
+  await app.saveTask(1, null, () => null);
+  assert.deepEqual(patches(v), [[2, { percent_done: 0.5 }], [1, { percent_done: 0.25 }]]);
 });
 
 test('a run\'s step: what changes it goes through the outbox, its run\'s figure written by the same entry, last', async () => {

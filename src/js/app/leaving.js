@@ -37,7 +37,8 @@ function exit(els){
 }
 // A task's rows, and its card. Not a collapsed card's top row (.step-line): it doesn't fold, the next slides up into its
 // place (cardEntered).
-const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`:is(.row:not(.step-line), .day-card)[data-id="${id}"]`)]);
+// (Not a sheet's own row, its task's head: what's marked is shown on its rows in lists.)
+const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`:is(.row:not(.step-line, .own), .day-card)[data-id="${id}"]`)]);
 
 export default {
   /* Task `id`'s row marked, until the batch clears: {kind: 'done', 'open' (not done again) or 'deleted'; ids: the rows

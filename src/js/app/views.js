@@ -5,7 +5,7 @@ import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.j
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {doneParentIds, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {doneParentIds, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
@@ -97,11 +97,13 @@ export default {
   },
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
-  // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, or a task (a card's step
-  // too), which then becomes the one quick add's box adds subtasks to (aimAfterTick). On a row marked done or not done,
-  // waiting for the batch to clear, it takes that back (unmark, leaving.js).
+  // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, the sheet's own task
+  // (sheetDone), or a task (a card's step too), which then becomes the one quick add's box adds subtasks to
+  // (aimAfterTick). On a row marked done or not done, waiting for the batch to clear, it takes that back (unmark,
+  // leaving.js).
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
+    if (g.own) return this.sheetDone();
     if (g.card) this.pinCard(g.card);                    // the step after it comes in once it has gone (app/cards.js)
     if (this.unmark(t.id)) { if (!g.sheet) this.aimAfterTick(t); return; }
     if (g.sheet) return this.toggleSubtask(t);
@@ -121,10 +123,13 @@ export default {
   },
   // Now, for a row's countdown and when it's due: on Today, its minute (groupedAt), which redraws it once a minute.
   rowNow(){ return this.route.name === 'today' && this.groupedAt || Date.now(); },
-  /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. A step on a
-     run's screen (g.run): Inserted or Repeated, its comments, and, not done, its countdown or when it's due. Labels and
-     counts are `extra`: a row on one line leaves them out, and doesn't say them (rowWhen). */
+  /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. The sheet's own
+     row (g.own) only when it's due and how soon (OWN_META): its project, run or parent are in the path over it, and its
+     labels and counts in the sheet under it. A step on a run's screen (g.run): Inserted or Repeated, its comments, and,
+     not done, its countdown or when it's due. Labels and counts are `extra`: a row on one line leaves them out, and
+     doesn't say them (rowWhen). */
   rowMeta(t, g){
+    if (g?.own) return this.rowMeta(t, {depth: {}}).filter(m => OWN_META.includes(m.key));
     if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},
       t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}].filter(Boolean);

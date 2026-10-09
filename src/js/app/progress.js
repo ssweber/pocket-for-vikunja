@@ -3,10 +3,11 @@
 // left, a row with progress, down, stopping at 0%; left, a row at 0%, its Delete, a full swipe deleted. Nothing changes
 // until it's let go. Held, then moved up or down, the row moves among its siblings, or on Today to another day (part
 // 4). Delete and moving only where the row's list allows them (rowGestures): Today's rows are deleted and carried to
-// another day, search's only deleted, a project's and a sheet's deleted and moved among their siblings. The sheet's bar
-// is swiped for its progress too (trackAt). A parent (a card's header, or a parent's row: parent-tasks-plan, part 3)
-// has no progress of its own: swiped right it springs back, unless all the way, its ring's tap; left, its Delete.
-import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackAt, trackMoves} from '../progress.js';
+// another day, search's only deleted, a project's and a sheet's deleted and moved among their siblings. A task's sheet
+// leads with its own row, swiped as any (sheetRowGesture: parent-tasks-plan, 6b). A parent (a card's header, or a
+// parent's row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the
+// way, its ring's tap; left, its Delete.
+import {DELETE_W, HOLD_MS, isNudge, lockDirection, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
 import {hasTemplateLabel} from '../checklists.js';
@@ -233,16 +234,15 @@ const carryOf = (item, el, {aim, drop, room}) => {
 };
 
 export default {
-  /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: on a row, {el: the row,
-     swipe: its Delete if it has one (swipeOf), reorder: if it can be held and moved (dragOf), and if its progress can
-     be swiped, start (a done one's 100), width, finish(pct, or null if nothing changed; 100 is a full swipe)}. The
-     sheet's bar has start, width, finish, show(pct, x: where the finger is), and begin() as its progress starts to move.
+  /* A finger on a row. find(target) says what it's on, or null: {el: the row, swipe: its Delete if it has one
+     (swipeOf), reorder: if it can be held and moved (dragOf), and if its progress can be swiped, start (a done one's
+     100), width, finish(pct, or null if nothing changed; 100 is a full swipe), springs: it springs back whatever
+     letting go did (a parent's, and a sheet's own row, which a full swipe ticks in place)}.
      A plain swipe, clearly sideways (swipeStarts), with no hold: on a row, one mechanism either way (`swipe`: swipeAt):
      its content moves with the finger, what's uncovered shows what letting go does, its stops (revealOf) or its Delete
      (swipeOf), a tick felt at each (swipeFeel), and nothing changes until it's let go. Left, a row with progress is
      only lowered, to 0%; at 0%, it has its Delete. A row whose progress can't be swiped has only its Delete, to the
-     left, as has one already open on it, either way. The sheet's bar shows its
-     progress as it goes (`bar`: trackAt, show). Up or down is a scroll, as is a sideways move the row can't take (doing
+     left, as has one already open on it, either way. Up or down is a scroll, as is a sideways move the row can't take (doing
      nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved up or down
      (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and moved
      sideways, it's let go, changing nothing. */
@@ -252,36 +252,29 @@ export default {
     const stop = commit => {
       if (!g) return;
       clearTimeout(g.timer); sliding = false;
-      const {s, mode, pct, r, ring} = g; g = null;
+      const {s, mode, r, ring} = g; g = null;
       s.el?.classList.remove('held'); s.reorder?.el?.classList.remove('held');
       if (mode === 'reorder') { s.reorder.end(commit); return; }
-      if (mode === 'bar') {                             // its progress where the finger left it
-        const set = commit && pct !== s.start;
-        s.finish(set ? pct : null);
-        if (set) this.hintSeen();
-        return;
-      }
       if (mode !== 'swipe') return;
       /* Let go on a stop, its progress is set, and the row springs back, its tick showing it (on its own, nothing
          changes); in its Delete (a row at 0%), it stays open on its button, or goes back; past a side's full
          point, the full action, the row carrying on off the screen (finish: done; the Delete's remove: deleted, its
          progress left as it was). Taken away from the finger (pointercancel), it goes back, changing nothing. */
       const to = commit ? r.to : 'shut', set = commit && to !== 'delete' && r.pct !== null && r.pct !== s.start;
-      if (s.springs && set) { s.finish(r.pct); ring.back(); return; }      // a parent's: its question, no progress set
+      if (s.springs && set) { s.finish(r.pct); ring.back(); return; }      // a parent's: its question; the sheet's own row
       if (RED.has(r.to)) s.swipe.end(to); else if (to !== 'done' || s.springs) ring.back();
       s.finish?.(set ? r.pct : null);
       if (set) this.hintSeen();                         // the first swipe that sets progress, anywhere: the hint has done its job
     };
     // Whether a sideways swipe that way (dx) is one the row takes: its progress, if that moves that way, or its Delete,
-    // to the left; on the sheet's bar, its progress.
-    const wayOf = (s, dx) => s.show ? (trackMoves(s.start, dx) ? 'bar' : null)
-      : s.swipe?.base || (s.finish && trackMoves(s.start, dx)) || (dx < 0 && s.swipe) ? 'swipe' : null;
+    // to the left.
+    const wayOf = (s, dx) => s.swipe?.base || (s.finish && trackMoves(s.start, dx)) || (dx < 0 && s.swipe) ? 'swipe' : null;
     area.addEventListener('pointerdown', e => {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false;                             // a new tap: its click is its own
       let s = find(e.target); if (!s) return;
       if (s.swipe?.base) s = {el: s.el, slide: s.slide, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
-      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait', pct: s.start};
+      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait'};
       // Held: lifted (what's lifted can be more than the row: on Today, its card), or, for what a hold can't move there,
       // told why (refuse), and nothing more until the finger lifts.
       if (s.reorder) g.timer = setTimeout(() => {
@@ -319,15 +312,6 @@ export default {
         g.r = r;
         return;
       }
-      if (g.mode === 'bar') {
-        const dx = e.clientX - g.x0, pct = trackAt({start: s.start, dx, x: g.x0, width: s.width, screen: innerWidth});
-        // Its progress starts to move: shown from then on, and the claim with it (begin).
-        if (!g.shown && trackMoves(s.start, dx)) { g.shown = true; s.begin?.(); s.show(pct, e.clientX); }
-        else if (g.shown && pct !== g.pct) s.show(pct, e.clientX);
-        if (pct !== g.pct) haptic(pct === 100 ? 'done' : 'tick');
-        g.pct = pct;
-        return;
-      }
       if (getSelection()?.rangeCount) getSelection().removeAllRanges();     // whatever the long press selected near the row
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
@@ -350,17 +334,6 @@ export default {
     area.addEventListener('contextmenu', e => { if (g) e.preventDefault(); });
     area.addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
   },
-  // The sheet's bar being set (a row shows what it'll do beside it instead: revealOf): filled to `pct`, with its
-  // percentage on the side away from the finger (at `x`). The percentage pulses at each snap, the tick seen (where it
-  // can't be felt), and at 100% the tick fills.
-  showSlide(el, pct, x){
-    if (el.dataset.pct && el.dataset.pct !== pct + '%') el.dataset.tick = el.dataset.tick === 'a' ? 'b' : 'a';
-    el.classList.add('setting'); el.classList.toggle('full', pct >= 100);
-    el.style.setProperty('--slide', pct / 100); el.dataset.pct = pct + '%';
-    const r = el.getBoundingClientRect();
-    el.dataset.side = x > r.left + r.width / 2 ? 'left' : 'right';
-  },
-  endSlide(el){ el.classList.remove('setting', 'full'); delete el.dataset.tick; delete el.dataset.pct; },
   // In the list: a row swiped for its progress, its Delete, or held to move it. A run's step the same, through the outbox.
   initProgressDrag(){
     // A row swiped open shuts again when anything else is touched, or anything scrolls. (Touched itself, it's swiped on,
@@ -493,7 +466,7 @@ export default {
     }
   },
   // Whether the row of `t` in list `g` has the hint's place: a card's top row for its card.
-  hintOn(t, g){ return !g.sheet && !g.run && this.hint.at !== null && (g.card ? g.card.step.id === t.id && this.hint.at === g.card.id : this.hint.at === t.id); },
+  hintOn(t, g){ return !g.sheet && !g.run && !g.own && this.hint.at !== null && (g.card ? g.card.step.id === t.id && this.hint.at === g.card.id : this.hint.at === t.id); },
   hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); this.hintAway(); },
   /* A stacked card (app/cards.js), one of its rows touched: that row's gesture `s` (rowGesture), whose swipe is that
      subtask's alone, and a run's card then staying on its top row until that has gone (pinCard). Its header (`hold`:
@@ -575,41 +548,44 @@ export default {
         if (pct >= 100) sweep(row, setting, true);
       }};
   },
-  // In a task's sheet: swipe the progress bar, or around the title (not what's typed there); and its subtasks' rows, as
-  // in a list.
+  // In a task's sheet: its own row (sheetRowGesture), and its subtasks' rows, as in a list.
   initSheetProgress(){
     this.holdToSlide(this.$refs.sheet, target => {
-      const t = this.sheet.task, row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');
-      if (row) {
-        if (this.checklistRole === 'template') return this.stepReorder(row, target);
-        const st = !target.closest('.row-del') && this.subtasks.find(s => String(s.id) === row.dataset.id);
-        return st ? this.rowGesture(st, row, true) : null;
-      }
-      const head = target.closest('.d-head');
-      if (!head || !t || this.sheetRing || this.ofTemplate || target.closest('textarea, button, a, select')) return null;
-      let claimed = null;
-      return {start: this.shownPct(t), width: head.clientWidth,
-        show: (pct, x) => { this.sheet.pct = pct; this.showSlide(head, pct, x); },
-        begin: () => { claimed = this.claimOnSlide(this.sheetSlot); },
-        finish: pct => {
-          this.endSlide(head); this.sheet.pct = null;
-          const set = pct !== null && this.sheet.task === t;
-          // The claim after the save: the save's reply, from before it, would otherwise be shown over it.
-          (set ? this.sheetProgress(t, pct) : Promise.resolve()).finally(() => claimed?.(set));
-        }};
+      if (target.closest('.row-del, textarea')) return null;
+      const own = target.closest('.row.own');
+      if (own) return this.sheetRowGesture(own);
+      const row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');
+      if (!row) return null;
+      if (this.checklistRole === 'template') return this.stepReorder(row, target);
+      const st = this.subtasks.find(s => String(s.id) === row.dataset.id);
+      return st ? this.rowGesture(st, row, true) : null;
     });
+  },
+  /* The sheet's own row (sheet/task-card.html: parent-tasks-plan, 6b), swiped as it is in a list, about this one task:
+     right, its progress, a full swipe ticking it in place, with no gap, the row springing back to show it done; left,
+     a task with progress lowered, stopping at 0%, and at 0% its Delete, which deletes it as the sheet's ⋯ does, the
+     sheet closing on the list, where its gap has Restore (deleteTask). A parent's, as its header: right, springing
+     back, all the way its ring's tap, from the sheet (ringSwipe). Not a template or its step (they have no row), nor
+     one shared with you to read, nor while its title is being changed. */
+  sheetRowGesture(row){
+    const t = this.sheet.task;
+    if (!t || this.ofTemplate || !this.canEdit || this.sheet.titleEdit) return null;
+    const swipe = this.canDelete(t) ? swipeOf(row, () => sweep(row, this.deleteTask())) : null;
+    if (this.sheetRing) { const r = this.ringSwipe(t, row, row, true); return (r.finish || swipe) && {el: row, swipe, ...r}; }
+    return {el: row, swipe, start: t.done ? 100 : pctOf(t), width: row.clientWidth, springs: true, finish: pct => { if (pct !== null) this.setSheetProgress(pct); }};
   },
   // The sheet's task's ring, when it's a parent (a task with subtasks, or a run): its progress is theirs.
   get sheetRing(){ return this.sheet.kind === 'task' && !this.ofTemplate ? this.ringOf(this.sheet.task) : null; },
-  // The sheet's task's slot for who's doing it, as its row has (claimSlot): its bar, slid or moved by a key, claims it
-  // as a row's slide does, if no one is doing it; its Assigned row shows it (peopleOf).
+  // The sheet's task's slot for who's doing it, as its row has (claimSlot): its progress set, by a swipe on its row or
+  // in Details, claims it as a row's swipe does, if no one is doing it; its Assigned row shows it (peopleOf).
   get sheetSlot(){ const t = this.sheet.task; return t && this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t)); },
-  nudgeProgress(dir){                            // the arrow keys, on the focused bar: to the next snap
+  /* The sheet's task's progress set, by a swipe on its row or a quarter tapped in Details (their tap path): 100% done, a
+     done one opened again at it (sheetProgress). With no one on it, it's then yours: the claim after the save, as the
+     save's reply, from before it, would otherwise be shown over it. Not a parent's: its progress is its subtasks'. */
+  setSheetProgress(pct){
     const t = this.sheet.task;
-    if (this.sheetRing) return;                  // a parent's progress is its subtasks'
-    const was = pctOf(t), pct = nextSnap(was, dir);
-    if (pct === was) return;
+    if (!t || this.sheetRing || (!t.done && pct === pctOf(t))) return;
     const claimed = this.claimOnSlide(this.sheetSlot);
-    this.sheetProgress(t, pct).finally(() => claimed(true));
+    return this.sheetProgress(t, pct).finally(() => claimed(true));
   },
 };

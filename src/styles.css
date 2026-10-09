@@ -3,7 +3,7 @@
   --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#E3E8E5;
   --overdue:#A82339; --today:#9A6414; --danger:#A82339;
   /* shadows, and the shade behind a sheet: the same in dark mode, whose block below redefines any that should differ */
-  --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-pct:0 2px 10px rgba(0,0,0,.18); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
+  --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
   --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
   --shadow-lift:0 1px 3px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.2); --danger-ink:#FFFFFF;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
@@ -245,19 +245,12 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 :is(.row,.card-head) > .ring{position:static;margin:-2px -3px}
 :is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + 38px)}
-.d-title .ring{width:34px;height:34px;margin:-2px}
-.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
-/* the sheet's bar swiped on the right half: the percentage moves to the left, clear of the thumb */
-.d-head.setting[data-side=left]::before{right:auto;left:12px}
-/* Held, to be moved, the row lifts; swiped and let go, it springs back (with less motion, it's only back). The sheet's
-   bar swiped: at each snap the percentage pulses (the tick, seen), and at 100% the tick fills, with its ✓ */
+/* Held, to be moved, the row lifts; swiped and let go, it springs back (with less motion, it's only back) */
 .row,.card-head{transition:box-shadow .15s,transform .2s ease}
 @media (prefers-reduced-motion:reduce){.row,.card-head{transition:box-shadow .15s}}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
 /* Moved up or down after the hold: the held row, and its subtasks with it, follow the finger above the rows making room */
 .row.dragged{z-index:3;transition:box-shadow .15s;background:var(--surface)}
-.d-head.setting[data-tick=a]::before{animation:pct-a .22s ease-out}
-.d-head.setting[data-tick=b]::before{animation:pct-b .22s ease-out}
 @keyframes pct-a{40%{scale:1.15}}
 @keyframes pct-b{40%{scale:1.15}}
 .setting.full button.check{background:var(--accent);border-color:var(--accent);animation:check-pop .32s ease-out}
@@ -589,21 +582,33 @@ body.sheet-open{overflow:hidden}
 .d-parent{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .d-parent .linkish{font-size:14px;font-weight:600}
 .d-title{display:flex;gap:12px;align-items:flex-start;margin:0 0 6px}
-/* progress under the title: a bar to slide along, which thickens while it's being set */
 .d-head{position:relative;margin:0 -8px;padding:4px 8px 2px;border-radius:var(--r-row)}
-.d-head.setting{background:linear-gradient(to right,var(--accent-soft) calc(var(--slide) * 100%),transparent 0)}
-.d-path,.d-progress{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-.d-progress{display:flex;align-items:center;gap:10px;height:40px;margin:0 0 2px 42px}
-.d-progress .track{flex:1;height:6px;border-radius:3px;background:var(--track);overflow:hidden;transition:height .12s}
-.d-progress .track i{display:block;height:100%;width:calc(var(--pct) * 100%);background:var(--accent)}
-.d-progress .num{width:44px;text-align:right;color:var(--muted);font-size:13px;font-weight:650}
-.d-progress.setting .track{height:12px}
-.d-progress.setting .num{color:var(--accent);font-size:16px}
+.d-path{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+/* A task's sheet leads with one card (sheet/task-card.html: parent-tasks-plan, 6b): the task's row, its notes under its
+   title, its files in the same column, each file's clip where the row's tick is, the lines between them starting at
+   the title. Swiped, what the row uncovers stays inside the card's rounded edge. A template's card has no row: its
+   notes start at the card's edge. */
+.task-card{overflow:clip}
+.task-card-notes{position:relative;padding:0 0 2px 38px}
+.task-card-notes .desc{padding-top:0;padding-right:44px}
+.task-card-notes .copy-btn{position:absolute;top:-12px;right:0}
+.task-card-notes .desc-edit{margin-left:-38px}
+.task-card:not(:has(> .row)) .task-card-notes{padding-left:0}
+.task-card:not(:has(> .row)) .task-card-notes .desc{padding-top:14px}
+.task-card:not(:has(> .row)) .task-card-notes .copy-btn{top:0}
+.task-card:not(:has(> .row)) .task-card-notes .desc-edit{margin-left:0}
+.task-card .att{position:relative;gap:14px;padding-left:16px;border-top:0}
+.task-card .att::before{content:"";position:absolute;top:0;right:0;left:52px;height:1px;background:var(--line)}
+/* its title, tapped: a box to change it in, in the row's body, the title's size */
+.row > .title-in{align-self:center}
+.title-in textarea{display:block;width:100%;border:0;border-radius:6px;background:transparent;font-size:16.5px;line-height:1.35;resize:none;outline:2px solid var(--accent);outline-offset:3px;padding:0}
+/* Details' Progress line, the tap path for a swipe's progress: a quarter each, the one it's at pressed */
+.d-quarters{gap:6px}
+.d-quarters .chip{min-width:52px;min-height:38px;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
 .d-title textarea{flex:1;border:0;background:transparent;font-size:24px;font-weight:750;line-height:1.2;letter-spacing:-.01em;resize:none;outline:0;padding:0;min-height:30px}
 /* A template's step in its own sheet: its name as the title would show it, and its number and time under it */
 .d-step-title{flex:1;margin:0;font-size:24px;font-weight:750;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
 .d-step-when{margin:0 0 6px}
-.d-title .check{width:30px;height:30px;margin-top:0}
 .card{background:var(--surface);border-radius:var(--r-row);margin-bottom:14px}
 .prop{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line);min-height:52px}
 .prop:first-of-type{border-top:0}
@@ -676,6 +681,7 @@ body.sheet-open{overflow:hidden}
 #lp-list button:first-of-type{border-top:0}
 .picker input{margin:10px 14px;width:calc(100% - 28px);padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);outline:0}
 .saved{font-size:13px;color:var(--muted);text-align:right;min-height:18px;margin-top:-8px;margin-bottom:6px}
+.d-head > .saved{position:absolute;top:6px;right:8px;min-height:0;margin:0;padding-left:8px;background:var(--bg);pointer-events:none}
 
 /* ---------- toast ---------- */
 /* Just above the add box, or above the keyboard (--kb) when that's higher: a toast under the keyboard isn't seen */

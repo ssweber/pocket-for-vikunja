@@ -322,8 +322,8 @@ export default {
   /* ---------- progress ---------- */
   /* Progress set in a list, or on a subtask's row in its parent's sheet (`sub`). At 100% the task is done, as when it's
      ticked off; a done one set below it is opened again, at that progress, as its tick would (its tick again is the
-     undo). Below that, it shows on its row only, with no message: the row's bar is what was set, and
-     sliding it back is the undo (a line over the row would hide it, and stop the next slide). Not saved, the row says
+     undo). Below that, it shows on its row only, with no message: the row's tick is what was set, and
+     swiping it back is the undo (a line over the row would hide it, and stop the next slide). Not saved, the row says
      so, with Try again. `undoing`: putting back what it was, exactly, without marking it done. `gap`: 100% by a full
      swipe, the row a gap with Undo until the batch clears (toggleDone). */
   async setProgress(t, pct, rowEl, {undoing = false, sub = false, gap = false} = {}){
@@ -340,13 +340,15 @@ export default {
       this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, action: {label: 'Try again', fn: () => this.setProgress(t, pct, this.rowEl(t.id), {undoing, sub})}});
     }
   },
-  // Progress set in the sheet: as in the list, 100% is done, and anything else shows on its bar (save says if it isn't
-  // saved).
+  // Progress set in the sheet (its row, or its Progress line: setSheetProgress): as in the list, 100% is done, and
+  // anything else shows on its row's tick (save says if it isn't saved); a subtask's changes its parent's figure.
   async sheetProgress(t, pct){
     const patch = progressPatch(t, pct);
     if (t.done && pct < 100) return this.toggleDone(t, null, {...patch, sheet: true});   // opened again, at that progress
     if (patch.done) return this.sheetDone(patch);
-    if (await this.save(patch) !== false) this.said = `Progress set to ${pct}%`;
+    if (await this.save(patch) === false) return;
+    this.said = `Progress set to ${pct}%`;
+    if (isSubtask(t)) this.refigure(t);
   },
 
   /* ---------- moving ---------- */

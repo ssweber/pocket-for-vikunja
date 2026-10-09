@@ -141,10 +141,11 @@ export default {
   cancelComplete(){ const c = this.sheet.complete; if (c?.back) this.openTask(c.id); else this.closeSheet(); },
   /* A parent's header swiped (cardGesture), or a parent's row (rowGesture): right, it has no progress of its own to set,
      so it springs back unless it's swiped all the way, which is its ring's tap (ringTap); left, its Delete, where its
-     list has one. Not a done one, nor one shared with you to read. `shown`: where it's marked done (a header's card). */
-  ringSwipe(t, el, shown = el){
+     list has one. Not a done one, nor one shared with you to read. `shown`: where it's marked done (a header's card);
+     `sheet`: the parent's own row in its sheet, which asks from there (sheetRowGesture). */
+  ringSwipe(t, el, shown = el, sheet = false){
     if (t.done || !this.canWrite(t.project_id)) return {};
-    return {start: 0, one: true, springs: true, width: el.clientWidth, finish: pct => { if (pct === 100) this.ringTap(t, shown); }};
+    return {start: 0, one: true, springs: true, width: el.clientWidth, finish: pct => { if (pct === 100) this.ringTap(t, sheet ? null : shown, sheet); }};
   },
   /* A run's card picks its top row by the run's own rule, as its screen does (whereNext): the next open one in order,
      even counting down, or a timed one whose time has come, as Today shows it (countdown); given the step that has gone

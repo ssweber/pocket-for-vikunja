@@ -14,7 +14,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 // from it are on their way (addSubtasks).
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false, adding: 0});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
-  pct: null, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
+  titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
   project: null, start: null, subPeople: {}, subLabels: {}, subView: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
   lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
 
