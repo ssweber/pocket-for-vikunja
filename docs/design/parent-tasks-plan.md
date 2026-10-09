@@ -92,8 +92,10 @@ How it looks:
   has come (its countdown at zero or late) comes before it. This replaces `whereNext`'s "the next that can be done now,
   passing over steps still counting down", for the run screen (after a tick and on opening) and for Today's card alike:
   one rule, still one function in `checklists.js`.
-- **The next one peeks beneath** as a shorter, inert strip: "Interview · 1 more ⌄". One target; its tick can't be hit.
-  A tap opens the card in place; an opened card on Today or in search collapses again once scrolled off screen.
+- **A slim "More ⌄" under the top row** (user, 2026-10-09, replacing the peek "Interview · 1 more ⌄": the ring says
+  the count once, and the top row is what to do next): small muted text in line with the titles, drawn slim, its tap
+  area the card's width and 44px tall. No next title, no count, no stacked edge. A tap opens the card in place, and it
+  reads "Less ⌃"; an opened card on Today or in search collapses again once scrolled off screen.
 - **Ticking the top row keeps the batch:** it stays, ticked, until the batch clears, then the next slides up.
 - **With one open subtask, there's no peek.**
 - **The count stays at the right of the title** (part 3 makes it the ring's).
