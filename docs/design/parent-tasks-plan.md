@@ -122,7 +122,9 @@ A run is a parent too: its steps are its subtasks.
   added drops the ring back and takes the button away.
 - **Tapping the ring, or a full swipe right on the header, opens a sheet:** "Complete 3 open subtasks?". Confirming
   completes them and the parent, with the batch. With one open subtask, no sheet: that subtask and the parent are
-  completed, with an Undo.
+  completed, with an Undo. The question names them in a sentence, never as rows with ticks, which looked like choices
+  (user, 2026-10-09): "Its 3 open subtasks will be marked done too: Load chairs, Book the hall and Wipe the tables",
+  the first three and then "and 2 more"; its buttons "Complete all 4" and Cancel.
 - **A partial swipe right on a parent springs back:** it has no progress of its own. A swipe left deletes it, as now
   (with the question about its subtasks).
 
