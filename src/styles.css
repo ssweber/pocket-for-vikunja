@@ -132,7 +132,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row > div.body:not(.step-in){padding:4px 0 2px}
 /* a row with no tick (a template, New template) has its icon at the left and its words beside it, in a line of their
    own (.cl-tpl .body, .cl-new .body, below), centred on the row's height: left out of the column above */
-.row:is(.cl-tpl,.cl-new) > button.body{padding-top:14px}
+:not(.tree) > .row:is(.cl-tpl,.cl-new) > button.body{padding-top:14px}
 :not(.tree) > .row > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:-14px;padding-right:14px}
 .row .title{font-size:17px;line-height:24px;overflow-wrap:anywhere}
 .row.done .title{color:var(--muted);text-decoration:line-through}
@@ -641,8 +641,9 @@ body.sheet-open{overflow:hidden}
 .row > .title-in{align-self:flex-start}
 .title-in textarea{display:block;width:100%;border:0;border-radius:6px;background:transparent;font-size:17px;line-height:24px;font-weight:650;resize:none;outline:2px solid var(--accent);outline-offset:3px;padding:0}
 /* Details' Progress line, the tap path for a swipe's progress: a quarter each, the one it's at pressed */
-.d-quarters{gap:6px}
-.d-quarters .chip{min-width:52px;min-height:38px;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
+.d-quarters{gap:6px;flex-wrap:nowrap}
+/* the four on one line on a narrow phone too, sharing it */
+.d-quarters .chip{flex:1 1 0;min-width:0;max-width:64px;min-height:38px;padding:5px 4px;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
 /* A sheet's title, one size wherever it is: a question's, a template's, a step's, a run's step card, Finished */
 .d-title h2,.d-title textarea,.d-step-title,.step-card h3,.finish-card h3{font-size:22px;line-height:28px;font-weight:750;letter-spacing:-.01em}
 .d-title h2{margin:0}
