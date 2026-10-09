@@ -1,16 +1,13 @@
     <!-- A parent's open subtasks, completed together with it after asking (parent-tasks-plan, part 3; design rule 8: bulk
          actions confirm): its ring tapped, or its header swiped right all the way (askComplete, app/cards.js). They're
-         listed, so it's plain what goes. A run's is its finish: its steps not done stay not done, as a run's steps are
-         ticked on its screen, with who did each; or it's opened, to work through them. Cancel goes back where it was
-         asked from: the parent's sheet, or the list. -->
+         named in a sentence (completeAsk, messages.js), not listed as rows, which looked like boxes to pick from. A
+         run's is its finish: its steps not done stay not done, as a run's steps are ticked on its screen, with who did
+         each; or it's opened, to work through them. Cancel goes back where it was asked from: the parent's sheet, or the
+         list. -->
     <template x-if="sheet.kind === 'complete' && sheet.complete"><div id="complete">
-      <div class="d-title"><h2 style="margin:0;font-size:22px" x-text="sheet.complete.run ? `Finish this run with ${sheet.complete.n} step${sheet.complete.n === 1 ? '' : 's'} not done?` : `Complete ${sheet.complete.n} open subtask${sheet.complete.n === 1 ? '' : 's'}?`"></h2></div>
-      <p class="note" id="complete-note" x-text="sheet.complete.run ? `“${sheet.complete.title}” is finished, and ${sheet.complete.n === 1 ? 'that step stays' : 'they stay'} not done.`
-        : `“${sheet.complete.title}” is completed with them.` + (sheet.complete.stay ? ` ${sheet.complete.stay === 1 ? 'The one that repeats stays' : 'The ' + sheet.complete.stay + ' that repeat stay'} as ${sheet.complete.stay === 1 ? 'it is' : 'they are'}.` : '')"></p>
-      <div class="card complete-list"><template x-for="s in sheet.complete.open" :key="s.id"><div class="complete-item" :class="{stays: s.stays}">
-        <span class="check" :class="{sq: sheet.complete.run}" aria-hidden="true"></span><span x-text="s.title"></span><template x-if="s.stays"><span class="note">repeats</span></template>
-      </div></template></div>
-      <button class="btn block" id="complete-yes" @click="confirmComplete()" x-text="sheet.complete.run ? 'Finish run' : 'Complete all'"></button>
+      <div class="d-title"><h2 style="margin:0;font-size:22px" x-text="sheet.complete.ask.head"></h2></div>
+      <p class="note complete-note" id="complete-note" x-text="sheet.complete.ask.body"></p>
+      <button class="btn block" id="complete-yes" @click="confirmComplete()" x-text="sheet.complete.ask.yes"></button>
       <template x-if="sheet.complete.run"><button class="btn ghost block" id="complete-open-run" style="margin-top:10px" @click="openRun(sheet.complete.id)">Open the run</button></template>
       <button class="btn ghost block" id="complete-no" style="margin-top:10px" @click="cancelComplete()">Cancel</button>
     </div></template>

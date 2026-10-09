@@ -338,14 +338,8 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-close > span{flex:1;min-width:0}
 .close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:14.5px;font-weight:700}
 .close-btn:disabled{background:var(--sunk);color:var(--muted)}
-/* The question a parent's ring asks (sheet/complete.html): what goes with it, listed, a small tick before each, quiet */
-.complete-list{margin:12px 0 16px}
-.complete-item{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 14px;border-top:1px solid var(--line);font-size:15.5px}
-.complete-item:first-of-type{border-top:0}
-.complete-item .check{width:20px;height:20px;margin:0;border-width:1.5px}
-.complete-item > span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}
-.complete-item.stays{color:var(--muted)}
-.complete-item .note{margin:0;font-size:13px}
+/* The question a parent's ring asks (sheet/complete.html): what goes with it, named in a sentence */
+.complete-note{margin:10px 0 18px;font-size:15.5px;color:var(--ink);overflow-wrap:anywhere}
 /* The peek, under a collapsed card's top row: the next subtask, shorter and quieter than a row, a little narrower, like
    a card stacked under it, its tick drawn small, not a button. One target, the strip's full size: a tap opens the card.
    Show less, at an opened card's foot, has its place and shape. Its words line up with the rows' titles */

@@ -422,6 +422,8 @@ test('a parent’s ring with more open subtasks asks first, listing them; confir
   const { v, app } = ringed(c, [parentOf(...kids), ...kids]);
   await app.ringTap(app.tasks[10], ROW);
   assert.deepEqual([app.sheet.kind, app.sheet.complete.n, app.sheet.complete.stay, app.sheet.complete.open.map(s => s.title)], ['complete', 2, 1, ['Kid 11', 'Kid 12', 'Kid 13']], 'Complete 2 open subtasks? The one that repeats stays');
+  assert.deepEqual(app.sheet.complete.ask, {head: 'Complete “Pack the van”?', yes: 'Complete all 3',
+    body: 'Its 2 open subtasks will be marked done too: Kid 11 and Kid 12. The one that repeats stays as it is.'}, 'named in a sentence');
   assert.equal(v.task(10).done, false, 'nothing done while it asks');
   app.cancelComplete();
   assert.equal(app.sheet.open, false, 'Cancel: back where it was');

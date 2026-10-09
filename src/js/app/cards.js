@@ -12,6 +12,7 @@ import {hasTemplateLabel, parseStep, runWithoutDay, stepsOf, whereNext} from '..
 import {pctOf, workedOut} from '../progress.js';
 import {countdown, openSubs, runTop, urgentFirst} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
+import {completeAsk} from '../messages.js';
 
 const shownStep = new Map();                     // card id -> the step on its top row last, to tell a new one
 let cardIO = null;                               // what tells when an opened card is scrolled off the screen
@@ -116,16 +117,17 @@ export default {
     try { await this.toggleDone(t, sheet ? null : el, {gap: !sheet && !!el, close, sheet: sheet || !el}); }
     finally { closing.delete(t.id); }
   },
-  /* The question, in a sheet of its own (sheet/complete.html): "Complete 3 open subtasks?", listing them, the parent
-     completed with them; for a run, "Finish this run with 2 steps not done?", which leaves them not done, as finishing a
-     run always has (a run's steps are ticked on its screen, with who did each). `back`: asked from the parent's own
-     sheet, which Cancel goes back to. */
+  /* The question, in a sheet of its own (sheet/complete.html): "Complete “Pack the van”?", the open subtasks completed
+     with it named in a sentence (completeAsk, messages.js); for a run, "Finish this run with 2 steps not done?", which
+     leaves them not done, as finishing a run always has (a run's steps are ticked on its screen, with who did each).
+     `back`: asked from the parent's own sheet, which Cancel goes back to. */
   askComplete(t, back = false){
-    const run = this.isRunTask(t), open = this.cardSubs(t, run).filter(s => !this.subDone(s, run));
-    const n = run ? open.length : this.closable(t).length;
+    const run = this.isRunTask(t), subs = this.cardSubs(t, run).filter(s => !this.subDone(s, run));
+    const open = subs.map(s => ({id: s.id, title: run ? parseStep(s.title).title : s.title, stays: !run && repeats(s)}));
+    const n = run ? open.length : this.closable(t).length, title = run ? runWithoutDay(t.title, t.created) : t.title;
     this.openSheet('complete');
-    this.sheet.complete = {id: t.id, task: t, run, back, title: run ? runWithoutDay(t.title, t.created) : t.title,
-      open: open.map(s => ({id: s.id, title: run ? parseStep(s.title).title : s.title, stays: !run && repeats(s)})), n, stay: open.length - n};
+    this.sheet.complete = {id: t.id, task: t, run, back, title, open, n, stay: open.length - n,
+      ask: completeAsk({title, run, names: open.filter(s => !s.stays).map(s => s.title), stay: open.length - n})};
   },
   // Confirmed: the parent and its open subtasks completed (a run finished), shown on its card or row as a tap would.
   async confirmComplete(){

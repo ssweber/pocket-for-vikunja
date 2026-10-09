@@ -52,3 +52,21 @@ export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja
 // task's notes, a comment; or that the browser wouldn't allow it.
 export const COPIED = {text: 'Copied: paste it into a message', markdown: 'Copied as a Markdown list: paste it into your notes', notes: 'Copied the notes',
   comment: 'Copied the comment', failed: 'Not copied: this browser didn\'t allow it'};
+
+// Names in a sentence: "A", "A and B", "A, B and C"; past `most`, the first of them and how many more: "A, B, C and 2
+// more".
+export function namesText(names, most = 3){
+  const shown = names.length > most ? [...names.slice(0, most), `${names.length - most} more`] : names;
+  return shown.length < 2 ? shown.join('') : shown.slice(0, -1).join(', ') + ' and ' + shown.at(-1);
+}
+/* The question a parent's ring asks (sheet/complete.html): {head, body, yes: its button}. A task: completed with the open
+   subtasks named (`names`), those that repeat (`stay`, how many) left as they are. A run (`run`): finished with its steps
+   not done (`names`) left that way. Named in a sentence, not listed, so they aren't taken for boxes to pick from. */
+export function completeAsk({title, run = false, names = [], stay = 0}){
+  const n = names.length, which = namesText(names);
+  if (run) return {head: `Finish this run with ${plural(n, 'step')} not done?`, yes: 'Finish run',
+    body: `“${title}” is finished, and ${n === 1 ? 'its step not done stays' : `its ${n} steps not done stay`} that way: ${which}.`};
+  const stays = !stay ? '' : stay === 1 ? 'The one that repeats stays as it is.' : `The ${stay} that repeat stay as they are.`;
+  const goes = !n ? '' : n === 1 ? `Its open subtask will be marked done too: ${which}.` : `Its ${n} open subtasks will be marked done too: ${which}.`;
+  return {head: `Complete “${title}”?`, body: [goes, stays].filter(Boolean).join(' '), yes: n ? `Complete all ${n + 1}` : 'Complete it'};
+}

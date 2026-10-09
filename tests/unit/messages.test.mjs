@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, doneLine, doneText, headText, movedText, notMoved, notSaved, sentLater } from '../../src/js/messages.js';
+import { addedWhere, completeAsk, doneLine, doneText, headText, movedText, namesText, notMoved, notSaved, sentLater } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -121,4 +121,20 @@ test('on a run, what\'s written on a step or the run is a comment, as Vikunja ca
   assert.equal(a.dropText({ op: 'note', task: 1 }), 'The comment isn\'t posted: its words go back where you wrote them.');
   assert.equal(a.actWhat({ op: 'note', task: 1, run: 5 }), 'A comment on “Unlock the door”');
   assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'A tick and its comment on “Unlock the door”');
+});
+
+test('the question a parent’s ring asks names what goes with it in a sentence: the first three, then how many more', () => {
+  assert.equal(namesText(['Load chairs']), 'Load chairs');
+  assert.equal(namesText(['Load chairs', 'Book the hall']), 'Load chairs and Book the hall');
+  assert.equal(namesText(['Load chairs', 'Book the hall', 'Wipe the tables']), 'Load chairs, Book the hall and Wipe the tables');
+  assert.equal(namesText(['Load chairs', 'Book the hall', 'Wipe the tables', 'Stack cups', 'Sweep']), 'Load chairs, Book the hall, Wipe the tables and 2 more');
+  assert.deepEqual(completeAsk({title: 'Pack the van', names: ['Load chairs']}),
+    {head: 'Complete “Pack the van”?', body: 'Its open subtask will be marked done too: Load chairs.', yes: 'Complete all 2'});
+  assert.deepEqual(completeAsk({title: 'Pack the van', names: ['Load chairs', 'Book the hall', 'Wipe the tables']}),
+    {head: 'Complete “Pack the van”?', body: 'Its 3 open subtasks will be marked done too: Load chairs, Book the hall and Wipe the tables.', yes: 'Complete all 4'});
+  assert.equal(completeAsk({title: 'Pack the van', names: ['A', 'B', 'C', 'D', 'E'], stay: 1}).body,
+    'Its 5 open subtasks will be marked done too: A, B, C and 2 more. The one that repeats stays as it is.');
+  assert.deepEqual(completeAsk({title: 'Closing up', run: true, names: ['Mop', 'Lock up']}),
+    {head: 'Finish this run with 2 steps not done?', body: '“Closing up” is finished, and its 2 steps not done stay that way: Mop and Lock up.', yes: 'Finish run'});
+  assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, '“Closing up” is finished, and its step not done stays that way: Mop.');
 });
