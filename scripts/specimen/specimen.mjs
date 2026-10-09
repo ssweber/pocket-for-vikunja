@@ -8,6 +8,8 @@ import {listItems, nestSubtasks} from '../../src/js/lists.js';
 import {positionOrder} from '../../src/js/order.js';
 import {revealOf} from '../../src/js/app/progress.js';
 import {swipeAt} from '../../src/js/progress.js';
+import {completeAsk, dayWord, movedTo, STAYS} from '../../src/js/messages.js';
+import {dueInfo, startOfDay} from '../../src/js/dates.js';
 
 const ZERO = '0001-01-01T00:00:00Z', HOUR = 36e5;
 const at = ms => new Date(Date.now() + ms).toISOString();
@@ -53,8 +55,8 @@ function sections(){
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
   // Today's stacked cards (cards.js): a task of high priority with one subtask of five done and four open (one of them
-  // yours), opened by its peek; a run with a step counting down; a run started from a template that came round, due when
-  // it was; a task with one subtask open, so no peek; and one of 14, five done, of low priority. Their subtasks are in
+  // yours), opened by its footer's More; a run with a step counting down; a run started from a template that came round, due
+  // when it was; a task with one subtask open, so no footer; and one of 14, five done, of low priority. Their subtasks are in
   // the store, as Today keeps them. A run's heading reads as a task's: its name without the day it was started
   // (runWithoutDay), and when it's due at the right.
   const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
@@ -139,7 +141,32 @@ function sections(){
     {spec: 'A done task: its row as a done row in a list; Details’ Progress line has no quarter pressed', parts: ['details'],
       task: task({title: 'Clean the grinder', done: true, percent_done: .5, due_date: dayAt(-1, 17), description: '<p>Burrs out, brush, then rice through it.</p>', attachments: [photo(4, 'burrs.jpg', 1.6e6)]})},
   ];
-  return {parent, steps: runSteps(), sheets, cards: [van2, opening, closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
+  /* Holding to reschedule on Today (parent-tasks-plan, part 4): small Todays, each a still of a carry. `held`: what's
+     carried (a row, or a card); `at`: where the finger is (a row whose day it'd take, or a section's heading); `lit`:
+     the section it'd go to (none: it would spring back); `over`: in Next 7 days, the row or card whose day it'd take.
+     And what's said in its place after: moved, with Undo; and a hold on a repeating task, which stays. */
+  const carry = (key, title, items) => ({key, title, items});
+  const late = () => task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4});
+  const soon = () => task({title: 'Post next week’s rota', due_date: dayAt(0, 16, 30)});
+  const week = () => [task({title: 'Order the cups', due_date: dayAt(1, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(3, 0)}),
+    task({title: 'Collect the new aprons', due_date: dayAt(5, 11)})];
+  const carries = [];
+  { const a = late(), w = week(); carries.push({spec: 'Held on Overdue and carried down over Next 7 days: the section lit, the row whose day it’d take marked, and the tag on what’s carried naming the day',
+    groups: [carry('overdue', 'Overdue', [a, late()]), carry('today', 'Today', [soon()]), carry('week', 'Next 7 days', w)], held: a.id, at: {item: w[1].id}, lit: 'week', over: w[1].id, day: w[1].due_date}); }
+  { const w = week(); carries.push({spec: 'Carried up from Next 7 days over Today’s heading: Today lit, “Move to today”',
+    groups: [carry('overdue', 'Overdue', [late()]), carry('today', 'Today', [soon()]), carry('week', 'Next 7 days', w)], held: w[2].id, at: {sec: 'today'}, lit: 'today', day: dayAt(0, 0)}); }
+  { const d = soon(); carries.push({spec: 'Carried from Today over Overdue: nothing lit and no tag; let go there, it springs back into its place',
+    groups: [carry('overdue', 'Overdue', [late(), late()]), carry('today', 'Today', [d, soon()]), carry('week', 'Next 7 days', week().slice(0, 1))], held: d.id, at: {sec: 'overdue'}}); }
+  { const a = late(); carries.push({spec: 'Nothing due today: as the carry starts, Today shows anyway, an empty slot a row tall, to drop on',
+    groups: [carry('overdue', 'Overdue', [a]), carry('today', 'Today', []), carry('week', 'Next 7 days', week().slice(0, 2))], held: a.id, at: {sec: 'today'}, lit: 'today', day: dayAt(0, 0)}); }
+  const shed = task({title: 'Tidy the shed', due_date: dayAt(0, 0), related_tasks: {subtask: [{id: 1301}, {id: 1302}, {id: 1303}]}});
+  const shedSubs = [kid(1301, {under: shed.id, title: 'Sort the paint tins'}), kid(1302, {under: shed.id, title: 'Sweep it out'}), kid(1303, {under: shed.id, title: 'Fix the shelf', done: true})];
+  { const w = week(); carries.push({spec: 'A card carried, held by its header or any of its rows: the whole card lifts, and its task’s date is what moves',
+    groups: [carry('today', 'Today', [shed, soon()]), carry('week', 'Next 7 days', w)], held: shed.id, at: {item: w[1].id}, lit: 'week', over: w[1].id, day: w[1].due_date}); }
+  const moved = task({title: 'Order the cups', due_date: dayAt(3, 0), priority: 2}), water = task({title: 'Water the plants', due_date: dayAt(0, 0), repeat_after: 86400});
+  carries.push({spec: 'Said in its place: dropped on a day, “Moved to <day>” with Undo; a repeating task held, why it stays',
+    groups: [carry('today', 'Today', [water, soon()]), carry('week', 'Next 7 days', [moved])], said: [[moved.id, 'moved'], [water.id, 'repeats']]});
+  return {parent, steps: runSteps(), sheets, carries, carrySubs: shedSubs, cards: [van2, opening, closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -249,7 +276,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const rowMeta = c.rowMeta;
   c.rowMeta = function(t, g){ const out = rowMeta.call(this, t, g); return g?.own ? out.filter(m => ['due', 'prio', 'rep', 'rem'].includes(m.key)) : out; };
   c.specimenSheets = [];
-  c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
+  c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -292,7 +319,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.view.run = {run, steps: inRow, at: 4, last: null};
     // (from the step before the card's to the run's next steps; other ids, so the states above stay on their own rows)
     this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4, target: {step: true, after: 'Stack the trays', repeat: this.runView.step.title, canRepeat: true}};
-    // Today's cards: their subtasks in the store, the van's opened by its peek.
+    // Today's cards: their subtasks in the store, the van's opened by its footer's More.
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
@@ -301,12 +328,31 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const x of s.parentSubs) this.keep(x);
     this.specimenParents = s.parents.map(t => this.keep(t));
     Object.assign(this.view.cards, Object.fromEntries(s.parents.map(t => [t.id, {when: null, made: null, focus: null}])));
-    const ask = (t, run) => ({kind: 'complete', complete: {id: t.id, run, title: t.title, n: run ? 2 : 3, stay: run ? 0 : 1,
-      open: run ? [{id: 1, title: 'Stack the chairs'}, {id: 2, title: 'Lock the door'}] : [{id: 1, title: 'Tape the edges'}, {id: 2, title: 'First coat'}, {id: 3, title: 'Second coat'}, {id: 4, title: 'Water the plants', stays: true}]}});
-    this.specimenComplete = [ask(s.parents[0], false), ask({id: 0, title: 'Closing up · run 5'}, true)];
+    // Each with its sentence (completeAsk): a task with 3 open subtasks; one with 5, one of them repeating (it stays, and
+    // isn't named); a run with 2 steps not done.
+    const ask = (title, run, open) => {
+      const names = open.filter(o => !o.stays).map(o => o.title), stay = open.length - names.length;
+      return {kind: 'complete', complete: {id: 0, run, title, n: run ? open.length : names.length, stay, open: open.map((o, i) => ({id: i + 1, ...o})), ask: completeAsk({title, run, names, stay})}};
+    };
+    const titles = (...xs) => xs.map(title => typeof title === 'string' ? {title} : title);
+    this.specimenComplete = [ask(s.parents[2].title, false, titles('Ask for holidays', 'Draft it', 'Post it')),
+      ask(s.parents[0].title, false, titles('Sand it', 'Tape the edges', 'First coat', 'Second coat', {title: 'Water the plants', stays: true})),
+      ask('Closing up', true, titles('Stack the chairs', 'Lock the door'))];
     // A task's sheet led by its row (parent-tasks-plan, 6b, a mock): each its own sheet, as the app's is for one task.
     for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.keep(x);
     this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.keep(sh.task)}));
+    /* Holding to reschedule on Today: each still's sections as Today's are, with data-group (screens/lists.html), and
+       its rows and cards as Today has them (screenRows('today')). */
+    for (const x of s.carrySubs) this.keep(x);
+    const carryG = (key, title, items) => ({key, title, cls: {overdue: 'overdue', today: 'today'}[key] || '', cards: 'today', line: true, depth: {}, delete: true, reschedule: true,
+      items: items.map(t => this.keep(t)), tasks: items});
+    this.specimenCarry = s.carries.map((cv, i) => ({...cv, id: i, groups: cv.groups.map(g => carryG(g.key, g.title, g.items))}));
+    for (const cv of s.carries) for (const g of cv.groups) for (const t of g.items) if (t.related_tasks?.subtask?.length) this.view.cards[t.id] = {when: t.due_date, made: null, focus: null};
+    const dayOf = due => dueInfo(startOfDay(new Date(due)).toISOString()).label;
+    for (const cv of s.carries) for (const [id, what] of cv.said || []) {
+      const t = this.tasks[id];
+      this.lines[id] = what === 'moved' ? {id, title: '', more: '', text: movedTo(dayOf(t.due_date)), action: undo, stays: true} : {id, title: '', more: '', text: STAYS.repeats, action: null, stays: true};
+    }
     // A project's open list, as listGroups makes it: each subtask under its parent there, and what it shows.
     Object.assign(this.positions, s.project.positions);
     const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
@@ -332,6 +378,19 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       for (const t of s.parents) for (const head of document.querySelectorAll(`.day-card[data-id="${t.id}"] > .card-head`)) {
         if (t.state?.head === 'delete') { head.classList.add('swiped'); head.style.setProperty('--swipe', '-88px'); }
         else if (t.state?.head) { const w = head.clientWidth; revealOf(head).move(swipeAt({start: 0, dx: t.state.head * w, x: w / 2, width: w, screen: 1e4, one: true})); }
+      }
+      /* A carry, still held (progress.js: carryOf): what's lifted follows the finger out of its list, over `at`; the
+         section it'd go to lit (.drop-on), in Next 7 days the row or card whose day it'd take marked (.drop-day), and on
+         what's carried the tag naming the day. */
+      for (const cv of this.specimenCarry) if (cv.held) for (const box of document.querySelectorAll(`[data-carry="${cv.id}"]`)) {
+        const item = box.querySelector(`.item[data-id="${cv.held}"]`), lifted = item.querySelector(':scope > .day-card') || item.querySelector(':scope > .row');
+        const to = cv.at.item ? box.querySelector(`.item[data-id="${cv.at.item}"]`) : box.querySelector(`[data-group="${cv.at.sec}"] > .sec`);
+        const a = item.getBoundingClientRect(), b = to.getBoundingClientRect();
+        item.parentElement.classList.add('carrying'); item.classList.add('dragged'); lifted.classList.add('held');
+        item.style.transform = `translateY(${Math.round(b.top + b.height / 2 - (a.top + Math.min(a.height, 56) / 2))}px)`;
+        if (cv.lit) box.querySelector(`[data-group="${cv.lit}"]`).classList.add('drop-on');
+        if (cv.over) box.querySelector(`.item[data-id="${cv.over}"]`).classList.add('drop-day');
+        if (cv.lit) { const tag = document.createElement('span'); tag.className = 'drop-tag'; tag.textContent = 'Move to ' + dayWord(dayOf(cv.day)); item.append(tag); }
       }
       // The sheet's own row swiped, still held, as a list's row is (below).
       for (const sh of this.specimenSheets) if (sh.state?.reveal) for (const row of document.querySelectorAll(`.task-card > .row[data-id="${sh.task.id}"]`)) {
