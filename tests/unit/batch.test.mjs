@@ -104,3 +104,34 @@ test('a row marked: its tap takes the mark back; a subtask closed with its paren
   assert.deepEqual(did.at(-1), 'sent 1');
   assert.deepEqual(app.leaving, {});
 });
+
+// Rows gone from a list loaded afresh (settle, collapseRows in util.js): a few on the screen fold away, every one
+// measured before any is changed; more than a few at once, or any off the screen, simply go.
+const fakeRow = (id, top, log) => ({ isConnected: true, style: {}, dataset: { id: String(id) },
+  get offsetHeight(){ log.push('read'); return 50; },
+  getBoundingClientRect(){ log.push('read'); return { top, bottom: top + 50, height: 50 }; },
+  animate(){ log.push('fold ' + id); return { finished: Promise.resolve() }; } });
+
+test('rows gone after a load: a few on the screen fold, all measured first; many at once, or off the screen, simply go', async () => {
+  const { collapseRows, FOLD_FEW } = await import('../../src/js/util.js'), log = [];
+  globalThis.innerHeight = 800;
+  await collapseRows([fakeRow(1, 100, log), fakeRow(2, 150, log), fakeRow(3, 2000, log), fakeRow(4, -300, log)]);
+  assert.deepEqual(log.filter(x => x !== 'read'), ['fold 1', 'fold 2'], 'only those on the screen');
+  assert.equal(log.indexOf('fold 1'), 8, 'every row measured before the first folds');
+  log.length = 0;
+  await collapseRows(Array.from({ length: FOLD_FEW + 1 }, (_, i) => fakeRow(i, i * 50, log)));
+  assert.deepEqual(log.filter(x => x !== 'read'), [], 'too many on the screen at once: they simply go');
+});
+
+test('a load finds the rows gone from the page in one pass, not one for each', async () => {
+  const { component } = await import('./fake.mjs'), views = (await import('../../src/js/app/views.js')).default;
+  const app = component(views), log = [], asked = [];
+  Object.assign(app, { lines: {}, flash(){} });
+  app.view = { loading: false, checklists: [], groups: [{ key: 'open', tasks: [1, 2, 3, 4].map(id => ({ id })) }] };
+  const rows = [1, 2, 3, 4].map(id => fakeRow(id, id * 50, log));
+  globalThis.document.querySelectorAll = sel => { asked.push(sel); return rows; };
+  try { assert.equal(await app.settle([1, 3], 0), true); }
+  finally { delete globalThis.document.querySelectorAll; }
+  assert.equal(asked.length, 1, 'one query');
+  assert.deepEqual(log.filter(x => x !== 'read'), ['fold 2', 'fold 4'], 'the rows gone fold');
+});

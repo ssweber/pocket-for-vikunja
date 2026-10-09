@@ -48,3 +48,18 @@ export async function collapse(el){
   await el.animate([{height: el.offsetHeight + 'px', opacity: 1}, {height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px'}],
     {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
 }
+/* Rows gone from a list loaded afresh (settle) fold away as ticked rows do, but only a few, on the screen: with more
+   than FOLD_FEW there at once, or off it, they simply go. Every row is measured before any is changed, so the page is
+   laid out once, not once a row (3.5 s for 2,000 rows). */
+export const FOLD_FEW = 8;
+export async function collapseRows(els){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const shown = els.filter(el => el.isConnected).map(el => ({el, r: el.getBoundingClientRect(), h: el.offsetHeight}))
+    .filter(({r}) => r.height && r.bottom > 0 && r.top < innerHeight);
+  if (shown.length > FOLD_FEW) return;
+  await Promise.all(shown.map(({el, h}) => {
+    el.style.overflow = 'hidden';
+    return el.animate([{height: h + 'px', opacity: 1}, {height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px'}],
+      {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
+  }));
+}

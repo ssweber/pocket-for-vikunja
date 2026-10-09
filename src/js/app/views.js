@@ -1,5 +1,5 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
-import {cache, collapse, colorOf, PRIOS, store, TZ} from '../util.js';
+import {cache, collapseRows, colorOf, PRIOS, store, TZ} from '../util.js';
 import {allPages, api, ApiError, errText, items, LOADED, NetError, why} from '../api.js';
 import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
@@ -304,7 +304,9 @@ export default {
     if (this.view.loading) return seq === renderSeq;
     const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
     const gone = shown.filter(id => !now.has(id) && !this.lines[id] && !this.leaving[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
-    if (gone.length) await Promise.all(gone.flatMap(id => [...document.querySelectorAll(`#view :is(.row:not(.step-line), .day-card)[data-id="${id}"]`)]).map(collapse));
+    // Found in one pass over the page, not one for each row gone (2,000 of them, when a project's Done closes).
+    const out = new Set(gone.map(String));
+    if (gone.length) await collapseRows([...document.querySelectorAll('#view :is(.row:not(.step-line), .day-card)[data-id]')].filter(el => out.has(el.dataset.id)));
     if (seq !== renderSeq) return false;
     if (arrived.length) this.flash(arrived, 'arrived');
     return true;
