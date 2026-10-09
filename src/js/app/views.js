@@ -183,11 +183,14 @@ export default {
     return out;
   },
 
-  async render(){
+  // `kept`: only the copy kept of a new screen, if it has one, and nothing loaded: boot, opening before Vikunja has said
+  // who's signed in. Resolves to whether it showed one.
+  async render({kept = false} = {}){
     let r = currentRoute();
     // A link to a project's done tasks, from before they were a section of its list: the list, with the section open.
     if (r.name === 'project' && r.showDone) { doneOpen.set(r.id, true); history.replaceState(history.state, '', '#/project/' + r.id); r = currentRoute(); }
     if (r.name === 'add') {                      // deep link: #/add?text=Buy+milk+tomorrow
+      if (kept) return false;
       history.replaceState(null, '', '#/today');
       await this.render();
       this.cap.text = r.text; this.$nextTick(() => this.$refs.capture.focus());
@@ -202,14 +205,16 @@ export default {
        with a thin line under the header (view.behind), not over what's on screen. */
     const fresh = this.view.route !== location.hash;
     if (fresh) {
-      this.drawFrom(0);                                  // its first rows at once, the rest a batch at a time
       const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
+      if (kept && !s) return false;
+      this.drawFrom(0);                                  // its first rows at once, the rest a batch at a time
       Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null});
       if (s) this.showSaved(r, s);
       if (scrollY) scrollTo(0, 0);                       // a new screen starts at its top
       Object.assign(this.hint, {at: null, pick: true});  // the hint, if it's still to show, on the new screen's first row (pickHint)
     }
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
+    if (kept) return fresh;
     this.view.updating = !this.view.loading; this.view.behind = false;
     clearTimeout(behindTimer);
     behindTimer = setTimeout(() => { if (seq === renderSeq && this.view.updating) this.view.behind = true; }, 1000);

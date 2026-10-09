@@ -27,6 +27,16 @@ export const LOADED = (m => m && new Date(m[3], m[1] - 1, m[2], m[4], m[5], m[6]
 let refreshing = null;
 export let seenToken = '';                              // the shared session's token when Pocket last checked whose it is
 export const setSeenToken = t => { seenToken = t; };
+/* Opening on the kept screen, before Vikunja has said whose sign-in it is (boot): settled once it has. Meanwhile nothing
+   is sent (request, flush). */
+export let opening = null;
+export const setOpening = p => { opening = p; };
+// A token's SHA-256, in hex: what's kept to know the sign-in again (keepWho), never the token itself. '' where the
+// browser can't work it out (crypto.subtle is only there on an https page).
+export async function tokenHash(t){
+  try { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t))), b => b.toString(16).padStart(2, '0')).join(''); }
+  catch { return ''; }
+}
 let serverOffset = null;                         // Vikunja's clock minus the phone's, from its replies' Date header
 // A moment on the phone's clock, on Vikunja's.
 export const serverTime = ms => ms + (serverOffset ?? 0);
@@ -51,7 +61,7 @@ function refreshSession(){
     try { j = await r.json(); } catch (e) { throw new NetError(e.message); }
     if (!j.token) return false;
     sharedToken.set(j.token);
-    if (seenToken === before) seenToken = j.token;                           // renewed by us: still the same person
+    if (seenToken === before) { seenToken = j.token; app.keepWho?.(j.token, app.user?.id); }   // renewed by us: still the same person
     return true;
   };
   refreshing = (async () => {
@@ -69,6 +79,13 @@ export async function api(path, opts = {}){
   try { return await request(path, opts); } finally { if (write) app.writing--; }
 }
 async function request(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
+  // A change waits while Pocket opens on its kept screen (boot), until Vikunja has said whose sign-in it is, and is sent
+  // only if it's still the person whose screen it was.
+  if (auth && method !== 'GET' && opening) {
+    const who = app.user?.id;
+    await opening;
+    if (!app.signedIn || app.user?.id !== who) throw new ApiError(401, app.signedIn ? 'Someone else is signed in now' : 'Signed out');
+  }
   // A change is only sent once Pocket knows the shared session is still this person's: another tab may have signed
   // someone else in. (Reading is fine.) The token is read after that, so it's the one that was checked.
   if (auth && method !== 'GET' && app?.mode === 'session' && app.signedIn && app.user && sharedToken.get() !== seenToken

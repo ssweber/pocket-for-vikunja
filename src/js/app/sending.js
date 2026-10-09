@@ -1,6 +1,6 @@
 // Sending what was added to Vikunja, through the outbox, and the "Waiting to send" rows.
 import {cache, userCache, ZERO} from '../util.js';
-import {api, ApiError, items, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
+import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
 import {addedWhere} from '../messages.js';
 import {patiently} from '../checklists.js';
@@ -234,6 +234,7 @@ export default {
   },
   // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
   async flush(){
+    if (opening) return;                         // opening on the kept screen: boot sends what's waiting once Vikunja says who it is
     // In a shared session, nothing is sent until Pocket knows the session is still this person's.
     if (this.signedIn && this.user && this.mode === 'session' && sharedToken.get() !== seenToken) { this.sessionChanged(); return; }
     if (this.flushing || !this.signedIn || !this.user || !sync.all(this.user.id).length) return;

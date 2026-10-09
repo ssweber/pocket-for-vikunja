@@ -1,6 +1,6 @@
 // Signing in and out, and following the sign-in Pocket shares with Vikunja's web app.
 import {cache, esc, store, taskDrafts, userCache} from '../util.js';
-import {api, ApiError, errText, INSTALLED, NetError, netHelp, seenToken, setSeenToken, sharedToken} from '../api.js';
+import {api, ApiError, errText, INSTALLED, NetError, netHelp, seenToken, setOpening, setSeenToken, sharedToken, tokenHash} from '../api.js';
 import {sync} from '../sync.js';
 import {saved} from '../lists.js';
 
@@ -45,10 +45,23 @@ export default {
           if (sharedToken.get() !== t) continue;                              // changed again meanwhile: ask again
           setSeenToken(t);
           if (was && u.id !== was && this.user?.id === was) { this.switchAccount(); return false; }
+          this.keepWho(t, u.id);
           return true;
         }
       } finally { confirming = null; }
     })();
+  },
+  /* The sign-in Vikunja has just said is person `id`'s, kept beside the copies of their lists (saved.who) as its token's
+     hash, never the token: opening with the same token, Pocket shows their kept screen before asking Vikunja (boot).
+     Kept only while those copies are theirs, and cleared with them. */
+  async keepWho(t, id){
+    const hash = t && id && await tokenHash(t);
+    if (hash && saved.get('user')?.id === id) saved.set('who', {id, hash});
+  },
+  // The person whose lists are kept, when the sign-in Pocket opens with is the one it last confirmed as theirs; else null.
+  async keptUser(){
+    const u = saved.get('user'), who = saved.get('who'), t = this.mode === 'session' ? sharedToken.get() : this.token;
+    return u && t && who?.id === u.id && who.hash === await tokenHash(t) ? u : null;
   },
   // Forget the last person's lists, caches and open task, and load the new person's. What they left waiting stays in
   // the outbox, under their name, to be sent when they're back.
@@ -168,8 +181,23 @@ export default {
     // What's waiting, from the phone's database. Not for long, though: another tab with an older Pocket can hold it up.
     await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
     sync.ready.then(() => this.refreshPending());
+    /* Opening with the sign-in Pocket last confirmed as the person whose lists it keeps (keepWho): their screen as kept,
+       at once, with Vikunja asked who it is behind it. Until it answers, nothing is sent (opening, api.js). Any other
+       sign-in (Vikunja's web app may have renewed the session since) waits for Vikunja, as does a screen with no copy. */
+    const kept = await this.keptUser();
+    let opened = null;
+    const confirmed = () => { if (opened) { setOpening(null); opened(); opened = null; } };
+    if (kept) {
+      setOpening(new Promise(ok => { opened = ok; }));
+      this.user = kept; this.info = this.info || saved.get('info');
+      this.setProjects(saved.get('projects') || []);
+      this.refreshPending();
+      await this.render({kept: true});
+    }
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
+      // Someone else: can't be with the same token, but their lists are never shown; nothing waiting is sent as them.
+      if (kept && user.id !== kept.id) { this.switchAccount(); confirmed(); return; }
       this.user = user; this.info = info || this.info || saved.get('info');   // /info not read this time: as it was
       // What was being written when a session ended is kept for the same person only.
       const owner = store.get('drafts.user');
@@ -180,6 +208,8 @@ export default {
       // the copies kept of them (savedView), so they're this account's only.
       if (saved.get('user')?.id !== user.id) { saved.clear(); this.perms = {}; this.seenBy = {}; }
       saved.set('user', user); if (info) saved.set('info', info);
+      this.keepWho(this.mode === 'session' ? sharedToken.get() : this.token, user.id);
+      confirmed();
       await this.loadProjects();
       this.refreshPending();
       await this.render();
@@ -195,6 +225,6 @@ export default {
         return;
       }
       Object.assign(this.view, {loading: false, error: errText(e), bootFailed: true});
-    }
+    } finally { confirmed(); }
   },
 };
