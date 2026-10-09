@@ -292,11 +292,13 @@ export default {
 
   /* ---------- progress ---------- */
   /* Progress set in a list, or on a subtask's row in its parent's sheet (`sub`). At 100% the task is done, as when it's
-     ticked off. Below that, it shows on its row only, with no message: the row's bar is what was set, and
+     ticked off; a done one set below it is opened again, at that progress, as its tick would (its tick again is the
+     undo). Below that, it shows on its row only, with no message: the row's bar is what was set, and
      sliding it back is the undo (a line over the row would hide it, and stop the next slide). Not saved, the row says
      so, with Try again. `undoing`: putting back what it was, exactly, without marking it done. */
   async setProgress(t, pct, rowEl, {undoing = false, sub = false} = {}){
     const was = pctOf(t), patch = undoing ? {percent_done: pct / 100} : progressPatch(t, pct);
+    if (t.done && !undoing && pct < 100) return this.toggleDone(t, rowEl, {...patch, sub});
     if (patch.done) return this.toggleDone(t, rowEl, {...patch, sub}, {percent_done: was / 100});
     t.percent_done = patch.percent_done;
     try {
@@ -311,6 +313,7 @@ export default {
   // saved).
   async sheetProgress(t, pct){
     const patch = progressPatch(t, pct);
+    if (t.done && pct < 100) return this.toggleDone(t, null, {...patch, sheet: true});   // opened again, at that progress
     if (patch.done) return this.sheetDone(patch);
     if (await this.save(patch) !== false) this.said = `Progress set to ${pct}%`;
   },

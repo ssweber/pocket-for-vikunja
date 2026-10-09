@@ -505,6 +505,7 @@ export default {
     if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
+  // Resolves to false if it was asked about and not done.
   async tickStep(s, op){
     const r = this.view.run;
     if (!r) return;
@@ -515,7 +516,7 @@ export default {
     if (op !== 'undone') this.unlockSound();
     // Someone else's ✅ can't be taken off: Vikunja lets each person take back only their own.
     const others = op === 'undone' ? (s.by || []).filter(u => u.id !== this.user?.id).map(u => this.nameOf(u)) : [];
-    if (others.length && !confirm(`${others.join(' and ')} marked “${s.title}” done. Their ✅ stays on it in Vikunja, as only they can take it off. Mark it not done?`)) return;
+    if (others.length && !confirm(`${others.join(' and ')} marked “${s.title}” done. Their ✅ stays on it in Vikunja, as only they can take it off. Mark it not done?`)) return false;
     const typed = op === 'undone' ? '' : (this.runDrafts[s.id] || '').trim();
     if (typed) this.runDrafts[s.id] = '';
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));
@@ -762,9 +763,11 @@ export default {
     }
     this.said = `Not repeated: ${title}`;
   },
-  /* A step's progress, held and slid on its row as on a task's: through the outbox, as a tick is. 100% is done, with its
-     ✅, as Done is. `undoing`: putting back what it was. */
+  /* A step's progress, swiped on its row as a task's is: through the outbox, as a tick is. 100% is done, with its ✅, as
+     Done is; a done step swiped down is not done again first, then at that progress. `undoing`: putting back what it
+     was. */
   async stepProgress(s, pct, undoing = false){
+    if (s.done && pct < 100 && !undoing && await this.tickStep(s, 'undone') === false) return;
     if (pct >= 100 && !undoing) {
       await this.tickStep(s, 'done');
       this.say(`Done: ${s.title}`, {place: 'step', action: {label: 'Undo', fn: () => this.tickStep(s, 'undone')}});
@@ -814,12 +817,12 @@ export default {
   },
   /* Delete a step inserted or repeated during the run, until it's done: it was likely a mistake. One still waiting to
      be sent isn't sent, nor is anything done on it. A step from the template can't be taken out: it's skipped. `undo`:
-     Repeat's Undo, which asks nothing and says nothing more. */
+     Repeat's Undo, which asks nothing and says nothing more. Resolves to whether it's gone. */
   async deleteAddedStep(s, undo = false){
-    if (!s?.added || s.done || (!undo && !confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`))) return;
+    if (!s?.added || s.done || (!undo && !confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`))) return false;
     // The box aims at the card's step again, if this was where the next would go.
     if (this.runAdded && this.actTask({task: this.runAdded.after}) === s.id) this.runAdded = null;
-    if (s.pending) { await this.dropStep(s.pending, undo); return; }
+    if (s.pending) { await this.dropStep(s.pending, undo); return true; }
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       cache.delete(s.id);
@@ -827,7 +830,8 @@ export default {
       this.refreshPending();
       if (!undo) this.say('Step deleted', {place: ['sheet:top', 'step']});
       this.render();
-    } catch (e) { this.say(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message, {place: ['sheet:top', 'step'], cls: 'failed'}); }
+      return true;
+    } catch (e) { this.say(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message, {place: ['sheet:top', 'step'], cls: 'failed'}); return false; }
   },
   /* Don't send a step waiting to be inserted, nor what was done on it. One that may have reached Vikunja already (tried
      when the connection went) is called off: whatever reached it is deleted once Pocket reaches it again (unsendStep).

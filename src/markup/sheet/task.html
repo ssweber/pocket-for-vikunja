@@ -19,7 +19,7 @@
         <template x-if="checklistRole === 'tplstep' && tplStep"><div class="meta d-step-when num" id="d-step-when">
           <span x-text="'Step ' + tplStep.no + ' of ' + tplStep.of"></span><template x-if="tplStep.problem || tplStep.text"><span :class="{'due overdue': tplStep.problem}" x-text="tplStep.problem || tplStep.text"></span></template>
         </div></template>
-        <!-- Progress, as in the list: hold the bar, or around the title, then slide (initSheetProgress). A run's is its steps done. -->
+        <!-- Progress, as in the list: swipe the bar, or around the title (initSheetProgress). A run's is its steps done. -->
         <template x-if="!ofTemplate && canEdit"><div class="d-progress" id="d-progress" :role="isRunTask(sheet.task) ? 'progressbar' : 'slider'" tabindex="0" :aria-label="isRunTask(sheet.task) ? 'Steps done' : 'Progress'" aria-valuemin="0" aria-valuemax="100"
              :aria-valuenow="sheet.pct ?? shownPct(sheet.task)" :aria-valuetext="(sheet.pct ?? shownPct(sheet.task)) + '%'" :class="{setting: sheet.pct !== null}"
              x-style="{'--pct': (sheet.pct ?? shownPct(sheet.task)) / 100}"

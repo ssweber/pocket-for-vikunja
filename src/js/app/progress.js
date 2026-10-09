@@ -1,7 +1,8 @@
-// What a finger does on a row: held, then slid sideways, it sets progress (also on the sheet's bar), or moved up or
-// down, it moves the row among its siblings; swiped left, it shows the row's Delete. The last two only where the row's
-// list allows them (rowGestures): not on Today. There, a card is swiped either way to page through its steps.
-import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, slidePct, swipeEnd, SWIPE_PX, swipeOffset, swipeStarts, scrubStarts} from '../progress.js';
+// What a finger does on a row (parent-tasks-plan, part 1): swiped right, its progress goes up, and a full swipe is done
+// (also on the sheet's bar); swiped left, it goes down, and past 0% on into the row's Delete, one track (trackAt); held,
+// then moved up or down, the row moves among its siblings. Delete and moving only where the row's list allows them
+// (rowGestures): Today's rows are deleted but not moved, search's the same, a project's and a sheet's both.
+import {DELETE_W, HOLD_MS, isNudge, lockDirection, nextSnap, pctOf, releaseSpeed, swipeEnd, SWIPE_PX, SWIPE_SLOPE, swipeOffset, swipeStarts, scrubStarts, trackAt, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {store} from '../util.js';
@@ -26,11 +27,11 @@ const shut = (row = opened) => {
   row.classList.remove('swiping', 'swiped', 'swipe-full'); row.style.removeProperty('--swipe');
   if (opened === row) opened = null;
 };
-/* A row swiped left, as on a phone's mail: it moves with the finger, from where it rests or, open, from its Delete. Let
-   go a third of the way across the Delete button, it stays open on it; past half the row, the Delete fills it, a tick
-   is felt, and letting go there deletes it (`remove`, which carries it on off the screen: sweep); back under half, it
-   doesn't. The Delete isn't in the page's tab order until it's shown: a keyboard or a screen reader deletes from the
-   task's ⋯ instead. */
+/* A row swiped left past 0% (trackAt), as on a phone's mail: it moves with the finger, from where it rests or, open,
+   from its Delete. Let go a third of the way across the Delete button, it stays open on it; past half the row, the
+   Delete fills it, a tick is felt, and letting go there deletes it (`remove`, which carries it on off the screen:
+   sweep); back under half, it doesn't. The Delete isn't in the page's tab order until it's shown: a keyboard or a
+   screen reader deletes from the task's ⋯ instead. */
 const swipeOf = (row, remove) => ({
   base: opened === row ? -DELETE_W : 0,
   begin(){ if (opened !== row) shut(); row.classList.add('swiping'); },
@@ -128,36 +129,46 @@ export default {
   /* While sliding, the row is drawn from --slide, not --pct: the screen redraws a row's --pct as it updates (a run's
      steps every second, for their countdowns), which would put the line back to what's saved under the finger. */
   /* A finger on a row, or on a task sheet's progress. find(target) says what it's on, or null: `swipe` if the row can be
-     swiped to its Delete (swipeOf), `reorder` if it can be moved (dragOf), and if its progress can be set, {el: the row,
-     start, width, show(pct, x: where the finger is), begin() as the slide starts, finish(pct, or null if nothing changed)},
-     or `scrub` if it's a card's strip, which a finger dragged along it scrubs through (stripScrub, app/cards.js).
-     Moving before the hold ends is a scroll or a tap as usual, or, sideways, the swipe or the scrubbing; once the hold has
-     ended (a tick is felt, and the row lifts), nothing scrolls or swipes until the finger lifts. The first LOCK_PX it
-     moves then decide the way: sideways sets progress, from where it was, in snaps of 25% (slidePct), a tick felt at
-     each and a stronger one at 100%. Up or down moves the row (`reorder`: start(y), move(dy, y), end(commit)). A way the
-     row can't go lets it go, changing nothing. */
+     swiped to its Delete (swipeOf), `reorder` if it can be held and moved (dragOf), and if its progress can be set, {el:
+     the row, start (a done one's 100), width, show(pct, x: where the finger is), begin() as its progress starts to move,
+     finish(pct, or null if nothing changed)}, or `scrub` if it's a card's strip, which a finger dragged along it scrubs
+     through (stripScrub, app/cards.js).
+     A plain swipe, clearly sideways (swipeStarts), with no hold: on a row whose progress can be set, one track (trackAt,
+     `track`): right, up in snaps of 25%, a tick felt at each and a stronger one at 100%; left, down, and past 0% on into
+     its Delete, if it has one (`off`: how far it's moved aside). A row whose progress can't be set is only swiped left,
+     to its Delete (`swipe`), as is one already open on it, either way. Up or down is a scroll, as is a sideways move the
+     row can't take (doing nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved
+     up or down (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and
+     moved sideways, it's let go, changing nothing. */
   holdToSlide(area, find){
     let g = null;
     document.addEventListener('selectstart', noSelect, true);
     const stop = commit => {
       if (!g) return;
       clearTimeout(g.timer); sliding = false;
-      const {s, mode, pct, dx} = g; g = null;
+      const {s, mode, pct, dx, off} = g; g = null;
       s.el?.classList.remove('held');
       if (mode === 'swipe') { s.swipe.end(commit ? dx : null); return; }
       if (mode === 'scrub') { s.scrub.end(); return; }
-      if (mode === 'reorder') s.reorder.end(commit);
-      const set = commit && mode === 'slide' && pct !== s.start;
-      if (mode !== 'wait') s.finish?.(set ? pct : null);
-      if (set) this.hintSeen();                         // the first slide that sets progress, anywhere: the hint has done its job
+      if (mode === 'reorder') { s.reorder.end(commit); return; }
+      if (mode !== 'track') return;
+      // Let go past half the row, it's deleted, its progress left as it was; anywhere else, its progress is where the
+      // finger left it (0% with its Delete open), and the row goes back or stays open on its Delete.
+      const gone = commit && off < 0 && swipeEnd(off, s.el.clientWidth) === 'delete', set = commit && !gone && pct !== s.start;
+      s.finish?.(set ? pct : null);
+      if (off < 0) s.swipe.end(commit ? off : null);
+      if (set) this.hintSeen();                         // the first swipe that sets progress, anywhere: the hint has done its job
     };
+    // Which way a sideways swipe takes the row (dx: which way it went): its progress, then its Delete, on one track;
+    // only its Delete; or nothing.
+    const wayOf = (s, dx) => s.swipe?.base ? 'swipe' : s.show && (trackMoves(s.start, dx) || (dx < 0 && s.swipe)) ? 'track' : dx < 0 && s.swipe ? 'swipe' : null;
     area.addEventListener('pointerdown', e => {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false;                             // a new tap: its click is its own
       const s = find(e.target); if (!s) return;
       if (s.swipe?.base) { delete s.show; delete s.reorder; }   // an open row is swiped on, or tapped shut: not held
-      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, dx: 0, mode: 'wait', pct: s.start};
-      if (s.show || s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); s.show?.(g.pct, g.x); haptic('hold'); }, HOLD_MS);
+      g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, dx: 0, off: 0, mode: 'wait', pct: s.start};
+      if (s.reorder) g.timer = setTimeout(() => { g.mode = 'held'; sliding = true; getSelection()?.removeAllRanges(); s.el?.classList.add('held'); haptic('hold'); }, HOLD_MS);
     });
     // Moves and the release are followed on the whole window, so a press that ends outside the area still ends.
     addEventListener('pointermove', e => {
@@ -166,30 +177,48 @@ export default {
       if (g.mode === 'wait') {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
+        // More sideways than not, but not clearly (SWIPE_SLOPE): not decided yet, until it is, or the page scrolls.
+        if (!s.scrub && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) <= Math.abs(dy) * SWIPE_SLOPE) { g.moved = true; return; }
+        const way =swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe?.base) && wayOf(s, dx);
         // A card's strip, dragged along, mostly sideways: its steps, scrubbed through (stripScrub).
         if (s.scrub && scrubStarts(dx, dy, g.x0, innerWidth)) { clearTimeout(g.timer); g.mode = 'scrub'; sliding = true; }
-        // Not a swipe it can take (none on Today, or to the right): a sideways move does nothing, not even open the task
-        // where a mouse lets go; up or down is a scroll.
-        else if (!s.swipe || !swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe.base)) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
-        else { clearTimeout(g.timer); g.mode = 'swipe'; sliding = true; s.swipe.begin(); }
+        // Not a swipe it can take: a sideways move does nothing, not even open the task where a mouse lets go; up or
+        // down is a scroll.
+        else if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
+        else { clearTimeout(g.timer); g.mode = way; sliding = true; if (way === 'swipe') s.swipe.begin(); }
       }
       if (g.mode === 'swipe' || g.mode === 'scrub') { g.dx = e.clientX - g.x0; s[g.mode].move(g.dx, e.clientX); return; }
+      if (g.mode === 'track') {
+        g.dx = e.clientX - g.x0;
+        const {pct, off} = trackAt({start: s.start, dx: g.dx, x: g.x0, width: s.width, screen: innerWidth, del: !!s.swipe});
+        if (off < 0) {
+          // Past 0%, into its Delete: the fill gives way to the row moving aside.
+          if (!(g.off < 0)) { this.endSlide(s.el); s.swipe.begin(); }
+          s.swipe.move(off);
+        } else {
+          if (g.off < 0) shut(s.el);                  // back out of its Delete, to its progress
+          // Its progress starts to move: shown from then on, and the claim with it (begin).
+          if (!g.shown && trackMoves(s.start, g.dx)) { g.shown = true; s.begin?.(); s.show(pct, e.clientX); }
+          else if (g.shown && (pct !== g.pct || g.off < 0)) s.show(pct, e.clientX);
+          if (pct !== g.pct) haptic(pct === 100 ? 'done' : 'tick');
+        }
+        g.pct = pct; g.off = off;
+        return;
+      }
       if (getSelection()?.rangeCount) getSelection().removeAllRanges();     // whatever the long press selected near the row
       if (g.mode === 'held') {
         const way = lockDirection(e.clientX - g.x, e.clientY - g.y);
         if (!way) return;
-        if (!(way === 'x' ? s.show : s.reorder)) { swallow(); stop(false); return; }
-        g.mode = way === 'x' ? 'slide' : 'reorder';
-        if (g.mode === 'reorder') s.reorder.start(e.clientY); else s.begin?.();
+        // A hold only moves a row up or down (on Today, later, to another day: parent-tasks-plan, part 4).
+        if (way === 'x') { swallow(); stop(false); return; }
+        g.mode = 'reorder'; s.reorder.start(e.clientY);
       }
-      if (g.mode === 'reorder') { s.reorder.move(e.clientY - g.y, e.clientY); return; }
-      const pct = slidePct({start: s.start, dx: e.clientX - g.x, x: g.x, width: s.width, screen: innerWidth});
-      if (pct !== g.pct) { g.pct = pct; s.show(pct, e.clientX); haptic(pct === 100 ? 'done' : 'tick'); }
+      if (g.mode === 'reorder') s.reorder.move(e.clientY - g.y, e.clientY);
     });
     addEventListener('pointerup', e => {
       if (!g || e.pointerId !== g.id) return;
       if (g.mode === 'wait' && g.s.swipe?.base) shut();   // an open row tapped: it only shuts
-      if (g.mode !== 'wait' || g.s.swipe?.base) swallow();
+      if (g.mode !== 'wait' || g.s.swipe?.base || g.moved) swallow();   // a move never decided isn't a tap either
       stop(true);
     });
     addEventListener('pointercancel', e => { if (g && e.pointerId === g.id) stop(false); });
@@ -215,8 +244,8 @@ export default {
     document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
-      // A card on Today: its step line held is that step's (cardGesture); its strip dragged along, its steps
-      // (cardScrub); its heading only a tap, a swipe there doing nothing, as on any row on Today.
+      // A card on Today: its step line swiped is that step's (cardGesture); its strip dragged along, its steps
+      // (cardScrub); its heading only a tap, a swipe there doing nothing (part 3 makes it the parent's header).
       // A run's step card has the same strip, scrubbed the same way.
       if (target.closest('#step-card > .card-strip')) return this.stripScrub(target.closest('#step-card'), () => this.runView?.card);
       const step = target.closest('.step-line'), card = target.closest('.day-card');
@@ -258,19 +287,18 @@ export default {
     }, {passive: true});
     area.addEventListener('touchcancel', () => { n = null; }, {passive: true});
   },
-  /* A task's row, in a list or (sheet) a task's sheet. Held and slid, its progress: not one done, waiting to be sent, or
-     that can't be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; with no one on it, it's
-     then yours (claimOnSlide). Where its list allows
-     (allows), held and moved up or down, its place among its siblings (reorderOf), and swiped, its Delete: on Today,
-     neither (screenRows). */
+  /* A task's row, in a list or (sheet) a task's sheet. Swiped, its progress: not one waiting to be sent, or that can't
+     be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; a done one only down, opened again
+     (setProgress); with no one on it, it's then yours (claimOnSlide). Where its list allows (allows), swiped left past
+     0%, its Delete, and held, what a hold does there (holdOf). */
   rowGesture(t, row, sheet){
     if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
-    const slides = sheet ? !t.pending && !t.done && this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.rowSlides(t);
+    const slides = sheet ? !t.pending && this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.rowSlides(t);
     const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row)) : null;
-    const reorder = can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
+    const reorder = this.holdOf(t, row, sheet, can);
     if (!slides) return (swipe || reorder) && {el: row, swipe, reorder};
     let claimed = null;
-    return {el: row, swipe, reorder, start: pctOf(t), width: row.clientWidth,
+    return {el: row, swipe, reorder, start: t.done ? 100 : pctOf(t), width: row.clientWidth,
       show: (pct, x) => this.showSlide(row, pct, x),
       begin: () => { claimed = this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {})); },
       finish: pct => {
@@ -280,32 +308,37 @@ export default {
         row.style.setProperty('--pct', t.done ? 0 : this.shownPct(t) / 100);
       }};
   },
-  // Whether a list's row takes a slide for its progress (rowGesture): not one done, waiting to be sent, that can't be
-  // ticked (read only, a template), nor a run, nor one marked or with a line in its place.
-  rowSlides(t){ return !this.lines[t.id] && !this.leaving[t.id] && !t.pending && !t.done && this.canTick(t) && !this.isRunTask(t); },
-  /* A one-time hint, "Hold and slide to start working on it", on the first row of a list that takes a slide (on Today, a
-     card's step line counts: the card is `at`, so its next step keeps it). It's picked once, as a screen is first drawn
-     (hint.pick, set by render), never later, so it can't push rows down under a finger. Gone (a slide that sets
-     progress anywhere, or a tap on it), it fades, keeping its space until no finger is down and the list is still,
+  /* What a row held does, where its list allows it: on a project's list and in a task's sheet, moved up or down, its
+     place among its siblings (reorderOf). Elsewhere nothing, as yet: on Today a hold will move a row to another day
+     (parent-tasks-plan, part 4), given here as a dragOf whose drop sets its date. Search has no order of its own. */
+  holdOf(t, row, sheet, can){ return can.has('reorder') ? this.reorderOf(t, row, sheet) : null; },
+  // Whether a list's row takes a swipe for its progress (rowGesture): not one waiting to be sent, that can't be ticked
+  // (read only, a template), nor a run, nor one marked or with a line in its place. A done one does, down only.
+  rowSlides(t){ return !this.lines[t.id] && !this.leaving[t.id] && !t.pending && this.canTick(t) && !this.isRunTask(t); },
+  /* A one-time hint, "Swipe right to start working on it", on the first open row of a list that takes a swipe for its
+     progress (on Today, a card's step line counts: the card is `at`, so its next step keeps it). It's picked once, as a
+     screen is first drawn (hint.pick, set by render), never later, so it can't push rows down under a finger. Gone (a
+     swipe that sets progress anywhere, or a tap on it), it fades, keeping its space until no finger is down and the list is still,
      then closes (hintAway, leaving.js). Remembered on the phone; a screen reader hears it once. */
   pickHint(){
     this.hint.pick = false;
     if (this.hint.done) return;
     for (const g of this.listGroups) if (!g.fold) for (const t of g.tasks) {
-      const c = this.cardOf(t, g);
-      if (!this.rowSlides(c ? c.step : t)) continue;
+      const c = this.cardOf(t, g), x = c ? c.step : t;
+      if (x.done || !this.rowSlides(x)) continue;
       this.hint.at = t.id;
-      if (store.get('hint.slide') !== 'said') { this.said = 'Tip: hold a task, then slide it sideways, to start working on it.'; store.set('hint.slide', 'said'); }
+      if (store.get('hint.slide') !== 'said') { this.said = 'Tip: swipe a task to the right to start working on it.'; store.set('hint.slide', 'said'); }
       return;
     }
   },
   // Whether the row of `t` in list `g` has the hint's place: a card's step line for its card.
   hintOn(t, g){ return !g.sheet && !g.run && this.hint.at !== null && this.hint.at === (g.card ? g.card.id : t.id); },
   hintSeen(){ if (this.hint.done) return; this.hint.done = true; store.set('hint.slide', 'done'); this.hintAway(); },
-  /* A card on Today (app/cards.js), its step line touched: that step's gesture `s` (rowGesture), whose slide is that
-     step's alone and stops at 100% of it, the card then staying at its place for the next step to come in (pinCard). A
-     plain swipe there, or on its heading (`s` null), does nothing, not even a tap, as on any row on Today: the card
-     pages on its strip only (cardScrub). */
+  /* A card on Today (app/cards.js), its step line touched: that step's gesture `s` (rowGesture), whose swipe is that
+     step's alone and stops at 100% of it, the card then staying at its place for the next step to come in (pinCard);
+     swiped left, it stops at 0% (the card's options have no Delete, until part 2 of parent-tasks-plan makes its rows
+     a list's). A plain swipe on its heading (`s` null) does nothing, not even a tap: the card pages on its strip only
+     (cardScrub). */
   cardGesture(card, s){
     if (card.matches('.deleted, .lined')) return null;                     // only its Restore, or its line's action
     if (!s) return {el: null};
@@ -339,19 +372,28 @@ export default {
     const removing = this.removeTask(t);
     if (await (row ? sweep(row, removing) : removing) && sheet) this.sheet.dirty = true;
   },
-  /* A run's step held on its row: not one done, waiting to be sent, or in a finished run, nor from its buttons. With no
-     one on it, it's then yours, as a task's is. */
+  /* A step inserted or repeated during a run, swiped to its Delete or its Delete tapped: deleteAddedStep, which asks
+     first, as the × on the card's step does, and has no Restore; deleted, its row stays hidden in its place until the
+     run is drawn again without it. Said no to, it comes back. */
+  async swipeDeleteStep(s, row = null){
+    if (!row) { row = opened; haptic('done'); }
+    const removing = this.deleteAddedStep(s).then(ok => { if (ok && row) row.style.visibility = 'hidden'; return ok; });
+    await (row ? sweep(row, removing) : removing);
+  },
+  /* A run's step swiped on its row, as a task's is: not one waiting to be sent, or in a finished run; a done one only
+     down, not done again (stepProgress). With no one on it, it's then yours, as a task's is. Swiped left past 0%, only a
+     step inserted or repeated during the run, not done, has a Delete (swipeDeleteStep); a template's step stops at 0%. */
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
-    if (!s || s.done || s.pending || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('button:not(.body)')) return null;
+    if (!s || s.pending || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('.step-del')) return null;
     let claimed = null;
-    return {el: row, start: s.pct, width: row.clientWidth,
+    return {el: row, start: s.done ? 100 : s.pct, width: row.clientWidth, swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row)) : null,
       show: (pct, x) => this.showSlide(row, pct, x),
       begin: () => { claimed = this.claimOnSlide(s.slot); },
       finish: pct => { claimed?.(pct !== null); this.endSlide(row); if (pct !== null) this.stepProgress(s, pct); }};
   },
-  // In a task's sheet: hold the progress bar, or around the title (not its text, where a long press selects); and its
-  // subtasks' rows, as in a list.
+  // In a task's sheet: swipe the progress bar, or around the title (not what's typed there); and its subtasks' rows, as
+  // in a list.
   initSheetProgress(){
     this.holdToSlide(this.$refs.sheet, target => {
       const t = this.sheet.task, row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');

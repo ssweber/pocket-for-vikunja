@@ -71,7 +71,7 @@ export default () => ({
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // Today's card id -> the step it's paged to: {id, i} (app/cards.js)
   slideClaim: null,                            // a task or step whose progress is being slid, which you'll be doing (claimOnSlide)
-  // The one-time hint to hold and slide (progress.js): the row (or card) it's on, on this screen; whether to pick one as
+  // The one-time hint to swipe right (progress.js): the row (or card) it's on, on this screen; whether to pick one as
   // the screen is first drawn; and whether it has done its job, on this phone.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},
   places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)

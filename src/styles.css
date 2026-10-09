@@ -118,7 +118,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row{--row-inset:0px;display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
 .row:first-of-type{border-top:0}
 /* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too,
-   as do its progress line and the fill while its progress is set (--row-inset, read by each) */
+   as does the fill while its progress is set (--row-inset, read by each) */
 .row.sub{--row-inset:calc(14px + var(--depth) * 38px);padding-left:var(--row-inset);border-top-color:transparent}
 .row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
@@ -144,7 +144,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .meta > span,.d-path .linkish,.d-parent,.d-title h2,#sheet h3,.sec > span,.kicker,.cl .title{min-width:0;overflow-wrap:anywhere}
 .meta .due.overdue{color:var(--overdue);font-weight:600}
 .meta .due.today{color:var(--today);font-weight:600}
-/* The one-time hint to hold and slide, under the first row's title: quiet, and gone, it fades, keeping its space until
+/* The one-time hint to swipe right, under the first row's title: quiet, and gone, it fades, keeping its space until
    no finger is down (closeHint, leaving.js, then folds it). Its tap, which puts it away, reaches past it, to 44px tall. */
 .slide-hint{position:relative;display:flex;align-items:center;gap:6px;width:fit-content;margin-top:6px;padding:4px 8px 4px 10px;border-radius:10px;background:var(--sunk);color:var(--muted);font-size:13px;line-height:18px;transition:opacity .25s,visibility .25s}
 .slide-hint::after{content:"";position:absolute;inset:-8px -8px -12px}
@@ -157,7 +157,7 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
    title (a subtask's from the row's edge) */
 button.check{position:relative}
 button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
-.row > button.check{position:static}
+.row > button.check{position:static;padding:3px}
 .row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + 38px)}
 .check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
 .row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
@@ -225,13 +225,17 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    comments, as shown, are text to copy from */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks,#run-steps > .row,.h3{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 :is(.row,#d-subtasks) :is(input,textarea){-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
-/* progress: a thin bar along a row's bottom edge; while it's being set, the row fills like a volume bar */
-.row::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(var(--pct,0) * (100% - var(--row-inset)));background:var(--accent);border-radius:0 2px 2px 0;pointer-events:none}
-/* A run's line: a segment per step (--segs), each filled by whether its step is done (--fill, from runLine), on a
-   faint track (all of it, with no steps). Past 12 steps (runLine), one line with
-   a small tick above it at each step, each step's stretch filled the same way. Its steps are its progress: it isn't
-   slid. */
-.row.cl-run::after{width:calc(100% - var(--row-inset));border-radius:0}
+/* Progress is drawn in the tick (parent-tasks-plan, part 1), not under the row: a pie filling clockwise from the top,
+   a quarter at a time as a swipe sets it (--pct, from the row), inside the ring with a gap, so part done never reads as
+   done, which fills it whole with its ✓. While it's swiped (--slide), the pie follows the finger, a done row's too as
+   it's opened again, and the row fills like a volume bar, its percentage showing (below). */
+.row:not(.done) > button.check{background:conic-gradient(var(--accent) calc(var(--pct,0) * 1turn),transparent 0) content-box}
+.row.setting:not(.full) > button.check{background:conic-gradient(var(--accent) calc(var(--slide) * 1turn),transparent 0) content-box;border-color:var(--muted)}
+.row.setting:not(.full) > button.check svg{opacity:0}
+/* A run's line, along its row's bottom edge: a segment per step (--segs), each filled by whether its step is done
+   (--fill, from runLine), on a faint track (all of it, with no steps). Past 12 steps (runLine), one line with a small
+   tick above it at each step, each step's stretch filled the same way. Its steps are its progress: it isn't swiped. */
+.row.cl-run::after{content:"";position:absolute;left:var(--row-inset);bottom:0;height:3px;width:calc(100% - var(--row-inset));pointer-events:none}
 .row.cl-run::after,.card-line{background:var(--fill,var(--track));
   -webkit-mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat;
   mask:repeating-linear-gradient(to right,var(--ink) 0 calc(100% / var(--segs,1) - 3px),transparent 0 calc(100% / var(--segs,1))) 0 0/calc(100% + 3px) 100% no-repeat}
@@ -240,14 +244,13 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
   var(--fill,linear-gradient(var(--track),var(--track))) 0 100%/100% 3px no-repeat}
 .row.setting{background:linear-gradient(to right,var(--surface) var(--row-inset),var(--accent-soft) 0 calc(var(--row-inset) + var(--slide) * (100% - var(--row-inset))),var(--surface) 0)}
 .row.current.setting{background:linear-gradient(to right,var(--accent-fill) calc(var(--slide) * 100%),var(--accent-soft) 0)}
-/* While it's being set, from --slide, which the screen's redraws don't touch (progress.js) */
-.row.setting::after{width:calc(var(--slide) * (100% - var(--row-inset)))}
 .row.setting::before,.d-head.setting::before{content:attr(data-pct);position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;min-width:76px;text-align:center;padding:4px 12px;border-radius:var(--r-chip);background:var(--accent);color:var(--accent-ink);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-pct);pointer-events:none}
-/* held on the right half, the percentage moves to the left, clear of the thumb; on the right, it stays clear of who's
-   doing it, which a slide on a task no one is doing turns into you (claimOnSlide) */
+/* swiped on the right half, the percentage moves to the left, clear of the thumb; on the right, it stays clear of
+   who's doing it, which a swipe on a task no one is doing turns into you (claimOnSlide) */
 .row.setting:has(> .claim)::before{right:80px}
 .row.setting[data-side=left]::before,.d-head.setting[data-side=left]::before{right:auto;left:12px}
-/* Held, the row lifts. At each snap the percentage pulses (the tick, seen), and at 100% the tick fills */
+/* Held, to be moved, the row lifts. Swiped, at each snap the percentage pulses (the tick, seen), and at 100% the tick
+   fills, with its ✓ */
 .row{transition:box-shadow .15s,transform .2s ease}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
 /* Moved up or down after the hold: the held row, and its subtasks with it, follow the finger above the rows making room */
@@ -260,7 +263,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .setting.full button.check svg{opacity:1}
 @keyframes check-pop{0%{scale:.7}55%{scale:1.2}100%{scale:1}}
 @media (prefers-reduced-motion:reduce){.setting::before,.setting button.check{animation:none!important}}
-/* Swiped left, the row moves aside for its Delete, which comes in from its end. A row can be swiped sideways without
+/* Swiped left past 0%, the row moves aside for its Delete, which comes in from its end. A row can be swiped sideways without
    the page taking the move for a scroll. */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
 .row.swiping,.row.swiped{transform:translateX(var(--swipe,0px))}
@@ -290,8 +293,6 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-title{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:13.5px;color:var(--muted);white-space:nowrap}
-/* the step line's own bar is its segment of the strip; held and slid, its fill shows as on any row */
-.row.step-line:not(.setting)::after{display:none}
 /* The strip, the card's footer: ‹, its task's line, a segment per subtask, as a run's is, ›, and its count, the step
    showing's place among all its subtasks. Its controls are 48px tall, the strip's height, so they never reach the step
    line's taps; its line in their middle, a clear gap under the step's own bar, so the two never read as one. The arrows'

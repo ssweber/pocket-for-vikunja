@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isNudge, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, releaseSpeed, runLine, slidePct, snapPct, swipeEnd, swipeOffset, swipeStarts, undoing } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE, EDGE_GUARD, isNudge, isSubtask, MANY_STEPS, LOCK_PX, lockDirection, nextSnap, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, QUARTER_PX, releaseSpeed, runLine, slidePct, snapPct, SWIPE_SLOPE, swipeEnd, swipeOffset, swipeStarts, trackAt, trackMoves, undoing } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -65,7 +65,7 @@ test('the room to slide in is the rest of the way to the screen\'s edge, less ED
   assert.equal(slidePct({ start: 0, dx: 30, x: 350, width: 358, screen: 390 }), 100);
 });
 
-test('after a hold, the first few pixels decide the way: sideways for progress, up or down for order', () => {
+test('after a hold, the first few pixels decide the way: up or down moves the row, sideways lets it go', () => {
   assert.equal(lockDirection(4, 5), null);
   assert.equal(lockDirection(LOCK_PX, 0), 'x');
   assert.equal(lockDirection(-8, 7), 'x');
@@ -73,10 +73,12 @@ test('after a hold, the first few pixels decide the way: sideways for progress, 
   assert.equal(lockDirection(7, 7.5), 'y');
 });
 
-test('a swipe to Delete: left and mostly sideways, not from the screen\'s edges; on an open row, either way', () => {
+test('a swipe: either way, clearly sideways, not from the screen\'s edges; on an open row, from anywhere', () => {
   assert.equal(swipeStarts(-9, 2, 200, 390), true);
-  assert.equal(swipeStarts(9, 2, 200, 390), false, 'to the right');
+  assert.equal(swipeStarts(9, 2, 200, 390), true, 'to the right too: its progress, with no hold first');
   assert.equal(swipeStarts(-9, 12, 200, 390), false, 'more up or down: a scroll');
+  assert.equal(swipeStarts(10, 9, 200, 390), false, 'about as much up or down: a slow scroll that wanders, or a nudge, stays a scroll');
+  assert.equal(swipeStarts(12, 12 / SWIPE_SLOPE - 1, 200, 390), true, 'clearly sideways');
   assert.equal(swipeStarts(-9, 2, EDGE_GUARD, 390), false, 'from the left edge: the phone\'s Back');
   assert.equal(swipeStarts(-9, 2, 390 - 10, 390), false, 'from the right edge: the phone\'s too');
   assert.equal(swipeStarts(9, 2, 200, 390, true), true, 'an open row, swiped back');
@@ -93,6 +95,34 @@ test('let go, a swiped row goes back, stays open on its Delete, or past half its
   assert.equal(swipeEnd(-w / 2 + 1, w), 'open', 'just under half: still only open');
   assert.equal(swipeEnd(-w / 2 - 1, w), 'delete', 'past half: a full swipe');
   assert.equal(swipeEnd(swipeOffset(-DELETE_W - 100, w), w), 'delete', 'carried on from the open row');
+});
+
+/* Progress and Delete are one track (parent-tasks-plan, part 1): swiped right, progress goes up, the room being the
+   rest of the way to the screen's edge; left, down a quarter each QUARTER_PX, then on into the row's Delete. */
+test('a swipe right sets progress up in snaps, a full swipe is done, and a done row stays done', () => {
+  const at = (dx, start = 0, x = 100) => trackAt({ start, dx, x, width: 358, screen: 390, del: true });
+  const room = 390 - EDGE - 100;
+  assert.deepEqual(at(room * .3), { pct: 25, off: 0 });
+  assert.deepEqual(at(room), { pct: 100, off: 0 }, 'a full swipe: done');
+  assert.deepEqual(at(room * .3, 50), { pct: 75, off: 0 }, 'from where it was');
+  assert.deepEqual(at(80, 100), { pct: 100, off: 0 }, 'done stays done');
+  assert.equal(trackMoves(100, 1), false, 'so a swipe right on a done row isn\'t taken');
+  assert.equal(trackMoves(0, 1), true);
+});
+
+test('a swipe left lowers progress a quarter at a time, then goes on into the row\'s Delete; a done row opens again at 75%', () => {
+  const at = (dx, start, x = 300, del = true) => trackAt({ start, dx, x, width: 358, screen: 390, del });
+  assert.deepEqual(at(-QUARTER_PX, 50), { pct: 25, off: 0 });
+  assert.deepEqual(at(-QUARTER_PX * 1.6, 50), { pct: 0, off: 0 }, 'at 0%, a stop before its Delete');
+  assert.deepEqual(at(-QUARTER_PX * 2 - 40, 50), { pct: 0, off: -40 }, 'past 0%, its Delete, measured from there');
+  assert.equal(swipeEnd(at(-QUARTER_PX * 2 - 200, 50).off, 358), 'delete', 'a full swipe from 50% deletes it');
+  assert.deepEqual(at(-QUARTER_PX, 100), { pct: 75, off: 0 }, 'a done row: open again, at 75%');
+  assert.deepEqual(at(-QUARTER_PX * 4 - 10, 100), { pct: 0, off: -10 }, 'and on down, into its Delete');
+  assert.deepEqual(at(-30, 0), { pct: 0, off: -30 }, 'at 0%, straight into its Delete, as before');
+  assert.deepEqual(at(-200, 50, 300, false), { pct: 0, off: 0 }, 'a row with no Delete (a run\'s template step, a card\'s step) stops at 0%');
+  // Put down near the left edge, the quarters come closer together, so 0% is still within reach.
+  assert.equal(trackAt({ start: 100, dx: -40, x: 60, width: 358, screen: 390 }).pct, 0);
+  assert.equal(trackMoves(0, -1), false, 'nothing to lower at 0%');
 });
 
 test('a subtask is a task with a parent', () => {

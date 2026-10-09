@@ -61,12 +61,13 @@ test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who
   assert.equal(app.rowSlot(step({ slot, done: true }), RUN), null);
 });
 
-/* What a finger can do on a row, besides its progress, by the screen its list is on (motion-and-rows-plan, section 2):
-   Today is for doing, so no swipe to Delete and no move; a project and a task's sheet are for managing; search has no
-   order of its own. The row writes its list's options on itself, and the gesture code reads them there. */
-test('Today\'s rows are neither swiped to Delete nor moved; a project\'s and a sheet\'s are both; search\'s only swiped', () => {
+/* What a finger can do on a row, besides its progress, by the screen its list is on (parent-tasks-plan, part 1): a row
+   acts the same everywhere, so every screen's rows are swiped to Delete; a hold moves a row on a project's list and in
+   a task's sheet, and search has no order of its own (Today's hold comes with part 4). The row writes its list's options
+   on itself, and the gesture code reads them there. */
+test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too', () => {
   const on = name => rowGestures({ depth: {}, ...screenRows(name) });
-  assert.equal(on('today'), '');
+  assert.equal(on('today'), 'delete');
   assert.equal(on('project'), 'delete reorder');
   assert.equal(on('search'), 'delete');
   assert.equal(on('checklists'), '', 'a screen that says nothing allows neither');
@@ -74,14 +75,14 @@ test('Today\'s rows are neither swiped to Delete nor moved; a project\'s and a s
   assert.equal(rowGestures(RUN), '', 'a run\'s steps: never swiped, their order is the order line');
 });
 
-test('a row held or swiped: its Delete and its move only where its list allows them, its progress everywhere', () => {
+test('a row swiped or held: its Delete and its move only where its list allows them, its progress everywhere', () => {
   const app = component(progress), asked = [];
-  Object.assign(app, { lines: {}, canTick: () => true, canDelete: () => true, reorderOf: t => (asked.push(t.id), { start(){} }) });
+  Object.assign(app, { lines: {}, leaving: {}, canTick: () => true, canDelete: () => true, isRunTask: () => false, reorderOf: t => (asked.push(t.id), { start(){} }) });
   const row = gestures => ({ dataset: { gestures }, clientWidth: 360 }), t = { id: 5, percent_done: .25 };
-  const today = app.rowGesture(t, row(''), false);
-  assert.equal(today.swipe, null, 'Today: a swipe left is left to the page');
-  assert.equal(today.reorder, null);
-  assert.equal(today.start, 25, 'its progress still slides');
+  const today = app.rowGesture(t, row(screenRows('today').delete ? 'delete' : ''), false);
+  assert.ok(today.swipe, 'Today: swiped left past 0%, its Delete');
+  assert.equal(today.reorder, null, 'a hold there does nothing, as yet');
+  assert.equal(today.start, 25, 'its progress swipes from where it is');
   assert.deepEqual(asked, [], 'its place isn\'t even looked up');
   const search = app.rowGesture(t, row('delete'), false);
   assert.ok(search.swipe);
@@ -89,6 +90,38 @@ test('a row held or swiped: its Delete and its move only where its list allows t
   const project = app.rowGesture(t, row('delete reorder'), false);
   assert.ok(project.swipe && project.reorder);
   assert.deepEqual(asked, [5]);
+  const done = app.rowGesture({ id: 6, done: true, percent_done: .5 }, row('delete'), false);
+  assert.equal(done.start, 100, 'a done row swipes down from 100%, opened again on the way');
+  assert.ok(done.show && done.swipe);
+  assert.equal(app.rowGesture({ id: 7, pending: true }, row(''), false), null, 'one waiting to be sent: only its tap');
+});
+
+/* A run's step is swiped as a task's row is (parent-tasks-plan, part 1): its progress either way, a done one down, and
+   past 0% only a step inserted or repeated during the run, not done, has a Delete; a template's step stops at 0%. */
+test('a run\'s step: swiped for its progress as a task is; only one inserted during the run goes on into a Delete', () => {
+  const app = component(progress), steps = [step({ id: 1, pct: 50 }), step({ id: 2, added: 'Inserted' }), step({ id: 3, done: true, pct: 25 }), step({ id: 4, pending: true })];
+  Object.assign(app, { runView: { steps, finished: false }, view: { run: { run: { project_id: 1 } } }, canWrite: () => true });
+  const row = id => ({ dataset: { id: String(id) }, clientWidth: 360 }), target = { closest: () => null };
+  const at = id => app.stepSlide(row(id), target);
+  assert.deepEqual([at(1).start, at(1).swipe], [50, null], 'a template\'s step: no Delete, it stops at 0%');
+  assert.ok(at(2).swipe, 'an inserted one: on into its Delete');
+  assert.deepEqual([at(3).start, at(3).swipe], [100, null], 'a done one swipes down from 100%');
+  assert.equal(at(4), null, 'one waiting to be sent: only its tap');
+  app.runView.finished = true;
+  assert.equal(at(1), null, 'a finished run: nothing');
+});
+
+test('a done step swiped down is not done again first, then at that progress; asked and said no, it stays done', async () => {
+  const app = component(runs), sent = [];
+  let answer = true;
+  Object.assign(app, { tickStep: async (s, op) => answer ? sent.push(op) : false, act: async a => { sent.push([a.op, a.pct]); return {}; } });
+  await app.stepProgress(step({ done: true }), 75);
+  assert.deepEqual(sent, ['undone', ['progress', 75]]);
+  sent.length = 0; answer = false;
+  await app.stepProgress(step({ done: true }), 75);
+  assert.deepEqual(sent, [], 'someone else\'s ✅ kept: nothing sent');
+  await app.stepProgress(step({}), 50);
+  assert.deepEqual(sent, [['progress', 50]], 'an open step: only its progress');
 });
 
 /* Progress slid on a row no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture as the
@@ -152,7 +185,7 @@ test('a checklist step\'s box is square, on its run\'s screen, in its run\'s she
 
 /* The one-time hint (motion-and-rows-plan, section 8): on the first row of a screen that takes a slide, as the screen is
    first drawn; on Today, a card's step line counts, the hint then being the card's, so its next step keeps it. */
-test('the hint goes on the first row that takes a slide, a card\'s step line counting, and is said once', () => {
+test('the hint goes on the first open row that takes a swipe, a card\'s step line counting, and is said once', () => {
   const app = component(progress, leaving);
   const ro ={ id: 1, project_id: 9 }, done = { id: 2, done: true }, waiting = { id: 3, pending: true }, card = { id: 4 }, row = { id: 5 }, folded = { id: 6 };
   const steps = { 4: { id: 40, done: true } };
@@ -162,7 +195,7 @@ test('the hint goes on the first row that takes a slide, a card\'s step line cou
   app.pickHint();
   assert.equal(app.hint.at, 5, 'not read only, done, waiting to send, a folded Done section, nor a card on a step done');
   assert.equal(app.hint.pick, false, 'picked once, as the screen is drawn');
-  assert.match(app.said, /hold a task, then slide it sideways/);
+  assert.match(app.said, /swipe a task to the right to start working on it/);
   steps[4] = { id: 41 };
   app.said = ''; app.hint.at = null;
   app.pickHint();

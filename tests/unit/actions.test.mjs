@@ -211,6 +211,21 @@ test('progress below 100% is saved as it is, shown on its bar alone; not saved, 
   assert.equal(v.task(1).percent_done, 0.9, 'Try again sets it');
 });
 
+/* A done row swiped left opens again at the progress it's let go at (parent-tasks-plan, part 1), as its tick would open
+   it, in one save; its tick again makes it done. The sheet's bar the same. */
+test('a done task swiped down is open again, at that progress, in one save', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: true, percent_done: 0.4 }]), app = listed(c);
+  const t = app.keep(v.task(1));
+  await app.setProgress(t, 75, ROW);
+  assert.deepEqual(patches(v), [[1, { done: false, percent_done: 0.75 }]]);
+  assert.deepEqual([t.done, v.task(1).done, v.task(1).percent_done], [false, false, 0.75]);
+  await app.toggleDone(t, null);
+  assert.deepEqual([v.task(1).done, v.task(1).percent_done], [true, 0.75], 'ticked again: done, its progress kept');
+  app.sheet = { task: structuredClone(v.task(1)) };
+  await app.sheetProgress(app.sheet.task, 50);
+  assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.5], 'from the sheet\'s bar too');
+});
+
 test('saves to a task go one after another, in the order they were made', async () => {
   const v = fakeVikunja([{ id: 1, title: 'A', done: false }]), app = component(tasks, actions);
   const order = [], fetch = globalThis.fetch;

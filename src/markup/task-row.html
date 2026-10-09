@@ -1,10 +1,13 @@
 <!-- A task's row, `t`, in the list `g`. In a list of tasks, with its depth under the task above it (g.depth): Today, a
      project, search, and a run's row under Checklists, so a run looks the same, with its progress line, wherever it's
      listed. And a subtask in its parent's sheet (g.sheet), which has its own tick (toggleSubtask), its words alone for a
-     title, and its due date only under them. Every one has who's doing it at its end (rowSlot). Where its list allows
-     (g.delete: a project, search, a sheet; not Today), swiped left, its Delete (canDelete; also in the task's ⋯, the way
-     for a keyboard or a screen reader); where it allows g.reorder (a project, a sheet), held and moved up or down, its
-     place. The gesture code reads those off the row (data-gestures, rowGestures). Ticked, or deleted, it stays
+     title, and its due date only under them. Every one has who's doing it at its end (rowSlot). Its progress is drawn
+     in its tick, a pie filling a quarter at a time as a swipe right sets it (--pct; while it's swiped, --slide), not
+     under the row; tapped, the tick ticks it whatever its progress, and again, takes it back with its progress as it
+     was. Where its list allows (g.delete: Today, a project, search, a sheet), swiped left past 0%, its Delete
+     (canDelete; also in the task's ⋯, the way for a keyboard or a screen reader); where it allows g.reorder (a
+     project, a sheet), held and moved up or down, its place. The gesture code reads those off the row (data-gestures,
+     rowGestures). Ticked, or deleted, it stays
      where it is until the batch clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap
      at its height, holding only "Deleted" and Restore, and a tap anywhere on it restores it (restoreRow). A tick not saved is a line in its place, with Try
      again (lines.js). One not sent yet (pending) is on its list at once, where
@@ -16,11 +19,11 @@
      and held through the outbox (tickRow, stepSlide), its words alone for a title, under them its Inserted or Repeated
      mark, comments and countdown (rowMeta), and, done, who did or skipped it, ✅ or ⏭️ on their picture. A step's box is
      square, wherever it's shown (isStepRow), and a run's own row has its line in segments, one per step (runLineOf). The step on its
-     card is lit (g.at), and the bottom box adds steps after it; while it's on the card, one inserted can be deleted. A
-     finished run, or one shared with you to read (g.locked), has no tick. It's never swiped or moved: a run's order is
-     its order line.
+     card is lit (g.at), and the bottom box adds steps after it; while it's on the card, one inserted can be deleted by
+     its ×, and swiped left past 0%, any inserted one not done (stepSlide). A finished run, or one shared with you to
+     read (g.locked), has no tick. It's never moved: a run's order is its order line.
      On Today, a card's step line (g.card, today-item.html) is this row too, a subtask or a run's step: its own tick,
-     slot and progress, "Step 3 of 5" to a screen reader (its place among all the card's steps, done ones too), and
+     slot and progress (swiped, with no Delete), "Step 3 of 5" to a screen reader (its place among all the card's steps, done ones too), and
      paged on the card's strip; its step coming in slides or fades in (cardEntered). -->
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), 'many-steps': !!runLineOf(t)?.many, lined: !!lines[t.id], aimed: !g.sheet && cursor?.id === t.id && capW === 'under', 'step-line': !!g.card, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3), '--segs': runLineOf(t)?.segs ?? null, '--fill': runLineOf(t)?.fill ?? null}"
@@ -41,9 +44,9 @@
     </div></template>
     <!-- A step of a run, in the run's sheet: added during the run, on a line of its own -->
     <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta step-added-meta"><span x-text="addedText(t.description)"></span></div></template>
-    <!-- Once, on the first row of a screen that takes a slide (pickHint): gone, by a slide or a tap on it, it fades, its
+    <!-- Once, on the first open row of a screen that takes a swipe for its progress (pickHint): gone, by a slide or a tap on it, it fades, its
          space kept while a finger may be on the list, then closes (closeHint). A screen reader heard it as the screen opened. -->
-    <template x-if="hintOn(t, g)"><span class="slide-hint" :class="{gone: hint.done || !rowSlides(t)}" aria-hidden="true" @click.stop.prevent="hintSeen()">Hold and slide to start working on it<svg class="i"><use href="#i-close"/></svg></span></template>
+    <template x-if="hintOn(t, g)"><span class="slide-hint" :class="{gone: hint.done || !rowSlides(t)}" aria-hidden="true" @click.stop.prevent="hintSeen()">Swipe right to start working on it<svg class="i"><use href="#i-close"/></svg></span></template>
   </button>
   <!-- A done step: who did it, ✓ on their picture (⏭ for a skip), and who else it's assigned to -->
   <template x-if="g.run && t.done && t.slot"><span class="did" :class="{waiting: t.slow, skip: t.skipped}" role="img" :aria-label="t.whoText"><template x-for="slot in [t.slot]" :key="0"><span class="pics">
@@ -61,6 +64,6 @@
   <template x-for="line in !g.run && lines[t.id] ? [lines[t.id]] : []" :key="0">
     <!-- include markup/row-line.html -->
   </template>
-  <!-- Off the row's end, shown only by a swipe (progress.js) -->
-  <template x-if="g.delete && canDelete(t, g.sheet)"><button class="row-del" :aria-label="'Delete ' + t.title" @click="swipeDelete(t, g.sheet)">Delete</button></template>
+  <!-- Off the row's end, shown only by a swipe (progress.js); on a run, a step inserted or repeated during it, not done -->
+  <template x-if="g.run ? t.added && !t.done && !t.pending && !g.locked : g.delete && canDelete(t, g.sheet)"><button class="row-del" :aria-label="'Delete ' + t.title" @click="g.run ? swipeDeleteStep(t) : swipeDelete(t, g.sheet)">Delete</button></template>
 </div>
