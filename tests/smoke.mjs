@@ -3416,6 +3416,82 @@ ${footName('Hooks')}`);
     } finally { for (const t of [A, B, C, P, Q]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
+  /* A card's top row done is still its top row until the batch clears, however long Vikunja takes to answer (user,
+     2026-10-10: "the next subtask sorta races the animation, cuts it short, pulls up into its spot, THEN the 'undo'
+     shows up"). A card is worked out from what's done, and a subtask is done on the phone the moment it's let go, so
+     its row is held from then (holdRow, leaving.js), not from the answer. With the save's reply held back, a full
+     swipe right watched frame by frame: the swiped row is the card's one row all along, on the page and gliding all
+     the way off, the next subtask never under the card's header; its gap, "Done" and Undo, is drawn as the slide ends
+     and not before, with nothing answered; and only when the batch clears does the next slide up. Its tick tapped,
+     the same: done in its place, the next not coming up until the batch clears. */
+  await step('a-cards-top-row-done-stays-its-top-row-until-the-batch-clears-however-late-the-answer', async () => {
+    const P = await make(`Pocket smoke top ${stamp}`, { due_date: todayAt(23) });
+    const [A, B, C] = [await make(`Pocket smoke top A ${stamp}`), await make(`Pocket smoke top B ${stamp}`), await make(`Pocket smoke top C ${stamp}`)];
+    await under(P, [A, B, C]);
+    await placeIn(await listView(home2), [[A, 100], [B, 200], [C, 300]]);    // A, B, C in its List view: A on top
+    const card = page.locator(cardOf(P.title)), line = stepLine(P.title), title = stepTitle(P.title), more = card.locator('.card-more');
+    // A save's reply held back until answer(), for one task.
+    const heldBack = id => {
+      let answer = () => {};
+      const answered = new Promise(ok => { answer = ok; }), at = `**/api/v2/tasks/${id}`;
+      const hold = async x => { if (x.request().method() !== 'PATCH') return x.fallback(); await answered; await x.fallback(); };
+      return { answer, on: () => page.route(at, hold), off: () => page.unroute(at, hold) };
+    };
+    const a = heldBack(A.id), b = heldBack(B.id);
+    // The frames in which the row watched wasn't the card's one row, on the page.
+    const gaveWay = frames => frames.filter(s => !s.there || s.at !== 0 || s.rows !== 1);
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(title).toHaveText(A.title, { timeout: 15000 });
+      await expect(more).toHaveAccessibleName('More');
+      const h = await card.evaluate(el => el.offsetHeight);
+      // A full swipe right, its save unanswered.
+      await a.on();
+      await swipeRow(page, line, 100, { check: () => watchSlide(page, line, 900) });
+      let seen = await slideSeen(page);
+      if (gaveWay(seen).length) throw new Error('its top row gave way while it slid: ' + JSON.stringify(gaveWay(seen).slice(0, 3)));
+      if (Math.max(...seen.map(s => s.x)) < .9 * seen[0].w) throw new Error(`its slide was cut short, at ${Math.max(...seen.map(s => s.x))}px of ${seen[0].w}`);
+      if (still(seen)) throw new Error('as its top row left, ' + still(seen));
+      if (seen.some(s => s.gap && s.x)) throw new Error('its gap was drawn while its row was still sliding');
+      if (!seen.at(-1).gap) throw new Error('no gap as the slide ended, with Vikunja still to answer');
+      if ((await get(A.id)).done) throw new Error('(its save was answered: nothing was held back)');
+      await expect(title).toHaveText(A.title);
+      await expect(page.locator(line)).toHaveClass(/\bswept\b/);
+      await expect(card.getByRole('button', { name: 'Undo: ' + A.title })).toBeVisible();
+      await expect(card.locator('.card-rows > .row')).toHaveCount(1);
+      await expect(more).toHaveAccessibleName('More');
+      if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height');
+      // Answered: nothing changes on the card. The batch clears: the next slides up.
+      a.answer();
+      await synced(page);
+      if (!(await get(A.id)).done) throw new Error('never done');
+      await expect(title).toHaveText(A.title);
+      await expect(page.locator(line)).toHaveClass(/\bswept\b/);
+      await later(3000);
+      await expect(title).toHaveText(B.title);
+      await expect(page.locator(line)).not.toHaveClass(/\bswept\b/);
+      // Its tick tapped, its save unanswered: done where it is, still the card's one row, until the batch clears.
+      await b.on();
+      await watchSlide(page, line, 600);
+      await page.locator(line).locator('> .check').click();
+      await expect(page.locator(line)).toHaveClass(/\bdone\b/);
+      seen = await slideSeen(page);
+      if (gaveWay(seen).length) throw new Error('ticked, its top row gave way before Vikunja answered: ' + JSON.stringify(gaveWay(seen).slice(0, 3)));
+      if ((await get(B.id)).done) throw new Error('(its save was answered: nothing was held back)');
+      await expect(title).toHaveText(B.title);
+      b.answer();
+      await synced(page);
+      await expect(title).toHaveText(B.title);
+      await later(3000);
+      await expect(title).toHaveText(C.title);
+      await expect(more).toHaveCount(0);                                       // one open subtask left: no footer
+    } finally {
+      a.answer(); b.answer(); await a.off(); await b.off();
+      for (const t of [A, B, C, P]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   /* An opened card on Today collapses once it's scrolled off the screen, without moving what's in sight, and leaving
      Today collapses it too. */
   await step('an-opened-card-collapses-once-scrolled-away-or-left', async () => {

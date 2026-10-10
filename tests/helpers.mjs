@@ -117,16 +117,20 @@ export const laidUnder = (page, sel, kind = '.row-prog') => page.locator(sel).ev
    the layer under it, while there is one: where its ring or its Delete's word is (`ring`, its left edge on the
    screen), how wide the layer is (`under`) and where its right edge is (`right`); and everything on the page that's
    moving or changing size then (`moving`: 'row:transform' for the row moved by its transform, else whose it is, by
-   its class, and what of it). Only the row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform,
+   its class, and what of it). And whether it's still the row it was among its list's: `there` (still on the page),
+   `at` (which of its list's rows it is, the first 0), `rows` (how many the list has), and `gap` (its gap, "Done" or
+   "Deleted", drawn): a card's top row let go must stay its top row, with no other coming up meanwhile. Only the row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform,
    over a layer that stays still. slideSeen() waits for the frames. still(frames) says what else moved, as a
    sentence, or '' if nothing did. */
 export const watchSlide = (page, sel, ms = 700) => page.locator(sel).evaluate((row, ms) => {
   const seen = window.__slide = [], t0 = performance.now(), moves = /^(transform|translate|scale|rotate|width|height|left|right|top|bottom|inset|margin|padding|flex|justify|align)/i;
-  const own = k => !['offset', 'computedOffset', 'easing', 'composite'].includes(k);
+  const own = k => !['offset', 'computedOffset', 'easing', 'composite'].includes(k), list = row.parentElement;
   window.__slid = false;
   (function look(){
     const u = document.querySelector('.row-under'), mark = u?.querySelector('.ring, .row-del'), box = u?.getBoundingClientRect();
+    const rows = [...list.querySelectorAll(':scope > .row')], gap = row.querySelector(':scope > .del-gap');
     seen.push({ x: new DOMMatrix(getComputedStyle(row).transform).m41, w: row.clientWidth, ring: mark ? mark.getBoundingClientRect().left : null, under: u ? box.width : null, right: u ? box.right : null,
+      there: row.isConnected, at: rows.indexOf(row), rows: rows.length, gap: !!gap && getComputedStyle(gap).display !== 'none',
       moving: document.getAnimations().filter(a => a.playState === 'running').map(a => [a.effect?.target, Object.keys(a.effect?.getKeyframes()[0] || {}).filter(own)])
         .filter(([, keys]) => keys.some(k => moves.test(k))).map(([el, keys]) => (el === row ? 'row' : String(el?.className)) + ':' + keys.join('+')) });
     if (performance.now() - t0 < ms) requestAnimationFrame(look); else window.__slid = true;
