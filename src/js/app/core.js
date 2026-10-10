@@ -67,6 +67,7 @@ export default () => ({
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
   flashed: {fresh: [], due: [], arrived: []},  // rows lit up for a moment: tasks just added, just come due, and new to the screen on a refresh (lines.js)
   movingOverdue: false,                        // "Move all to today" is saving
+  showingMore: null,                           // the list of done tasks whose next part is being read: its key (showMore, views.js)
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile

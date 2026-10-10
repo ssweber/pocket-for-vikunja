@@ -43,6 +43,8 @@ export function dueWords(due, now = new Date()){
   return diff < 0 ? 'overdue since ' + when : 'due ' + when;
 }
 
+// A count as the screen writes it: "3,000" (lists.html).
+const num = n => Number(n).toLocaleString();
 // Every line under the title, depth first: how long the text would be.
 const count = items => items.reduce((n, it) => n + 1 + count(it.items || []), 0);
 /* On a long list (more than 10 lines), a list with more than 5 done collapses them into one line, "✓ 8 done", where
@@ -85,8 +87,8 @@ function textLines(items, depth, {long, bars, now}){
 export function shareText(doc, now = new Date()){
   const items = doc.items || [];
   if (doc.kind === 'project') {
-    const head = doc.title + `  ${doc.open} open` + (doc.doneCount ? ` · ${doc.doneCount} done` : '');
-    return [head, ...textLines(items, 0, {long: false, bars: true, now}), ...doc.doneCount ? [`✓ ${doc.doneCount} done`] : []].join('\n');
+    const head = doc.title + `  ${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : '');
+    return [head, ...textLines(items, 0, {long: false, bars: true, now}), ...doc.doneCount ? [`✓ ${num(doc.doneCount)} done`] : []].join('\n');
   }
   const p = progress(doc), due = !doc.done && dueWords(doc.due, now), who = names(doc.people);
   const head = doc.title + (p.words ? `  ${bar(p.pct, p.ring)} ${p.words}` : '') + (due ? ' · ' + due : '') + (who ? ' · ' + who : '');
@@ -108,7 +110,7 @@ function mdLines(items, depth, now){
 export function markdownText(doc, now = new Date()){
   const items = doc.items || [];
   if (doc.kind === 'project')
-    return [`# ${doc.title}`, '', `${doc.open} open` + (doc.doneCount ? ` · ${doc.doneCount} done` : ''), '', ...mdLines(items, 0, now)].join('\n').trimEnd();
+    return [`# ${doc.title}`, '', `${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), '', ...mdLines(items, 0, now)].join('\n').trimEnd();
   const p = progress(doc), due = !doc.done && dueWords(doc.due, now), who = handles(doc.people);
   const under = [due && due[0].toUpperCase() + due.slice(1), who].filter(Boolean).join(' · ');
   return [`## ${doc.title}` + (p.words ? ` (${p.words})` : ''), ...under ? [under] : [], '', ...mdLines(items, 0, now)].join('\n').trimEnd();

@@ -101,10 +101,13 @@
         <!-- A project's Done section (screens/lists.html): its heading folded, and open -->
         <template x-if="g.fold"><div><div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="false"><span>Done (24)</span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
           <div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="true"><span x-text="'Done (' + g.tasks.length + ')'"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></div></template>
+        <!-- A project's Done open, its latest 100 (a few here), counting them all, and the row for more at its end -->
+        <template x-if="g.more"><div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="true"><span x-text="'Done (' + g.count.toLocaleString() + ')'"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
         <div :class="g.sheet ? 'card' : 'list'">
           <template x-for="t in g.tasks" :key="t.id">
             <!-- include markup/task-row.html -->
           </template>
+          <!-- include markup/more-row.html -->
         </div>
       </div></template>
       <!-- Today's stacked cards (list-item.html): the header (its ring, title, priority bars and time); its top row, the

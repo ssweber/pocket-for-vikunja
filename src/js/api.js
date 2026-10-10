@@ -144,6 +144,14 @@ export async function allPages(path){
   const rest = await Promise.all(Array.from({length: Math.max(0, pages - 1)}, (_, k) => api(at(k + 2))));
   return [first, ...rest].flatMap(items);
 }
+/* Items `from` to `from + n` of a list (fewer at its end), read at once in as few pages as Vikunja gives that many to
+   (max_items_per_page, as allPages): {items, total: how many the list has in all, null if Vikunja doesn't say}. A list
+   shown a part at a time (a project's Done, search's done matches: performance-plan, part 9). */
+export async function partOf(path, from, n){
+  const per = Math.min(n, app?.info?.max_items_per_page || 50), first = Math.floor(from / per), last = Math.ceil((from + n) / per);
+  const pages = await Promise.all(Array.from({length: last - first}, (_, k) => api(path + (path.includes('?') ? '&' : '?') + 'page=' + (first + k + 1) + '&per_page=' + per)));
+  return {items: pages.flatMap(items).slice(from - first * per, from - first * per + n), total: pages[0]?.total ?? null};
+}
 // The items of one page of a list.
 export const items = data => data?.items || [];
 export function netHelp(){

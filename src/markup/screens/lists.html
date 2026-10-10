@@ -5,11 +5,11 @@
       <template x-for="g in listGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
         <!-- Nothing open: said above the Done section -->
         <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
-        <template x-if="!g.fold"><div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="g.tasks.length || ''"></span>
+        <template x-if="!g.fold"><div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="(g.count ?? g.tasks.length) ? (g.count ?? g.tasks.length).toLocaleString() : ''"></span>
           <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
           <template x-if="g.key === 'overdue' && overdueMovable"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div></template>
         <template x-if="g.fold"><div class="sec" :class="g.cls"><button type="button" class="sec-fold" :id="'sec-' + g.key" :aria-expanded="String(g.open)" @click="toggleDoneSection()">
-          <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
+          <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count.toLocaleString() + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
         <!-- What was done to the list as a whole, under its heading: Move all to today -->
         <template x-for="line in placeLines(g.key)" :key="line.n">
           <!-- include markup/place-line.html -->
@@ -20,7 +20,11 @@
           <template x-for="t in drawn(g)" :key="t.id">
             <!-- include markup/task-row.html -->
           </template>
+          <!-- include markup/more-row.html -->
         </div></template>
+        <template x-for="line in placeLines(g.key === 'done' ? 'more' : '')" :key="line.n">
+          <!-- include markup/place-line.html -->
+        </template>
         <!-- A list with cards (Today, search's open tasks, a project's open list): a row, or the stacked card for anything
              with open subtasks or steps, its subtasks on it (list-item.html) -->
         <template x-if="g.cards"><div class="list">

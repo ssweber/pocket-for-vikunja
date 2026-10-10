@@ -5,6 +5,15 @@ import {dueInfo, fmtTime} from './dates.js';
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
+/* The row at the end of a list of done tasks shown `per` at a time, the most recently done first (a project's Done,
+   search's done matches: performance-plan, part 9), with `left` of them not shown yet: {title, note: how many that is,
+   '' when the title says it}, or null when none are left, and there's no row. */
+export function moreDone(left, per){
+  if (!(left > 0)) return null;
+  if (left <= per) return {title: `Show the last ${left === 1 ? 'one' : left}, done before these`, note: ''};
+  return {title: `Show ${per} more, done before these`, note: `${left.toLocaleString()} more not shown`};
+}
+
 // A change Vikunja didn't save: why, in a few words.
 export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' : 'Not saved: ' + e.message;
 // A move Vikunja turned down; refused for an API token that doesn't allow it (api.js), the permission it needs.

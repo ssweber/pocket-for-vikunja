@@ -3,7 +3,7 @@
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allPages } from '../../src/js/api.js';
+import { allPages, partOf } from '../../src/js/api.js';
 
 /* A pretend Vikunja with a list of `n` items, paged as Vikunja pages them (at most `max` to a page), each reply held a
    moment so the requests made at once overlap. Keeps what was asked (`asked`: [page, per_page]) and the most requests
@@ -19,7 +19,7 @@ function list(n, { max = 50, fail = 0 } = {}){
     open--;
     if (page === fail) return new Response('{"message":"broken"}', { status: 500 });
     const all = Array.from({ length: n }, (_, k) => ({ id: k + 1 }));
-    return new Response(JSON.stringify({ items: all.slice((page - 1) * per, page * per), total_pages: Math.ceil(n / per) }), { status: 200 });
+    return new Response(JSON.stringify({ items: all.slice((page - 1) * per, page * per), total: n, total_pages: Math.ceil(n / per) }), { status: 200 });
   };
   return v;
 }
@@ -52,4 +52,34 @@ test('one page, or none, is one request', async () => {
 test('a page that fails fails the whole read', async () => {
   component(); list(500, { fail: 7 });
   await assert.rejects(allPages('/tasks'), { status: 500 });
+});
+
+/* A part of a list (partOf: performance-plan, part 9, a project's Done shown 100 at a time): the items from where it's
+   shown to, read at once in as few pages as Vikunja gives that many to, and how many it has in all. */
+test('a part of a list is read at once, in as few pages as Vikunja gives that many to, with how many it has in all', async () => {
+  const app = component(); let v = list(3000);
+  let part = await partOf('/projects/2/tasks?filter=done+%3D+true', 0, 100);
+  assert.deepEqual(part.items.map(t => t.id), ids(100));
+  assert.equal(part.total, 3000);
+  assert.deepEqual(v.asked.sort(), [[1, 50], [2, 50]], '50 to a page: two pages, asked for together');
+  assert.equal(v.most, 2);
+  v = list(3000);
+  part = await partOf('/tasks', 100, 100);
+  assert.deepEqual(part.items.map(t => t.id), ids(200).slice(100), 'the next 100');
+  assert.deepEqual(v.asked.sort(), [[3, 50], [4, 50]]);
+
+  app.info = { max_items_per_page: 500 }; v = list(3000, { max: 500 });
+  part = await partOf('/tasks', 200, 100);
+  assert.deepEqual(part.items.map(t => t.id), ids(300).slice(200));
+  assert.deepEqual(v.asked, [[3, 100]], 'one page of 100, when Vikunja gives that many');
+
+  app.info = { max_items_per_page: 30 }; v = list(3000, { max: 30 });
+  part = await partOf('/tasks', 100, 100);
+  assert.deepEqual(part.items.map(t => t.id), ids(200).slice(100), 'pages that don’t fall on the part: only its items');
+  assert.deepEqual(v.asked.map(([p]) => p).sort((a, b) => a - b), [4, 5, 6, 7]);
+
+  app.info = {}; list(130);
+  assert.deepEqual((await partOf('/tasks', 100, 100)).items.map(t => t.id), ids(130).slice(100), 'its end: what’s left');
+  list(130);
+  assert.deepEqual(await partOf('/tasks', 200, 100), { items: [], total: 130 }, 'past its end: none');
 });

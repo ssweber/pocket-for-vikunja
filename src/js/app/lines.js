@@ -23,6 +23,7 @@ const rowsOf = id => [...document.querySelectorAll(`:is(.row:not(.own), .day-car
 const SCREEN = {
   overdue: a => a.route.name === 'today',
   done: a => a.route.name === 'project',                 // under a project's Done heading
+  more: a => ['project', 'search'].includes(a.route.name),   // under the row that shows more done tasks (showMore)
   cap: a => ['today', 'project'].includes(a.route.name) || (a.route.name === 'run' && !!a.runAim),   // by the add box
   checklists: a => a.route.name === 'checklists',
   projects: a => a.route.name === 'projects',

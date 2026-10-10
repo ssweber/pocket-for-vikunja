@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -10,6 +10,19 @@ import { blankSheet } from '../../src/js/app/core.js';
 import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
 import { component } from './fake.mjs';
+
+/* The row at the end of a list of done tasks shown a part at a time (performance-plan, part 9): the next part, and how
+   many are left; fewer left than a part, the last of them; none, no row. */
+test('the row for more done tasks says what its tap shows, and how many are left', () => {
+  assert.deepEqual(moreDone(2900, 100), { title: 'Show 100 more, done before these', note: `${(2900).toLocaleString()} more not shown` });
+  assert.deepEqual(moreDone(101, 100), { title: 'Show 100 more, done before these', note: '101 more not shown' });
+  assert.deepEqual(moreDone(100, 100), { title: 'Show the last 100, done before these', note: '' }, 'a part left: the last of them');
+  assert.deepEqual(moreDone(12, 100), { title: 'Show the last 12, done before these', note: '' });
+  assert.deepEqual(moreDone(1, 50), { title: 'Show the last one, done before these', note: '' });
+  assert.deepEqual(moreDone(60, 50), { title: 'Show 50 more, done before these', note: '60 more not shown' }, 'search: 50 at a time');
+  assert.equal(moreDone(0, 100), null, 'none left: no row');
+  assert.equal(moreDone(-3, 100), null, 'more shown than counted (done since): no row');
+});
 
 test('a change not saved says why in a few words', () => {
   assert.equal(notSaved(new NetError('Failed to fetch')), 'Not saved: no connection');

@@ -1,25 +1,28 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
 import {cache, collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
-import {allPages, api, ApiError, errText, items, LOADED, NetError, why} from '../api.js';
+import {allPages, api, ApiError, errText, LOADED, NetError, partOf, why} from '../api.js';
 import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {batchMs, doneParentIds, drawnOf, FIRST_ROWS, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
-import {headText} from '../messages.js';
+import {headText, moreDone} from '../messages.js';
 import {listViewOf} from '../order.js';
 import {shared} from './core.js';
 import {pendingSaves} from './sheet.js';
 
 export let renderSeq = 0;
-let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null;
+let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
 const PRELOAD_AGE = 60e3;                        // a copy kept younger than this isn't loaded again in the background
 // The projects whose Done section was left open, kept on the phone: project id -> true.
 const doneOpen = {
   all(){ try { return JSON.parse(store.get('done.open')) || {}; } catch { return {}; } },
   set(id, open){ const a = this.all(); if (open) a[id] = true; else delete a[id]; store.set('done.open', JSON.stringify(a)); },
 };
+/* How many a list of done tasks shown a part at a time has in all, from a part of it read (doneTasks, foundDone): what
+   Vikunja counts, less those it leaves out (`skip`, so far: templates, their steps, a run's); `was` if Vikunja didn't say. */
+const counted = (part, skip, was) => part.total == null ? was : Math.max(0, part.total - skip);
 
 export default {
   async loadProjects(){
@@ -415,7 +418,8 @@ export default {
     const p = this.projById.get(r.id), open = p && doneOpen.all()[p.id];
     this.view.project = p || null;
     if (!p) { this.view.groups = []; return; }
-    const d = await this.readProject(p, open);
+    // Done, open, as many as it shows now, loaded afresh: a new visit's the latest DONE_PART (it has none yet).
+    const d = await this.readProject(p, open && Math.max(DONE_PART, this.view.groups.find(g => g.key === 'done')?.tasks.length || 0));
     if (seq !== renderSeq) return;
     for (const t of [...d.tasks, ...d.read]) cache.set(t.id, t);
     const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.keep(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
@@ -430,13 +434,14 @@ export default {
     if (open && !d.finished) this.loadDoneSection(this.view.groups[1]);
   },
   /* A project's lists from Vikunja, its tasks as Vikunja has them: {project, listView, tasks: what the view gave, read: the
-     heads read besides, list: its open list, heads, positions, count: of its done tasks, finished: those, if `withDone`}. */
+     heads read besides, list: its open list, heads, positions, count: of its done tasks, finished: the latest `withDone` of
+     those (doneTasks), if asked}. */
   async readProject(p, withDone){
     const q = {filter_timezone: TZ, expand: 'comment_count'}, id = p.id;
     /* Its done tasks, counted by Vikunja. Not in a project for checklists: there, most are templates' and runs' steps,
        which its Done leaves out (withoutTemplates), so it's counted once it's loaded. */
     const count = this.checklistIds.has(id) ? null : api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', per_page: 1})).then(d => d?.total ?? null, () => null);
-    const done = withDone ? this.doneTasks(p).catch(() => null) : null;
+    const done = withDone ? this.doneTasks(p, 0, withDone).catch(() => null) : null;
     let lv = listViewOf(p), tasks = null;
     // Its List view, as last loaded: gone, or not one Pocket can read, the project's views are looked up again, once.
     for (let tries = 0; lv && !tasks && tries < 2; tries++) {
@@ -472,17 +477,28 @@ export default {
     }
     return {project: p, listView: lv?.id || null, tasks, read, list, heads: headIds, positions, count: n, finished};
   },
-  // The Done section: `tasks` loaded (or null, not yet), `count` from Vikunja (null if it didn't say), each task's row
-  // given by `own` (as for Today).
-  doneGroup(tasks, count, open, own = t => this.keep(t)){
-    return {key: 'done', cls: 'done-sec', title: 'Done', fold: true, open: !!open, loading: false, loaded: !!tasks, count: tasks ? tasks.length : count,
-      tasks: (tasks || []).map(own)};
+  /* The Done section: `part` loaded (doneTasks; or null, not yet), `count` from Vikunja (null if it didn't say), each
+     task's row given by `own` (as for Today). It shows the latest DONE_PART, and its count all of them; a row at its end
+     shows DONE_PART more (moreOf). */
+  doneGroup(part, count, open, own = t => this.keep(t)){
+    return {key: 'done', cls: 'done-sec', title: 'Done', fold: true, open: !!open, loading: false, loaded: !!part, per: DONE_PART, skip: part?.skip || 0,
+      count: part ? counted(part, part.skip, count) : count, tasks: (part?.tasks || []).map(own)};
   },
-  // A project's done tasks, the most recently done first: not templates, nor their steps or a run's (withoutTemplates).
-  async doneTasks(p){
-    const list = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}));
+  /* `n` of a project's done tasks, the most recently done first, from the `from`th on (performance-plan, part 9):
+     {tasks, total: how many Vikunja counts, skip: how many of those read it left out}. Not templates, nor their steps
+     or a run's (withoutTemplates): in a project for checklists, where most are, every one is read and those left out
+     first, so the parts and the count are of what Done shows. */
+  async doneTasks(p, from = 0, n = DONE_PART){
+    const path = `/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'});
+    if (this.checklistIds.has(p.id)) {
+      const list = this.withoutTemplates(await allPages(path), true);
+      for (const t of list) cache.set(t.id, t);
+      return {tasks: list.slice(from, from + n), total: list.length, skip: 0};
+    }
+    const {items: list, total} = await partOf(path, from, n);
     for (const t of list) cache.set(t.id, t);
-    return this.withoutTemplates(list, true);
+    const tasks = this.withoutTemplates(list, true);
+    return {tasks, total, skip: list.length - tasks.length};
   },
   // The Done section opened, loading it the first time, or closed again. Each project's is kept as it was left.
   toggleDoneSection(){
@@ -496,13 +512,37 @@ export default {
     if (g.loaded || g.loading || !p) return;
     g.loading = true;
     try {
-      const list = await this.doneTasks(p);
+      const part = await this.doneTasks(p);
       if (this.view.project?.id !== p.id) return;
       this.drawFrom(this.listGroups.find(x => x.key === 'done')?.before ?? 0);   // its first rows at once, the rest in batches
-      Object.assign(g, {tasks: list.map(t => this.keep(t)), loaded: true, count: list.length});
+      Object.assign(g, {tasks: part.tasks.map(t => this.keep(t)), loaded: true, per: DONE_PART, skip: part.skip, count: counted(part, part.skip, g.count)});
       this.saveProject();
     } catch (e) { g.open = false; this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'done', cls: 'failed'}); }
     finally { g.loading = false; }
+  },
+  /* The row at the end of list `key` (a project's Done, search's done matches), shown a part at a time, the most
+     recently done first: {title, note} (moreDone), or null when every one is shown, or it isn't loaded. */
+  moreOf(key){
+    const g = this.view.groups.find(x => x.key === key);
+    return g?.per && g.loaded !== false && typeof g.count === 'number' ? moreDone(g.count - g.tasks.length, g.per) : null;
+  },
+  /* Its tap: the next part, read from where the list is shown to (those left out counted in), and put after it, but any
+     on it already (done since, and so read again); its first rows drawn at once, the rest in batches. The row keeps the
+     focus; once it's gone (none left), the first row it showed has it. Each visit starts again at the latest part. */
+  async showMore(key){
+    const g = this.view.groups.find(x => x.key === key), p = this.view.project, s = this.searchQ.trim(), at = g?.tasks.length;
+    if (!g || this.showingMore || !this.moreOf(key)) return;
+    this.showingMore = key;
+    try {
+      const part = this.route.name === 'search' ? await this.foundDone(s, at + g.skip) : await this.doneTasks(p, at + g.skip);
+      if (this.view.groups.find(x => x.key === key) !== g) return;                 // gone meanwhile: another screen, or loaded afresh
+      const have = new Set(g.tasks.map(t => t.id)), add = part.tasks.filter(t => !have.has(t.id));
+      this.drawFrom((this.listGroups.find(x => x.key === key)?.before ?? 0) + g.tasks.length);
+      g.skip += part.skip; g.count = counted(part, g.skip, g.count);
+      g.tasks.push(...add.map(t => this.keep(t)));
+      if (add.length && !this.moreOf(key)) this.$nextTick(() => document.querySelector(`#view .row[data-id="${add[0].id}"] > button.body`)?.focus({preventScroll: true}));
+    } catch (e) { this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'more', cls: 'failed'}); }
+    finally { this.showingMore = null; }
   },
   // The project on screen, kept for opening without a connection, with where its tasks are in its List view.
   saveProject(){
@@ -548,17 +588,20 @@ export default {
     this.searchQ = '';
     this.back(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
   },
-  /* Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the 50 most
-     recently done. Not templates or their steps: they're on Checklists (withoutTemplates). An open task found with open
-     subtasks is a stacked card, collapsed (cardOf), so its subtasks are read with it, as Today's cards' are (readCards):
-     who's on each, and where each is in its project's List view. */
+  /* Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the latest
+     FOUND_PART done, with a row for more (moreOf; the same search again, as many as it shows). Not templates or their
+     steps: they're on Checklists (withoutTemplates). An open task found with open subtasks is a stacked card, collapsed
+     (cardOf), so its subtasks are read with it, as Today's cards' are (readCards): who's on each, and where each is in
+     its project's List view. */
   async loadSearch(seq){
     const s = this.searchQ.trim();
     if (!s) { this.view.groups = []; return; }
     const open = new URLSearchParams({q: s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'});
-    const done = new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', per_page: 50, expand: 'comment_count'});
-    const [opened, finished = []] = await Promise.all([allPages('/tasks?' + open), api('/tasks?' + done).then(items)]);
+    const again = s === searched ? this.view.groups.find(g => g.key === 'done')?.tasks.length || 0 : 0;
+    const [opened, found] = await Promise.all([allPages('/tasks?' + open), this.foundDone(s, 0, Math.max(FOUND_PART, again))]);
     if (seq !== renderSeq) return;
+    const finished = found.list;
+    searched = s;
     const parents = opened.filter(t => openSubs(t).length && !hasTemplateLabel(t));
     const read = parents.length ? await this.readCards(new Map(parents.map(t => [t.id, {project: t.project_id}])), [...opened, ...finished]) : {steps: [], positions: {}};
     if (seq !== renderSeq) return;
@@ -567,8 +610,17 @@ export default {
     for (const t of [...opened, ...finished]) cache.set(t.id, t);
     this.view.groups = this.keepMarked([
       {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.keep(t))},
-      {key: 'done', cls: '', title: finished.length >= 50 ? 'Done · the 50 most recent' : 'Done', tasks: this.withoutTemplates(finished).map(t => this.keep(t))},
+      {key: 'done', cls: '', title: 'Done', per: FOUND_PART, skip: found.skip, count: counted(found, found.skip, null), tasks: found.tasks.map(t => this.keep(t))},
     ]);
+  },
+
+  /* `n` of the done tasks search `s` finds, the most recently done first, from the `from`th on: {tasks, list: all those
+     read, total, skip}, as doneTasks. */
+  async foundDone(s, from, n = FOUND_PART){
+    const {items: list, total} = await partOf('/tasks?' + new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}), from, n);
+    for (const t of list) cache.set(t.id, t);
+    const tasks = this.withoutTemplates(list);
+    return {tasks, list, total, skip: list.length - tasks.length};
   },
 
   /* ---------- new project ---------- */

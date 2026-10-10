@@ -6,7 +6,7 @@ import { batchMs, doneParentIds, drawnOf, FIRST_ROWS, FRAME_MS, LATER_MS, NEAR_R
 import { component } from './fake.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
-import views from '../../src/js/app/views.js';
+import views, { renderSeq } from '../../src/js/app/views.js';
 import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import lines from '../../src/js/app/lines.js';
@@ -240,4 +240,90 @@ test('the other screens aren’t loaded in the background while a screen’s row
   app.drawing = false;
   await app.preload();
   assert.equal(loaded, 1, 'once they’re drawn');
+});
+
+/* A list of done tasks shown a part at a time (performance-plan, part 9): a project's Done its latest 100, its heading
+   counting them all, and a row at its end for 100 more, done before these, read from where it's shown to; search's
+   done matches the same, 50 at a time. */
+function doneVikunja(n){
+  const v = { done: Array.from({ length: n }, (_, k) => ({ id: k + 1, title: 'done ' + (k + 1), done: true, project_id: 5 })), asked: [] };
+  globalThis.fetch = async url => {
+    const u = new URL(url), q = u.searchParams, page = +q.get('page'), per = Math.min(+q.get('per_page'), 50);
+    v.asked.push(u.pathname.replace('/api/v2', '') + ' ' + page + '/' + per);
+    return new Response(JSON.stringify({ items: v.done.slice((page - 1) * per, page * per), total: v.done.length }), { status: 200 });
+  };
+  return v;
+}
+function doneApp(route){
+  const app = component(views, tasks, checklists);
+  Object.assign(app, { route, checklistIds: new Set(), projById: new Map([[5, { id: 5 }]]), positions: {}, searchQ: 'done', showingMore: null,
+    view: { groups: [], project: { id: 5 } }, listGroups: [], drawFrom(){}, $nextTick(){} });
+  return app;
+}
+
+test('a project\'s Done shows its latest 100, counts them all, and a row shows 100 more, done before these', async () => {
+  const v = doneVikunja(250), app = doneApp({ name: 'project', id: 5 });
+  const g = app.doneGroup(null, 250, true);
+  app.view.groups = [{ key: 'open', tasks: [] }, g];
+  await app.loadDoneSection(g);
+  assert.deepEqual([g.tasks.length, g.tasks[0].id, g.count], [100, 1, 250], 'the most recently done first; its count all of them');
+  assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 1/50', '/projects/5/tasks 2/50'], 'one part, not the whole list');
+  assert.deepEqual(app.moreOf('done'), { title: 'Show 100 more, done before these', note: '150 more not shown' });
+
+  v.asked = [];
+  await app.showMore('done');
+  assert.deepEqual(ids(g.tasks), Array.from({ length: 200 }, (_, k) => k + 1), 'the next 100 after them');
+  assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 3/50', '/projects/5/tasks 4/50']);
+  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 50, done before these', note: '' });
+
+  // One ticked back, and two done elsewhere since: the next part read from where it's shown to, none twice.
+  g.tasks.splice(5, 1); g.count--; v.done.splice(5, 1);
+  v.done.unshift({ id: 900, done: true }, { id: 901, done: true });
+  await app.showMore('done');
+  assert.equal(new Set(ids(g.tasks)).size, g.tasks.length, 'none twice');
+  assert.equal(g.tasks.length, 249);
+  assert.equal(g.count, 251, 'counted as Vikunja counts them now');
+  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 2, done before these', note: '' }, 'the two done since, not yet on it');
+
+  const kept = keptGroups([g])[0];
+  assert.deepEqual([kept.tasks.length, kept.count], [0, 251], 'the kept copy: its count, none of its tasks');
+
+  // Without a connection, the tap says so under the row, which stays, to be tapped again.
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await app.showMore('done');
+  assert.equal(g.tasks.length, 249);
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.cls], ["Couldn't load the done tasks: no connection to Vikunja", 'more', 'failed']);
+  assert.equal(app.showingMore, null);
+  assert.ok(app.moreOf('done'));
+});
+
+test('a project\'s Done read afresh shows as many as it did; a new visit, its latest 100', async () => {
+  const v = doneVikunja(400), app = doneApp({ name: 'project', id: 5 });
+  Object.assign(app, { pending: [], onProjectList: l => l, settle: async () => true, keepMarked: g => g, saveProject(){}, loadProjects: async () => {} });
+  localStorage.setItem('pocket.done.open', JSON.stringify({ 5: true }));
+  app.projById = new Map([[5, { id: 5, views: [] }]]);
+  const shown = app.doneGroup({ tasks: v.done.slice(0, 300), total: 400, skip: 0 }, 400, true);
+  app.view.groups = [{ key: 'open', tasks: [] }, shown];
+  await app.loadProject(renderSeq, { name: 'project', id: 5 });
+  const g = app.view.groups.find(x => x.key === 'done');
+  assert.deepEqual([g.tasks.length, g.count], [300, 400], 'loaded afresh: the 300 it showed');
+  app.view.groups = [];
+  await app.loadProject(renderSeq, { name: 'project', id: 5 });
+  assert.equal(app.view.groups.find(x => x.key === 'done').tasks.length, 100, 'a new visit: the latest 100');
+  localStorage.removeItem('pocket.done.open');
+});
+
+test('search\'s done matches show 50, counted all, with a row for 50 more', async () => {
+  const v = doneVikunja(120), app = doneApp({ name: 'search' });
+  app.readCards = async () => ({ steps: [], positions: {} });
+  app.keepMarked = g => g;
+  await app.loadSearch(renderSeq);
+  const g = app.view.groups.find(x => x.key === 'done');
+  assert.deepEqual([g.tasks.length, g.count, g.title], [50, 120, 'Done']);
+  assert.ok(v.asked.includes('/tasks 1/50'));
+  assert.deepEqual(app.moreOf('done'), { title: 'Show 50 more, done before these', note: '70 more not shown' });
+  await app.showMore('done');
+  await app.showMore('done');
+  assert.deepEqual(ids(g.tasks), Array.from({ length: 120 }, (_, k) => k + 1));
+  assert.equal(app.moreOf('done'), null, 'all shown: no row');
 });

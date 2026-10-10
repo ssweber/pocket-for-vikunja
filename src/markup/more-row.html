@@ -1,0 +1,5 @@
+<!-- The row at the end of a list of done tasks shown a part at a time, the most recently done first (a project's Done,
+     search's done matches: performance-plan, part 9): New project's row, its tap the next part, and how many are left
+     under it (moreOf, views.js). While that's read, it says Loading…, keeping the focus. -->
+<template x-if="moreOf(g.key)"><div class="row cl-new more-done"><button type="button" class="body" :id="'more-' + g.key" :aria-busy="String(showingMore === g.key)" @click="showMore(g.key)">
+  <span class="title" x-text="showingMore === g.key ? 'Loading…' : moreOf(g.key)?.title"></span><template x-if="moreOf(g.key)?.note"><span class="note" x-text="moreOf(g.key)?.note"></span></template></button></div></template>

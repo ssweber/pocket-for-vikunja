@@ -8,7 +8,7 @@ import {listItems, nestSubtasks} from '../../src/js/lists.js';
 import {positionOrder} from '../../src/js/order.js';
 import {revealOf} from '../../src/js/app/progress.js';
 import {swipeAt} from '../../src/js/progress.js';
-import {completeAsk} from '../../src/js/messages.js';
+import {completeAsk, moreDone} from '../../src/js/messages.js';
 import {throwLayout, throwTargets} from '../../src/js/throw.js';
 import {ringEl, ringLight} from '../../src/js/app/throw.js';
 
@@ -228,6 +228,12 @@ function sections(){
       tables, chairs, task({title: 'Light the heaters', state: {shift: -148}})]},
     // A project's done tasks, in their section under the open ones, the most recently done first.
     {title: 'A project’s done tasks, folded, then open', depth: {}, fold: true, tasks: [task({title: 'Order the milk', done: true}), task({title: 'Clean the grinder', done: true})]},
+    // Its latest 100 shown (the last two of them here), and a row for more, done before these: with 2,900 left, and with
+    // fewer than 100 (performance-plan, part 9).
+    {title: 'A project’s Done with 3,000: its latest 100 shown (the last two here), and the row for 100 more', key: 'more-many', depth: {}, count: 3000, more: moreDone(2900, 100),
+      tasks: [task({title: 'Restock the price labels', done: true}), task({title: 'Pack invoice #2,892', done: true})]},
+    {title: 'A project’s Done with 112: the row for the last 12', key: 'more-last', depth: {}, count: 112, more: moreDone(12, 100),
+      tasks: [task({title: 'Sweep the yard', done: true}), task({title: 'Fix the till roll', done: true})]},
     // Lit up as its time passes, moving to Overdue (alerts.js), and just added (the page holds both at their start).
     {title: 'Just come due, and just added', depth: {}, tasks: [task({title: 'Collect the cake order', due_date: at(-60e3), state: {flash: 'due'}}),
       task({title: 'Order more cups', state: {flash: 'fresh'}})]},
@@ -277,6 +283,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   // And on a run's screen: the step a step goes after, with Repeat (off for a step still waiting to be sent).
   c.specimenTargets = [{to: 'Pack the van', after: ''}, {to: 'Pack the van', after: 'Load chairs'},
     {step: true, after: 'Unlock the door', repeat: 'Unlock the door', canRepeat: true}, {step: true, after: 'Check the milk', repeat: 'Check the milk', canRepeat: false}];
+  // A list of done tasks' row for more (more-row.html), from its specimen: the made-up figures it's given.
+  c.moreOf = function(key){ return key && this.specimen.find(g => g.key === key)?.more || null; };
   // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.
   c.init = function(){
     setApp(this);

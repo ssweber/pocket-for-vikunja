@@ -89,6 +89,10 @@ export const doneParentIds = (tasks, pid) => {
    are loaded when it's opened, as they are without a copy. Thousands of them would fill the phone's storage, and be
    drawn again with the copy. */
 export const keptGroups = groups => groups.map(g => g.key === 'done' ? {...g, tasks: [], loaded: false, loading: false} : g);
+/* A list of done tasks is shown a part at a time, the most recently done first (performance-plan, part 9): a project's
+   Done the latest DONE_PART, search's done matches FOUND_PART, and a row at its end for the next (moreOf, app/views.js).
+   Nobody scrolls through thousands: they come to tick one back, or to see what was done lately. */
+export const DONE_PART = 100, FOUND_PART = 50;
 /* A screen's rows drawn a few at a time (performance-plan, part 5), so its first screenful takes the same time however
    long its lists are: the first FIRST_ROWS at once, enough to fill a phone, then the rest in batches after the first
    paint, across the screen's lists in order (drawFrom, app/views.js). `to`: how many of the screen's rows are drawn; a

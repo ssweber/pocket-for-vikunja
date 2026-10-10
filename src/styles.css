@@ -474,6 +474,11 @@ a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
 .start-due.bad{color:var(--overdue)}
 .cl-new .body{display:flex;align-items:center;gap:10px;color:var(--accent);font-weight:650}
+/* The row at the end of a list of done tasks shown a part at a time (lists.html): New project's row, its words where
+   the rows' titles are, and how many are left under them */
+.row.more-done{padding-left:var(--title-x)}
+.more-done .body{flex-direction:column;align-items:flex-start;gap:0}
+.more-done .note{margin:0;font-weight:400}
 /* A template's steps, saved or being written, look like subtasks: the step's number where a subtask has its tick, plain,
    as the start sheet has it (a square box is a step you tick, in a run), and what's written in a box like the subtask
    box (.addbox.sub). The ↑ ↓ × are on the rows being written only. */

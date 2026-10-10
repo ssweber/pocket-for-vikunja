@@ -109,6 +109,11 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
   assert.equal(md(doc), ['# Café', '', '6 open · 5 done', '', `- [ ] Order milk (due ${day(9)})`, '- [ ] Pack the van (60%) @priya', '  - [ ] Tables (50%)',
     '  - [ ] Sound system @sam', '- [ ] Deep clean (2 of 3 done)', '  - [ ] Fridge', '- [x] Old menu', '  - [ ] Reprint'].join('\n'));
   assert.equal(text({ kind: 'project', title: 'Empty', open: 0, doneCount: 0, items: [] }), 'Empty  0 open');
+  // Its Done shows its latest 100 and counts all of them (performance-plan, part 9): the text says that count, written
+  // as its heading writes it.
+  const big = { kind: 'project', title: 'Big', open: 1200, doneCount: 3000, items: [] }, n = x => x.toLocaleString();
+  assert.equal(text(big), [`Big  ${n(1200)} open · ${n(3000)} done`, `✓ ${n(3000)} done`].join('\n'));
+  assert.equal(md(big), ['# Big', '', `${n(1200)} open · ${n(3000)} done`].join('\n'));
 });
 
 test('the van as a Markdown list', () => {
