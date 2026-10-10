@@ -141,6 +141,9 @@ try {
   const slideProgress = (sel, to, check, from = 0) => swipeRow(page, sel, to, { start: from, check });
   // The progress a row's tick shows (its pie: --pct), and what's uncovered beside it while it's swiped.
   const tickPct = sel => page.locator(sel).evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--pct')) * 100));
+  // How many animations `sel` and what's in it have, running or given by the stylesheet: a bounce or a pulse would be one.
+  const moving = sel => page.locator(sel).evaluate(el => el.getAnimations({ subtree: true }).length
+    + [el, ...el.querySelectorAll('*')].filter(x => getComputedStyle(x).animationName !== 'none').length);
   const apiTask = async () => (await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items.find(t => t.title === title);
   /* A plain swipe right, with no hold (parent-tasks-plan, 1 and 1b): the row's content moves with the finger, the space
      it uncovers showing the stop letting go would set, its ring filling a quarter at a time; nothing on the row changes
@@ -149,6 +152,8 @@ try {
     await slideProgress(row, 50, async () => {
       await expect(page.locator(`${row}.revealing > .row-prog`)).toHaveAttribute('data-pct', '50');
       await expect(page.locator(`${row} > .row-prog`)).not.toHaveClass(/\bfull\b/);
+      // Nothing bounces at a stop: the ring's pie only steps.
+      if (await moving(`${row} > .row-prog`)) throw new Error('the ring moved at a stop');
       if (await tickPct(row) !== 0) throw new Error('the row\'s tick changed while it was swiped: ' + await tickPct(row));
       if (await page.locator('#said').textContent() === `Progress of ${title} set to 50%`) throw new Error('said before it was let go');
     });
@@ -192,7 +197,11 @@ try {
   await step('a-full-swipe-is-done-with-undo-and-a-partly-done-tick-ticks', async () => {
     const sent = page.waitForRequest(r => r.method() === 'PATCH' && /\/tasks\/\d+$/.test(r.url()) && JSON.parse(r.postData() || '{}').done === true);
     const h = await page.locator(row).evaluate(el => el.offsetHeight);
-    await slideProgress(row, 100, async () => { await expect(page.locator(`${row} > .row-prog`)).toHaveClass(/\bfull\b/); }, 50);
+    await slideProgress(row, 100, async () => {
+      await expect(page.locator(`${row} > .row-prog`)).toHaveClass(/\bfull\b/);
+      // Past half, the green is solid and the ring its ✓, with no pop.
+      if (await moving(`${row} > .row-prog`)) throw new Error('the ring popped past half');
+    }, 50);
     const body = JSON.parse((await sent).postData());
     if ('percent_done' in body) throw new Error('done sent ' + JSON.stringify(body));
     await expect(page.locator(row)).toHaveClass(/\bswept\b/);

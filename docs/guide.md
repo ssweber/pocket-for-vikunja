@@ -120,7 +120,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   your finger lifts, so the tasks under it never move while you're touching the list. Swiping never selects text, the
   task's or any near it; a task's notes and comments can still be selected to copy, by holding them. On an iPhone,
   Safari has no way to make the phone tick, so Pocket uses a trick that works since iOS 18 and may stop working; the
-  ring always pulses at each stop as well.
+  ring's pie always steps at each stop as well, with nothing bouncing.
 - **Finishing a task with subtasks:** its ring is its progress, worked out from its subtasks: each counts its own
   progress, a done one 100%, and the ring shows the average, with how many are done inside it ("1/4"). One subtask at
   50% of four is 13%. Pocket writes that figure to the task's progress in Vikunja too, as its subtasks change. Ticking

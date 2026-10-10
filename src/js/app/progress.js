@@ -52,8 +52,8 @@ const swipeOf = (row, remove) => ({
 });
 
 /* A row's stops, uncovered as it's swiped for its progress, either way: a large ring, the tick's shape, filling (right)
-   or emptying (left) a quarter at a time, pulsing at each, the tick seen where it can't be felt; past the right side's
-   full point, full with its ✓, the green solid. The space is the whole row's height, from the list's edge whatever the
+   or emptying (left) a quarter at a time, the tick seen where it can't be felt; past the right side's full point, full
+   with its ✓, the green solid. Nothing bounces: each is a step, not a movement. The space is the whole row's height, from the list's edge whatever the
    row's indent. It's an element of its own, made as the swipe starts and gone once the row is back, so a list's rows
    don't each carry one. (The specimen draws its stills with it.) */
 const BACK_MS = 150, SPRING_MS = 200;                    // the row's own transition back: .row, styles.css
@@ -68,11 +68,10 @@ export const revealOf = row => {
         row.append(el);
       }
       row.classList.add('revealing'); row.style.setProperty('--swipe', off + 'px');
-      if (el.dataset.pct && el.dataset.pct !== String(pct)) el.dataset.tick = el.dataset.tick === 'a' ? 'b' : 'a';
       el.dataset.pct = pct; el.dataset.side = off > 0 ? 'left' : 'right'; el.classList.toggle('full', to === 'done');
       el.style.width = Math.abs(off) + 'px'; el.style.setProperty('--ring', pct / 100);
     },
-    // Back in its place: it springs back (.row's transition), the space shrinking with it, then goes.
+    // Back in its place: it springs back (.row's transition), the space going out with it, then gone.
     back(){
       row.classList.remove('revealing'); row.style.removeProperty('--swipe');
       const was = el; el = null;
