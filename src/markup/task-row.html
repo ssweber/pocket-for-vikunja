@@ -36,7 +36,7 @@
      On a stacked card (g.card, list-item.html), each of its rows is this row too, a subtask or a run's step: its own
      tick, slot and progress, and its Delete, as any row's. A collapsed card's top row (.step-line) doesn't fold with the
      batch: the next slides up into its place (cardEntered). -->
-<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, swept: !!swept[t.id]} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', swept: !!swept[t.id], head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
+<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, swept: !!swept[t.id]} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', swept: !!swept[t.id], pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
      @click.capture="tapGap(t, g, $event)">
@@ -64,7 +64,7 @@
       <template x-for="m in rowMeta(t, g)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
     </div></template>
     <!-- A step of a run, in the run's sheet: added during the run, on a line of its own -->
-    <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta step-added-meta"><span x-text="addedText(t.description)"></span></div></template>
+    <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta"><span x-text="addedText(t.description)"></span></div></template>
     <!-- Once, on the first open row of a screen that takes a swipe for its progress (pickHint): gone, by a slide or a tap on it, it fades, its
          space kept while a finger may be on the list, then closes (closeHint). A screen reader heard it as the screen opened. -->
     <template x-if="hintOn(t, g)"><span class="slide-hint" :class="{gone: hint.done || !rowSlides(t)}" aria-hidden="true" @click.stop.prevent="hintSeen()">Swipe right to start working on it<svg class="i"><use href="#i-close"/></svg></span></template>

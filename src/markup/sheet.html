@@ -19,7 +19,7 @@
       <template x-if="checklistRole !== 'run'"><button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button></template>
       <a role="menuitem" id="d-open-vikunja" :href="vikunjaUrl('task')" target="_blank" rel="noopener" @click="sheet.menu = false">Open in Vikunja ↗</a>
       <!-- The way to move it for a keyboard or a screen reader, as a finger does by holding its row and moving it -->
-      <template x-for="m in canEdit && sheetMoves ? [sheetMoves] : []" :key="0"><div class="menu-pair">
+      <template x-for="m in canEdit && sheetMoves ? [sheetMoves] : []" :key="0"><div>
         <button role="menuitem" id="d-move-up" :disabled="!m.up" @click="moveBy(sheet.task, -1, 'own')">Move up</button>
         <button role="menuitem" id="d-move-down" :disabled="!m.down" @click="moveBy(sheet.task, 1, 'own')">Move down</button>
       </div></template>

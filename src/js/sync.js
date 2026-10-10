@@ -257,7 +257,6 @@ export const LINE_STEPS = [
 /* How a run is set up from its template, in the same way: the outbox entry (`j`) keeps how far it got, so a try that's
    cut off carries on where it stopped. A copy that reached Vikunja without its reply is found again through the
    "copied to" links of what it was copied from, instead of being made twice. */
-export const NOT_RELATED = 4009;
 // A copy of a task, noting in `rec` when the try began and, if it fails, when it ended: a copy it made despite the
 // failure was made in between.
 async function duplicate(from, rec, save, title){

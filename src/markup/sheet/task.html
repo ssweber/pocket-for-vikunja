@@ -159,7 +159,7 @@
           </div>
         </div></template>
         <!-- Under a template: new steps a row each, with their times, added together -->
-        <template x-if="checklistRole === 'template'"><div class="draft" id="add-steps" x-data="{which: 'add'}">
+        <template x-if="checklistRole === 'template'"><div id="add-steps" x-data="{which: 'add'}">
           <!-- include markup/sheet/draft-steps.html -->
           <button type="button" class="draft-add" id="add-add-step" @click="addDraftRow('add')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
           <template x-if="sheet.addRows.some(r => r.text.trim())"><div style="padding:0 14px 14px">

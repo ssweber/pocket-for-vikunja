@@ -1,8 +1,8 @@
 // The Alpine component, `pocket`, and the helpers its markup uses by name. main.js registers them for Pocket's page;
 // the specimen page (scripts/specimen/) makes a component of its own from them, with made-up tasks.
-import {andList, colorOf, fmtSize, grow, PRIOS, taskDrafts, ZERO} from './util.js';
+import {colorOf, fmtSize, grow, PRIOS, ZERO} from './util.js';
 import {INSTALLED} from './api.js';
-import {dueInfo, fromLocalInput, isSet, toLocalInput} from './dates.js';
+import {fromLocalInput, isSet, toLocalInput} from './dates.js';
 import {RICH, sanitize} from './html.js';
 import {addedText, durText} from './checklists.js';
 import {runTitle} from './sync.js';
@@ -31,8 +31,8 @@ import throwing from './app/throw.js';
 
 
 // The markup's Alpine expressions use these by name, so they have to be globals (main.js makes them so).
-export const globals = {addedText, andList, colorOf, durText, dueInfo, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize,
-  SHEET_ROW, taskDrafts, toLocalInput, ZERO};
+export const globals = {addedText, colorOf, durText, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize, SHEET_ROW,
+  toLocalInput, ZERO};
 
 /* x-style="{'--pct': .5, paddingLeft: '18px'}": what :style does with an object, without the timer Alpine starts each
    time it works one out (to drop a style attribute left empty). A list's rows are worked out again on every change to
