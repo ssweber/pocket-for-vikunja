@@ -256,7 +256,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   Pack the van, after Load chairs". A nudge touches a task too. Put your finger on it and
   scroll the list a little, slowly, less than a row's height, and it's the one the box adds to; a longer or quicker
   scroll is only a scroll. The box names it either way, so a wrong one is seen, and **×** undoes it. Press Enter and type the next: the keyboard stays open, and each goes after the one
-  before. A subtask ticked done hands the box to its parent, so you can add more beside it. The box reads them as the
+  before. The light moves to each subtask as you add it, also while it waits to be sent, so the row lit is always the one the box names; touch the task again (a nudge will do) to go back to adding after its last. A subtask ticked done hands the box to its parent, so you can add more beside it; so does deleting the lit subtask, moving it up or down, or cancelling it while it waits. The box reads them as the
   sheet's subtask box does (no `+project`; a pasted list is a subtask a line), with no message: they show on their rows
   at once, and without a connection they wait there and are sent later. The **×** beside the task's name goes back to
   adding a task, and so does scrolling the task off the screen, or leaving the project. A run, a template, a done task

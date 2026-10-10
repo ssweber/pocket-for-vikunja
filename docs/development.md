@@ -317,10 +317,18 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
 - On a project's list, quick add's box adds subtasks to the task touched last, the cursor (`cursor`, in
   `app/quickadd.js`): its sheet opened, ticked, or its progress swiped. It's then the box `'under'` (`capW`), which reads
   lines as the sheet's subtask box (`'sub'`) does, and both send through `addSubtasks` (`app/actions.js`), each with its
-  position (`placeAfter`, in `order.js`): after the cursor's subtask, or the last one added from the box, or the
-  parent's last. Its row is watched with an `IntersectionObserver`, and the box goes back to adding a task once the row
-  is out of sight; leaving the screen (`navigated`) clears it too. A card the box adds to is lit (`.day-card.aimed`),
-  as a row is. A nudge aims it as well (on a run, at a step): a touch
+  position (`placeAfter`, in `order.js`): after the cursor's row, if it's a subtask, or the
+  parent's last. A subtask added from the box is the cursor in its turn (`aimAdded`): its waiting row at once
+  (`cursor.wait`), then its task's row once it's sent (`aimSent`, from `placeSent`), so each goes after the one
+  before, and the row lit is the one the line over the box names (only the task, in a project with no List view,
+  where there's no place to give). One row is lit, which each row reads by its own id
+  (`lit`, set by `light`, as `leaving` is read), so lighting another draws those two rows again, not the list. A
+  cursor that's gone hands over to the task it was under, and the box goes back to that task's last: deleted, done or
+  off the list (`keepAim`, watched in `core.js`), called off while it waited (`aimCancelled`), or moved up or down
+  (`aimMoved`). Its row is watched with an `IntersectionObserver`, and the box goes back to adding a task once the row
+  is out of sight (`watchCursor`: one just added where it can't be seen yet is stood in for by the row lit before it,
+  until it has been in sight); leaving the screen (`navigated`) clears it too. A card the box adds to is lit (`.day-card.aimed`),
+  as a row is. A nudge aims it as well (on a run, at a step), the row touched before a subtask was added too: a touch
   that starts on a row and turns into a short, slow scroll (`watchNudges`, `app/progress.js`, followed by touch events,
   as the phone ends the pointer events once it scrolls; `nudged`, `app/quickadd.js`). To tune it, change the
   `NUDGE_*` numbers in `src/js/progress.js` (how far is past a tap, how far is more than a nudge, how fast is a fling,
@@ -485,7 +493,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   looks it (`helpers.test.mjs`); what Pocket says (a tick too, a run's comments called
   comments, the question a ring asks naming its subtasks in a sentence, a task held on Today and moved, a card kept by its subtask, who
   started a run) and in which place, a line there gone once its time is up (`messages.test.mjs`); a project's order: its List view, a move's position, a
-  task's siblings, a drag, and which task the add box adds subtasks to and where they go (`order.test.mjs`); progress
+  task's siblings, a drag, and which row the add box adds subtasks at, the one row lit, and where they go: the row touched, a subtask added lit in its turn, waiting and sent, a row that's gone handing over to its task, and the lit row out of sight (`order.test.mjs`); progress
   as a text: the bar, names, due dates, nesting, a run and a project, what collapses, and a
   parent's ring's figure, the text from a task's sheet and a run's screen matching its ring; and a task and a project
   as a Markdown list in quick add's words, a title quoted only when it needs it, each copy read back by quick add into
@@ -493,7 +501,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   outbox: a line that says it's done made, then marked done, once after a lost reply, ticked on its row and gone with
   the batch, one that repeats moved on; a line's progress; a parent's figure written once its lines are in, the
   deepest first; a list with several parents and subtasks of subtasks, an entry kept from before, a waiting line
-  cancelled, and what its Cancel is called; and what a box says it read: the Done chip, a list's count tapped to leave those lines out, ↳ Under
+  cancelled, and what its Cancel is called; a subtask added from the add box lit at once, on its waiting row and once it's sent, now or later, one added done, called off or turned down leaving the light on its task, as the lit one ticked does, held done meanwhile, saved or not; and what a box says it read: the Done chip, a list's count tapped to leave those lines out, ↳ Under
   first line on by itself, a project's heading left out (`adding.test.mjs`); the one
   copy of each task, a repeating one shown done kept so through a load (`tasks.test.mjs`); what the one row asks by its options: a step's tick, what's under its title (the
   sheet's own row only when it's due; a run's row nothing, who it's for in its slot; a run's step without a 🔔) and
@@ -503,7 +511,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   and its quarters after the save), no "+ me" nor your picture in a project only you can see, who can see each project,
   kept and loaded again, which boxes are square, which row the one-time hint goes on, the sheet's own row swiped, a
   touch that starts in a text field never a row's swipe or hold, nor a nudge (`holdToSlide` and `watchNudges` run on a
-  pretend screen), and a row held on Today, the hold run there too: its dates drawn where the finger is, the one it
+  pretend screen), a nudge lighting the row it starts on, the one touched before a subtask was added too, felt when the lit row changes, and a row held on Today, the hold run there too: its dates drawn where the finger is, the one it
   points at lit with a tick felt, let go there moved, let go back near where it was held or taken away by the phone
   not, a flick counted, left open to tap without a move, each date tapped and a day picked, and none for one that
   repeats, a checklist, a run or its step (`rows.test.mjs`);
@@ -705,7 +713,7 @@ time, and 30% set on the web; subtasks at each depth; due dates, priority, label
 on one line; a project only you can see; a run's row with its ring and who it's for as pictures; a step's square box;
 read only; rows swiped right at each stop and past half, the Done gap with Undo, swiped left from 75% down to 0%, then
 a second swipe into Delete (open on its button, past half, and following through), a done row opened again, a full delete's gap with Restore, the batch clearing, a claim at
-let go, a subtask swiped, a line in a row's place, the add box's target lit, a row held and moved, a project's Done
+let go, a subtask swiped, a line in a row's place, the add box's target lit (a task, a subtask, and one just added: waiting to send, and just sent), a row held and moved, a project's Done
 section, rows just come due and just added; and a run's steps on its screen (done by you or someone else, skipped,
 inserted, repeated, counting down, late, a tick waiting to send, a full swipe's gap) and in a run finished or read
 only. Then the larger pieces: a task's sheet led by its row (with notes and photos, a subtask's with none, a parent's
