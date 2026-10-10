@@ -16,7 +16,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
-import { expect, hintSeen, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, swipeRow, synced, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, finger, hintSeen, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, swipeRow, synced, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -2411,21 +2411,9 @@ ${footName('Hooks')}`);
   });
   /* A nudge (an experiment): a finger on a row that turns into a short, slow scroll aims the add box at it; a long or
      fast one, a hold, a tap (which opens the sheet, aiming as it closes), a row done or read only, and Today don't. The
-     finger is Chrome's own touch input, so the page scrolls under it as on a phone. Each one goes down from the top of
-     the list, where the page can't scroll, so no row moves out of sight meanwhile. Each touch says when it happened
-     (`at`, in ms), as a phone's do, since Chrome takes its own time to pass them on: how fast the finger went is then
-     the test's to say. */
-  const cdp = await context.newCDPSession(page);
-  const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-  // Row `sel` touched, moved `by` px in `n` moves `every` ms apart, then lifted; held `hold` ms first (really waited).
-  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0) => {
-    const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
-    await touch('touchStart', x, y);
-    if (hold) await page.waitForTimeout(hold);
-    const t0 = Date.now();
-    for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
-    await touch('touchEnd', x, y + by, t0 + n * every + 8);
-  };
+     finger is Chrome's own touch input (`finger`, helpers.mjs), so the page scrolls under it as on a phone. Each one
+     goes down from the top of the list, where the page can't scroll, so no row moves out of sight meanwhile. */
+  const { touch, touchDrag } = await finger(page);
   const cursorId = () => page.evaluate(() => Alpine.$data(document.body).cursor?.id ?? null);
   await step('a-nudge-aims-the-add-box', async () => {
     const T = foot.tasks, Fuel = rowOf(footName('Fuel')), Hooks = rowOf(footName('Hooks'));

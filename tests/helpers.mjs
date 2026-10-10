@@ -66,6 +66,26 @@ export async function steady(locator, timeout = 5000){
   throw new Error('it never stopped moving');
 }
 
+/* A finger on `page`: Chrome's own touch input, so the page scrolls under it as on a phone, and the phone's rules for a
+   touch hold (touch-action, a scroll taking the touch away from the page), which a mouse (swipeRow) never meets.
+   `touch(type, x, y, at)` is one touchStart, touchMove or touchEnd. Each says when it happened (`at`, in ms), as a
+   phone's do, since Chrome takes its own time to pass them on: how fast the finger went is then the test's to say.
+   `touchDrag(sel, by, n, every, hold)`: `sel` touched in its middle, moved `by` px down in `n` moves `every` ms apart,
+   then lifted; held `hold` ms first (really waited). */
+export async function finger(page){
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0) => {
+    const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    await touch('touchStart', x, y);
+    if (hold) await page.waitForTimeout(hold);
+    const t0 = Date.now();
+    for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
+    await touch('touchEnd', x, y + by, t0 + n * every + 8);
+  };
+  return { touch, touchDrag };
+}
+
 /* The one-time hint to hold and slide put away, as on a phone that has slid a row: otherwise it adds a line to the
    first row of each screen, which a test measuring rows doesn't expect. Every page of `context`, from the start. */
 export const hintSeen = context => context.addInitScript(() => { try { localStorage.setItem('pocket.hint.slide', 'done'); } catch {} });

@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, hintSeen, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, finger, hintSeen, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -79,16 +79,8 @@ const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 // A message in its place (lines.js): "checklists", "step", "sheet:subtasks"…
 const said = (where, text) => placeSays(page, where, text);
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));
-/* A finger on row `sel`, Chrome's own touch input, so the page scrolls under it as on a phone (as in smoke.mjs): moved
-   `by` px down in `n` moves `every` ms apart, then lifted. Each touch says when it happened, as a phone's do. */
-const cdp = await context.newCDPSession(page);
-const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-const touchDrag = async (sel, by, n = 8, every = 40) => {
-  const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2, t0 = Date.now();
-  await touch('touchStart', x, y);
-  for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
-  await touch('touchEnd', x, y + by, t0 + n * every + 8);
-};
+// A finger on a row, Chrome's own touch input, so the page scrolls under it as on a phone (`finger`, helpers.mjs).
+const { touchDrag } = await finger(page);
 
 const stamp = Date.now();
 const TEMPLATE = `Startup ${stamp}`;
