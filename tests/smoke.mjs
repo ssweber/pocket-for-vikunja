@@ -135,8 +135,9 @@ try {
     await expect(page.locator(row)).toHaveClass(/\bleaving\b/);
     await expect(page.locator(row)).toHaveClass(/\bdone\b/);
     if (await felt() !== '[[14,60,24]]') throw new Error('a tick tapped done felt ' + await felt());
+    // (Its row is held as ticked from the tap; a screen reader hears it once it's saved, and its mark is made.)
+    await expect(page.locator('#said')).toHaveText(new RegExp('^Done: ' + title));
     if (await page.$('#toast.show #toast-msg:has-text("Done")')) throw new Error('a tick in a list said: ' + await page.textContent('#toast-msg'));
-    if (!(await page.textContent('#said')).startsWith('Done: ' + title)) throw new Error('a screen reader hears: ' + await page.textContent('#said'));
     await page.click(`${row} .check`);
     await expect(page.locator(row)).not.toHaveClass(/\bleaving\b/);
     if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after its tick again');
