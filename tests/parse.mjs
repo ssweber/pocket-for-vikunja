@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global parseCapture, captureLines, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter */
+/* global parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -234,11 +234,29 @@ add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursd
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
+// (captureLines reads a run's box and a template's steps, where a ticked line is left out: a step is done by doing it.)
 addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk'], 'iOS Notes checklist: a line ticked off already is left out');
 addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols');
 addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
 addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
+addList('x Call Sam\n[x] Eggs\nMilk', ['x Call Sam', 'Milk'], 'in a step\'s box an x is a word, and a ticked line is left out');
+
+// ---------- quick add and the subtask boxes: a line that says it's done arrives done ----------
+// readList(text, opts): each line as [its words, whether it's done].
+const reads = [];
+const addRead = (text, lines, why, opts = {}) => reads.push({ text, lines, why, opts });
+for (const m of ['x ', 'x - ', 'x- ', '[x] ', '- [x] ', '* [X] ', '☑ ', '☒ ', '> - [x] ', '1. [✓] ', '  - [x]'])
+  addRead(m + 'Call Sam', [['Call Sam', true]], `"${m}" at its start: it arrives done`);
+addRead('x-ray the pipe', [['x-ray the pipe', false]], 'no space after the x: it\'s a word');
+addRead('X marks the spot', [['X marks the spot', false]], 'a capital X is a word');
+addRead('- x marks the spot', [['x marks the spot', false]], 'an x after a bullet is a word');
+addRead('x', [['x', false]], 'an x alone is a title');
+addRead('[ ] Milk\n- [ ] Bread\n* [ ] Jam\n- [] Tea\n☐ Rice\n✓ Salt', ['Milk', 'Bread', 'Jam', 'Tea', 'Rice', 'Salt'].map(t => [t, false]), 'an empty checkbox means open, and is taken off');
+addRead('Groceries\n- [x] Eggs\n\n- [ ] Milk\nx Bread', [['Groceries', false], ['Eggs', true], ['Milk', false], ['Bread', true]], 'in a list, each line that says so');
+addRead('Groceries\n- [x] Eggs\n- [ ] Milk\nx Bread', [['Groceries', false], ['Milk', false]], 'the list\'s chip tapped: those lines are left out', { done: false });
+addRead('x Call Sam', [['x Call Sam', false]], 'one line, its chip tapped: the marker\'s words stay in the title', { done: false });
+addRead('- [x] Call Sam', [['[x] Call Sam', false]], 'and a checkbox\'s, without its bullet', { done: false });
 
 // ---------- checklist steps ----------
 // A step's T#20m, T#40m:roast and {#roast} stay in its title, for parseStep, and nothing reads them as a date or a time.
@@ -329,6 +347,9 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
     marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
+// Each line's words, whether it's done, and whether its words are where it says they start in the text.
+const readResults = await page.evaluate(reads => reads.map(r => { const list = readList(r.text, r.opts); return { lines: list.lines.map(l => [l.text, l.done]),
+  placed: list.lines.every(l => r.text.slice(l.at, l.at + l.text.length) === l.text), marked: list.lines.map(l => l.mark ? r.text.slice(...l.mark) : '') }; }), reads);
 const stepResults = await page.evaluate(steps => steps.map(([text]) => parseStep(text)), steps);
 const phraseResults = await page.evaluate(ps => ps.map(([text]) => readStepPhrase(text)?.offset ?? null), phrases);
 const draftResults = await page.evaluate(ds => ds.map(([rows, before]) => {
@@ -404,6 +425,11 @@ cases.forEach((c, i) => {
 lists.forEach((l, i) => {
   if (!same(listResults[i], l.lines)) { failed++; console.log(`FAIL pasted list [${l.why}]: ${JSON.stringify(listResults[i])}`); }
 });
+reads.forEach((r, i) => {
+  const got = readResults[i];
+  if (!same(got.lines, r.lines) || !got.placed) { failed++; console.log(`FAIL read ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got)}`); }
+  if ('marked' in r && !same(got.marked, r.marked)) { failed++; console.log(`FAIL marked in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.marked)}`); }
+});
 steps.forEach(([text, title, offset, name, ref, problems], i) => {
   const r = stepResults[i];
   if (r.title !== title || r.offset !== offset || r.name !== name || r.ref !== ref || r.problems.length !== problems)
@@ -445,6 +471,6 @@ const roundsWant = [true, true, false, false, false, false, false, 'Opening up',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z', null];
 if (!same(rounds, roundsWant)) { failed++; console.log(`FAIL templates that come round: ${JSON.stringify(rounds)}`); }
-const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 2, total = cases.length + lists.length + wf;
-console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length} are pasted lists, ${wf} are checklist steps and markers)`);
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 2, total = cases.length + lists.length + reads.length + wf;
+console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length + reads.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;

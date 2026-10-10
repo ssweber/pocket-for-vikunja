@@ -505,9 +505,11 @@ try {
   });
   await step('pasted-list-says-who-cant-get-it', async () => {
     // Someone named in a pasted list who isn't a user is said before it's sent, as for a single task. A line ticked off
-    // already is left out, and so are its marks: the next line's are on its own words.
+    // already arrives done, which a chip says; the next line's marks are on its own words.
     await page.fill('#in-capture', `- [x] Pocket smoke napkins\n- Pocket smoke list tomorrow @nobody${stamp}\n- Pocket smoke cups`);
     await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody${stamp}")`, { timeout: 10000 });
+    await expect(page.locator('#cap-chips .chip', { hasText: '1 arrives done' })).toBeVisible();
+    await expect(page.locator('#cap-chips .chip', { hasText: '3 tasks' })).toBeVisible();
     const marked = await page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
     if (!marked.includes('due:tomorrow')) throw new Error('marks: ' + JSON.stringify(marked));
     await page.fill('#in-capture', '');
@@ -900,6 +902,29 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.evaluate(() => document.activeElement?.blur());
+  });
+
+  /* A line that says it's done arrives done (done-and-markdown-plan, part 1): "x " at its start, or a ticked checkbox.
+     A chip says so before it's sent. Its row is ticked from the start, where the task goes, and leaves with the batch, as
+     a row ticked there does; Vikunja has it done. */
+  const found = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
+  await step('a-line-that-says-its-done-arrives-done', async () => {
+    const t = `Pocket smoke arrived ${stamp}`, R = rowOf(t);
+    await toastGone();
+    await refreshToday();
+    await page.fill('#in-capture', `x ${t}`);
+    await expect(page.locator('#cap-chips .chip', { hasText: /^Done$/ })).toBeVisible();
+    await page.click('#f-capture .go');
+    await expect(page.locator(R)).toHaveClass(/\bdone\b/, { timeout: 15000 });      // ticked while it's sent, too
+    await expect(page.locator(`${R}:not(.pending)`)).toHaveClass(/\bleaving\b/, { timeout: 15000 });
+    await synced(page);
+    await noToast(page);
+    const made = await found(t);
+    try {
+      if (!made?.done) throw new Error('in Vikunja: ' + JSON.stringify(made && { title: made.title, done: made.done }));
+      await later(3100);
+      await expect(page.locator(R)).toHaveCount(0);                               // gone with the batch
+    } finally { if (made) await api('/tasks/' + made.id, { method: 'DELETE' }); }
   });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger

@@ -126,8 +126,8 @@
             </template>
           </div>
         </template>
-        <!-- Subtasks still waiting to be sent -->
-        <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits}" :data-id="t.id">
+        <!-- Subtasks still waiting to be sent; one whose line said it's done, ticked -->
+        <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits, done: t.done}" :data-id="t.id">
           <button class="check" :class="{wait: t.waits}" disabled :aria-label="'Not sent yet: ' + t.title"><svg class="i"><use href="#i-check"/></svg></button>
           <div class="body"><div class="title"><span class="sr">Not sent yet: </span><span x-text="t.title"></span></div><div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div></div>
           <button class="icon-btn plain" :aria-label="'Cancel ' + t.title" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button>

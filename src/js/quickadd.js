@@ -241,15 +241,41 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   out.marks = [...out.marks, ...people].sort((a, b) => a.start - b.start);
   return out;
 }
-/* Pasted lists: one task per line. Strips what email and notes apps put in front of items:
-   "> " quote marks, bullets, "1." / "1)" numbering and checkboxes. A marker needs a space after it,
-   so "*label" and "+project" at the start of a line still work. */
-export const LIST_MARKER = /^(?:>\s*)*(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}\)\s+)?(?:\[[ xX✓]?\]\s*|[☐☑☒✓✔]\s*)?/;
-// A line ticked off already, in a pasted list: "- [x] eggs", "☑ eggs". Left out: it's done. (A bare ✓ is often just a
-// bullet, so it isn't one.)
-const TICKED = /^(?:>\s*)*(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}\)\s+)?(?:\[[xX✓]\]|[☑☒])/;
-export function captureLines(text){
-  return String(text || '').split(/\r?\n/).map(l => l.trim()).filter(l => !TICKED.test(l)).map(l => l.replace(LIST_MARKER, '').trim()).filter(Boolean);
+/* Pasted lists: one task per line. What email and notes apps put in front of an item is taken off: "> " quote marks,
+   bullets, "1." / "1)" numbering and checkboxes. A marker needs a space after it, so "*label" and "+project" at the
+   start of a line still work. An empty checkbox, or a ✓ (often just a bullet), is an open item's. */
+const QUOTE_MARKS = /^(?:>\s*)+/, BULLET = /^(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}\)\s+)/, OPEN_BOX = /^(?:\[ ?\]|[☐✓✔])\s*/;
+/* A line that says it's done: a ticked checkbox after its bullet, "- [x] eggs", "☑ eggs"; or, Pocket's own, an x at
+   its very start with a space after it: "x eggs", "x - eggs", "x- eggs". With no space it's a word, "x-ray the pipe",
+   and a capital X is one too, "X marks the spot". */
+const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^x(?:\s+-|-)?\s+/;
+/* A box's text, read as a list: {lines, ticked}. `lines`, one for each line that becomes a task, in order: {text: its
+   words, without what was in front of them; at: where they start in the box's text; done: whether it says it's done;
+   mark: [start, end] of what said so, in the box's text}. `ticked`: how many lines say they're done, kept or not.
+   A line that says it's done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
+   single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out.
+   `steps`: a run's box and a template's steps, where a step is done by doing it: a ticked checkbox's line is left
+   out, and an x is a word. */
+export function readList(text, {steps = false, done = true} = {}){
+  const rows = [];
+  let at = 0, ticked = 0;
+  for (const raw of String(text || '').split('\n')) {
+    let i = raw.length - raw.trimStart().length;
+    const take = re => { const m = raw.slice(i).match(re); if (m) i += m[0].length; return m; };
+    take(QUOTE_MARKS);
+    let from = i, said = !steps && take(DONE_X);
+    if (!said) { take(BULLET); from = i; said = take(DONE_BOX); }
+    if (!said) take(OPEN_BOX);
+    if (said) ticked++;
+    const start = p => p + raw.slice(p).length - raw.slice(p).trimStart().length;
+    rows.push({text: raw.slice(i).trim(), at: at + start(i), done: !!said, mark: said ? [at + from, at + from + said[0].trimEnd().length] : null,
+      kept: raw.slice(from).trim(), keptAt: at + start(from)});
+    at += raw.length + 1;
+  }
+  const full = rows.filter(r => r.text), one = full.length === 1;
+  const lines = full.filter(r => !r.done || (done && !steps) || (one && !steps))
+    .map(r => r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null} : {text: r.text, at: r.at, done: r.done, mark: r.mark});
+  return {lines, ticked};
 }
-export const isTicked = line => TICKED.test(line.trim());
-export const tickedLines = text => String(text || '').split(/\r?\n/).filter(isTicked).length;
+// The lines of a run's box, a template's steps and its name: their words, a ticked one left out.
+export const captureLines = text => readList(text, {steps: true}).lines.map(l => l.text);

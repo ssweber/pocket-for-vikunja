@@ -521,7 +521,7 @@ export default {
     if (!parent || !parsed.some(p => p.title)) return;
     const n = parsed.filter(p => p.title).length;
     const at = foot ? this.cursorPlaces(n) : this.sheet.subView || !this.subtasks.length ? placeAfter(this.subtasks.map(s => this.positions[s.id] || 0), null, n) : null;
-    const items = lines.map((raw, i) => ({raw, p: parsed[i]})).filter(x => x.p.title)
+    const items = lines.map((raw, i) => ({raw: parsed[i].done ? 'x ' + raw : raw, p: parsed[i]})).filter(x => x.p.title)
       .map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn(w, lines)}), ...at && {position: at[k]}}, taskId: null, done: false, linked: false}));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};

@@ -6,7 +6,7 @@ import {saved} from '../lists.js';
 import {placeAfter} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
-import {captureLines, isTicked, LIST_MARKER, parseCapture, projectName, QUICK_ADD_PREFIXES, tickedLines} from '../quickadd.js';
+import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
 let peopleAt = 0;                              // when it last loaded, this session
@@ -57,7 +57,10 @@ export default {
     if (w === 'tname' || w.startsWith('new:')) return this.sheet.newTpl?.project.id;
     return this.defaultProjectId();
   },
-  boxLines(w){ return captureLines(this.box(w).text); },
+  /* A box's text read as a list (readList): its lines, and which say they're done. Quick add and the subtask boxes add
+     those done; a run's box and a template's boxes leave a ticked line out, as a step is done by doing it. */
+  boxList(w){ return readList(this.box(w).text, w === 'cap' || this.isSubBox(w) ? {} : {steps: true}); },
+  boxLines(w){ return this.boxList(w).lines.map(l => l.text); },
   get capLines(){ return this.boxLines('cap'); },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
   get dueTime(){ return this.user?.settings?.frontend_settings?.default_due_time || '12:00'; },
@@ -71,10 +74,12 @@ export default {
   },
   get parsed(){ return this.boxParsed('cap'); },
   // Each line of a box, parsed: a pasted list in quick add goes to one project (parseList); subtasks are read one by one.
+  // `done`: the line said it's done (boxList).
   boxParsedLines(w){
-    const lines = this.boxLines(w), first = this.boxParsed(w);
-    if (w === 'cap') return lines.length > 1 ? this.parseList(lines, first).parsed : [first];
-    return lines.map((l, i) => i ? parseCapture(l, this.projects, {...this.parseOpts, ignore: this.boxBase(w)}) : first);
+    const list = this.boxList(w).lines, lines = list.map(l => l.text), first = this.boxParsed(w);
+    const parsed = w === 'cap' ? (lines.length > 1 ? this.parseList(lines, first).parsed : [first])
+      : lines.map((l, i) => i ? parseCapture(l, this.projects, {...this.parseOpts, ignore: this.boxBase(w)}) : first);
+    return parsed.map((p, i) => list[i]?.done ? {...p, done: true} : p);
   },
   /* A pasted list goes to one project: the first +project in it, on whichever line. A different +project on a later line
      stays in that line's text, as a second one does within a line. (Vikunja's own quick add reads each line on its own.)
@@ -309,9 +314,11 @@ export default {
     if (!b.text.trim()) return photos;
     const sg = this.suggestions(w);
     if (sg) return sg;
-    const ticked = tickedLines(b.text);
-    if (ticked) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
-    const parsed = this.boxParsed(w), p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = this.boxLines(w).length;
+    // Lines that say they're done: added done, or, in a run's box and a template's, left out.
+    const list = this.boxList(w), ticked = list.ticked, arrive = list.lines.filter(l => l.done).length;
+    if (arrive) photos.push({key: 'tk', text: list.lines.length === 1 ? 'Done' : `${arrive} arrive${arrive === 1 ? 's' : ''} done`});
+    else if (ticked) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
+    const parsed = this.boxParsed(w), p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = list.lines.length;
     out.push(...photos);
     // A pasted list: how many, where they go, and anyone in it who can't see that project, before it's sent.
     const listWarn = () => this.accessHints(w).warn.map((text, i) => ({key: 'w' + i, cls: 'warn', text}));
@@ -444,17 +451,10 @@ export default {
     const parsed = this.boxParsedLines(w), target = parsed.length === 1 ? this.boxPid(w) : this.boxPeople(w).target;
     const stays = n => this.userKnown[n.toLowerCase()] === false || (target && this.access[target + ':' + n.toLowerCase()] === false);
     const out = [];
-    let at = 0, k = 0;
-    for (const l of this.box(w).text.split('\n')) {
-      // Where the line's text starts, as captureLines finds it: after indent, list marker and spaces. A line ticked off
-      // already is left out, as it is there.
-      const t = l.trim(), u = t.replace(LIST_MARKER, '');
-      if (u.trim() && !isTicked(l)) {
-        const start = at + (l.length - l.trimStart().length) + (t.length - u.length) + (u.length - u.trimStart().length);
-        for (const m of parsed[k++]?.marks || []) if (!(m.kind === 'assignees' && stays(m.name))) out.push({...m, start: m.start + start, end: m.end + start});
-      }
-      at += l.length + 1;
-    }
+    // Each line's marks, from where its words start in the box (boxList): after its indent, list marker and spaces.
+    this.boxList(w).lines.forEach((l, k) => {
+      for (const m of parsed[k]?.marks || []) if (!(m.kind === 'assignees' && stays(m.name))) out.push({...m, start: m.start + l.at, end: m.end + l.at});
+    });
     // A step's time, read on its own ("in 20 min"), marked like the rest, unless its chip was tapped off.
     const ph = this.isStepBox(w) && !this.box(w).keep && readStepPhrase(this.box(w).text);
     if (ph) out.push({kind: 'due', start: ph.index, end: ph.index + ph.length});

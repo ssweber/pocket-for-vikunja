@@ -2,7 +2,7 @@
 import {cache, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
-import {addedWhere} from '../messages.js';
+import {addedWhere, doneText} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
@@ -19,7 +19,8 @@ export default {
   /* Create a task from a parsed line, by LINE_STEPS. `job` keeps each step's progress and `save` keeps the job: for a
      line in the outbox, job is its item. `made` hears of the task as soon as it exists, and `parent` makes it a
      subtask of that task. Returns the task (just {id, project_id} if an earlier try made it), with `problems`: what
-     couldn't be done, like an @username who can't see the project. A lost connection or a busy Vikunja is thrown. */
+     couldn't be done, like an @username who can't see the project, and `arrived`: Vikunja's copy once it was marked
+     done, for a line that said it's done. A lost connection or a busy Vikunja is thrown. */
   async createTask(parsed, pid, {job = {}, save = async () => {}, made, at, skip, parent} = {}){
     job.problems ||= [];
     job.key ||= randomId();                      // this line, for the record of which task was added for it
@@ -29,7 +30,7 @@ export default {
       for (const step of LINE_STEPS) while (!step.done(job, c)) { await patiently(() => step.run(job, c)); await save(); }
       job.done = true; await save();
     }
-    return Object.assign(c.task || {id: job.taskId, project_id: job.projectId}, {problems: job.problems});
+    return Object.assign(c.task || {id: job.taskId, project_id: job.projectId}, {problems: job.problems}, c.arrived && {arrived: c.arrived});
   },
   async findUser(name){
     const key = name.toLowerCase();
@@ -70,10 +71,10 @@ export default {
     if (!this.canWrite(first)) { this.say(`${this.projById.get(first)?.title || 'That project'} is shared with you to read only: pick another with +project.`, {place: 'cap', cls: 'failed'}); return; }
     const nest = this.cap.nest && lines.length > 1;
     // Parse every line now, so dates mean what they meant when typed.
-    const list = this.parseList(lines, parsed);
+    const list = this.boxParsedLines('cap');
     // Under the first line, the rest keep their order in its project's List view, each after the one before (Vikunja
-    // would put each new one first).
-    const items = lines.map((raw, i) => ({raw, p: list.parsed[i]}))
+    // would put each new one first). `raw`: its words, to put back in the box if it isn't added, still saying it's done.
+    const items = lines.map((raw, i) => ({raw: list[i].done ? 'x ' + raw : raw, p: list[i]}))
       .filter(x => x.p.title).map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn('cap', lines)}), ...nest && k && {position: k * SPACING}}, taskId: null, done: false, linked: false}));
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
@@ -135,13 +136,17 @@ export default {
     try {
       for (const [i, item] of entry.items.entries()) {
         const child = isChild(entry, i), under = entry.parent?.id ?? (child ? entry.items[0].taskId : null);
-        await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : child ? entry.parentProject : entry.pid, {
+        const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : child ? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
           made: t => { taken.add(t.id); tasks.push({...t, child, parent: under}); if (i === 0) entry.parentProject = t.project_id; }});
+        // One that arrived done: its row shows it (placeSent).
+        if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
         ids.push(item.taskId);
       }
-      // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them.
-      if (entry.parent && !entry.figured) { await this.writeFigure(entry.parent.id); entry.figured = true; await save(); }
+      // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them. And a
+      // pasted list's first line, over the lines under it, has the figure they give it, when any of them arrived done.
+      const first = !entry.parent && entry.items.some((x, i) => i && isChild(entry, i) && x.p.done) ? entry.items[0].taskId : null;
+      if ((entry.parent || first) && !entry.figured) { await this.writeFigure(entry.parent?.id ?? first); entry.figured = true; await save(); }
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
       if (files.length) { this.placeSent(tasks); this.refreshPending(); }    // the task shows while its photos upload
@@ -207,9 +212,10 @@ export default {
   placeSent(tasks){
     if (this.view.loading || this.view.route !== location.hash) return;
     let placed = false;
-    for (const {child, problems, ...t} of tasks) {
+    for (const {child, problems, arrived, ...t} of tasks) {
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
+      if (arrived) Object.assign(t, arrived.done ? arrived : {done: true});   // it said it's done: ticked on its row
       const g = this.view.groups.find(g => g.key === key);
       // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again.
       if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
@@ -218,11 +224,31 @@ export default {
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
       if (g) g.tasks.push(this.keep(t));
       else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
+      if (arrived) this.arrivedDone(this.tasks[t.id], arrived);
       placed = true;
     }
     // And in the copy kept for opening offline.
     const k = viewKey(this.route), s = saved.get(k);
     if (placed && s) saved.set(k, {...s, groups: keptGroups(this.view.groups)});
+  },
+  /* A task that arrived done (a line that said so: quickadd.js), on its row: ticked, and leaving with the batch, as a
+     task ticked there does (toggleDone, actions.js, whose marks these are): off Today, to Done in a project, its tick
+     meanwhile opening it again. One that repeats (`now`, Vikunja's copy, is open again, moved on) shows done with the
+     date it was given until the batch clears, then open at its next date, or off Today if that's past the coming
+     week; its tick meanwhile puts its date back. */
+  arrivedDone(t, now){
+    const said = doneText(0, 0, t.title), failed = e => this.say('Not undone: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}});
+    if (!now.done) {
+      const was = t.due_date, beyond = () => this.route.name === 'today' && !(new Date(now.due_date) < addDays(startOfDay(), 8));
+      const undo = async () => { try { Object.assign(t, await this.saveTask(t.id, {due_date: was})); } catch (e) { failed(e); } this.render(); };
+      this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: said + '. It repeats',
+        gone: () => { Object.assign(t, now); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
+      return;
+    }
+    const ids = [t.id], moves = () => !!this.searchGroups(t);
+    this.markRow(t.id, {kind: 'done', ids, said, undo: async () => { await this.toggleDone(t, null, {quiet: true}); this.render(); },
+      out: () => this.bothWays && !moves() ? [] : ids,
+      gone: () => { if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) this.removeRow(t.id); }});
   },
   // The task a cut-off try added, if it got there: this title, in this project, added by you since that try, and not
   // one of the capture's other tasks or one Pocket added for another line.
@@ -317,7 +343,7 @@ export default {
         if (x.taskId) return;
         const p = x.p;
         const child = isChild(e, i);
-        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: false, priority: p.priority || 0, position: p.position || 0,
+        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: !!p.done, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
           waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});
