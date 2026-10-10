@@ -27,7 +27,8 @@ tests/         the test files described below, helpers.mjs (what the end-to-end 
                that need no browser
 scripts/       build.mjs: the build; dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and
                screenshots; check.mjs: what npm run lint checks besides ESLint; specimen.mjs and specimen/: a page
-               showing the task row, the stacked card, a parent's ring and the sheet in every state
+               showing the task row, the stacked card, a parent's ring and the sheet in every state; perf/: measuring
+               Pocket with long lists (Measuring, below)
 .github/       CI on pull requests and main, and the zip attached to each release
 docs/          this file, guide.md (everything the README leaves out), design-rules.md (what every change to how
                Pocket looks or what a finger does is checked against), the screenshots, design/ (feature plans) and
@@ -555,6 +556,16 @@ What tripped up earlier work, for whoever starts next.
   context of its own. A new context in a test needs it too.
 - **Never run `npm run build` while tests run.** A changed page makes the open copies reload in the middle of a test.
 
+## Measuring
+
+`scripts/perf/` times Pocket with long lists, in Chrome against a Vikunja of its own (`pocket-perf`, on :3470, apart
+from `pocket-dev`), seeded with a busy project: `node scripts/perf/up.mjs --seed M`, then `npm run perf` (opening
+Today with and without its kept copy, Today to the long project, and its Done opened; `-- --profile phone` with the
+CPU 4 times slower and a phone's network). `up.mjs --at <commit>` puts Pocket as at another commit in front of the
+same data, to compare two versions back to back; `prof.mjs` profiles one step. Its README says how, and has the
+numbers from before and after the performance round (performance-plan.md). A change that could slow a long list (a
+getter or helper called for every row, a new `x-for`, something per row on every change) is measured before and after.
+
 ## The README's GIF and screenshots
 
 With `npm run dev` running, `npm run demo` remakes `docs/screenshots/pocket-demo.gif`, `pocket-checklist.gif` and the screenshots of Pocket and of Vikunja's web app. It drives the real app in a phone-sized browser, with a small café's made-up tasks and checklists for two users of its own, `alex`, who owns it, and `priya`, the shift lead, and the page's clock fixed at Wednesday 30 September 2026, 10:05, so the dates in the pictures always match the README. New examples in the README and the guide follow the same café. Run it after changing how Pocket looks. `FRAMES=<folder>` also saves the GIFs' frames as images, to check them one by one.
@@ -600,5 +611,5 @@ Both libraries are kept in the repo rather than loaded from a CDN:
   would never reach an installed Pocket. To upgrade Alpine, or change a patch: replace the file with the new version's
   `dist/cdn.js` and commit it as published, redo each `Pocket:` change (compare with `git show 70f4fdd aea10ac`), run
   `npm run test:unit`, and give the `<script>` tag the new version and the next `N` (the build writes that file; delete
-  the old one from `pocket/app/`).
+  the old one from `pocket/app/`). Measure a long list before and after (Measuring, above).
 - `pocket/app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag in `src/index.html`.

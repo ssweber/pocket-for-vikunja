@@ -165,8 +165,8 @@ phone. Nobody scrolls through them; they come to tick one back or to check somet
 
 ## 8. Tests, docs and the harness
 
-Built: fe9c24c and 280ecc3 (the tests, and three checklists tests brought up to a run's own row), the docs and
-the harness after them, 2026-10-10.
+Built: fe9c24c and 280ecc3 (the tests, and three checklists tests brought up to a run's own row), e28bc07 (the
+docs) and the harness after it (`scripts/perf/`, with the numbers before and after in its README), 2026-10-10.
 
 - End-to-end tests for what changed, in the file for each area: the kept copy of a project with Done closed after it
   was open; a screen's rows all there after the batches; Pocket opening on its kept screen with Vikunja slow to answer.

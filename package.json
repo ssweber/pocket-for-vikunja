@@ -17,7 +17,8 @@
     "test:steptimes": "node tests/steptimes.mjs",
     "test:local": "node scripts/dev.mjs --test",
     "demo": "node scripts/demo.mjs",
-    "specimen": "node scripts/specimen.mjs"
+    "specimen": "node scripts/specimen.mjs",
+    "perf": "node scripts/perf/app-bench.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
