@@ -159,21 +159,22 @@ export const revealOf = row => {
    which the green fades away over. A row deleted by a full swipe, or its Delete tapped, goes on to the left the same
    way, over the red, and leaves a gap holding only "Deleted" and Restore. One animation either way, of the row's
    transform (glide); with less motion asked for, it only changes.
-   The gap shows when the slide ends, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2). `going` is what's
-   being done to it (the save, or the deletion kept to send), which marks the row when it's made (markRow, leaving.js);
-   if it hasn't yet as the row arrives, `gap()` puts the gap there meanwhile (gapNow). And one made while the row is
-   still on its way waits for it to arrive: `host`, what the gap is on (the row; for a card's header, its card), keeps
-   its look until then (.sweeping, styles.css). `wait`: no gap comes (the sheet's own row, whose sheet closes; a run's
-   step deleted), so the row stays away until `going` is over. Resolves to what `going` did: not deleted after all, or
-   a tick not saved, the gap has given way and the row is back. */
+   The gap shows when the slide ends, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2). It's the row's
+   from the moment it's let go: `going`, what's being done to it (the save, or the deletion kept to send), holds the
+   row as it starts (toggleDone's holdRow), or `gap()` does, here, where it doesn't (gapNow, leaving.js), and the mark
+   takes over when it's made (markRow). So what's worked out from what's marked (a card's top row) is the same before
+   the slide, during it and after. Only its drawing waits for the row to arrive: `host`, what the gap is on (the row;
+   for a card's header, its card), keeps its look until then (.sweeping, styles.css). `wait`: no gap comes (the sheet's
+   own row, whose sheet closes; a run's step deleted), so the row stays away until `going` is over. Resolves to what
+   `going` did: not deleted after all, or a tick not saved, the gap has given way and the row is back. */
 const away = new WeakSet();                             // rows on their way off the screen: not swiped until they're back
 async function sweep(row, going, {right = false, host = row, gap = null, wait = false} = {}){
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
-  let over = false;
-  going = Promise.resolve(going).catch(() => false).then(did => { over = true; return did; });
+  going = Promise.resolve(going).catch(() => false);
   away.add(row); row.classList.add(right ? 'revealing' : 'swiping'); host.classList.add('sweeping');
+  gap?.();
   await glide(row, right ? row.clientWidth : -row.clientWidth);
-  if (wait) await going; else if (!over) gap?.();
+  if (wait) await going;
   // Its content back in its place at once, unseen under what it uncovered, which is over it meanwhile, and not
   // sliding back: it's taken in while the row's own transition is still off.
   const under = laid.get(row)?.el;
@@ -420,7 +421,7 @@ export default {
         if (pct === null) return;
         this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {}))(true);
         const setting = this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined, gap: pct >= 100});
-        if (pct >= 100) sweep(row, setting, {right: true, gap: () => this.gapNow(t.id, 'done', setting)});
+        if (pct >= 100) sweep(row, setting, {right: true});     // (its gap is its row's already: setProgress holds it)
         if (sheet) this.sheet.dirty = true; else this.aimAfterTick(t);
       }};
   },

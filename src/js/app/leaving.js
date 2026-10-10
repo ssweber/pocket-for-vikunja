@@ -2,8 +2,9 @@
    batch clears (batch.js), so nothing moves under a finger; then every row waiting goes at once, and the rows below
    close up once. Meanwhile the mark can be taken back from the row itself: its tick opens it again (or ticks it again),
    and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it; a row done by a
-   full swipe is the same gap, holding Undo (`gap`, kept in `swept`). So it needs no Undo of its own. A full swipe's gap
-   is there as soon as the row has slid away, before Vikunja has answered (gapNow). What happens when
+   full swipe is the same gap, holding Undo (`gap`, kept in `swept`). So it needs no Undo of its own. A row is held
+   this way from the moment it's ticked or let go, before Vikunja has answered and its mark is made (holdRow): what's
+   on screen is worked out from what's done and what's marked, and mustn't change in between. What happens when
    the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
    project, a repeating task shows its next date, a deletion is sent (held in the outbox until then: holdDelete).
    Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from #said. */
@@ -16,8 +17,8 @@ const HINT_MS = 1000;
 /* Each component's marks (task id -> its mark; the rows shown with a mark point to the same one) and its batch, kept
    by its `leaving`: `this` in a method called from the markup is the row's scope, not the component, but `leaving` is
    the same object from either. `hint`: when the one-time hint, put away, gives its space back (closeHint), on the
-   component that first asked (initBatch, as Pocket starts). `early`: task id -> the gaps shown before their mark is
-   made (gapNow), each a promise of when what was done to it has answered. */
+   component that first asked (initBatch, as Pocket starts). `early`: task id -> the rows held before their mark is
+   made (holdRow), each a promise of when what was done to it has answered. */
 const state = new WeakMap();
 const of = c => {
   let s = state.get(c.leaving);
@@ -55,27 +56,42 @@ export default {
     if (said) this.said = said;
     batch.mark();
   },
-  /* The gap in row `id`'s place before its mark is made: a full swipe's row has slid away (sweep, app/progress.js), and
-     what was done to it (`settled`, its promise) hasn't answered yet. The gap shows when the slide ends, not when
-     Vikunja answers (rows-and-sheet-fixes-plan, part 2). `kind`: 'done', holding "Done" and Undo, or 'deleted',
-     "Deleted" and Restore, as the mark to come will have it. Once it has answered, the mark made meanwhile is in its
-     place (markRow); with none (not saved, or called off), the gap goes, and the row is back, with the line that says
-     why. A tap on the gap meanwhile waits for the answer (restoreRow). */
-  gapNow(id, kind, settled){
+  /* Row `id` held where it is from the moment something is done to it, before Vikunja has answered and its mark is
+     made: as the mark to come will have it (`kind`: 'done' or 'deleted'; `gap`: done by a full swipe, its gap). A task
+     is done on the phone the moment it's ticked, and a card is worked out from what's done and what's marked
+     (cardOf, app/cards.js): without this its row would drop off its card while the save is on its way, the next
+     subtask come up in its place, and the done one be back when it's marked. Returns what lets go of it, to call once
+     it has answered: the mark made meanwhile is then in its place (markRow); with none (not saved, or called off),
+     the row is as it was, with the line that says why. A tap on it meanwhile waits for the answer (unmark,
+     restoreRow). */
+  holdRow(id, kind, gap = false){
     const s = of(this);
-    if (s.marks.has(id) || s.early.has(id)) return;
-    if (kind === 'deleted') this.leaving[id] = 'deleted'; else this.swept[id] = true;
-    s.early.set(id, Promise.resolve(settled).catch(() => {}).then(() => {
+    if (s.marks.has(id) || s.early.has(id)) return () => {};
+    this.leaving[id] = kind;
+    if (gap) this.swept[id] = true;
+    let answered;
+    s.early.set(id, new Promise(ok => { answered = ok; }));
+    return () => {
       s.early.delete(id);
       if (!s.marks.has(id)) { delete this.swept[id]; delete this.leaving[id]; }
-    }));
+      answered();
+    };
+  },
+  /* A full swipe's row held, with its gap, from the moment it's let go until what's being done to it (`settled`, its
+     promise) has answered: where that doesn't hold it itself (a deletion; a step on a run's screen). The gap is its
+     row's at once, and drawn when the row has slid away, not when Vikunja answers (sweep, app/progress.js;
+     rows-and-sheet-fixes-plan, part 2): "Done" and Undo, or for 'deleted', "Deleted" and Restore. */
+  gapNow(id, kind, settled){
+    const letGo = this.holdRow(id, kind, kind === 'done');
+    Promise.resolve(settled).catch(() => {}).then(letGo);
   },
   /* A marked row's tick, or a deleted row tapped: the mark taken back (its undo), and it doesn't go. A subtask that was
      closed with its parent is only taken out of the parent's mark: its tick then opens it as any other. Returns whether
-     the tap was the mark's: its undo's promise, if it has one. */
+     the tap was the mark's: its undo's promise, if it has one. A row held before its mark is made (holdRow): once what
+     was done to it has answered, and there's a mark to take back, or none. */
   unmark(id){
-    const m = of(this).marks.get(id);
-    if (!m) return false;
+    const m = of(this).marks.get(id), early = of(this).early.get(id);
+    if (!m) return early ? early.then(() => this.unmark(id)) : false;
     if (m.going) return true;                              // on its way out: too late
     if (id !== m.id && m.kind !== 'deleted') { this.dropMark(m, id); return false; }
     this.dropMark(m);
@@ -84,8 +100,8 @@ export default {
     return m.undo?.() || true;
   },
   /* A gap tapped: a deleted row restored (unmark), its rows sliding back in from the left, where the delete took them;
-     a row done by a full swipe not done again, sliding back in from the right. One shown before its mark was made
-     (gapNow): once what was done to it has answered, and there's a mark to take back. */
+     a row done by a full swipe not done again, sliding back in from the right. One held before its mark was made
+     (holdRow): once what was done to it has answered, and there's a mark to take back. */
   restoreRow(id){
     const early = of(this).early.get(id);
     if (early) return early.then(() => this.restoreRow(id));

@@ -360,8 +360,9 @@ export default {
     if (arrived.length) this.flash(arrived, 'arrived');
     return true;
   },
-  /* Rows marked done or deleted, waiting for the batch to clear (leaving.js), stay where they were through a load of
-     their list, though Vikunja's no longer has them (a task done): they go with the batch. On Today, whose groups
+  /* Rows marked done or deleted, waiting for the batch to clear (leaving.js), or held as that from the tap, before
+     Vikunja has answered (holdRow), stay where they were through a load of their list, though Vikunja's no longer has
+     them (a task done): they go with the batch. On Today, whose groups
      are by date, so does one Vikunja now has in another group: a repeating task ticked, or added done, is open again
      at its next date, and moves there when its mark goes (its row shown done meanwhile: keep, tasks.js). */
   keepMarked(groups){

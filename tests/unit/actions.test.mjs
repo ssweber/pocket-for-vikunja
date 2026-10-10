@@ -236,10 +236,12 @@ test('a full swipe is done, its row a gap with Undo until the batch clears, and 
   assert.deepEqual([app.swept, inSheet.done], [{}, true]);
 });
 
-/* The gap shows when the row has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2): gapNow puts
-   it there (sweep, app/progress.js, as the slide ends), and the mark takes its place once the save is made. A tap on
-   it meanwhile waits for the answer, and is then its Undo. A save not made: the gap gives way, and the row says so,
-   with Try again, as a tick's does. A deletion's gap the same, until it's kept to send. */
+/* The gap shows when the row has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2): it's the
+   row's from the moment it's let go, held by what's done to it (toggleDone's holdRow; gapNow, where that doesn't hold
+   it itself: a deletion, a step on a run's screen), and the mark takes its place once the save is made. A tap on it
+   meanwhile waits for the answer, and is then its Undo. A save not made: the gap gives way, and the row says so, with
+   Try again, as a tick's does. A deletion's gap the same, until it's kept to send. A row ticked by a tap is held the
+   same way, with no gap. */
 test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\'s undone once it has; not saved, the gap gives way to the row\'s line', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c), send = globalThis.fetch;
   // Vikunja's answers, held back until `answer()`.
@@ -250,8 +252,8 @@ test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\
   try {
     app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
     let setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
-    app.gapNow(1, 'done', setting);
-    assert.deepEqual([app.swept, app.leaving, v.task(1).done], [{ 1: true }, {}, false], 'the gap, with nothing answered yet');
+    assert.deepEqual([app.swept, app.leaving, v.task(1).done], [{ 1: true }, { 1: 'done' }, false], 'held as the gap from the let-go, with nothing answered yet');
+    app.gapNow(1, 'done', setting);                                            // (held already: nothing more)
     const tapped = app.restoreRow(1);
     await turn();
     assert.deepEqual([app.swept, patches(v)], [{ 1: true }, []], 'its Undo tapped: nothing until the answer');
@@ -269,8 +271,7 @@ test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\
     // Not saved: the gap gives way to the row, which says so.
     v.trouble = () => 500;
     setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
-    app.gapNow(1, 'done', setting);
-    assert.deepEqual(app.swept, { 1: true });
+    assert.deepEqual([app.swept, app.leaving], [{ 1: true }, { 1: 'done' }]);
     await setting; await turn();
     assert.deepEqual([app.swept, app.leaving, app.tasks[1].done], [{}, {}, false], 'no gap, and not done');
     assert.match(app.toast.msg, /^Not saved: /);
@@ -278,6 +279,14 @@ test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\
     v.trouble = () => null; app.rowEl = () => ROW;                             // (its row is on screen)
     await app.toast.action.fn();
     assert.deepEqual([app.swept, v.task(1).done], [{ 1: true }, true], 'Try again: done, its row the gap');
+    // A tick tapped: held where it is, done, with no gap; tapped again before the answer, that's its undo once it's in.
+    await app.unmark(1);
+    held = [];
+    const ticking = app.toggleDone(app.tasks[1], ROW), again = app.unmark(1);
+    assert.deepEqual([app.leaving, app.swept, typeof again.then], [{ 1: 'done' }, {}, 'function']);
+    answer();
+    await ticking; await again;
+    assert.deepEqual([app.leaving, v.task(1).done, app.tasks[1].done], [{}, false, false], 'ticked and ticked again: open, and nothing left marked');
     // A deletion's: "Deleted" and Restore at once; called off (its question said no), the row is back.
     let said = null;
     const asked = new Promise(ok => { said = ok; });

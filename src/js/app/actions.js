@@ -102,7 +102,9 @@ export default {
      under them, with an Undo; a subtask in its parent's sheet stays where it is, done. Not saved, its row says so, with
      Try again. A done task shown over its open subtasks (isHead), opened again, stays where it is (reopenedHead).
      `extra.gap`: done by a full swipe, or a parent completed, its row (or card) a gap holding Undo until the batch
-     clears (markRow), a subtask's in its parent's sheet too, which then shows it done. */
+     clears (markRow), a subtask's in its parent's sheet too, which then shows it done. Its row is held as that from
+     this moment, not from Vikunja's answer (holdRow, leaving.js), so nothing worked out from what's done (a card's
+     rows, its top row) changes while the save is on its way; not saved, it's let go of. */
   async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl, extra.gap);
@@ -116,6 +118,7 @@ export default {
     for (const k of ['start_date', 'end_date']) if (isSet(t[k])) back[k] = t[k];
     if ((t.reminders || []).some(r => !r.relative_to)) back.reminders = plainReminders(t);
     t.done = !was;
+    const letGo = !was && (inList || (gap && inSheet)) ? this.holdRow(t.id, 'done', gap) : null;
     try {
       const saved = await this.saveTask(t.id, {done: !was, ...patch});
       Object.assign(t, saved);
@@ -178,7 +181,7 @@ export default {
     } catch (e) {
       t.done = was;
       this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top', action: {label: 'Try again', fn: () => this.toggleDone(t, this.rowEl(t.id), extra, undoExtra)}});
-    }
+    } finally { letGo?.(); }
   },
   /* A parent's worked-out progress (parent-tasks-plan, part 3), written to its percent_done after a change to its
      subtasks, with that change: in the same chain of saves, right after it, Vikunja's copy read first and only a figure
@@ -258,16 +261,20 @@ export default {
   async tickRunStep(t, run, rowEl, gap = false){
     const was = t.done;
     t.done = !was;
-    const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
-    if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
-    const later = !was && r.status === 'offline' ? sentLater('Done: ' + t.title) : '';
-    // In a sheet, offline, its row says when it's sent.
-    if (!rowEl) { if (later) this.say(later, {row: {id: t.id, text: sentLater('Done'), stays: true}, place: 'sheet:top'}); return; }
-    const moves = () => !!this.searchGroups(t);
-    if (was && !moves()) { this.said = 'Not done: ' + t.title; return; }
-    this.markRow(t.id, {kind: was ? 'open' : 'done', gap, said: later || (was ? 'Not done: ' : 'Done: ') + t.title, undo: () => this.tickRunStep(t, run, null),
-      out: () => this.bothWays && !moves() ? [] : [t.id],
-      gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) this.removeRow(t.id); }});
+    // (Its row held where it is while the outbox takes it, as a task's is while it's saved: toggleDone, holdRow.)
+    const letGo = !was && rowEl ? this.holdRow(t.id, 'done', gap) : null;
+    try {
+      const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
+      if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
+      const later = !was && r.status === 'offline' ? sentLater('Done: ' + t.title) : '';
+      // In a sheet, offline, its row says when it's sent.
+      if (!rowEl) { if (later) this.say(later, {row: {id: t.id, text: sentLater('Done'), stays: true}, place: 'sheet:top'}); return; }
+      const moves = () => !!this.searchGroups(t);
+      if (was && !moves()) { this.said = 'Not done: ' + t.title; return; }
+      this.markRow(t.id, {kind: was ? 'open' : 'done', gap, said: later || (was ? 'Not done: ' : 'Done: ') + t.title, undo: () => this.tickRunStep(t, run, null),
+        out: () => this.bothWays && !moves() ? [] : [t.id],
+        gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) this.removeRow(t.id); }});
+    } finally { letGo?.(); }
   },
   // Open and Done, in search or a project: the one a task is in, and the one its tick moves it to.
   searchGroups(t){

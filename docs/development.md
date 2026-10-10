@@ -229,10 +229,9 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   it done, as a full swipe is; everything felt goes through `haptic()`, as an iPhone has no `navigator.vibrate`); let go, that progress is set and the row springs back, its tick showing the quarter;
   past half, the green is solid and the ring its ✓, and let go there it's done, the row gliding on off the
   screen to the right and leaving a gap at its height with "Done" and Undo, which the green fades away over (`sweep`;
-  `markRow`'s `gap`, `swept`). The gap shows when the slide ends, not when Vikunja answers: if the save hasn't marked
-  the row yet, `gapNow` (`app/leaving.js`) puts the gap there meanwhile, a tap on it waiting for the answer, and a
-  save not made takes it away again, the row saying so with Try again; a mark made while the row is still on its way
-  waits for it to arrive (`.sweeping`). Left,
+  `markRow`'s `gap`, `swept`). The gap shows when the slide ends, not when Vikunja answers: it's the row's from the
+  moment it's let go (`holdRow`, `app/leaving.js`, below), a tap on it waiting for the answer, and a save not made
+  takes it away again, the row saying so with Try again; only its drawing waits for the row to arrive (`.sweeping`). Left,
   a row with progress (`down`): the ring emptying, the same room a quarter, stopping at 0% with a firmer tick however
   far it's pulled, no Delete on the same swipe; a done row opens again at 75% and on down. Left, a row at 0%
   (`delete`): its Delete (`swipeOf`), red under the whole row with a real button, named for the task, at its end:
@@ -387,14 +386,18 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   `markRow` (`app/leaving.js`) keeps it where it is, at its height, as `leaving[id]` says (`'done'`, `'open'`,
   `'deleted'`: a gap at its height, `.del-gap`, holding only "Deleted" and Restore where its slot was; tapped, the row
   slides back in, `restoreRow`; done by a full swipe right, or a parent completed from its ring, the same gap holding
-  "Done" and Undo, `gap: true`, kept in `swept`; a full swipe's gap is there as its row has slid away, before the mark
-  is made, `gapNow`), with the rows that go with it (subtasks closed with a parent, or
+  "Done" and Undo, `gap: true`, kept in `swept`), with the rows that go with it (subtasks closed with a parent, or
   deleted with it). Its tick meanwhile is the mark's `undo` (`unmark`, from `tickRow`); a deleted row's
-  tap anywhere restores it. Each mark restarts the batch (`batch.js`): 3 seconds after the last, counted from when the
+  tap anywhere restores it. A row is held as its mark will have it from the moment it's ticked or let go, before
+  Vikunja has answered and the mark is made (`holdRow`, from `toggleDone` and `tickRunStep`; `gapNow`, from a full
+  swipe's `sweep`, for a deletion and a step on a run's screen): a task is done on the phone at once, and what's on
+  screen is worked out from what's done and what's marked (a card's rows and its top row, `cardOf`; a row's slot; the
+  rows a load keeps, and as they're shown, `keepMarked` and `keep`, below), so without it a card's top row done gave way to the next subtask until the answer
+  came. Not saved, it's let go of; a tap on it meanwhile waits for the answer. Each mark restarts the batch (`batch.js`): 3 seconds after the last, counted from when the
   finger lifts, never while a finger is down or the page or a sheet scrolls; then every marked row that leaves (`out`)
   folds at once and each mark's `gone` runs (`clearBatch`): off Today, between Open and Done (`moveInSearch`), a
   repeating task's next date, a deletion sent. Leaving the screen, or Pocket put away, clears it at once (`clearNow`,
-  from `foldLines`), and a list loaded meanwhile keeps the marked rows (`keepMarked`): one Vikunja no longer lists, and a repeating task ticked, or added done, which Vikunja has open again at its next date, as it's shown, ticked, with the date it had (`keep`, `app/tasks.js`), in the group it was in on Today. While marked, a row keeps the
+  from `foldLines`), and a list loaded meanwhile keeps the rows marked, or held from the tap (`keepMarked`): one Vikunja no longer lists, and one shown done that Vikunja has open (a task just ticked, its save not yet answered, or a repeating task ticked, or added done, which Vikunja has open again at its next date), as it's shown, ticked, with the date it had (`keep`, `app/tasks.js`), in the group it was in on Today. While marked, a row keeps the
   slot it had (`rowSlot`), so its title doesn't move.
 - A task sheet's label-and-value rows (`.prop`) take a tap anywhere: `propTap` (`app/sheet.js`) works the control
   marked `data-tap` (a date's `showPicker()`, a select's, or the row's Add), and leaves a tap on a control or a button
@@ -448,7 +451,8 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   (and nothing for today with no time under Today's heading), and a date moved to another day keeping its time of day
   (`dates.test.mjs`); which tasks are cards on Today and why, where each sits, a card's top row (the most urgent; a
   run's next step, kept while a tick has pinned it), collapsed with More under it, opened and collapsed by Less, none
-  with one open subtask, search's cards, a project's open cards, a ticked top row staying until the batch clears, the
+  with one open subtask, search's cards, a project's open cards, a ticked top row staying until the batch clears (from
+  the tap or a full swipe's let-go, however late Vikunja's answer, a run's step too, and a row kept by a list loaded meanwhile), the
   hint on a card's top row, a row on one line, a run's card's heading, where a run goes next (`whereNext`) on its
   screen and on its card, the step card's slot, a run's own row (its ring, its slot, who started it), its bottom box
   and Repeat, and a parent's ring: one open subtask completed at once, more asked first, the question asked from a
@@ -510,7 +514,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   back into quick add to make the same tasks (a project's heading left out), with Open in Vikunja's address, and copies a task's notes
   and a comment, opens Today at once with the copy kept of it while its lists answer late (no Loading, a line under the
   header after a second) and changes a row in place, shows a new task at once and dotted only after a few seconds,
-  shows a task with subtasks as a stacked card on Today (its most urgent subtask on top, its header with its ring, its rows indented, its footer's tab and its tap area from the row's foot, More and Less, its top row ticked staying until the batch clears and the next sliding up, a row on it swiped and the parent's figure written, a full swipe's gap, and its ring with one open subtask), collapses an opened card once it's scrolled away or Today is left, brings a task onto Today by a subtask of yours made today without a date (not one made before today), and by a subtask due today, and opens Today with its cards from the copy kept, draws a long project's 80 open tasks a batch at a time on a phone's CPU, every row there once it's loaded, shows its Done's 100 done most recently with a row for the last 5, and search's done matches 50 at a time with the same row, opens the project's kept copy with Done closed and no done rows when it was left closed, opens Pocket on that kept screen before Vikunja says who's signed in (a tick made meanwhile sent only after), gets the page compressed from the plugin (brotli and gzip, each the page decoded, and neither served by its own name), keeps a long title with no spaces
+  shows a task with subtasks as a stacked card on Today (its most urgent subtask on top, its header with its ring, its rows indented, its footer's tab and its tap area from the row's foot, More and Less, its top row ticked staying until the batch clears and the next sliding up, a row on it swiped and the parent's figure written, a full swipe's gap, and its ring with one open subtask), holds a save's reply back and watches a card's top row done, by a full swipe and by its tick, stay the card's one row in every frame until the batch clears, collapses an opened card once it's scrolled away or Today is left, brings a task onto Today by a subtask of yours made today without a date (not one made before today), and by a subtask due today, and opens Today with its cards from the copy kept, draws a long project's 80 open tasks a batch at a time on a phone's CPU, every row there once it's loaded, shows its Done's 100 done most recently with a row for the last 5, and search's done matches 50 at a time with the same row, opens the project's kept copy with Done closed and no done rows when it was left closed, opens Pocket on that kept screen before Vikunja says who's signed in (a tick made meanwhile sent only after), gets the page compressed from the plugin (brotli and gzip, each the page decoded, and neither served by its own name), keeps a long title with no spaces
   from widening the page, attaches a file and a photo, creates a project, assigns someone, loads a new version of Pocket on refresh, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side (keeping what was being written when Vikunja signs you out), single sign-on, renewing an expired sign-in from both at once, and following a switch to another account.
 - `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload and between a task and its label, loses replies (for a task with an @username, with `ASSIGNEE`, and for a subtask link), answers 500, fills up Pocket's storage, adds the same title twice (in Pocket, and on the web then in Pocket), adds a subtask and a comment in a sheet offline, and a subtask from the add box on a project's list (waiting on its parent's card), a pasted list with two headings (each parent waiting with its lines under it, then each line under the right one, a done one done), puts a cancelled task's words back in the box, shows what's waiting in the header and lists it in Waiting to send (dropping one from there), moves over what an older Pocket left waiting, and has two tabs send the same waiting task. It also opens Pocket again from the page it saved, then from the one fetched behind it. `BROWSER=webkit` runs it on Safari's engine.
