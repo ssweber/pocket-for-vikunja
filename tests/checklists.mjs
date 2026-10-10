@@ -546,6 +546,8 @@ try {
     await page.click(`${row} .claim:has(.me)`);
     await page.waitForSelector(`${row} .claim.mine .av`);
     await page.click('#btn-run-more');
+    // A run has the text only: its record of who did each step can't come back as tasks, so it has no Markdown copy.
+    await expect(page.locator('#r-sharing button')).toHaveText(['Share progress as a text']);
     await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
     await page.click('#r-share-text');
     await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: run.title, text: [`${run.title}  ▰▰▱ 67% · 1 skipped`,

@@ -1,5 +1,6 @@
-// Sharing a task's, a project's or a run's progress as a text, copying it as a Markdown list, opening it in Vikunja, and
-// copying a task's notes or a comment. What the text says is share.js's; this gathers what's on screen for it.
+// Sharing a task's, a project's or a run's progress as a text, copying a task or a project as a Markdown list that comes
+// back (not a run: share.js says why), opening it in Vikunja, and copying a task's notes or a comment. What each says
+// is share.js's; this gathers what's on screen for it.
 import {cache} from '../util.js';
 import {htmlToText} from '../html.js';
 import {hasOwnOrder, parseStep, stepsOf} from '../checklists.js';
@@ -90,7 +91,8 @@ export default {
     }
     await this.copyOut(text, 'sheet:top', COPIED.text);
   },
-  // As a Markdown list that comes back, written in quick add's words with this person's own prefixes and due time.
+  // The open task, or the project on screen, as a Markdown list that comes back, written in quick add's words with this
+  // person's own prefixes and due time.
   copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {mode: this.quickAddMode, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },
   // Its page in Vikunja's web app: a task's (a run is one), or a project's.
   vikunjaUrl(what){

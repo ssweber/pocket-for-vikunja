@@ -21,7 +21,7 @@ const day = d => new Date(2026, 9, d).toLocaleDateString([], { weekday: 'short' 
 const date = d => new Date(2026, 9, d).toLocaleDateString([], { month: 'short', day: 'numeric' });
 const priya = { username: 'priya', name: 'Priya Shah' }, sam = { username: 'sam', name: '' }, jo = { username: 'jo', name: 'Jo' };
 const item = (title, more = {}) => ({ title, done: false, pct: 0, items: [], ...more });
-const text = doc => shareText(doc, NOW), md = (doc, opts) => markdownText(doc, { now: NOW, ...opts });
+const text = doc => shareText(doc, NOW), md = (doc, opts) => markdownText(doc, opts);
 globalThis.chrono = await import('../../pocket/app/' + readdirSync(new URL('../../pocket/app/', import.meta.url)).find(f => /^chrono-.*\.js$/.test(f)));
 // The van, as agreed: its own 60%, a subtask done, one half way, one Priya's on, one not begun.
 const van = { kind: 'task', ...item('Pack the van', { pct: 60 }), items: [
@@ -96,8 +96,6 @@ test('a run: who did each step, who skipped one, who\'s on the rest', () => {
     item('First article check', { pct: 50, people: [jo] }), item('Sweep up', { people: [priya, jo] })] };
   assert.equal(text(run), ['Startup · Oct 7  ▰▰▰▱▱ 1 of 4 done · 1 skipped', '✓ Check the guards · Priya', '– Warm up the press · skipped by sam',
     '◐ First article check 50% · Jo', '○ Sweep up · Priya, Jo'].join('\n'));
-  assert.equal(md(run), ['## Startup · Oct 7 (1 of 4 done · 1 skipped)', '', '- [x] Check the guards @priya', '- [x] ~~Warm up the press~~ (skipped by @sam)',
-    '- [ ] First article check (50%) @jo', '- [ ] Sweep up @priya @jo'].join('\n'));
   // Collapsed, it still says who did them.
   const many = { kind: 'run', ...item('Close · Oct 7'), items: [...['a', 'b', 'c', 'd', 'e', 'f'].map((t, i) => item(t, { done: true, by: [i % 2 ? sam : priya] })),
     item('g', { done: true, skipped: true, by: [jo] }), ...['h', 'i', 'j', 'k'].map(t => item(t))] };

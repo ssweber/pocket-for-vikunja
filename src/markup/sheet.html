@@ -14,7 +14,8 @@
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
     <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)" @keydown.escape.stop="sheet.menu = false">
       <button role="menuitem" id="d-share-text" @click="sheet.menu = false; shareProgress('task')">Share progress as a text</button>
-      <button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button>
+      <!-- Not for a run opened as a task: a run has Share as text only (share.js) -->
+      <template x-if="checklistRole !== 'run'"><button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button></template>
       <a role="menuitem" id="d-open-vikunja" :href="vikunjaUrl('task')" target="_blank" rel="noopener" @click="sheet.menu = false">Open in Vikunja ↗</a>
       <!-- The way to move it for a keyboard or a screen reader, as a finger does by holding its row and moving it -->
       <template x-for="m in canEdit && sheetMoves ? [sheetMoves] : []" :key="0"><div class="menu-pair">

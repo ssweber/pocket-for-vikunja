@@ -1,7 +1,8 @@
 /* What Pocket sends out of a list, each with a job of its own (design rule 9). Share as text is what you see
    (shareText): a task's, a project's or a run's progress as plain text for a message, with the figures the screen
    shows, for a person to read. Copy as a Markdown list comes back (markdownText): a task or a project written in quick
-   add's words, so pasted into Pocket's add box it makes the same tasks. Built from data only, never from HTML, so the
+   add's words, so pasted into Pocket's add box it makes the same tasks. A run has only the text: its record of who did
+   each step, and who skipped one, can't come back. Built from data only, never from HTML, so the
    unit tests check every rule here. Each item is
    {title, done, pct: its own progress (0–100), due, people: who's on it, by: who did it (a run's step), skipped,
    priority, labels: their names, repeat: {after, mode}, as Vikunja keeps them (repeat_after, repeat_mode),
@@ -12,7 +13,6 @@ import {parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee} from './quic
 // A person as a text names them: the first word of their name, else their username.
 export const firstName = u => String(u?.name || '').trim().split(/\s+/)[0] || u?.username || '';
 const names = users => [...new Set((users || []).map(firstName).filter(Boolean))].join(', ');
-const handles = users => [...new Set((users || []).map(u => u?.username).filter(Boolean))].map(n => '@' + n).join(' ');
 
 /* Five segments for a task's own progress: one at least once it's begun, and the fifth only when it's all done. A
    parent's (`ring`: its worked-out figure) has one segment per subtask, filled for each done, as its ring counts them. */
@@ -100,16 +100,6 @@ export function shareText(doc, now = new Date()){
   return [head, ...textLines(items, 0, {long: count(items) > COLLAPSE.lines, bars: false, now})].join('\n');
 }
 
-// A run's steps as a Markdown list, who did each and who skipped one: words for people, as it was written before.
-function runLines(items, depth, now){
-  return items.flatMap(it => {
-    const p = progress(it), due = !it.done && dueWords(it.due, now), extra = [!it.done && p.words, due].filter(Boolean).join(', ');
-    let line = '  '.repeat(depth) + `- [${it.done ? 'x' : ' '}] ` + (it.skipped ? `~~${it.title}~~` : it.title) + (extra ? ` (${extra})` : '');
-    const who = handles(it.done ? it.by : it.people);
-    if (it.skipped) line += ' (skipped' + (who ? ' by ' + who : '') + ')'; else if (who) line += ' ' + who;
-    return [line, ...runLines(it.items || [], depth + 1, now)];
-  });
-}
 
 /* ---------- a copy that comes back: quick add's words ---------- */
 const two = n => String(n).padStart(2, '0');
@@ -168,11 +158,14 @@ const mdLines = (items, depth, opts) => items.flatMap(it => [quickLine(it, '  '.
    it, and share.test.mjs reads each one back). A task is a heading, "## Pack the van @priya !3 2026-10-16" ("## [x]"
    when it's done), then its subtasks, each a line. Nothing collapsed. A project: "# Café · 12 open · 5 done", then
    its open tasks, each with its open subtasks; pasted back, that heading is left out, as the list's name, and its
-   tasks are made. What it never carries, so a paste never makes: notes, comments, photos, and a project's done tasks. `opts`: {mode: the user's Quick Add Magic mode, whose prefixes it's written with ("disabled":
-   with none of those words); dueTime: their default due time}. A run's is still its record, for people (runLines). */
-export function markdownText(doc, {mode = 'vikunja', dueTime = '12:00', now = new Date()} = {}){
+   tasks are made. What it never carries, so a paste never makes: notes, comments, photos, and a project's done tasks.
+   `opts`: {mode: the user's Quick Add Magic mode, whose prefixes it's written with ("disabled": with none of those
+   words); dueTime: their default due time}.
+   A run has no Markdown copy. It was a record of who did each step and who skipped one, which can't come back: pasted,
+   "- [x] Load chairs @priya" would put Priya on a new task, and quick add has no word for skipped. Share as text keeps
+   that record. */
+export function markdownText(doc, {mode = 'vikunja', dueTime = '12:00'} = {}){
   const items = doc.items || [], opts = {mode, dueTime};
-  if (doc.kind === 'run') return [`## ${doc.title}` + (progress(doc).words ? ` (${progress(doc).words})` : ''), '', ...runLines(items, 0, now)].join('\n').trimEnd();
   if (doc.kind === 'project') return [`# ${doc.title} · ${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), ...mdLines(items, 0, opts)].join('\n');
   return [quickLine(doc, `## ${doc.done ? '[x] ' : ''}`, opts, true), ...mdLines(items, 0, opts)].join('\n');
 }

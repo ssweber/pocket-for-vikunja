@@ -208,7 +208,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   done". A run's says who did each step, "✓ Load chairs · Priya", who skipped one, and who's on the rest. Notes aren't
   included. Where there's no share sheet (on most computers), the text is copied instead, and the sheet says "Copied:
   paste it into a message".
-- **Copying:** beside it, **Copy as a Markdown list** is the copy that comes back. The text you share is what you
+- **Copying:** beside it, for a task and a project, **Copy as a Markdown list** is the copy that comes back. The text you share is what you
   see, for a person to read; the Markdown list is written in quick add's words, so pasted into Pocket's add box it
   makes the same tasks. A task is a heading, then a line for each subtask, with nothing collapsed:
 
@@ -227,7 +227,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   worked out again from them. A title that quick add would read words in is quoted, `- [ ] "Lunch friday" @sam`, so it
   comes back as its title (with `'` when it has a `"` in it); most need none. Notes, comments and photos aren't in it.
   A project's copy is one heading, `# Café · 12 open · 5 done`, then its open tasks in its list's order, each with its
-  open subtasks; pasted back, the heading is left out and its tasks are made. Its done tasks aren't in the copy. It reads as a task list in a notes app too, and
+  open subtasks; pasted back, the heading is left out and its tasks are made. Its done tasks aren't in the copy.
+  A run has no Markdown copy: who did each step, and who skipped one, can't come back as tasks (a name on a done step
+  would put that person on a new one, and quick add has no word for skipped). Its text keeps that record, "✓ Load
+  chairs · Priya", and a run is made again by starting its checklist. It reads as a task list in a notes app too, and
   Vikunja's own quick add reads most of it (not done, nor progress: there they stay in the title). **Open in Vikunja
   ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
