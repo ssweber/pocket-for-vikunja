@@ -309,29 +309,27 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
   its title and leave the words after them to be read: `"Lunch friday" @priya tomorrow` is "Lunch friday", Priya's, due
   tomorrow. (The words after are Pocket's own: in Vikunja, quotes work only round the whole text.)
 - **Pasting a list:** with more than one line in the box, each line becomes a task, with its own dates and shortcuts.
-  Bullets, numbering and checkboxes are removed. The
-  whole list goes to one project: add `+orders` to any line.
-- **Parents in a pasted list:** a line starting `## `, a heading as Markdown notes write one, is a task, and the lines
-  under it, up to the next heading, are its subtasks; a `###` heading goes under the `##` before it. A line indented
-  more than the line above it is under that line, to any depth, as in Vikunja's web app: spaces or tabs, of any width.
-  And for typing, a first line ending with a colon, `Groceries:`, is the parent of the rest, the colon taken off, as a
-  list starts in a message. A heading with one `#` is the name of the whole list, as a project's copy starts with
-  (below): it's left out, and a chip says so.
-  The chip says what
-  the list makes: **2 tasks + 7 subtasks**. **↳ Under first line** makes the rest subtasks of the first, for a list
-  written without a parent; it shows on by itself when the first line is one, and tapping it off makes them all tasks
-  of their own. In a task's subtask box, and the bottom box while it adds subtasks, a heading or an indented line goes
-  under the line it's under, which goes under the task; a first line's colon isn't read there.
+  Bullets, numbering and checkboxes are removed. The whole list goes to one project: add `+orders` to any line.
+- **Parents in a pasted list:** three ways to say which line the others go under.
+  A heading: a line starting `## `, as Markdown notes write one, is a task, and the lines under it, up to the next
+  heading, are its subtasks; a `###` heading goes under the `##` before it. Indenting, as in Vikunja's web app: a line
+  indented more than the line above it is under that line, to any depth, in spaces or tabs of any width. And for
+  typing, a colon: a first line ending with one, `Groceries:`, is the parent of the rest, the colon taken off, as a
+  list starts in a message. The chip says what the list makes: **2 tasks + 7 subtasks**. **↳ Under first line** makes
+  the rest subtasks of the first, for a list written with none of these; it shows on by itself when the first line is
+  a parent, and tapping it off makes them all tasks of their own. A heading with one `#` is the name of the whole
+  list, as a project's copy starts with (see **Copying**, under Tasks): it's left out, and a chip says so. In a task's
+  subtask box, and the bottom box while it adds subtasks, a heading or an indented line goes under the line it's
+  under, which goes under the task; a first line's colon isn't read there.
 - **A line that's done already:** an `x` and a space at the start of a line, or a ticked checkbox, adds the task done:
   `x Call the plumber`, `x - Call the plumber`, `[x] Call the plumber`, `- [x] napkins`, `☑ napkins`. It shows ticked
   where it went and leaves with the tasks you ticked, as a tick does; one that repeats moves on to its next date.
   A **Done** chip says so, and the marker is highlighted in the box; tap the chip and the marker stays in the title
   instead, as with any chip. In a pasted list, one chip counts them, **2 arrive done**: tap it to leave those lines
-  out, **2 ticked off already: left out**, and again to bring them back.
-  Without the space it's a word, so "x-ray the pipe" stays as typed, and so does a capital "X marks the spot". This is
-  Pocket's own: Vikunja's quick add has no word for done. It works in quick add and in the subtask boxes, whichever
-  quick add mode is set. On a run's screen and in a template's steps, a ticked line is left out instead: a step is done
-  by doing it.
+  out, **2 ticked off already: left out**, and again to bring them back. Without the space it's a word, so "x-ray the
+  pipe" stays as typed, and so does a capital "X marks the spot". This is Pocket's own: Vikunja's quick add has no
+  word for done. It works in quick add and in the subtask boxes, whichever quick add mode is set. On a run's screen
+  and in a template's steps, a ticked line is left out instead: a step is done by doing it.
 - **How far along it is:** a figure at the end of a line, `Tables (50%)` or `Tables 50%`, is the task's progress, as
   swiping its row would set it, and `100%` is done. It can come before the line's other words, `Tables 50% tomorrow
   @priya`, but not in the middle of the title: "Discount 50% on mugs" stays as typed. A task with subtasks has no

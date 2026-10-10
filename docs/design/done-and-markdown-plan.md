@@ -1,7 +1,8 @@
 # Quick add: tasks that arrive done, parents in a pasted list, and Markdown that comes back
 
-Settled with the user on 2026-10-09, from a note written with an outside chat. Not built yet.
-Each part below is built, tested and committed on its own, in the order given.
+Settled with the user on 2026-10-09, from a note written with an outside chat. Built on 2026-10-10, each part in
+commits of its own, in the order given; **As built**, at the end, says what the build chose where this left a detail
+open.
 
 ## The goal
 
@@ -137,3 +138,39 @@ The user's answers, 2026-10-09:
 2. **A pasted list's ticked lines** arrive done; a tap on "2 arrive done" leaves them out.
 3. **A run** has Share as text only.
 4. **A title with quick add's words in it** is quoted, `"Lunch friday" @sam`, not escaped with a backslash.
+
+## As built
+
+Where the plan left a detail open, the build chose these (2026-10-10):
+
+- **Done markers.** `x ` counts only at the very start of a line (after `>` quote marks), not after a bullet: `- x
+  marks the spot` is a title. `[x]`, `☑` and `☒` need no space after them, as before. A heading can say it's done,
+  `## [x] Pack the van`, which is how a done task's copy starts.
+- **Progress.** 1 to 100 is read; `0%` and anything past `100%` are words, and so is a figure alone on a line. `100%`
+  is done. "The end of a line" is the end of its title once its other words are read, so the copy's `Tables (50%) @sam
+  2026-10-15` has one. It's read whichever quick add mode is set, as done is, but not in a checklist's steps. A line
+  that says it's done and has a figure arrives done, the figure taken off.
+- **The example in part 3** shows `Tables (50%)` with a subtask under it; the rule beside it says a figure is written
+  only for a task with no subtasks, and that's what's built: `- [ ] Tables`, then `  - [ ] Legs`.
+- **Headings.** A heading with more `#`s is under the one before it with fewer (`###` under `##`). A line with one
+  `#` is the list's name only when the box holds other lines; alone, it's a title as typed, so a line like "# of
+  chairs we need" can still be added.
+- **Indenting.** A tab counts as four spaces.
+- **A first line's colon** is read in quick add's box only: a subtask box has no ↳ Under first line to turn it off
+  with. With ↳ tapped off, the colon stays in the title, as a chip tapped off keeps its words.
+- **↳ Under first line** on a list whose first line isn't a parent, but which has parents further down: tapped on,
+  the first line becomes the parent of every line with none, the rest of the list as written. Such a list can't be
+  made flat.
+- **A list's count of done lines, tapped:** the lines under a line left out go under what it was under.
+- **The copy with quick add turned off** has each line's title, done state, nesting and progress, which are read
+  whichever mode is set, and none of the other words, which wouldn't be.
+- **Quoting** is decided by reading each line back: if quick add wouldn't make the same task of it, its title is
+  quoted. So what follows the title counts too: "Sign in" is quoted before a date, which "in" would go with. The
+  title ends at the first such quote with a space, or the end of the line, after it.
+- **A repeat** is written in the largest unit that fits ("every 2 weeks", "every 30 days"); one that isn't whole
+  hours has no words and is left out. A repeat counted from the day a task is done comes back as a plain one.
+- **A subtask's labels** are in a task's copy only where Pocket has loaded that subtask itself: Vikunja gives a
+  task's subtasks without them.
+- **A run opened as a task** has no Copy as a Markdown list either.
+- **Where a line's words go back** (a task that couldn't be added, a waiting one cancelled): a done line goes back as
+  `x …`, whichever marker it was typed with, and a list's shape isn't kept.
