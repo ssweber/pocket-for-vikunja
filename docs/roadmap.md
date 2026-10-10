@@ -117,6 +117,23 @@ What's left of one copy of each task, for when a feature needs it:
 - Projects (new, rename, archive, delete, use for checklists), templates (`app/checklists.js`) and runs (`app/runs.js`,
   through the outbox) still call `api()` themselves.
 
+## The same thing written once (October 2026)
+
+Part 5 of `design/rows-and-sheet-fixes-plan.md`, after going through every event and attribute binding in the markup:
+copies that had drifted apart became one piece each, in commits of their own that change nothing a person sees.
+
+1. Markup written twice or more is a piece under `src/markup/`, included where it's used (the build puts an include
+   in place, so it costs nothing as the page runs): what an add box read, as chips (`chips.html`), the gap a row or a
+   card leaves (`gap.html`), the Set up checklists card (`setup-card.html`).
+2. What every add box does is one directive, `x-box`, beside `x-style` in `component.js`, and a box's markup says
+   only what differs; `x-grow` keeps any other text box as tall as its text.
+3. A decision written out in the markup is a method with a unit test: a row's tap (`tapRow`), a ring's (`tapRing`), a
+   gap's (`tapGap`, by `isGap`), what a box sends (`boxSend`).
+
+Left as it is, on purpose: the gestures (one engine, nothing bound per row), plain taps bound on each row, and one
+row for every list, with the parts of it that a list doesn't show (design rule 4). What every row costs is measured
+before anything there is changed (the plan's part 6).
+
 ## Next, only if needed
 
 - **Separate Alpine components** for the parts that stand alone (the sheet, the toast, the add box), with what they
