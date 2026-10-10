@@ -1192,9 +1192,19 @@
     <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">
       <template x-if="capLines.length > 1 && capW === 'cap'"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(nestOn)" @mousedown.prevent @click="tapNest()">↳ Under first line</button></template>
       <template x-if="capBox.focus && !capBox.text"><span class="hint" x-text="boxHint(capW)"></span></template>
-      <template x-for="c in chips(capW)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
-        :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-        @mousedown.prevent @click="tapChip(capW, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+      <!-- What it read (chips.html), for whichever box it is now -->
+      <template x-for="bw in [capW]" :key="0">
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
+  :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+      </template>
     </div>
   </div>
 </div>
@@ -1646,10 +1656,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
                 </template>
               </div></template>
 <!-- What quick add read in a template's box (`bw`, its name in box()): people, labels and priority, as chips to tap off,
-     or what @ and * suggest; while it's empty and focused, what it reads. -->
-<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template><template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+     or what @ and * suggest (chips.html, the chips of every add box); while it's empty and focused, what it reads. -->
+<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template>
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+</div>
               <!-- Under the box, so it has the row's width: its own sheet, ⋯ and ×, which keep the keyboard up -->
               <div class="step-in-foot">
                 <button type="button" class="linkish step-notes" :id="'step-notes-' + st.id" @mousedown.prevent @click="openStep(i)">Notes and photos ›</button>
@@ -1697,7 +1716,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
         <!-- The same box as quick add: what it read is marked, with chips to undo it, and @ and * suggest people and labels -->
         <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
         <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the run's screen: it's marked as added during the run.</p></template>
-        <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox">
+        <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox" x-data="{bw: 'sub'}">
           <form id="d-subform" autocomplete="off" @submit.prevent="addSubtasks()">
             <div class="cap-field">
               <div class="cap-marks" aria-hidden="true" x-html="marksHtml('sub')"></div>
@@ -1712,9 +1731,16 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           </form>
           <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text)">
             <template x-if="sheet.sub.focus && !sheet.sub.text"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>
-            <template x-for="c in chips('sub')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
-              :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-              @mousedown.prevent @click="tapChip('sub', c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
+  :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
           </div>
         </div></template>
         <!-- Under a template: new steps a row each, with their times, added together -->
@@ -1753,10 +1779,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
 </div>
   </template>
 <!-- What quick add read in a template's box (`bw`, its name in box()): people, labels and priority, as chips to tap off,
-     or what @ and * suggest; while it's empty and focused, what it reads. -->
-<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template><template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+     or what @ and * suggest (chips.html, the chips of every add box); while it's empty and focused, what it reads. -->
+<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template>
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+</div>
 </div></template>
           <button type="button" class="draft-add" id="add-add-step" @click="addDraftRow('add')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
           <template x-if="sheet.addRows.some(r => r.text.trim())"><div style="padding:0 14px 14px">
@@ -1963,10 +1998,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
           @input="sheet.newTpl.box.caret = $el.selectionStart" @click="sheet.newTpl.box.caret = $el.selectionStart" @keyup="sheet.newTpl.box.caret = $el.selectionStart"
            @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="sheet.newTpl.box.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="setTimeout(() => { if (sheet.newTpl?.box) sheet.newTpl.box.focus = document.activeElement === $el; }, 150)"></textarea></div></div>
 <!-- What quick add read in a template's box (`bw`, its name in box()): people, labels and priority, as chips to tap off,
-     or what @ and * suggest; while it's empty and focused, what it reads. -->
-<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template><template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+     or what @ and * suggest (chips.html, the chips of every add box); while it's empty and focused, what it reads. -->
+<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template>
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+</div>
       </div>
       <div class="h3">Steps</div>
       <div class="card draft" id="new-steps" x-data="{which: 'new'}">
@@ -2004,10 +2048,19 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
 </div>
   </template>
 <!-- What quick add read in a template's box (`bw`, its name in box()): people, labels and priority, as chips to tap off,
-     or what @ and * suggest; while it's empty and focused, what it reads. -->
-<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template><template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null"
+     or what @ and * suggest (chips.html, the chips of every add box); while it's empty and focused, what it reads. -->
+<div class="chips box-chips" x-show="chips(bw).length || (box(bw).focus && !box(bw).text.trim())"><template x-if="box(bw).focus && !box(bw).text.trim()"><span class="hint" x-text="boxHint(bw)"></span></template>
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><span x-text="c.text"></span></button></template></div>
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+</div>
 </div></template>
           <button type="button" class="draft-add" id="new-add-step" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
       </div>

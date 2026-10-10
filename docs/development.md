@@ -7,8 +7,8 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
                (task-row.html), one thing in a list with cards: a row, or a stacked card (list-item.html), a
                parent's ring (ring.html), a run's step card (step-card.html), who's doing a task or a step
                (claim-slot.html), a message in a row's place (row-line.html), one in its place: under a heading, by
-               the add box, in a sheet (place-line.html), and what the add box adds subtasks or a run's steps to
-               (cap-target.html); in sheet/, a task's sheet (task.html), the card it leads with: its row, notes and
+               the add box, in a sheet (place-line.html), what the add box adds subtasks or a run's steps to
+               (cap-target.html), and what an add box read, as chips under it (chips.html); in sheet/, a task's sheet (task.html), the card it leads with: its row, notes and
                photos (task-card.html), and the question a parent's ring asks (complete.html)
   styles.css   all of the CSS
   js/          main.js, where the code starts; component.js, which puts the Alpine component together; the helpers
@@ -347,7 +347,8 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   add and the subtask boxes read all of it (`boxList`, `app/quickadd.js`); a run's box and a template's steps read
   none of it, and leave a ticked line out (`steps`, `captureLines`). `parseCapture` also reads a figure at a line's
   end as its progress (`pct`, whichever quick add mode is set; never a step's, `STEP_IGNORE`), and holds a title in
-  quotes at its start, reading the words after it. A box's choices are its chips: `ignore.done` (one line: the marker
+  quotes at its start, reading the words after it. A box's choices are its chips, drawn by one piece under every box (`markup/chips.html`, for the box `bw`: quick
+  add's, a sheet's subtask box, a template's boxes): `ignore.done` (one line: the marker
   stays in the title, as any chip tapped off; a list: those lines are left out), and quick add's ↳ Under first line
   (`nestOn`, `tapNest`: `nest`, or `flat` for a list with a parent as written). `boxItems` hands the lines to the
   outbox (`itemsOf`, `sync.js`), each saying which line it's under: an entry's items have `under`, a place in the

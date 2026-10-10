@@ -1,0 +1,10 @@
+<!-- What an add box read, as chips under it (chips(), app/quickadd.js), for the box `bw` (its name, as box() has it):
+     the one piece under quick add's box (app.html), a sheet's subtask box (sheet/task.html) and a template's boxes
+     (sheet/box-chips.html). A chip with a kind is tapped off, its words then kept in the title, and on again; one with
+     an action does that instead (a suggestion taken, a photo taken off, 🔔 Remind me, which says whether it's pressed);
+     one with neither only says something, and takes no focus: where the task lands, what a list makes, a list's name
+     left out, words not read here. Its dot is a project's or a label's colour; its icon, a photo's clip. A tap leaves
+     the focus in the box, so the keyboard stays up. -->
+<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
+  :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
