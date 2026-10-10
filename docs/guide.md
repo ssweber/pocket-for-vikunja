@@ -179,7 +179,12 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   on its row only, with no message. A change that isn't saved goes back, and the sheet says so under what it's about
   (at its top, under its notes, under its subtasks), with **Try again** where that helps. A tap anywhere on a row
   like **Due**, **Repeats**, **Reminders** or **Project** works it, not only on its box: the date's calendar, the
-  list to pick from, or **Add** for labels and people. The × that clears a date is still its own.
+  list to pick from, or **Add** for labels and people. The × that clears a date is still its own. Close the sheet with
+  its **×**, a tap on the shade above it, the phone's Back, or by pulling it down: by the bar at its top at any time,
+  or from anywhere once it's scrolled to its top. While you're typing in it (its title, its notes, a comment, a
+  subtask), only the bar pulls it down: a pull beside the box just puts the keyboard away, and a touch in the box is
+  the box's own, so the sheet never moves under what you're writing. The notes box grows with what you write, so long
+  notes scroll with the sheet. A title or notes you were changing are saved as the sheet closes, whichever way.
 - **Sharing progress:** a task's **⋯**, a project's **⋯** and a run's **⋯** have **Share progress as a text**. It opens
   the phone's share sheet, to send it in a message, as a few plain lines:
 
