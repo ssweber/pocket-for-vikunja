@@ -9,6 +9,8 @@ node scripts/perf/up.mjs --seed M          # a fresh Vikunja on 127.0.0.1:3470, 
 npm run perf                               # the app benchmark: fast, 3 runs
 npm run perf -- --profile phone --runs 2   # as on a phone: slow, so fewer runs
 node scripts/perf/up.mjs --at b884d9a      # the same data, Pocket as at another commit, to compare
+node scripts/perf/up.mjs --runs            # once: checklist runs and a template, for a run's screen
+npm run perf:rows -- run --profile phone   # what a screen costs once it's open: run, list, scroll or counts
 ```
 
 - `up.mjs`: the Vikunja (containers `pocket-perf` and `pocket-perf-db`, apart from `npm run dev`'s `pocket-dev`).
@@ -26,7 +28,44 @@ node scripts/perf/up.mjs --at b884d9a      # the same data, Pocket as at another
   it took. `--profile fast` (the computer as it is), `phone` (CPU 4 times slower, 100 ms round trips, 5 Mbps, behind a
   proxy that gzips as nginx does and passes on the plugin's compressed page), `phone-raw` (no compression), `weak` (CPU
   4x, 300 ms, 1 Mbps). `--label` names the results file, `test-results/perf/results/<label>.json`.
-- `proxy.mjs`: what app-bench puts between the browser and Vikunja, for the profiles' network.
+- `up.mjs --runs` (with `--seed`, or later) adds a project for checklists, Lists, made by a second user, perf2, and
+  shared with perf, so Today doesn't show its runs: four runs in progress, of 20 and of 60 steps, one of each with
+  its second step counting down (20 hours from its first step's tick, made again each time `--runs` is given; its
+  words change once a minute), and a template of 20 steps. app-bench's numbers stay as they were but for the two
+  requests that read that project.
+- `rows-bench.mjs` (`npm run perf:rows -- <what>`): what a screen costs once it's open, each number the median of the
+  runs (`--runs`, 3) with the least and the most, on a profile (`--profile`, as app-bench's); `--label` names the
+  results file, `test-results/perf/results/rows-<what>-<label>.json`. Its service worker is off, so the page is
+  always the one Vikunja serves now.
+  - `run`: a run's screen, for each of the four runs. Left alone for ten whole seconds between two of its reloads
+    (it's read again every 20 s): how often the run is worked out a second (`callsPerSec`: `runView`, counted on the
+    page), the main thread's time a second (`msPerSec`, from a trace: every task's time) and its longest task
+    (`longest`), and how long working the run out takes by itself (`runViewMs`); what a reload takes over idling
+    (`reloadMs`, `reloadLongest`); then a step's row swiped back and forth for 3 seconds, watched frame by frame:
+    the usual time between two frames (`frame`), the wait at a second's tick (`frameAtTick`, and the longest,
+    `frameAtTickMost`) and the longest away from one (`frameAway`), and how many frames came late (`late`, over
+    25 ms, of `frames`).
+  - `list`: Big, then Errands (25 rows, for what a short list takes). A tick tapped: from the finger lifting to the
+    tick drawn (`tick`), with the main thread's longest task (`tickLongest`); the batch clearing, 3 s later: the main
+    thread's time around the row going (`clearMs`) and its longest task (`clearLongest`). A full swipe: how long the
+    page takes over the finger going down before the row can follow it (`swipePress`), from letting go to the row
+    moving (`swipeMoves`) and to its gap drawn (`swipeGap`), the longest wait between two frames of the slide
+    (`swipeFrame`). A nudge: from the finger lifting to the row lit (`nudge`). Two subtasks added from the add box
+    at the row nudged, the first making it a card, the second under a lit card: Enter to the waiting row drawn
+    (`add1`, `add2`), to the sent one drawn (`…Sent`), and the main thread's time for all of it (`…Work`). It ticks
+    and adds, and puts back what it changed through Vikunja's API as each run ends.
+  - `scroll`: a finger's scroll (Chrome's own touch input) that starts on a plain row of Big: while its later
+    batches draw (`drawing`), once it's all drawn (`drawn`), and as its Done's rows come (`done`). From the finger's
+    first move being sent to the page's listeners hearing of it (`heard`), and Chrome's own account of the scroll's
+    first frame reaching the screen (`shown`); `busy`: how much longer the main thread was in the task it was in.
+  - `counts`: counted, not timed (fast, once): the bindings worked out for each thing done (`runs`), on how many
+    rows (`rows`) and how many on one (`most`), how many rows had their own class worked out (`cls`); what the rows
+    ask of the component as Big opens, each method counted; the listeners a row has; a sheet's lists; a run's idle
+    second. Counted with Pocket's own copy of Alpine and one line more (`countingAlpine`, `lib.mjs`), served in the
+    place of the minified one, and with the component's methods wrapped from the page (`counted`): nothing in `src/`
+    counts.
+- `lib.mjs`: what the two benches share (the profiles, the proxy, a browser signed in, a trace of the main thread).
+- `proxy.mjs`: what the benches put between the browser and Vikunja, for the profiles' network.
 - `api-bench.mjs`: how long reading Big's open and done tasks takes, page by page or the rest at once, at each page
   size (`--per 50,500`), through the proxy (`--rtt`, `--kbps`, `--gzip`).
 - `prof.mjs big|done|today`: a CPU profile of one step, with the time it spent in each function (`agg.mjs`, which

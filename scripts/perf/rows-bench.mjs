@@ -1,0 +1,341 @@
+// What every row costs once a screen is open (rows-and-sheet-fixes-plan, part 6), against the measuring Vikunja
+// (up.mjs --runs): a run's screen sitting idle and swiped, a tick, a swipe, a nudge and an add on a long project, and
+// a scroll's start while a long list draws.
+//   npm run perf:rows -- <what> [--profile fast] [--runs 3] [--label name]
+//     run     a run's screen (20 and 60 steps, one of each with a step counting down): how often the run is worked
+//             out a second while it sits idle, the main thread's time a second and its longest task, what its reload
+//             every 20 seconds takes, and a step's row swiped for 3 seconds, frame by frame (the longest wait between
+//             two frames at a second's tick, and away from one)
+//     list    Big (660 rows) and Errands (25): a tick tapped (from the finger lifting to the tick drawn), a full swipe
+//             (the finger going down, before the row can follow it; from letting go to the row moving, and to its gap
+//             drawn; the longest wait between two frames of the slide), the batch clearing (the main thread's time around the rows going, and its longest task), a nudge
+//             (to the row lit), and two subtasks added from the add box (Enter to the waiting row drawn; sent)
+//     scroll  a finger's scroll on Big while its later batches draw, once it's drawn, and as its Done opens: from the
+//             first move sent to the page hearing of it, and to the page having moved
+//     counts  counted, not timed (fast, once): the bindings worked out, per row, for each of the above (Alpine's own
+//             copy with a counter, lib.mjs), what each row asks of the component as Big opens, and the listeners a row has
+// Every number is the median of the runs with the least and the most, in ms. Results go to
+// test-results/perf/results/rows-<what>-<label>.json, with every run. A run of `list` ticks and adds: it puts back
+// what it changed (the ticks opened again, the subtasks deleted) through Vikunja's API as it ends.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { arg, loaded, median, OUT, phone, PROFILES, proxyUp, sleep, spread, traced, vikunja } from './lib.mjs';
+
+const WHAT = process.argv[2], NAME = arg('profile', 'fast'), PROFILE = PROFILES[NAME], RUNS = +arg('runs', 3);
+if (!PROFILE || !['run', 'list', 'scroll', 'counts'].includes(WHAT)) throw new Error('rows-bench.mjs run|list|scroll|counts [--profile ' + Object.keys(PROFILES).join('|') + '] [--runs 3]');
+const proxy = await proxyUp(WHAT === 'counts' ? PROFILES.fast : PROFILE);
+const ph = await phone(WHAT === 'counts' ? PROFILES.fast : PROFILE, { counting: WHAT === 'counts' });
+const { state, browser } = ph;
+if (!state.runs) throw new Error('no runs seeded: node scripts/perf/up.mjs --runs');
+const LABEL = arg('label', `${state.pocket || 'folder'}-${WHAT === 'counts' ? 'fast' : NAME}`);
+const out = {}, add = (k, v) => (out[k] ||= []).push(v);
+const r1 = x => x == null ? null : Math.round(x * 10) / 10;
+
+/* ---------- a run's screen ---------- */
+// The run's reload comes 20 s after Pocket opened and every 20 s (core.js): the idle seconds are measured between two.
+const pageTime = page => page.evaluate(() => performance.now());
+const until = async (page, ms) => sleep(ms - await pageTime(page));
+async function runScreen(key){
+  const run = state.runs[key], n = run.steps.length;
+  const { page } = await ph.page('#/run/' + run.id);
+  await page.waitForFunction(n => document.querySelectorAll('#run-steps > .row').length === n && document.getElementById('view').getAttribute('aria-busy') !== 'true', n, { polling: 200, timeout: 120000 });
+  // Idle: 10 whole seconds, from one tick of its clock to the tenth after, counted and traced, nothing asked of the page meanwhile.
+  await until(page, 23000);
+  const idle = await traced(browser, page, async () => {
+    await page.evaluate(() => { const P = window.__pf; P.stopCount = P.counted(['runView']); P.clock(() => P.stopCount.now.runView.n); });
+    await sleep(12500);
+    return page.evaluate(() => { const P = window.__pf; P.stopCount(); return P.ticks; });
+  });
+  const seen = idle.out.slice(1, 12), ticks = seen.map(t => t.t);             // (the first is the effect starting)
+  if (ticks.length < 11) throw new Error('the clock ticked ' + ticks.length + ' times');
+  const secs = ticks.slice(0, 10).map((t, i) => idle.sum(t - 2, ticks[i + 1] - 2));
+  const span = (ticks[10] - ticks[0]) / 1000;
+  // How long working the run out takes by itself, here: 200 times over.
+  const each = await page.evaluate(() => { const a = window.__pf.app(), t = performance.now(); for (let i = 0; i < 200; i++) void a.runView; return (performance.now() - t) / 200; });
+  const res = { callsPerSec: r1((seen[10].n - seen[0].n) / 10), msPerSec: r1(median(secs)), longest: r1(idle.longest(ticks[0] - 2, ticks[10] - 2)),
+    layoutPerSec: r1(idle.layout(ticks[0] - 2, ticks[10] - 2) / span), runViewMs: Math.round(each * 1000) / 1000 };
+  // Its reload, 40 s after Pocket opened: the main thread's time from just before it to 4 s after, less what idling takes.
+  await until(page, 39000);
+  const reload = await traced(browser, page, async () => { await sleep(5500); });
+  res.reloadMs = r1(reload.sum(39500, 44500) - res.msPerSec * 5); res.reloadLongest = r1(reload.longest(39500, 44500));
+  // A step's row swiped for 3 seconds, the finger never still: each frame's time, and each tick's.
+  await until(page, 45500);
+  const box = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#run-steps > .row:not(.done)')][3]; row.scrollIntoView({ block: 'center' });
+    const b = row.getBoundingClientRect(); row.id = 'pf-row'; return { x: b.x + 120, y: b.y + b.height / 2 };
+  });
+  await sleep(300);
+  await page.evaluate(() => { const P = window.__pf; P.ticks = []; P.stopRec = P.record('#pf-row'); });
+  await page.mouse.move(box.x, box.y); await page.mouse.down();
+  const t0 = Date.now();
+  for (let i = 1; Date.now() - t0 < 3200; i++) { await page.mouse.move(box.x + 30 + 25 * (1 - Math.cos(i / 9)), box.y); await sleep(12); }   // back and forth between 30 and 80 px aside
+  await page.mouse.move(box.x + 3, box.y); await page.mouse.up();
+  const sw = await page.evaluate(() => { const P = window.__pf; return { frames: P.stopRec(), ticks: P.ticks.map(t => t.t) }; });
+  const moving = sw.frames.filter(f => f[1] > 0), gaps = moving.slice(1).map((f, i) => ({ at: moving[i][0], ms: f[0] - moving[i][0] }));
+  // (A tick's time is when the screen had been worked out again: the end of the wait it caused, if it caused one.)
+  const ticked = g => sw.ticks.some(t => t > g.at - 20 && t < g.at + g.ms + 20);
+  const atTick = gaps.filter(ticked).map(g => g.ms), away = gaps.filter(g => !ticked(g)).map(g => g.ms);
+  Object.assign(res, { frame: r1(median(gaps.map(g => g.ms))), frameAtTick: r1(median(atTick)), frameAtTickMost: r1(Math.max(0, ...atTick)), frameAway: r1(Math.max(0, ...away)), ticksSwiped: atTick.length,
+    late: gaps.filter(g => g.ms > 25).length, frames: gaps.length });
+  await page.close();
+  return res;
+}
+
+/* ---------- a long project ---------- */
+// The rows a finger can reach now: plain open tasks (no card, no subtask), in sight, clear of the header and the add box.
+const plainRows = page => page.evaluate(() => [...document.querySelectorAll('#view .list > .item > .row')].filter(r => {
+  const b = r.getBoundingClientRect(), c = r.querySelector(':scope > .check:not(.no-tick)');
+  return c && !c.disabled && !r.matches('.done, .pending, .leaving') && b.top > 140 && b.bottom < innerHeight - 170;
+}).map(r => +r.dataset.id));
+const rowSel = id => `#view .item > .row[data-id="${id}"]`;
+const boxOf = (page, sel) => page.evaluate(sel => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; }, sel);
+// The row gone from its list, as the batch clears: when, in the page's time.
+const gone = (page, id) => page.evaluate(id => { const row = document.querySelector(`#view .item > .row[data-id="${id}"]`); return window.__pf.when(() => !row.isConnected, document.getElementById('view'), { subtree: true, childList: true }); }, id);
+const lastEv = (page, type) => page.evaluate(type => window.__pf.ev[type]?.at(-1)?.t ?? null, type);
+const idleSync = page => page.waitForFunction(() => document.documentElement.dataset.sync === 'idle', null, { polling: 100, timeout: 30000 });
+
+async function listScreen(name, pid, undo){
+  const { page, cdp } = await ph.page('#/project/' + pid);
+  await page.locator('#view .item > .row').first().waitFor();
+  await loaded(page); await sleep(7000);                                          // the other tabs' copies are loaded 2 s after a screen is (preload)
+  const rows = await page.evaluate(() => document.querySelectorAll('#view .row').length);
+  const ids = await plainRows(page);
+  if (ids.length < 6) throw new Error(name + ': only ' + ids.length + ' plain rows in sight');
+  const res = { rows };
+  // The batch clearing, around the moment the row is gone: 700 ms before (its fold) to 900 ms after.
+  const clearing = (tr, at) => ({ clearMs: r1(tr.sum(at - 700, at + 900)), clearLongest: r1(tr.longest(at - 700, at + 900)) });
+
+  // 1. A tick tapped.
+  let id = ids[0], b = await boxOf(page, rowSel(id) + ' > .check');
+  undo.push(() => vikunja('PATCH', '/tasks/' + id0, { done: false })); const id0 = id;
+  let tr = await traced(browser, page, async () => {
+    await page.evaluate(() => window.__pf.clear());
+    const ticked = page.evaluate(sel => { const row = document.querySelector(sel); return window.__pf.when(() => row.matches('.leaving, .done'), row, { attributes: true, attributeFilter: ['class'] }); }, rowSel(id));
+    const left = gone(page, id);
+    await page.touchscreen.tap(b.x + b.w / 2, b.y + b.h / 2);
+    const t = await ticked, up = await lastEv(page, 'pointerup');
+    const g = await left; await sleep(1000);
+    return { up, t, g };
+  });
+  Object.assign(res, { tick: r1(tr.out.t.drawn - tr.out.up), tickWork: r1(tr.out.t.at - tr.out.up), tickLongest: r1(tr.longest(tr.out.up - 5, tr.out.up + 400)), tickSum: r1(tr.sum(tr.out.up - 5, tr.out.up + 400)) }, clearing(tr, tr.out.g.at));
+
+  // 2. A full swipe, by a pointer: watched frame by frame from before it's let go.
+  id = ids[2]; b = await boxOf(page, rowSel(id));
+  const id2 = id; undo.push(() => vikunja('PATCH', '/tasks/' + id2, { done: false }));
+  tr = await traced(browser, page, async () => {
+    await page.evaluate(sel => { const P = window.__pf; P.clear(); P.stopRec = P.record(sel); }, rowSel(id));
+    const left = gone(page, id), x = b.x + 90, y = b.y + b.h / 2, far = b.w * 0.62;
+    // `press`: how long the page takes over the finger going down, before it can follow it.
+    await page.mouse.move(x, y); const t = Date.now(); await page.mouse.down(); const press = Date.now() - t;
+    for (let i = 1; i <= 14; i++) { await page.mouse.move(x + far * i / 14, y); await sleep(14); }
+    await sleep(120);
+    await page.mouse.up();
+    await sleep(900);
+    const frames = await page.evaluate(() => window.__pf.stopRec()), up = await lastEv(page, 'pointerup');
+    const g = await left; await sleep(1000);
+    return { up, frames, g, press };
+  });
+  {
+    const { up, frames, g } = tr.out, after = frames.filter(f => f[0] >= up), x0 = frames.filter(f => f[0] < up).at(-1)?.[1] ?? after[0][1];
+    const moved = after.find(f => f[1] !== null && Math.abs(f[1] - x0) > 0.5), gap = after.find(f => f[2]);
+    const slide = after.filter(f => f[0] <= (gap ? gap[0] : up + 600)), waits = slide.slice(1).map((f, i) => f[0] - slide[i][0]);
+    Object.assign(res, { swipePress: tr.out.press, swipeMoves: moved ? r1(moved[0] - up) : null, swipeGap: gap ? r1(gap[0] - up) : null, swipeFrame: r1(Math.max(0, ...waits)), swipeLate: waits.filter(w => w > 25).length,
+      swipeLongest: r1(tr.longest(up - 5, up + 500)), swipeSum: r1(tr.sum(up - 5, up + 500)), swipeClearMs: clearing(tr, g.at).clearMs, swipeClearLongest: clearing(tr, g.at).clearLongest });
+  }
+
+  // 3. A nudge: a finger's short, slow move down a row, which lights it for the add box.
+  id = ids[4]; b = await boxOf(page, rowSel(id) + ' > .body');
+  const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  tr = await traced(browser, page, async () => {
+    await page.evaluate(() => window.__pf.clear());
+    const lit = page.evaluate(sel => { const item = document.querySelector(sel).parentElement; return window.__pf.when(() => !!item.querySelector('.aimed'), item); }, rowSel(id));
+    const x = b.x + b.w / 2, y = b.y + b.h / 2;
+    await touch('touchStart', x, y);
+    for (let i = 1; i <= 8; i++) { await sleep(40); await touch('touchMove', x, y + 30 * i / 8); }
+    await sleep(40); await touch('touchEnd', x, y + 30);
+    const l = await lit, up = await lastEv(page, 'touchend');
+    await sleep(500);
+    return { up, l };
+  });
+  Object.assign(res, { nudge: r1(tr.out.l.drawn - tr.out.up), nudgeLongest: r1(tr.longest(tr.out.up - 5, tr.out.up + 400)) });
+
+  // 4. Two subtasks added from the add box, aimed at that row: the first makes it a card, the second goes under a lit card.
+  const parent = id; undo.push(async () => { for (const s of (await vikunja('GET', '/tasks/' + parent)).related_tasks?.subtask || []) await vikunja('DELETE', '/tasks/' + s.id); });
+  for (const k of ['add1', 'add2']) {
+    await page.locator('#in-capture').fill(`perf ${k} ${Date.now() % 100000}`);
+    await sleep(700);                                                             // its chips read, its @people looked up
+    tr = await traced(browser, page, async () => {
+      await page.evaluate(() => window.__pf.clear());
+      const waiting = page.evaluate(() => window.__pf.when(() => !!document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
+      await page.keyboard.press('Enter');
+      const w = await waiting, down = await lastEv(page, 'keydown');
+      const sent = await page.evaluate(() => window.__pf.when(() => !document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
+      await sleep(600);
+      return { down, w, sent };
+    });
+    Object.assign(res, { [k]: r1(tr.out.w.drawn - tr.out.down), [k + 'Longest']: r1(tr.longest(tr.out.down - 5, tr.out.down + 400)), [k + 'Sent']: r1(tr.out.sent.drawn - tr.out.down),
+      [k + 'Work']: r1(tr.sum(tr.out.down - 5, tr.out.sent.drawn + 300)), [k + 'SentLongest']: r1(tr.longest(tr.out.down + 400, tr.out.sent.drawn + 300)) });
+    await idleSync(page);
+  }
+  await page.close();
+  return res;
+}
+
+/* ---------- a scroll's start ---------- */
+/* A finger's scroll up the page, by Chrome's own touch input: a first move of 24 px (past where a touch becomes a
+   scroll), then 11 of 14 px, 16 ms apart. `heard`: from that first move being sent (this computer's clock, which the
+   page's is set by) to the page's own listeners hearing of it: holdToSlide's can stop a scroll, so the page can't
+   move before the main thread has answered. `moved`: until the page's own code saw a frame with the page scrolled.
+   `shown`: Chrome's own account, from the finger's move that started the scroll to its first frame on the screen
+   (the compositor's, which scrolls without the main thread once it may). `busy`: how much longer the main thread was
+   in the task it was in when the move was sent (0: it was free). `when`: 'drawing', Big past its first three screens,
+   in its batches of about a second; 'drawn', once it's all there; 'done', as its Done's rows come. */
+async function scrollStart(when, delay){
+  const { page, cdp } = await ph.page('#/today');
+  await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(7000);
+  const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  const big = () => page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);
+  if (when !== 'drawing') {
+    await big(); await page.locator('#sec-done').waitFor(); await loaded(page); await sleep(3000);
+    if (when === 'done') {
+      // Its Done closed, if it was left open, and the page at its foot, where Done is.
+      await page.evaluate(() => { const b = document.getElementById('sec-done'); if (b.getAttribute('aria-expanded') === 'true') b.click(); }); await sleep(1500);
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await sleep(1500);
+    }
+  }
+  // Where the finger goes down: on a plain row, a task with hundreds of siblings, in the middle of the screen.
+  const spot = () => page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#view .list > .item > .row:not(.done)')].map(r => r.getBoundingClientRect()).filter(b => b.top > 380 && b.bottom < innerHeight - 170);
+    return rows.length ? { x: 195, y: rows[0].top + rows[0].height / 2 } : { x: 195, y: 600 };
+  });
+  // Everything asked of the page before the list starts to draw: while it draws, a question would wait for a batch to end.
+  const tr = await traced(browser, page, async () => {
+    await page.evaluate(() => { const P = window.__pf; P.clear(); P.long = []; P.stopRec = P.record('#view'); });
+    if (when === 'drawing') {
+      await big();
+      await page.evaluate(() => new Promise(ok => { const a = window.__pf.app(); window.Alpine.effect(() => { if (a.route.name === 'project' && a.drawTo > 60) ok(); }); }));
+    }
+    if (when === 'done') await page.evaluate(() => { document.getElementById('sec-done').click(); return window.__pf.when(() => !!document.querySelector('.done-sec ~ .list .row'), document.getElementById('view'), { subtree: true, childList: true }); });
+    const { x, y } = await spot(), sends = [];
+    await sleep(delay);
+    // As a finger does it: down, and moving 30 ms later whether or not the page has answered the touch yet.
+    const all = [touch('touchStart', x, y)]; await sleep(30);
+    for (let i = 1; i <= 12; i++) { sends.push(Date.now()); all.push(touch('touchMove', x, y - 10 - 14 * i)); await sleep(16); }
+    all.push(touch('touchEnd', x, y - 10 - 14 * 12)); await Promise.all(all);
+    await loaded(page); await sleep(500);
+    if (when === 'done') await page.evaluate(() => document.getElementById('sec-done').click());   // closed again, as the next run expects
+    return { sends, ...await page.evaluate(() => { const P = window.__pf; return { origin: performance.timeOrigin, moves: P.ev.touchmove || [], frames: P.stopRec(), long: P.long, rows: document.querySelectorAll('#view .row').length }; }) };
+  }, ['input', 'benchmark', 'latencyInfo'], false);
+  const { sends, origin, moves, frames, long, rows } = tr.out, sent = sends[0] - origin, y0 = frames.filter(f => f[0] < sent).at(-1)?.[3] ?? frames[0][3], moved = frames.find(f => f[0] > sent && f[3] !== y0);
+  const first = tr.events.filter(e => e.name === 'EventLatency' && e.args?.event_latency?.event_type === 'FIRST_GESTURE_SCROLL_UPDATE'), b = first.find(e => e.ph === 'b');
+  const e = b && tr.events.filter(e => e.name === 'EventLatency' && e.ph === 'e' && e.pid === b.pid && e.id2?.local === b.id2?.local && e.ts >= b.ts).sort((x, y) => x.ts - y.ts)[0];
+  const task = long.find(t => t.at <= sent && t.at + t.ms > sent);
+  await page.close();
+  return { rows, heard: moves.length ? r1(moves[0].now - sent) : null, moved: moved ? r1(moved[0] - sent) : null, shown: b && e ? r1((e.ts - b.ts) / 1000) : null, busy: task ? r1(task.at + task.ms - sent) : 0, events: tr.events };
+}
+
+/* ---------- counted, not timed ---------- */
+// What a row asks of the component, each counted as Big opens (lib.mjs counted()), and the getters behind a list.
+const ASKED = ['rowRing', 'canTick', 'shownPct', 'rowMeta', 'rowWhen', 'rowSlot', 'isRunTask', 'isStepRow', 'cardOf', 'cardHead', 'cardEntered', 'hintOn', 'rowTitle', 'isGap', 'ringOf', 'claimSlot', 'peopleOf', 'stepRun',
+  'canWrite', 'listGroups', 'listBase', 'pendingTasks', 'hiddenRows', 'waitingByTask', 'subSlots', 'subtasks', 'templateSteps', 'runView'];
+const fx = (page, reset = true) => page.evaluate(reset => { const r = window.__fx.read(); if (reset) window.__fx.reset(); return r; }, reset);
+const flat = c => ({ runs: c.runs, rows: c.rows, most: c.most, cls: c.cls, clsMost: c.clsMost, by: Object.entries(c.by).map(([k, n]) => `${k} ${n}`).join(', ') });
+async function counts(){
+  const res = {}, undo = [];
+  let { page, cdp } = await ph.page('#/today');
+  await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(6000);
+  // Big opened: the bindings worked out, and what its rows asked.
+  await page.evaluate(names => { window.__fx.reset(); window.__pf.stop = window.__pf.counted(names); }, ASKED);
+  await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);
+  await page.locator('#sec-done').waitFor(); await loaded(page); await sleep(3000);
+  const rows = await page.evaluate(() => document.querySelectorAll('#view .row').length);
+  res['Big opens'] = { ...flat(await fx(page)), of: rows };
+  const asked = await page.evaluate(() => window.__pf.stop());
+  res.asked = Object.fromEntries(Object.entries(asked).filter(([, c]) => c.n).map(([k, c]) => [k, { n: c.n, perRow: r1(c.n / rows), ms: r1(c.ms) }]));
+  // The listeners one plain row has, itself and everything in it.
+  const ids = await plainRows(page);
+  const { result } = await cdp.send('Runtime.evaluate', { expression: `document.querySelector('${rowSel(ids[1])}')` });
+  const tree = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId, depth: -1 });
+  res.listeners = { onARow: tree.listeners.length, types: Object.entries(tree.listeners.reduce((m, l) => (m[l.type] = (m[l.type] || 0) + 1, m), {})).map(([k, n]) => `${k} ${n}`).join(', ') };
+  // Each thing done, and what was worked out for it: a row touched (no tick), a tick, its save answered, the batch
+  // clearing, a full swipe, a nudge, two adds.
+  await sleep(4000); await fx(page);
+  let b = await boxOf(page, rowSel(ids[1]) + ' > .body');
+  await page.mouse.move(b.x + 200, b.y + 20); await page.mouse.down(); await sleep(200); res['a row touched'] = flat(await fx(page));
+  await page.mouse.move(b.x + 200, b.y + 120); await page.mouse.up(); await sleep(300); await fx(page);
+  b = await boxOf(page, rowSel(ids[0]) + ' > .check');
+  undo.push(() => vikunja('PATCH', '/tasks/' + ids[0], { done: false }));
+  let left = gone(page, ids[0]);
+  await page.touchscreen.tap(b.x + b.w / 2, b.y + b.h / 2); await sleep(40); res['a tick, at once'] = flat(await fx(page));
+  await idleSync(page); await sleep(300); res['its save answered'] = flat(await fx(page));
+  await left; await sleep(800); res['the batch clearing'] = flat(await fx(page));
+  b = await boxOf(page, rowSel(ids[2]));
+  undo.push(() => vikunja('PATCH', '/tasks/' + ids[2], { done: false }));
+  left = gone(page, ids[2]);
+  await page.mouse.move(b.x + 90, b.y + b.h / 2); await page.mouse.down();
+  for (let i = 1; i <= 14; i++) { await page.mouse.move(b.x + 90 + b.w * 0.62 * i / 14, b.y + b.h / 2); await sleep(14); }
+  res['a swipe, held'] = flat(await fx(page));
+  await page.mouse.up(); await sleep(40); res['a full swipe let go'] = flat(await fx(page));
+  await left; await sleep(800); await fx(page);
+  const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  b = await boxOf(page, rowSel(ids[4]) + ' > .body');
+  await touch('touchStart', b.x + b.w / 2, b.y + b.h / 2);
+  for (let i = 1; i <= 8; i++) { await sleep(40); await touch('touchMove', b.x + b.w / 2, b.y + b.h / 2 + 30 * i / 8); }
+  await sleep(40); await touch('touchEnd', b.x + b.w / 2, b.y + b.h / 2 + 30); await sleep(500);
+  res['a nudge'] = flat(await fx(page));
+  undo.push(async () => { for (const s of (await vikunja('GET', '/tasks/' + ids[4])).related_tasks?.subtask || []) await vikunja('DELETE', '/tasks/' + s.id); });
+  for (const k of ['an add (makes a card)', 'an add under a lit card']) {
+    await page.locator('#in-capture').fill('perf count ' + Date.now() % 100000); await sleep(800); await fx(page);
+    await page.keyboard.press('Enter');
+    await page.locator('#view .row.pending').first().waitFor(); await sleep(30); res[k + ', waiting'] = flat(await fx(page));
+    await page.locator('#view .row.pending').waitFor({ state: 'detached' }); await idleSync(page); await sleep(400); res[k + ', sent'] = flat(await fx(page));
+  }
+  // A task's sheet with subtasks, and a template's with 20 steps: how often each list is made as it opens.
+  const sheet = async id => {
+    await page.evaluate(() => { window.__pf.stop = window.__pf.counted(['subSlots', 'subtasks', 'templateSteps']); window.__fx.reset(); });
+    await page.evaluate(id => window.__pf.app().openTask(id), id); await page.locator('#d-subtasks .row').first().waitFor(); await sleep(1500);
+    return { ...flat(await fx(page)), ...Object.fromEntries(Object.entries(await page.evaluate(() => window.__pf.stop())).map(([k, c]) => [k, c.n])) };
+  };
+  res['a sheet with 3 subtasks'] = await sheet(await page.evaluate(() => +document.querySelector('#view .day-card').dataset.id));
+  await page.close(); for (const fn of undo.splice(0)) await fn().catch(e => console.log('not put back:', e.message));
+  ({ page } = await ph.page('#/checklists'));
+  await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(3000);
+  res['a template of 20 steps, its sheet'] = await sheet(state.template);
+  await page.close();
+  // A run's screen sitting idle: what a second works out.
+  for (const key of ['plain20', 'plain60', 'timed20']) {
+    ({ page } = await ph.page('#/run/' + state.runs[key].id));
+    const n = state.runs[key].steps.length;
+    await page.waitForFunction(n => document.querySelectorAll('#run-steps > .row').length === n, n, { polling: 200 });
+    await until(page, 23000); await fx(page); await sleep(10000);
+    const c = await fx(page);
+    res[`a run of ${n}${key.startsWith('timed') ? ', counting down' : ''}, idle, a second`] = { ...flat(c), runs: Math.round(c.runs / 10), most: Math.round(c.most / 10), clsMost: Math.round(c.clsMost / 10), by: Object.entries(c.by).map(([k, n]) => `${k} ${Math.round(n / 10)}`).join(', ') };
+    await page.close();
+  }
+  return res;
+}
+
+const show = (title, rows) => { console.log('\n' + title); console.table(Object.fromEntries(Object.entries(rows).map(([k, runs]) => [k, Object.fromEntries(Object.keys(runs[0]).map(f => [f, spread(runs.map(x => x[f]), 1)]))]))); };
+const undo = [];
+try {
+  if (WHAT === 'run') for (let r = 0; r < RUNS; r++) for (const key of Object.keys(state.runs).filter(k => k.includes(arg('only', '')))) { add(key, await runScreen(key)); console.log(key, JSON.stringify(out[key].at(-1))); }
+  if (WHAT === 'list') for (let r = 0; r < RUNS; r++) for (const [name, pid] of [['Big', state.projects.big], ['Errands', state.projects.small]]) {
+    try { add(name, await listScreen(name, pid, undo)); } finally { for (const fn of undo.splice(0)) await fn().catch(e => console.log('not put back:', e.message)); }
+    console.log(name, JSON.stringify(out[name].at(-1)));
+  }
+  if (WHAT === 'counts') {
+    const res = await counts(), { asked, ...rest } = res;
+    out.counts = [res];
+    console.log('\nWhat was worked out (runs: bindings; rows: on how many rows; most: on one row; cls: rows whose own class was; clsMost: how often at most)'); console.table(rest);
+    console.log('\nWhat the rows asked of the component as Big opened (n: times; perRow; ms: inside it)'); console.table(asked);
+  }
+  if (WHAT === 'scroll') for (let r = 0; r < RUNS; r++) for (const [when, delays] of [['drawing', [100, 400, 700]], ['drawn', [0]], ['done', [0, 150, 400]]]) {
+    const { events, ...res } = await scrollStart(when, delays[r % delays.length]);
+    add(when, res); console.log(when, JSON.stringify(res));
+    if (process.argv.includes('--events')) for (const e of events.filter(e => e.name === 'EventLatency' && /SCROLL/.test(e.args?.event_latency?.event_type || '')).slice(0, 6)) console.log(JSON.stringify(e).slice(0, 700));
+  }
+} finally { await ph.close(); proxy.stop(); }
+
+mkdirSync(join(OUT, 'results'), { recursive: true });
+writeFileSync(join(OUT, 'results', `rows-${WHAT}-${LABEL}.json`), JSON.stringify({ label: LABEL, what: WHAT, profile: NAME, pocket: state.pocket, runs: out }, null, 2));
+if (WHAT !== 'counts') show(`${WHAT}, ${LABEL}: median (least–most) of ${RUNS}, ms`, out);

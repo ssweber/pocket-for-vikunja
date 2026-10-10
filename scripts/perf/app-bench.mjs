@@ -8,18 +8,10 @@
 // test-results/perf/results/<label>.json, with every run.
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { arg, HERE, OUT, PROFILES } from './lib.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url)), OUT = join(HERE, '..', '..', 'test-results', 'perf');
-const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const PROFILES = {
-  fast: { cpu: 1, proxy: [] },
-  phone: { cpu: 4, proxy: ['--gzip', '--pass-encoding', '--rtt', '100', '--kbps', '5000'] },
-  'phone-raw': { cpu: 4, proxy: ['--rtt', '100', '--kbps', '5000'] },
-  weak: { cpu: 4, proxy: ['--gzip', '--pass-encoding', '--rtt', '300', '--kbps', '1000'] },
-};
 const NAME = arg('profile', 'fast'), PROFILE = PROFILES[NAME], RUNS = +arg('runs', 3);
 if (!PROFILE) throw new Error('--profile ' + Object.keys(PROFILES).join(', '));
 const state = JSON.parse(readFileSync(join(OUT, 'state.json'), 'utf8'));

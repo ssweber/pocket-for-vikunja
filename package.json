@@ -18,7 +18,8 @@
     "test:local": "node scripts/dev.mjs --test",
     "demo": "node scripts/demo.mjs",
     "specimen": "node scripts/specimen.mjs",
-    "perf": "node scripts/perf/app-bench.mjs"
+    "perf": "node scripts/perf/app-bench.mjs",
+    "perf:rows": "node scripts/perf/rows-bench.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
