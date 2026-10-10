@@ -12,8 +12,7 @@
              the card of their notes and files. A template's is changed here (Escape calls the change off, as in a
              task's title); a step's in the template. -->
         <template x-if="ofTemplate"><div class="d-title">
-          <template x-if="checklistRole === 'template'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title"
-                    x-effect="sheet.title; $nextTick(() => grow($el))"
+          <template x-if="checklistRole === 'template'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title" x-grow="sheet.title"
                     @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(sheet.task); $el.blur()" @change="saveTitle()"></textarea></template>
           <!-- A template's step: its name without its time, which is changed in the template, with the steps it can count from -->
           <template x-if="checklistRole === 'tplstep'"><h2 class="d-step-title" id="d-step-title" x-text="tplStep?.title || sheet.task.title"></h2></template>
@@ -92,16 +91,13 @@
                @focusout="sheet.stepEdit?.id === st.id && setTimeout(() => $el.contains(document.activeElement) || saveStepEdit(i))">
             <span class="check step-n num" aria-hidden="true" x-text="i + 1"></span>
             <template x-if="sheet.stepEdit?.id === st.id"><div class="body step-in" x-data="{bw: 'edit', more: false}">
-              <!-- Quick add's box ('edit'): @people assign the step, *labels label it, as when it was written. Escape
-                   calls the change off, after closing its ⋯ menu (`more`) if that's open: what's innermost first. Left,
-                   it says so a moment later of the step it was changing (`b`), not of whichever step is being changed
-                   by then: another step tapped straight from this one has its own box, focused. -->
-              <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
-                        x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })" x-effect="sheet.stepEdit?.text; $nextTick(() => grow($el))"
-                        @keydown.enter="if (!$event.isComposing) { $event.preventDefault(); boxEnter('edit'); }" @keydown.escape.stop="if (more) more = false; else sheet.stepEdit = null"
-                        @keydown.alt.up.prevent="moveStep(i, -1)" @keydown.alt.down.prevent="moveStep(i, 1)"
-                        @input="sheet.stepEdit.caret = $el.selectionStart" @click="sheet.stepEdit.caret = $el.selectionStart" @keyup="sheet.stepEdit.caret = $el.selectionStart"
-           @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop" @focus="sheet.stepEdit.focus = true; loadPeople().catch(() => {}); loadLabels().catch(() => {})" @blur="const b = sheet.stepEdit; setTimeout(() => { if (b) b.focus = document.activeElement === $el; }, 150)"></textarea></div></div>
+              <!-- Quick add's box ('edit', x-box): @people assign the step, *labels label it, as when it was written.
+                   Its own: Escape calls the change off, after closing its ⋯ menu (`more`) if that's open (what's
+                   innermost first), and Alt+↑ and ↓ move the step. -->
+              <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" x-box.loads="bw" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
+                        x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })"
+                        @keydown.escape.stop="if (more) more = false; else sheet.stepEdit = null"
+                        @keydown.alt.up.prevent="moveStep(i, -1)" @keydown.alt.down.prevent="moveStep(i, 1)"></textarea></div></div>
               <template x-for="st in [sheet.stepEdit]" :key="0"><div>
                 <template x-for="d in draftShown(stepEditDraft(i))" :key="0">
                   <!-- include markup/sheet/step-time.html -->
@@ -146,12 +142,7 @@
           <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
             <div class="cap-field">
               <div class="cap-marks" aria-hidden="true" x-html="marksHtml('sub')"></div>
-              <textarea id="d-subin" x-model="sheet.sub.text" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" enterkeyhint="send"
-                        x-effect="sheet.sub.text; $nextTick(() => grow($el))"
-                        @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter('sub'); }"
-                        @input="sheet.sub.caret = $el.selectionStart" @click="sheet.sub.caret = $el.selectionStart" @keyup="sheet.sub.caret = $el.selectionStart"
-                        @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
-                        @focus="sheet.sub.focus = true" @blur="setTimeout(() => sheet.sub.focus = document.activeElement === $el, 150)"></textarea>
+              <textarea id="d-subin" x-model="sheet.sub.text" x-box.lines="bw" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" enterkeyhint="send"></textarea>
             </div>
             <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="!boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
           </form>
@@ -189,7 +180,7 @@
           <!-- include markup/place-line.html -->
         </template>
         <template x-if="sheet.comments && canEdit"><form class="comment-form" id="d-cform" @submit.prevent="postComment()">
-          <textarea id="d-cin" rows="1" placeholder="Write a comment" aria-label="Comment" x-model="sheet.commentDraft" x-effect="sheet.commentDraft; $nextTick(() => grow($el))"></textarea>
+          <textarea id="d-cin" rows="1" placeholder="Write a comment" aria-label="Comment" x-model="sheet.commentDraft" x-grow="sheet.commentDraft"></textarea>
           <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
         </form></template>
       </div>

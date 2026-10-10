@@ -315,6 +315,7 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
   tomorrow. (The words after are Pocket's own: in Vikunja, quotes work only round the whole text.)
 - **Pasting a list:** with more than one line in the box, each line becomes a task, with its own dates and shortcuts.
   Bullets, numbering and checkboxes are removed. The whole list goes to one project: add `+orders` to any line.
+  With a keyboard, **Shift+Enter** starts a new line in the box, here and in a subtask box, where **Enter** sends it.
 - **Parents in a pasted list:** three ways to say which line the others go under.
   A heading: a line starting `## `, as Markdown notes write one, is a task, and the lines under it, up to the next
   heading, are its subtasks; a `###` heading goes under the `##` before it. Indenting, as in Vikunja's web app: a line

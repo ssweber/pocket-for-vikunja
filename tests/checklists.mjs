@@ -1639,6 +1639,25 @@ try {
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');
     // Empty, each box says what it reads: in the name, @user is who its runs are for.
     await page.waitForSelector('.nt-name .box-chips .hint:has-text("who its runs are for")');
+    /* One add box (rows-and-sheet-fixes-plan, part 5): a template's boxes hold one line each, so Shift+Enter is Enter
+       there (the name goes on to the first step, a step to the next row, a step being changed is saved), and each is
+       as tall as its words, with nothing to scroll inside it. */
+    const size = sel => page.$eval(sel, ta => ({ tall: ta.clientHeight, inside: ta.scrollHeight - ta.clientHeight })), LONG = 'a great many words, '.repeat(9);
+    for (const sel of ['#nt-name', '#new-step-0']) {
+      await page.fill(sel, '');
+      const one = await size(sel);
+      await page.fill(sel, LONG);
+      await expect.poll(async () => (await size(sel)).tall, { message: sel + ' didn\'t grow with its words' }).toBeGreaterThan(one.tall * 2);
+      expect((await size(sel)).inside, sel + ' scrolls inside itself').toBeLessThanOrEqual(0);
+      await page.fill(sel, '');
+      await expect.poll(async () => (await size(sel)).tall).toBe(one.tall);
+    }
+    await page.fill('#nt-name', 'One line');
+    await page.press('#nt-name', 'Shift+Enter');
+    await page.waitForFunction(() => document.activeElement?.id === 'new-step-0');
+    expect(await page.inputValue('#nt-name'), 'Shift+Enter in a template\'s name').toBe('One line');
+    await page.fill('#nt-name', '');
+    await page.focus('#nt-name');
     // A date isn't read in the name, and a chip says so.
     await page.keyboard.type(`${name} every day at 7`);
     await page.waitForSelector('.nt-name .box-chips .chip.quiet:has-text("Dates stay in its name")');
@@ -1654,8 +1673,10 @@ try {
     // Typed straight away, as a fast typist does: no letter is lost while the new row appears.
     await page.keyboard.type(`Turn the sign 5 min later${other ? ' @' + OTHER : ''}`);
     await page.waitForSelector('#new-steps .draft-step:nth-of-type(2) .cap-marks mark[data-kind="due"]:text-is("5 min later")', { state: 'attached' });
-    await page.press('#new-step-1', 'Enter');
+    const second = await page.inputValue('#new-step-1');
+    await page.press('#new-step-1', 'Shift+Enter');                        // as Enter: the next row, and no line break
     await page.waitForFunction(() => document.activeElement?.id === 'new-step-2');
+    expect(await page.inputValue('#new-step-1'), 'Shift+Enter in a step being written').toBe(second);
     await page.keyboard.type('Count the till !4');                       // its priority tapped off: "!4" stays in its name
     await page.click('#new-steps .draft-step:nth-of-type(3) .box-chips .chip:has-text("Priority 4")');
     await page.click('#nt-create');
@@ -1679,7 +1700,7 @@ try {
     await page.click('#d-subtasks .row:nth-of-type(3) > button.body');
     await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, steps[2].id, { timeout: 5000 });
     await page.fill(`#step-edit-${steps[2].id}`, 'Count the till !4 twice');
-    await page.press(`#step-edit-${steps[2].id}`, 'Enter');
+    await page.press(`#step-edit-${steps[2].id}`, 'Shift+Enter');         // as Enter: saved, with no line break
     await until('the step never changed', async () => (await api('/tasks/' + steps[2].id)).title === 'Count the till !4 twice');
     if ((await api('/tasks/' + steps[2].id)).priority) throw new Error('"!4" was read as a priority');
     /* A step tapped straight from another being changed: its box has the focus, and knows it, so emptied it says what

@@ -66,12 +66,8 @@
     <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
-        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" rows="1" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"
-                  x-effect="capBox.text; $nextTick(() => grow($el))"
-                  @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); boxEnter(capW); }"
-                  @input="capBox.caret = $el.selectionStart" @click="capBox.caret = $el.selectionStart" @keyup="capBox.caret = $el.selectionStart"
-                  @scroll="$el.previousElementSibling.scrollTop = $el.scrollTop"
-                  @focus="capBox.focus = true" @blur="const b = capBox; setTimeout(() => b.focus = document.activeElement === $el, 150)"></textarea>
+        <!-- An add box (x-box, component.js), whichever it is now; it takes a list, so Shift+Enter breaks the line -->
+        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"></textarea>
       </div>
       <template x-if="attachmentsOn && capW === 'cap'"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
         <svg class="i"><use href="#i-camera"/></svg>

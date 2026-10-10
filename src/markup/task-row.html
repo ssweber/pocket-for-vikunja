@@ -50,7 +50,7 @@
   <!-- Alt+↑ and Alt+↓ move it among its siblings, as holding it and moving it up or down does, where that's allowed -->
   <!-- The sheet's own row: its title, tapped, is a box to change it in, in the body's place, until it's left (saveTitle) -->
   <template x-if="g.own && sheet.titleEdit"><div class="body title-in"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
-    x-init="$nextTick(() => { grow($el); $el.focus(); $el.setSelectionRange($el.value.length, $el.value.length); })" x-effect="sheet.title; $nextTick(() => grow($el))"
+    x-init="$nextTick(() => { grow($el); $el.focus(); $el.setSelectionRange($el.value.length, $el.value.length); })" x-grow="sheet.title"
     @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(t); $el.blur()" @blur="saveTitle(); sheet.titleEdit = false"></textarea></div></template>
   <button class="body" x-show="!g.own || !sheet.titleEdit" @click="tapRow(t, g)" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
     <template x-if="g.sheet || g.run"><div class="title" x-text="t.title"></div></template>

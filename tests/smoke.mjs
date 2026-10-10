@@ -893,6 +893,55 @@ try {
   const tick = title => page.getByRole('button', { name: 'Mark done: ' + title, exact: true }).click({ timeout: 15000 });
   const toastGone = () => toastGoneOn(page).catch(() => {});
 
+  /* One add box (rows-and-sheet-fixes-plan, part 5). A box that takes a list, quick add's and a sheet's subtask box:
+     Shift+Enter breaks the line and sends nothing, the box growing with its lines, nothing left to scroll inside it,
+     and its chips counting them; Enter then sends them all. A comment's box grows with its lines the same way. */
+  await step('shift-enter-breaks-the-line-in-a-box-that-takes-a-list', async () => {
+    const a = `Pocket smoke line one ${stamp}`, b = `Pocket smoke line two ${stamp}`, p = await make(`Pocket smoke lines ${stamp}`, { due_date: todayAt(23) });
+    const size = id => page.$eval('#' + id, ta => ({ tall: ta.clientHeight, inside: ta.scrollHeight - ta.clientHeight }));
+    const made = [];
+    try {
+      await toastGone();
+      await refreshToday();
+      for (const [id, chips, counts] of [['in-capture', '#cap-chips', '2 tasks'], ['d-subin', '#d-subchips', '2 subtasks']]) {
+        if (id === 'd-subin') await page.click(`${rowOf(p.title)} > .body`, { timeout: 15000 });
+        await page.focus('#' + id);
+        await page.keyboard.type(a);
+        const one = await size(id);
+        await page.keyboard.press('Shift+Enter');
+        await page.keyboard.type(b);
+        expect(await page.inputValue('#' + id), `Shift+Enter in ${id}`).toBe(a + '\n' + b);
+        await expect(page.locator(chips)).toContainText(counts);
+        await expect.poll(async () => (await size(id)).tall, { message: `${id} didn't grow with its second line` }).toBeGreaterThan(one.tall);
+        expect((await size(id)).inside, `${id} scrolls inside itself`).toBeLessThanOrEqual(0);
+        if (await page.locator('.row.pending').count()) throw new Error(`Shift+Enter in ${id} sent what was typed`);
+      }
+      // Enter sends both lines, and the box is empty again, still focused.
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#d-subtasks .row .title', { hasText: a })).toBeVisible();
+      await expect(page.locator('#d-subtasks .row .title', { hasText: b })).toBeVisible();
+      await expect(page.locator('#d-subin')).toHaveValue('');
+      await expect(page.locator('#d-subin')).toBeFocused();
+      await synced(page);
+      made.push(...((await (await api('/tasks/' + p.id)).json()).related_tasks?.subtask || []).map(s => s.id));
+      if (made.length !== 2) throw new Error(`${made.length} subtasks were made of two lines`);
+      // A comment's box: as tall as its lines, and back to one once it's emptied.
+      const empty = await size('d-cin');
+      await page.fill('#d-cin', 'One\nTwo\nThree\nFour');
+      await expect.poll(async () => (await size('d-cin')).tall, { message: 'the comment box didn\'t grow' }).toBeGreaterThan(empty.tall * 2);
+      expect((await size('d-cin')).inside).toBeLessThanOrEqual(0);
+      await page.fill('#d-cin', '');
+      await expect.poll(async () => (await size('d-cin')).tall).toBe(empty.tall);
+    } finally {
+      await page.fill('#d-subin', '').catch(() => {});
+      await page.fill('#d-cin', '').catch(() => {});
+      if (await page.isVisible('#sheet')) { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); }
+      await page.fill('#in-capture', '').catch(() => {});
+      await page.evaluate(() => document.activeElement?.blur());
+      await synced(page);
+      for (const id of [...made, p.id]) await api('/tasks/' + id, { method: 'DELETE' });
+    }
+  });
   await step('quick-add-keeps-focus-and-says-where-a-task-went', async () => {
     // On this screen, its row lights up and nothing's said; off it (due next month, on Today), the add box says where it
     // went, with Open. The box keeps the focus for the next one either way.

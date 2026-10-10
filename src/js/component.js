@@ -1,4 +1,4 @@
-// The Alpine component, `pocket`, and the helpers its markup uses by name. main.js registers them for Pocket's page;
+// The Alpine component, `pocket`, the helpers its markup uses by name, and its own directives. main.js registers them for Pocket's page;
 // the specimen page (scripts/specimen/) makes a component of its own from them, with made-up tasks.
 import {colorOf, fmtSize, grow, PRIOS, ZERO} from './util.js';
 import {INSTALLED} from './api.js';
@@ -34,14 +34,60 @@ import throwing from './app/throw.js';
 export const globals = {addedText, colorOf, durText, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize, SHEET_ROW,
   toLocalInput, ZERO};
 
-/* x-style="{'--pct': .5, paddingLeft: '18px'}": what :style does with an object, without the timer Alpine starts each
-   time it works one out (to drop a style attribute left empty). A list's rows are worked out again on every change to
-   it, so that was hundreds of timers at once: nothing to a browser, but seconds under the tests' clock, which runs
-   timers one at a time. npm run lint keeps :style to strings. */
-export const directives = Alpine => Alpine.directive('style', (el, {expression}, {evaluateLater, effect}) => {
-  const get = evaluateLater(expression);
-  effect(() => get(o => { for (const [k, v] of Object.entries(o || {})) el.style.setProperty(k.startsWith('--') ? k : k.replace(/[A-Z]/g, c => '-' + c.toLowerCase()), v); }));
-});
+// What the markup asks of an element besides Alpine's own directives: x-style, x-grow and x-box.
+export const directives = Alpine => {
+  /* x-style="{'--pct': .5, paddingLeft: '18px'}": what :style does with an object, without the timer Alpine starts each
+     time it works one out (to drop a style attribute left empty). A list's rows are worked out again on every change to
+     it, so that was hundreds of timers at once: nothing to a browser, but seconds under the tests' clock, which runs
+     timers one at a time. npm run lint keeps :style to strings. */
+  Alpine.directive('style', (el, {expression}, {evaluateLater, effect}) => {
+    const get = evaluateLater(expression);
+    effect(() => get(o => { for (const [k, v] of Object.entries(o || {})) el.style.setProperty(k.startsWith('--') ? k : k.replace(/[A-Z]/g, c => '-' + c.toLowerCase()), v); }));
+  });
+
+  /* A text box kept as tall as its text (grow, util.js): fitted as it's drawn, and again each time what `read` reads
+     changes, on the next tick, once the box has its new text. */
+  const fit = (el, effect, read) => effect(() => { read(); Alpine.nextTick(() => grow(el)); });
+  // x-grow="sheet.commentDraft": that, for a box that isn't an add box (a comment, notes, a title), given its text.
+  Alpine.directive('grow', (el, {expression}, {evaluate, effect}) => fit(el, effect, () => evaluate(expression)));
+
+  /* x-box="'sub'": an add box, by its name (box(), app/quickadd.js). What every add box does is here, written once, and
+     its markup says only what differs: quick add's box, a sheet's subtask box, and the boxes a template is written
+     in (its name, a step being written, a step being changed).
+     - It's as tall as its text (fit).
+     - Where its cursor is, is kept as it's typed in, tapped, or a key moves it (box.caret): what @ and * suggest goes
+       by the word the cursor is in.
+     - The marks behind its words (.cap-marks, the element before it) scroll with it.
+     - Focused, it says so (box.focus); left, only a moment later (150ms), and not if it has the focus back by then: a
+       chip or a button tapped beside it hands it back. The box it was as it was left is told, not whichever box has
+       its name by then (quick add's is the run's box on a run's screen; a step being changed gives way to another).
+     - Enter sends it, or takes the suggestion on top (boxEnter); not while a word is being composed (isComposing: the
+       Enter that picks from an input method's own list).
+     x-box.lines: a box that takes a list (quick add's, a subtask box), where Shift+Enter breaks the line. In a box
+     that holds one line (a template's name, a step), Shift+Enter is Enter.
+     x-box.loads: focused, it loads who can be assigned and the labels there are, for its suggestions and its chips (a
+     template's boxes).
+     What else a box does is its own, beside this in its markup: a pasted list made rows, Escape, Alt+↑ and ↓. */
+  Alpine.directive('box', (el, {expression, modifiers}, {evaluate, effect, cleanup}) => {
+    const app = Alpine.$data(el), name = () => evaluate(expression), box = () => app.box(name());
+    // It listens until Alpine takes it off the page, as an @event does: a box that goes while it has the focus is
+    // blurred on its way out, with nothing left around it to ask which box it was.
+    const on = (type, fn) => { el.addEventListener(type, fn); cleanup(() => el.removeEventListener(type, fn)); };
+    fit(el, effect, () => box().text);
+    for (const type of ['input', 'click', 'keyup']) on(type, () => { box().caret = el.selectionStart; });
+    on('scroll', () => { el.previousElementSibling.scrollTop = el.scrollTop; });
+    on('focus', () => {
+      box().focus = true;
+      if (modifiers.includes('loads')) { app.loadPeople().catch(() => {}); app.loadLabels().catch(() => {}); }
+    });
+    on('blur', () => { const b = box(); setTimeout(() => { b.focus = document.activeElement === el; }, 150); });
+    on('keydown', e => {
+      if (e.key !== 'Enter' || e.isComposing || (e.shiftKey && modifiers.includes('lines'))) return;
+      e.preventDefault();
+      app.boxEnter(name());
+    });
+  });
+};
 
 // Alpine's component is one object: the data from core.js, with the methods of each part of the app. Getters are
 // copied as getters (a spread, {...auth}, would read each one once and keep the value), so they still work out what

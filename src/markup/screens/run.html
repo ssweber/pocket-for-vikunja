@@ -33,8 +33,7 @@
           <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
         </template>
         <form class="comment-form" id="run-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(view.run.run.id)">
-          <textarea id="run-note" rows="1" placeholder="Comment for this run, and the next" aria-label="Comment on this run" x-model="runDrafts[view.run.run.id]"
-                    x-effect="runDrafts[view.run.run.id]; $nextTick(() => grow($el))"></textarea>
+          <textarea id="run-note" rows="1" placeholder="Comment for this run, and the next" aria-label="Comment on this run" x-model="runDrafts[view.run.run.id]" x-grow="runDrafts[view.run.run.id]"></textarea>
           <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
         </form>
       </div>
