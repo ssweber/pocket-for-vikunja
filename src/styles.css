@@ -183,16 +183,14 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* a task not sent yet, once it has waited a few seconds (or at once offline) */
 .row.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
-/* a task just added lights up, then fades, to show where it went */
+/* a task just added lights up, then fades, to show where it went: to the row's own colour, whatever that is by then
+   (none, or the add box's tint while it's lit: one animation, so the light moving on doesn't start it again) */
 .row.fresh{animation:fresh 1.6s ease-out}
-@keyframes fresh{0%,35%{background:var(--accent-soft)}100%{background:transparent}}
+@keyframes fresh{0%,35%{background:var(--accent-soft)}}
 @media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
 /* the task quick add's box adds subtasks to (the cursor): a bar down its side, and a faint tint */
 .row.aimed{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
-/* a subtask just added from that box is lit in its turn: its light fades to that tint, not past it; and one that looks
-   waiting keeps the waiting tint, with the bar */
-.row.fresh.aimed{animation-name:fresh-lit}
-@keyframes fresh-lit{0%,35%{background:var(--accent-soft)}}
+/* a subtask just added from that box is lit in its turn; one that looks waiting keeps the waiting tint, with the bar */
 .row.aimed.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 /* a task whose time has just passed lights up as it moves to Overdue */
 .row.came-due{animation:came-due 2s ease-out}
