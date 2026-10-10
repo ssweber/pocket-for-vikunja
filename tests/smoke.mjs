@@ -1257,6 +1257,36 @@ try {
     }
   });
 
+  /* A card's header is a 44px strip (rows-and-sheet-fixes-plan, part 2): its ring and its title's line are centred in
+     it, the title's tap the strip's full height, and the ring a swipe uncovers there is centred in it too, clear of
+     its edges (it sat on the strip's foot, and was cut). */
+  await step('a-cards-header-has-its-line-and-its-swipes-ring-centred-in-its-strip', async () => {
+    const p = await make(`Pocket smoke strip ${stamp}`, { due_date: todayAt(23), priority: 3 }), k = await make(`Pocket smoke strip kid ${stamp}`);
+    await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    const head = `${cardOf(p.title)} > .card-head`;
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.waitForSelector(head, { timeout: 15000 });
+      const lies = await page.locator(head).evaluate(h => {
+        const mid = el => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; }, r = h.getBoundingClientRect();
+        return { h: r.height, ring: mid(h.querySelector(':scope > .ring')) - mid(h), title: mid(h.querySelector('.card-title')) - mid(h), bars: !!h.querySelector('.bars'),
+          tap: h.querySelector('.card-open').getBoundingClientRect().height };
+      });
+      if (lies.h !== 44 || Math.abs(lies.ring) > .5 || Math.abs(lies.title) > .5 || lies.tap !== 44 || !lies.bars) throw new Error('its header\'s line isn\'t centred in its strip: ' + JSON.stringify(lies));
+      await swipeRow(page, head, 'back', { one: true, check: async () => {
+        await expect(uncovered(page)).toHaveClass(/\bhead\b/);
+        const under = await laidUnder(page, head), ring = await uncovered(page).evaluate(u => {
+          const a = u.getBoundingClientRect(), b = u.querySelector('.ring').getBoundingClientRect();
+          return { over: b.top - a.top, under: a.bottom - b.bottom, h: a.height };
+        });
+        if (under.inside || under.off > .5) throw new Error('what its header uncovers isn\'t laid under it: ' + JSON.stringify(under));
+        if (ring.h !== 44 || ring.over < 4 || Math.abs(ring.over - ring.under) > .5) throw new Error('the ring its swipe uncovers isn\'t centred in its strip, clear of its edges: ' + JSON.stringify(ring));
+      } });
+      await expect(uncovered(page)).toHaveCount(0);
+    } finally { for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+
   /* A task's sheet leads with one card (parent-tasks-plan, 6b): the task's own row, its notes and its photos and files
      under it. Its title is changed where it is, with a tap. A full swipe right ticks it in place: the sheet is about
      this one task, so no gap. Swiped left at 0%, it's deleted: the sheet closes on the list, where its gap has Restore. */

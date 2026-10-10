@@ -301,8 +301,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
   background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
 .row-prog[data-side=left] .ring{left:10px}
 .row-prog[data-side=right] .ring{right:10px}
-/* a card's header uncovers only its 44px strip: its ring smaller there, so it isn't cut off at the strip's foot */
-.row-prog.head .ring{top:12px;width:32px;height:32px;padding:3px}
+/* a card's header uncovers only its 44px strip: its ring smaller there, and centred in it, clear of its edges, as
+   the header's own ring and title are */
+.row-prog.head .ring{top:calc(50% - 16px);width:32px;height:32px;padding:3px}
 .row-prog.sq .ring{border-radius:10px}
 .row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
 /* at 100% (a done row swiped left, before its first stop), the ring is a done tick: filled, with its ✓ */
@@ -385,9 +386,11 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .day-card{position:relative}
 /* its header: the parent's ring, where its rows' ticks are, then its title, which opens it, on one line: the title cut
    short with "…", its priority's bars, small, and when it's due, short, on the title's baseline as on a row. The ring
-   and the title's line are centred 28px down, as a row's tick and title are. */
-.card-head{position:relative;display:flex;align-items:flex-start;gap:12px;min-height:44px;padding:12px 14px 0;background:var(--surface)}
-.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:-12px -14px 0 0;padding:16px 14px 0 0;border:0;background:transparent;text-align:left;color:var(--ink)}
+   and the title's line are centred in its 44px strip (rows-and-sheet-fixes-plan, part 2: 22px down, the title's 24px
+   line with 10px over and under it), as is the ring a swipe uncovers there (.row-prog.head). */
+.card-head{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;background:var(--surface)}
+.card-head > .ring{margin:0}
+.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px 0 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
 .card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
