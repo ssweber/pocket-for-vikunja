@@ -17,7 +17,7 @@ import {htmlToText} from '../html.js';
 import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {parentIds} from '../lists.js';
-import {NO_ROOM, NOT_KEPT, packParsed, randomId, sync} from '../sync.js';
+import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
 
 // How long a deletion is held in another tab, or after Pocket was closed without sending it: its rows can stay a while
@@ -517,12 +517,11 @@ export default {
      addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show on their rows, with no message
      unless there's a problem: one added by mistake is deleted from its row, which has an Undo. */
   async addSubtasks(w = 'sub'){
-    const foot = w === 'under', parent = this.boxParent(w), b = this.box(w), lines = this.boxLines(w), parsed = this.boxParsedLines(w);
+    const foot = w === 'under', parent = this.boxParent(w), b = this.box(w), parsed = this.boxParsedLines(w);
     if (!parent || !parsed.some(p => p.title)) return;
     const n = parsed.filter(p => p.title).length;
     const at = foot ? this.cursorPlaces(n) : this.sheet.subView || !this.subtasks.length ? placeAfter(this.subtasks.map(s => this.positions[s.id] || 0), null, n) : null;
-    const items = lines.map((raw, i) => ({raw: parsed[i].done ? 'x ' + raw : raw, p: parsed[i]})).filter(x => x.p.title)
-      .map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn(w, lines)}), ...at && {position: at[k]}}, taskId: null, done: false, linked: false}));
+    const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
     // The next ones from the add box go after these.

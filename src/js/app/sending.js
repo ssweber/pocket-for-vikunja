@@ -5,7 +5,7 @@ import {addDays, isLate, isSet, startOfDay} from '../dates.js';
 import {addedWhere, doneText} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
-import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, slowness, sync, unpackParsed} from '../sync.js';
+import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
 import {keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
@@ -70,15 +70,12 @@ export default {
     const first = parsed.project?.id || pid;
     if (!first) { this.say('Create a project in Vikunja first', {place: 'cap', cls: 'failed'}); return; }
     if (!this.canWrite(first)) { this.say(`${this.projById.get(first)?.title || 'That project'} is shared with you to read only: pick another with +project.`, {place: 'cap', cls: 'failed'}); return; }
-    const nest = this.cap.nest && lines.length > 1;
-    // Parse every line now, so dates mean what they meant when typed.
-    const list = this.boxParsedLines('cap');
-    // Under the first line, the rest keep their order in its project's List view, each after the one before (Vikunja
-    // would put each new one first). `raw`: its words, to put back in the box if it isn't added, still saying it's done.
-    const items = lines.map((raw, i) => ({raw: list[i].done ? 'x ' + raw : raw, p: list[i]}))
-      .filter(x => x.p.title).map((x, k) => ({raw: x.raw, p: {...packParsed({...x.p, remind: this.remindOn('cap', lines)}), ...nest && k && {position: k * SPACING}}, taskId: null, done: false, linked: false}));
+    // Parse every line now, so dates mean what they meant when typed. Each line says which line it's under. Those
+    // under another keep their order in its project's List view, each after the one before (Vikunja would put each new
+    // one first).
+    const items = itemsOf(this.boxItems('cap'), (k, under) => under !== null && {position: k * SPACING}), subs = items.filter(x => x.under !== null).length;
     const photos = this.capPhotos.map(f => Alpine.raw(f));
-    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest, pid, items, files: photos.map(fileEntry)};
+    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid, items, files: photos.map(fileEntry)};
     this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.capPhotos = [];
     if (this.cap.focus) this.$nextTick(() => this.$refs.capture.focus());   // to type the next one
     try {
@@ -112,7 +109,7 @@ export default {
         this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {...err, action: undo});
       } else if (r.status === 'sent') {
         const away = (r.tasks || []).filter(t => !this.pendingPlace(t));
-        if (away.length || but) this.say(addedWhere({n, nest, project: this.projById.get(r.projectId)?.title, due: items[0].p.due, photos: r.uploaded, but}),
+        if (away.length || but) this.say(addedWhere({n, subs, project: this.projById.get(r.projectId)?.title, due: items[0].p.due, photos: r.uploaded, but}),
           {...(but ? err : cap), action: away.length ? {label: 'Open', fn: () => this.openTask(away[0].id)} : null});
       }                                                                     // gone: another tab sent it, and its rows show
     } finally {
@@ -136,19 +133,24 @@ export default {
     let uploaded = 0;
     try {
       for (const [i, item] of entry.items.entries()) {
-        const child = isChild(entry, i), under = entry.parent?.id ?? (child ? entry.items[0].taskId : null);
-        const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : child ? entry.parentProject : entry.pid, {
+        // Under the line it says, made before it (a line is always under an earlier one), else under the entry's task.
+        const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
+        const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
           made: t => { taken.add(t.id); tasks.push({...t, child, parent: under}); if (i === 0) entry.parentProject = t.project_id; }});
         // One that arrived done, or with progress: its row shows it (placeSent).
         if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
         ids.push(item.taskId);
       }
-      // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them. And a
-      // pasted list's first line, over the lines under it, has the figure they give it, when any of them arrived done
-      // or with progress.
-      const first = !entry.parent && entry.items.some((x, i) => i && isChild(entry, i) && (x.p.done || x.p.pct > 0)) ? entry.items[0].taskId : null;
-      if ((entry.parent || first) && !entry.figured) { await this.writeFigure(entry.parent?.id ?? first); entry.figured = true; await save(); }
+      // A line with lines under it has the figure they give it, when any of them arrived done or with progress: written
+      // once they're in, the deepest first, as each counts in the one over it.
+      for (let i = entry.items.length - 1; i >= 0; i--) {
+        const x = entry.items[i];
+        if (x.figured || !entry.items.some((k, j) => underOf(entry, j) === i && (k.p.done || k.p.pct > 0 || k.figured))) continue;
+        await this.writeFigure(x.taskId); x.figured = true; await save();
+      }
+      // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them.
+      if (entry.parent && !entry.figured) { await this.writeFigure(entry.parent.id); entry.figured = true; await save(); }
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
       if (files.length) { this.placeSent(tasks); this.refreshPending(); }    // the task shows while its photos upload
@@ -338,7 +340,8 @@ export default {
     this.waitShown = slow.length > 0;
     if (next !== null) waitTimer = setTimeout(() => this.markSlow(), next - Date.now());
   },
-  pendingNested(entryId){ const e = this.pending.find(x => x.id === entryId); return !!e?.nest && e.items.length > 1; },
+  // Whether lines wait under an entry's first line.
+  pendingNested(entryId){ const e = this.pending.find(x => x.id === entryId); return !!e && e.items.some((x, i) => underOf(e, i) === 0); },
   // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
   get pendingTasks(){
     const out = [];
@@ -347,8 +350,9 @@ export default {
       e.items.forEach((x, i) => {
         if (x.taskId) return;
         const p = x.p;
-        const child = isChild(e, i);
-        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0,
+        // Under the line it says, as that line's row is called until it's sent, then by its task; else under the entry's task.
+        const child = isChild(e, i), u = underOf(e, i), over = u === null ? e.parent?.id ?? null : e.items[u].taskId || `pending-${e.id}-${u}`;
+        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: over, title: p.title, done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
           waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});
@@ -415,18 +419,22 @@ export default {
       return {...g, tasks: order[g.key] ? tasks.sort(order[g.key]) : tasks};
     });
   },
-  /* Cancel one waiting task. Its words go back in the box it was added from, to change or add again. Cancelling the
-     first line of a pasted list with a parent leaves the rest as tasks of their own, and says so. The photos added with
-     it go too. */
+  /* Cancel one waiting task. Its words go back in the box it was added from, to change or add again. The lines under
+     it go under what it was under, and it says so: cancelling the first line of a pasted list with a parent leaves
+     the rest as tasks of their own. The photos added with it go too. */
   async cancelPending(entryId, index){
-    let raw = '', rest = 0, parent = null, sent = false;
+    let raw = '', rest = 0, over = '', parent = null, sent = false;
     await sync.lock(async () => {
       const e = await sync.fresh(entryId);
       if (!e || !e.items[index] || e.items[index].taskId) { sent = true; return; }   // sent while this waited
       raw = e.items[index].raw.trim(); parent = e.parent || null;
-      e.items.splice(index, 1);
+      // Which line each is under, as it is now; then without this one, each line after it a place sooner.
+      const was = e.items.map((x, i) => underOf(e, i)), up = was[index];
+      rest = was.filter(u => u === index).length; over = up !== null ? e.items[up].p.title : parent?.title || '';
+      e.items.forEach((x, i) => { const u = was[i] === index ? up : was[i]; x.under = u === null ? null : u - (u > index ? 1 : 0); });
+      e.items.splice(index, 1); e.nest = false;
       let drop = [];
-      if (index === 0) { rest = e.nest ? e.items.filter(x => !x.taskId).length : 0; e.nest = false; drop = (e.files || []).map(f => f.key); e.files = []; }
+      if (index === 0) { drop = (e.files || []).map(f => f.key); e.files = []; }
       await sync.save(e, drop);
       if (entryDone(e)) await sync.remove(e.id);
     });
@@ -436,7 +444,8 @@ export default {
     if (sent) { this.say('It was sent before it could be cancelled.', {place}); this.render(); return; }
     const box = parent ? (this.sheet.task?.id === parent.id ? this.sheet.sub : null) : this.cap;
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
-    this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now ${rest === 1 ? 'a task' : 'tasks'} of ${rest === 1 ? 'its' : 'their'} own.`].filter(Boolean).join(' '), {place});
+    const lines = `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now `;
+    this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'a task' : 'tasks'} of ${rest === 1 ? 'its' : 'their'} own.`)].filter(Boolean).join(' '), {place});
   },
   // Don't upload a waiting photo or file after all. Its row goes at once; one already uploading finishes first.
   async cancelFile(entryId, key){

@@ -2,7 +2,7 @@
 import {cache, fmtSize} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {htmlToText} from '../html.js';
-import {isChild, itemDone, sendState, sync} from '../sync.js';
+import {isChild, itemDone, sendState, sync, underOf} from '../sync.js';
 
 const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 const whenText = at => {
@@ -30,7 +30,7 @@ export default {
       } else {
         e.items.forEach((x, i) => {
           if (itemDone(x, isChild(e, i))) return;
-          const under = e.parent?.title || (isChild(e, i) ? e.items[0].p.title : null);
+          const u = underOf(e, i), under = u !== null ? e.items[u].p.title : e.parent?.title || null;
           const text = x.taskId ? `Finishing ${quoted(x.p.title)}` : under ? `Subtask of ${quoted(under)}: ${x.p.title}` : `New task: ${x.p.title}`;
           rows.push({key: `${e.id}-${i}`, text, when, drop: x.taskId ? null : ['cancelPending', e.id, i]});
         });

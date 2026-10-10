@@ -60,7 +60,8 @@ test('where tasks just added went, said by the add box', () => {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0);
   assert.equal(addedWhere({ n: 1, project: 'Orders', due: tomorrow.toISOString() }), 'Added to Orders, due tomorrow', 'a day in words, mid-sentence');
   assert.equal(addedWhere({ n: 3, project: 'Orders' }), 'Added 3 tasks to Orders');
-  assert.equal(addedWhere({ n: 3, nest: true, project: 'Orders' }), 'Added 1 task with 2 subtasks to Orders');
+  assert.equal(addedWhere({ n: 3, subs: 2, project: 'Orders' }), 'Added 1 task with 2 subtasks to Orders');
+  assert.equal(addedWhere({ n: 9, subs: 7, project: 'Orders' }), 'Added 2 tasks with 7 subtasks to Orders', 'a list with several parents');
   assert.equal(addedWhere({ n: 1, project: 'Orders', photos: 2, but: ', but @sam can\'t see Orders' }), 'Added to Orders, with 2 photos, but @sam can\'t see Orders');
   assert.equal(addedWhere({ n: 2 }), 'Added 2 tasks to its project');
 });

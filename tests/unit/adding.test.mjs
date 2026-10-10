@@ -19,14 +19,16 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 // the test's, so it doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow'));
+  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'cancelPending', 'pendingNested'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], canWrite: () => true });
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   app.view = { groups: todayGroups(), route: '' };
   return app;
 };
-// A line as an add box keeps it in the outbox (packParsed): `p`, what was read in it.
-const line = (title, p = {}) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0, ...p }, taskId: null, done: false, linked: false });
+// A line as an add box keeps it in the outbox (packParsed): `p`, what was read in it; `under`: the line it's under.
+const line = (title, p = {}, under = null) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0, ...p }, under, taskId: null, done: false, linked: false });
+// The same as a Pocket from before lines said which line they're under kept it: its entry's `nest` said it for them all.
+const oldLine = (title, p = {}) => { const { under, ...x } = line(title, p); return x; };
 let n = 0;
 const entry = (items, more = {}) => ({ id: 'e' + ++n, user: 1, at: new Date().toISOString(), nest: false, pid: 5, items, files: [], ...more });
 const send = async (app, e) => { await sync.add(e, []); app.refreshPending(); return app.sendEntry(e.id); };
@@ -111,19 +113,81 @@ test('a line\'s progress is written once it\'s made, as a swipe would set it, an
   assert.deepEqual(app.leaving, { 102: 'done' }, 'only the one that\'s done leaves with the batch');
 });
 
-test('a pasted list\'s first line, over lines that arrived done or with progress, has the figure they give it', async t => {
+test('a line over lines that arrived done or with progress has the figure they give it, written once they\'re in', async t => {
   const v = fakeVikunja(), app = adding(t);
-  await send(app, entry([line('Pack the van'), line('Load chairs', { done: true }), line('Tables')], { nest: true }));
+  await send(app, entry([line('Pack the van'), line('Load chairs', { done: true }, 0), line('Tables', {}, 0)]));
   await app.saveTask(101, null, () => null);
   assert.deepEqual([v.task(101).percent_done, v.task(102).done, v.task(103).done], [0.5, true, false], 'one of two done');
   assert.deepEqual(v.task(101).related_tasks.subtask.map(s => s.id), [102, 103]);
-  await send(app, entry([line('Set the hall'), line('Tables', { pct: 50 }), line('Lights')], { nest: true }));
+  await send(app, entry([line('Set the hall'), line('Tables', { pct: 50 }, 0), line('Lights', {}, 0)]));
   await app.saveTask(104, null, () => null);
   assert.equal(v.task(104).percent_done, 0.25, 'one at 50% of two');
   // With none done, its figure is 0, as Vikunja made it: nothing is written.
   v.requests.length = 0;
-  await send(app, entry([line('Order cups'), line('Small'), line('Large')], { nest: true }));
+  await send(app, entry([line('Order cups'), line('Small', {}, 0), line('Large', {}, 0)]));
   assert.deepEqual(sent(v).filter(([m]) => m === 'PATCH'), []);
+});
+
+const links = v => v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]);
+test('a list with several parents, and subtasks of subtasks: each line is made under the line it says, in order', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  // "## Pack the van", "Load chairs", "  Stack them" (done), "## Set the hall", "Tables (50%)"
+  const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', { done: true }, 1), line('Set the hall'), line('Tables', { pct: 50 }, 3)]);
+  v.trouble = () => 'offline';
+  await send(app, e);
+  app.refreshPending();
+  assert.deepEqual(app.pendingTasks.map(x => [x.id, x.parent, x.child]), [[`pending-${e.id}-0`, null, false], [`pending-${e.id}-1`, `pending-${e.id}-0`, true],
+    [`pending-${e.id}-2`, `pending-${e.id}-1`, true], [`pending-${e.id}-3`, null, false], [`pending-${e.id}-4`, `pending-${e.id}-3`, true]], 'while they wait: each row under its line\'s row, their ids in item order');
+  v.trouble = () => null;
+  v.requests.length = 0;
+  const r = await app.sendEntry(e.id);
+  assert.equal(r.status, 'sent');
+  assert.deepEqual(links(v), [[101, 102], [102, 103], [104, 105]]);
+  assert.deepEqual(r.tasks.map(x => [x.title, x.parent, x.child]), [['Pack the van', null, false], ['Load chairs', 101, true], ['Stack them', 102, true], ['Set the hall', null, false], ['Tables', 104, true]]);
+  await app.saveTask(101, null, () => null);
+  // The deepest first, as each counts in the one over it: Load chairs 100% (its one subtask done), so Pack the van 100%.
+  assert.deepEqual(sent(v).filter(([m, , b]) => m === 'PATCH' && 'percent_done' in b && !b.done).map(([, path, b]) => [path, b.percent_done]),
+    [['/tasks/105', 0.5], ['/tasks/104', 0.5], ['/tasks/102', 1], ['/tasks/101', 1]]);
+});
+
+test('an entry kept from before lines said which line they\'re under still sends: its first line over the rest, or all tasks of their own', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  const r = await send(app, entry([oldLine('Pack the van'), oldLine('Load chairs'), oldLine('Tables')], { nest: true }));
+  assert.deepEqual(links(v), [[101, 102], [101, 103]]);
+  assert.deepEqual(r.tasks.map(x => x.parent), [null, 101, 101]);
+  await send(app, entry([oldLine('Order cups'), oldLine('Order lids')]));
+  assert.equal(links(v).length, 2, 'no more links: tasks of their own');
+  // Half sent by the older Pocket: its first line made, and the project it went to kept on the entry.
+  const half = entry([{ ...oldLine('Set the hall'), taskId: 101, projectId: 5, done: true }, oldLine('Lights')], { nest: true, parentProject: 5 });
+  await send(app, half);
+  assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100], 'the rest carries on under it');
+  // Subtasks added from a task's sheet (parent), kept without `under`: under that task.
+  await send(app, entry([oldLine('Sound check')], { parent: { id: 101, project_id: 5, title: 'Pack the van' } }));
+  assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100]);
+});
+
+test('a waiting line cancelled: the lines under it go under what it was under, and it says so', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  Object.assign(app, { cap: { text: '' } });
+  v.trouble = () => 'offline';
+  const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1), line('Tables', {}, 0)]);
+  await send(app, e);
+  await app.cancelPending(e.id, 1);
+  assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Pack the van', null], ['Stack them', 0], ['Tables', 0]]);
+  assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 1 line under it is now under “Pack the van”.');
+  assert.equal(app.cap.text, 'Load chairs');
+  assert.equal(app.pendingNested(e.id), true, 'lines still wait under the first');
+  await app.cancelPending(e.id, 0);
+  assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Stack them', null], ['Tables', null]]);
+  assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now tasks of their own.');
+  assert.equal(app.pendingNested(e.id), false);
+  // One kept from before, its first line cancelled: the rest are tasks of their own, as they were then.
+  const old = entry([oldLine('Order cups'), oldLine('Small'), oldLine('Large')], { nest: true });
+  await send(app, old);
+  await app.cancelPending(old.id, 0);
+  const left = sync.all(1).find(x => x.id === old.id);
+  assert.deepEqual([left.nest, left.items.map(x => x.under)], [false, [null, null]]);
+  for (const x of sync.all(1)) await sync.remove(x.id);
 });
 
 /* What a box reads, before it's sent (src/js/app/quickadd.js): the chips under it, as their words (a chip tapped off

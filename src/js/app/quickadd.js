@@ -64,7 +64,7 @@ export default {
      list leaves those lines out); a run's box and a template's boxes leave a ticked line out, as a step is done by
      doing it. */
   readsDone(w){ return w === 'cap' || this.isSubBox(w); },
-  boxList(w){ const b = this.box(w); return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done} : {steps: true}); },
+  boxList(w){ const b = this.box(w); return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: w === 'cap' && !!b.nest} : {steps: true}); },
   boxLines(w){ return this.boxList(w).lines.map(l => l.text); },
   get capLines(){ return this.boxLines('cap'); },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
@@ -79,14 +79,21 @@ export default {
   },
   get parsed(){ return this.boxParsed('cap'); },
   /* Each line of a box, parsed: a pasted list in quick add goes to one project (parseList); subtasks are read one by one.
-     `done`: the line said it's done (boxList). A line with lines under it has no progress of its own, so a figure at its
-     end is taken off and dropped: a parent's is worked out from its subtasks (design rule 5). */
+     `done`: the line said it's done, and `under`: the line it's under, by its place among them (boxList). A line with
+     lines under it has no progress of its own, so a figure at its end is taken off and dropped: a parent's is worked
+     out from its subtasks (design rule 5). */
   boxParsedLines(w){
     const list = this.boxList(w).lines, lines = list.map(l => l.text), first = this.boxParsed(w);
     const parsed = w === 'cap' ? (lines.length > 1 ? this.parseList(lines, first).parsed : [first])
       : lines.map((l, i) => i ? parseCapture(l, this.projects, {...this.parseOpts, ignore: this.boxBase(w)}) : first);
-    const parent = i => w === 'cap' && this.cap.nest && i === 0 && lines.length > 1;
-    return parsed.map((p, i) => ({...p, done: !!list[i]?.done, ...parent(i) && {pct: 0}}));
+    const parents = new Set(list.map(l => l.under));
+    return parsed.map((p, i) => ({...p, done: !!list[i]?.done, under: list[i]?.under ?? null, ...parents.has(i) && {pct: 0}}));
+  },
+  // A box's lines for the outbox (itemsOf, sync.js): each with its words, to put back in the box if it isn't added,
+  // still saying it's done, as it was read, and the line it's under.
+  boxItems(w){
+    const lines = this.boxLines(w), remind = this.remindOn(w, lines);
+    return this.boxParsedLines(w).map((p, i) => ({raw: p.done ? 'x ' + lines[i] : lines[i], p: {...p, remind}, under: p.under}));
   },
   /* A pasted list goes to one project: the first +project in it, on whichever line. A different +project on a later line
      stays in that line's text, as a second one does within a line. (Vikunja's own quick add reads each line on its own.)
@@ -335,7 +342,9 @@ export default {
     const listWarn = () => this.accessHints(w).warn.map((text, i) => ({key: 'w' + i, cls: 'warn', text}));
     if (n > 1 && !cap) { out.push({key: 'n', text: `${n} ${this.isSubBox(w) ? 'subtasks' : 'steps'}`}, ...listWarn()); return out; }
     if (n > 1) {
-      out.push({key: 'n', text: this.cap.nest ? `1 task + ${n - 1} subtask${n > 2 ? 's' : ''}` : `${n} tasks`});
+      // What it makes: "1 task + 3 subtasks", the lines that are under another counted as subtasks.
+      const subs = list.lines.filter(l => l.under !== null).length;
+      out.push({key: 'n', text: subs ? `${n - subs} task${n - subs === 1 ? '' : 's'} + ${subs} subtask${subs === 1 ? '' : 's'}` : `${n} tasks`});
       const {project, miss} = this.parseList(this.capLines);
       const to = this.projById.get(project?.id || this.defaultProjectId());
       if (to) out.push({key: 'p', color: colorOf(to.hex_color), text: to.title});

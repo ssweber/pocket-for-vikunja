@@ -21,10 +21,10 @@ export const notMoved = e => e?.code === 'token' ? 'Not moved: your API token do
   : 'Not moved: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja turned it down');
 
 /* Where tasks just added went, said by the add box when they aren't on the screen being looked at (a task due next
-   month, added on Today; one for another project). `n` tasks, or with `nest` one with n - 1 subtasks, in `project`, the
+   month, added on Today; one for another project). `n` lines, `subs` of them subtasks of the others, in `project`, the
    one task due `due`. `but`: what didn't go as asked (", but …"). */
-export function addedWhere({n, nest = false, project, due = null, photos = 0, but = ''}){
-  const what = n === 1 ? 'Added' : nest ? `Added 1 task with ${plural(n - 1, 'subtask')}` : `Added ${plural(n, 'task')}`;
+export function addedWhere({n, subs = 0, project, due = null, photos = 0, but = ''}){
+  const what = n === 1 ? 'Added' : subs ? `Added ${plural(n - subs, 'task')} with ${plural(subs, 'subtask')}` : `Added ${plural(n, 'task')}`;
   const when = n === 1 && due ? ', due ' + dueInfo(due).label.replace(/^(Today|Tomorrow|Yesterday)/, w => w.toLowerCase()) : '';
   const with_ = photos ? (photos === 1 ? ', with the photo' : `, with ${photos} photos`) : '';
   return `${what} to ${project || 'its project'}${when}${with_}${but}`;

@@ -268,13 +268,14 @@ const QUOTE_MARKS = /^(?:>\s*)+/, BULLET = /^(?:[-*•◦▪‣–—+]\s+|\d{1,
 const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^x(?:\s+-|-)?\s+/;
 /* A box's text, read as a list: {lines, ticked, one}. `lines`, one for each line that becomes a task, in order: {text:
    its words, without what was in front of them; at: where they start in the box's text; done: whether it says it's
-   done; mark: [start, end] of what said so, in the box's text}. `ticked`: how many lines say they're done, kept or
-   not; `one`: whether the box holds a single line, not a list.
+   done; mark: [start, end] of what said so, in the box's text; under: the line it's under, by its place in `lines`,
+   or null}. `ticked`: how many lines say they're done, kept or not; `one`: whether the box holds a single line, not a
+   list. `nest`: the first line is the parent of the rest (quick add's ↳ Under first line).
    A line that says it's done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
    single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out.
    `steps`: a run's box and a template's steps, where a step is done by doing it: a ticked checkbox's line is left
    out, and an x is a word. */
-export function readList(text, {steps = false, done = true} = {}){
+export function readList(text, {steps = false, done = true, nest = false} = {}){
   const rows = [];
   let at = 0, ticked = 0;
   for (const raw of String(text || '').split('\n')) {
@@ -292,7 +293,8 @@ export function readList(text, {steps = false, done = true} = {}){
   }
   const full = rows.filter(r => r.text), one = full.length === 1;
   const lines = full.filter(r => !r.done || (done && !steps) || (one && !steps))
-    .map(r => r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null} : {text: r.text, at: r.at, done: r.done, mark: r.mark});
+    .map(r => r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null, under: null} : {text: r.text, at: r.at, done: r.done, mark: r.mark, under: null});
+  if (nest) lines.forEach((l, i) => { if (i) l.under = 0; });
   return {lines, ticked, one};
 }
 // The lines of a run's box, a template's steps and its name: their words, a ticked one left out.

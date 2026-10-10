@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
 import { andList, colorOf, esc, fmtSize, grow, motion, sizeLimit, taskDrafts } from '../../src/js/util.js';
-import { entryDone, heldTasks, isChild, itemDone, packParsed, sendState, slowness, unpackParsed, WAIT_MS } from '../../src/js/sync.js';
+import { entryDone, heldTasks, isChild, itemDone, itemsOf, packParsed, sendState, slowness, underOf, unpackParsed, WAIT_MS } from '../../src/js/sync.js';
 
 test('the screen in the address', () => {
   assert.deepEqual(routeOf(''), { name: 'today' });
@@ -102,6 +102,31 @@ test('what\'s waiting: a line is done once its task is made, and a subtask once 
   assert.equal(entryDone(entry), true);
   assert.equal(entryDone({ ...entry, files: [{ sent: false }] }), false, 'a file still to go');
   assert.equal(isChild({ parent: { id: 3 }, items: [] }, 0), true, 'added from a task\'s sheet');
+});
+
+test('what\'s waiting: each line says which line it\'s under, and an entry kept from before has its first line over the rest', () => {
+  // Two parents, and a subtask of a subtask: "## A", "a1", "  a2", "## B", "b1".
+  const list = { nest: false, items: [{ under: null }, { under: 0 }, { under: 1 }, { under: null }, { under: 3 }] };
+  assert.deepEqual(list.items.map((x, i) => underOf(list, i)), [null, 0, 1, null, 3]);
+  assert.deepEqual(list.items.map((x, i) => isChild(list, i)), [false, true, true, false, true]);
+  // Kept by a Pocket from before lines said so: `nest`, and no `under`.
+  const old = { nest: true, items: [{}, {}, {}] }, flat = { nest: false, items: [{}, {}] };
+  assert.deepEqual(old.items.map((x, i) => underOf(old, i)), [null, 0, 0]);
+  assert.deepEqual(flat.items.map((x, i) => underOf(flat, i)), [null, null]);
+  // In a subtask box's entry, a line under none of the others is under the entry's task.
+  const sub = { parent: { id: 3 }, items: [{ under: null }, { under: 0 }] };
+  assert.deepEqual(sub.items.map((x, i) => [underOf(sub, i), isChild(sub, i)]), [[null, true], [0, true]]);
+  assert.equal(entryDone({ ...list, items: list.items.map((x, i) => ({ ...x, taskId: i + 1, linked: x.under !== null })) }), true, 'a line under another is done once it\'s linked');
+});
+
+test('a box\'s lines as an entry\'s items: a line with no title left is left out, and the lines under it go under what it was under', () => {
+  const p = title => ({ title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null });
+  const items = itemsOf([{ raw: 'A', p: p('A'), under: null }, { raw: 'tomorrow', p: p(''), under: 0 }, { raw: 'a1', p: p('a1'), under: 1 }, { raw: 'B', p: p('B'), under: null }, { raw: 'b1', p: p('b1'), under: 3 }],
+    (k, under) => under !== null && { position: k * 10 });
+  assert.deepEqual(items.map(x => [x.raw, x.under, x.p.position]), [['A', null, undefined], ['a1', 0, 10], ['B', null, undefined], ['b1', 2, 30]]);
+  assert.deepEqual(items.map(x => [x.taskId, x.done, x.linked]), Array(4).fill([null, false, false]));
+  // A parent with no title: its lines are tasks of their own.
+  assert.deepEqual(itemsOf([{ raw: 'tomorrow', p: p(''), under: null }, { raw: 'a', p: p('a'), under: 0 }]).map(x => [x.raw, x.under]), [['a', null]]);
 });
 
 test('a step whose act Vikunja turned down holds the acts behind it', () => {

@@ -8,8 +8,11 @@ import {removeAssignee} from './quickadd.js';
 /* Everything waiting to go to Vikunja: tasks added without a connection (or whose sending was cut off), and photos and
    files. Each entry is one capture, a task or a pasted list, or subtasks added to a task from its sheet (parent), or the
    files added to a task from its sheet (taskId):
-   {id, user, at, nest, pid, parent: {id, project_id, title}, items: [{raw, p, ...its steps}], files: [{key, name, size, type, ...}], taskId}.
-   p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed.
+   {id, user, at, nest, pid, parent: {id, project_id, title}, items: [{raw, p, under, ...its steps}], files: [{key, name, size, type, ...}], taskId}.
+   p is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed. Each line says
+   which line it's under (`under`: that line's place in `items`, always an earlier one; null for none), so a list can
+   have several parents, and subtasks of subtasks. An entry kept by a Pocket from before that has `nest` instead: its
+   first line the parent of all the rest (underOf).
    It all lives in the browser's database (IndexedDB): the entries, the files' bytes, and the tasks Pocket has added.
    An entry and its files are saved together or not at all. The screen reads a copy kept in memory (`entries`), and
    sending always starts from the database's copy, so two tabs never work from an old one. If the database can't be
@@ -159,8 +162,20 @@ export const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, typ
 // A line is done when all its steps are. One saved by a Pocket from before the steps has no `done`: having a task
 // (and, as a subtask, its link) was all there was to it then.
 export const itemDone = (x, child) => x.done ?? (!!x.taskId && (!child || !!x.linked));
-// Whether a line of an entry goes under a task: one in Vikunja already (parent), or the entry's first line (nest).
-export const isChild = (e, i) => !!e.parent || (!!e.nest && i > 0);
+// The line of an entry that line `i` is under, by its place in the entry's items, or null: what the line says
+// (`under`), or, in an entry kept by a Pocket from before lines said so, the first line for all the rest (`nest`).
+export const underOf = (e, i) => e.items[i]?.under ?? (e.nest && i > 0 ? 0 : null);
+// Whether a line of an entry goes under a task: one in Vikunja already (parent), or a line of the entry (underOf).
+export const isChild = (e, i) => !!e.parent || underOf(e, i) !== null;
+/* A box's lines as an entry's items. `lines`: [{raw, p, under}], `p` the line as parsed, `under` the line it's under,
+   by its place among them. A line with no title left (a date alone, say) is left out, and the lines under it go under
+   what it was under. `more(k, under)`: what else to keep with line `k` of those kept (its place in its list). */
+export function itemsOf(lines, more = () => null){
+  const kept = lines.map(x => !!x.p.title), at = [];
+  for (const ok of kept) at.push(ok ? at.filter(k => k >= 0).length : -1);
+  const up = i => { let u = lines[i].under ?? null; while (u !== null && !kept[u]) u = lines[u].under ?? null; return u === null ? null : at[u]; };
+  return lines.flatMap((x, i) => kept[i] ? [{raw: x.raw, p: {...packParsed(x.p), ...more(at[i], up(i))}, under: up(i), taskId: null, done: false, linked: false}] : []);
+}
 export const entryDone = e => e.items.every((x, i) => itemDone(x, isChild(e, i))) && !(e.files || []).some(f => !f.sent);
 /* How a captured line becomes a task in Vikunja, step by step. `done` says whether a step is finished for the line
    (`job`); `run` does it, or the next part of it (one label, one person). Progress is saved after every run, so a try
@@ -219,7 +234,7 @@ export const LINE_STEPS = [
     } catch (e) { settle(e, 'assignee', m => j.problems.push(`@${name}: ${m}`)); }
     j.assign.shift();
   }},
-  // Under the first line of a pasted list, or under the task its sheet is for.
+  // Under the line it's under in a pasted list, or under the task its sheet is for.
   // Here a refusal stops the line, as the list can't be put together without it.
   {name: 'link', done: (j, c) => !c.parent || !!j.linked, async run(j, c){
     try { await app.linkSubtask(c.parent, j.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
