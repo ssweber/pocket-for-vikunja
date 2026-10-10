@@ -85,9 +85,9 @@ export function startedText(who, at, {now = new Date(), day = false} = {}){
   return `Started by ${who}` + (today && !day ? ' at ' + fmtTime(d) : ', ' + d.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}));
 }
 
-// Something copied, said where it was copied from: progress as a text (where there's no share sheet), a Markdown list, a
-// task's notes, a comment; or that the browser wouldn't allow it.
-export const COPIED = {text: 'Copied: paste it into a message', markdown: 'Copied as a Markdown list: paste it into your notes', notes: 'Copied the notes',
+// Something copied, said where it was copied from: progress as a text (where there's no share sheet), a Markdown list
+// (the copy that comes back: design rule 9), a task's notes, a comment; or that the browser wouldn't allow it.
+export const COPIED = {text: 'Copied: paste it into a message', markdown: 'Copied as a Markdown list: paste it into your notes, or into Pocket\'s add box to make the same tasks', notes: 'Copied the notes',
   comment: 'Copied the comment', failed: 'Not copied: this browser didn\'t allow it'};
 
 // Names in a sentence: "A", "A and B", "A, B and C"; past `most`, the first of them and how many more: "A, B, C and 2

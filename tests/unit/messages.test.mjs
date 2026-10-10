@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, cancelName, completeAsk, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -181,4 +181,8 @@ test('a waiting row\'s Cancel says what becomes of the lines waiting under it', 
   assert.equal(cancelName('Pack the van', 1), 'Cancel Pack the van: the line under it becomes a task of its own');
   assert.equal(cancelName('Load chairs', 1, 'Pack the van'), 'Cancel Load chairs: the line under it goes under “Pack the van”');
   assert.equal(cancelName('Load chairs', 3, 'Pack the van'), 'Cancel Load chairs: the lines under it go under “Pack the van”');
+});
+
+test('a Markdown copy says both things it\'s for: notes, and Pocket\'s add box, where it makes the same tasks', () => {
+  assert.equal(COPIED.markdown, 'Copied as a Markdown list: paste it into your notes, or into Pocket\'s add box to make the same tasks');
 });
