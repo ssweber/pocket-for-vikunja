@@ -12,6 +12,9 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium),
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
+import http from 'node:http';
+import https from 'node:https';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
 import { expect, hintSeen, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, swipeRow, synced, toastGone as toastGoneOn } from './helpers.mjs';
 
@@ -104,6 +107,25 @@ try {
     await old.waitForSelector(row, { timeout: 15000 });
     await old.close();
   });
+  /* The plugin sends the page compressed, as the build wrote it, to a browser that takes it (performance-plan, part 6):
+     brotli, else gzip, each the page once decoded, with Vary: Accept-Encoding; the compressed copies aren't served by
+     their own names. */
+  await step('the-plugin-sends-the-page-compressed', async () => {
+    const get = (url, enc) => new Promise((ok, fail) => (url.startsWith('https:') ? https : http).get(url, { headers: { 'Accept-Encoding': enc } }, res => {
+      const parts = []; res.on('data', b => parts.push(b)); res.on('end', () => ok({ status: res.statusCode, headers: res.headers, body: Buffer.concat(parts) }));
+    }).on('error', fail));
+    const plain = await get(APP, 'identity');
+    if (plain.status !== 200 || plain.headers['content-encoding'] || !plain.body.includes('<html')) throw new Error(`the page as it is: ${plain.status} ${plain.headers['content-encoding']}`);
+    for (const [enc, decode] of [['br', brotliDecompressSync], ['gzip', gunzipSync]]) {
+      const r = await get(APP, enc);
+      if (r.headers['content-encoding'] !== enc) throw new Error(`asked for ${enc}, sent ${r.headers['content-encoding']}`);
+      if (!/accept-encoding/i.test(r.headers.vary || '')) throw new Error('Vary: ' + r.headers.vary);
+      if (!decode(r.body).equals(plain.body)) throw new Error(`the ${enc} page isn't the page`);
+      if (r.body.length >= plain.body.length / 2) throw new Error(`the ${enc} page is ${r.body.length} bytes of ${plain.body.length}`);
+    }
+    for (const name of ['index.html.br', 'index.html.gz']) if ((await get(APP + name, 'br')).status !== 404) throw new Error(name + ' is served by its name');
+  });
+
   await step('tick-in-list-and-tick-again', async () => {
     // Ticked, its row stays where it is, done, until the rows ticked leave together; its tick again opens it.
     await page.click(`${row} .check`);
@@ -2854,6 +2876,128 @@ ${footName('Hooks')}`);
     await page.click('#btn-sheet-close');
   });
 
+  // ---- A long project: its rows drawn in batches, Done's latest 100, its kept copy, opening on it ----
+  /* A long project (performance-plan, parts 4 to 6 and 9), made through the API: 80 open tasks, more than a screen
+     draws at once, and 105 done, more than Done shows at once. */
+  const big = {}, word = `Longlist${stamp}`;
+  const bigRows = () => page.locator('#view .list').first().locator('.row[data-id]');
+  const doneRows = page.locator('#view .done-sec ~ .list .row[data-id]'), doneSec = page.locator('#sec-done'), moreRow = page.locator('#more-done');
+  const ids = loc => loc.evaluateAll(els => els.map(el => +el.dataset.id));
+  await step('a-long-screens-rows-are-all-there-once-its-loaded', async () => {
+    big.project = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeLong${stamp}` }) })).json();
+    createdProjects.push(big.project.id);
+    const all = [...Array(80)].map((_, i) => [`${word} open ${i + 1}`, {}]).concat([...Array(105)].map((_, i) => [`${word} done ${i + 1}`, { done: true }]));
+    const made = [];
+    for (let i = 0; i < all.length; i += 8) made.push(...await Promise.all(all.slice(i, i + 8).map(([title, extra]) =>
+      api(`/projects/${big.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title, ...extra }) }).then(r => r.json()))));
+    [big.open, big.done] = [made.slice(0, 80), made.slice(80)];
+    await page.click('#btn-refresh');                                           // so Pocket knows the project
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    // The first rows are drawn at once and the rest in batches after, the screen busy until they all are: once it's
+    // loaded, every row is there, read once. On a phone's CPU (4 times slower), so they do come in batches.
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    let shown;
+    try {
+      await page.evaluate(id => { location.hash = '#/project/' + id; }, big.project.id);
+      await expect(bigRows().first()).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      shown = await ids(bigRows());
+    } finally { await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await cdp.detach(); }
+    if (shown.length !== 80 || !shown.includes(big.open.at(-1).id)) throw new Error(`${shown.length} rows once loaded, the last task's ${shown.includes(big.open.at(-1).id) ? '' : 'not '}among them`);
+  });
+  /* Done shows the 100 done most recently, its heading counting them all, and a row at its end for the rest; a tap shows
+     them, and the row goes with none left, the focus on the first it showed (performance-plan, part 9). */
+  await step('done-shows-its-latest-100-and-a-row-for-the-rest', async () => {
+    await expect(doneSec).toHaveText('Done (105)');
+    await doneSec.click();
+    await expect(doneRows).toHaveCount(100, { timeout: 15000 });
+    await expect(moreRow).toHaveText('Show the last 5, done before these');
+    await moreRow.click();
+    await expect(doneRows).toHaveCount(105);
+    await expect(moreRow).toHaveCount(0);
+    const shown = await ids(doneRows);
+    if (new Set(shown).size !== 105 || big.done.some(t => !shown.includes(t.id))) throw new Error('Done shows ' + shown.length + ', not every one made');
+    const focus = await page.evaluate(() => +document.activeElement?.closest('.row')?.dataset.id);
+    if (!shown.slice(100).includes(focus)) throw new Error('the focus is on ' + focus + ', not the first row shown by the tap');
+  });
+  /* The copy kept of a project opens Done only if it's open now, and keeps Done's count, not its tasks (part 4): opened,
+     closed and left, the project shows no done rows when it's back, from the copy or loaded afresh; and Done starts
+     again at its latest 100. */
+  await step('a-projects-kept-copy-opens-done-only-if-its-open-now', async () => {
+    await doneSec.click();
+    await expect(doneSec).toHaveAttribute('aria-expanded', 'false');
+    await page.click('nav.tabs a[data-tab=today]');
+    await expect(page.locator('nav.tabs a[data-tab=today]')).toHaveAttribute('aria-current', 'page');
+    await loaded(page);
+    // Its lists answer late, so what shows meanwhile is the copy.
+    let answer; const late = new Promise(ok => { answer = ok; });
+    const slow = async r => { await late; await r.fallback(); };
+    const lists = new RegExp(`/api/v2/projects/${big.project.id}/(views/\\d+/)?tasks`);
+    await page.route(lists, slow);
+    try {
+      await page.evaluate(id => { location.hash = '#/project/' + id; }, big.project.id);
+      await expect(page.locator(rowById(big.open[0].id))).toBeVisible();
+      await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
+      await expect(doneSec).toHaveAttribute('aria-expanded', 'false');
+      await expect(doneSec).toHaveText('Done (105)');
+      if (await page.locator('#view .done-sec ~ .list .row').count()) throw new Error('the copy has done rows');
+      const kept = await page.evaluate(id => JSON.parse(localStorage.getItem(`pocket.saved.project.${id}.open`)).groups.find(g => g.key === 'done'), big.project.id);
+      if (kept.tasks.length || kept.count !== 105) throw new Error(`the copy keeps ${kept.tasks.length} done tasks, counting ${kept.count}`);
+    } finally { answer(); await page.unroute(lists, slow); }
+    await loaded(page);
+    if (await page.locator('#view .done-sec ~ .list .row').count()) throw new Error('done rows once loaded');
+    await doneSec.click();
+    await expect(doneRows).toHaveCount(100, { timeout: 15000 });
+    await expect(moreRow).toHaveText('Show the last 5, done before these');
+    await doneSec.click();
+  });
+  /* Search's done matches: the 50 done most recently, the heading counting them all, and the same row for 50 more. */
+  await step('search-shows-its-latest-50-done-and-a-row-for-more', async () => {
+    await page.click('#btn-search');
+    await page.fill('#in-search', word);
+    const found = page.locator('#view div:has(> .sec:has-text("Done")) .row[data-id]');
+    await expect(found).toHaveCount(50, { timeout: 15000 });
+    await expect(page.locator('#view .sec:has-text("Done") .n')).toHaveText('105');
+    await expect(moreRow.locator('.title')).toHaveText('Show 50 more, done before these');
+    await expect(moreRow.locator('.note')).toHaveText('55 more not shown');
+    await moreRow.click();
+    await expect(found).toHaveCount(100);
+    await expect(moreRow).toHaveText('Show the last 5, done before these');
+    await moreRow.click();
+    await expect(found).toHaveCount(105);
+    await expect(moreRow).toHaveCount(0);
+    await page.click('#btn-search-cancel');
+  });
+  /* Opening Pocket with the sign-in it last confirmed shows the kept screen at once, before Vikunja says who's signed
+     in (performance-plan, part 6); a change made meanwhile waits, and is sent once Vikunja has said. */
+  await step('opens-on-the-kept-screen-before-vikunja-says-whos-signed-in', async () => {
+    const t = big.open[0], sent = [];
+    await page.evaluate(id => { location.hash = '#/project/' + id; }, big.project.id);
+    await expect(page.locator(rowById(t.id))).toBeVisible();
+    await loaded(page);
+    let answer, asked = false; const late = new Promise(ok => { answer = ok; });
+    const user = /\/api\/v2\/user(\?|$)/, slow = async r => { asked = true; await late; await r.fallback(); };
+    const sends = r => r.method() !== 'GET' && r.url().includes('/api/v2/') && sent.push(r.url());
+    await page.route(user, slow);
+    page.on('request', sends);
+    try {
+      await page.reload();
+      await expect.poll(() => asked).toBe(true);
+      await expect(page.locator(rowById(t.id))).toBeVisible();
+      await page.getByRole('button', { name: 'Mark done: ' + t.title, exact: true }).click();
+      await expect(page.locator(rowById(t.id))).toHaveClass(/\bdone\b/);
+      await page.waitForTimeout(1000);                                      // time for a request that mustn't go yet
+      if (sent.length) throw new Error('sent before Vikunja said who it is: ' + sent);
+    } finally { answer(); await page.unroute(user, slow); }
+    await synced(page);
+    page.off('request', sends);
+    if (!sent.some(u => u.endsWith('/tasks/' + t.id))) throw new Error('the tick was never sent: ' + sent);
+    if (!(await (await api('/tasks/' + t.id)).json()).done) throw new Error('not done in Vikunja');
+    await later(3000);
+    await page.click('nav.tabs a[data-tab=today]');
+    await api('/projects/' + big.project.id, { method: 'DELETE' });            // its tasks off Today for the steps after
+  });
   await step('project-sheet-renames-and-deletes', async () => {
     const proj = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeSheet${stamp}` }) })).json();
     createdProjects.push(proj.id);

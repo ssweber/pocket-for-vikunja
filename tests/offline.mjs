@@ -89,6 +89,25 @@ try {
     } finally { await ctx.close(); }
   });
 
+  /* Opening Pocket again is answered from the page it saved, at once, and the page is fetched behind it and saved for
+     the next opening (sw.js). The saved copy is given a mark: the next opening shows it, the one after doesn't. */
+  await step('opens-from-the-saved-page-and-saves-the-new-one-behind-it', async () => {
+    const savedPage = mark => page.evaluate(async mark => {
+      const cache = await caches.open((await caches.keys()).find(k => k.startsWith('pocket-')));
+      const url = new URL('index.html', location.href).href, kept = await cache.match(url), html = await kept.text();
+      if (mark) await cache.put(url, new Response(html.replace('<head>', '<head><meta name="saved-copy">'), { headers: { 'Content-Type': 'text/html', 'Last-Modified': kept.headers.get('Last-Modified') || '' } }));
+      return html.includes('<meta name="saved-copy">');
+    }, mark);
+    await savedPage(true);
+    await page.reload();
+    await expect(page.locator('meta[name="saved-copy"]')).toHaveCount(1);
+    await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
+    await expect.poll(() => savedPage(false)).toBe(false);                  // the page fetched behind it, saved
+    await page.reload();
+    await expect(page.locator('meta[name="saved-copy"]')).toHaveCount(0);
+    await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
+  });
+
   await step('opens-offline-with-last-list', async () => {
     await context.setOffline(true);
     await page.reload();
