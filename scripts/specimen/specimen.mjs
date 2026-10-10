@@ -35,6 +35,11 @@ function sections(){
   const tables = task({title: 'Set out the tables', state: {drag: 70}});
   const hall = task({title: 'Book the hall', state: {aimed: true}}), van = task({title: 'Pack the van'});
   const load = task({title: 'Load chairs', state: {aimed: true}, related_tasks: {parenttask: [{id: van.id}]}});
+  // Subtasks added from the add box (quickadd.js: aimAdded): the last added has the light, its task's own row dark.
+  const crates = task({title: 'Pack the crates'}), under = (title, more) => ({...task({title, related_tasks: {parenttask: [{id: crates.id}]}}), ...more});
+  const added = [under('Rope', {id: 'pending-specimen-2', pending: true, waits: true, entry: 'specimen', index: 1}),
+    under('Straps', {id: 'pending-specimen-3', pending: true, waits: true, entry: 'specimen', index: 2, state: {aimed: true}}),
+    under('Tarp', {id: 'pending-specimen-4', pending: true, entry: 'specimen', index: 3, state: {aimed: true}}), under('Hooks', {state: {aimed: true, flash: 'fresh'}})];
   const chairs = task({title: 'Wipe the chairs', state: {drag: 70, with: true}, related_tasks: {parenttask: [{id: tables.id}]}});
   // A done task with subtasks still open (ticked done on the web, say): over them, struck through, on a project's list.
   const party = task({title: 'Plan the staff party', done: true}), cake = task({title: 'Order the cake', related_tasks: {parenttask: [{id: party.id}]}});
@@ -255,6 +260,10 @@ function sections(){
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
     // The task quick add's box adds subtasks to (quickadd.js: the cursor), lit up: a task, and a subtask.
     {title: 'What the add box adds subtasks to, lit up: a task, and a subtask', depth: {[van.id]: 0, [load.id]: 1}, tasks: [hall, van, load]},
+    // The light follows what's added: lit while it waits (after one that waits, not lit), before it looks waiting, and
+    // just sent, its flash fading to the lit tint.
+    {title: 'A subtask just added from the add box is the lit row, its task dark: waiting to send, after one that waits unlit; not yet looking it; and just sent',
+      depth: {[crates.id]: 0, ...Object.fromEntries(added.map(t => [t.id, 1]))}, tasks: [crates, ...added]},
     // Held and moved down (progress.js: dragOf): it follows the finger, with its subtask, and the row it has passed the
     // middle of has moved up to make room.
     {title: 'Held and moved down, with its subtask, past the row below', depth: {[tables.id]: 0, [chairs.id]: 1}, tasks: [task({title: 'Sweep the yard'}),

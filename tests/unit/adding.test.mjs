@@ -19,7 +19,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 // the test's, so it doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'cancelPending', 'cancelLabel'));
+  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'cancelPending', 'cancelLabel'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], canWrite: () => true });
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   app.view = { groups: todayGroups(), route: '' };
@@ -310,22 +310,81 @@ test('a first line ending with a colon is the parent of the rest in quick add, i
   assert.deepEqual(app.boxItems('sub').map(x => [x.p.title, x.under]), [['Groceries:', null], ['milk', null]]);
 });
 
-/* Subtasks from the add box on a project's list (addSubtasks, actions.js): the next go after the last that's the
-   task's own subtask, not after one under it. */
-test('subtasks added from the add box with lines under them: the box\'s next go after the last of the task\'s own', async t => {
+/* Subtasks from the add box on a project's list (addSubtasks, actions.js; the cursor, quickadd.js): Pack the van, with
+   Chairs under it, the box on the task. What's added is the lit row (`lit`, which each row reads by its own id), so
+   the next go after it. */
+const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: {} }]);
-  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow'));
-  const van = app.keep(v.task(9));
-  Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], labels: [], people: [], access: {}, userKnown: {},
-    accessBlocked: false, checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: { ...newBox(), text: 'Chairs\n  Stack them\nTables\n  Fold the legs' }, capPhotos: [],
-    route: { name: 'project', id: 5 }, view: { groups: [{ key: 'open', tasks: [van] }], route: '', listView: 3 }, cursor: { id: 9, after: null }, lit: { 9: true }, flash(){}, $nextTick(){} });
-  await app.addSubtasks('under');
-  assert.deepEqual(app.cursor.after.title, 'Tables');
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
+  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'flush'));
+  Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
+  const van = app.keep(v.task(9)), chairs = app.keep(v.task(8));
+  Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
+    accessBlocked: false, checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 },
+    view: { groups: [{ key: 'open', tasks: [van, chairs] }], route: '', listView: 3 }, cursor: null, lit: {}, flash(){}, $nextTick(){} });
+  app.aim(van);
+  const add = text => { app.cap.text = text; return app.addSubtasks('under'); };
+  // The one row lit, and what the line over the box says they go after.
+  const aimed = () => [Object.keys(app.lit), app.capTarget?.after];
+  return { v, app, van, chairs, add, aimed, pos: id => v.task(id).position };
+};
+
+test('a subtask added from the add box is the lit row at once: its waiting row, then its task\'s, and the next goes after it', async t => {
+  const { v, app, add, aimed, pos } = underBox(t);
+  const rope = add('Rope');
+  const waits = Object.keys(app.lit)[0];
+  assert.deepEqual(aimed(), [[waits], 'Rope'], 'before it\'s kept, or sent: the task\'s own row is dark');
+  assert.deepEqual(app.pendingTasks.map(x => x.id), [waits], 'and its waiting row is on the list already, to be the one lit');
+  await rope;
+  assert.deepEqual(aimed(), [['101'], 'Rope'], 'sent: the same row, now Vikunja\'s task');
+  assert.deepEqual(app.view.groups[0].tasks.map(x => x.id), [9, 8, 101], 'on the list, where its waiting row was');
+  await add('Straps');
+  assert.deepEqual(aimed(), [['102'], 'Straps']);
+  assert.ok(pos(101) > 100 && pos(102) > pos(101), 'each after the one before');
+  // Two typed one straight after the other, the first still on its way: the second goes after it all the same.
+  const one = add('Hooks'), two = add('Tarp');
+  await Promise.all([one, two]);
+  assert.deepEqual([aimed(), v.task(103).title, v.task(104).title], [[['104'], 'Tarp'], 'Hooks', 'Tarp']);
+  assert.ok(pos(103) > pos(102) && pos(104) > pos(103));
+});
+
+test('without a connection, the subtask added waits, lit, and is lit still once it\'s sent later', async t => {
+  const { v, app, add, aimed, pos } = underBox(t);
+  v.trouble = () => 'offline';
+  await add('Rope');
+  await add('Straps');
+  const rows = app.pendingTasks.map(x => [x.id, x.title, x.position]);
+  assert.deepEqual(aimed(), [[rows[1][0]], 'Straps'], 'the last one\'s waiting row, by the id the list gives it');
+  assert.deepEqual(rows.map(r => r[1]), ['Rope', 'Straps']);
+  assert.ok(rows[0][2] > 100 && rows[1][2] > rows[0][2], 'each after the one before, while they wait');
+  assert.deepEqual([app.cursor.wait.title, app.cursor.wait.position], [rows[1][1], rows[1][2]], 'the cursor has its row\'s words and place');
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual(aimed(), [['102'], 'Straps']);
+  assert.deepEqual([pos(101), pos(102)], [rows[0][2], rows[1][2]]);
+  assert.equal(sync.all(1).length, 0);
+});
+
+test('a pasted list with lines under them: the lit row is the last of the task\'s own, and the next go after it', async t => {
+  const { v, app, add, aimed, pos } = underBox(t);
+  const sent = add('Ladder\n  Check the feet\nTables\n  Fold the legs');
+  assert.match(Object.keys(app.lit)[0], /^pending-[0-9a-f]+-2$/, 'Tables, not Fold the legs under it');
+  await sent;
+  assert.deepEqual(aimed(), [['103'], 'Tables']);
   assert.deepEqual(v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]), [[9, 101], [101, 102], [9, 103], [103, 104]]);
-  const pos = id => v.task(id).position;
-  assert.equal(app.cursor.after.pos, pos(103), 'at its place in the list, which the next go after');
+  assert.equal(app.positions[103], pos(103), 'at its place in the list, which the next go after');
   assert.ok(pos(101) < pos(102) && pos(102) < pos(103) && pos(103) < pos(104), 'each after the one before');
+  await add('Rope');
+  assert.ok(pos(105) > pos(103), 'after Tables');
+});
+
+test('a subtask added done isn\'t lit, as it leaves with the batch: its task is, and the next goes after it all the same', async t => {
+  const { app, add, aimed, pos } = underBox(t);
+  await add('x Rope');
+  assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 101: 'done' }]);
+  await add('Straps');
+  assert.deepEqual(aimed(), [['102'], 'Straps']);
+  assert.ok(pos(102) > pos(101));
 });
 
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {

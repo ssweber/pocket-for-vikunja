@@ -134,10 +134,11 @@ export default {
     try {
       for (const [i, item] of entry.items.entries()) {
         // Under the line it says, made before it (a line is always under an earlier one), else under the entry's task.
+        // (`was`: the id its waiting row had, pendingTasks, for what was on that row: the add box's cursor, aimSent.)
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
-          made: t => { taken.add(t.id); tasks.push({...t, child, parent: under}); if (i === 0) entry.parentProject = t.project_id; }});
+          made: t => { taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`}); if (i === 0) entry.parentProject = t.project_id; }});
         // One that arrived done, or with progress: its row shows it (placeSent).
         if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
         ids.push(item.taskId);
@@ -214,9 +215,10 @@ export default {
   // Put tasks that just reached Vikunja in the list on screen, where they belong, without waiting for it to reload. On
   // a patchy connection the reload can fail, and the list on screen is then kept as it was: without them.
   placeSent(tasks){
+    this.aimSent(tasks);                         // the add box's cursor, on one of their waiting rows, goes with it (quickadd.js)
     if (this.view.loading || this.view.route !== location.hash) return;
     let placed = false;
-    for (const {child, problems, arrived, ...t} of tasks) {
+    for (const {child, problems, arrived, was, ...t} of tasks) {
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
       // It said it's done, or how far along it is: ticked on its row, or its tick showing how far. One that repeats is

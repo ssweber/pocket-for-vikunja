@@ -189,6 +189,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 @media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
 /* the task quick add's box adds subtasks to (the cursor): a bar down its side, and a faint tint */
 .row.aimed{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
+/* a subtask just added from that box is lit in its turn: its light fades to that tint, not past it; and one that looks
+   waiting keeps the waiting tint, with the bar */
+.row.fresh.aimed{animation-name:fresh-lit}
+@keyframes fresh-lit{0%,35%{background:var(--accent-soft)}}
+.row.aimed.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 /* a task whose time has just passed lights up as it moves to Overdue */
 .row.came-due{animation:came-due 2s ease-out}
 @keyframes came-due{0%,40%{background:color-mix(in srgb,var(--overdue) 16%,transparent)}100%{background:transparent}}

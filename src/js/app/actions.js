@@ -529,10 +529,11 @@ export default {
   /* A subtask box's lines, as subtasks, through the outbox like quick add: without a connection they wait, shown in the
      sheet and the lists, and are sent once Pocket reaches Vikunja. The sheet's box ('sub') adds them to the open task,
      after its subtasks; the add box on a project's list ('under'), to the task it's on (the cursor, quickadd.js), after
-     the cursor's subtask or the last one added from there, each after the one before. Each is sent with its place in its
-     project's List view, once where they are is known (Vikunja would put each first). (A template's steps are added with
-     addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show on their rows, with no message
-     unless there's a problem: one added by mistake is deleted from its row, which has an Undo. */
+     the cursor's subtask, which the last one added from there then is, so each goes after the one before. Each is sent
+     with its place in its project's List view, once where they are is known (Vikunja would put each first). (A
+     template's steps are added with addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show
+     on their rows, with no message unless there's a problem: one added by mistake is deleted from its row, which has
+     an Undo. */
   async addSubtasks(w = 'sub'){
     const foot = w === 'under', parent = this.boxParent(w), b = this.box(w), parsed = this.boxParsedLines(w);
     if (!parent || !parsed.some(p => p.title)) return;
@@ -541,19 +542,21 @@ export default {
     const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
-    // The next ones from the add box go after these: after the last that's the task's own subtask, not one under it.
-    const last = items.findLastIndex(x => x.under === null);
-    if (foot) this.cursor.after = {pos: at?.[last] ?? null, title: items[last].p.title};
+    // From the add box, the light follows what's added, and the next go after it: the last that's the task's own
+    // subtask, not one under it (aimAdded, quickadd.js).
+    if (foot) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
     const here = () => foot || this.sheet.task?.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
     // The next can be sent while this one is on its way (the outbox sends them in turn): `adding` counts them.
     b.adding++; b.text = '';
     if (!foot || b.focus) this.$nextTick(() => this.boxEl(w)?.focus());
     try {
-      // On screen at once, where they'll be: they look waiting only if sending takes a while.
-      const {kept, full} = await sync.add(entry, []);
+      // On screen at once, where they'll be, as the outbox is asked to keep them, not once it has: from the add box, the
+      // light is on the last already. They look waiting only if sending takes a while.
+      const keeping = sync.add(entry, []);
       this.refreshPending();
+      const {kept, full} = await keeping;
       const r = await sync.lock(() => this.sendEntry(entry.id));
-      if (foot) this.refreshPending();                                     // the waiting rows, and the rows sent, swapped at once
+      if (foot) this.refreshPending();                                    // the waiting rows, and the rows sent, swapped at once
       this.placeSent(r.tasks || []);
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && foot) {

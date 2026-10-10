@@ -13,9 +13,10 @@
      same gap, holding "Done" and Undo, a step on a run's screen too. A tick not saved is a line in its place, with Try
      again (lines.js). One not sent yet (pending) is on its list at once, where
      it'll be; once it has waited a while (waits), it looks it: tinted, its tick dotted. On a project's list it's lit up
-     (aimed) while quick add's box adds subtasks to it, and watched meanwhile, so the box forgets it once it's out of
-     sight (quickadd.js). A done task over its subtasks still open (g.heads, on a project's list) is a head: struck
-     through, and its tick opens it again.
+     (aimed) while quick add's box adds subtasks at it (lit[t.id]: the row touched last, or the subtask just added from
+     the box, waiting too), and watched meanwhile, so the box forgets it once it's out of sight (quickadd.js). A done
+     task over its subtasks still open (g.heads, on a project's list) is a head: struck through, and its tick opens it
+     again.
      A task's own sheet leads with its row (g.own, sheet/task-card.html: parent-tasks-plan, 6b), acting as it does in a
      list but about this one task: its tick is the sheet's (sheetDone), a swipe sets its progress there (a full one ticks
      it in place, with no gap), swiped left at 0% it's deleted and the sheet closes on the list (sheetRowGesture), and a

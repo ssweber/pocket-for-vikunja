@@ -2,7 +2,7 @@
 import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
-import {saved} from '../lists.js';
+import {parentIds, saved} from '../lists.js';
 import {placeAfter} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
@@ -11,7 +11,10 @@ import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quicka
 let peopleLoading = null;                      // loadPeople() while it runs
 let peopleAt = 0;                              // when it last loaded, this session
 const PEOPLE_AGE = 10 * 6e4;                   // who can see each project is loaded again once it's older than this
-let cursorIO = null, watched = null;           // what tells when the cursor's row is out of sight, and that row
+// What tells when the cursor's row is out of sight (watchCursor): that row, the row standing in for it until it has
+// been seen, and whether each was in sight when last told.
+let cursorIO = null, watched = null, stand = null;
+const inSight = new WeakMap();
 
 export default {
   /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
@@ -403,10 +406,14 @@ export default {
 
   /* ---------- what quick add's box adds to, on a project's list ---------- */
   /* On a project's list, quick add's box adds a task to the project, until a task is touched: its sheet opened, ticked,
-     its progress slid, or nudged (a short, slow scroll that starts on it: nudged). That task is then the cursor, lit
-     up, and the box adds subtasks to it (the box 'under'); one on a subtask adds them after it, under its parent. A
-     task ticked done can't be one: its parent is, if it's on the list. The box goes back to adding a task with its ×,
-     when the cursor's row is out of sight (scrolling back doesn't bring it back), or when the screen is left. */
+     its progress swiped, or nudged (a short, slow scroll that starts on it: nudged). Its row is then the cursor, lit
+     up, and the box adds subtasks to its task (the box 'under'): after its last, or, the row being a subtask, right
+     after it, under its parent. A subtask added from the box is the cursor in its turn (aimAdded), so the next goes
+     after it: one row is lit, the one the line over the box names (capTarget), and touching a row lights that one,
+     the one touched before too. `cursor` is {id, under: the task it's under on this list, or null}, with `wait` for a
+     subtask not sent yet: its waiting row. A task ticked done can't be one: its parent is, if it's on the list. The box
+     goes back to adding a task with its ×, when the cursor's row is out of sight (scrolling back doesn't bring it
+     back), or when the screen is left. */
   // A task that can be the cursor: open, on this project's list, one you can change, and not a run, a step of one or a
   // template, which add steps their own way.
   canAim(t){
@@ -417,15 +424,29 @@ export default {
   /* The cursor set, or none (null). `lit` says it to its row alone (the row's id -> true): a row asks only about itself,
      as it does of `leaving`, so lighting another row draws those two again, not the whole list. */
   light(c){
+    const was = this.cursor;
+    if (c && was && was.id === c.id && was.under === c.under && !was.wait === !c.wait) return;
     for (const id of Object.keys(this.lit)) if (!c || String(c.id) !== id) delete this.lit[id];
     if (c) this.lit[c.id] = true;
     this.cursor = c;
   },
-  // The task touched last, or none if it can't be the cursor. `after` is the last subtask added from the box, which the
-  // next go after.
-  aim(t){
-    if (this.canAim(t)) { if (this.cursor?.id !== t.id) this.light({id: t.id, after: null}); }
-    else this.light(null);
+  // The row touched last is the cursor, or none if it can't be: also one that was it before a subtask was added.
+  aim(t){ this.light(this.canAim(t) ? {id: t.id, under: this.listParent(t)?.id ?? null} : null); },
+  /* Subtasks added from the box (addSubtasks, actions.js): the light follows. `i`: the last line of `entry` that's the
+     task's own subtask, not one under another line of a pasted list. Its waiting row (pendingTasks, sending.js, whose
+     id, title and place these are) is the cursor at once, before it's kept or sent, so the next go after it, and
+     `parent`'s own row goes dark. One that arrives done leaves with the batch, so `parent` is lit instead, and the
+     next go after its last. */
+  aimAdded(entry, i, parent){
+    const p = entry.items[i].p, id = `pending-${entry.id}-${i}`;
+    if (p.done || p.pct >= 100) return this.aim(parent);
+    this.light({id, under: parent.id, wait: {id, pending: true, entry: entry.id, index: i, parent: parent.id, title: p.title, position: p.position || 0}});
+  },
+  // What was waiting has been sent (placeSent, sending.js: `was`, the id each task's waiting row had): the cursor on a
+  // waiting row is on its task's row from now, lit still.
+  aimSent(tasks){
+    const c = this.cursor, t = c?.wait && tasks.find(x => x.was === c.id);
+    if (t) this.light({id: t.id, under: c.under});
   },
   /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
      isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
@@ -448,19 +469,27 @@ export default {
     const ids = t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
     return ids.map(id => this.tasks[id]).find(p => p && this.onList(p)) || null;
   },
-  get cursorTask(){ const t = this.cursor && this.tasks[this.cursor.id]; return this.canAim(t) ? t : null; },
+  // The cursor's row, if it can still be one: a task's, or the waiting row of a subtask added under one that can.
+  get cursorTask(){
+    const c = this.cursor;
+    if (!c) return null;
+    if (c.wait) return this.canAim(this.tasks[c.under]) ? c.wait : null;
+    const t = this.tasks[c.id];
+    return this.canAim(t) ? t : null;
+  },
   // The task the box's subtasks go under: the cursor's, or the cursor itself.
   get cursorParent(){ const t = this.cursorTask; return t && (this.listParent(t) || t); },
   // Which box quick add's is: adding a task, subtasks to the cursor, or on a run's screen, steps.
   get capW(){ return this.route.name === 'run' ? 'ins' : this.cursorTask ? 'under' : 'cap'; },
   // Its text and the rest, as the box `capW` keeps them: a run's apart from quick add's, so neither turns up in the other.
   get capBox(){ return this.box(this.capW); },
-  /* What the box adds to, said above it: the task, and the subtask they go after, unless that's the last. On a run's
-     screen, the step they go after, and the card's step, which Repeat copies there (not one still waiting to be sent). */
+  /* What the box adds to, said above it: the task, and, the cursor being one of its subtasks, that subtask, which they
+     go after, the last one too. On a run's screen, the step they go after, and the card's step, which Repeat copies
+     there (not one still waiting to be sent). */
   get capTarget(){
     if (this.capW === 'ins') { const a = this.runAim; return a && {step: true, after: a.title, repeat: a.on.title, canRepeat: !a.on.pending}; }
     const t = this.cursorTask, p = this.cursorParent;
-    return t && {to: p.title, after: this.cursor.after?.title || (t !== p ? t.title : '')};
+    return t && {to: p.title, after: t !== p ? t.title : ''};
   },
   get capPlaceholder(){
     if (this.capW === 'ins') return 'Add a step, or paste a list';
@@ -473,19 +502,35 @@ export default {
     const c = this.capTarget;
     return !c ? '' : c.step ? `Add a step after “${c.after}”` : `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}`;
   },
-  // Where the next `n` subtasks from the box go in the project's List view: after the cursor's subtask, or the last one
-  // added from the box, else after the parent's last subtask; null if the project has no List view.
+  /* Where the next `n` subtasks from the box go in the project's List view: right after the cursor's row, if it's a
+     subtask (the one touched, or the last added from the box, waiting or sent), else after the task's last; null if
+     the project has no List view. The task's subtasks are those Vikunja gave it, those on the list under it (one just
+     sent) and those still waiting to be sent, so its last is the last on screen. */
   cursorPlaces(n){
     const t = this.cursorTask, p = this.cursorParent;
     if (!this.view.listView) return null;
-    const after = this.cursor.after ? this.cursor.after.pos : t !== p ? this.positions[t.id] || 0 : null;
-    return placeAfter((p.related_tasks?.subtask || []).map(s => this.positions[s.id] || 0), after, n);
+    const at = x => (x.pending ? x.position : this.positions[x.id]) || 0;
+    const listed = (this.view.groups.find(g => g.key === 'open')?.tasks || []).filter(x => parentIds(x).includes(p.id));
+    const ids = new Set([...(p.related_tasks?.subtask || []), ...listed].map(x => x.id));
+    return placeAfter([...[...ids].map(id => this.positions[id] || 0), ...this.pendingTasks.filter(x => x.parent === p.id).map(at)], t !== p ? at(t) : null, n);
   },
-  // The cursor's row, as it's drawn: watched, so the box goes back to adding a task once it's out of sight.
+  /* The cursor's row, as it's drawn: watched, so the box goes back to adding a task once it's out of sight. A subtask
+     just added may be drawn where it can't be seen yet (the last of many, past the screen's edge): until it has been
+     in sight once, the row that was lit before it stands in for it, so the next one typed is still a subtask, and
+     scrolling that row away ends it as before. */
   watchCursor(el){
     if (watched === el || !window.IntersectionObserver) return;
-    cursorIO ||= new IntersectionObserver(es => { for (const e of es) if (!e.isIntersecting && e.target === watched && +watched.dataset.id === app.cursor?.id) app.light(null); });
-    cursorIO.disconnect(); watched = el; cursorIO.observe(el);
+    const drop = x => { if (x && x !== watched) { cursorIO.unobserve(x); inSight.delete(x); } };
+    cursorIO ||= new IntersectionObserver(es => {
+      for (const e of es) inSight.set(e.target, e.isIntersecting);
+      if (inSight.get(watched)) { const s = stand; stand = null; drop(s); }
+      else if (inSight.has(watched) && !(stand && inSight.get(stand)) && watched.dataset.id === String(app.cursor?.id)) app.light(null);
+    });
+    const was = watched;
+    watched = el;
+    if (was && inSight.get(was)) { const s = stand; stand = was; drop(s); } else drop(was);
+    if (stand === el) stand = null;
+    cursorIO.observe(el);
   },
 
   /* ---------- the words quick add read, marked in the box ---------- */
