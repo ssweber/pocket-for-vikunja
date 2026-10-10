@@ -2288,6 +2288,50 @@ try {
       if (!(await get(r.id)).done) throw new Error('Try again did not tick it');
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
+  /* A full swipe's gap shows when the row has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2):
+     with its reply held back, the row is the gap, "Done" and Undo, the green gone from over it, and its Undo tapped
+     then is taken once the answer is in. A save not made: the gap gives way to the row, which says so, with Try
+     again, as a tick's does. */
+  await step('a-full-swipes-gap-shows-as-the-row-goes-and-gives-way-when-its-not-saved', async () => {
+    const r = await make(`Pocket smoke gap ${stamp}`, { due_date: todayAt(23) }), R = rowOf(r.title), at = `**/api/v2/tasks/${r.id}`;
+    let answer = () => {}, sent = 0;
+    const answered = new Promise(ok => { answer = ok; });
+    const hold = async x => { if (x.request().method() !== 'PATCH') return x.fallback(); sent++; await answered; await x.fallback(); };
+    const cut = x => x.request().method() === 'PATCH' ? x.abort('connectionreset') : x.fallback();
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.route(at, hold);
+      await swipeRow(page, R, 100);
+      await expect(page.locator(R)).toHaveClass(/\bswept\b/);
+      await expect(page.locator(`${R} > .del-gap`)).toContainText('Done');
+      await expect(uncovered(page)).toHaveCount(0);
+      const undo = page.locator(R).getByRole('button', { name: 'Undo: ' + r.title });
+      await expect(undo).toBeVisible();
+      if (!sent || (await get(r.id)).done) throw new Error('the gap only came with Vikunja\'s answer');
+      await undo.click();
+      await expect(page.locator(R)).toHaveClass(/\bswept\b/);                  // nothing to undo yet
+      answer();
+      await expect(page.locator(R)).not.toHaveClass(/\bswept\b/);
+      await expect(page.locator(R)).not.toHaveClass(/\bdone\b/);
+      await synced(page);
+      if ((await get(r.id)).done) throw new Error('its Undo, tapped before the answer, was lost');
+      await page.unroute(at, hold);
+      // Not saved: the gap is there as the row goes, then gives way to the row and its line.
+      await page.route(at, cut);
+      await swipeRow(page, R, 100);
+      const line = rowLine(page, 'Not saved: no connection');
+      await expect(line).toBeVisible({ timeout: 20000 });
+      await expect(page.locator(R)).not.toHaveClass(/\bswept\b/);
+      await expect(page.locator(`${R} > .del-gap`)).toHaveCount(0);
+      await expect(uncovered(page)).toHaveCount(0);
+      await page.unroute(at, cut);
+      await line.getByRole('button', { name: 'Try again' }).click();
+      await expect(page.locator(R)).toHaveClass(/\bswept\b/);
+      await synced(page);
+      if (!(await get(r.id)).done) throw new Error('Try again did not make it done');
+    } finally { answer(); await page.unroute(at, hold); await page.unroute(at, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+  });
   await step('a-sheet-save-not-made-says-so-in-the-sheet', async () => {
     // At the top of the sheet, with Try again; once saved, it goes.
     const r = await make(`Pocket smoke sheet not saved ${stamp}`, { due_date: todayAt(23) });

@@ -321,9 +321,11 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row-red.full > .row-del{left:var(--full,50%);width:auto;justify-content:flex-start;padding-left:28px}
 /* Deleted, or done by a full swipe, until the batch clears (leaving.js): gone from its place, which stays, at its
    height, so nothing moves: a gap holding only "Deleted" or "Done", in muted words, from the row's edge whatever its
-   indent, and Restore or Undo where who's doing it was, the same shape as "+ me". (What the swipe uncovered stays
-   while the row goes on off the screen: sweep.) */
-.row:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
+   indent, and Restore or Undo where who's doing it was, the same shape as "+ me". A row still on its way off the
+   screen (.sweeping: sweep, app/progress.js) keeps its look until it's gone, marked meanwhile or not: the gap shows
+   when the slide ends. */
+.row:is(.deleted,.swept):not(.sweeping) > :not(.del-gap){visibility:hidden}
+.sweeping > .del-gap{display:none}
 .del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14px}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
@@ -416,7 +418,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-more::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:var(--r-row);pointer-events:none;
   background:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) left top/var(--r-row) var(--r-row) no-repeat,
     radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
-.day-card:is(.deleted,.swept) > :not(.del-gap,.row-under){visibility:hidden}
+.day-card:is(.deleted,.swept):not(.sweeping) > :not(.del-gap,.row-under){visibility:hidden}
 /* its rows, one level in, as a subtask under its parent: each tick under the header's title, the lines between them
    starting at the ticks (as .row.sub's), the tick's tap still the whole gutter and the swipe's space the whole row */
 .card-rows > .row{--row-inset:var(--title-x);padding-left:var(--row-inset);border-top-color:transparent}

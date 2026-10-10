@@ -236,6 +236,59 @@ test('a full swipe is done, its row a gap with Undo until the batch clears, and 
   assert.deepEqual([app.swept, inSheet.done], [{}, true]);
 });
 
+/* The gap shows when the row has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2): gapNow puts
+   it there (sweep, app/progress.js, as the slide ends), and the mark takes its place once the save is made. A tap on
+   it meanwhile waits for the answer, and is then its Undo. A save not made: the gap gives way, and the row says so,
+   with Try again, as a tick's does. A deletion's gap the same, until it's kept to send. */
+test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\'s undone once it has; not saved, the gap gives way to the row\'s line', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c), send = globalThis.fetch;
+  // Vikunja's answers, held back until `answer()`.
+  let held = [];
+  const answer = () => { const go = held; held = null; go.forEach(ok => ok()); }, turn = () => new Promise(ok => setImmediate(ok));
+  globalThis.fetch = async (...a) => { if (held) await new Promise(ok => held.push(ok)); return send(...a); };
+  document.querySelectorAll = () => [];                                       // (no rows to slide back in)
+  try {
+    app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
+    let setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
+    app.gapNow(1, 'done', setting);
+    assert.deepEqual([app.swept, app.leaving, v.task(1).done], [{ 1: true }, {}, false], 'the gap, with nothing answered yet');
+    const tapped = app.restoreRow(1);
+    await turn();
+    assert.deepEqual([app.swept, patches(v)], [{ 1: true }, []], 'its Undo tapped: nothing until the answer');
+    answer();
+    await setting; await tapped;
+    assert.deepEqual([app.swept, app.leaving], [{}, {}], 'answered: marked, and the tap was its Undo');
+    assert.deepEqual([v.task(1).done, v.task(1).percent_done, patches(v).length], [false, 0.5, 2], 'open again, at the progress it had');
+    // Answered before the row has gone: the mark is there already, and nothing is put there twice.
+    setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
+    await setting;
+    app.gapNow(1, 'done', setting);
+    await turn();
+    assert.deepEqual([app.swept, app.leaving], [{ 1: true }, { 1: 'done' }]);
+    await app.unmark(1);
+    // Not saved: the gap gives way to the row, which says so.
+    v.trouble = () => 500;
+    setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
+    app.gapNow(1, 'done', setting);
+    assert.deepEqual(app.swept, { 1: true });
+    await setting; await turn();
+    assert.deepEqual([app.swept, app.leaving, app.tasks[1].done], [{}, {}, false], 'no gap, and not done');
+    assert.match(app.toast.msg, /^Not saved: /);
+    assert.deepEqual([app.toast.row.id, app.toast.action.label], [1, 'Try again']);
+    v.trouble = () => null; app.rowEl = () => ROW;                             // (its row is on screen)
+    await app.toast.action.fn();
+    assert.deepEqual([app.swept, v.task(1).done], [{ 1: true }, true], 'Try again: done, its row the gap');
+    // A deletion's: "Deleted" and Restore at once; called off (its question said no), the row is back.
+    let said = null;
+    const asked = new Promise(ok => { said = ok; });
+    app.gapNow(2, 'deleted', asked);
+    assert.deepEqual(app.leaving[2], 'deleted');
+    said(false);
+    await asked; await turn();
+    assert.equal(app.leaving[2], undefined, 'called off: no gap');
+  } finally { globalThis.fetch = send; delete document.querySelectorAll; }
+});
+
 test('progress below 100% is saved as it is, shown on its bar alone; not saved, it goes back and its row says so', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]), app = component(tasks, actions);
   const t = app.keep(v.task(1));

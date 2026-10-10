@@ -2,7 +2,8 @@
    batch clears (batch.js), so nothing moves under a finger; then every row waiting goes at once, and the rows below
    close up once. Meanwhile the mark can be taken back from the row itself: its tick opens it again (or ticks it again),
    and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it; a row done by a
-   full swipe is the same gap, holding Undo (`gap`, kept in `swept`). So it needs no Undo of its own. What happens when
+   full swipe is the same gap, holding Undo (`gap`, kept in `swept`). So it needs no Undo of its own. A full swipe's gap
+   is there as soon as the row has slid away, before Vikunja has answered (gapNow). What happens when
    the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
    project, a repeating task shows its next date, a deletion is sent (held in the outbox until then: holdDelete).
    Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from #said. */
@@ -15,11 +16,12 @@ const HINT_MS = 1000;
 /* Each component's marks (task id -> its mark; the rows shown with a mark point to the same one) and its batch, kept
    by its `leaving`: `this` in a method called from the markup is the row's scope, not the component, but `leaving` is
    the same object from either. `hint`: when the one-time hint, put away, gives its space back (closeHint), on the
-   component that first asked (initBatch, as Pocket starts). */
+   component that first asked (initBatch, as Pocket starts). `early`: task id -> the gaps shown before their mark is
+   made (gapNow), each a promise of when what was done to it has answered. */
 const state = new WeakMap();
 const of = c => {
   let s = state.get(c.leaving);
-  if (!s) state.set(c.leaving, s = {marks: new Map(), batch: batchTimer(() => app.clearBatch()), hint: batchTimer(() => c.closeHint(), HINT_MS)});
+  if (!s) state.set(c.leaving, s = {marks: new Map(), early: new Map(), batch: batchTimer(() => app.clearBatch()), hint: batchTimer(() => c.closeHint(), HINT_MS)});
   return s;
 };
 const EXIT_MS = 250;
@@ -53,6 +55,21 @@ export default {
     if (said) this.said = said;
     batch.mark();
   },
+  /* The gap in row `id`'s place before its mark is made: a full swipe's row has slid away (sweep, app/progress.js), and
+     what was done to it (`settled`, its promise) hasn't answered yet. The gap shows when the slide ends, not when
+     Vikunja answers (rows-and-sheet-fixes-plan, part 2). `kind`: 'done', holding "Done" and Undo, or 'deleted',
+     "Deleted" and Restore, as the mark to come will have it. Once it has answered, the mark made meanwhile is in its
+     place (markRow); with none (not saved, or called off), the gap goes, and the row is back, with the line that says
+     why. A tap on the gap meanwhile waits for the answer (restoreRow). */
+  gapNow(id, kind, settled){
+    const s = of(this);
+    if (s.marks.has(id) || s.early.has(id)) return;
+    if (kind === 'deleted') this.leaving[id] = 'deleted'; else this.swept[id] = true;
+    s.early.set(id, Promise.resolve(settled).catch(() => {}).then(() => {
+      s.early.delete(id);
+      if (!s.marks.has(id)) { delete this.swept[id]; delete this.leaving[id]; }
+    }));
+  },
   /* A marked row's tick, or a deleted row tapped: the mark taken back (its undo), and it doesn't go. A subtask that was
      closed with its parent is only taken out of the parent's mark: its tick then opens it as any other. Returns whether
      the tap was the mark's: its undo's promise, if it has one. */
@@ -67,8 +84,11 @@ export default {
     return m.undo?.() || true;
   },
   /* A gap tapped: a deleted row restored (unmark), its rows sliding back in from the left, where the delete took them;
-     a row done by a full swipe not done again, sliding back in from the right. */
+     a row done by a full swipe not done again, sliding back in from the right. One shown before its mark was made
+     (gapNow): once what was done to it has answered, and there's a mark to take back. */
   restoreRow(id){
+    const early = of(this).early.get(id);
+    if (early) return early.then(() => this.restoreRow(id));
     const m = of(this).marks.get(id), back = m?.kind === 'deleted' ? -1 : 1;
     const els = m && !m.going && motion() ? back < 0 ? rowsOf(m.ids) : [...document.querySelectorAll(`.row[data-id="${id}"]`)] : [], r = this.unmark(id);
     for (const el of els) el.animate([{transform: `translateX(${back * el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
