@@ -191,7 +191,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* a task whose time has just passed lights up as it moves to Overdue */
 .row.came-due{animation:came-due 2s ease-out}
 @keyframes came-due{0%,40%{background:color-mix(in srgb,var(--overdue) 16%,transparent)}100%{background:transparent}}
-@media (prefers-reduced-motion:reduce){.row.came-due{animation:none;background:color-mix(in srgb,var(--overdue) 16%,transparent)}}
+@media (prefers-reduced-motion:reduce){.row.came-due{animation:none;background:color-mix(in srgb,var(--overdue) 16%,var(--surface))}}
 /* A row a refresh brought (added elsewhere): it fades in, without the light of one just added here */
 .row.arrived{animation:arrived .4s ease-out}
 @keyframes arrived{from{opacity:0}}
@@ -264,15 +264,16 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 :is(.row,.card-head) > .ring{position:static;margin:2px 0 0}
 :is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + var(--tick) + 12px)}
-/* Held, to be moved, the row lifts; swiped and let go, it springs back (with less motion, it's only back) */
+/* Held, to be moved, the row lifts, and the rows it passes slide aside to make room; a row swiped onto its Delete and
+   let go slides to rest (with less motion, each is only there) */
 .row,.card-head{transition:box-shadow .15s,transform .2s ease}
 @media (prefers-reduced-motion:reduce){.row,.card-head{transition:box-shadow .15s}}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
 /* Moved up or down after the hold: the held row, and its subtasks with it, follow the finger above the rows making room */
 .row.dragged{z-index:3;transition:box-shadow .15s;background:var(--surface)}
 /* Swiped (parent-tasks-plan, 1b): one mechanism, mirrored sides (SIDES, progress.js). Nothing on the row changes until
-   it's let go: its content moves with the finger (--swipe), and the space it uncovers, the row's full height and width
-   whatever its indent, shows what letting go there does. Its stops (.row-prog, made by the swipe, revealOf): a large
+   it's let go: the row moves with the finger, and the space it uncovers, the row's full height and width whatever its
+   indent, shows what letting go there does. Its stops (.row-prog, made by the swipe, revealOf): a large
    ring, the tick's shape (square for a step), on green, filling a quarter at a time to the right, emptying to the left
    (a row with progress); past the right side's full point, the green solid, the ring full with its ✓. Nothing bounces
    (rows-and-sheet-fixes-plan, part 2): the pie stepping, the green turning solid and the ✓ say where letting go lands.
@@ -280,20 +281,29 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    taking the move for a scroll: everything that's swiped is named here, once (a list's rows, a run's steps among them;
    a card, for its header and its rows; a sheet's subtasks; the sheet's own row; a run's own row atop its screen). */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row,#d-card > .row.own,#run-own > .row{touch-action:pan-y pinch-zoom}
-:is(.row,.card-head).swiping,:is(.row,.card-head).swiped,:is(.row,.card-head).revealing{transform:translateX(var(--swipe,0px))}
-:is(.row,.card-head).swiping,:is(.row,.card-head).revealing{transition:none}
+:is(.row,.card-head).swiping,:is(.row,.card-head).swiped{transform:translateX(var(--swipe,0px))}
+:is(.row,.card-head).swiping{transition:none}
 #d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow-x:clip}
-.row-prog{position:absolute;top:0;bottom:0;overflow:hidden;background:var(--accent-soft);pointer-events:none}
-.row-prog[data-side=left]{right:100%}
-.row-prog[data-side=right]{left:100%}
-/* the ring stays where it's uncovered, by the list's edge, rather than following the row: close to it, so it's in
-   sight by the first stop; on the title's first line, where the tick is, not in the middle of a taller row */
+/* Only the row moves (rows-and-sheet-fixes-plan, part 2): swiped for its progress, by its transform alone, set as the
+   finger moves and animated once when it's let go (slideTo, glide: app/progress.js), never by its own transition. What
+   it uncovers lies still under it (.row-under, laid by `lay` at the row's place, first in the box the row is placed
+   by, each named here, which clips it to its rounded corners), so the row is solid meanwhile, in its own colour (one
+   waiting to be sent or lit up keeps its tint: :where), and a light still fading on it (just added, just come due)
+   is over. Let go past the full point, the row gone, the layer is over the gap in its place (.going) and fades away. */
+:where(.row,.card-head).revealing{background-color:var(--surface);transition:none}
+:is(.row,.card-head).revealing{animation:none}
+.list,.task-card,#d-subtasks,#run-own{position:relative}
+.row-under{position:absolute;overflow:hidden}
+.row-under.going{z-index:2;pointer-events:none}
+.row-prog{background:var(--accent-soft);pointer-events:none}
+/* the ring is where the row uncovers it first, by the list's edge: in sight by the first stop; on the title's first
+   line, where the tick is, not in the middle of a taller row */
 .row-prog .ring{position:absolute;top:10px;width:36px;height:36px;padding:4px;border:3px solid var(--accent);border-radius:50%;display:grid;place-items:center;
   background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
 .row-prog[data-side=left] .ring{left:10px}
 .row-prog[data-side=right] .ring{right:10px}
 /* a card's header uncovers only its 44px strip: its ring smaller there, so it isn't cut off at the strip's foot */
-.card-head > .row-prog .ring{top:12px;width:32px;height:32px;padding:3px}
+.row-prog.head .ring{top:12px;width:32px;height:32px;padding:3px}
 .row-prog.sq .ring{border-radius:10px}
 .row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
 /* at 100% (a done row swiped left, before its first stop), the ring is a done tick: filled, with its ✓ */
@@ -310,8 +320,8 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* Deleted, or done by a full swipe, until the batch clears (leaving.js): gone from its place, which stays, at its
    height, so nothing moves: a gap holding only "Deleted" or "Done", in muted words, from the row's edge whatever its
    indent, and Restore or Undo where who's doing it was, the same shape as "+ me". (What the swipe uncovered stays
-   while the row carries on off the screen: sweep.) */
-.row:is(.deleted,.swept) > :not(.del-gap,.row-del,.row-prog){visibility:hidden}
+   while the row goes on off the screen: sweep.) */
+.row:is(.deleted,.swept) > :not(.del-gap,.row-del){visibility:hidden}
 .del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14px}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
@@ -379,7 +389,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
-.card-head:is(.swiping,.swiped,.revealing){z-index:1}
+.card-head:is(.swiping,.swiped){z-index:1}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
 .day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
@@ -405,7 +415,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-more::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:var(--r-row);pointer-events:none;
   background:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) left top/var(--r-row) var(--r-row) no-repeat,
     radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
-.day-card:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
+.day-card:is(.deleted,.swept) > :not(.del-gap,.row-under){visibility:hidden}
 /* its rows, one level in, as a subtask under its parent: each tick under the header's title, the lines between them
    starting at the ticks (as .row.sub's), the tick's tap still the whole gutter and the swipe's space the whole row */
 .card-rows > .row{--row-inset:var(--title-x);padding-left:var(--row-inset);border-top-color:transparent}
@@ -515,6 +525,7 @@ a.sec-act{text-decoration:none}
 .page-title.run-top{align-items:flex-start;margin-bottom:8px}
 #run-own{flex:1;min-width:0;overflow:hidden;border-radius:var(--r-row)}
 #run-own > .row{padding:4px 0;min-height:0;border:0;background:transparent}
+#run-own > .row.revealing{background:var(--bg)}                /* on the page, not a card: solid over what it uncovers */
 #run-own > .row > button.body{margin:-4px 0;padding:8px 0 6px}
 #run-own > .row > .ring::after{width:calc(var(--tick) + 12px)}
 #run-own .title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

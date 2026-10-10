@@ -12,7 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect, finger, hintSeen, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn, uncovered } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -1434,7 +1434,11 @@ try {
     // done with its ✅, the gap in its place, "Done" and Undo, which unticks it.
     await slide(100, 75, async () => {
       await page.waitForTimeout(1500);
-      await expect(page.locator(`${row} > .row-prog`)).toHaveClass(/\bfull\b/);
+      await expect(uncovered(page)).toHaveClass(/\bfull\b/);
+      // The green is laid still under the step's row, in its list, and its box is a step's: square.
+      const lies = await laidUnder(page, row);
+      if (lies.inside || lies.off > .5 || lies.ring !== 10) throw new Error('what the step uncovers isn\'t laid still under it: ' + JSON.stringify(lies));
+      await expect(uncovered(page)).toHaveClass(/\bsq\b/);
     });
     await until('a full swipe never made it done', async () => { const t = await task(step2); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
     await expect(page.locator(row)).toHaveClass(/\bswept\b/);

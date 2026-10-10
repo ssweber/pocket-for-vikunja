@@ -16,7 +16,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
-import { expect, finger, hintSeen, loaded, noToast, placeLine, placeSays, rowLine, signIn, steady, swipeRow, synced, toastGone as toastGoneOn } from './helpers.mjs';
+import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, rowLine, signIn, slideSeen, steady, swipeRow, synced, toastGone as toastGoneOn, uncovered, watchSlide } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -145,22 +145,29 @@ try {
   const moving = sel => page.locator(sel).evaluate(el => el.getAnimations({ subtree: true }).length
     + [el, ...el.querySelectorAll('*')].filter(x => getComputedStyle(x).animationName !== 'none').length);
   const apiTask = async () => (await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items.find(t => t.title === title);
-  /* A plain swipe right, with no hold (parent-tasks-plan, 1 and 1b): the row's content moves with the finger, the space
-     it uncovers showing the stop letting go would set, its ring filling a quarter at a time; nothing on the row changes
-     until it's let go. Let go short of the first stop, nothing changes; dragged back to where it started, nothing. */
+  /* A plain swipe right, with no hold (parent-tasks-plan, 1 and 1b): the row moves with the finger, the space it
+     uncovers showing the stop letting go would set, its ring filling a quarter at a time; nothing on the row changes
+     until it's let go. Only the row moves (rows-and-sheet-fixes-plan, part 2): what it uncovers is a layer laid still
+     under it, at its place, not in the row, the ring by the list's edge. Let go short of the first stop, nothing
+     changes; dragged back to where it started, nothing. */
   await step('progress-by-a-plain-swipe-right', async () => {
     await slideProgress(row, 50, async () => {
-      await expect(page.locator(`${row}.revealing > .row-prog`)).toHaveAttribute('data-pct', '50');
-      await expect(page.locator(`${row} > .row-prog`)).not.toHaveClass(/\bfull\b/);
+      await expect(page.locator(`${row}.revealing`)).toHaveCount(1);
+      await expect(uncovered(page)).toHaveAttribute('data-pct', '50');
+      await expect(uncovered(page)).not.toHaveClass(/\bfull\b/);
+      const lies = await laidUnder(page, row);
+      if (lies.inside || lies.off > .5 || lies.x < 20 || lies.ring !== 10) throw new Error('what the row uncovers isn\'t laid still under it: ' + JSON.stringify(lies));
       // Nothing bounces at a stop: the ring's pie only steps.
-      if (await moving(`${row} > .row-prog`)) throw new Error('the ring moved at a stop');
+      if (await moving('.row-prog.row-under')) throw new Error('the ring moved at a stop');
       if (await tickPct(row) !== 0) throw new Error('the row\'s tick changed while it was swiped: ' + await tickPct(row));
       if (await page.locator('#said').textContent() === `Progress of ${title} set to 50%`) throw new Error('said before it was let go');
     });
     await expect(page.locator('#said')).toHaveText(`Progress of ${title} set to 50%`);
     await noToast(page);
     if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
-    await expect(page.locator(`${row} > .row-prog`)).toHaveCount(0);                // sprung back, the space gone
+    await expect(uncovered(page)).toHaveCount(0);                                // back over the space, which is gone
+    await expect(page.locator(row)).not.toHaveClass(/\brevealing\b/);
+    if (await page.locator(row).evaluate(el => el.style.transform)) throw new Error('back home, the row is still moved aside');
     await expect.poll(() => tickPct(row)).toBe(50);                              // its tick shows it: a half pie
     const pie = await page.locator(`${row} > .check`).evaluate(el => getComputedStyle(el).backgroundImage);
     if (!/^conic-gradient\(/.test(pie)) throw new Error('its tick has no pie: ' + pie);
@@ -171,7 +178,7 @@ try {
     const box = await page.locator(row).boundingBox(), x = box.x + box.width * .9, y = box.y + box.height / 2;
     await page.mouse.move(x, y); await page.mouse.down();
     await page.mouse.move(page.viewportSize().width - 4, y + 3, { steps: 8 });
-    await expect(page.locator(`${row} > .row-prog`)).toHaveClass(/\bfull\b/);
+    await expect(uncovered(page)).toHaveClass(/\bfull\b/);
     await page.mouse.move(x - 60, y, { steps: 8 });
     if (await page.$(`${row}.swiping, ${row}.swipe-full`)) throw new Error('dragged back past where it started, it turned into its Delete');
     await page.mouse.up();
@@ -191,19 +198,31 @@ try {
     await page.mouse.up();
     await expect(page.locator('#view .dragged')).toHaveCount(0);
   });
-  /* A full swipe right is done (1b): the row carries on off the screen, leaving a gap at its height, "Done" and Undo,
-     until the batch clears; only `done` is sent, so Undo puts it back at its progress. A partly done tick tapped is
-     done, whatever its progress, and tapped again, open with its progress as it was. */
+  /* A full swipe right is done (1b): the row glides on off the screen, leaving a gap at its height, "Done" and Undo,
+     until the batch clears; only `done` is sent, so Undo puts it back at its progress. Only the row moves on the way
+     (rows-and-sheet-fixes-plan, part 2): one animation of its transform, over the green and its ✓, which stay where
+     they are. A partly done tick tapped is done, whatever its progress, and tapped again, open with its progress as it
+     was. */
   await step('a-full-swipe-is-done-with-undo-and-a-partly-done-tick-ticks', async () => {
     const sent = page.waitForRequest(r => r.method() === 'PATCH' && /\/tasks\/\d+$/.test(r.url()) && JSON.parse(r.postData() || '{}').done === true);
     const h = await page.locator(row).evaluate(el => el.offsetHeight);
     await slideProgress(row, 100, async () => {
-      await expect(page.locator(`${row} > .row-prog`)).toHaveClass(/\bfull\b/);
+      await expect(uncovered(page)).toHaveClass(/\bfull\b/);
       // Past half, the green is solid and the ring its ✓, with no pop.
-      if (await moving(`${row} > .row-prog`)) throw new Error('the ring popped past half');
+      if (await moving('.row-prog.row-under')) throw new Error('the ring popped past half');
+      await watchSlide(page, row);
     }, 50);
     const body = JSON.parse((await sent).postData());
     if ('percent_done' in body) throw new Error('done sent ' + JSON.stringify(body));
+    // Let go, frame by frame: the row goes on to the right, off the screen; the ✓ under it never moves, nor does the
+    // green change size; and nothing else on the page moves.
+    const slid = await slideSeen(page), rings = slid.filter(s => s.ring !== null), others = [...new Set(slid.flatMap(s => s.moving))].filter(m => m !== 'row');
+    if (Math.max(...slid.map(s => s.x)) < .9 * slid[0].w) throw new Error(`the row went only to ${Math.max(...slid.map(s => s.x))}px of ${slid[0].w}`);
+    if (!slid.some(s => s.moving.includes('row'))) throw new Error('the row never glided: it only jumped');
+    if (others.length) throw new Error('more than the row moved as it left: ' + others.join(', '));
+    if (!rings.length || Math.max(...rings.map(s => s.ring)) - Math.min(...rings.map(s => s.ring)) > .01) throw new Error('the ✓ moved while the row left: ' + [...new Set(rings.map(s => s.ring))]);
+    if (Math.max(...rings.map(s => s.under)) - Math.min(...rings.map(s => s.under)) > .01) throw new Error('the green changed size while the row left: ' + [...new Set(rings.map(s => s.under))]);
+    await expect(uncovered(page)).toHaveCount(0);                                // faded away over the gap
     await expect(page.locator(row)).toHaveClass(/\bswept\b/);
     await expect(page.locator(`${row} > .del-gap`)).toContainText('Done');
     const undo = page.locator(row).getByRole('button', { name: 'Undo: ' + title });
@@ -702,6 +721,7 @@ try {
     await page.waitForTimeout(300);
     if (await page.isVisible('#sheet')) throw new Error('a partial swipe on a header opened something');
     await expect(page.locator(`${head}.revealing`)).toHaveCount(0);
+    await expect(uncovered(page)).toHaveCount(0);
     await swipeRow(page, head, 100, { one: true });
     await asks();
     await page.click('#complete-no');
@@ -1495,7 +1515,7 @@ try {
       if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('moved on Today');
       // B, at 50%, swiped left all the way: only lowered, to 0%, no red on the way.
       await slideProgress(B, 0, async () => {
-        await expect(page.locator(`${B} > .row-prog`)).toHaveAttribute('data-pct', '0');
+        await expect(uncovered(page)).toHaveAttribute('data-pct', '0');
         if (await page.$(`${B}.swiping, ${B}.swipe-full`)) throw new Error('a row with progress swiped left showed its Delete');
       }, 50);
       await expect(page.locator('#said')).toHaveText(`Progress of ${b.title} set to 0%`);

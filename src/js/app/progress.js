@@ -51,58 +51,116 @@ const swipeOf = (row, remove) => ({
   },
 });
 
+/* Only the row moves (rows-and-sheet-fixes-plan, part 2). Swiped, a row follows the finger by its transform alone
+   (slideTo); let go, it gets where it's going by one animation of that transform (glide): back home, or on off the
+   screen. What it uncovers doesn't move at all: a layer laid still at the row's place, under it (lay), which the row
+   slides over. So nothing has to keep step with anything else, which a phone saving power doesn't do: it ran the width
+   of the space the row used to carry at half the frames of the row's transform, and the ✓ shook. */
+const SLIDE_MS = 200, BACK_MS = 150;
+const slideTo = (row, x) => { row.style.transform = x ? `translateX(${x}px)` : ''; };
+// How far aside a row is now, on its way somewhere too.
+const asideOf = row => new DOMMatrix(getComputedStyle(row).transform).m41;
+const gliding = new WeakMap();                          // row -> the animation taking it where it's going
+const stopGlide = row => { const a = gliding.get(row); gliding.delete(row); a?.cancel(); };
+/* Let go, a row goes from where it is to `to` px aside. It's there from the start (its own transition is off while
+   it's swiped: styles.css), and one animation of its transform shows it getting there; with less motion asked for,
+   it's only there. Resolves once it's there, to false if it was sent somewhere else on the way or a new swipe took it
+   (stopGlide): what was waiting for it then has nothing left to do. */
+function glide(row, to){
+  const from = asideOf(row);
+  stopGlide(row); slideTo(row, to);
+  if (!motion() || from === to) return Promise.resolve(true);
+  const a = row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${to}px)`}], {duration: SLIDE_MS, easing: 'ease-out'});
+  gliding.set(row, a);
+  return a.finished.then(() => { if (gliding.get(row) === a) gliding.delete(row); return true; }, () => false);
+}
+/* What a row uncovers, laid still under it: `el`, at the row's place, its whole height and width whatever its indent,
+   in the box the row is placed by (its offsetParent: its list, its item, its card; styles.css names them, and each
+   clips it to its own rounded corners). First in that box, so every row there is drawn over it, and ahead of the
+   <template> the rows are drawn after: Alpine's x-for puts back in order whatever follows its template, and would
+   move a stranger among its rows. It's made as a swipe starts and gone once the row is back over it, so a list's rows
+   don't each carry one. If the list changes around it meanwhile (rows above it leaving with the batch), it's put at
+   the row's place again, and if the row itself has gone, it goes. */
+const laid = new WeakMap();                             // row -> {el, seen}: what's under it now
+const place = (row, el) => Object.assign(el.style, {top: row.offsetTop + row.clientTop + 'px', left: row.offsetLeft + 'px', width: row.offsetWidth + 'px', height: row.clientHeight + 'px'});
+function lay(row, el){
+  unlay(row);
+  const box = row.offsetParent;
+  if (!box) return;
+  el.classList.add('row-under'); place(row, el); box.prepend(el);
+  const seen = window.ResizeObserver ? new ResizeObserver(() => { if (row.isConnected) place(row, el); else unlay(row); }) : null;
+  seen?.observe(box); seen?.observe(row);
+  laid.set(row, {el, seen});
+}
+function unlay(row){
+  const u = laid.get(row);
+  if (!u) return;
+  u.seen?.disconnect(); u.el.remove(); laid.delete(row);
+}
+// Let go to go back: the row glides home over what it uncovered, which goes once it's covered again.
+const home = row => glide(row, 0).then(there => { if (there) { row.classList.remove('revealing'); unlay(row); } });
+// A new swipe takes the row as it is: whatever it was on its way to is over, and what was under it gone.
+const fresh = row => { stopGlide(row); unlay(row); row.classList.remove('revealing'); slideTo(row, 0); };
+
 /* A row's stops, uncovered as it's swiped for its progress, either way: a large ring, the tick's shape, filling (right)
    or emptying (left) a quarter at a time, the tick seen where it can't be felt; past the right side's full point, full
-   with its ✓, the green solid. Nothing bounces: each is a step, not a movement. The space is the whole row's height, from the list's edge whatever the
-   row's indent. It's an element of its own, made as the swipe starts and gone once the row is back, so a list's rows
-   don't each carry one. (The specimen draws its stills with it.) */
-const BACK_MS = 150, SPRING_MS = 200;                    // the row's own transition back: .row, styles.css
+   with its ✓, the green solid. Nothing bounces: each is a step, not a movement, and between two stops nothing on it
+   changes. It's laid under the row (lay), the ring by the list's edge, where it's uncovered first. (The specimen draws
+   its stills with it.) */
 export const revealOf = row => {
-  let el = null;
+  let el = null, shown = '';
   return {
     move({off, pct, to}){
       if (!el) {
         el = document.createElement('span'); el.className = 'row-prog'; el.setAttribute('aria-hidden', 'true');
         el.innerHTML = '<span class="ring"><svg class="i"><use href="#i-check"/></svg></span>';
-        el.classList.toggle('sq', !!row.querySelector(':scope > .check.sq'));
-        row.append(el);
+        el.classList.toggle('sq', !!row.querySelector(':scope > .check.sq')); el.classList.toggle('head', row.matches('.card-head'));
+        lay(row, el); row.classList.add('revealing');
       }
-      row.classList.add('revealing'); row.style.setProperty('--swipe', off + 'px');
-      el.dataset.pct = pct; el.dataset.side = off > 0 ? 'left' : 'right'; el.classList.toggle('full', to === 'done');
-      el.style.width = Math.abs(off) + 'px'; el.style.setProperty('--ring', pct / 100);
+      const side = off < 0 ? 'right' : 'left', now = `${pct} ${side} ${to}`;
+      if (now !== shown) { shown = now; el.dataset.pct = pct; el.dataset.side = side; el.classList.toggle('full', to === 'done'); el.style.setProperty('--ring', pct / 100); }
+      slideTo(row, off);
     },
-    // Back in its place: it springs back (.row's transition), the space going out with it, then gone.
-    back(){
-      row.classList.remove('revealing'); row.style.removeProperty('--swipe');
-      const was = el; el = null;
-      if (was) { was.classList.add('going'); setTimeout(() => was.remove(), SPRING_MS + 50); }   // (not the next swipe's)
-    },
+    // Back in its place: it glides home over the space, which then goes.
+    back(){ if (el) home(row); el = null; },
     // Gone at once: its Delete takes the space (swipeOf), swiped back left past where a row at 0% started.
-    drop(){ el?.remove(); el = null; row.classList.remove('revealing'); },
+    drop(){ if (el) fresh(row); el = null; },
   };
 };
 
-/* A row deleted by a full swipe, or its Delete tapped, follows through: it carries on to the left, off the screen, the
-   red filling the row behind it, and doesn't come back. Its place stays, at its height, as a gap (removeTask,
-   `going`, marks it meanwhile: task-row.html), the red fading into it, holding only "Deleted" and Restore. A full swipe
-   right (`right`) is done the same way: on off to the right, the green filling the row, a gap with "Done" and Undo
-   (setProgress, `gap`). Only its content moves, so nothing around it does. With less motion asked for, it only
-   changes. Resolves to what `going` did: not deleted after all (a question about its subtasks said no), or no gap (a
-   tick not saved), the row fades back in. */
-const SWEEP_MS = 200;
+/* A full swipe follows through. Right (`right`), done: the row glides on off the screen, over the green and its ✓,
+   which stay where they are, and doesn't come back: its place stays, at its height, as a gap with "Done" and Undo
+   (setProgress, `gap`), which the green fades away over. One animation, of the row's transform (glide); with less
+   motion asked for, it only changes. A row deleted by a full swipe, or its Delete tapped, carries on to the left the
+   same way, the red filling the row behind it, and leaves a gap holding only "Deleted" and Restore (removeTask,
+   `going`, marks it meanwhile: task-row.html), the red fading into it. Resolves to what `going` did: not deleted after
+   all (a question about its subtasks said no), or no gap (a tick not saved), the row is back. */
+const away = new WeakSet();                             // rows on their way off the screen: not swiped until they're back
 async function sweep(row, going, right = false){
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
-  const fill = row.querySelector(right ? ':scope > .row-prog:not(.going)' : ':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
+  if (right) {
+    away.add(row); row.classList.add('revealing');
+    const [done] = await Promise.all([Promise.resolve(going).catch(() => false), glide(row, row.clientWidth)]);
+    // Its content back in its place at once, unseen under the green, which is over it meanwhile, and not sliding
+    // back: it's taken in while the row's own transition is still off.
+    const under = laid.get(row)?.el;
+    under?.classList.add('going');
+    slideTo(row, 0); void row.offsetWidth; row.classList.remove('revealing'); away.delete(row);
+    if (!under) return done;
+    if (motion() && row.isConnected) await under.animate([{opacity: 1}, {opacity: 0}], {duration: BACK_MS, easing: 'ease-out'}).finished.catch(() => {});
+    if (laid.get(row)?.el === under) unlay(row);
+    return done;
+  }
+  const fill = row.querySelector(':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
   const moving = fill && motion();
-  if (!right) row.classList.add('swiping', 'swipe-full');
+  row.classList.add('swiping', 'swipe-full');
   // The row's offset and the fill's width move together, so the fill always reaches the list's edge.
-  const go = {duration: SWEEP_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
-    ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${right ? w : -w}px)`}], go), fill.animate([{width: Math.abs(from) + 'px'}, {width: w + 'px'}], go)] : [];
+  const go = {duration: SLIDE_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
+    ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${-w}px)`}], go), fill.animate([{width: Math.abs(from) + 'px'}, {width: w + 'px'}], go)] : [];
   const [done] = await Promise.all([going, ...anims.map(a => a.finished.catch(() => {}))]);
   // Its content back in its place at once, unseen under the gap, not sliding back (.row's transition).
   const color = fill && getComputedStyle(fill).backgroundColor;
   row.style.transition = 'none'; shut(row); anims.forEach(a => a.cancel());
-  if (right) { fill?.remove(); row.classList.remove('revealing'); row.style.removeProperty('--swipe'); }
   void row.offsetWidth; row.style.transition = '';
   if (!moving || !row.isConnected) return done;
   const gap = row.querySelector(':scope > .del-gap'), fade = {duration: BACK_MS, easing: 'ease-out'};
@@ -201,7 +259,7 @@ export default {
       if (mode !== 'swipe') return;
       /* Let go on a stop, its progress is set, and the row springs back, its tick showing it (on its own, nothing
          changes); in its Delete (a row at 0%), it stays open on its button, or goes back; past a side's full
-         point, the full action, the row carrying on off the screen (finish: done; the Delete's remove: deleted, its
+         point, the full action, the row gliding on off the screen (finish: done; the Delete's remove: deleted, its
          progress left as it was). Taken away from the finger (pointercancel), it goes back, changing nothing. */
       const to = commit ? r.to : 'shut', set = commit && to !== 'delete' && r.pct !== null && r.pct !== s.start;
       if (s.springs && set) { s.finish(r.pct); ring.back(); return; }      // a parent's: its question; the sheet's own row
@@ -216,7 +274,7 @@ export default {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false;                             // a new tap: its click is its own
       // In a text field (a title being changed, in a row): the field's, never a gesture.
-      let s = inTextField(e.target) ? null : find(e.target); if (!s) return;
+      let s = inTextField(e.target) ? null : find(e.target); if (!s || away.has(s.slide || s.el)) return;
       if (s.swipe?.base) s = {el: s.el, slide: s.slide, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait'};
       // Held: lifted (what's lifted can be more than the row: on a project's list, its card), or on Today, thrown, at once.
@@ -243,7 +301,7 @@ export default {
         if (!way) { if (Math.abs(dx) > Math.abs(dy)) swallow(); stop(false); return; }
         clearTimeout(g.timer); g.mode = way; sliding = true;
         // The side it starts on, by this first sideways move, is the side it stays on (an open row's: its Delete's).
-        if (way === 'swipe') { g.side = s.swipe?.base || dx < 0 ? 'left' : 'right'; g.ring = revealOf(s.slide || s.el); g.r = at(s, 0); g.red = null; }
+        if (way === 'swipe') { g.side = s.swipe?.base || dx < 0 ? 'left' : 'right'; fresh(s.slide || s.el); g.ring = revealOf(s.slide || s.el); g.r = at(s, 0); g.red = null; }
       }
       if (g.mode === 'swipe') {
         const r = at(s, e.clientX - g.x0), red = RED.has(r.to);
