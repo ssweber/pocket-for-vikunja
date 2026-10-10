@@ -363,7 +363,8 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    finger. Each date a chip, its name over its day, with a soft shadow and a thin edge, which is what sets it apart
    in dark mode; lit in the accent colour while the finger points at it, a step, with no movement. No date is dashed,
    wherever it sits, so it's never taken for a day. Dimmed: a date that would change nothing, and every one, with the
-   line saying why, for a task a hold can't move. */
+   line saying why, for a task a hold can't move. Let go without a move, they're open to tap (.open): buttons then,
+   where they were, and the screen behind dimmed very lightly (about 8%), as a tap on it only closes them. */
 .throw{position:fixed;inset:0;z-index:15;pointer-events:none;-webkit-user-select:none;user-select:none}
 .throw-t{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;border:0;border-radius:16px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow-menu),0 0 0 1px color-mix(in srgb,var(--muted) 35%,transparent)}
 .throw-t b{font-size:17px;font-weight:650;line-height:1.2;white-space:nowrap}
@@ -374,6 +375,11 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* dimmed, solid, so nothing behind shows through */
 .throw-t.dim{background:color-mix(in srgb,var(--surface) 30%,var(--bg));color:color-mix(in srgb,var(--muted) 50%,var(--bg));border-color:currentColor;box-shadow:0 0 0 1px var(--line)}
 .throw-t.dim span{color:inherit}
+.throw-t.dim{cursor:default}
+.throw-t:focus-visible{border-radius:16px}
+.throw.open{pointer-events:auto;touch-action:none;background:color-mix(in srgb,var(--scrim) 20%,transparent)}
+.throw.open .throw-t:not(.dim):active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent-ink)}
+.throw.open .throw-t:not(.dim):active span{color:inherit}
 .throw-why{position:absolute;width:max-content;margin:0;padding:8px 12px;transform:translate(-50%,-100%);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-menu),0 0 0 1px color-mix(in srgb,var(--muted) 35%,transparent);text-align:center;font-size:14px;font-weight:600;line-height:1.35;color:var(--ink)}
 /* lifted: over the rows next to it, its shadow and its outline drawn over what's in it (a card's header has its own
    colour), around the card itself, not the footer hanging under it (.card-more's 48px) */

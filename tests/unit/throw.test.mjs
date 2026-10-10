@@ -3,7 +3,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { THROW, throwFlick, throwLayout, throwPick, throwTargets } from '../../src/js/throw.js';
+import { THROW, throwEnd, throwFlick, throwLayout, throwPick, throwTargets } from '../../src/js/throw.js';
 
 // October 2026: Monday the 12th to Sunday the 18th, and the weeks either side.
 const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
@@ -95,4 +95,16 @@ test('the set stays on a 360px screen for a row at the top and at the bottom: th
   assert.equal(throwPick(ts, 30, 0).id, 'tomorrow');
   const squeezed = throwLayout(ts, { x: 180, y: 100, ...phone, bottom: phone.top + 120 });
   assert.ok(Math.min(...squeezed.targets.map(t => box(squeezed, t)[2])) >= phone.top + THROW.margin, 'with no room for it (the keyboard up): clear of the header');
+});
+
+test('let go with a date lit, the task moves; back near where it was held after moving out, nothing; never moved out, the dates stay open to tap', () => {
+  const ts = throwTargets(iso(12, 16), on(12)), by = id => ts.find(t => t.id === id), end = o => { const e = throwEnd(o); return [e.then, e.to?.id ?? null]; };
+  assert.deepEqual(end({ commit: true, on: by('tomorrow'), out: true }), ['move', 'tomorrow']);
+  assert.deepEqual(end({ commit: true, flick: by('none') }), ['move', 'none'], 'a flick, before any date was lit');
+  assert.deepEqual(end({ commit: true, out: true }), ['close', null], 'moved out, then back near where it was held: closed, nothing changed');
+  assert.deepEqual(end({ commit: true }), ['open', null], 'never moved out: left open');
+  assert.deepEqual([end({ commit: true, on: by('today'), out: true }), end({ commit: true, flick: by('today') })], [['close', null], ['close', null]], 'a dimmed date, pointed at or flicked at: nothing');
+  assert.deepEqual(end({ commit: true, on: by('tomorrow'), out: true, why: 'repeats' }), ['close', null], 'a task that can\'t move: nothing');
+  assert.deepEqual(end({ commit: true, why: 'repeats' }), ['open', null], 'but held without a move, its dates are left open too, dimmed, to read why');
+  assert.deepEqual([end({ commit: false, on: by('tomorrow'), out: true }), end({ commit: false })], [['close', null], ['close', null]], 'taken away by the phone: nothing, and nothing left open');
 });

@@ -10,7 +10,7 @@ import {revealOf, swipeOf} from '../../src/js/app/progress.js';
 import {swipeAt} from '../../src/js/progress.js';
 import {completeAsk, moreDone} from '../../src/js/messages.js';
 import {throwLayout, throwTargets} from '../../src/js/throw.js';
-import {chipsEl, chipsLight} from '../../src/js/app/throw.js';
+import {chipsEl, chipsLight, chipsOpen} from '../../src/js/app/throw.js';
 
 const ZERO = '0001-01-01T00:00:00Z', HOUR = 36e5;
 const at = ms => new Date(Date.now() + ms).toISOString();
@@ -169,7 +169,8 @@ function sections(){
   /* A task held on Today, its four dates around the finger (hold-to-reschedule-plan; app/throw.js): small Todays on a
      phone's screen, 360px wide (`wide`: 390), each a still of a hold on a fixed day (`now`). `held`: the row held, the
      `row`th of the screen's (the third, unless said); `x`: where the finger is held, from the screen's left; `to`: the
-     date the finger has gone towards, lit; `why`: a task a hold can't move; `card`: held by its header, a card. */
+     date the finger has gone towards, lit; `why`: a task a hold can't move; `card`: held by its header, a card; `open`:
+     let go without a move, the dates open to tap. */
   const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
   const others = () => [task({title: 'Fix the other air con', due_date: dayAt(-1, 15), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}),
     task({title: 'Order the cups', due_date: dayAt(1, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(3, 0)}), task({title: 'Collect the new aprons', due_date: dayAt(5, 11)})];
@@ -186,6 +187,7 @@ function sections(){
     ring('On a 390px screen, due later today: Today dimmed, never moved or hidden; the finger gone up, Next week lit', on(9), task({title: 'Post next week’s rota', due_date: on(9, 16, 30).toISOString()}), {to: 'week', wide: true, x: 250}),
     ring('A Sunday: next Monday is tomorrow, so up and right show the same day', on(11), milk()),
     ring('A repeating task: every date dimmed, and the line saying why over them', on(9), task({title: 'Water the plants', due_date: on(9).toISOString(), repeat_after: 86400}), {why: 'repeats'}),
+    ring('Let go without a move: the four stay open, to tap, where they were, the screen behind dimmed very lightly; a tap anywhere else closes them', on(9), milk(), {open: true}),
     ring('A card held by its header: the card lifts whole, and only its task’s date moves', on(9), heldCard, {card: true, row: 1}),
   ];
   return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other air con', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}), opening,
@@ -405,8 +407,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       }
       /* A task held on Today (app/throw.js): drawn by the app's own code (throwTargets, throwLayout, chipsEl) on its
          day, around where the finger is held, at the height of its row (a card's header), which lifts in its place;
-         a date lit as the finger pointing at it lights it (chipsLight). The dot is the finger: where it was held
-         (hollow), and where it has gone. */
+         a date lit as the finger pointing at it lights it (chipsLight), or left open to tap (chipsOpen). The dot is
+         the finger: where it was held (hollow), and where it has gone. */
       for (const r of this.specimenRings) for (const frame of document.querySelectorAll(`[data-ring="${r.id}"]`)) {
         const held = frame.querySelector(`.item[data-id="${r.held.id}"] > :is(.row, .day-card)`), f = frame.getBoundingClientRect();
         const strip = (held.querySelector('.card-head') || held).getBoundingClientRect(), x = r.x, y = strip.top - f.top + strip.height / 2;
@@ -415,6 +417,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         held.classList.add('throw-from');
         frame.append(el);
         chipsLight(el, p);
+        if (r.open) { chipsOpen(el, r.held.title); continue; }
         const dot = (cls, dx, dy) => { const d = document.createElement('i'); d.className = cls; Object.assign(d.style, {left: x + dx + 'px', top: y + dy + 'px'}); frame.append(d); };
         if (p) dot('spec-finger was', 0, 0);
         dot('spec-finger', p ? Math.sign(p.x) * 30 : 0, p ? Math.sign(p.y) * 30 : 0);

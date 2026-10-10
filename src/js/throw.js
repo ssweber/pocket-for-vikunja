@@ -7,7 +7,8 @@
    - Up, Next week: next Monday. On a Sunday that's tomorrow, and both show.
    - Down, No date: the due date taken off. It takes the same short move as the others, as every date changed by a hold
      has an Undo (reschedule, app/actions.js).
-   - Back near where it was held, none: letting go there changes nothing.
+   - Back near where it was held, none: letting go there changes nothing. Let go without ever having moved out, the
+     four stay open, to tap (throwEnd).
    A date that would leave the task as it is (Today, on a task due later today) is dimmed, never moved or hidden.
    To change which is where (Next week and No date may change places), or any number, change THROW: */
 import {addDays, isSet, movedDue, startOfDay} from './dates.js';
@@ -83,6 +84,15 @@ export function throwPick(targets, dx, dy, lit = false){
 // Let go near where it was held, but moving fast (`speed`, px/ms) and past a few px: a flick, taken by its direction,
 // as a marking menu takes one.
 export const throwFlick = (targets, dx, dy, speed) => Math.hypot(dx, dy) >= THROW.flick.px && speed >= THROW.flick.speed ? targets.find(t => t.at === way(dx, dy)) || null : null;
+/* What letting go does, as {then, to}. With a date lit (`on`), or flicked at (`flick`): 'move', the task to it (`to`),
+   unless it's dimmed, or the task can't move (`why`): then 'close', nothing changed. With none: back near where it
+   was held after having moved out (`out`), 'close'; never moved out at all, 'open': the dates stay, to tap. Taken away
+   by the phone (not `commit`): 'close'. */
+export function throwEnd({commit, on = null, flick = null, out = false, why = null}){
+  const p = commit ? on || flick : null;
+  if (p) return !p.dim && !why ? {then: 'move', to: p} : {then: 'close', to: null};
+  return {then: commit && !out ? 'open' : 'close', to: null};
+}
 
 // Why a task held on Today can't be moved, said with its dates all dimmed: as Move all to today leaves them.
 export const THROW_STAYS = {repeats: 'It repeats: tick it to move on to its next date.', checklist: 'A checklist comes round by itself: start it to move on.',

@@ -2013,6 +2013,94 @@ try {
       await noToast(page);
     } finally { await page.mouse.up(); for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
+  await step('a-hold-on-today-without-a-move-leaves-its-dates-open-to-tap', async () => {
+    const late = await make(`Pocket smoke tap late ${stamp}`, { due_date: dayAt(-1, 9) });
+    const a = await make(`Pocket smoke tap A ${stamp}`, { due_date: todayAt(21) }), b = await make(`Pocket smoke tap B ${stamp}`, { due_date: todayAt(22) }), c = await make(`Pocket smoke tap C ${stamp}`, { due_date: todayAt(23) });
+    const A = rowOf(a.title), B = rowOf(b.title), C = rowOf(c.title), L = rowOf(late.title), due = async t => (await get(t.id)).due_date;
+    const menu = t => page.getByRole('dialog', { name: `Move “${t.title}” to another day` });
+    // Held, and let go without a move: its dates are left open.
+    const openDates = async (sel, t) => { const at = await holdOnToday(sel); await page.mouse.up(); await expect(menu(t)).toBeVisible(); return at; };
+    const tapAt = async locator => { const k = await locator.boundingBox(); await page.mouse.click(k.x + k.width / 2, k.y + k.height / 2); };
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(C)).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      // Let go where it was held: the four stay where they were, a menu now, named for the task, each date a button
+      // named for a screen reader, the first one focused; the row still lifted, the screen behind dimmed very lightly,
+      // and the task not opened.
+      await holdOnToday(A);
+      const held = await datesSeen();
+      await page.mouse.up();
+      await expect(menu(a)).toBeVisible();
+      if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+      const open = await datesSeen();
+      for (const id of Object.keys(held.chips)) if (Math.abs(held.chips[id].l - open.chips[id].l) > .5 || Math.abs(held.chips[id].t - open.chips[id].t) > .5) throw new Error(id + ' moved as the dates opened to tap');
+      if (open.hidden !== null) throw new Error('still hidden from a screen reader');
+      const shade = +(open.shade.match(/[,/] ?([\d.]+)\)$/) || [])[1];      // how dark, of 1: its colour's last figure
+      if (!(shade > .04 && shade < .12)) throw new Error('the screen behind isn\'t dimmed very lightly: ' + open.shade);
+      await expect(menu(a).getByRole('button')).toHaveCount(4);
+      for (const name of [/^Today, \w{3} \d+$/, /^Tomorrow, \w{3} \d+$/, /^Next week, Mon \d+$/, /^No date$/]) await expect(menu(a).getByRole('button', { name })).toBeVisible();
+      await expect(menu(a).getByRole('button', { name: /^Today, / })).toBeFocused();
+      await expect(menu(a).getByRole('button', { name: /^Today, / })).toHaveAttribute('aria-disabled', 'true');
+      await expect(page.locator(A)).toHaveClass(/\bthrow-from\b/);
+      // Its dimmed date tapped: nothing, and it stays open. Escape closes it, the focus back on its row.
+      await tapAt(dateChip('today'));
+      await expect(menu(a)).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await expect(page.locator(`${A} > .body`)).toBeFocused();
+      await expect(page.locator(A)).not.toHaveClass(/\bthrow-from\b/);
+      // A tap anywhere else closes it too, and does nothing more: on another row's tick (at the screen's left, clear of
+      // every chip), it doesn't tick it.
+      await openDates(A, a);
+      const tick = await page.locator(L).boundingBox();
+      await page.mouse.click(tick.x + 28, tick.y + tick.height / 2);
+      await expect(page.locator('.throw')).toHaveCount(0);
+      if (await page.isVisible('#sheet') || await page.locator(`${L}.leaving`).count()) throw new Error('the tap that closed the dates did something to the row under it');
+      await synced(page);
+      if (!sameTime(await due(a), a.due_date)) throw new Error('closed without a date tapped, it moved to ' + await due(a));
+      // Each date tapped moves it as its direction does, with the same Undo: Tomorrow,
+      await openDates(A, a);
+      await dateChip('tomorrow').click();
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await expect(movedLine('Moved to tomorrow')).toBeVisible();
+      await synced(page);
+      if (!sameTime(await due(a), dayAt(1, 21))) throw new Error('Tomorrow tapped: ' + await due(a));
+      await movedLine('Moved to tomorrow').getByRole('button', { name: 'Undo' }).click();
+      await synced(page);
+      if (!sameTime(await due(a), a.due_date)) throw new Error('Undo left it due ' + await due(a));
+      // Next week,
+      await openDates(B, b);
+      await dateChip('week').click();
+      await expect(movedLine(/^\s*Moved to Mon \d+/)).toBeVisible();
+      await synced(page);
+      if (!sameTime(await due(b), mondayAt(22))) throw new Error('Next week tapped: ' + await due(b));
+      // No date,
+      await openDates(C, c);
+      await dateChip('none').click();
+      await expect(movedLine('Took its date off')).toBeVisible();
+      await synced(page);
+      if (!(await due(c)).startsWith('0001')) throw new Error('No date tapped: ' + await due(c));
+      // and Today, for one that's overdue.
+      await openDates(L, late);
+      await dateChip('today').click();
+      await expect(movedLine('Moved to today')).toBeVisible();
+      await synced(page);
+      if (new Date(await due(late)).toDateString() !== new Date().toDateString()) throw new Error('Today tapped: ' + await due(late));
+      // By the keys: an arrow goes to the date in its direction, and Enter picks it.
+      await openDates(A, a);
+      await page.keyboard.press('ArrowDown');
+      await expect(menu(a).getByRole('button', { name: 'No date' })).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(menu(a).getByRole('button', { name: /^Tomorrow, / })).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await synced(page);
+      if (!sameTime(await due(a), dayAt(1, 21))) throw new Error('Tomorrow by the keys: ' + await due(a));
+      await noToast(page);
+    } finally { await page.mouse.up(); await page.keyboard.press('Escape'); for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
   await step('a-hold-on-today-leaves-a-repeating-task-where-it-is-and-says-why', async () => {
     const r = await make(`Pocket smoke hold repeats ${stamp}`, { due_date: todayAt(21), repeat_after: 86400 }), R = rowOf(r.title);
     try {
@@ -2032,7 +2120,23 @@ try {
       await synced(page);
       if (!sameTime((await get(r.id)).due_date, r.due_date)) throw new Error('a repeating task moved');
       if (await page.locator('.row-line, .place-line[data-place="cap"]').count()) throw new Error('something was said');
-    } finally { await page.mouse.up(); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+      // Let go without a move, its dates are left open as any task's, to read why: still dimmed, and a tap on one does
+      // nothing.
+      await holdOnToday(R);
+      await page.mouse.up();
+      const menu = page.getByRole('dialog', { name: `Move “${r.title}” to another day` });
+      await expect(menu).toBeVisible();
+      await expect(menu).toHaveAttribute('aria-describedby', 'throw-why');
+      await expect(page.locator('#throw-why')).toHaveText('It repeats: tick it to move on to its next date.');
+      for (const b of await menu.getByRole('button').all()) await expect(b).toHaveAttribute('aria-disabled', 'true');
+      const k = await dateChip('tomorrow').boundingBox();
+      await page.mouse.click(k.x + k.width / 2, k.y + k.height / 2);
+      await expect(menu).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await synced(page);
+      if (!sameTime((await get(r.id)).due_date, r.due_date)) throw new Error('a repeating task moved by a tap');
+    } finally { await page.mouse.up(); await page.keyboard.press('Escape'); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
   await step('a-held-rows-dates-stay-on-the-screen-for-the-first-row-and-the-last', async () => {
     // The first row on Today (overdue the longest) held near its right end, and the last (due latest in its 7 days) near
