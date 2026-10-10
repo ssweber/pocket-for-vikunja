@@ -198,13 +198,22 @@ try {
     await synced(page);
     if (Math.round((await apiTask()).percent_done * 100) !== 50) throw new Error('let go where it started, it saved ' + (await apiTask()).percent_done);
     await expect.poll(() => tickPct(row)).toBe(50);
-    // Held on Today, a row does nothing: it isn't lifted, and moved after, nothing changes.
+    // Held on Today, a row isn't picked up to be moved up or down: it lifts where it is, with its dates around the
+    // finger (their own steps are further on), and nothing follows the finger. Back where it was held and let go,
+    // nothing has changed.
+    const due = (await apiTask()).due_date;
     await page.mouse.move(box.x + 100, y); await page.mouse.down();
     await later(700);
     await expect(page.locator(row)).not.toHaveClass(/\bheld\b/);
+    await expect(page.locator(row)).toHaveClass(/\bthrow-from\b/);
     await page.mouse.move(box.x + 100, y + 60, { steps: 5 });
-    await page.mouse.up();
     await expect(page.locator('#view .dragged')).toHaveCount(0);
+    await page.mouse.move(box.x + 101, y + 2, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.locator('.throw')).toHaveCount(0);
+    if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+    await synced(page);
+    if ((await apiTask()).due_date !== due) throw new Error('held and let go where it was, its date changed to ' + (await apiTask()).due_date);
   });
   /* A full swipe right is done (1b): the row glides on off the screen, leaving a gap at its height, "Done" and Undo,
      until the batch clears; only `done` is sent, so Undo puts it back at its progress. Only the row moves on the way
@@ -2034,12 +2043,14 @@ try {
       // Let go where it was held: the four stay where they were, a menu now, named for the task, each date a button
       // named for a screen reader, the first one focused; the row still lifted, the screen behind dimmed very lightly,
       // and the task not opened.
-      await holdOnToday(A);
-      const held = await datesSeen();
+      const finger = await holdOnToday(A), held = await datesSeen();
       await page.mouse.up();
       await expect(menu(a)).toBeVisible();
       if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
       const open = await datesSeen();
+      // Pick a date… is there now, in the middle, where the finger was (this row is clear of the screen's edges).
+      const mid = await menu(a).getByRole('button', { name: 'Pick a date…' }).boundingBox();
+      if (!(mid.x <= finger.x && finger.x <= mid.x + mid.width && mid.y <= finger.y && finger.y <= mid.y + mid.height)) throw new Error('Pick a date… isn\'t where the finger was: ' + JSON.stringify([mid, finger]));
       for (const id of Object.keys(held.chips)) if (Math.abs(held.chips[id].l - open.chips[id].l) > .5 || Math.abs(held.chips[id].t - open.chips[id].t) > .5) throw new Error(id + ' moved as the dates opened to tap');
       if (open.hidden !== null) throw new Error('still hidden from a screen reader');
       const shade = +(open.shade.match(/[,/] ?([\d.]+)\)$/) || [])[1];      // how dark, of 1: its colour's last figure
@@ -2098,13 +2109,16 @@ try {
       await later(5000);
       await expect(page.locator('.row-line, .place-line[data-place="cap"]')).toHaveCount(0);
       await expect(page.locator(B)).not.toHaveClass(/\blined\b/);
-      // Pick a date…, in the middle, where the finger was, at least 56px each way: it opens the phone's own date picker,
-      // straight from the tap (only noted here, and put back after: a headless browser shows none), and the day picked
-      // there moves the task as a date does, at its time, said by its day as the phone writes it, with the same Undo.
+      // Pick a date…, in the middle of the four wherever the set is (this row may be by the screen's foot, the set
+      // moved up from the finger), at least 56px each way: it opens the phone's own date picker, straight from the tap
+      // (only noted here, and put back after: a headless browser shows none), and the day picked there moves the task
+      // as a date does, at its time, said by its day as the phone writes it, with the same Undo.
       await page.evaluate(() => { window.pickedFrom = []; window.pickerWas = HTMLInputElement.prototype.showPicker;
         HTMLInputElement.prototype.showPicker = function(){ window.pickedFrom.push(this.className + (navigator.userActivation?.isActive ? '' : ', but not from a tap')); }; });
-      const from = await openDates(B, b), pick = menu(b).getByRole('button', { name: 'Pick a date…' }), box = await pick.boundingBox();
-      if (!(box.x <= from.x && from.x <= box.x + box.width && box.y <= from.y && from.y <= box.y + box.height) || box.width < 56 || box.height < 56) throw new Error('Pick a date… isn\'t where the finger was, 56px each way: ' + JSON.stringify([box, from]));
+      await openDates(B, b);
+      const pick = menu(b).getByRole('button', { name: 'Pick a date…' }), box = await pick.boundingBox(), four = (await datesSeen()).chips;
+      if (box.width < 56 || box.height < 56 || !(four.today.r <= box.x + 1 && box.x + box.width <= four.tomorrow.l + 1 && four.week.b <= box.y + 1 && box.y + box.height <= four.none.t + 1))
+        throw new Error('Pick a date… isn\'t in the middle of the four, 56px each way: ' + JSON.stringify([box, four]));
       await pick.click();
       await expect.poll(() => page.evaluate(() => window.pickedFrom)).toEqual(['throw-date']);
       await expect(menu(b)).toBeVisible();
