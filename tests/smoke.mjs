@@ -1012,6 +1012,34 @@ try {
     if (JSON.stringify(await subsDone(b.id)) !== JSON.stringify([[sub('b1'), false]])) throw new Error('under the second: ' + JSON.stringify(await subsDone(b.id)));
     await expect.poll(async () => Math.round((await get(a.id)).percent_done * 100)).toBe(50);   // one of two done: written with them
   });
+  /* Indenting, as in Vikunja's web app: a line indented more than the line above it is under it, to any depth. In a
+     task's subtask box, each goes under the line it's under, which is under the open task; one of them done already
+     gives the lines over it their figures, up to the open task: its two subtasks at 100% and 0%, so 50%. */
+  await step('indented-lines-in-a-subtask-box-go-under-the-line-above', async () => {
+    const t = await make(`Pocket smoke indent ${stamp}`, { due_date: todayAt(23) }), sub = n => `Pocket smoke dent ${n} ${stamp}`;
+    madeFrom.push(t);
+    await refreshToday();
+    await page.click(opener(t.title));
+    await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
+    await page.fill('#d-subin', `${sub('A')}\n  ${sub('A1')}\n    x ${sub('A2')}\n${sub('B')}`);
+    await expect(page.locator('#d-subchips .chip', { hasText: '4 subtasks' })).toBeVisible();
+    await expect(page.locator('#d-subchips .chip[data-kind=done]')).toHaveText('1 arrives done');
+    await page.click('#d-subform .go');
+    // Its own two; the others are under the first of them.
+    const rows = page.locator('#d-subtasks .row:not(.pending) .title');
+    await expect(rows).toHaveCount(2, { timeout: 15000 });
+    if (JSON.stringify((await rows.allTextContents()).sort()) !== JSON.stringify([sub('A'), sub('B')])) throw new Error('its subtasks in the sheet: ' + await rows.allTextContents());
+    await synced(page);
+    const a = await taskTitled(sub('A')), a1 = await taskTitled(sub('A1')), a2 = await taskTitled(sub('A2')), b = await taskTitled(sub('B'));
+    madeFrom.unshift(...[a2, a1, a, b].filter(Boolean));
+    if (JSON.stringify(await subsDone(t.id)) !== JSON.stringify([[sub('A'), false], [sub('B'), false]])) throw new Error('under the task: ' + JSON.stringify(await subsDone(t.id)));
+    if (JSON.stringify(await subsDone(a.id)) !== JSON.stringify([[sub('A1'), false]])) throw new Error('under its first subtask: ' + JSON.stringify(await subsDone(a.id)));
+    if (JSON.stringify(await subsDone(a1.id)) !== JSON.stringify([[sub('A2'), true]])) throw new Error('under that one: ' + JSON.stringify(await subsDone(a1.id)));
+    const pct = async id => Math.round((await get(id)).percent_done * 100);
+    await expect.poll(async () => [await pct(a1.id), await pct(a.id), await pct(t.id)]).toEqual([100, 100, 50]);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
   await step('parents-in-a-pasted-list-clean-up', async () => { for (const t of madeFrom) await api('/tasks/' + t.id, { method: 'DELETE' }); });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger

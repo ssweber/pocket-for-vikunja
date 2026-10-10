@@ -271,6 +271,36 @@ test('in a subtask box, a heading\'s lines go under it, and it goes under the op
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['x Count them', 0], ['Tables', 0]]);
 });
 
+test('a pasted list with indented lines: each under the line above it that\'s indented less, the chip counting them', () => {
+  const app = boxes();
+  app.cap.text = 'Pack the van (38%)\n  Load chairs (50%)\n    Stack them\n  Tables\nSet the hall';
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(under(app, 'cap'), [null, 0, 1, 0, null]);
+  assert.deepEqual(app.boxParsedLines('cap').map(p => p.pct), [0, 0, 0, 0, 0], 'a figure on a line with lines under it is dropped');
+  assert.equal(app.nestOn, true);
+  // In a subtask box: under the line above it, which is under the open task.
+  app.sheet.sub.text = 'Chairs\n  Stack them\nTables';
+  assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['Tables', null]]);
+});
+
+/* Subtasks from the add box on a project's list (addSubtasks, actions.js): the next go after the last that's the
+   task's own subtask, not after one under it. */
+test('subtasks added from the add box with lines under them: the box\'s next go after the last of the task\'s own', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: {} }]);
+  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow'));
+  const van = app.keep(v.task(9));
+  Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], labels: [], people: [], access: {}, userKnown: {},
+    accessBlocked: false, checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: { ...newBox(), text: 'Chairs\n  Stack them\nTables\n  Fold the legs' }, capPhotos: [],
+    route: { name: 'project', id: 5 }, view: { groups: [{ key: 'open', tasks: [van] }], route: '', listView: 3 }, cursor: { id: 9, after: null }, flash(){}, $nextTick(){} });
+  await app.addSubtasks('under');
+  assert.deepEqual(app.cursor.after.title, 'Tables');
+  assert.deepEqual(v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]), [[9, 101], [101, 102], [9, 103], [103, 104]]);
+  const pos = id => v.task(id).position;
+  assert.equal(app.cursor.after.pos, pos(103), 'at its place in the list, which the next go after');
+  assert.ok(pos(101) < pos(102) && pos(102) < pos(103) && pos(103) < pos(104), 'each after the one before');
+});
+
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {
   const app = boxes();
   app.runInsert.text = 'x Wipe the counter\n[x] Mop\nLock up';

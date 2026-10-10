@@ -524,8 +524,9 @@ export default {
     const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
-    // The next ones from the add box go after these.
-    if (foot) this.cursor.after = {pos: at?.at(-1) ?? null, title: items.at(-1).p.title};
+    // The next ones from the add box go after these: after the last that's the task's own subtask, not one under it.
+    const last = items.findLastIndex(x => x.under === null);
+    if (foot) this.cursor.after = {pos: at?.[last] ?? null, title: items[last].p.title};
     const here = () => foot || this.sheet.task?.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
     // The next can be sent while this one is on its way (the outbox sends them in turn): `adding` counts them.
     b.adding++; b.text = '';

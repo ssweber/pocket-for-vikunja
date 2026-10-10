@@ -288,11 +288,13 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
   Bullets, numbering and checkboxes are removed. The
   whole list goes to one project: add `+orders` to any line.
 - **Parents in a pasted list:** a line starting `## `, a heading as Markdown notes write one, is a task, and the lines
-  under it, up to the next heading, are its subtasks; a `###` heading goes under the `##` before it. The chip says what
+  under it, up to the next heading, are its subtasks; a `###` heading goes under the `##` before it. A line indented
+  more than the line above it is under that line, to any depth, as in Vikunja's web app: spaces or tabs, of any width.
+  The chip says what
   the list makes: **2 tasks + 7 subtasks**. **↳ Under first line** makes the rest subtasks of the first, for a list
   written without a parent; it shows on by itself when the first line is one, and tapping it off makes them all tasks
-  of their own. In a task's subtask box, and the bottom box while it adds subtasks, a heading goes under the task with
-  its lines under it.
+  of their own. In a task's subtask box, and the bottom box while it adds subtasks, a heading or an indented line goes
+  under the line it's under, which goes under the task.
 - **A line that's done already:** an `x` and a space at the start of a line, or a ticked checkbox, adds the task done:
   `x Call the plumber`, `x - Call the plumber`, `[x] Call the plumber`, `- [x] napkins`, `☑ napkins`. It shows ticked
   where it went and leaves with the tasks you ticked, as a tick does; one that repeats moves on to its next date.
@@ -334,7 +336,8 @@ gives the same task in both apps. Pocket differs on purpose here:
 - A pasted list goes to one project, the first `+project` in it. Vikunja reads each line on its own.
 - Pocket also understands `every monday`, `every other day` and `the 17th` anywhere in the text, and drops a word like
   "by" or "in" along with its date.
-- Subtasks marked by indenting aren't supported; use **↳ Under first line**.
+- Pocket reads a line's `x ` or `[x]` as done and a figure at its end as its progress, where Vikunja leaves both in
+  the title; and a `## ` heading as a parent, as well as the indenting Vikunja reads.
 
 ## Assigning
 

@@ -290,6 +290,15 @@ addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the 
 addNest('Pack the van\n- Load chairs\n- Tables', ['Pack the van', 'Load chairs', 'Tables'], [null, 0, 0], 'a list with no markers, ↳ Under first line on', { nest: true }, false);
 addNest('## A\n## [x] B\nb1\n### C\nc1', ['A', 'b1', 'C', 'c1'], [null, null, null, 2], 'a done heading left out: its lines are no longer under one', { done: false });
 addNest('#project task\n#5 on the list', ['#project task', '#5 on the list'], [null, null], 'a # with no space after it is a word (Todoist\'s #project)');
+// Indenting, as in Vikunja's web app: a line indented more than the line above it is under it, to any depth.
+addNest('Pack the van\n  Load chairs\n    Stack them\n  Tables\nSet the hall\n\tLights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'spaces or a tab, to any depth');
+addNest('- Pack the van\n   - [x] Load chairs\n      * Stack them\n - Tables', ['Pack the van', ['Load chairs', true], 'Stack them', 'Tables'], [null, 0, 1, 0], 'any width: only more than the line above counts');
+addNest('    Pack the van\n    Tables\n  Lights\n      Cables', ['Pack the van', 'Tables', 'Lights', 'Cables'], [null, null, null, 2], 'a list indented as a whole, and a line indented less, start again at the top');
+addNest('## Pack the van\n  - Load chairs\n    - Stack them\n  - Tables\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'under a heading, an indented line is under the line above it');
+addNest('Pack the van\n  - [x] Load chairs\n      Stack them\n  Tables', ['Pack the van', 'Stack them', 'Tables'], [null, 0, 0], 'a done line left out: the line under it goes under what it was under', { done: false });
+addNest('Pack the van\n  Load chairs\nSet the hall\n  Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
+addNest('Order cups\nPack the van\n  Load chairs', ['Order cups', 'Pack the van', 'Load chairs'], [null, 0, 1], '↳ Under first line tapped on, the first line not a parent as written: over the lines with no parent', { nest: true }, false);
+addList('Wipe down\n  Counter\n    Under it', ['Wipe down', 'Counter', 'Under it'], 'in a step\'s box indenting isn\'t read');
 addList('## Wipe down\n- Counter', ['## Wipe down', 'Counter'], 'in a step\'s box a heading is words');
 
 // ---------- checklist steps ----------

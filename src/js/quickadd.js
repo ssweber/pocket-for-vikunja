@@ -278,8 +278,10 @@ const HEADING = /^(#{2,6})\s+/;
    A line that says it's done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
    single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out,
    the lines under one going under what it was under.
-   Which line is under which is read from the list's headings. Quick add's ↳ Under first line changes that: `nest`,
-   the first line is the parent of every line with none; `flat`, they're all tasks of their own.
+   Which line is under which is read from the list: its headings, and its indenting, as in Vikunja's web app: a line
+   indented more than the line above it is under it, to any depth, in spaces or tabs of any width (a tab counts as
+   four spaces). Quick add's ↳ Under first line changes that: `nest`, the first line is the parent of every line with
+   none; `flat`, they're all tasks of their own.
    `steps`: a run's box and a template's steps, where a step is done by doing it: a ticked checkbox's line is left
    out, an x is a word, and so is a heading's #. */
 export function readList(text, {steps = false, done = true, nest = false, flat = false} = {}){
@@ -287,6 +289,7 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
   let at = 0, ticked = 0;
   for (const raw of String(text || '').split('\n')) {
     let i = raw.length - raw.trimStart().length;
+    const indent = [...raw.slice(0, i)].reduce((n, c) => n + (c === '\t' ? 4 : 1), 0);
     const take = re => { const m = raw.slice(i).match(re); if (m) i += m[0].length; return m; };
     take(QUOTE_MARKS);
     const level = steps ? 0 : take(HEADING)?.[1].length || 0;
@@ -296,18 +299,21 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
     if (said) ticked++;
     const start = p => p + raw.slice(p).length - raw.slice(p).trimStart().length;
     rows.push({text: raw.slice(i).trim(), at: at + start(i), done: !!said, mark: said ? [at + from, at + from + said[0].trimEnd().length] : null,
-      kept: raw.slice(from).trim(), keptAt: at + start(from), level});
+      kept: raw.slice(from).trim(), keptAt: at + start(from), level, indent});
     at += raw.length + 1;
   }
   const full = rows.filter(r => r.text), one = full.length === 1, lines = [];
-  const heads = [];                              // the headings the next line is under, the nearest last: {level, k: its place in lines}
+  // What the next line may be under, the nearest last: the headings over it ({level, k: its place in lines}), and,
+  // since the last heading, the lines above it that are indented less ({indent, k}).
+  const heads = [], above = [];
   for (const r of full) {
-    if (r.level) while (heads.length && heads.at(-1).level >= r.level) heads.pop();
-    const under = heads.at(-1)?.k ?? null;
+    if (r.level) { while (heads.length && heads.at(-1).level >= r.level) heads.pop(); above.length = 0; }
+    else while (above.length && above.at(-1).indent >= r.indent) above.pop();
+    const under = steps ? null : above.at(-1)?.k ?? heads.at(-1)?.k ?? null;
     // A done line left out isn't over anything: what's under it goes under what it was under.
     if (r.done && (steps || (!done && !one))) continue;
     lines.push(r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null, under} : {text: r.text, at: r.at, done: r.done, mark: r.mark, under});
-    if (r.level) heads.push({level: r.level, k: lines.length - 1});
+    (r.level ? heads : above).push({level: r.level, indent: r.indent, k: lines.length - 1});
   }
   const first = lines.some(l => l.under === 0);
   for (const [i, l] of lines.entries()) if (flat) l.under = null; else if (nest && i && l.under === null) l.under = 0;
