@@ -2428,6 +2428,26 @@ try {
       if (!(await get(r.id)).done) throw new Error('Try again did not make it done');
     } finally { answer(); await page.unroute(at, hold); await page.unroute(at, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
+  /* With less motion asked for on the phone, a swipe only changes things: the row still follows the finger, but let go,
+     it's back, or gone with its gap in its place, with no glide and no fade (motion(), util.js, asked as it's let go). */
+  await step('with-less-motion-a-row-let-go-is-only-there', async () => {
+    const r = await make(`Pocket smoke still ${stamp}`, { due_date: todayAt(23) }), R = rowOf(r.title);
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await swipeRow(page, R, 25, { check: () => watchSlide(page, R, 400) });
+      let seen = await slideSeen(page);
+      if (seen.some(s => s.moving.length) || seen.slice(3).some(s => s.x || s.under !== null)) throw new Error('let go, it moved back: ' + JSON.stringify(seen.slice(0, 6)));
+      await swipeRow(page, R, 100, { start: 25, check: () => watchSlide(page, R, 400) });
+      await expect(page.locator(R)).toHaveClass(/\bswept\b/);
+      seen = await slideSeen(page);
+      if (seen.some(s => s.moving.length) || seen.slice(3).some(s => s.x || s.under !== null)) throw new Error('let go past half, it moved off: ' + JSON.stringify(seen.slice(0, 6)));
+      if (await page.locator(R).evaluate(el => el.getAnimations({ subtree: true }).length)) throw new Error('its gap faded in');
+      await synced(page);
+      if (!(await get(r.id)).done) throw new Error('never done');
+    } finally { await page.emulateMedia({ reducedMotion: null }); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+  });
   await step('a-sheet-save-not-made-says-so-in-the-sheet', async () => {
     // At the top of the sheet, with Try again; once saved, it goes.
     const r = await make(`Pocket smoke sheet not saved ${stamp}`, { due_date: todayAt(23) });
