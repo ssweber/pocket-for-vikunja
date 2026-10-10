@@ -125,7 +125,10 @@ export default {
     if (!at) return false;
     const {store, key} = at, old = store[key];
     if (old) this.endPlace(key, old, true, store);
-    const l = store[key] = {action: null, ...line, place, key, n: (old?.n || 0) + 1};
+    store[key] = {action: null, ...line, place, key, n: (old?.n || 0) + 1};
+    // (As the store gives it back: Alpine keeps a copy of its own of what's put there, and that's the one endPlace
+    // is asked about once its time is up. Kept as it was put, it was never the line showing, and never went.)
+    const l = store[key];
     this.said = l.text + (l.action ? `. ${l.action.label} is beside it.` : '');
     const ms = 'ms' in line ? line.ms : line.action ? UNDO_MS : SAY_MS;
     if (ms !== null) setTimeout(() => this.endPlace(key, l, true, store), ms);

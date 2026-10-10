@@ -430,11 +430,11 @@ export default {
     const back = this.undoMoves([m], to.label && dayWord(to.label), {place: 'cap'}, done => { if (done.length) { this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived'); } });
     const undo = {label: 'Undo', fn: async () => { if (!await saving) await back.fn(); }};
     await this.$nextTick();                                                 // its row is where it is now
-    this.say(movedTo(to.label, kept?.title), {row: this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
+    const text = movedTo(to.label, kept?.title), where = this.say(text, {row: this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
     const e = await saving;
     if (!e) return true;
     this.placeOnToday(t, m.was, m.when, m.key);
-    if (this.places.cap?.action === undo) this.endPlace('cap', this.places.cap, false);   // by the add box: there's nothing to undo
+    if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false);   // by the add box: there's nothing to undo
     this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'cap', action: {label: 'Try again', fn: () => this.reschedule(t, to)}});
     return false;
   },

@@ -97,6 +97,28 @@ test('a message goes to its place when that is on screen, and to the toast when 
   assert.equal(app('run').say('x', { place: ['sheet:files', 'step', 'run'] }), 'place', 'the first of a list on screen');
 });
 
+/* In the page, what's put in the component's data is given back as Alpine's own copy of it (a Proxy), never the object
+   put there: stood in for here by a store that does the same. A line's time must end the line the store gives back. */
+test('a message in its place goes once its time is up, in a store that gives back its own copy of it, as Alpine\'s does', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const copies = new WeakMap(), copy = o => copies.get(o) || (copies.set(o, new Proxy(o, {})), copies.get(o));
+  const today = app('today');
+  let gone = 0;
+  today.places = new Proxy({}, { get: (store, k) => store[k] && typeof store[k] === 'object' ? copy(store[k]) : store[k] });
+  today.sayAt('cap', { text: 'Moved to tomorrow', action: { label: 'Undo', fn(){} }, gone: () => gone++ });
+  assert.equal(today.placeLines('cap').length, 1);
+  t.mock.timers.tick(4999);
+  assert.equal(today.placeLines('cap').length, 1, 'there for its Undo\'s time');
+  t.mock.timers.tick(1);
+  assert.deepEqual([today.placeLines('cap').length, gone], [0, 1], 'then gone');
+  today.sayAt('cap', { text: 'Not added', cls: 'failed' });
+  t.mock.timers.tick(4000);
+  assert.equal(today.placeLines('cap').length, 0, 'one with nothing to tap, after its shorter time');
+  today.sayAt('cap', { text: 'Stays', ms: null });
+  t.mock.timers.tick(60000);
+  assert.equal(today.placeLines('cap').length, 1, 'one that stays until the screen is left');
+});
+
 test('a sheet\'s messages are in it, under what each is about, and go with it', () => {
   const task = app('today', { ...blankSheet('task'), open: true, task: { id: 1 } });
   task.say('Not saved: no connection', { place: 'sheet:notes', cls: 'failed' });

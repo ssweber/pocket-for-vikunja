@@ -2013,6 +2013,9 @@ try {
       await synced(page);
       if (!(await due(a)).startsWith('0001')) throw new Error('by a finger, down: ' + await due(a));
       await noToast(page);
+      // Its Undo is there for a few seconds, then gone, on its row or by the add box.
+      await later(5000);
+      await expect(movedLine('Took its date off')).toHaveCount(0);
     } finally { await page.mouse.up(); for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
   await step('a-hold-on-today-without-a-move-leaves-its-dates-open-to-tap', async () => {
