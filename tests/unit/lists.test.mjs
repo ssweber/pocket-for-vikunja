@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { doneParentIds, drawnOf, FIRST_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { batchMs, doneParentIds, drawnOf, FIRST_ROWS, FRAME_MS, LATER_MS, NEAR_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
@@ -163,11 +163,20 @@ test('a list draws the rows of the screen’s first rows that are its own', () =
   assert.equal(drawnOf(list, 2, Infinity), list, 'all of it: the list itself');
 });
 
-test('a batch is about a frame’s work: more rows when it took less, fewer when more, a few at least', () => {
-  assert.equal(nextBatch(20, 20), 40, 'twice as fast as wanted: twice the rows, no more');
-  assert.equal(nextBatch(20, 1), 40, 'nothing to it: no more than twice');
-  assert.equal(nextBatch(20, 80), 10);
-  assert.equal(nextBatch(20, 1000), 4, 'a slow phone still draws a few a frame');
+test('a batch is about its time’s work: more rows when it took less, fewer when more, a few at least', () => {
+  assert.equal(nextBatch(20, 20, 40), 40, 'twice as fast as wanted: twice the rows, no more');
+  assert.equal(nextBatch(20, 1, 40), 40, 'nothing to it: no more than twice');
+  assert.equal(nextBatch(20, 80, 40), 10);
+  assert.equal(nextBatch(20, 1000, 40), 4, 'a slow phone still draws a few a frame');
+  assert.equal(nextBatch(40, 500, 1000), 80, 'a second’s work: more rows, no more than twice');
+});
+
+test('the first few screens are drawn a frame’s work at a time, the rest about a second’s', () => {
+  assert.equal(NEAR_ROWS, 3 * FIRST_ROWS);
+  assert.equal(batchMs(FIRST_ROWS), FRAME_MS);
+  assert.equal(batchMs(NEAR_ROWS - 1), FRAME_MS);
+  assert.equal(batchMs(NEAR_ROWS), LATER_MS);
+  assert.ok(FRAME_MS <= 50 && LATER_MS >= 500);
 });
 
 test('a screen draws its first rows, the rest a batch a frame, then everything', async () => {

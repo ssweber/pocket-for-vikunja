@@ -95,10 +95,16 @@ export const keptGroups = groups => groups.map(g => g.key === 'done' ? {...g, ta
    list `before` rows down the screen draws what's left of them. */
 export const FIRST_ROWS = 20;
 export const drawnOf = (list, before, to) => to >= before + list.length ? list : list.slice(0, Math.max(0, to - before));
-/* How many rows the next batch draws, from the last (`rows`, which took `ms` to draw): about BATCH_MS of work, so a
-   phone keeps scrolling meanwhile; at least a few rows, and no more than twice the last. */
-export const BATCH_MS = 40;
-export const nextBatch = (rows, ms) => Math.max(4, Math.min(rows * 2, Math.round(rows * BATCH_MS / Math.max(ms, 1))));
+/* How long a batch of rows takes to draw, `drawn` rows into what's being drawn: a frame's work (FRAME_MS) for the first
+   few screens (NEAR_ROWS), which a finger may scroll to at once, so the list keeps up with it; then about a second's
+   (LATER_MS), so the rest is drawn in a few long batches with taps and scrolls answered between them. Every frame
+   costs a phone some time of its own, which thousands of rows in small batches add up to: Done's 2,000 took twice as
+   long as drawing them at once (scratchpad/perf, a phone's screen at 4x CPU). */
+export const FRAME_MS = 40, LATER_MS = 1000, NEAR_ROWS = 3 * FIRST_ROWS;
+export const batchMs = drawn => drawn < NEAR_ROWS ? FRAME_MS : LATER_MS;
+// How many rows the next batch draws, from the last (`rows`, which took `ms` to draw): about `budget` of work, at least a
+// few rows, and no more than twice the last.
+export const nextBatch = (rows, ms, budget) => Math.max(4, Math.min(rows * 2, Math.round(rows * budget / Math.max(ms, 1))));
 /* Whether two groups of listGroups show the same: each field the same, a list (its tasks, items, heads) item by item, a
    map of lists (kids) list by list, an object (depth) entry by entry. Then the one drawn already is kept, so a list
    worked out again, by a load that changed nothing in it, say, gives its rows nothing to do: each row reads its group. */

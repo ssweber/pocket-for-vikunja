@@ -5,7 +5,7 @@ import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.j
 import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {doneParentIds, drawnOf, FIRST_ROWS, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {batchMs, doneParentIds, drawnOf, FIRST_ROWS, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText} from '../messages.js';
 import {listViewOf} from '../order.js';
@@ -247,8 +247,8 @@ export default {
   },
   /* ---------- drawing a long screen (performance-plan, part 5) ---------- */
   /* A screen's rows from row `n` on, drawn a few at a time: FIRST_ROWS at once, then, after that's painted, a batch a
-     frame, each about BATCH_MS of work (nextBatch), down the screen's lists in order (drawn, listGroups' `before`), until
-     every row is drawn. Meanwhile the screen counts as busy (#view[aria-busy], app.html), so the tests wait for it.
+     frame, each a frame's work for the first few screens and then about a second's (batchMs, nextBatch), down the
+     screen's lists in order (drawn, listGroups' `before`), until every row is drawn. Meanwhile the screen counts as busy (#view[aria-busy], app.html), so the tests wait for it.
      Scrolling to within a screen of the end of what's drawn draws the rest at once, so the end of what's drawn is never
      taken for the end of the list; and so does holding a row to move it (reorderOf), which needs all its siblings. */
   drawFrom(n){
@@ -263,7 +263,7 @@ export default {
       if (seq !== drawSeq) return;
       if (!this.view.loading) {                          // (with no copy kept, its rows come with the load)
         if (this.drawTo >= this.view.groups.reduce((k, g) => k + g.tasks.length, 0)) return this.drawAll();
-        if (took !== null) rows = nextBatch(rows, took);
+        if (took !== null) rows = nextBatch(rows, took, batchMs(this.drawTo - n));
         this.drawTo += rows;
         // How long the batch took to draw: Alpine draws it straight after this, before anything queued after it.
         const t0 = performance.now(); took = null; queueMicrotask(() => { took = performance.now() - t0; });
