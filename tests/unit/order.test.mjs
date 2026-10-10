@@ -142,6 +142,16 @@ test('a subtask that arrives done isn\'t lit: its task is, and the next go after
   assert.deepEqual(app.cursorPlaces(1), [200 + SPACING]);
 });
 
+test('with no List view there\'s no place to give: the line names only the task, and the row touched or added is lit', () => {
+  const { app, van, chairs } = projectList();
+  app.view.listView = null;
+  app.aim(chairs);
+  assert.deepEqual([app.lit, app.capTarget, app.cursorPlaces(1)], [{ 11: true }, { to: 'Pack the van', after: '' }, null]);
+  assert.equal(app.capTargetText, 'Add a subtask to Pack the van');
+  app.aimAdded(added('e1', 'Rope', 0), 0, van);
+  assert.deepEqual([app.lit, app.capTarget, app.cursorPlaces(1)], [{ 'pending-e1-0': true }, { to: 'Pack the van', after: '' }, null]);
+});
+
 test('a tick moves the cursor: to the task while it\'s open, to its parent once it\'s done, and a done task is never one', () => {
   const { app, van, chairs, lights } = projectList();
   app.aimAfterTick(chairs);

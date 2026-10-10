@@ -507,12 +507,13 @@ export default {
   // Its text and the rest, as the box `capW` keeps them: a run's apart from quick add's, so neither turns up in the other.
   get capBox(){ return this.box(this.capW); },
   /* What the box adds to, said above it: the task, and, the cursor being one of its subtasks, that subtask, which they
-     go after, the last one too. On a run's screen, the step they go after, and the card's step, which Repeat copies
-     there (not one still waiting to be sent). */
+     go after, the last one too. (In a project with no List view there's no place to give, and they go last: only the
+     task is named.) On a run's screen, the step they go after, and the card's step, which Repeat copies there (not one
+     still waiting to be sent). */
   get capTarget(){
     if (this.capW === 'ins') { const a = this.runAim; return a && {step: true, after: a.title, repeat: a.on.title, canRepeat: !a.on.pending}; }
     const t = this.cursorTask, p = this.cursorParent;
-    return t && {to: p.title, after: t !== p ? t.title : ''};
+    return t && {to: p.title, after: t !== p && this.view.listView ? t.title : ''};
   },
   get capPlaceholder(){
     if (this.capW === 'ins') return 'Add a step, or paste a list';
