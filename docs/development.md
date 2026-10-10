@@ -9,7 +9,8 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
                (claim-slot.html), the gap a row or a card leaves, with its Restore or Undo (gap.html), a message in a row's
                place (row-line.html), one in its place: under a heading, by
                the add box, in a sheet (place-line.html), what the add box adds subtasks or a run's steps to
-               (cap-target.html), and what an add box read, as chips under it (chips.html); in sheet/, a task's sheet (task.html), the card it leads with: its row, notes and
+               (cap-target.html), what an add box read, as chips under it (chips.html), and Set up checklists, under
+               the projects and on Checklists while there's no project for them (setup-card.html); in sheet/, a task's sheet (task.html), the card it leads with: its row, notes and
                photos (task-card.html), and the question a parent's ring asks (complete.html)
   styles.css   all of the CSS
   js/          main.js, where the code starts; component.js, which puts the Alpine component together; the helpers

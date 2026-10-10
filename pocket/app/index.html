@@ -723,18 +723,23 @@
         </template><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div>
       </div></template>
       <!-- No project for checklists yet: one to set up, with an example -->
-      <template x-if="!checklistProjects.length"><div style="margin-top:18px"><div class="card cl-card setup-card" id="setup-checklists">
-        <p><b>Checklists</b> are step-by-step lists people run again and again, like opening up or a weekly clean: each run is ticked off step by step, with who did what.</p>
-        <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
-        <template x-for="line in placeLines('setup')" :key="line.n">
+      <template x-if="!checklistProjects.length"><div style="margin-top:18px">
+<!-- With no project for checklists yet: what they are, and Set up checklists, which makes a project called Checklists
+     with an example template to try (setUpChecklists, app/checklists.js); what went wrong is said under the button.
+     Under the projects (screens/lists.html), and on Checklists while it's empty (screens/checklists.html). -->
+<div class="card cl-card setup-card" id="setup-checklists">
+  <p><b>Checklists</b> are step-by-step lists people run again and again, like opening up or a weekly clean: each run is ticked off step by step, with who did what.</p>
+  <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
+  <template x-for="line in placeLines('setup')" :key="line.n">
 <!-- A message in its place (`line`, from lines.js): under a list's heading, by the add box, in a sheet under what it's
      about, on a run's step card. What happened, and its action (Undo, Open, Try again). A screen reader hears it from
      #said. -->
 <div class="place-line" :class="line.cls" :data-place="line.place"><span class="what" x-text="line.text"></span>
   <template x-if="line.action"><button class="line-act" @click="runPlaceAction(line)" x-text="line.action.label"></button></template></div>
-        </template>
-        <p class="note" style="margin:8px 0 0">Makes a project called Checklists, with an example template to try. Or use a project of yours: its ⋯ has Use for checklists.</p>
-      </div></div></template>
+  </template>
+  <p class="note" style="margin:8px 0 0">Makes a project called Checklists, with an example template to try. Or use a project of yours: its ⋯ has Use for checklists.</p>
+</div>
+      </div></template>
     </div></template>
     <!-- Checklists: each checklist project's templates, to start a run from, and its runs in progress -->
     <template x-if="!view.loading && !view.error && route.name === 'checklists'"><div id="checklists">
@@ -745,18 +750,23 @@
 <div class="place-line" :class="line.cls" :data-place="line.place"><span class="what" x-text="line.text"></span>
   <template x-if="line.action"><button class="line-act" @click="runPlaceAction(line)" x-text="line.action.label"></button></template></div>
       </template>
-      <template x-if="!view.checklists.length"><div class="card cl-card setup-card" id="setup-checklists">
-        <p><b>Checklists</b> are step-by-step lists people run again and again, like opening up or a weekly clean: each run is ticked off step by step, with who did what.</p>
-        <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
-        <template x-for="line in placeLines('setup')" :key="line.n">
+      <template x-if="!view.checklists.length">
+<!-- With no project for checklists yet: what they are, and Set up checklists, which makes a project called Checklists
+     with an example template to try (setUpChecklists, app/checklists.js); what went wrong is said under the button.
+     Under the projects (screens/lists.html), and on Checklists while it's empty (screens/checklists.html). -->
+<div class="card cl-card setup-card" id="setup-checklists">
+  <p><b>Checklists</b> are step-by-step lists people run again and again, like opening up or a weekly clean: each run is ticked off step by step, with who did what.</p>
+  <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
+  <template x-for="line in placeLines('setup')" :key="line.n">
 <!-- A message in its place (`line`, from lines.js): under a list's heading, by the add box, in a sheet under what it's
      about, on a run's step card. What happened, and its action (Undo, Open, Try again). A screen reader hears it from
      #said. -->
 <div class="place-line" :class="line.cls" :data-place="line.place"><span class="what" x-text="line.text"></span>
   <template x-if="line.action"><button class="line-act" @click="runPlaceAction(line)" x-text="line.action.label"></button></template></div>
-        </template>
-        <p class="note" style="margin:8px 0 0">Makes a project called Checklists, with an example template to try. Or use a project of yours: its ⋯ has Use for checklists.</p>
-      </div></template>
+  </template>
+  <p class="note" style="margin:8px 0 0">Makes a project called Checklists, with an example template to try. Or use a project of yours: its ⋯ has Use for checklists.</p>
+</div>
+      </template>
       <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
         <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
         <!-- For its owner, until hidden: what tripped everyone setting one up (docs/design/checklist-setup-plan.md) -->
