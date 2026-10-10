@@ -1682,6 +1682,18 @@ try {
     await page.press(`#step-edit-${steps[2].id}`, 'Enter');
     await until('the step never changed', async () => (await api('/tasks/' + steps[2].id)).title === 'Count the till !4 twice');
     if ((await api('/tasks/' + steps[2].id)).priority) throw new Error('"!4" was read as a priority');
+    /* A step tapped straight from another being changed: its box has the focus, and knows it, so emptied it says what
+       it reads, as any add box does (and @ and * suggest). The box left said it had lost the focus a moment after,
+       which the one opened meanwhile took for itself. */
+    await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
+    await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, steps[0].id, { timeout: 5000 });
+    await page.click('#d-subtasks .row:nth-of-type(3) > button.body');
+    await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, steps[2].id, { timeout: 5000 });
+    await page.waitForTimeout(300);                                          // past the moment the box left speaks up
+    await page.fill(`#step-edit-${steps[2].id}`, '');
+    await expect(page.locator('.step-in .box-chips .hint'), 'a step opened from another doesn\'t know it has the focus').toContainText('who does it');
+    await page.press(`#step-edit-${steps[2].id}`, 'Escape');
+    await expect(page.locator('#d-subtasks .step-box')).toHaveCount(0);
     // Who a step is for, tapped off it while it's changed.
     if (other) {
       await page.click('#d-subtasks .row:nth-of-type(2) > button.body');
