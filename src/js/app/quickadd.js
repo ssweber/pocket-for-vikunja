@@ -1,5 +1,5 @@
 // The add box: what it read, who can see the project, suggestions for @username and *label, and the marks behind the words.
-import {colorOf, esc, userCache} from '../util.js';
+import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {saved} from '../lists.js';
@@ -414,11 +414,18 @@ export default {
       && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) && !this.deleting.includes(t.id) && this.onList(t);
   },
   onList(t){ return this.view.groups.some(g => g.key === 'open' && g.tasks.includes(t)); },
+  /* The cursor set, or none (null). `lit` says it to its row alone (the row's id -> true): a row asks only about itself,
+     as it does of `leaving`, so lighting another row draws those two again, not the whole list. */
+  light(c){
+    for (const id of Object.keys(this.lit)) if (!c || String(c.id) !== id) delete this.lit[id];
+    if (c) this.lit[c.id] = true;
+    this.cursor = c;
+  },
   // The task touched last, or none if it can't be the cursor. `after` is the last subtask added from the box, which the
   // next go after.
   aim(t){
-    if (this.canAim(t)) { if (this.cursor?.id !== t.id) this.cursor = {id: t.id, after: null}; }
-    else this.cursor = null;
+    if (this.canAim(t)) { if (this.cursor?.id !== t.id) this.light({id: t.id, after: null}); }
+    else this.light(null);
   },
   /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
      isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
@@ -477,7 +484,7 @@ export default {
   // The cursor's row, as it's drawn: watched, so the box goes back to adding a task once it's out of sight.
   watchCursor(el){
     if (watched === el || !window.IntersectionObserver) return;
-    cursorIO ||= new IntersectionObserver(es => { for (const e of es) if (!e.isIntersecting && e.target === watched && +watched.dataset.id === this.cursor?.id) this.cursor = null; });
+    cursorIO ||= new IntersectionObserver(es => { for (const e of es) if (!e.isIntersecting && e.target === watched && +watched.dataset.id === app.cursor?.id) app.light(null); });
     cursorIO.disconnect(); watched = el; cursorIO.observe(el);
   },
 

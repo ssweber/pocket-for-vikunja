@@ -63,10 +63,11 @@ test('new subtasks go after the one given, before the next, each after the one b
 });
 
 /* Quick add's box on a project's list: the task touched last is the cursor, and the box adds subtasks after it. A
-   project's list here: Pack the van (Load chairs, Tables), Lights. */
+   project's list here: Pack the van (Load chairs, Tables), Lights. `lit` is what each row reads: the one row lit, by
+   its id. */
 function projectList(){
   const app = component(tasks, quickadd);
-  Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, deleting: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
+  Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
   const van = app.keep({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
   const sub = (id, title) => app.keep({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
   const chairs = sub(11, 'Load chairs'), tables = sub(12, 'Tables'), lights = app.keep({ id: 20, title: 'Lights', project_id: 1, done: false });
@@ -82,10 +83,12 @@ test('the cursor on a task: subtasks go after its last; on a subtask, after it, 
   app.aim(van);
   assert.equal(app.capW, 'under');
   assert.deepEqual(app.capTarget, { to: 'Pack the van', after: '' });
+  assert.deepEqual(app.lit, { 10: true }, 'its row is the one lit');
   assert.deepEqual(app.cursorPlaces(1), [200 + SPACING]);
   app.aim(chairs);
   assert.equal(app.cursorParent, van);
   assert.deepEqual(app.capTarget, { to: 'Pack the van', after: 'Load chairs' });
+  assert.deepEqual(app.lit, { 11: true }, 'one row lit: the task\'s own goes dark');
   assert.deepEqual(app.cursorPlaces(2), [150, 175], 'between Load chairs and Tables');
   // Added one after another, each goes after the one before: the box keeps where the last went.
   app.cursor.after = { pos: 150, title: 'Rope' };
@@ -106,6 +109,7 @@ test('a tick moves the cursor: to the task while it\'s open, to its parent once 
   lights.done = true;
   app.aimAfterTick(lights);
   assert.equal(app.cursor, null, 'a task done with no parent on the list: none');
+  assert.deepEqual(app.lit, {}, 'and nothing lit');
   app.aim(van);
   van.done = true;
   assert.equal(app.capW, 'cap', 'done since: the box adds a task again');

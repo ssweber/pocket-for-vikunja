@@ -7,7 +7,7 @@
 <div class="cap-target" id="cap-target"><svg class="i"><use :href="target.step ? '#i-checklist' : '#i-subtasks'"/></svg>
   <template x-if="!target.step"><span class="what">Add a subtask to <b x-text="target.to"></b><template x-if="target.after"><span>, after <b x-text="target.after"></b></span></template></span></template>
   <template x-if="target.step"><span class="what">Add a step after “<b x-text="target.after"></b>”</span></template>
-  <template x-if="!target.step"><button type="button" class="icon-btn plain" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="cursor = null"><svg class="i"><use href="#i-close"/></svg></button></template>
+  <template x-if="!target.step"><button type="button" class="icon-btn plain" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="light(null)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-if="target.step"><button type="button" class="rep" id="btn-repeat" :disabled="!target.canRepeat" :aria-label="'Repeat “' + target.repeat + '”'"
     :title="target.canRepeat ? 'A fresh copy of “' + target.repeat + '”, not done, after “' + target.after + '”' : 'It can be repeated once it\'s sent'"
     @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg><span>Repeat</span></button></template></div>

@@ -50,6 +50,7 @@ export default () => ({
   // subtask box in a task's sheet is the same kind of box: sheet.sub. Both are read by the box methods (quick add).
   cap: newBox(),
   cursor: null,                                // on a project's list, the task quick add adds subtasks to: {id, after} (quickadd.js)
+  lit: {},                                     // its id -> true, for its row alone to read (light, quickadd.js)
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → Users search.
   access: {}, userKnown: {}, accessBlocked: false,

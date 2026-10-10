@@ -20,8 +20,8 @@
   </template>
   <template x-for="[c, h] in [cardOf(t, g)].filter(Boolean).map(c => [c, cardHead(t, g)])" :key="0">
     <div class="day-card" role="group" :aria-label="h.title" :data-id="t.id" :data-gestures="rowGestures(g)"
-         :class="{open: c.open, done: t.done && !leaving[t.id], swept: !!swept[t.id], aimed: cursor?.id === t.id && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
-         x-effect="c.open && c.folds && watchCard($el); cursor?.id === t.id && watchCursor($el)"
+         :class="{open: c.open, done: t.done && !leaving[t.id], swept: !!swept[t.id], aimed: lit[t.id] && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh.includes(t.id), 'came-due': flashed.due.includes(t.id), arrived: flashed.arrived.includes(t.id)}"
+         x-effect="c.open && c.folds && watchCard($el); lit[t.id] && watchCursor($el)"
          @click.capture="if (leaving[t.id] === 'deleted' || swept[t.id]) { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
       <div class="card-head">
         <template x-for="r in [c.ring].filter(Boolean)" :key="0">

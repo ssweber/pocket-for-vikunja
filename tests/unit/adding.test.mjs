@@ -319,7 +319,7 @@ test('subtasks added from the add box with lines under them: the box\'s next go 
   const van = app.keep(v.task(9));
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], labels: [], people: [], access: {}, userKnown: {},
     accessBlocked: false, checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: { ...newBox(), text: 'Chairs\n  Stack them\nTables\n  Fold the legs' }, capPhotos: [],
-    route: { name: 'project', id: 5 }, view: { groups: [{ key: 'open', tasks: [van] }], route: '', listView: 3 }, cursor: { id: 9, after: null }, flash(){}, $nextTick(){} });
+    route: { name: 'project', id: 5 }, view: { groups: [{ key: 'open', tasks: [van] }], route: '', listView: 3 }, cursor: { id: 9, after: null }, lit: { 9: true }, flash(){}, $nextTick(){} });
   await app.addSubtasks('under');
   assert.deepEqual(app.cursor.after.title, 'Tables');
   assert.deepEqual(v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]), [[9, 101], [101, 102], [9, 103], [103, 104]]);
