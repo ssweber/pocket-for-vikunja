@@ -88,14 +88,18 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
     if (f) Object.assign(out, {pct: f.pct, title: (text.slice(0, f.start) + text.slice(f.end)).trim(), marks: [{start: f.start, end: f.end, kind: 'progress'}]});
     return out;
   }
-  // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
-  const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
-  if (quoted) { out.title = quoted[2].trim(); return out; }
   // A checklist step's T#20m, T#40m:roast and {#roast} stay as they are, and nothing reads them as a date, a time or a
   // project: each is swapped for a run of one private-use character, the same length, and put back at the end.
   const stepTokens = [];
   const hide = tok => String.fromCharCode(0xE000 + stepTokens.push(tok) - 1).repeat(tok.length);
   const unhide = t => t.replace(/([\uE000-\uF8FF])\1*/g, (run, c) => stepTokens[c.charCodeAt(0) - 0xE000] ?? run);
+  /* Quotes round the start of the text hold its title, read as typed, and the words after them are read as usual:
+     "Lunch friday" @sam 2026-10-16 is "Lunch friday", Sam's, due the 16th. With nothing after them, everything is
+     turned off, as in Vikunja: "delete mails up to january 30th". The words after are Pocket's own: Vikunja has no
+     way to keep one word from being read, and a copied list needs one (share.js). The title ends at the first such
+     quote with a space, or the end, after it. It's hidden as a step's words are, its quotes with it. */
+  const held = text.match(/^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/);
+  if (held) text = held[1] + String.fromCharCode(0xE000 + stepTokens.push(held[3].trim()) - 1).repeat(held[3].length + 2) + text.slice(held[0].length);
   text = text.replace(/(^|\s)(T#(?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+(?::[a-z][\w-]*)?)(?=\s|$|["'])/gi, (_, sp, tok) => sp + hide(tok))
     .replace(/\{#[a-z][\w-]*\}/gi, hide);
   // Repeats Vikunja can't do, on weekdays only or on two or more days of the week, stay in the title as they are, and
@@ -248,7 +252,7 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   const figure = !ignore.progress && endFigure(out.title, ignore.assignees ? '' : `(?:\\s+\\${P.assignee}(?:"[^"]+"|'[^']+'|\\S+))*`);
   if (figure) { out.pct = figure.pct; cut(figure.start, figure.end, 'progress'); }
 
-  out.title = unhide(out.title).replace(/\s{2,}/g, ' ').trim();
+  out.title = unhide(out.title.replace(/\s{2,}/g, ' ').trim());
   // One mark per phrase: neighbouring characters read as the same thing join up, across the spaces between them.
   for (const i of [...read.keys()].sort((a, b) => a - b)) {
     const kind = read.get(i), last = out.marks[out.marks.length - 1];

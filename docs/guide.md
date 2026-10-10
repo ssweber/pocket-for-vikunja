@@ -224,7 +224,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   Each line says whether it's done, its own progress, who's on it, its priority, its labels and its repeat, with your
   own quick add prefixes, and its due date last: in numbers, with its year, so it means the same day whenever it's
   pasted, and with its time when that isn't your default due time. A task with subtasks has no figure of its own: it's
-  worked out again from them. Notes, comments and photos aren't in it. It reads as a task list in a notes app too, and
+  worked out again from them. A title that quick add would read words in is quoted, `- [ ] "Lunch friday" @sam`, so it
+  comes back as its title (with `'` when it has a `"` in it); most need none. Notes, comments and photos aren't in it. It reads as a task list in a notes app too, and
   Vikunja's own quick add reads most of it (not done, nor progress: there they stay in the title). **Open in Vikunja
   ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
@@ -299,7 +300,9 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
 - **Suggestions:** as you type a label or a person, chips offer your labels and the people you share projects with,
   those who can see the task's project first. Tap one to finish the word, or press Enter for the first.
 - **Read something you didn't mean?** Tap its chip and those words stay in the title. Tap again to undo. To turn it all
-  off for one task, wrap the whole text in quotes: `"Friday night jazz poster"`.
+  off for one task, wrap the whole text in quotes: `"Friday night jazz poster"`. Quotes round the start of a line hold
+  its title and leave the words after them to be read: `"Lunch friday" @priya tomorrow` is "Lunch friday", Priya's, due
+  tomorrow. (The words after are Pocket's own: in Vikunja, quotes work only round the whole text.)
 - **Pasting a list:** with more than one line in the box, each line becomes a task, with its own dates and shortcuts.
   Bullets, numbering and checkboxes are removed. The
   whole list goes to one project: add `+orders` to any line.
@@ -356,6 +359,8 @@ gives the same task in both apps. Pocket differs on purpose here:
   "by" or "in" along with its date.
 - Pocket reads a line's `x ` or `[x]` as done and a figure at its end as its progress, where Vikunja leaves both in
   the title; and a `## ` heading as a parent, as well as the indenting Vikunja reads.
+- Quotes round the start of a line hold its title, and the words after them are read. In Vikunja, quotes work only
+  round the whole text.
 
 ## Assigning
 

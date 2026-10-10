@@ -62,6 +62,18 @@ add({ text: '"delete mails today', date: 'any' });
 add({ text: '"delete mails today\'', date: 'any' });
 add({ text: 'delete "mails" today', date: 'any' });
 add({ text: '""', title: '', date: null });
+// Pocket's own: quotes round the start of the text hold its title, and the words after them are read as usual. A copied
+// Markdown list quotes a title this way when quick add would read words in it (share.js).
+const held = why => ({ pocket: true, why });
+add({ text: '"Lunch friday" @sam 2026-10-16', title: 'Lunch friday @sam', assignees: ['sam'], date: '2026-10-16', marked: ['assignees:@sam', 'due:2026-10-16'], ...held('the title read as typed, the words after it as usual') });
+add({ text: '"Call Bob tomorrow" tomorrow !2 *calls', title: 'Call Bob tomorrow', date: '2021-6-25', priority: 2, labels: ['calls'], ...held('the same word inside and after') });
+add({ text: '\'Say "hi" friday\' every week', title: 'Say "hi" friday', repeat: { after: 604800, mode: 0 }, ...held('single quotes, for a title with a " in it') });
+add({ text: '"Tables (50%)" (25%)', title: 'Tables (50%)', pct: 25, ...held('a figure after the quotes is its progress') });
+add({ text: '"x-ray" the pipe friday', title: 'x-ray the pipe', date: '2021-6-25', ...held('the quotes end where a space follows: the rest is read') });
+add({ text: '"Paint !2"coats !3', title: '"Paint !2"coats', priority: 3, ...held('with no space after them they hold nothing') });
+add({ text: '"task today" +user @label', mode: 'todoist', title: 'task today +user', date: null, assignees: ['user'], labels: ['label'], ...held('with Todoist\'s prefixes') });
+add({ text: '"Lunch friday" @sam', mode: 'disabled', title: '"Lunch friday" @sam', date: null, assignees: [], ...held('quick add turned off: as typed') });
+add({ text: '" Lunch  friday " !3', title: 'Lunch  friday', priority: 3, date: null, ...held('as typed inside, but for the spaces at its ends') });
 
 // ---------- default due time ----------
 add({ text: 'plan this tomorrow', now: new Date(2026, 7, 4, 9, 15), dueTime: '14:30', date: '2026-8-5', time: '14:30' });
@@ -467,9 +479,12 @@ cases.forEach((c, i) => {
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
   // The marks are what was read: taking them out of the text leaves the title, give or take spaces. (@username stays.)
-  if (c.mode !== 'disabled' && !/^\s*(["'])[\s\S]*\1\s*$/.test(c.text)) {
+  // So do the quotes round a title held at its start.
+  if (c.mode !== 'disabled') {
     let rest = c.text;
     for (const m of [...r.marks].reverse()) if (m.kind !== 'assignees') rest = rest.slice(0, m.start) + ' ' + rest.slice(m.end);
+    const hold = rest.match(/^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/);
+    if (hold) rest = hold[1] + hold[3] + rest.slice(hold[0].length);
     if (rest.replace(/\s+/g, '') !== r.title.replace(/\s+/g, '')) bad.push(`marks leave "${rest.replace(/\s+/g, ' ').trim()}"`);
   }
   if (bad.length) { failed++; console.log(`FAIL ${JSON.stringify(c.text)}${c.pocket ? ` [Pocket: ${c.why}]` : ''}: ${bad.join(', ')}`); }

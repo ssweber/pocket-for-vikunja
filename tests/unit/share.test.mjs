@@ -140,8 +140,8 @@ test('the van as a Markdown list, in quick add\'s words: the task a heading, eac
 test('the copy\'s words: the user\'s own prefixes, a name with a space quoted, and none with quick add turned off', () => {
   const doc = { kind: 'task', ...item('Call the hire shop', { people: [priya, sam, priya], priority: 5, labels: ['call back', 'hire'], due: on(16, 12) }), items: [item('Ask for a quote', { pct: 50, people: [sam] })] };
   assert.equal(md(doc), '## Call the hire shop @priya @sam !5 *"call back" *hire 2026-10-16\n- [ ] Ask for a quote (50%) @sam');
-  assert.equal(md(doc, { prefixes: QUICK_ADD_PREFIXES.todoist }), '## Call the hire shop +priya +sam !5 @"call back" @hire 2026-10-16\n- [ ] Ask for a quote (50%) +sam');
-  assert.equal(md(doc, { prefixes: null }), '## Call the hire shop\n- [ ] Ask for a quote (50%)', 'only what\'s read whichever mode is set');
+  assert.equal(md(doc, { mode: 'todoist' }), '## Call the hire shop +priya +sam !5 @"call back" @hire 2026-10-16\n- [ ] Ask for a quote (50%) +sam');
+  assert.equal(md(doc, { mode: 'disabled' }), '## Call the hire shop\n- [ ] Ask for a quote (50%)', 'only what\'s read whichever mode is set');
   assert.equal(md({ kind: 'task', ...item('x', { priority: 9 }) }), '## x', 'a priority Vikunja doesn\'t have isn\'t written');
 });
 
@@ -194,7 +194,7 @@ test('a task\'s copy pasted into quick add makes the same tasks: done or not, ne
   assert.deepEqual(pasted(md(packed)), [same(packed)]);
   assert.deepEqual(pasted(md(van)), [same(van)]);
   // In Todoist mode, with its prefixes; and with another default due time.
-  assert.deepEqual(pasted(md(packed, { prefixes: QUICK_ADD_PREFIXES.todoist }), { mode: 'todoist' }), [same(packed)]);
+  assert.deepEqual(pasted(md(packed, { mode: 'todoist' }), { mode: 'todoist' }), [same(packed)]);
   assert.deepEqual(pasted(md(packed, { dueTime: '15:30' }), { dueTime: '15:30' }), [same(packed)]);
   // Subtasks of subtasks, a done task, one with no subtasks and its own progress.
   const deep = { kind: 'task', ...item('Event', { done: true }), items: [item('Stage', { items: [item('Lights', { done: true }), item('Cables', { items: [item('Long one', { pct: 25, priority: 2 })] })] }), item('Food')] };
@@ -202,6 +202,46 @@ test('a task\'s copy pasted into quick add makes the same tasks: done or not, ne
   const one = { kind: 'task', ...item('Order milk', { pct: 75, due: new Date(2025, 0, 2, 8, 5).toISOString(), repeat: { mode: 1, after: 0 }, labels: ['call back'] }) };
   assert.equal(md(one), '## Order milk (75%) *"call back" every month 2025-01-02 at 08:05');
   assert.deepEqual(pasted(md(one)), [same(one)], 'a date long past comes back as that date');
+});
+
+/* A title that quick add would read words in is quoted, so it isn't (done-and-markdown-plan, part 3). Only when it
+   needs it: most lines have none. */
+test('a title quick add would read words in is quoted, with \' when it has a " in it; any other is written as it is', () => {
+  const line = (title, more = {}, opts) => md({ kind: 'task', ...item('Event'), items: [item(title, more)] }, opts).split('\n')[1];
+  const head = (title, more = {}) => md({ kind: 'task', ...item(title, more), items: [item('a')] }).split('\n')[0];
+  assert.equal(line('Lunch friday', { people: [sam], due: on(16, 12) }), '- [ ] "Lunch friday" @sam 2026-10-16', 'a day');
+  assert.equal(line('Lunch with the team'), '- [ ] Lunch with the team', 'nothing to read: no quotes');
+  assert.equal(line('Call "Bob" tomorrow'), '- [ ] \'Call "Bob" tomorrow\'');
+  assert.equal(line('"Hamlet" rehearsal'), '- [ ] \'"Hamlet" rehearsal\'', 'quotes at its start would hold only that word');
+  assert.equal(line('Don\'t forget the keys'), '- [ ] Don\'t forget the keys');
+  assert.equal(line('Ask @sam about the *hire'), '- [ ] "Ask @sam about the *hire"', 'a person and a label');
+  assert.equal(line('Discount 50%'), '- [ ] "Discount 50%"', 'a figure at its end');
+  assert.equal(line('Order 50% more cups'), '- [ ] Order 50% more cups');
+  assert.equal(line('Standup every week'), '- [ ] "Standup every week"');
+  assert.equal(line('Paint !2 coats'), '- [ ] "Paint !2 coats"');
+  // What follows it on its line counts: "in" before a date would go with the date.
+  assert.equal(line('Sign in'), '- [ ] Sign in');
+  assert.equal(line('Sign in', { due: on(16, 12) }), '- [ ] "Sign in" 2026-10-16');
+  // The user's own prefixes decide: #3 is a project in Todoist mode only.
+  assert.equal(line('Use #3 screws'), '- [ ] Use #3 screws');
+  assert.equal(line('Use #3 screws', {}, { mode: 'todoist' }), '- [ ] "Use #3 screws"');
+  assert.equal(line('Lunch friday', {}, { mode: 'disabled' }), '- [ ] Lunch friday', 'with quick add turned off, nothing would be read');
+  // After its bullet and checkbox a line's start is only words; a heading's can say it's done, or be a list's first line.
+  assert.equal(line('x marks the spot'), '- [ ] x marks the spot');
+  assert.equal(head('x marks the spot'), '## "x marks the spot"');
+  assert.equal(head('- [x] a box in its name'), '## "- [x] a box in its name"');
+  assert.equal(head('Groceries:'), '## "Groceries:"', 'a first line\'s colon would make it a parent, and be taken off');
+  assert.equal(line('Groceries:'), '- [ ] Groceries:');
+  assert.equal(head('Pack the van'), '## Pack the van');
+});
+
+test('a copy with titles that had to be quoted comes back the same', () => {
+  const titles = ['Lunch friday', 'Call "Bob" tomorrow', '"Hamlet" rehearsal', 'Don\'t forget the keys', 'Ask @sam about the *hire', 'Discount 50%', 'Standup every week', 'Paint !2 coats',
+    'Sign in', 'x marks the spot', '2026-10-16', 'Pay rent by the 17th', 'Order 3/4 inch screws', '+Garden shed', 'Tables (50%)'];
+  const doc = { kind: 'task', ...item('x marks the spot:', { people: [priya], priority: 2 }), items: titles.map((t, i) => item(t, { people: i % 2 ? [sam] : [], due: i % 3 ? on(16, 12) : null,
+    done: i % 5 === 0, pct: i % 4 === 1 ? 25 : 0, labels: i % 7 === 2 ? ['call back'] : [], items: i === 3 ? [item('every day at 5'), item('- [x] not a box')] : [] })) };
+  assert.deepEqual(pasted(md(doc)), [same(doc)]);
+  assert.deepEqual(pasted(md(doc, { mode: 'todoist' }), { mode: 'todoist' }), [same(doc)]);
 });
 
 /* A parent's progress is the figure its ring shows (parent-tasks-plan, part 5): the average of its subtasks' progress, a

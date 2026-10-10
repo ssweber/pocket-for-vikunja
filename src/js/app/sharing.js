@@ -91,7 +91,7 @@ export default {
     await this.copyOut(text, 'sheet:top', COPIED.text);
   },
   // As a Markdown list that comes back, written in quick add's words with this person's own prefixes and due time.
-  copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {prefixes: this.prefixes, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },
+  copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {mode: this.quickAddMode, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },
   // Its page in Vikunja's web app: a task's (a run is one), or a project's.
   vikunjaUrl(what){
     const id = what === 'task' ? this.sheet.task?.id : what === 'run' ? this.view.run?.run.id : this.sheet.project?.id;

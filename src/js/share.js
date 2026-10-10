@@ -7,7 +7,7 @@
    priority, labels: their names, repeat: {after, mode}, as Vikunja keeps them (repeat_after, repeat_mode),
    items: what's under it, subs: {done, total} when items leaves out the done ones (a project's list), ring: a parent's
    worked-out figure, {pct, done, total}, as its ring shows it (ringOf, app/cards.js; parent-tasks-plan, part 5)}. */
-import {QUICK_ADD_PREFIXES} from './quickadd.js';
+import {parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee} from './quickadd.js';
 
 // A person as a text names them: the first word of their name, else their username.
 export const firstName = u => String(u?.name || '').trim().split(/\s+/)[0] || u?.username || '';
@@ -136,29 +136,44 @@ export function repeatPhrase(r){
 const named = w => /\s/.test(w) ? (w.includes('"') ? `'${w}'` : `"${w}"`) : w;
 // Whether an item has subtasks, shown or not: then it has no progress of its own.
 const isParent = it => !!(it.ring || (it.items || []).length || it.subs?.total);
-/* An item in quick add's words: its title, its own progress "(50%)" if it has some and no subtasks (a parent's is
-   worked out from what's under it), then who's on it, its priority, its labels and its repeat, with the user's own
-   prefixes (`P`: +user and @label in Todoist mode), then its due date, last. With quick add turned off (no `P`), only
-   its title and progress, which are read all the same. */
-function quickWords(it, {prefixes: P, dueTime}){
-  const pct = Math.round(it.pct || 0), own = !it.done && !isParent(it) && pct >= 1 && pct <= 99 ? `(${pct}%)` : '';
-  const words = !P ? [] : [...[...new Set((it.people || []).map(u => u?.username).filter(Boolean))].map(n => P.assignee + named(n)),
-    it.priority >= 1 && it.priority <= 5 ? '!' + it.priority : '', ...[...new Set(it.labels || [])].map(l => P.label + named(l)), repeatPhrase(it.repeat), dueStamp(it.due, dueTime)];
-  return [it.title, own, ...words].filter(Boolean).join(' ');
+/* An item as a line in quick add's words, after `lead` (its heading's #s, or its bullet and checkbox): its title, its
+   own progress "(50%)" if it has some and no subtasks (a parent's is worked out from what's under it), then who's on
+   it, its priority, its labels and its repeat, with the user's own prefixes (+user and @label in Todoist mode), then
+   its due date, last. With quick add turned off, only its title and progress, which are read all the same.
+   A title that quick add would read words in is quoted, so it isn't: - [ ] "Lunch friday" @sam 2026-10-16 (quotes
+   round the start of a line hold its title: parseCapture). Only when it needs it, so most lines have none: the line is
+   read back as the add box would read it (`head`: as a list's first line, whose colon at the end would make it a
+   parent), and if that isn't this item, it's quoted, with ' when the title has a " in it. A title neither holds (it has
+   both, each before a space) is written as it is. */
+function quickLine(it, lead, {mode, dueTime}, head = false){
+  const P = QUICK_ADD_PREFIXES[mode] || null, pct = Math.round(it.pct || 0), own = !it.done && !isParent(it) && pct >= 1 && pct <= 99 ? pct : 0;
+  const people = [...new Set((it.people || []).map(u => u?.username).filter(Boolean))], labels = [...new Set(it.labels || [])], prio = it.priority >= 1 && it.priority <= 5 ? it.priority : 0;
+  const words = !P ? [] : [...people.map(n => P.assignee + named(n)), prio ? '!' + prio : '', ...labels.map(l => P.label + named(l)), repeatPhrase(it.repeat), dueStamp(it.due, dueTime)];
+  const line = title => lead + [title, own ? `(${own}%)` : '', ...words].filter(Boolean).join(' ');
+  if (!P) return line(it.title);
+  const said = (title, done, figure, who, priority, tags, repeat, due) => JSON.stringify([title, !!done, figure, who, priority, tags, repeatPhrase(repeat), repeat && !due ? '' : dueStamp(due, dueTime)]);
+  const want = said(it.title, it.done, own, people, prio, labels, it.repeat, it.due);
+  const comesBack = title => {
+    const l = readList(line(title) + (head ? '\n- x' : ''), {colon: head}).lines[0], p = l && parseCapture(l.text, [], {mode, dueTime});
+    return !!p && want === said(people.reduce((t, n) => removeAssignee(t, P.assignee, n), p.title), l.done, p.pct, p.assignees, p.priority, p.labels,
+      p.repeat && {after: p.repeat.after, mode: p.repeat.mode}, p.dueFromRepeat ? null : p.due?.toISOString());
+  };
+  const quotes = it.title.includes('"') ? ["'", '"'] : ['"', "'"];
+  return line([it.title, ...quotes.map(q => q + it.title + q)].find(comesBack) ?? it.title);
 }
 // Each item as a Markdown task, "- [x]" done or "- [ ]" open, what's under it two spaces further in.
-const mdLines = (items, depth, opts) => items.flatMap(it => ['  '.repeat(depth) + `- [${it.done ? 'x' : ' '}] ` + quickWords(it, opts), ...mdLines(it.items || [], depth + 1, opts)]);
+const mdLines = (items, depth, opts) => items.flatMap(it => [quickLine(it, '  '.repeat(depth) + `- [${it.done ? 'x' : ' '}] `, opts), ...mdLines(it.items || [], depth + 1, opts)]);
 /* A task or a project as a Markdown list that comes back: pasted into Pocket's add box, it makes the same tasks, with
    the same done state, nesting, people, labels, priority, dates, repeats and progress (design rule 9; quickadd.js reads
    it, and share.test.mjs reads each one back). A task is a heading, "## Pack the van @priya !3 2026-10-16" ("## [x]"
    when it's done), then its subtasks, each a line. Nothing collapsed. A project: "# Café", its counts, then its open
    tasks, each with its open subtasks. What it never carries, so a paste never makes: notes, comments, photos, and a
-   project's done tasks. `opts`: {prefixes: the user's quick add prefixes, null when it's turned off; dueTime: their
-   default due time}. A run's is still its record, for people (runLines). */
-export function markdownText(doc, {prefixes = QUICK_ADD_PREFIXES.vikunja, dueTime = '12:00', now = new Date()} = {}){
-  const items = doc.items || [], opts = {prefixes, dueTime};
+   project's done tasks. `opts`: {mode: the user's Quick Add Magic mode, whose prefixes it's written with ("disabled":
+   with none of those words); dueTime: their default due time}. A run's is still its record, for people (runLines). */
+export function markdownText(doc, {mode = 'vikunja', dueTime = '12:00', now = new Date()} = {}){
+  const items = doc.items || [], opts = {mode, dueTime};
   if (doc.kind === 'run') return [`## ${doc.title}` + (progress(doc).words ? ` (${progress(doc).words})` : ''), '', ...runLines(items, 0, now)].join('\n').trimEnd();
   if (doc.kind === 'project')
     return [`# ${doc.title}`, '', `${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), '', ...mdLines(items, 0, opts)].join('\n').trimEnd();
-  return [`## ${doc.done ? '[x] ' : ''}` + quickWords(doc, opts), ...mdLines(items, 0, opts)].join('\n');
+  return [quickLine(doc, `## ${doc.done ? '[x] ' : ''}`, opts, true), ...mdLines(items, 0, opts)].join('\n');
 }
