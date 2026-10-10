@@ -912,8 +912,9 @@ try {
         await page.keyboard.type(b);
         expect(await page.inputValue('#' + id), `Shift+Enter in ${id}`).toBe(a + '\n' + b);
         await expect(page.locator(chips)).toContainText(counts);
+        // (It's fitted on the tick after each letter: looked at until it's as tall as all of them.)
         await expect.poll(async () => (await size(id)).tall, { message: `${id} didn't grow with its second line` }).toBeGreaterThan(one.tall);
-        expect((await size(id)).inside, `${id} scrolls inside itself`).toBeLessThanOrEqual(0);
+        await expect.poll(async () => (await size(id)).inside, { message: `${id} scrolls inside itself` }).toBeLessThanOrEqual(0);
         if (await page.locator('.row.pending').count()) throw new Error(`Shift+Enter in ${id} sent what was typed`);
       }
       // Enter sends both lines, and the box is empty again, still focused.
@@ -929,7 +930,7 @@ try {
       const empty = await size('d-cin');
       await page.fill('#d-cin', 'One\nTwo\nThree\nFour');
       await expect.poll(async () => (await size('d-cin')).tall, { message: 'the comment box didn\'t grow' }).toBeGreaterThan(empty.tall * 2);
-      expect((await size('d-cin')).inside).toBeLessThanOrEqual(0);
+      await expect.poll(async () => (await size('d-cin')).inside).toBeLessThanOrEqual(0);
       await page.fill('#d-cin', '');
       await expect.poll(async () => (await size('d-cin')).tall).toBe(empty.tall);
     } finally {

@@ -1648,7 +1648,7 @@ try {
       const one = await size(sel);
       await page.fill(sel, LONG);
       await expect.poll(async () => (await size(sel)).tall, { message: sel + ' didn\'t grow with its words' }).toBeGreaterThan(one.tall * 2);
-      expect((await size(sel)).inside, sel + ' scrolls inside itself').toBeLessThanOrEqual(0);
+      await expect.poll(async () => (await size(sel)).inside, { message: sel + ' scrolls inside itself' }).toBeLessThanOrEqual(0);
       await page.fill(sel, '');
       await expect.poll(async () => (await size(sel)).tall).toBe(one.tall);
     }
