@@ -9,6 +9,8 @@ import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, kept
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText, moreDone} from '../messages.js';
 import {listViewOf} from '../order.js';
+import {haptic} from '../haptics.js';
+import {tickFeel} from '../progress.js';
 import {shared} from './core.js';
 import {pendingSaves} from './sheet.js';
 
@@ -109,9 +111,10 @@ export default {
   // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, the sheet's own task
   // (sheetDone), or a task (a card's step too), which then becomes the one quick add's box adds subtasks to
   // (aimAfterTick). On a row marked done or not done, waiting for the batch to clear, it takes that back (unmark,
-  // leaving.js).
+  // leaving.js). The tap is felt (tickFeel): firmer marking it done, as a full swipe is; a step's as tickStep has it.
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
+    haptic(tickFeel(t.done));
     if (g.own) return this.sheetDone();
     if (g.card) this.pinCard(g.card);                    // the step after it comes in once it has gone (app/cards.js)
     if (this.unmark(t.id)) { if (!g.sheet) this.aimAfterTick(t); return; }

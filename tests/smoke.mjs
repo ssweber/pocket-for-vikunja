@@ -127,15 +127,21 @@ try {
   });
 
   await step('tick-in-list-and-tick-again', async () => {
-    // Ticked, its row stays where it is, done, until the rows ticked leave together; its tick again opens it.
+    // Ticked, its row stays where it is, done, until the rows ticked leave together; its tick again opens it. Each tap
+    // is felt (rows-and-sheet-fixes-plan, part 2; here by the phone's vibrate): firmer done, a light tick opened again.
+    await page.evaluate(() => { window.__felt = []; navigator.vibrate = p => { window.__felt.push(p); return true; }; });
+    const felt = () => page.evaluate(() => JSON.stringify(window.__felt));
     await page.click(`${row} .check`);
     await expect(page.locator(row)).toHaveClass(/\bleaving\b/);
     await expect(page.locator(row)).toHaveClass(/\bdone\b/);
+    if (await felt() !== '[[14,60,24]]') throw new Error('a tick tapped done felt ' + await felt());
     if (await page.$('#toast.show #toast-msg:has-text("Done")')) throw new Error('a tick in a list said: ' + await page.textContent('#toast-msg'));
     if (!(await page.textContent('#said')).startsWith('Done: ' + title)) throw new Error('a screen reader hears: ' + await page.textContent('#said'));
     await page.click(`${row} .check`);
     await expect(page.locator(row)).not.toHaveClass(/\bleaving\b/);
     if (await page.$eval(row, el => el.classList.contains('done'))) throw new Error('row still marked done after its tick again');
+    if (await felt() !== '[[14,60,24],6]') throw new Error('a tick tapped again felt ' + await felt());
+    await page.evaluate(() => { delete navigator.vibrate; });
   });
   // A row swiped from `from`% to `to`% (100: a full swipe, done), with no hold, as with a finger (swipeRow).
   const slideProgress = (sel, to, check, from = 0) => swipeRow(page, sel, to, { start: from, check });

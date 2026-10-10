@@ -113,6 +113,10 @@ export function swipeAt({start = null, dx, x, width, screen, del = false, base =
 export const swipeFeel = (was, now) => now.to === 'done' || now.to === 'delete' ? (was.to !== now.to ? 'done' : null)
   : now.to === 'open' ? (was.to !== 'open' ? 'tick' : null)
   : now.to === 'stop' && now.pct !== was.pct ? (now.pct === 0 && was.pct > 0 ? 'done' : 'tick') : null;
+/* What's felt as a tick is tapped, a task's or a step's (rows-and-sheet-fixes-plan, part 2), by whether it was `done`
+   before the tap: marked done, the firmer one a full swipe gives as it passes its full point, so done feels the same
+   either way; opened again, a light tick. */
+export const tickFeel = done => done ? 'tick' : 'done';
 // Whether a swipe that way (dx) changes a row's progress, from `start`: not up from done, nor down from 0%.
 export const trackMoves = (start, dx) => dx > 0 ? start < 100 : start > 0;
 // A subtask: a task with a parent. Its tick and progress show on its row only, with no message.

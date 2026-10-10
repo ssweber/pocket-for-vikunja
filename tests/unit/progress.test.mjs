@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE_GUARD, figureOf, figurePatch, inTextField, isNudge, isSubtask, LOCK_PX, lockDirection, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, quarterOn, QUARTERS, releaseSpeed, SIDES, slideStarts, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, TEXT_FIELD, trackMoves, typedIn, undoing, workedOut } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE_GUARD, figureOf, figurePatch, inTextField, isNudge, isSubtask, LOCK_PX, lockDirection, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, quarterOn, QUARTERS, releaseSpeed, SIDES, slideStarts, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, TEXT_FIELD, tickFeel, trackMoves, typedIn, undoing, workedOut } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -183,6 +183,13 @@ test('a tick is felt at each stop and at a Delete’s button, a firmer one at a 
   assert.equal(swipeFeel({ to: 'shut', pct: 0 }, { to: 'open', pct: 0 }), 'tick', 'at its Delete’s button');
   assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'delete', pct: 0 }), 'done');
   assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'shut', pct: 0 }), null);
+});
+
+// A tap on a tick is felt too (rows-and-sheet-fixes-plan, part 2), a task's or a step's: done as a full swipe's done is.
+test('a tick tapped is felt: marked done, the firmer one a full swipe gives; opened again, a light tick', () => {
+  assert.equal(tickFeel(false), 'done');
+  assert.equal(tickFeel(true), 'tick');
+  assert.equal(tickFeel(false), swipeFeel({ to: 'stop', pct: 75 }, { to: 'done', pct: 100 }), 'done feels the same, tapped or swiped');
 });
 
 test('a swipe moves a row\'s progress only where it can go: not up from done, nor down from 0%', () => {

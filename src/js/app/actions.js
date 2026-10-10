@@ -253,12 +253,11 @@ export default {
       gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) [t.id, ...steps()].forEach(id => this.removeRow(id)); }});
   },
   /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
-     waits without a connection. In a list, it's shown in place until the batch clears, as a task's tick is (by a full
+     waits without a connection (felt where it was tapped, tickRow, or swiped). In a list, it's shown in place until the batch clears, as a task's tick is (by a full
      swipe, `gap`, a gap with Undo); in a sheet, it stays, done. */
   async tickRunStep(t, run, rowEl, gap = false){
     const was = t.done;
     t.done = !was;
-    navigator.vibrate?.(10);
     const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
     if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
     const later = !was && r.status === 'offline' ? sentLater('Done: ' + t.title) : '';

@@ -33,6 +33,31 @@ test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a t
   assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
 });
 
+/* A tap on a tick is felt (rows-and-sheet-fixes-plan, part 2), through haptic(), which the phone's vibrate stands in
+   for here: a task's, a subtask's in its sheet and the sheet's own, where it's tapped (tickRow); a step's in tickStep,
+   from its box or its card's Done, but not when a swipe did it, which was felt as it passed its full point. */
+test('a tick tapped is felt, a task\'s and a step\'s, firmer when it marks it done; a step done by a swipe isn\'t felt twice', async () => {
+  const felt = [], app = component(views, claims, leaving, runs);
+  navigator.vibrate = p => felt.push(p);
+  try {
+    Object.assign(app, { toggleSubtask(){}, toggleDone(){}, aimAfterTick(){}, sheetDone(){}, unlockSound(){}, runDrafts: {}, act: async () => ({}), view: { run: { at: 0 } }, markRow(){} });
+    Object.defineProperty(app, 'runView', { get: () => null });
+    app.tickRow({ id: 4, done: false }, { depth: {} }, 'row');
+    app.tickRow({ id: 4, done: true }, { depth: {} }, 'row');
+    app.tickRow({ id: 3, done: false }, { depth: {}, sheet: true });
+    app.tickRow({ id: 5, done: false }, SHEET_ROW, 'row');
+    assert.deepEqual(felt, [[14, 60, 24], 6, [14, 60, 24], [14, 60, 24]], 'done, opened again, a subtask in its sheet, the sheet\'s own');
+    felt.length = 0;
+    await app.tickRow(step({}), RUN);
+    await app.tickRow(step({ done: true }), RUN);
+    await app.tickStep(step({}), 'skip');
+    assert.deepEqual(felt, [[14, 60, 24], 6, [14, 60, 24]], 'a step\'s box: done, not done again; and its card\'s Skip');
+    felt.length = 0;
+    await app.stepProgress(step({}), 100);
+    assert.deepEqual(felt, [], 'done by a full swipe: felt as the finger passed the full point, not again');
+  } finally { delete navigator.vibrate; }
+});
+
 /* A task's sheet leads with its row (parent-tasks-plan, 6b): under its title only when it's due and how soon, as its
    project, run or parent are in the path over it, and its labels and counts in the sheet under it. */
 test('the sheet\'s own row says only when it\'s due, its priority, that it repeats and a reminder to come', () => {

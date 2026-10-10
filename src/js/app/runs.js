@@ -2,7 +2,8 @@
 import {andList, cache, motion, store, taskDrafts, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
-import {pctOf, workedOut} from '../progress.js';
+import {pctOf, tickFeel, workedOut} from '../progress.js';
+import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
@@ -525,8 +526,9 @@ export default {
     if (scroll) scrollTo({top: 0, behavior: motion() ? 'smooth' : 'auto'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
-  // Resolves to false if it was asked about and not done.
-  async tickStep(s, op){
+  // Resolves to false if it was asked about and not done. Felt, as a task's tick is when it's tapped (tickFeel), from
+  // its row's box or its card's buttons; not when a swipe did it, which was felt as it passed its full point (`felt`).
+  async tickStep(s, op, felt = false){
     const r = this.view.run;
     if (!r) return;
     const current = this.runView?.step?.id === s.id;
@@ -542,7 +544,7 @@ export default {
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));
     if (op === 'done' && typed) { op = 'doneNote'; html = textToHtml(typed); }
     if (current && op !== 'undone') { r.at = this.nextStep(s); if (r.last) r.last.held = null; }
-    navigator.vibrate?.(10);
+    if (!felt) haptic(tickFeel(op === 'undone'));
     await this.act({op, task: s.id, html});
   },
   /* Where the run goes after a step is done or skipped on screen (whereNext, which a run's card on Today goes by too):
@@ -788,9 +790,9 @@ export default {
      then done in its place; a done step swiped down is not done again first, then at that progress. `undoing`: putting
      back what it was. */
   async stepProgress(s, pct, undoing = false){
-    if (s.done && pct < 100 && !undoing && await this.tickStep(s, 'undone') === false) return;
+    if (s.done && pct < 100 && !undoing && await this.tickStep(s, 'undone', true) === false) return;
     if (pct >= 100 && !undoing) {
-      await this.tickStep(s, 'done');
+      await this.tickStep(s, 'done', true);
       this.markRow(s.id, {kind: 'done', out: [], gap: true, said: `Done: ${s.title}`, undo: () => this.tickStep(s, 'undone')});
       return;
     }
