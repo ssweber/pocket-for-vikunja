@@ -107,6 +107,43 @@ worth at a time, after the first paint. So the first screen takes the same time 
     maxitemsperpage: 500   # Pocket loads a long list in fewer requests; Vikunja's web app is unaffected
   ```
 
+### 5b. The rest in batches of about a second (the user, 2026-10-10)
+
+Measured after part 5: on a phone, every frame has a fixed cost to lay out and paint the page, growing with the rows
+on it, so a batch a frame made drawing everything slower than before (Done 45 s → up to 67 s). Drawing the rest in
+one go was fastest but leaves the screen deaf to taps for seconds once it looks ready. The user chose: the first 20
+rows at once, frame batches up to about 3 screens (60 rows), then batches of about a second each, so a tap or a scroll
+is answered within about a second. The scroll trigger and the draw-the-rest before a held row moves stay as guards.
+
+## 9. Done shows its latest 100 (the user, 2026-10-10)
+
+Since part 7 a project's Done reads every done task (no 40-page stop): 3,000 rows, about 100 s to draw on a slow
+phone. Nobody scrolls through them; they come to tick one back or to check something was done lately.
+
+- A project's Done shows the 100 tasks done most recently (as now, the most recently done first). Its heading keeps
+  the whole count, "Done (3,000)".
+- At its end, a row to tap, which loads and shows the next 100:
+
+  ```
+   Done (3,000)                          ⌃
+   ─────────────────────────────────────────
+   ☑ restock price #2,991            Oct 9
+   ☑ ...      100 rows, done most recently
+   ☑ pack invoice #2,892             Sep 2
+   ─────────────────────────────────────────
+      Show 100 more, done before these
+      2,900 more not shown
+  ```
+
+  The second line says how many are left (fewer than 100 left: "Show the last 12, done before these"); with none
+  left, no row. It's a tap, so rule 3 holds; rows in Done act as rows do everywhere (rule 4).
+- Reading: the first 100 with one request (`per_page` 100, or as many pages as the server's limit needs), the next 100
+  on the tap. The count comes from Vikunja's `total`, as Done's count does now.
+- Each visit to the project starts again at 100. A task ticked back leaves Done as now, and the count goes down.
+- Search's done matches (now the 50 most recently done, with no way to see more) get the same row at their end, 50 at
+  a time as now.
+- What's shared or copied from a project (`share.js`) says what the screen shows (rule 9): check how it treats Done.
+
 ## 8. Tests, docs and the harness
 
 - End-to-end tests for what changed, in the file for each area: the kept copy of a project with Done closed after it
@@ -124,9 +161,8 @@ worth at a time, after the first paint. So the first screen takes the same time 
 - Virtual scrolling: no Alpine plugin, and a generic one fights dragging rows, folding them, and the code that
   measures them. Part 5 gets the first screen without it.
 - The plugin compressing Vikunja's API replies: the user's nginx already does.
-- Paging Done with a "Show older" row: only if part 5 isn't enough (that's a UI change, to discuss first).
 - Kept copies in IndexedDB: only if they're measured near the storage limit after part 4.
 
 ## Build order
 
-1–4 (one agent, a commit each), then 5, then 6–7, then 8.
+1–4 (one agent, a commit each), then 5, then 6–7, then 5b, then 9, then 8.
