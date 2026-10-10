@@ -749,6 +749,7 @@ try {
     if (JSON.stringify((await subs()).filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify(open.map(s => s.id).sort())) throw new Error('after Undo, open: ' + JSON.stringify((await subs()).map(s => [s.title, s.done])));
     // Two of its open subtasks ticked: with one open, its ring asks nothing: it and the parent are done, with Undo.
     for (const s of open.slice(1)) await page.getByRole('button', { name: 'Mark done: ' + s.title, exact: true }).click();
+    await synced(page);                                                        // (saved, so marked: the batch is counting)
     await later(3000);
     await expect(card.locator('.card-rows > .row')).toHaveCount(1);
     await expect(ring.locator('.n')).toHaveText('3/4');
@@ -763,6 +764,7 @@ try {
     if ((await read()).done || (await subs()).filter(s => !s.done).length !== 1) throw new Error('Undo: ' + JSON.stringify((await subs()).map(s => [s.title, s.done])));
     // The last one ticked: nothing closes by itself. "All subtasks done", and Close.
     await page.getByRole('button', { name: 'Mark done: ' + open[0].title, exact: true }).click();
+    await synced(page);
     await later(3000);
     await expect(card.locator('.card-close')).toContainText('All subtasks done');
     await expect(ring.locator('.n')).toHaveText('4/4');
@@ -784,6 +786,7 @@ try {
     await expect.poll(async () => Math.round((await read()).percent_done * 100)).toBe(80);
     // Ticked, then Close: the parent done, a gap with Undo, gone with the batch.
     await page.getByRole('button', { name: 'Mark done: ' + late, exact: true }).click();
+    await synced(page);
     await later(3000);
     await card.getByRole('button', { name: 'Close' }).click();
     await expect(card).toHaveClass(/\bswept\b/);
@@ -1172,6 +1175,7 @@ try {
       await refreshToday();
       await tick(d.title);
       await expect(page.locator(D)).toHaveClass(/\bleaving\b/);
+      await synced(page);
       const full = await page.locator(D).evaluate(el => el.offsetHeight);
       await watchGoing([d.id]);
       await later(3000);
@@ -1367,6 +1371,7 @@ try {
       if (!seen.at(-1).deleted || !seen.at(-1).gap) throw new Error('no gap where it was: ' + JSON.stringify(seen.at(-1)));
       await expect(page.locator(`${K} > .body`)).toBeHidden();
       if (!await get(k.id)) throw new Error('deleted while it could be restored');
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${k.title}. Restore is in its place`);   // (kept to send, so marked)
       await later(3000);
       await expect(page.locator(K)).toHaveCount(0);
       await synced(page);
@@ -1462,6 +1467,7 @@ try {
       if ((await asked()).length !== 2) throw new Error('asked ' + (await asked()).length + ' times');
       await expect(page.locator(card).getByRole('button', { name: 'Restore ' + p.title })).toBeVisible();
       await expect(uncovered(page, '.row-red')).toHaveCount(0);
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is in its place`);
       await later(3000);
       await expect(page.locator(card)).toHaveCount(0);
       await synced(page);
@@ -1872,6 +1878,7 @@ try {
       await swipeRow(page, A, 'open');
       await tapDelete(A);
       await expect(page.locator(A)).toHaveClass(/\bdeleted\b/);
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${a.title}. Restore is in its place`);
       await later(3000);
       await expect(page.locator(`${A}, ${B}`)).toHaveCount(0);
       await synced(page);
@@ -2169,6 +2176,7 @@ try {
       await tapDelete(C);
       await expect(page.locator(C)).toHaveClass(/\bdeleted\b/);
       await expect(page.locator(C).getByRole('button', { name: 'Restore ' + c.title })).toBeVisible();
+      await expect(page.locator('#said')).toHaveText(`Deleted: ${c.title}. Restore is in its place`);
       await later(3000);
       await expect(page.locator(C)).toHaveCount(0);
       await synced(page);
@@ -2381,6 +2389,7 @@ try {
     await page.click(`${open} > .check`);
     await expect(page.locator(`${open}.leaving`)).toHaveClass(/\bdone\b/);
     await noToast(page);
+    await synced(page);
     await later(3000);
     await page.waitForSelector(done, { timeout: 10000 });
     await page.click(`${done} > .check`);                                   // and back
@@ -2525,6 +2534,7 @@ try {
       // Left to the batch: back, open, with its next date.
       await page.click(`${rowOf(r.title)} > .check`);
       await expect(R).toHaveClass(/\bleaving\b/);
+      await synced(page);
       await later(3000);
       await expect(R).not.toHaveClass(/\bleaving\b/);
       await expect(R).not.toHaveClass(/\bdone\b/);
@@ -2855,6 +2865,7 @@ try {
     // Ticked done again: off the open list, and counted in Done.
     await page.getByRole('button', { name: `Mark done: Delta ${stamp}` }).click();
     await expect(page.locator(`#view .row.leaving[data-id="${T.Delta.id}"]`)).toHaveClass(/\bdone\b/);
+    await synced(page);
     await later(3000);
     await expect(page.getByRole('button', { name: 'Done (1)' })).toBeVisible();
   });
@@ -3400,6 +3411,7 @@ ${footName('Hooks')}`);
       // up, the last one open, so no More.
       await slideProgress(stepLine(P.title), 100, null, 50);
       await expect(page.locator(`${cardOf(P.title)} .card-rows > .row.swept`)).toContainText('Done');
+      await synced(page);
       await later(3000);
       await expect(title).toHaveText(A.title);
       await expect(more).toHaveCount(0);

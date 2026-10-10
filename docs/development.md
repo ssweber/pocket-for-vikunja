@@ -547,8 +547,10 @@ going, Today's minute, a countdown's second) at once, then puts the page's clock
 the page's clock, never waits, for what the page decides: a task becoming overdue, a countdown reaching zero, a tick
 made a while before it's sent, rows ticked leaving together (`later(3000)`). A toast is made to go at once
 (`toastGone`), as its own timer would. A message in its place is found with `placeLine(page, 'overdue')` or
-`rowLine(page, text)` (`tests/helpers.mjs`); a row ticked or deleted, waiting for the batch, is `.row.leaving`
-(`.deleted` too for a deletion). Vikunja's clock is
+`rowLine(page, text)` (`tests/helpers.mjs`); a row ticked or deleted is `.row.leaving` (`.deleted` too for a
+deletion) from the tap or the let-go, held (`holdRow`), and waits for the batch once its save is answered and its mark
+made: a test moves the clock past the batch (`later(3000)`) after `synced(page)` for a tick, or after `#said` says
+"Deleted: …" for a deletion, which `synced` can't wait for, or the batch only starts counting afterwards, in real time. Vikunja's clock is
 real, so the page's goes back to the real time after, and what Vikunja dates itself still takes real time: a change a
 second after another (its times have whole seconds), a task made on the web before one from Pocket. Those few waits say
 why. Moving the clock on runs everything due meanwhile at once, and what that starts (a request, a redraw) lands after,
