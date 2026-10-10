@@ -396,7 +396,8 @@ try {
     await page.waitForSelector(`#run-steps .row:nth-of-type(2) .meta:has-text("Due 30m after ${GUARDS}")`);
     await page.waitForSelector(`#run-steps .row:nth-of-type(3) .meta:has-text("Due 2h after ${GUARDS}")`);
     if (await page.textContent('#step-title') !== 'Check the guards at 3pm') throw new Error('on step ' + await page.textContent('#step-title'));
-    if (!(await page.textContent('#run-for')).startsWith('For you · started by you')) throw new Error('shows ' + await page.textContent('#run-for'));
+    // Who it's for is the slot on its own row, atop its screen (who started it is its history: its ⋯ says it).
+    await expect(page.locator('#run-own .claim')).toHaveAttribute('aria-label', 'For you');
   });
   const runStep = async (run, i) => (await subtasks(run))[i];
 
@@ -837,7 +838,7 @@ try {
     forOther = await startRun(OTHER);
     const run = await api('/tasks/' + forOther.id);
     if (JSON.stringify(run.assignees?.map(u => u.id)) !== JSON.stringify([other.id])) throw new Error('assignees ' + JSON.stringify(run.assignees?.map(u => u.username)));
-    if (!(await page.textContent('#run-for')).startsWith(`For ${other.name || other.username} · started by you`)) throw new Error('shows ' + await page.textContent('#run-for'));
+    await expect(page.locator('#run-own .claim')).toHaveAttribute('aria-label', `For ${other.name || other.username}`);
     // Their Today has their run; theirs and yours are both under their Checklists tab, in progress.
     const theirs = await context.browser().newContext({ viewport: { width: 390, height: 844 } });
     await hintSeen(theirs);
@@ -876,7 +877,7 @@ try {
     // its title, and no line.
     await page.evaluate(() => { location.hash = '#/checklists'; });
     const runRow = `.cl-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`;
-    await page.waitForSelector(`${runRow} .meta:has-text("For you")`, { timeout: 15000 });
+    await expect(page.locator(`${runRow} .claim`)).toHaveAttribute('aria-label', 'For you', { timeout: 15000 });
     await expect(page.locator(`${runRow} .meta`)).not.toHaveText(/Next:|\d+\/\d+/);
     await expect(page.locator(`${runRow} > .ring .n`)).toHaveText('2/3');
     if (await page.$eval(runRow, el => getComputedStyle(el, '::after').content) !== 'none') throw new Error('a line under the run\'s row');
