@@ -272,13 +272,16 @@ const QUOTE_MARKS = /^(?:>\s*)+/, BULLET = /^(?:[-*•◦▪‣–—+]\s+|\d{1,
 const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^x(?:\s+-|-)?\s+/;
 /* A heading, as Markdown notes write one and a task's copy starts with (share.js): "## Pack the van" is a task, and
    the lines under it, up to the next heading, are its subtasks. A heading with more #s is under the one before it
-   with fewer. */
-const HEADING = /^(#{2,6})\s+/;
-/* A box's text, read as a list: {lines, ticked, one, first}. `lines`, one for each line that becomes a task, in order:
+   with fewer. One #, "# Café · 12 open · 5 done", is the name of the whole list, as a project's copy starts with:
+   it's left out. */
+const HEADING = /^(#{1,6})\s+/;
+/* A box's text, read as a list: {lines, ticked, one, first, names}. `lines`, one for each line that becomes a task, in order:
    {text: its words, without what was in front of them; at: where they start in the box's text; done: whether it says
    it's done; mark: [start, end] of what said so, in the box's text; under: the line it's under, by its place in
    `lines`, or null}. `ticked`: how many lines say they're done, kept or not; `one`: whether the box holds a single
-   line, not a list; `first`: whether the first line is a parent as the list is written, with lines under it.
+   line, not a list; `first`: whether the first line is a parent as the list is written, with lines under it;
+   `names`: the lines left out as the list's name (one #), their words. Alone in the box, such a line names no list:
+   it's a title, as typed.
    A line that says it's done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
    single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out,
    the lines under one going under what it was under.
@@ -298,21 +301,25 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
     const indent = [...raw.slice(0, i)].reduce((n, c) => n + (c === '\t' ? 4 : 1), 0);
     const take = re => { const m = raw.slice(i).match(re); if (m) i += m[0].length; return m; };
     take(QUOTE_MARKS);
-    const level = steps ? 0 : take(HEADING)?.[1].length || 0;
-    let from = i, said = !steps && take(DONE_X);
-    if (!said) { take(BULLET); from = i; said = take(DONE_BOX); }
-    if (!said) take(OPEN_BOX);
+    const hash = i, level = steps ? 0 : take(HEADING)?.[1].length || 0;
+    // (A list's name says nothing of itself: what follows its # is its words.)
+    let from = i, said = !steps && level !== 1 && take(DONE_X);
+    if (!said && level !== 1) { take(BULLET); from = i; said = take(DONE_BOX); }
+    if (!said && level !== 1) take(OPEN_BOX);
     if (said) ticked++;
     const start = p => p + raw.slice(p).length - raw.slice(p).trimStart().length;
     rows.push({text: raw.slice(i).trim(), at: at + start(i), done: !!said, mark: said ? [at + from, at + from + said[0].trimEnd().length] : null,
-      kept: raw.slice(from).trim(), keptAt: at + start(from), level, indent});
+      kept: raw.slice(from).trim(), keptAt: at + start(from), level, indent, typed: raw.slice(hash).trim(), typedAt: at + hash});
     at += raw.length + 1;
   }
-  const full = rows.filter(r => r.text), one = full.length === 1, lines = [];
+  const full = rows.filter(r => r.text), one = full.length === 1, lines = [], names = [];
   // What the next line may be under, the nearest last: the headings over it ({level, k: its place in lines}), and,
   // since the last heading, the lines above it that are indented less ({indent, k}).
   const heads = [], above = [];
   for (const r of full) {
+    // The list's name: left out, and nothing is under it. Alone, it's a title as typed, its # with it.
+    if (r.level === 1 && one) { lines.push({text: r.typed, at: r.typedAt, done: false, mark: null, under: null}); continue; }
+    if (r.level === 1) { names.push(r.text); heads.length = 0; above.length = 0; continue; }
     if (r.level) { while (heads.length && heads.at(-1).level >= r.level) heads.pop(); above.length = 0; }
     else while (above.length && above.at(-1).indent >= r.indent) above.pop();
     const under = steps ? null : above.at(-1)?.k ?? heads.at(-1)?.k ?? null;
@@ -324,7 +331,7 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
   const led = colon && lines.length > 1 && /\S:$/.test(lines[0].text), first = led || lines.some(l => l.under === 0);
   if (led && !flat) lines[0].text = lines[0].text.slice(0, -1).trimEnd();
   for (const [i, l] of lines.entries()) if (flat) l.under = null; else if ((nest || led) && i && l.under === null) l.under = 0;
-  return {lines, ticked, one, first};
+  return {lines, ticked, one, first, names};
 }
 // The lines of a run's box, a template's steps and its name: their words, a ticked one left out.
 export const captureLines = text => readList(text, {steps: true}).lines.map(l => l.text);

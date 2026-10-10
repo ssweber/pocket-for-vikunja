@@ -283,6 +283,17 @@ test('a pasted list with indented lines: each under the line above it that\'s in
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['Tables', null]]);
 });
 
+test('a project\'s copy pasted: its heading, one #, is the list\'s name, left out, and a chip says so', () => {
+  const app = boxes();
+  app.cap.text = '# Café · 3 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables (50%)';
+  assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name: left out', '2 tasks + 1 subtask', 'Café']);
+  assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under, x.p.pct]), [['Order milk', null, 0], ['Pack the van', null, 0], ['Tables', 1, 50]]);
+  assert.equal(app.nestOn, false, 'the first line that\'s a task isn\'t a parent');
+  // Alone in the box, a # line names no list: it's a task, as typed.
+  app.cap.text = '# of chairs we need';
+  assert.deepEqual([chipsOf(app, 'cap'), linesOf(app, 'cap')], [['Café'], [['# of chairs we need', false]]]);
+});
+
 test('a first line ending with a colon is the parent of the rest in quick add, its colon taken off; ↳ Under first line tapped off keeps it', () => {
   const app = boxes();
   app.cap.text = 'Groceries:\nmilk\n- [x] eggs';

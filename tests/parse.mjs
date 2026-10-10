@@ -311,6 +311,11 @@ addNest('Pack the van\n  - [x] Load chairs\n      Stack them\n  Tables', ['Pack 
 addNest('Pack the van\n  Load chairs\nSet the hall\n  Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
 addNest('Order cups\nPack the van\n  Load chairs', ['Order cups', 'Pack the van', 'Load chairs'], [null, 0, 1], '↳ Under first line tapped on, the first line not a parent as written: over the lines with no parent', { nest: true }, false);
 addList('Wipe down\n  Counter\n    Under it', ['Wipe down', 'Counter', 'Under it'], 'in a step\'s box indenting isn\'t read');
+// One # is the name of the whole list, as a project's copy starts with: left out.
+addNest('# Café · 12 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables', ['Order milk', 'Pack the van', 'Tables'], [null, null, 1], 'a list\'s name, with one #, is left out', { names: ['Café · 12 open · 5 done'] });
+addNest('# Friday\n## Pack the van\n- Tables\n# [x] Saturday\n- Lights', ['Pack the van', 'Tables', 'Lights'], [null, 0, null], 'each of them, and nothing is under one', { names: ['Friday', '[x] Saturday'] });
+addNest('# of chairs we need', ['# of chairs we need'], [null], 'alone in the box, it names no list: a title as typed', { names: [] });
+addList('# Opening\n- Unlock', ['# Opening', 'Unlock'], 'in a step\'s box a # is words');
 // For typing: a first line ending with a colon is the parent of the rest, its colon taken off (quick add's box only).
 addNest('Groceries:\n- milk\n- eggs', ['Groceries', 'milk', 'eggs'], [null, 0, 0], 'a first line ending with a colon', { colon: true });
 addNest('Groceries tomorrow: \nDairy\n  milk\nBread', ['Groceries tomorrow', 'Dairy', 'milk', 'Bread'], [null, 0, 1, 0], 'over the lines with no parent of their own', { colon: true });
@@ -411,7 +416,7 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
 // Each line's words, whether it's done, and whether its words are where it says they start in the text.
-const readResults = await page.evaluate(reads => reads.map(r => { const list = readList(r.text, r.opts); return { lines: list.lines.map(l => [l.text, l.done]),
+const readResults = await page.evaluate(reads => reads.map(r => { const { names, ...opts } = r.opts, list = readList(r.text, opts); return { names: list.names, lines: list.lines.map(l => [l.text, l.done]),
   placed: list.lines.every(l => r.text.slice(l.at, l.at + l.text.length) === l.text), marked: list.lines.map(l => l.mark ? r.text.slice(...l.mark) : ''),
   under: list.lines.map(l => l.under), first: list.first }; }), reads);
 const stepResults = await page.evaluate(steps => steps.map(([text]) => parseStep(text)), steps);
@@ -497,6 +502,7 @@ reads.forEach((r, i) => {
   if (!same(got.lines, r.lines) || !got.placed) { failed++; console.log(`FAIL read ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got)}`); }
   if ('marked' in r && !same(got.marked, r.marked)) { failed++; console.log(`FAIL marked in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.marked)}`); }
   if ('under' in r && (!same(got.under, r.under) || got.first !== r.first)) { failed++; console.log(`FAIL which line each is under in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.under)}, first ${got.first}`); }
+  if (r.opts.names && !same(got.names, r.opts.names)) { failed++; console.log(`FAIL the list's name in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.names)}`); }
 });
 steps.forEach(([text, title, offset, name, ref, problems], i) => {
   const r = stepResults[i];

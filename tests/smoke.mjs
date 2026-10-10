@@ -3070,7 +3070,7 @@ ${footName('Hooks')}`);
     } finally { await api('/tasks/' + d.id, { method: 'DELETE' }); }
   });
 
-  let vanCopy = '', vanId = 0;                    // the task's Markdown copy, and the task, for the step that pastes it back
+  let vanCopy = '', vanId = 0, projectCopy = '';  // the task's Markdown copy, the task, and its project's copy, for the step that pastes them back
   await step('share-progress-copy-it-and-open-it-in-vikunja', async () => {
     // A project of its own: Pack the van at 60%, its subtasks in this order (one done, one half way, one yours), with
     // notes and a comment; and Order milk after it.
@@ -3145,8 +3145,9 @@ ${footName('Hooks')}`);
       `  ○ Sound system · ${my}`, '  ○ Lights', `○ Order milk ${stamp}`, '✓ 1 done'].join('\n'));
     await page.click('#p-copy-md');
     await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
-    await expect.poll(clip).toBe([`# PocketSmokeShare${stamp}`, '', '5 open · 1 done', '', `- [ ] Pack the van ${stamp}`, '  - [ ] Tables (50%)',
+    await expect.poll(clip).toBe([`# PocketSmokeShare${stamp} · 5 open · 1 done`, `- [ ] Pack the van ${stamp}`, '  - [ ] Tables (50%)',
       `  - [ ] Sound system @${me.username}`, '  - [ ] Lights', `- [ ] Order milk ${stamp}`].join('\n'));
+    projectCopy = await clip();
     await expect(page.locator('#p-open-vikunja')).toHaveAttribute('href', `${SERVER}/projects/${proj.id}`);
     await page.click('#btn-sheet-close');
   });
@@ -3162,6 +3163,11 @@ ${footName('Hooks')}`);
       return JSON.stringify(subs.sort());
     };
     await refreshToday();                                                          // where the box adds a task, not a subtask
+    // A project's copy: its heading, one #, is the list's name, left out, which a chip says; its open tasks are read,
+    // each with its open subtasks. (Not sent: they'd be the same tasks again.)
+    await page.fill('#in-capture', projectCopy);
+    await expect(page.locator('#cap-chips .chip', { hasText: 'The # line is the list’s name: left out' })).toBeVisible();
+    if (!(await page.textContent('#cap-chips')).includes('2 tasks + 3 subtasks')) throw new Error('a project\'s copy, chips: ' + await page.textContent('#cap-chips'));
     await page.fill('#in-capture', vanCopy);
     await expect(page.locator('#cap-nest')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 arrives done');

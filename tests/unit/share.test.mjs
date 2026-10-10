@@ -112,14 +112,18 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
     { ...item('Old menu', { done: true }), items: [item('Reprint')], subs: { done: 0, total: 1 } }] };
   assert.equal(text(doc), ['Café  6 open · 5 done', `○ Order milk · due ${day(9)}`, '◐ Pack the van  ▰▰▰▱▱ 60% · Priya', '  ◐ Tables 50%', '  ○ Sound system · sam',
     '◐ Deep clean  ▰▰▰▱▱ 2 of 3 done', '  ○ Fridge', '✓ Old menu', '  ○ Reprint', '✓ 5 done'].join('\n'));
-  assert.equal(md(doc), ['# Café', '', '6 open · 5 done', '', '- [ ] Order milk 2026-10-09 at 00:00', '- [ ] Pack the van @priya', '  - [ ] Tables (50%)',
+  // The copy: its name and counts in one heading, which a paste leaves out, then its open tasks in quick add's words.
+  assert.equal(md(doc), ['# Café · 6 open · 5 done', '- [ ] Order milk 2026-10-09 at 00:00', '- [ ] Pack the van @priya', '  - [ ] Tables (50%)',
     '  - [ ] Sound system @sam', '- [ ] Deep clean', '  - [ ] Fridge', '- [x] Old menu', '  - [ ] Reprint'].join('\n'));
+  assert.deepEqual(pasted(md(doc)), doc.items.map(same), 'pasted into quick add, it makes the same tasks, the heading left out');
+  assert.deepEqual(readList(md(doc)).names, ['Café · 6 open · 5 done']);
+  assert.equal(md({ kind: 'project', title: 'Empty', open: 0, doneCount: 0, items: [] }), '# Empty · 0 open');
   assert.equal(text({ kind: 'project', title: 'Empty', open: 0, doneCount: 0, items: [] }), 'Empty  0 open');
   // Its Done shows its latest 100 and counts all of them (performance-plan, part 9): the text says that count, written
   // as its heading writes it.
   const big = { kind: 'project', title: 'Big', open: 1200, doneCount: 3000, items: [] }, n = x => x.toLocaleString();
   assert.equal(text(big), [`Big  ${n(1200)} open · ${n(3000)} done`, `✓ ${n(3000)} done`].join('\n'));
-  assert.equal(md(big), ['# Big', '', `${n(1200)} open · ${n(3000)} done`].join('\n'));
+  assert.equal(md(big), `# Big · ${n(1200)} open · ${n(3000)} done`);
 });
 
 /* Copy as a Markdown list comes back (design rule 9; done-and-markdown-plan, part 3): written in quick add's words, so
@@ -187,7 +191,7 @@ function pasted(text, { mode = 'vikunja', dueTime = '12:00' } = {}){
   for (const n of nodes) if (n.items.length) n.pct = 0;                        // dropped, as boxParsedLines drops it
   return top;
 }
-const same = it => ({ title: it.title, done: !!it.done, pct: it.done || (it.items || []).length ? 0 : it.pct || 0, due: it.due || null, people: [...new Set((it.people || []).map(u => u.username))],
+const same = it => ({ title: it.title, done: !!it.done, pct: it.done || (it.items || []).length || it.subs?.total ? 0 : it.pct || 0, due: it.due || null, people: [...new Set((it.people || []).map(u => u.username))],
   priority: it.priority || 0, labels: it.labels || [], repeat: it.repeat || NO_REPEAT, items: (it.items || []).map(same) });
 
 test('a task\'s copy pasted into quick add makes the same tasks: done or not, nested, with their people, labels, priority, dates, repeats and progress', () => {

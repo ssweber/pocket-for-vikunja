@@ -225,7 +225,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   own quick add prefixes, and its due date last: in numbers, with its year, so it means the same day whenever it's
   pasted, and with its time when that isn't your default due time. A task with subtasks has no figure of its own: it's
   worked out again from them. A title that quick add would read words in is quoted, `- [ ] "Lunch friday" @sam`, so it
-  comes back as its title (with `'` when it has a `"` in it); most need none. Notes, comments and photos aren't in it. It reads as a task list in a notes app too, and
+  comes back as its title (with `'` when it has a `"` in it); most need none. Notes, comments and photos aren't in it.
+  A project's copy is one heading, `# Café · 12 open · 5 done`, then its open tasks in its list's order, each with its
+  open subtasks; pasted back, the heading is left out and its tasks are made. Its done tasks aren't in the copy. It reads as a task list in a notes app too, and
   Vikunja's own quick add reads most of it (not done, nor progress: there they stay in the title). **Open in Vikunja
   ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
@@ -310,7 +312,8 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
   under it, up to the next heading, are its subtasks; a `###` heading goes under the `##` before it. A line indented
   more than the line above it is under that line, to any depth, as in Vikunja's web app: spaces or tabs, of any width.
   And for typing, a first line ending with a colon, `Groceries:`, is the parent of the rest, the colon taken off, as a
-  list starts in a message.
+  list starts in a message. A heading with one `#` is the name of the whole list, as a project's copy starts with
+  (below): it's left out, and a chip says so.
   The chip says what
   the list makes: **2 tasks + 7 subtasks**. **↳ Under first line** makes the rest subtasks of the first, for a list
   written without a parent; it shows on by itself when the first line is one, and tapping it off makes them all tasks

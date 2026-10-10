@@ -346,6 +346,8 @@ export default {
        off, as the others do. A list: one chip counts them, "2 arrive done"; tapped, those lines are left out, and it
        says so, and tapped again they're back. In a run's box and a template's they're left out, with nothing to tap. */
     const list = this.boxList(w), ticked = list.ticked, left = !!b.ignore?.done;
+    // A list's name, one #, as a project's copy starts with: left out, and said so.
+    if (list.names.length) photos.push({key: 'nm', cls: 'quiet', text: list.names.length === 1 ? 'The # line is the list’s name: left out' : `${list.names.length} # lines are list names: left out`});
     if (ticked && !this.readsDone(w)) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
     else if (ticked && list.one) photos.push({key: 'tk', kind: 'done', text: 'Done', off: left});
     else if (ticked) photos.push({key: 'tk', kind: 'done', text: left ? `${ticked} ticked off already: left out` : `${ticked} arrive${ticked === 1 ? 's' : ''} done`,

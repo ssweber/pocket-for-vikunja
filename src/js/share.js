@@ -166,14 +166,13 @@ const mdLines = (items, depth, opts) => items.flatMap(it => [quickLine(it, '  '.
 /* A task or a project as a Markdown list that comes back: pasted into Pocket's add box, it makes the same tasks, with
    the same done state, nesting, people, labels, priority, dates, repeats and progress (design rule 9; quickadd.js reads
    it, and share.test.mjs reads each one back). A task is a heading, "## Pack the van @priya !3 2026-10-16" ("## [x]"
-   when it's done), then its subtasks, each a line. Nothing collapsed. A project: "# Café", its counts, then its open
-   tasks, each with its open subtasks. What it never carries, so a paste never makes: notes, comments, photos, and a
-   project's done tasks. `opts`: {mode: the user's Quick Add Magic mode, whose prefixes it's written with ("disabled":
+   when it's done), then its subtasks, each a line. Nothing collapsed. A project: "# Café · 12 open · 5 done", then
+   its open tasks, each with its open subtasks; pasted back, that heading is left out, as the list's name, and its
+   tasks are made. What it never carries, so a paste never makes: notes, comments, photos, and a project's done tasks. `opts`: {mode: the user's Quick Add Magic mode, whose prefixes it's written with ("disabled":
    with none of those words); dueTime: their default due time}. A run's is still its record, for people (runLines). */
 export function markdownText(doc, {mode = 'vikunja', dueTime = '12:00', now = new Date()} = {}){
   const items = doc.items || [], opts = {mode, dueTime};
   if (doc.kind === 'run') return [`## ${doc.title}` + (progress(doc).words ? ` (${progress(doc).words})` : ''), '', ...runLines(items, 0, now)].join('\n').trimEnd();
-  if (doc.kind === 'project')
-    return [`# ${doc.title}`, '', `${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), '', ...mdLines(items, 0, opts)].join('\n').trimEnd();
+  if (doc.kind === 'project') return [`# ${doc.title} · ${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), ...mdLines(items, 0, opts)].join('\n');
   return [quickLine(doc, `## ${doc.done ? '[x] ' : ''}`, opts, true), ...mdLines(items, 0, opts)].join('\n');
 }
