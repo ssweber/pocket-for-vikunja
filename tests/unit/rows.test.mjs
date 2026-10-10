@@ -152,6 +152,23 @@ test('a run\'s step: swiped for its progress as a task is; only one inserted dur
   assert.equal(at(1), null, 'a finished run: nothing');
 });
 
+// A step added during a run is asked about before it's deleted, from its × or its row's Delete, the same question:
+// asked before its row goes anywhere (swipeDeleteStep), the deletion doesn't ask again.
+test('a step added during a run is asked about once before it\'s deleted: by its ×, or beforehand by its row\'s swipe', async () => {
+  const app = component(runs), asked = [], was = globalThis.confirm;
+  let yes = false;
+  globalThis.confirm = q => { asked.push(q); return yes; };
+  try {
+    const s = step({ added: 'Inserted', pending: 'e1' });
+    Object.assign(app, { runAdded: null, dropStep: async () => true });
+    assert.equal(app.askDeleteStep(s), false);
+    assert.deepEqual(asked, ['Delete “Take the croissants out”? It was added during this run: the template\'s steps stay as they are.']);
+    assert.deepEqual([app.askDeleteStep(step({})), app.askDeleteStep(step({ added: 'Inserted', done: true })), asked.length], [false, false, 1], 'a template\'s step, or a done one: not asked, not deleted');
+    assert.deepEqual([await app.deleteAddedStep(s), asked.length], [false, 2], 'its ×: asked, and said no');
+    assert.deepEqual([await app.deleteAddedStep(s, false, true), asked.length], [true, 2], 'asked beforehand: deleted, not asked again');
+  } finally { globalThis.confirm = was; }
+});
+
 test('a done step swiped down is not done again first, then at that progress; asked and said no, it stays done', async () => {
   const app = component(runs), sent = [];
   let answer = true;

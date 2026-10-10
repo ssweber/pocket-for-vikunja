@@ -457,6 +457,32 @@ test('a subtask deleted: its parent\'s worked-out progress is written once the d
   assert.deepEqual(ACTS.delete.at(-1), 'figure');
 });
 
+/* A task with subtasks is asked about before anything is done (rows-and-sheet-fixes-plan, part 2): askDelete reads what
+   goes with it and asks, on its own, so a row swiped to delete asks before it slides away (swipeDelete,
+   app/progress.js), and the deletion that follows isn't asked about again. */
+test('deleting a task with subtasks asks first, saying how many go; said no, nothing is kept to send; asked beforehand, it isn\'t asked again', async t => {
+  const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, { id: 2, title: 'Pack the cups', related_tasks: { parenttask: [{ id: 1 }], subtask: [{ id: 4 }] } },
+    { id: 3, title: 'Pack the plates', related_tasks: { parenttask: [{ id: 1 }] } }, { id: 4, title: 'Wrap them', related_tasks: { parenttask: [{ id: 2 }] } }, { id: 5, title: 'Lock up' }]);
+  const app = deleting(t), asked = [];
+  let yes = false;
+  globalThis.confirm = q => { asked.push(q); return yes; };
+  for (const id of [1, 3, 5]) app.keep(v.task(id));
+  assert.deepEqual([1, 3, 5].map(id => app.hasSubtasks(app.tasks[id])), [true, false, false], 'as far as the phone knows');
+  assert.equal(app.hasSubtasks({ id: 1 }), true, 'by the copy on screen too');
+  assert.equal(await app.askDelete(app.tasks[1]), null, 'said no');
+  assert.deepEqual(asked, ['Delete “Pack the van” and its 2 subtasks, 1 more under them?']);
+  assert.equal(await app.holdDelete(app.tasks[1]), null);
+  assert.deepEqual([sync.all(1).length, app.deleting, deletes(v)], [0, [], []], 'nothing kept to send, nothing off the list');
+  yes = true; asked.length = 0;
+  const tree = await app.askDelete(app.tasks[1]);
+  assert.deepEqual([tree, asked.length], [[4, 2, 3, 1], 1], 'all the way down, deepest first');
+  const d = await app.holdDelete(app.tasks[1], null, tree);
+  assert.deepEqual([d.n, asked.length, sync.all(1)[0].ids], [3, 1, [4, 2, 3, 1]], 'asked about already: not again');
+  await app.undoDelete(d.id);
+  asked.length = 0;
+  assert.deepEqual([await app.askDelete(app.tasks[5]), asked], [[5], []], 'one with none isn\'t asked about');
+});
+
 test('a deletion waits for its Undo: off the list at once, nothing sent, and Undo brings it back', async t => {
   const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }] } }, { id: 2, title: 'Pack the cups', related_tasks: { parenttask: [{ id: 1 }] } }]);
   const app = deleting(t);

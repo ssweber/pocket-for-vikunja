@@ -511,17 +511,33 @@ export default {
     return {el: row, reorder: dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true))};
   },
   /* A row's Delete, tapped once it's swiped open (a tick felt then: swipeOf), or a full swipe let go (felt as it passed
-     half): the row goes on off the screen, leaving a gap at its height with Restore (sweep, removeTask). */
-  async swipeDelete(t, sheet, row){
+     half): the row goes on off the screen, leaving a gap at its height with Restore (sweep, removeTask). A task with
+     subtasks asks before its row slides away, not after (rows-and-sheet-fixes-plan, part 2): one the phone knows to
+     have some (hasSubtasks) waits where it was let go while they're read and the question is asked (askDelete); said
+     no to, it goes back, and nothing has changed. (One with subtasks the phone hasn't seen is asked as they're found,
+     its row already gone: said no to, its gap gives way and it's back.) `own`: the sheet's own row, deleted as the
+     sheet's ⋯ does, the sheet closing on the list, where its gap has Restore (deleteTask): no gap here. */
+  async swipeDelete(t, sheet, row, own = false){
+    if (away.has(row)) return;
+    let tree = null;
+    if (this.hasSubtasks(t)) {
+      if (opened === row) opened = null;                  // (asked about, it isn't shut by a touch elsewhere)
+      away.add(row);
+      try { tree = await this.askDelete(t); } finally { away.delete(row); }
+      if (!tree) { shut(row); return; }
+    }
     // (A card's header swiped: the gap is its card's.)
-    const removing = this.removeTask(t), host = row.matches('.card-head') ? row.parentElement : row;
-    if (await sweep(row, removing, {host, gap: () => this.gapNow(t.id, 'deleted', removing)}) && sheet) this.sheet.dirty = true;
+    const removing = own ? this.deleteTask(tree) : this.removeTask(t, tree), host = row.matches('.card-head') ? row.parentElement : row;
+    if (await sweep(row, removing, own ? {wait: true} : {host, gap: () => this.gapNow(t.id, 'deleted', removing)}) && sheet) this.sheet.dirty = true;
   },
-  /* A step inserted or repeated during a run, swiped to its Delete or its Delete tapped: deleteAddedStep, which asks
-     first, as the × on the card's step does, and has no Restore; deleted, its row stays hidden in its place until the
-     run is drawn again without it. Said no to, it comes back. */
+  /* A step inserted or repeated during a run, swiped to its Delete or its Delete tapped: asked first, as the × on the
+     card's step asks (askDeleteStep), and before its row goes anywhere, as a task with subtasks is: said no to, the row
+     goes back. It has no Restore; deleted (deleteAddedStep), its row stays hidden in its place until the run is drawn
+     again without it. */
   async swipeDeleteStep(s, row){
-    await sweep(row, this.deleteAddedStep(s).then(ok => { if (ok) row.style.visibility = 'hidden'; return ok; }), {wait: true});
+    if (away.has(row)) return;
+    if (!this.askDeleteStep(s)) { shut(row); return; }
+    await sweep(row, this.deleteAddedStep(s, false, true).then(ok => { if (ok) row.style.visibility = 'hidden'; return ok; }), {wait: true});
   },
   /* A run's step swiped on its row, as a task's is: not one waiting to be sent, or in a finished run, or done by a full
      swipe and waiting for the batch (its gap: only its Undo); a done one only down, not done again (stepProgress). With
@@ -560,7 +576,7 @@ export default {
   sheetRowGesture(row){
     const t = this.sheet.task;
     if (!t || this.ofTemplate || !this.canEdit || this.sheet.titleEdit) return null;
-    const swipe = this.canDelete(t) ? swipeOf(row, () => sweep(row, this.deleteTask(), {wait: true}), t.title) : null;
+    const swipe = this.canDelete(t) ? swipeOf(row, () => this.swipeDelete(t, false, row, true), t.title) : null;
     if (this.sheetRing) { const r = this.ringSwipe(t, row, row, true); return (r.finish || swipe) && {el: row, swipe, ...r}; }
     return {el: row, swipe, start: t.done ? 100 : pctOf(t), width: row.clientWidth, springs: true, finish: pct => { if (pct !== null) this.setSheetProgress(pct); }};
   },

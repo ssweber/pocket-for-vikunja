@@ -1198,6 +1198,59 @@ try {
     }
   });
 
+  /* A task with subtasks asks before its row slides away, not after (rows-and-sheet-fixes-plan, part 2): its card's
+     header swiped left all the way and let go, the question comes with the header still where it was let go, over its
+     Delete. Cancel: it goes back, and nothing has changed. OK: it goes on off the screen, and its card is a gap with
+     Restore. The question is answered in the page, which notes where the header was as it was asked. */
+  await step('a-task-with-subtasks-asks-before-its-row-slides-away', async () => {
+    const p = await make(`Pocket smoke asks ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke asks kid ${stamp}`);
+    await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    const card = cardOf(p.title), head = `${card} > .card-head`;
+    const asked = () => page.evaluate(() => window.__asked);
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.waitForSelector(head, { timeout: 15000 });
+      await page.locator(head).evaluate(h => {
+        window.__asked = []; window.__answer = false; window.__confirm = window.confirm;
+        window.confirm = q => {
+          window.__asked.push({ q, x: new DOMMatrix(getComputedStyle(h).transform).m41, w: h.clientWidth, moving: h.getAnimations().length,
+            deleted: h.parentElement.classList.contains('deleted'), red: !!document.querySelector('.row-red.row-under') });
+          return window.__answer;
+        };
+      });
+      await swipeRow(page, head, 'delete');
+      await expect.poll(async () => (await asked()).length).toBe(1);
+      let a = (await asked())[0];
+      if (a.q !== `Delete “${p.title}” and its 1 subtask?`) throw new Error('asked: ' + a.q);
+      if (a.x > -a.w / 2 || a.moving || a.deleted || !a.red) throw new Error('asked after its row had moved on: ' + JSON.stringify(a));
+      // Cancel: back where it was, over nothing, and nothing changed.
+      await expect(page.locator(head)).not.toHaveClass(/\bswip/);
+      await expect(uncovered(page, '.row-red')).toHaveCount(0);
+      if (await page.locator(head).evaluate(h => h.style.transform)) throw new Error('said no to, its header is still aside');
+      await expect(page.locator(card)).not.toHaveClass(/\bdeleted\b/);
+      await expect(page.locator(`${card} > .del-gap`)).toHaveCount(0);
+      await synced(page);
+      if (!await get(p.id) || !await get(k.id)) throw new Error('said no to, it was deleted');
+      // OK: asked the same way, then it goes, its card a gap with Restore, deleted with its subtask once the batch clears.
+      await page.evaluate(() => { window.__answer = true; });
+      await swipeRow(page, head, 'delete');
+      await expect(page.locator(card)).toHaveClass(/\bdeleted\b/);
+      a = (await asked())[1];
+      if (!a || a.x > -a.w / 2 || a.moving || a.deleted) throw new Error('asked after its row had moved on: ' + JSON.stringify(a));
+      if ((await asked()).length !== 2) throw new Error('asked ' + (await asked()).length + ' times');
+      await expect(page.locator(card).getByRole('button', { name: 'Restore ' + p.title })).toBeVisible();
+      await expect(uncovered(page, '.row-red')).toHaveCount(0);
+      await later(3000);
+      await expect(page.locator(card)).toHaveCount(0);
+      await synced(page);
+      if (await get(k.id) || await get(p.id)) throw new Error('never deleted');
+    } finally {
+      await page.evaluate(() => { if (window.__confirm) window.confirm = window.__confirm; });
+      for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   /* A task's sheet leads with one card (parent-tasks-plan, 6b): the task's own row, its notes and its photos and files
      under it. Its title is changed where it is, with a tap. A full swipe right ticks it in place: the sheet is about
      this one task, so no gap. Swiped left at 0%, it's deleted: the sheet closes on the list, where its gap has Restore. */

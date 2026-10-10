@@ -836,11 +836,14 @@ export default {
       return {...none, status: 'error', error};
     }
   },
+  // The question before a step added during the run is deleted, from its × or its row's Delete: whether to.
+  askDeleteStep(s){ return !!s?.added && !s.done && confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`); },
   /* Delete a step inserted or repeated during the run, until it's done: it was likely a mistake. One still waiting to
      be sent isn't sent, nor is anything done on it. A step from the template can't be taken out: it's skipped. `undo`:
-     Repeat's Undo, which asks nothing and says nothing more. Resolves to whether it's gone. */
-  async deleteAddedStep(s, undo = false){
-    if (!s?.added || s.done || (!undo && !confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`))) return false;
+     Repeat's Undo, which asks nothing and says nothing more. `asked`: the question was asked already, before its row
+     went anywhere (swipeDeleteStep, app/progress.js). Resolves to whether it's gone. */
+  async deleteAddedStep(s, undo = false, asked = false){
+    if (!s?.added || s.done || (!undo && !asked && !this.askDeleteStep(s))) return false;
     // The box aims at the card's step again, if this was where the next would go.
     if (this.runAdded && this.actTask({task: this.runAdded.after}) === s.id) this.runAdded = null;
     if (s.pending) { await this.dropStep(s.pending, undo); return true; }

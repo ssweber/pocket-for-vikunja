@@ -574,7 +574,8 @@ export default {
     if (role === 'template') return n ? `Delete template and its ${n} step${n === 1 ? '' : 's'}` : 'Delete template';
     return n ? `Delete task and its ${n} subtask${n === 1 ? '' : 's'}` : 'Delete task';
   },
-  async deleteTask(){
+  // `asked`: what it deletes, if that was asked about already (its row swiped: swipeDelete, app/progress.js).
+  async deleteTask(asked = null){
     const t = this.sheet.task, role = this.checklistRole;
     if (role === 'run') return this.confirmDeleteRun({id: t.id, title: t.title, steps: this.subtasks});
     // Opened from its parent's sheet: back to the parent afterwards.
@@ -583,7 +584,7 @@ export default {
       Object.assign(this.sheet, {dirty: false, editingDesc: false, commentDraft: ''}); this.sheet.sub.text = '';
       if (back) { await this.openTask(back); this.sheet.dirty = true; } else this.closeSheet();
     };
-    if (role !== 'template') { if (await this.removeTask(t)) await leave(); return; }
+    if (role !== 'template') { if (await this.removeTask(t, asked)) await leave(); return; }
     // A template's steps are its runs' to come: it's deleted at once, after asking.
     let tree;
     try { tree = await this.taskTree(t.id); } catch (e) { this.say('Not deleted: ' + e.message, {place: 'sheet:top', cls: 'failed'}); return; }
@@ -609,26 +610,37 @@ export default {
      put away or closed. Meanwhile it waits in the outbox, kept on the phone, held back (sync.held): so it's sent even
      if Pocket is closed before then, the next time it opens, and without a connection, once there's one. Restore takes
      it out of the outbox: nothing was sent, so nothing has to be made again. With no row of it on screen, a message
-     says so, with an Undo, and it's sent when that goes. Resolves to whether it's deleted (not if it was called off). */
-  async removeTask(t){
+     says so, with an Undo, and it's sent when that goes. Resolves to whether it's deleted (not if it was called off).
+     `tree`: what it deletes, if that was asked about already (askDelete). */
+  async removeTask(t, tree = null){
     const d = await this.holdDelete(t, d => {
       const undo = () => this.undoDelete(d.id), gone = () => this.sendHeld(d.id);
       if (this.rowEl(t.id)) return this.markRow(t.id, {kind: 'deleted', ids: d.ids, undo, gone, said: `Deleted: ${t.title}. Restore is in its place`});
       const title = t.title.length > 40 ? t.title.slice(0, 38) + '…' : t.title;
       this.notify(`Deleted “${title}”` + (d.n ? ` + ${d.n} subtask${d.n === 1 ? '' : 's'}` : ''), {label: 'Undo', fn: undo, gone});
-    });
+    }, tree);
     return !!d;
   },
-  /* The deletion itself, apart from how it's shown (`show`, given {id, n: its subtasks, ids: the task's and theirs} just
-     before the rows go): asked first if it has subtasks, then off the lists at once (but rows deleted in place), and
-     kept in the outbox, held back (sync.held), until sendHeld or undoDelete. Resolves to {id, n}, or null if it was
-     called off. */
-  async holdDelete(t, show){
+  // Whether a task has subtasks, as far as the phone knows: by its own copy, the one on screen, or Vikunja's last.
+  hasSubtasks(t){ return [t, this.tasks[t.id], cache.get(t.id)].some(x => x?.related_tasks?.subtask?.length); },
+  /* What deleting `t` deletes: itself and its subtasks, all the way down (taskTree), asked about first if there are any,
+     saying how many. Resolves to their ids, deepest first, or null: called off, or not read (its row says so). A row
+     swiped to delete a task with subtasks asks here before the row goes anywhere (swipeDelete, app/progress.js). */
+  async askDelete(t){
     let tree;
     try { tree = await this.taskTree(t.id); } catch (e) { this.say('Not deleted: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'}); return null; }
     const n = tree.length - 1, direct = (t.related_tasks?.subtask || []).filter(s => tree.includes(s.id)).length;
     const deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
-    if (n && !confirm(`Delete “${t.title}” and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?`)) return null;
+    return n && !confirm(`Delete “${t.title}” and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?`) ? null : tree;
+  },
+  /* The deletion itself, apart from how it's shown (`show`, given {id, n: its subtasks, ids: the task's and theirs} just
+     before the rows go): asked first if it has subtasks (askDelete; not again, given the `tree` that was asked about),
+     then off the lists at once (but rows deleted in place), and kept in the outbox, held back (sync.held), until
+     sendHeld or undoDelete. Resolves to {id, n}, or null if it was called off. */
+  async holdDelete(t, show, tree = null){
+    tree ||= await this.askDelete(t);
+    if (!tree) return null;
+    const n = tree.length - 1;
     // A subtask deleted changes its parent's worked-out progress: written once it's sent (`up`, the act's last part).
     const up = this.parentIdOf(t);
     const entry = {id: randomId(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), items: [], files: [], stage: 0, fails: 0,

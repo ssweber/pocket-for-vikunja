@@ -1249,7 +1249,22 @@ try {
     await page.reload();
     await page.waitForSelector('#run-steps .row:nth-of-type(2) .meta .added span:text-is("Repeated")', { timeout: 15000 });
     await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .added span:text-is("Inserted")');
-    // One added by mistake is deleted, until it's done.
+    // One added by mistake is deleted, until it's done. Swiped left all the way, it's asked about before its row goes
+    // anywhere (rows-and-sheet-fixes-plan, part 2), the question answered in the page: said no to, the row is back.
+    const ins = '#run-steps .row:nth-of-type(3)';
+    await page.locator(ins).evaluate(row => {
+      window.__asked = []; window.__confirm = window.confirm;
+      window.confirm = q => { window.__asked.push({ q, x: new DOMMatrix(getComputedStyle(row).transform).m41, w: row.clientWidth, moving: row.getAnimations().length }); return false; };
+    });
+    try {
+      await swipeRow(page, ins, 'delete');
+      await expect.poll(() => page.evaluate(() => window.__asked.length)).toBe(1);
+      const a = (await page.evaluate(() => window.__asked))[0];
+      if (!a.q.startsWith('Delete “Wipe the oil off the floor”?') || a.x > -a.w / 2 || a.moving) throw new Error('asked after its row had moved on: ' + JSON.stringify(a));
+      await expect(page.locator(ins)).not.toHaveClass(/\bswip/);
+      await expect(uncovered(page, '.row-red')).toHaveCount(0);
+    } finally { await page.evaluate(() => { window.confirm = window.__confirm; }); }
+    if (!(await titles()).includes('Wipe the oil')) throw new Error('said no to, the step was deleted');
     await page.click('#run-steps .row:nth-of-type(3) .body');
     await page.click('#step-delete');
     await expect(page.locator('.place-line', { hasText: 'Step deleted' })).toBeVisible();   // in its sheet, or on the run
