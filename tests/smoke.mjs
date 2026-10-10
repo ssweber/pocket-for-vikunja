@@ -3273,7 +3273,8 @@ try {
   });
 
   /* On a project's list, quick add's box adds a task to the project, until a task is touched (its sheet opened, ticked):
-     then it adds subtasks to that task, after its last, or after the subtask touched, each after the one before. */
+     then it adds subtasks to that task, after its last, or after the subtask touched, each after the one before. The
+     row it adds at is lit, the one the line over the box names, and no other: a subtask added is lit in its turn. */
   const foot = { project: null, view: null, tasks: {} };
   const footRows = () => listed(page.locator('#view .list').first());
   const footName = n => `${n} ${stamp}`;
@@ -3283,6 +3284,16 @@ try {
   // A task on the list, a row or a card (a task with open subtasks, lit up as a row is while the box adds to it), and
   // what opens it.
   const itemById = id => `#view :is(.item > .row, .day-card)[data-id="${id}"]`;
+  // A subtask's row by its name, waiting to be sent or sent; and the one thing lit on the list.
+  const subRow = (name, waiting = false) => `#view .card-rows > .row${waiting ? '.pending' : ':not(.pending)'}:has(> .body .title:has-text("${footName(name)}"))`;
+  const onlyLit = async sel => { await expect(page.locator(sel)).toHaveClass(/\baimed\b/); await expect(page.locator('#view .aimed')).toHaveCount(1); };
+  // Vikunja's answer to a task being made, held back until `send` is called.
+  const holdAdds = async () => {
+    let send; const sending = new Promise(ok => { send = ok; });
+    const hold = async r => { if (r.request().method() === 'POST') await sending; await r.fallback(); };
+    await page.route('**/api/v2/projects/*/tasks', hold);
+    return async () => { send(); await page.unroute('**/api/v2/projects/*/tasks', hold); };
+  };
   const openAndClose = async id => {
     await page.click(`:is(${rowById(id)} > .body, #view .day-card[data-id="${id}"] > .card-head .card-open)`);
     await page.waitForSelector('#sheet .row.own');
@@ -3309,19 +3320,29 @@ try {
     // Its sheet opened and closed: the box names it, and its row is lit up.
     await openAndClose(T.Van.id);
     await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
-    await expect(page.locator(itemById(T.Van.id))).toHaveClass(/aimed/);
+    await onlyLit(itemById(T.Van.id));
     await expect(page.getByRole('textbox', { name: `New subtask of ${footName('Van')}` })).toBeVisible();
     await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
-    // Two typed with Enter: the box keeps the focus, and they go after its last subtask, in the order typed.
+    // Two typed with Enter: the box keeps the focus, and they go after its last subtask, in the order typed. The light
+    // follows each: the first, its answer held back, is lit on its waiting row at once, the task's own header dark, and
+    // the line names it; sent, it's the same row lit.
     await box.click();
     await box.fill(footName('Rope'));
-    await box.press('Enter');
-    await expect(box).toHaveValue('');
+    const send = await holdAdds();
+    try {
+      await box.press('Enter');
+      await expect(box).toHaveValue('');
+      await onlyLit(subRow('Rope', true));
+      await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Rope')}`);
+    } finally { await send(); }
+    await onlyLit(subRow('Rope'));
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Rope')}`);
     await box.fill(footName('Straps'));
     await box.press('Enter');
     await expect.poll(footRows).toEqual(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Subtask: Rope', 'Subtask: Straps', 'Lights'].map(footName));
     if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
     await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Straps')}`);
+    await onlyLit(subRow('Straps'));
     await noToast(page);
     await synced(page);
     const p = await footPositions();
@@ -3336,17 +3357,22 @@ try {
     const T = foot.tasks;
     await openAndClose(T.Chairs.id);
     await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Chairs')}`);
-    // A pasted list is several subtasks, and the next one goes after them.
+    await onlyLit(rowById(T.Chairs.id));
+    // A pasted list is several subtasks, and the next one goes after them: its last is the row lit.
     await box.fill(`${footName('Ladder')}
 ${footName('Hooks')}`);
     await expect(page.locator('#cap-chips')).toContainText('2 subtasks');
     await box.press('Enter');
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Hooks')}`);
+    await onlyLit(subRow('Hooks'));
     await box.fill(`${footName('Tarp')} +Elsewhere`);                            // +project stays in its title
     await expect(page.locator('#cap-chips')).toContainText('+project stays as words: a subtask goes in its task\'s project');
     await box.press('Enter');
     const want = [footName('Van'), ...['Chairs', 'Ladder', 'Hooks'].map(n => 'Subtask: ' + footName(n)), `Subtask: Tarp ${stamp} +Elsewhere`,
       ...['Tables', 'Rope', 'Straps'].map(n => 'Subtask: ' + footName(n)), footName('Lights')];
     await expect.poll(footRows).toEqual(want);
+    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after Tarp ${stamp} +Elsewhere`);
+    await onlyLit(subRow('Tarp'));
     await synced(page);
     const p = await footPositions(), tarp = Object.keys(p).find(k => k.startsWith('Tarp'));
     const order = ['Chairs', 'Ladder', 'Hooks', tarp, 'Tables'].map(s => p[s].position);
@@ -3437,12 +3463,19 @@ ${footName('Hooks')}`);
     await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
     await touchDrag(Hooks, 30);
     if (await cursorId() !== T.Van.id) throw new Error('the target moved to ' + await cursorId());
-    // Ticked open again, it's the target (its tick), and the project made read only, a nudge on another row leaves it.
+    // Ticked open again, it's the target (its tick). The project made read only, nothing in it can be one: the target
+    // goes, a nudge on a row brings none, and it isn't back once the project can be changed again.
     await page.getByRole('button', { name: 'Mark not done: ' + footName('Hooks'), exact: true }).click();
     await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Hooks')}`);
+    await onlyLit(Hooks);
     await page.evaluate(id => { Alpine.$data(document.body).perms[id] = 0; }, foot.project.id);
-    try { await touchDrag(Fuel, 30); if (await cursorId() !== +await page.locator(Hooks).getAttribute('data-id')) throw new Error('the target moved to ' + await cursorId()); }
-    finally { await page.evaluate(id => { delete Alpine.$data(document.body).perms[id]; }, foot.project.id); }
+    try {
+      await expect(target).toHaveCount(0);
+      await touchDrag(Fuel, 30);
+      if (await cursorId() !== null) throw new Error('a row read only is the target: ' + await cursorId());
+    } finally { await page.evaluate(id => { delete Alpine.$data(document.body).perms[id]; }, foot.project.id); }
+    await expect(target).toHaveCount(0);
+    await expect(page.locator('#view .aimed')).toHaveCount(0);
     // A tap, by a finger too, still opens the sheet, which aims as it closes.
     const b = await steady(page.locator(Fuel + ' > .body'));
     await touch('touchStart', b.x + b.width / 2, b.y + b.height / 2); await touch('touchEnd', 0, 0);
@@ -3450,6 +3483,65 @@ ${footName('Hooks')}`);
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await expect(target).toHaveText(`Add a subtask to ${footName('Fuel')}`);
+    await synced(page);
+  });
+  /* The lit row follows what's added, and a nudge always selects (rows-and-sheet-fixes-plan, part 3): the row touched
+     before a subtask was added, nudged again, is lit again, and the line goes back to it. The lit row is never one
+     that's gone: deleted, or moved, its task is lit, and the box goes back to that task's last. */
+  await step('a-nudge-selects-the-row-touched-before-and-a-lit-row-gone-hands-over-to-its-task', async () => {
+    const T = foot.tasks, head = `#view .day-card[data-id="${T.Van.id}"] > .card-head`, van = `Add a subtask to ${footName('Van')}`;
+    await page.evaluate(() => scrollTo(0, 0));
+    await touchDrag(head, 40);
+    await expect(target).toHaveText(van);
+    await onlyLit(itemById(T.Van.id));
+    await box.fill(footName('Cones'));
+    await box.press('Enter');
+    await onlyLit(subRow('Cones'));
+    await expect(target).toHaveText(`${van}, after ${footName('Cones')}`);
+    await synced(page);
+    // The header nudged again, the row touched before: it's the one lit, and the line names the task alone.
+    await touchDrag(head, 40);
+    await expect(target).toHaveText(van);
+    await onlyLit(itemById(T.Van.id));
+    await expect(page.locator('#said')).toHaveText(van);
+    // What's added then goes after its last, which is Cones.
+    await box.fill(footName('Flags'));
+    await box.press('Enter');
+    await onlyLit(subRow('Flags'));
+    await synced(page);
+    let p = await footPositions();
+    if (!(p.Straps.position < p.Cones.position && p.Cones.position < p.Flags.position)) throw new Error('positions: ' + ['Straps', 'Cones', 'Flags'].map(s => p[s].position));
+    // The lit row deleted: its task is lit, the line back to it. Restored, it isn't lit again behind your back.
+    await swipeRow(page, subRow('Flags'), 'delete');
+    await expect(page.locator(subRow('Flags'))).toHaveClass(/\bdeleted\b/);
+    await expect(target).toHaveText(van);
+    await onlyLit(itemById(T.Van.id));
+    await page.locator(subRow('Flags')).getByRole('button', { name: 'Restore ' + footName('Flags') }).click();
+    await expect(page.locator(subRow('Flags'))).not.toHaveClass(/\bdeleted\b/);
+    await expect(target).toHaveText(van);
+    await onlyLit(itemById(T.Van.id));
+    await synced(page);
+    // Its own tick, then moved up a place (Alt+↑, as holding it and moving it does): lit by the tick, its task by the move.
+    await page.getByRole('button', { name: 'Mark done: ' + footName('Flags'), exact: true }).click();
+    await onlyLit(itemById(T.Van.id));
+    await synced(page);                                                         // marked, not only held: its tick takes the mark back
+    await page.getByRole('button', { name: 'Mark not done: ' + footName('Flags'), exact: true }).click();
+    await expect(target).toHaveText(`${van}, after ${footName('Flags')}`);
+    await onlyLit(subRow('Flags'));
+    await synced(page);
+    await page.locator(subRow('Flags') + ' > .body').focus();
+    await page.keyboard.press('Alt+ArrowUp');
+    await expect(target).toHaveText(van);
+    await onlyLit(itemById(T.Van.id));
+    await synced(page);
+    p = await footPositions();
+    if (!(p.Flags.position < p.Cones.position)) throw new Error('Flags didn\'t move up: ' + ['Cones', 'Flags'].map(s => p[s].position));
+    // A subtask that arrives done leaves with the batch, so it isn't lit: its task is.
+    await box.fill('x ' + footName('Bolts'));
+    await box.press('Enter');
+    await expect(page.getByRole('button', { name: 'Mark not done: ' + footName('Bolts'), exact: true })).toBeVisible();
+    await expect(target).toHaveText(van);
+    await onlyLit(itemById(T.Van.id));
     await synced(page);
   });
   await step('a-nudge-on-today-does-nothing', async () => {

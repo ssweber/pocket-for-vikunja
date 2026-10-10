@@ -323,7 +323,8 @@ try {
 
   await step('a-subtask-from-the-add-box-waits-offline', async () => {
     // On its project's list, the add box adds subtasks to the task whose sheet was opened: offline, one waits under it,
-    // on its card (a task with an open subtask is a stacked card there, open).
+    // on its card (a task with an open subtask is a stacked card there, open). The light follows it: its waiting row
+    // is the one row lit, named by the line over the box, and still is once it's sent.
     const [g] = await byTitle(T('G'));
     await page.evaluate(id => { location.hash = '#/project/' + id; }, g.project_id);
     const card = page.locator(`#view .day-card[data-id="${g.id}"]`);
@@ -333,12 +334,16 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}`);
+    await expect(card).toHaveClass(/\baimed\b/);
     await context.setOffline(true);
     await page.fill('#in-capture', T('G2'));
     await page.press('#in-capture', 'Enter');
     // Waiting, under it, after its other subtask; nothing said, and the box keeps the focus.
     const waiting = card.locator(`.card-rows > .row.pending:has-text("${T('G2')}")`);
     await expect(waiting).toBeVisible();
+    await expect(waiting).toHaveClass(/\baimed\b/);
+    await expect(page.locator('#view .aimed')).toHaveCount(1);                 // the card's own header is dark
+    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}, after ${T('G2')}`);
     const order = await page.locator('#view :is(.card-title, .row .title)').evaluateAll(els => els.map(el => el.textContent || ''));
     const at = order.findIndex(t => t.includes(T('G')) && !t.includes(T('G1')) && !t.includes(T('G2')));
     if (!order[at + 1]?.includes(T('G1')) || !order[at + 2]?.includes(T('G2'))) throw new Error('rows: ' + order.slice(at, at + 3).join(' | '));
@@ -347,6 +352,9 @@ try {
     await context.setOffline(false);
     await online();
     await expect(page.locator(`#view .row:not(.pending):has-text("${T('G2')}")`)).toBeVisible({ timeout: 20000 });
+    await expect(page.locator(`#view .row:not(.pending):has-text("${T('G2')}")`)).toHaveClass(/\baimed\b/);
+    await expect(page.locator('#view .aimed')).toHaveCount(1);
+    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}, after ${T('G2')}`);
     await synced(page);
     const subs = (await (await api('/tasks/' + g.id)).json()).related_tasks?.subtask || [];
     if (subs.filter(s => s.title === T('G2')).length !== 1) throw new Error('subtasks: ' + subs.map(s => s.title).join(' | '));
