@@ -908,8 +908,11 @@ try {
      A Done chip says so before it's sent, and the marker is marked in the box; tapped off, the marker's words stay in
      the title, as any chip's do. Its row is ticked from the start, where the task goes, and leaves with the batch, as
      a row ticked there does; Vikunja has it done. */
-  const found = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
+  const taskTitled = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
   const capMarks = () => page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent).join());
+  const chipsSay = async text => { if (!(await page.textContent('#cap-chips')).includes(text)) throw new Error(`chips, without "${text}": ` + await page.textContent('#cap-chips')); };
+  // A task's subtasks in Vikunja, each as [title, done], by title.
+  const subsDone = async id => ((await get(id)).related_tasks?.subtask || []).map(s => [s.title, s.done]).sort();
   await step('a-line-that-says-its-done-arrives-done', async () => {
     const t = `Pocket smoke arrived ${stamp}`, R = rowOf(t), chip = page.locator('#cap-chips .chip[data-kind=done]');
     await toastGone();
@@ -927,7 +930,7 @@ try {
     await expect(page.locator(`${R}:not(.pending)`)).toHaveClass(/\bleaving\b/, { timeout: 15000 });
     await synced(page);
     await noToast(page);
-    const made = await found(t);
+    const made = await taskTitled(t);
     try {
       if (!made?.done) throw new Error('in Vikunja: ' + JSON.stringify(made && { title: made.title, done: made.done }));
       await later(3100);
@@ -950,7 +953,7 @@ try {
     await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
     await synced(page);
     await expect.poll(() => tickPct(R)).toBe(50);
-    const made = await found(t);
+    const made = await taskTitled(t);
     try {
       if (!made || made.done || Math.round(made.percent_done * 100) !== 50) throw new Error('in Vikunja: ' + JSON.stringify(made && { title: made.title, progress: made.percent_done, done: made.done }));
     } finally { if (made) await api('/tasks/' + made.id, { method: 'DELETE' }); }
@@ -960,14 +963,13 @@ try {
      counts them from the start, its figure written with them: (100 + 50 + 100 + 0) / 4 = 63%. */
   await step('a-pasted-list-with-lines-done-and-the-chip-that-leaves-them-out', async () => {
     const p = `Pocket smoke packed ${stamp}`, sub = n => `Pocket smoke pack ${n} ${stamp}`, chip = page.locator('#cap-chips .chip[data-kind=done]');
-    const says = async text => { if (!(await page.textContent('#cap-chips')).includes(text)) throw new Error(`chips, without "${text}": ` + await page.textContent('#cap-chips')); };
     await page.fill('#in-capture', `${p} tomorrow\n- [x] ${sub('A')}\n- [ ] ${sub('B')} (50%)\nx ${sub('C')}\n- ${sub('D')}`);
     await page.click('#cap-nest');
     await expect(chip).toHaveText('2 arrive done');
-    await says('1 task + 4 subtasks');
+    await chipsSay('1 task + 4 subtasks');
     await chip.click();
     await expect(chip).toHaveText('2 ticked off already: left out');
-    await says('1 task + 2 subtasks');
+    await chipsSay('1 task + 2 subtasks');
     await chip.click();
     await expect(chip).toHaveText('2 arrive done');
     await page.click('#f-capture .go');
@@ -975,7 +977,7 @@ try {
     await expect(ring.locator('.n')).toHaveText('2/4', { timeout: 20000 });
     await synced(page);
     await noToast(page);
-    const made = await found(p), subs = made ? (await get(made.id)).related_tasks?.subtask || [] : [];
+    const made = await taskTitled(p), subs = made ? (await get(made.id)).related_tasks?.subtask || [] : [];
     try {
       const got = JSON.stringify(subs.map(s => [s.title, s.done, Math.round(s.percent_done * 100)]).sort());
       if (got !== JSON.stringify([[sub('A'), true, 0], [sub('B'), false, 50], [sub('C'), true, 0], [sub('D'), false, 0]])) throw new Error('its subtasks in Vikunja: ' + got);
@@ -983,6 +985,34 @@ try {
       await expect.poll(() => ring.evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--ring')) * 100))).toBe(63);
     } finally { for (const t of [...subs, made]) if (t) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
+  /* Parents in a pasted list (done-and-markdown-plan, part 2). A heading, "## Pack the van", is a task, and the lines
+     under it, up to the next heading, are its subtasks. The chip says what the list makes; ↳ Under first line shows on
+     by itself, as the first line is a parent, and tapped off makes them all tasks of their own. */
+  const nestChip = page.locator('#cap-nest');
+  const madeFrom = [];                                                           // what these steps added, to delete after
+  await step('a-pasted-list-with-headings-makes-parents', async () => {
+    const A = `Pocket smoke head A ${stamp}`, B = `Pocket smoke head B ${stamp}`, sub = n => `Pocket smoke under ${n} ${stamp}`;
+    await page.fill('#in-capture', `## ${A} tomorrow\n- ${sub('a1')}\n- [x] ${sub('a2')}\n\n## ${B} tomorrow\n${sub('b1')}`);
+    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
+    await chipsSay('2 tasks + 3 subtasks');
+    await nestChip.click();
+    await expect(nestChip).toHaveAttribute('aria-pressed', 'false');
+    await chipsSay('5 tasks');
+    await nestChip.click();
+    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
+    await chipsSay('2 tasks + 3 subtasks');
+    await page.click('#f-capture .go');
+    await expect(page.locator(`#view ${cardOf(A)} > .card-head > .ring .n`)).toHaveText('1/2', { timeout: 20000 });
+    await expect(page.locator(`#view ${cardOf(B)}`)).toBeVisible();
+    await synced(page);
+    await noToast(page);
+    const a = await taskTitled(A), b = await taskTitled(B);
+    madeFrom.push(...(a ? [...(await get(a.id)).related_tasks?.subtask || [], a] : []), ...(b ? [...(await get(b.id)).related_tasks?.subtask || [], b] : []));
+    if (JSON.stringify(await subsDone(a.id)) !== JSON.stringify([[sub('a1'), false], [sub('a2'), true]])) throw new Error('under the first heading: ' + JSON.stringify(await subsDone(a.id)));
+    if (JSON.stringify(await subsDone(b.id)) !== JSON.stringify([[sub('b1'), false]])) throw new Error('under the second: ' + JSON.stringify(await subsDone(b.id)));
+    await expect.poll(async () => Math.round((await get(a.id)).percent_done * 100)).toBe(50);   // one of two done: written with them
+  });
+  await step('parents-in-a-pasted-list-clean-up', async () => { for (const t of madeFrom) await api('/tasks/' + t.id, { method: 'DELETE' }); });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger
      lifts; then they leave together, the rows below closing up once. A finger down holds them. */

@@ -241,6 +241,36 @@ test('a list with lines that say they\'re done: one chip counts them; tapped, th
   assert.deepEqual(linesOf(app, 'sub'), [['Load chairs', true], ['Tables', false]]);
 });
 
+const under = (app, w) => app.boxParsedLines(w).map(p => p.under);
+test('a pasted list with headings: each a task over its lines, the chip counting them; ↳ Under first line shows on, and tapped off makes them all tasks', () => {
+  const app = boxes();
+  app.cap.text = '## Pack the van (38%)\n- Load chairs\n- [x] Tables\n## Set the hall\n- Lights (50%)';
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 arrives done', '2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3]);
+  assert.deepEqual(app.boxParsedLines('cap').map(p => [p.title, p.pct]), [['Pack the van', 0], ['Load chairs', 0], ['Tables', 0], ['Set the hall', 0], ['Lights', 50]], 'a parent\'s figure is dropped');
+  assert.equal(app.nestOn, true, 'the first line is a parent as the list is written');
+  app.tapNest();
+  assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null, null, null]]);
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 arrives done', '5 tasks', 'Café']);
+  app.tapNest();
+  assert.deepEqual([app.nestOn, under(app, 'cap')], [true, [null, 0, 0, null, 3]], 'tapped again: as written');
+  // A list with no markers: off until it's tapped, as before.
+  app.cap = newBox();
+  app.cap.text = 'Pack the van\nLoad chairs\nTables';
+  assert.deepEqual([app.nestOn, chipsOf(app, 'cap')], [false, ['3 tasks', 'Café']]);
+  app.tapNest();
+  assert.deepEqual([app.nestOn, chipsOf(app, 'cap'), under(app, 'cap')], [true, ['1 task + 2 subtasks', 'Café'], [null, 0, 0]]);
+  app.tapNest();
+  assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null]]);
+});
+
+test('in a subtask box, a heading\'s lines go under it, and it goes under the open task', () => {
+  const app = boxes();
+  app.sheet.sub.text = '## Chairs\n- Stack them\n- [x] Count them\nTables';
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 arrives done', '4 subtasks']);
+  assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['x Count them', 0], ['Tables', 0]]);
+});
+
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {
   const app = boxes();
   app.runInsert.text = 'x Wipe the counter\n[x] Mop\nLock up';

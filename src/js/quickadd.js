@@ -266,36 +266,52 @@ const QUOTE_MARKS = /^(?:>\s*)+/, BULLET = /^(?:[-*•◦▪‣–—+]\s+|\d{1,
    its very start with a space after it: "x eggs", "x - eggs", "x- eggs". With no space it's a word, "x-ray the pipe",
    and a capital X is one too, "X marks the spot". */
 const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^x(?:\s+-|-)?\s+/;
-/* A box's text, read as a list: {lines, ticked, one}. `lines`, one for each line that becomes a task, in order: {text:
-   its words, without what was in front of them; at: where they start in the box's text; done: whether it says it's
-   done; mark: [start, end] of what said so, in the box's text; under: the line it's under, by its place in `lines`,
-   or null}. `ticked`: how many lines say they're done, kept or not; `one`: whether the box holds a single line, not a
-   list. `nest`: the first line is the parent of the rest (quick add's ↳ Under first line).
+/* A heading, as Markdown notes write one and a task's copy starts with (share.js): "## Pack the van" is a task, and
+   the lines under it, up to the next heading, are its subtasks. A heading with more #s is under the one before it
+   with fewer. */
+const HEADING = /^(#{2,6})\s+/;
+/* A box's text, read as a list: {lines, ticked, one, first}. `lines`, one for each line that becomes a task, in order:
+   {text: its words, without what was in front of them; at: where they start in the box's text; done: whether it says
+   it's done; mark: [start, end] of what said so, in the box's text; under: the line it's under, by its place in
+   `lines`, or null}. `ticked`: how many lines say they're done, kept or not; `one`: whether the box holds a single
+   line, not a list; `first`: whether the first line is a parent as the list is written, with lines under it.
    A line that says it's done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
-   single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out.
+   single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out,
+   the lines under one going under what it was under.
+   Which line is under which is read from the list's headings. Quick add's ↳ Under first line changes that: `nest`,
+   the first line is the parent of every line with none; `flat`, they're all tasks of their own.
    `steps`: a run's box and a template's steps, where a step is done by doing it: a ticked checkbox's line is left
-   out, and an x is a word. */
-export function readList(text, {steps = false, done = true, nest = false} = {}){
+   out, an x is a word, and so is a heading's #. */
+export function readList(text, {steps = false, done = true, nest = false, flat = false} = {}){
   const rows = [];
   let at = 0, ticked = 0;
   for (const raw of String(text || '').split('\n')) {
     let i = raw.length - raw.trimStart().length;
     const take = re => { const m = raw.slice(i).match(re); if (m) i += m[0].length; return m; };
     take(QUOTE_MARKS);
+    const level = steps ? 0 : take(HEADING)?.[1].length || 0;
     let from = i, said = !steps && take(DONE_X);
     if (!said) { take(BULLET); from = i; said = take(DONE_BOX); }
     if (!said) take(OPEN_BOX);
     if (said) ticked++;
     const start = p => p + raw.slice(p).length - raw.slice(p).trimStart().length;
     rows.push({text: raw.slice(i).trim(), at: at + start(i), done: !!said, mark: said ? [at + from, at + from + said[0].trimEnd().length] : null,
-      kept: raw.slice(from).trim(), keptAt: at + start(from)});
+      kept: raw.slice(from).trim(), keptAt: at + start(from), level});
     at += raw.length + 1;
   }
-  const full = rows.filter(r => r.text), one = full.length === 1;
-  const lines = full.filter(r => !r.done || (done && !steps) || (one && !steps))
-    .map(r => r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null, under: null} : {text: r.text, at: r.at, done: r.done, mark: r.mark, under: null});
-  if (nest) lines.forEach((l, i) => { if (i) l.under = 0; });
-  return {lines, ticked, one};
+  const full = rows.filter(r => r.text), one = full.length === 1, lines = [];
+  const heads = [];                              // the headings the next line is under, the nearest last: {level, k: its place in lines}
+  for (const r of full) {
+    if (r.level) while (heads.length && heads.at(-1).level >= r.level) heads.pop();
+    const under = heads.at(-1)?.k ?? null;
+    // A done line left out isn't over anything: what's under it goes under what it was under.
+    if (r.done && (steps || (!done && !one))) continue;
+    lines.push(r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null, under} : {text: r.text, at: r.at, done: r.done, mark: r.mark, under});
+    if (r.level) heads.push({level: r.level, k: lines.length - 1});
+  }
+  const first = lines.some(l => l.under === 0);
+  for (const [i, l] of lines.entries()) if (flat) l.under = null; else if (nest && i && l.under === null) l.under = 0;
+  return {lines, ticked, one, first};
 }
 // The lines of a run's box, a template's steps and its name: their words, a ticked one left out.
 export const captureLines = text => readList(text, {steps: true}).lines.map(l => l.text);

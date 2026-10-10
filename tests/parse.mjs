@@ -274,6 +274,24 @@ addRead('Groceries\n- [x] Eggs\n- [ ] Milk\nx Bread', [['Groceries', false], ['M
 addRead('x Call Sam', [['x Call Sam', false]], 'one line, its chip tapped: the marker\'s words stay in the title', { done: false });
 addRead('- [x] Call Sam', [['[x] Call Sam', false]], 'and a checkbox\'s, without its bullet', { done: false });
 
+// ---------- parents in a pasted list ----------
+// addNest(text, each line's words, the line each is under (its place among them, or null), why, options, whether the
+// first line is a parent as the list is written)
+const addNest = (text, titles, under, why, opts = {}, first = under.includes(0)) => reads.push({ text, lines: titles.map(t => Array.isArray(t) ? t : [t, false]), under, first, why, opts });
+// A heading is a task, and the lines under it, up to the next heading, are its subtasks.
+addNest('## Pack the van\n- Load chairs\n- Tables\n\n## Set the hall\nLights', ['Pack the van', 'Load chairs', 'Tables', 'Set the hall', 'Lights'], [null, 0, 0, null, 3], 'two headings, each over its lines');
+addNest('### Pack the van\n- Load chairs', ['Pack the van', 'Load chairs'], [null, 0], 'a heading with more #s is one too');
+addNest('## A\n### B\nb1\n## C\nc1', ['A', 'B', 'b1', 'C', 'c1'], [null, 0, 1, null, 3], 'a heading with more #s is under the one before it with fewer');
+addNest('## Pack the van', ['Pack the van'], [null], 'a heading alone is a task, without its #s');
+addNest('## [x] Pack the van\n- [x] Load chairs', [['Pack the van', true], ['Load chairs', true]], [null, 0], 'a heading can say it\'s done');
+addNest('To do first\n## Pack the van\n- Load chairs', ['To do first', 'Pack the van', 'Load chairs'], [null, null, 1], 'a line before the first heading is a task of its own');
+addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
+addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, 0, 0, 2], '↳ Under first line tapped on: the first line over every line with no parent', { nest: true });
+addNest('Pack the van\n- Load chairs\n- Tables', ['Pack the van', 'Load chairs', 'Tables'], [null, 0, 0], 'a list with no markers, ↳ Under first line on', { nest: true }, false);
+addNest('## A\n## [x] B\nb1\n### C\nc1', ['A', 'b1', 'C', 'c1'], [null, null, null, 2], 'a done heading left out: its lines are no longer under one', { done: false });
+addNest('#project task\n#5 on the list', ['#project task', '#5 on the list'], [null, null], 'a # with no space after it is a word (Todoist\'s #project)');
+addList('## Wipe down\n- Counter', ['## Wipe down', 'Counter'], 'in a step\'s box a heading is words');
+
 // ---------- checklist steps ----------
 // A step's T#20m, T#40m:roast and {#roast} stay in its title, for parseStep, and nothing reads them as a date or a time.
 add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its words; T#30m is read by parseStep' });
@@ -365,7 +383,8 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
 // Each line's words, whether it's done, and whether its words are where it says they start in the text.
 const readResults = await page.evaluate(reads => reads.map(r => { const list = readList(r.text, r.opts); return { lines: list.lines.map(l => [l.text, l.done]),
-  placed: list.lines.every(l => r.text.slice(l.at, l.at + l.text.length) === l.text), marked: list.lines.map(l => l.mark ? r.text.slice(...l.mark) : '') }; }), reads);
+  placed: list.lines.every(l => r.text.slice(l.at, l.at + l.text.length) === l.text), marked: list.lines.map(l => l.mark ? r.text.slice(...l.mark) : ''),
+  under: list.lines.map(l => l.under), first: list.first }; }), reads);
 const stepResults = await page.evaluate(steps => steps.map(([text]) => parseStep(text)), steps);
 const phraseResults = await page.evaluate(ps => ps.map(([text]) => readStepPhrase(text)?.offset ?? null), phrases);
 const draftResults = await page.evaluate(ds => ds.map(([rows, before]) => {
@@ -445,6 +464,7 @@ reads.forEach((r, i) => {
   const got = readResults[i];
   if (!same(got.lines, r.lines) || !got.placed) { failed++; console.log(`FAIL read ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got)}`); }
   if ('marked' in r && !same(got.marked, r.marked)) { failed++; console.log(`FAIL marked in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.marked)}`); }
+  if ('under' in r && (!same(got.under, r.under) || got.first !== r.first)) { failed++; console.log(`FAIL which line each is under in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.under)}, first ${got.first}`); }
 });
 steps.forEach(([text, title, offset, name, ref, problems], i) => {
   const r = stepResults[i];

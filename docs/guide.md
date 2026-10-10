@@ -286,8 +286,13 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
   off for one task, wrap the whole text in quotes: `"Friday night jazz poster"`.
 - **Pasting a list:** with more than one line in the box, each line becomes a task, with its own dates and shortcuts.
   Bullets, numbering and checkboxes are removed. The
-  whole list goes to one project: add `+orders` to any line. **↳ Under first line** makes the rest subtasks of the
-  first.
+  whole list goes to one project: add `+orders` to any line.
+- **Parents in a pasted list:** a line starting `## `, a heading as Markdown notes write one, is a task, and the lines
+  under it, up to the next heading, are its subtasks; a `###` heading goes under the `##` before it. The chip says what
+  the list makes: **2 tasks + 7 subtasks**. **↳ Under first line** makes the rest subtasks of the first, for a list
+  written without a parent; it shows on by itself when the first line is one, and tapping it off makes them all tasks
+  of their own. In a task's subtask box, and the bottom box while it adds subtasks, a heading goes under the task with
+  its lines under it.
 - **A line that's done already:** an `x` and a space at the start of a line, or a ticked checkbox, adds the task done:
   `x Call the plumber`, `x - Call the plumber`, `[x] Call the plumber`, `- [x] napkins`, `☑ napkins`. It shows ticked
   where it went and leaves with the tasks you ticked, as a tick does; one that repeats moves on to its next date.

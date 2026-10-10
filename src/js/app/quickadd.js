@@ -62,9 +62,18 @@ export default {
   /* A box's text read as a list (readList): its lines, and which say they're done. Quick add and the subtask boxes add
      those done, unless the chip that says so was tapped (ignore.done: a single line then keeps the marker's words, a
      list leaves those lines out); a run's box and a template's boxes leave a ticked line out, as a step is done by
-     doing it. */
+     doing it. Which line is under which is read from the list too, in quick add as its ↳ Under first line has it. */
   readsDone(w){ return w === 'cap' || this.isSubBox(w); },
-  boxList(w){ const b = this.box(w); return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: w === 'cap' && !!b.nest} : {steps: true}); },
+  boxList(w){ const b = this.box(w); return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: w === 'cap' && !!b.nest, flat: w === 'cap' && !!b.flat} : {steps: true}); },
+  /* Quick add's ↳ Under first line, for a pasted list. It shows on by itself when the first line is a parent as the
+     list is written (a heading over its lines): tapped off, the lines are all tasks of their own (`flat`), and again,
+     as written. For a list whose first line isn't one, tapped on, it's the parent of every line with none (`nest`). */
+  get nestOn(){ return this.cap.nest || (!this.cap.flat && this.boxList('cap').first); },
+  tapNest(){
+    const c = this.cap;
+    if (this.nestOn) { if (c.nest) c.nest = false; else c.flat = true; }
+    else if (c.flat) c.flat = false; else c.nest = true;
+  },
   boxLines(w){ return this.boxList(w).lines.map(l => l.text); },
   get capLines(){ return this.boxLines('cap'); },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).

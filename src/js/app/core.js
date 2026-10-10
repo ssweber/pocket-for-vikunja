@@ -12,7 +12,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 // An add box: its text, whether it has focus and where the cursor is (for suggestions), the chips tapped off, whether a
 // pasted list goes under its first line, whether the 🔔 chip is on, whether it's sending, and how many lots of subtasks
 // from it are on their way (addSubtasks).
-export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, remind: false, busy: false, adding: 0});
+export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, flat: false, remind: false, busy: false, adding: 0});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
   project: null, start: null, subPeople: {}, subLabels: {}, subView: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
@@ -146,7 +146,7 @@ export default () => ({
     setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible' && !this.sheet.open && !this.offline && !this.view.loading) this.render(); }, 20000);
     // A date without a time is late only once its day is over; quick add gives it the user's default due time.
     // An emptied add box starts afresh: no chips tapped off.
-    this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.remind = false; } });
+    this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.flat = false; this.cap.remind = false; } });
     this.$watch('sheet.sub.text', v => { if (!v.trim()) { this.sheet.sub.ignore = {}; this.sheet.sub.remind = false; } });
     this.$watch('runInsert.text', v => { if (!v.trim()) this.runInsert.ignore = {}; });
     // What quick add's box adds to, said to a screen reader as it changes on a project's list: not behind a sheet, but

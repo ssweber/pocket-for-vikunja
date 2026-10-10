@@ -76,7 +76,7 @@ export default {
     const items = itemsOf(this.boxItems('cap'), (k, under) => under !== null && {position: k * SPACING}), subs = items.filter(x => x.under !== null).length;
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid, items, files: photos.map(fileEntry)};
-    this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.capPhotos = [];
+    this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.cap.flat = false; this.capPhotos = [];
     if (this.cap.focus) this.$nextTick(() => this.$refs.capture.focus());   // to type the next one
     try {
       // Saved first, with its photos, and on screen at once, where it'll be: it looks waiting only if sending takes a while.

@@ -454,6 +454,25 @@ try {
     await page.unroute('**/api/v2/tasks/*/relations', lose);
   });
 
+  await step('a-pasted-list-with-several-parents-waits-and-keeps-its-shape', async () => {
+    // Two headings, each over its lines, one line done already. Added while Vikunja can't be reached, each parent waits
+    // on Today with its lines under it, not rows of their own; sent, each line is under the one it was under, and the
+    // done one is done.
+    const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
+    await page.route('**/api/v2/projects/*/tasks', drop);
+    await page.fill('#in-capture', `## ${T('H1')} tomorrow\n- ${T('H1a')}\n- [x] ${T('H1b')}\n## ${T('H2')} tomorrow\n- ${T('H2a')}`);
+    await page.click('#f-capture .go');
+    await page.waitForSelector(pendingRow(T('H1')));
+    await page.waitForSelector(pendingRow(T('H2')));
+    if (await page.isVisible(pendingRow(T('H1a'))) || await page.isVisible(pendingRow(T('H2a')))) throw new Error('a subtask is shown in Today');
+    await page.unroute('**/api/v2/projects/*/tasks', drop);
+    await online();
+    await synced(page);
+    const subs = async t => ((await (await api('/tasks/' + (await byTitle(t))[0]?.id)).json()).related_tasks?.subtask || []).map(s => [s.title, s.done]).sort();
+    if (JSON.stringify(await subs(T('H1'))) !== JSON.stringify([[T('H1a'), false], [T('H1b'), true]])) throw new Error('under the first heading: ' + JSON.stringify(await subs(T('H1'))));
+    if (JSON.stringify(await subs(T('H2'))) !== JSON.stringify([[T('H2a'), false]])) throw new Error('under the second: ' + JSON.stringify(await subs(T('H2'))));
+  });
+
   await step('waiting-work-from-an-older-pocket-moves-over', async () => {
     // An older Pocket kept its outbox in localStorage. Opening this one moves it to the database, and sends it.
     await context.setOffline(true);
