@@ -2093,10 +2093,16 @@ try {
       await expect(movedLine('Moved to today')).toBeVisible();
       await synced(page);
       if (new Date(await due(late)).toDateString() !== new Date().toDateString()) throw new Error('Today tapped: ' + await due(late));
+      // A row that moved and stayed in sight is a line in its place for its Undo's few seconds, with nothing to hold:
+      // then the line goes, and the row is back.
+      await later(5000);
+      await expect(page.locator('.row-line, .place-line[data-place="cap"]')).toHaveCount(0);
+      await expect(page.locator(B)).not.toHaveClass(/\blined\b/);
       // Pick a date…, in the middle, where the finger was, at least 56px each way: it opens the phone's own date picker,
-      // straight from the tap (only noted here: a headless browser shows none), and the day picked there moves the task
-      // as a date does, at its time, with the same Undo.
-      await page.evaluate(() => { window.pickedFrom = []; HTMLInputElement.prototype.showPicker = function(){ window.pickedFrom.push(this.className + (navigator.userActivation?.isActive ? '' : ', but not from a tap')); }; });
+      // straight from the tap (only noted here, and put back after: a headless browser shows none), and the day picked
+      // there moves the task as a date does, at its time, said by its day as the phone writes it, with the same Undo.
+      await page.evaluate(() => { window.pickedFrom = []; window.pickerWas = HTMLInputElement.prototype.showPicker;
+        HTMLInputElement.prototype.showPicker = function(){ window.pickedFrom.push(this.className + (navigator.userActivation?.isActive ? '' : ', but not from a tap')); }; });
       const from = await openDates(B, b), pick = menu(b).getByRole('button', { name: 'Pick a date…' }), box = await pick.boundingBox();
       if (!(box.x <= from.x && from.x <= box.x + box.width && box.y <= from.y && from.y <= box.y + box.height) || box.width < 56 || box.height < 56) throw new Error('Pick a date… isn\'t where the finger was, 56px each way: ' + JSON.stringify([box, from]));
       await pick.click();
@@ -2105,10 +2111,11 @@ try {
       if (await page.locator('.throw-date').getAttribute('min') !== asPicked(new Date())) throw new Error('the picker\'s first day isn\'t today');
       await page.locator('.throw-date').fill(asPicked(dayAt(9, 22)));
       await expect(page.locator('.throw')).toHaveCount(0);
-      await expect(movedLine(/^\s*Moved to \w{3}, \w{3} \d+/)).toBeVisible();
+      const picked = 'Moved to ' + await page.evaluate(iso => { const d = new Date(iso); return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }); }, dayAt(9, 22));
+      await expect(movedLine(picked)).toBeVisible();
       await synced(page);
       if (!sameTime(await due(b), dayAt(9, 22))) throw new Error('a day picked: ' + await due(b));
-      await movedLine(/^\s*Moved to \w{3}, \w{3} \d+/).getByRole('button', { name: 'Undo' }).click();
+      await movedLine(picked).getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(b), mondayAt(22))) throw new Error('Undo of a day picked left it due ' + await due(b));
       // By the keys: an arrow goes to the date in its direction, and Enter picks it.
@@ -2122,7 +2129,11 @@ try {
       await synced(page);
       if (!sameTime(await due(a), dayAt(1, 21))) throw new Error('Tomorrow by the keys: ' + await due(a));
       await noToast(page);
-    } finally { await page.mouse.up(); await page.keyboard.press('Escape'); for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+    } finally {
+      await page.mouse.up(); await page.keyboard.press('Escape');
+      await page.evaluate(() => { if (window.pickerWas) { HTMLInputElement.prototype.showPicker = window.pickerWas; delete window.pickerWas; } });
+      for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
   });
   await step('a-hold-on-today-leaves-a-repeating-task-where-it-is-and-says-why', async () => {
     const r = await make(`Pocket smoke hold repeats ${stamp}`, { due_date: todayAt(21), repeat_after: 86400 }), R = rowOf(r.title);
@@ -2164,8 +2175,8 @@ try {
   await step('a-held-rows-dates-stay-on-the-screen-for-the-first-row-and-the-last', async () => {
     // The first row on Today (overdue the longest) held near its right end, and the last (due latest in its 7 days) near
     // its left: the whole set moves onto the screen, between the header and the add box, each date still in its place
-    // among the others; and the directions still count from the finger, wherever the set went. On a short screen, so the
-    // last row is by the add box however few tasks Today has.
+    // among the others; and the directions still count from the finger, wherever the set went. On a short screen, cut
+    // shorter still if Today has so few tasks that its last row isn't by the add box.
     const first = await make(`Pocket smoke hold first ${stamp}`, { due_date: new Date(2001, 0, 1, 9).toISOString() }), last = await make(`Pocket smoke hold last ${stamp}`, { due_date: dayAt(7, 23) });
     try {
       await toastGone();
@@ -2175,6 +2186,10 @@ try {
       await loaded(page);
       for (const [t, top, fx] of [[first, true, .9], [last, false, .1]]) {
         await page.evaluate(top => scrollTo(0, top ? 0 : document.documentElement.scrollHeight), top);
+        if (!top) {
+          const row = await page.locator(rowOf(t.title)).boundingBox(), foot = await page.locator('#capture').boundingBox(), gap = foot.y - (row.y + row.height);
+          if (gap > 30) { await page.setViewportSize({ width: 390, height: Math.round(420 - gap + 30) }); await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); }
+        }
         const at = await holdOnToday(rowOf(t.title), { fx, scroll: false }), seen = await datesSeen(), { today, tomorrow, week, none } = seen.chips, where = top ? 'the first row: ' : 'the last row: ';
         for (const [id, k] of Object.entries(seen.chips)) if (k.l < 0 || k.r > seen.width || k.t < seen.top || k.b > seen.foot) throw new Error(`${where}${id} is off the screen, or under the header or the add box: ${JSON.stringify([k, seen.top, seen.foot])}`);
         if (!(today.r <= week.l + 1 && week.r <= tomorrow.l + 1 && week.b <= today.t + 1 && today.b <= none.t + 1) || Math.abs(week.l - none.l) > 1 || Math.abs(today.t - tomorrow.t) > 1) throw new Error(where + 'the dates aren\'t in their places: ' + JSON.stringify(seen.chips));
