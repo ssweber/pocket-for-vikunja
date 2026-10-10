@@ -8,9 +8,9 @@
      reader); where it allows g.reorder (a project, a sheet), held and moved up or down, its place. The gesture code
      reads those off the row (data-gestures, rowGestures), and makes the Delete as the swipe starts, laid under the row
      (swipeOf, progress.js): the row doesn't carry one. Ticked, or deleted, it stays where it is until the batch
-     clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap at its height, holding only
-     "Deleted" and Restore, and a tap anywhere on it restores it (restoreRow); done by a full swipe (swept[t.id]), the
-     same gap, holding "Done" and Undo, a step on a run's screen too. A tick not saved is a line in its place, with Try
+     clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap at its height (gap.html),
+     holding only "Deleted" and Restore, and a tap anywhere on it restores it (tapGap); done by a full swipe
+     (swept[t.id]), the same gap, holding "Done" and Undo, a step on a run's screen too. A tick not saved is a line in its place, with Try
      again (lines.js). One not sent yet (pending) is on its list at once, where
      it'll be; once it has waited a while (waits), it looks it: tinted, its tick dotted. On a project's list it's lit up
      (aimed) while quick add's box adds subtasks at it (lit[t.id]: the row touched last, or the subtask just added from
@@ -39,7 +39,7 @@
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, swept: !!swept[t.id]} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', swept: !!swept[t.id], head: !g.sheet && t.done && !!g.heads?.includes(t.id), pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh.includes(t.id), 'came-due': !g.sheet && flashed.due.includes(t.id), arrived: !g.sheet && flashed.arrived.includes(t.id), sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
-     @click.capture="if (!g.own && !g.top && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))) { $event.stopPropagation(); $event.preventDefault(); restoreRow(t.id) }">
+     @click.capture="tapGap(t, g, $event)">
   <!-- A parent (a run, done or not, or an open task with subtasks): its ring, not a tick (ring.html, rowRing) -->
   <template x-for="r in [rowRing(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/ring.html -->
@@ -76,10 +76,7 @@
   <template x-for="slot in [rowSlot(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/claim-slot.html -->
   </template>
-  <!-- Deleted, or done by a full swipe, until the batch clears: a gap where it was, at its height, so nothing moves,
-       holding only "Deleted" and Restore, or "Done" and Undo, where who's doing it was (the row's tap, above, takes it
-       back) -->
-  <template x-if="!g.own && !g.top && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))"><div class="del-gap"><span class="what"><span x-text="swept[t.id] ? 'Done' : 'Deleted'"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="(swept[t.id] ? 'Undo: ' : 'Restore ') + t.title"><span class="me" x-text="swept[t.id] ? 'Undo' : 'Restore'"></span></button></div></template>
+  <!-- include markup/gap.html -->
   <!-- A step inserted during the run, on its card and not done: likely a mistake, so it can go -->
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>

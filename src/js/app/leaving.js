@@ -99,6 +99,12 @@ export default {
     this.said = m.kind === 'deleted' ? 'Restored: ' + title : m.kind === 'done' ? 'Not done: ' + title : 'Done: ' + title;
     return m.undo?.() || true;
   },
+  /* Whether row `t` of the list `g`, or its card there, is a gap now (markup/gap.html): deleted, or done by a full swipe
+     or from its ring, until the batch clears. Never the sheet's own row nor a run's own, whose marks are their list
+     row's; and a step on a run's screen only when done by a full swipe, as a step deleted has no gap. */
+  isGap(t, g){ return !g.own && !g.top && !!(this.swept[t.id] || (!g.run && this.leaving[t.id] === 'deleted')); },
+  // A tap anywhere on a gap takes back what made it (restoreRow), and goes no further: to its tick, its title or its slot.
+  tapGap(t, g, e){ if (this.isGap(t, g)) { e.stopPropagation(); e.preventDefault(); this.restoreRow(t.id); } },
   /* A gap tapped: a deleted row restored (unmark), its rows sliding back in from the left, where the delete took them;
      a row done by a full swipe not done again, sliding back in from the right. One held before its mark was made
      (holdRow): once what was done to it has answered, and there's a mark to take back. */

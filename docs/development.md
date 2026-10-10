@@ -6,7 +6,8 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
   markup/      the sign-in screen, the app and its screens, the sheet and each kind of sheet, a task's row
                (task-row.html), one thing in a list with cards: a row, or a stacked card (list-item.html), a
                parent's ring (ring.html), a run's step card (step-card.html), who's doing a task or a step
-               (claim-slot.html), a message in a row's place (row-line.html), one in its place: under a heading, by
+               (claim-slot.html), the gap a row or a card leaves, with its Restore or Undo (gap.html), a message in a row's
+               place (row-line.html), one in its place: under a heading, by
                the add box, in a sheet (place-line.html), what the add box adds subtasks or a run's steps to
                (cap-target.html), and what an add box read, as chips under it (chips.html); in sheet/, a task's sheet (task.html), the card it leads with: its row, notes and
                photos (task-card.html), and the question a parent's ring asks (complete.html)
@@ -411,8 +412,9 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   list from the start, where it'll be (`todayOrder`, `positionOrder`), so it doesn't move once it's sent.
 - A row ticked, opened again or deleted in a list (Today, a project, search, a task's sheet for a deletion) is marked:
   `markRow` (`app/leaving.js`) keeps it where it is, at its height, as `leaving[id]` says (`'done'`, `'open'`,
-  `'deleted'`: a gap at its height, `.del-gap`, holding only "Deleted" and Restore where its slot was; tapped, the row
-  slides back in, `restoreRow`; done by a full swipe right, or a parent completed from its ring, the same gap holding
+  `'deleted'`: a gap at its height, `.del-gap`, holding only "Deleted" and Restore where its slot was (`markup/gap.html`,
+  one piece for a row and a card, drawn when `isGap` says so); tapped anywhere (`tapGap`), the row slides back in,
+  `restoreRow`; done by a full swipe right, or a parent completed from its ring, the same gap holding
   "Done" and Undo, `gap: true`, kept in `swept`), with the rows that go with it (subtasks closed with a parent, or
   deleted with it). Its tick meanwhile is the mark's `undo` (`unmark`, from `tickRow`); a deleted row's
   tap anywhere restores it. A row is held as its mark will have it from the moment it's ticked or let go, before
@@ -509,7 +511,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   deepest first; a list with several parents and subtasks of subtasks, an entry kept from before, a waiting line
   cancelled, and what its Cancel is called; a subtask added from the add box lit at once, on its waiting row and once it's sent, now or later, one added done, called off or turned down leaving the light on its task, as the lit one ticked does, held done meanwhile, saved or not, and a tick taken back while its row is still held lighting it once it's open; and what a box says it read: the Done chip, a list's count tapped to leave those lines out, ↳ Under
   first line on by itself, a project's heading left out (`adding.test.mjs`); the one
-  copy of each task, a repeating one shown done kept so through a load (`tasks.test.mjs`); what the one row asks by its options: a step's tick, what's under its title (the
+  copy of each task, a repeating one shown done kept so through a load (`tasks.test.mjs`); what the one row asks by its options: a step's tick, which rows and cards are a gap (deleted, or done by a full swipe; never the sheet's own row or a run's) and a tap on one taking it back, what's under its title (the
   sheet's own row only when it's due; a run's row nothing, who it's for in its slot; a run's step without a 🔔) and
   who's on it, what a finger can do on each screen's rows (Delete everywhere, moved on a project and in a sheet, its dates
   on Today, nothing more in search), a run's step swiped (only an inserted one on into a Delete), a done step swiped

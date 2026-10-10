@@ -33,6 +33,23 @@ test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a t
   assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
 });
 
+/* A row, or a card, that's a gap (markup/gap.html): deleted, or done by a full swipe, until the batch clears. One
+   rule says which (isGap), for the gap's drawing and for the tap that takes it back, a row's and a card's alike. */
+test('a row deleted or done by a full swipe is a gap, a card too; a tap anywhere on it takes it back and goes no further', () => {
+  const app = component(views, leaving), LIST = { depth: {} }, CARDS = { depth: {}, cards: 'list' }, did = [];
+  Object.assign(app, { leaving: { 1: 'deleted', 2: 'done', 3: 'done' }, swept: { 3: true }, restoreRow: id => did.push(['restore', id]) });
+  const tap = (id, g) => { const e = { stopPropagation: () => did.push('stop'), preventDefault: () => did.push('prevent') }; app.tapGap({ id }, g, e); return did.splice(0); };
+  assert.deepEqual([1, 2, 3, 4].map(id => app.isGap({ id }, LIST)), [true, false, true, false], 'deleted; ticked, which stays a row; done by a full swipe; not marked');
+  assert.deepEqual([1, 2, 3].map(id => app.isGap({ id }, CARDS)), [true, false, true], 'a card, in its list');
+  assert.deepEqual([1, 3].map(id => app.isGap({ id }, { depth: {}, sheet: true })), [true, true], 'a subtask in a sheet');
+  assert.deepEqual([1, 3].map(id => app.isGap({ id }, RUN)), [false, true], 'a step on a run\'s screen: only done by a full swipe');
+  assert.deepEqual([1, 3].flatMap(id => [SHEET_ROW, { depth: {}, top: true }].map(g => app.isGap({ id }, g))), [false, false, false, false], 'never the sheet\'s own row, nor a run\'s own');
+  assert.deepEqual(tap(1, LIST), ['stop', 'prevent', ['restore', 1]], 'a gap tapped: restored, and the tap is no one else\'s');
+  assert.deepEqual(tap(3, CARDS), ['stop', 'prevent', ['restore', 3]]);
+  assert.deepEqual(tap(2, LIST), [], 'a row that isn\'t a gap: the tap goes on to its tick or its title');
+  assert.deepEqual(tap(1, SHEET_ROW), []);
+});
+
 /* A tap on a tick is felt (rows-and-sheet-fixes-plan, part 2), through haptic(), which the phone's vibrate stands in
    for here: a task's, a subtask's in its sheet and the sheet's own, where it's tapped (tickRow); a step's in tickStep,
    from its box or its card's Done, but not when a swipe did it, which was felt as it passed its full point. */
