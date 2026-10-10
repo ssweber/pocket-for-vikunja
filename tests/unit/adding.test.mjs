@@ -283,6 +283,19 @@ test('a pasted list with indented lines: each under the line above it that\'s in
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['Tables', null]]);
 });
 
+test('a first line ending with a colon is the parent of the rest in quick add, its colon taken off; ↳ Under first line tapped off keeps it', () => {
+  const app = boxes();
+  app.cap.text = 'Groceries:\nmilk\n- [x] eggs';
+  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 arrives done', '1 task + 2 subtasks', 'Café'], true]);
+  assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under]), [['Groceries', null], ['milk', 0], ['eggs', 0]]);
+  app.tapNest();
+  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 arrives done', '3 tasks', 'Café'], false]);
+  assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under]), [['Groceries:', null], ['milk', null], ['eggs', null]]);
+  // A subtask box has no ↳ Under first line to tap it off with: the colon is a title's there.
+  app.sheet.sub.text = 'Groceries:\nmilk';
+  assert.deepEqual(app.boxItems('sub').map(x => [x.p.title, x.under]), [['Groceries:', null], ['milk', null]]);
+});
+
 /* Subtasks from the add box on a project's list (addSubtasks, actions.js): the next go after the last that's the
    task's own subtask, not after one under it. */
 test('subtasks added from the add box with lines under them: the box\'s next go after the last of the task\'s own', async t => {

@@ -299,6 +299,14 @@ addNest('Pack the van\n  - [x] Load chairs\n      Stack them\n  Tables', ['Pack 
 addNest('Pack the van\n  Load chairs\nSet the hall\n  Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
 addNest('Order cups\nPack the van\n  Load chairs', ['Order cups', 'Pack the van', 'Load chairs'], [null, 0, 1], '↳ Under first line tapped on, the first line not a parent as written: over the lines with no parent', { nest: true }, false);
 addList('Wipe down\n  Counter\n    Under it', ['Wipe down', 'Counter', 'Under it'], 'in a step\'s box indenting isn\'t read');
+// For typing: a first line ending with a colon is the parent of the rest, its colon taken off (quick add's box only).
+addNest('Groceries:\n- milk\n- eggs', ['Groceries', 'milk', 'eggs'], [null, 0, 0], 'a first line ending with a colon', { colon: true });
+addNest('Groceries tomorrow: \nDairy\n  milk\nBread', ['Groceries tomorrow', 'Dairy', 'milk', 'Bread'], [null, 0, 1, 0], 'over the lines with no parent of their own', { colon: true });
+addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], '↳ Under first line tapped off: tasks of their own, the colon staying in its title', { colon: true, flat: true }, true);
+addNest('Groceries:', ['Groceries:'], [null], 'one line: as typed', { colon: true });
+addNest('Note: buy milk\neggs:', ['Note: buy milk', 'eggs:'], [null, null], 'only the first line, and only at its end', { colon: true });
+addNest('Groceries:\n- [x] milk', ['Groceries:'], [null], 'with its only line left out, it\'s one task, as typed', { colon: true, done: false });
+addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], 'a subtask box doesn\'t read it');
 addList('## Wipe down\n- Counter', ['## Wipe down', 'Counter'], 'in a step\'s box a heading is words');
 
 // ---------- checklist steps ----------

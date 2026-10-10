@@ -290,11 +290,13 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
 - **Parents in a pasted list:** a line starting `## `, a heading as Markdown notes write one, is a task, and the lines
   under it, up to the next heading, are its subtasks; a `###` heading goes under the `##` before it. A line indented
   more than the line above it is under that line, to any depth, as in Vikunja's web app: spaces or tabs, of any width.
+  And for typing, a first line ending with a colon, `Groceries:`, is the parent of the rest, the colon taken off, as a
+  list starts in a message.
   The chip says what
   the list makes: **2 tasks + 7 subtasks**. **↳ Under first line** makes the rest subtasks of the first, for a list
   written without a parent; it shows on by itself when the first line is one, and tapping it off makes them all tasks
   of their own. In a task's subtask box, and the bottom box while it adds subtasks, a heading or an indented line goes
-  under the line it's under, which goes under the task.
+  under the line it's under, which goes under the task; a first line's colon isn't read there.
 - **A line that's done already:** an `x` and a space at the start of a line, or a ticked checkbox, adds the task done:
   `x Call the plumber`, `x - Call the plumber`, `[x] Call the plumber`, `- [x] napkins`, `☑ napkins`. It shows ticked
   where it went and leaves with the tasks you ticked, as a tick does; one that repeats moves on to its next date.

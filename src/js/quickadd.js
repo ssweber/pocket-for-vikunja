@@ -280,11 +280,13 @@ const HEADING = /^(#{2,6})\s+/;
    the lines under one going under what it was under.
    Which line is under which is read from the list: its headings, and its indenting, as in Vikunja's web app: a line
    indented more than the line above it is under it, to any depth, in spaces or tabs of any width (a tab counts as
-   four spaces). Quick add's ↳ Under first line changes that: `nest`, the first line is the parent of every line with
-   none; `flat`, they're all tasks of their own.
+   four spaces). And, in quick add (`colon`), from a first line ending with a colon, "Groceries:", as a list starts in
+   a message: it's the parent of every line with none, its colon taken off. Quick add's ↳ Under first line changes
+   that: `nest`, the first line is the parent of every line with none; `flat`, they're all tasks of their own, a
+   first line's colon staying in its title.
    `steps`: a run's box and a template's steps, where a step is done by doing it: a ticked checkbox's line is left
    out, an x is a word, and so is a heading's #. */
-export function readList(text, {steps = false, done = true, nest = false, flat = false} = {}){
+export function readList(text, {steps = false, done = true, nest = false, flat = false, colon = false} = {}){
   const rows = [];
   let at = 0, ticked = 0;
   for (const raw of String(text || '').split('\n')) {
@@ -315,8 +317,9 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
     lines.push(r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null, under} : {text: r.text, at: r.at, done: r.done, mark: r.mark, under});
     (r.level ? heads : above).push({level: r.level, indent: r.indent, k: lines.length - 1});
   }
-  const first = lines.some(l => l.under === 0);
-  for (const [i, l] of lines.entries()) if (flat) l.under = null; else if (nest && i && l.under === null) l.under = 0;
+  const led = colon && lines.length > 1 && /\S:$/.test(lines[0].text), first = led || lines.some(l => l.under === 0);
+  if (led && !flat) lines[0].text = lines[0].text.slice(0, -1).trimEnd();
+  for (const [i, l] of lines.entries()) if (flat) l.under = null; else if ((nest || led) && i && l.under === null) l.under = 0;
   return {lines, ticked, one, first};
 }
 // The lines of a run's box, a template's steps and its name: their words, a ticked one left out.

@@ -1040,6 +1040,26 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
+  /* For typing: a first line ending with a colon is the parent of the rest, its colon taken off. ↳ Under first line
+     shows on, and tapped off makes them all tasks of their own. */
+  await step('a-first-line-ending-with-a-colon-is-the-parent-of-the-rest', async () => {
+    const p = `Pocket smoke colon ${stamp}`, sub = n => `Pocket smoke after ${n} ${stamp}`;
+    await page.fill('#in-capture', `${p} tomorrow:\n${sub('a')}\n${sub('b')}`);
+    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
+    await chipsSay('1 task + 2 subtasks');
+    await nestChip.click();
+    await expect(nestChip).toHaveAttribute('aria-pressed', 'false');
+    await chipsSay('3 tasks');
+    await nestChip.click();
+    await chipsSay('1 task + 2 subtasks');
+    await page.click('#f-capture .go');
+    await expect(page.locator(`#view ${cardOf(p)} > .card-head > .ring .n`)).toHaveText('0/2', { timeout: 20000 });
+    await synced(page);
+    const made = await taskTitled(p);                                             // its title without the colon
+    if (!made) throw new Error('no task titled ' + p);
+    madeFrom.push(...(await get(made.id)).related_tasks?.subtask || [], made);
+    if (JSON.stringify(await subsDone(made.id)) !== JSON.stringify([[sub('a'), false], [sub('b'), false]])) throw new Error('under it: ' + JSON.stringify(await subsDone(made.id)));
+  });
   await step('parents-in-a-pasted-list-clean-up', async () => { for (const t of madeFrom) await api('/tasks/' + t.id, { method: 'DELETE' }); });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger

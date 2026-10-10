@@ -64,10 +64,15 @@ export default {
      list leaves those lines out); a run's box and a template's boxes leave a ticked line out, as a step is done by
      doing it. Which line is under which is read from the list too, in quick add as its ↳ Under first line has it. */
   readsDone(w){ return w === 'cap' || this.isSubBox(w); },
-  boxList(w){ const b = this.box(w); return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: w === 'cap' && !!b.nest, flat: w === 'cap' && !!b.flat} : {steps: true}); },
+  boxList(w){
+    const b = this.box(w), cap = w === 'cap';
+    return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap} : {steps: true});
+  },
   /* Quick add's ↳ Under first line, for a pasted list. It shows on by itself when the first line is a parent as the
-     list is written (a heading over its lines): tapped off, the lines are all tasks of their own (`flat`), and again,
-     as written. For a list whose first line isn't one, tapped on, it's the parent of every line with none (`nest`). */
+     list is written (a heading over its lines, lines indented under it, or its colon, "Groceries:"): tapped off, the
+     lines are all tasks of their own (`flat`), and again, as written. For a list whose first line isn't one, tapped
+     on, it's the parent of every line with none (`nest`). A subtask box has no such chip, so a first line's colon
+     isn't read there: it stays in its title. */
   get nestOn(){ return this.cap.nest || (!this.cap.flat && this.boxList('cap').first); },
   tapNest(){
     const c = this.cap;
