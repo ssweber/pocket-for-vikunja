@@ -102,10 +102,12 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   less motion asked for on the phone, ticked tasks fade out rather than fold away.
 - **Progress:** swipe a task to the right, with no need to hold it first. As it slides, the space it leaves on the left
   is green, with a large ring that fills to 25%, then 50%, then 75% over the first half of the row, with a tick at each
-  on a phone that can. Nothing changes until you let go: then the progress shown is set, and the row springs back, its
-  tick showing the quarter. Swipe on past half the row, until the green fills it and the ring shows ✓, and let go: the
-  task is done, the row carries on off the screen to the right, and its place stays as a gap with "Done" and **Undo**
-  until the ticks leave together. Near the screen's right edge, the stops come closer, so done is always within reach.
+  on a phone that can. Nothing changes until you let go: then the progress shown is set, and the row slides back, its
+  tick showing the quarter. Swipe on past half the row, until the green turns solid and the ring shows ✓, and let go:
+  the task is done, the row slides on off the screen to the right, and its place stays as a gap with "Done" and
+  **Undo** until the ticks leave together. Only the row moves: the green and its ring stay where they are under it,
+  so the motion stays smooth on a phone that's saving power. The gap is there as soon as the row has gone, on a slow
+  connection too; if the task can't be saved, the row comes back and says so, with **Try again**. Near the screen's right edge, the stops come closer, so done is always within reach.
   To lower it, swipe a task with progress to the left: the ring empties a quarter at a time and stops at 0%, however far
   you pull, and lets go the same way. A done task swiped left opens again, at 75% and on down. The swipe takes over only
   once your finger is clearly going sideways, so a scroll never catches, and not from the screen's very edge, where the
@@ -120,7 +122,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   your finger lifts, so the tasks under it never move while you're touching the list. Swiping never selects text, the
   task's or any near it; a task's notes and comments can still be selected to copy, by holding them. On an iPhone,
   Safari has no way to make the phone tick, so Pocket uses a trick that works since iOS 18 and may stop working; the
-  ring's pie always steps at each stop as well, with nothing bouncing.
+  ring's pie always steps at each stop as well, with nothing bouncing. A tap on a tick is felt too, a task's or a
+  checklist step's: a firmer tick when it marks it done, as a full swipe gives, and a light one when it opens it again.
 - **Finishing a task with subtasks:** its ring is its progress, worked out from its subtasks: each counts its own
   progress, a done one 100%, and the ring shows the average, with how many are done inside it ("1/4"). One subtask at
   50% of four is 13%. Pocket writes that figure to the task's progress in Vikunja too, as its subtasks change. Ticking
@@ -157,14 +160,14 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   tasks were made, and can't be reordered. A checklist's steps keep an order of their own (see **In Vikunja's web
   app**, under Checklists).
 - **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
-  past half the row, until the red fills it (and, on a phone that can, you feel a tick), and let go. A task with
+  past half the row, until the word Delete steps to the middle of the row (and, on a phone that can, you feel a tick), and let go. A task with
   progress first swipes down to 0% (see **Progress**), so it takes a second swipe to delete: a slip can't. Back under half before you let go, it's only left open. Swipe
-  back, or tap anywhere else, to leave it. Deleted, the row carries on off the screen to the left, and its place stays
+  back, or tap anywhere else, to leave it: the row slides back over the red. Deleted, the row slides on off the screen to the left, and its place stays
   as a gap, at the same height, so nothing moves, with only "Deleted" and **Restore** where "+ me" was: tap anywhere
   on the gap to bring the row back, sliding in from the left. (With less motion asked for on the phone, it doesn't
   slide.) The gap closes with the tasks you ticked, three seconds after the last, and the task is deleted in Vikunja
   then, or as soon as you leave the screen or put Pocket away; nothing is sent before. A task with subtasks asks first,
-  and they go with it. The task's **⋯** deletes it too, the way for a keyboard or a screen reader. Its row turns into the same gap. Without a connection, it's deleted once Pocket reaches Vikunja.
+  before its row goes anywhere, and they go with it; **Cancel** leaves the row where it was. The task's **⋯** deletes it too, the way for a keyboard or a screen reader. Its row turns into the same gap. Without a connection, it's deleted once Pocket reaches Vikunja.
 - **The task sheet** starts with the task's own row, as it is in the list, then its notes and its photos and files
   under it, in one card. The row works as in a list: tap the tick, swipe it for its progress (all the way ticks it,
   right there), or swipe it left at 0% to delete it, which closes the sheet on the list, where its gap has **Restore**.
