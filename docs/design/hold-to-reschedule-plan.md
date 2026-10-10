@@ -126,4 +126,10 @@ Built on the branch `hold-reschedule` (2026-10-10), from this plan. What it left
 - **A flick** is a let-go under 24px that moved at least 12px at 0.3px/ms or faster.
 - **Found on the way:** a message in its place (by the add box, under a heading, in a sheet) never went after its
   time, as its timer asked about the line as it was put in the component's data, never the copy Alpine gives back
-  (`sayAt`, `src/js/app/lines.js`). Fixed, in a commit of its own, as the Undo's few seconds need it.
+  (`sayAt`, `src/js/app/lines.js`). Fixed, in a commit of its own, as the Undo's few seconds need it. With that, a
+  tick not saved from a task's own sheet keeps its Try again until it's tried or saved (it's the sheet's only word of
+  it), as a save not made there already did; an Undo, an Open, and a line with nothing to tap go after their time.
+- **Run against Vikunja** (2026-10-10): a row that moved and stayed in sight can't be held while its Undo's line is
+  in its place, so the steps wait for the line to go; and an older step, which held a row on Today, moved the finger
+  down and expected nothing, now expects the row lifted with its dates, and nothing changed once it's let go back
+  where it was held.
