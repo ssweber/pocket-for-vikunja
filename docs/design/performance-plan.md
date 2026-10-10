@@ -24,6 +24,8 @@ Nothing here changes what a screen shows.
 
 ## 1. Alpine's scheduler
 
+Built: 5d0950b (Alpine as published, in `src/vendor/`) and 70f4fdd (the scheduler), 2026-10-09.
+
 Alpine 3.17.4 (and its main branch, `packages/alpinejs/src/scheduler.js`) runs reactive updates from a queue that is
 quadratic in three places: before each job of a flush it sorts the rest of the queue again whenever an `x-for`/`x-if`
 job was queued meanwhile, working out each element's depth afresh for every sort; `queueJob` checks
@@ -42,6 +44,8 @@ long list makes thousands of sorts: 56% of the project screen's time.
 
 ## 2. Work done once, not per row
 
+Built: e7ddfb9, 2026-10-09.
+
 - `checklistProjects` and `checklistIds` (`app/checklists.js`) are getters, worked out on every call, and are called
   for every row (`isRunTask`, `isChecklistProject`); each call parses every project's description as HTML. Work them
   out once when the projects change.
@@ -51,6 +55,8 @@ long list makes thousands of sorts: 56% of the project screen's time.
 
 ## 3. Rows leaving after a load
 
+Built: 3982076, 2026-10-09.
+
 - `settle` (`app/views.js`) finds each row that's gone with its own `querySelectorAll` over the page: 12 s when 2,000
   rows go. Find them in one pass.
 - `collapse` sets a style and reads `offsetHeight` for each row, a layout of the page each time: 3.5 s for 2,000 rows.
@@ -59,6 +65,8 @@ long list makes thousands of sorts: 56% of the project screen's time.
 
 ## 4. A project's kept copy and its Done section
 
+Built: 3ad0f68, 2026-10-09.
+
 - A bug: the kept copy of a project reopens Done as it was when the copy was saved, not as it is now
   (`doneOpen`). Open Done in a long project, close it, come back: the copy draws every done row, then the fresh load
   folds each one away. The copy opens Done only if it's open now.
@@ -66,6 +74,8 @@ long list makes thousands of sorts: 56% of the project screen's time.
   fails silently). Keep only Done's count in the copy; its tasks are loaded when it's opened, as now.
 
 ## 5. The first screenful first
+
+Built: aea10ac (Alpine's `x-for`, a second patch), ae26fc8 and 7ce9b7a, 2026-10-09.
 
 A screen draws its first rows (about 20, enough to fill a phone) at once, and the rest in small batches, a frame's
 worth at a time, after the first paint. So the first screen takes the same time however long the list is.
@@ -83,6 +93,9 @@ worth at a time, after the first paint. So the first screen takes the same time 
 
 ## 6. Opening without waiting
 
+Built: a4a0d29 (the kept screen first), 41ea0e4 (the saved page first) and ffac6df (the compressed page),
+2026-10-09.
+
 - **Kept screen first** (the user: yes, same sign-in only). `boot` (`app/auth.js`) shows the kept copy of the screen
   before asking Vikunja for `/user` and the projects, when the session's token is the one Pocket last confirmed as
   this person's (kept with the copies); then checks `/user` behind it and loads as now. If the person turns out to be
@@ -95,6 +108,8 @@ worth at a time, after the first paint. So the first screen takes the same time 
   page as now otherwise. Still only serves files. CI's check that the page is the build of `src/` covers them too.
 
 ## 7. Fewer round trips
+
+Built: 21c4444, 2026-10-09.
 
 - `allPages` (`api.js`) asks for page 1, then all the rest at once, at the server's `max_items_per_page` from `/info`
   (50 if it doesn't say). Measured: 690 open tasks 1.5 s → 0.3 s, 3,000 done 7.5 s → 0.4 s.
@@ -109,6 +124,8 @@ worth at a time, after the first paint. So the first screen takes the same time 
 
 ### 5b. The rest in batches of about a second (the user, 2026-10-10)
 
+Built: 5c732a0, 2026-10-10.
+
 Measured after part 5: on a phone, every frame has a fixed cost to lay out and paint the page, growing with the rows
 on it, so a batch a frame made drawing everything slower than before (Done 45 s → up to 67 s). Drawing the rest in
 one go was fastest but leaves the screen deaf to taps for seconds once it looks ready. The user chose: the first 20
@@ -116,6 +133,8 @@ rows at once, frame batches up to about 3 screens (60 rows), then batches of abo
 is answered within about a second. The scroll trigger and the draw-the-rest before a held row moves stay as guards.
 
 ## 9. Done shows its latest 100 (the user, 2026-10-10)
+
+Built: dcabdeb, 2026-10-10.
 
 Since part 7 a project's Done reads every done task (no 40-page stop): 3,000 rows, about 100 s to draw on a slow
 phone. Nobody scrolls through them; they come to tick one back or to check something was done lately.
@@ -145,6 +164,9 @@ phone. Nobody scrolls through them; they come to tick one back or to check somet
 - What's shared or copied from a project (`share.js`) says what the screen shows (rule 9): check how it treats Done.
 
 ## 8. Tests, docs and the harness
+
+Built: fe9c24c and 280ecc3 (the tests, and three checklists tests brought up to a run's own row), the docs and
+the harness after them, 2026-10-10.
 
 - End-to-end tests for what changed, in the file for each area: the kept copy of a project with Done closed after it
   was open; a screen's rows all there after the batches; Pocket opening on its kept screen with Vikunja slow to answer.

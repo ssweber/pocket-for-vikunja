@@ -205,7 +205,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   @priya`. **Open in Vikunja ↗** opens the task, the project or the run in Vikunja's web app. In a task's sheet, the
   copy button beside **Notes** copies its notes as plain text, and the one on each comment copies that comment.
 - **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
-  number. A ticked result moves from Open to Done. A task found with open subtasks is a card, folded to its top row, as on
+  number. A ticked result moves from Open to Done. Done shows the 50 done most recently, with a row at its end for 50
+  more. A task found with open subtasks is a card, folded to its top row, as on
   Today; a subtask whose task isn't found is a row of its own, saying which task it's under: "↳ Pack the van". Checklist templates and their steps aren't in it: they're under **Checklists** (a template that comes
   round, due, is found).
 - **Where Pocket says what happened:** in the place it happened, not at the bottom of the screen. A tick or a deletion
@@ -229,8 +230,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   and a project shared with you to read only can't be added to this way. Today's box always adds a task. On a run's
   screen, the box adds steps (below).
 - **Projects:** your project tree with favorites, and the tasks in each: its open tasks, in order, then its done tasks
-  in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. Tick
-  one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
+  in a section of their own, folded, with how many: tap **Done (24)** to open it, the most recently done first. It
+  shows the 100 done most recently; with more, a row at its end, **Show 100 more, done before these**, shows the next
+  100 (it says how many are left), and each visit to the project starts again at 100. Tick one there to open it again; it goes back among the open tasks. Pocket remembers, for each project, whether you left
   its Done section open. A done task with subtasks still open (ticked done in Vikunja's web app, which leaves its
   subtasks open, or one of them opened again since) stays among the open tasks, a card with its title struck through,
   over those subtasks, so they're never left on their own as if they had no parent. Tap its title to open its sheet;
@@ -529,6 +531,11 @@ let reminders ring the phone too.
 
 ## Opening at once
 
+Pocket opens at once, from the copy of itself it saved, and fetches itself behind it: a new version shows the next time
+it opens, or as soon as it finds one (when you come back to it, or tap refresh) and you aren't in the middle of
+something. Signed in as you were last time, it shows the screen you were on before Vikunja has answered, and sends
+nothing you do until Vikunja has said it's you.
+
 Today, a project, Checklists and Projects open at once, with the copy of them Pocket kept last time, while it loads
 them again behind. Anything changed since then changes in place: a row ticked elsewhere folds away, one added elsewhere
 fades in, and the rest stay as they are, under your thumb. If loading takes over a second, a thin line runs under the
@@ -607,7 +614,9 @@ A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn
   Vikunja does. To revoke an API token entirely, delete it in Vikunja.
 - To open at once and offline, Pocket keeps the lists it last loaded, what's waiting to be sent, and what you're still
   writing, in the browser on that device. Signing out removes them, and asks first if something is still waiting.
-  Someone else signing in on that device never sees them: Pocket drops another account's lists before showing any.
+  Someone else signing in on that device never sees them: Pocket drops another account's lists before showing any. To
+  know a sign-in is the one it last saw as yours, it keeps a fingerprint of it (its SHA-256 hash), never the sign-in
+  itself.
 - Notes and comments are cleaned before they're shown, and attachments other than images, PDFs and plain text are
   downloaded instead of opened. Together, these stop content from people you share projects with from running code
   inside Pocket, which shares its web address with Vikunja.

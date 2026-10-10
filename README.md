@@ -92,7 +92,8 @@ Pocket needs Vikunja 2.7 or later.
 
 [^env]: Vikunja set up with environment variables instead (in Docker, say) takes `VIKUNJA_SERVICE_MAXITEMSPERPAGE=500`.
 
-**Updating:** unzip a newer release over `plugins/pocket/`, then reopen Pocket while online. Vikunja needs a restart
+**Updating:** unzip a newer release over `plugins/pocket/`, then open Pocket while online: it fetches the new version
+behind the one it saved, and shows it the next time it opens, or when you come back to it. Vikunja needs a restart
 only for a changed `main.go`, and the version in its log comes from there: a restart shows the new one.
 
 ## Using it

@@ -17,9 +17,12 @@ src/           the app's code, which npm run build makes into pocket/app/index.h
                brings one onto Today; progress.js: a swipe's sums and a parent's worked-out figure; throw.js: the ring
                of dates a task held on Today is thrown at); and app/, the parts of the component (app/throw.js
                draws and follows that ring)
+  vendor/      Alpine as published, patched for long lists (alpine-3.17.4.js), which the build minifies into
+               pocket/app/ (Upgrading the libraries, below)
 pocket/        the plugin, as it's installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
-  app/         the built app, the libraries it uses, and sw.js, which lets it open offline
+  app/         the built app (index.html, and index.html.br and .gz, the same page compressed), the libraries it uses,
+               and sw.js, which lets it open offline
 tests/         the test files described below, helpers.mjs (what the end-to-end ones share), and unit/, the tests
                that need no browser
 scripts/       build.mjs: the build; dev.mjs: a local Vikunja with the plugin loaded; demo.mjs: the README's GIFs and
@@ -32,7 +35,7 @@ docs/          this file, guide.md (everything the README leaves out), design-ru
   design/      plans for features, written before building them
 ```
 
-The app is plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. It's written in `src/`, and `npm run build` puts it all into one file, `pocket/app/index.html` (with `pocket.js.map` next to it, so the browser's developer tools show the code as it's written in `src/`). Both are committed, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/`'s copy: CI checks that it's the build of `src/`. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
+The app is plain CSS, and JavaScript that uses [Alpine.js](https://alpinejs.dev) to keep the screen in sync with the data. It's written in `src/`, and `npm run build` puts it all into one file, `pocket/app/index.html` (with `pocket.js.map` next to it, so the browser's developer tools show the code as it's written in `src/`). Both are committed, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/`'s copy: CI checks that it's the build of `src/`. The build also writes the page compressed, `index.html.br` (brotli) and `index.html.gz`, committed with it: `main.go` sends the one a browser takes, the page a fifth of its size, and never serves them by their own names. They're made again only when they don't decode to the page, and are the same bytes on every computer, so CI's check covers them too. Dates are read by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (see `parseCapture`).
 
 How Pocket looks and what a finger does on it follow nine rules, in [`design-rules.md`](design-rules.md): up and down
 finds and organizes, left and right acts, every gesture has a tap path, a row acts the same everywhere, and so on.
@@ -276,10 +279,46 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   aria-busy>`), and taking over a second, `view.behind` shows a line under the header. The fresh lists replace the
   copy's in place: rows are keyed by task id, so a row that didn't change is the same element; `settle` folds away the
   rows gone first and fades in the ones new to the screen (`flashed.arrived`). A copy's tasks are the store's where
-  those are as new (`keptRows`, by `updated`), and none deleted this session. Each loader reads (`readToday`,
+  those are as new (`keptRows`, by `updated`), and none deleted this session; a task loaded again has only the fields
+  that changed written to it (`keep`, `app/tasks.js`), so a row whose task didn't change has nothing to do. A project's
+  copy keeps its Done section's count, not its tasks (`keptGroups`, `lists.js`: thousands would fill the phone's
+  storage), and opens Done only if it's open now (`doneOpen`). Each loader reads (`readToday`,
   `readProject`, `readChecklists`) apart from putting it on screen, so `preload` can load the copies of the other tabs
   in the background (`preloads`: Today, the project opened last, Checklists), one at a time when the phone is idle,
   without touching the screen or the store.
+- Opening Pocket doesn't wait for the network. `sw.js` answers it from the page it saved, and fetches the page behind
+  it to save for next time: a new version shows on the next opening, or sooner, when `updateIfNew` finds it (coming
+  back to Pocket, or refresh) and nothing is being written; with no page saved, or a 5xx, as before. Then `boot`
+  (`app/auth.js`) shows the kept screen before asking Vikunja for `/user` and the projects, when the sign-in is the one
+  Pocket last confirmed as this person's: `keepWho` keeps its token's SHA-256 (never the token) beside their copies,
+  as `saved.who`, and `keptUser` checks it. Until `/user` answers, a change waits and the outbox isn't sent (`opening`,
+  `api.js`); then it goes only if it's still the same person, and someone else has everything kept cleared at once
+  (`switchAccount`). Any other sign-in (the web app may have renewed the session) waits for Vikunja, as does a screen
+  with no copy.
+- A long screen is drawn in batches (performance-plan, part 5), so its first screenful takes the same time however
+  long its lists are. `render` calls `drawFrom(0)`: the first `FIRST_ROWS` (20, enough to fill a phone) at once, then,
+  after they're painted, a batch at a time, each a frame's work (`FRAME_MS`) for the first three screens
+  (`NEAR_ROWS`) and then about a second's (`LATER_MS`), so taps and scrolls are answered between them (`batchMs`,
+  `nextBatch`, in `lists.js`). `drawTo` is how many of the screen's rows are drawn, down its lists in order: each list
+  draws `drawn(g)`, its share of them (`drawnOf`, by `listGroups`' `before`, the rows above it). Until every row is
+  drawn, `drawing` keeps the screen busy (`<main id="view" aria-busy>`), so the tests' `loaded()` waits for them, and
+  `preload` waits too. Scrolling down to within a screen of the end of what's drawn draws the rest at once
+  (`drawAll`), so the end of what's drawn is never taken for the end of the list. A list added to a screen goes
+  through `drawn(g)` too: its `x-for` is handed the list as it is, not as Alpine watches it (`raw`), and keyed by a path
+  into the item (`:key="t.id"`), which the patched Alpine reads off the item and, for the rows at the start that are
+  where they were, keeps (Upgrading the libraries, below); otherwise each batch goes over every row drawn so far.
+  A row held to move it draws the rest first (`reorderOf`, which needs all its siblings); Done opened, and its row for
+  more, draw from where they start (`drawFrom(n)`). Rows gone after a load are found in one pass (`settle`), and
+  `collapseRows` (`util.js`) folds them only when a few (`FOLD_FEW`) are on screen, reading every height before any
+  animation starts; more, or off screen, simply go.
+- A project's Done shows the 100 done most recently (`DONE_PART`, `lists.js`; performance-plan, part 9), its heading
+  counting them all, from Vikunja's `total` ("Done (3,000)"). `doneTasks` reads a part with `partOf` (`api.js`): as
+  few pages as `max_items_per_page` allows, all at once. At its end, `markup/more-row.html` (`moreOf`, its words
+  `moreDone` in `messages.js`) shows the next 100 (`showMore`), read from how many are shown, any read twice left out;
+  each visit starts again at 100, and a refresh of the screen reads as many as it shows. Search's done matches do the
+  same, 50 at a time (`FOUND_PART`, `foundDone`). A project for checklists reads its done tasks whole, as its Done
+  leaves most of them out (runs' and templates' steps), and shows them 100 at a time. Every other list is read to its
+  end (`allPages`: page 1, then all the rest at once, at the server's `max_items_per_page`, 50 if `/info` doesn't say).
 - A change shows at once, as it'll be; it looks waiting only once it has waited `WAIT_MS` (2.5 seconds, `sync.js`), or
   at once without a connection: `markSlow` (`app/sending.js`) keeps `slow`, the outbox entries that look it, which the
   task row (`waits`), a run's steps (`slow`) and the header's button (`waitShown`) go by. A task not sent yet is on its
@@ -392,18 +431,15 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   sheet, and copied where there's none) and as a Markdown list, with Open in Vikunja's address, and copies a task's notes
   and a comment, opens Today at once with the copy kept of it while its lists answer late (no Loading, a line under the
   header after a second) and changes a row in place, shows a new task at once and dotted only after a few seconds,
-  shows a task with subtasks as a stacked card on Today (its most urgent subtask on top, its header with its ring, its rows indented, its footer's tab and its tap area from the row's foot, More and Less, its top row ticked staying until the batch clears and the next sliding up, a row on it swiped and the parent's figure written, a full swipe's gap, and its ring with one open subtask), collapses an opened card once it's scrolled away or Today is left, brings a task onto Today by a subtask of yours made today without a date (not one made before today), and by a subtask due today, and opens Today with its cards from the copy kept, keeps a long title with no spaces
+  shows a task with subtasks as a stacked card on Today (its most urgent subtask on top, its header with its ring, its rows indented, its footer's tab and its tap area from the row's foot, More and Less, its top row ticked staying until the batch clears and the next sliding up, a row on it swiped and the parent's figure written, a full swipe's gap, and its ring with one open subtask), collapses an opened card once it's scrolled away or Today is left, brings a task onto Today by a subtask of yours made today without a date (not one made before today), and by a subtask due today, and opens Today with its cards from the copy kept, draws a long project's 80 open tasks a batch at a time on a phone's CPU, every row there once it's loaded, shows its Done's 100 done most recently with a row for the last 5, and search's done matches 50 at a time with the same row, opens the project's kept copy with Done closed and no done rows when it was left closed, opens Pocket on that kept screen before Vikunja says who's signed in (a tick made meanwhile sent only after), gets the page compressed from the plugin (brotli and gzip, each the page decoded, and neither served by its own name), keeps a long title with no spaces
   from widening the page, attaches a file and a photo, creates a project, assigns someone, loads a new version of Pocket on refresh, and checks the security measures.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side: signing in and out on either side (keeping what was being written when Vikunja signs you out), single sign-on, renewing an expired sign-in from both at once, and following a switch to another account.
-- `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload and between a task and its label, loses replies (for a task with an @username, with `ASSIGNEE`, and for a subtask link), answers 500, fills up Pocket's storage, adds the same title twice (in Pocket, and on the web then in Pocket), adds a subtask and a comment in a sheet offline, and a subtask from the add box on a project's list (waiting on its parent's card), puts a cancelled task's words back in the box, shows what's waiting in the header and lists it in Waiting to send (dropping one from there), moves over what an older Pocket left waiting, and has two tabs send the same waiting task. `BROWSER=webkit` runs it on Safari's engine.
+- `tests/offline.mjs`: with the connection cut, Pocket must open with the last-loaded list and queue tasks and photos, then send them once back online without adding any twice. It also cuts the connection mid-upload and between a task and its label, loses replies (for a task with an @username, with `ASSIGNEE`, and for a subtask link), answers 500, fills up Pocket's storage, adds the same title twice (in Pocket, and on the web then in Pocket), adds a subtask and a comment in a sheet offline, and a subtask from the add box on a project's list (waiting on its parent's card), puts a cancelled task's words back in the box, shows what's waiting in the header and lists it in Waiting to send (dropping one from there), moves over what an older Pocket left waiting, and has two tabs send the same waiting task. It also opens Pocket again from the page it saved, then from the one fetched behind it. `BROWSER=webkit` runs it on Safari's engine.
 - `tests/checklists.mjs`: checklists end to end, in a project of its own. It uses the project for checklists, makes a template with New template (its sheet's steps numbered plainly, and no Comments, nor in its step's sheet; rows typed with Enter, times in words, a step to count from, a row moved, and Make again after a step's reply is lost), moves a step, held and moved up, and from its ⋯ (only its order line is written, a tapped step has no ↑ ↓, the order stays after a reload, a move cut off goes back, one whose reply is lost stays, and notes and moves saved elsewhere meanwhile are kept), starts runs (a template changed after a start leaves the run as it was; for you, and with `OTHER_USER` for someone else, whose Today and Checklists tab it checks too, with a step of yours they've claimed), ticks, skips, unticks and adds comments (called that, on a step and on the run), ticks a step whose ✅ is refused (kept to try again, with an untick waiting behind it), does again a step someone else skipped, claims a step and lets it go (online, offline, and someone else's, which Done still works on), swipes a step to claim it (kept when swiped back to 0%, never someone else's), checks a run in a project only you can see (no slots on its steps or its card, nor your picture, someone else's still, and a swipe claiming nothing), with its square box, checks the step card and the steps under it (a step put on the card by a tap on its row, a done one too, saying who did it, with no slot; and the card's slot, claimed and let go), checks that a timed step gets a reminder and that a countdown alerts once at zero, checks that a run is a card on Today, its heading its name without its day (and, started from a template that came round, its due time at the right, late), its ring for a tick (2/3, 67%), its next step on top with its countdown, and that a step ticked there gets a ✅, and that a step someone else claims brings your run onto their Today, opens a run and a step from Today and from the run's sheet, keeps a note with its step, sends a note typed before Done, finishes a run and checks the next one's Last time, checks a run in progress is an open card on its project's list (its steps not done its rows, Open counting every open task listed), finishes one from its ring there, after the question names its steps not done in a sentence (a gap with "Done" and Undo, which opens it again; finished again, it goes to Done with the batch), and checks Done (counted once it's opened) has no template, template's step or run's step, and that search finds a template's runs but not the template nor its steps, and a run's step counting down with no 🔔, undoes a start (its line saying only "Started"), and names a run when starting it, renames it and makes it for someone else as well, then instead, from its ⋯, adds steps from the bottom box after the step on the card, each after the last, and repeats the card's step with Repeat, with its Undo (no › on the rows, the line above the box naming where each goes, marked, in their place after a reload, deleted, with a reply lost, offline, ticked before it's sent, and called off, a pasted list in order, and a step put on the card by a nudge, not by a longer scroll; and after the last step with every one done), checks that a run, and its card on Today, open on its next step in order, even one counting down, and that a timed step whose time has come goes before it, swipes a step to set its progress (its tick's pie, 100% done with its ✅ and the gap's Undo, with the bottom box focused, and held past 100% while the screen redraws), with Last time's notes answering late and the steps not moving as they come, checks a run's row under Checklists has its ring and who it's for, with no count of its steps or the next, and no line under it, shares a run's progress with who did each step and its ring's figure (67%, a skipped step counted done), opens the finished run from Last time (with no box at the bottom), then deletes it, cancels a start that waits, and one whose run was copied without a connection after, reads a step's time counted from a step named in words, goes Back from a project to Checklists, and changes, removes and deletes a template's steps, with ⋯ and × only on the step tapped, and writes a step's notes in its own sheet. It writes a template's name and steps with quick add (a person or priority read, shown as chips, sent, and a step changed in place read the same way). A template that comes round: its date and repeat set in its sheet leave it not done, it's on Today with no tick and opens Start, for its assignees; a start ticks it (the run due then, with no repeat or reminders), but not one days before it's due; a lost reply to the tick doesn't skip twice; one left for months moves past now; without a repeat a start ends it; taking its date off leaves it done; and a task with a due date made a template comes round. It checks timed steps: a move refused for counting from a later step, steps added to a template from a pasted list with one refused for an unknown step and a reply lost, and countdowns on the run screen. It also starts a run offline, loses the reply to a step's copy and to a note, and ticks a step offline across a reload, counting down from the tick. Last, it makes a project for checklists with New project.
 - `tests/steptimes.mjs`: the plugin's step times, through the API only, so it needs a Vikunja with them on (`npm run test:local` turns them on). It sets up a template and two runs as Pocket does, then checks that a tick sets the due dates of the steps timed from it, chained and from a name, and moves their reminders with them; that the other run, a template marked done, a done step saved again or labelled change nothing; that a step marked not done takes the due date off the steps waiting on it; that a step done early counts from when it was done; that a run's steps go in the order they were copied, whatever order they're linked in, or in its own order line; that an inserted step isn't the step before, and a step timed from a repeated one counts from the copy, and from the first again once the copy isn't done; that a tick from the web app works too; and that a run keeps its steps' times when its template is changed or deleted, while one started before runs kept them reads its template.
 - **Not yet end to end:** the ring a task held on Today is thrown at is checked only by the unit tests so far
   (`throw.test.mjs`, and its parts of `actions.test.mjs` and `rows.test.mjs`): `smoke.mjs`'s
-  `today-deletes-by-a-swipe-and-a-hold-does-nothing` still expects a hold on Today to do nothing. And a run's own row
-  atop its screen came after the end-to-end tests were last brought up to date: `checklists.mjs`'s `start-a-run`,
-  `a-run-for-someone-else` and `finish-a-run` still read the line it replaced ("For you · started by you", `#run-for`)
-  and a run's row's "For you" under its title.
+  `today-deletes-by-a-swipe-and-a-hold-does-nothing` still expects a hold on Today to do nothing.
 
 ```sh
 npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
@@ -436,8 +472,10 @@ why. Moving the clock on runs everything due meanwhile at once, and what that st
 so it's for a wait that's about time, not one that lets the page settle.
 
 **Waiting for Pocket to load.** A screen opened again shows the copy kept of it at once, with no Loading, and is
-loaded afresh behind it: `loaded(page)`, in `tests/helpers.mjs`, waits until it's loaded (no Loading, and `#view` not
-`aria-busy`), for a test that reads the screen once rather than with `expect`.
+loaded afresh behind it, and a long screen draws its rows in batches: `loaded(page)`, in `tests/helpers.mjs`, waits
+until it's loaded and every row is drawn (no Loading, and `#view` not `aria-busy`), for a test that reads the screen
+once rather than with `expect`. Wait for something on the new screen first: straight after a change of address, the
+old screen isn't busy yet.
 
 **Waiting for Pocket to send.** `<html data-sync>` says where sending stands: `sending`, `waiting` (something is kept
 that can't go now: no connection, a deletion that can still be restored, one Vikunja turned down), or `idle`. `synced(page)`,
@@ -495,6 +533,9 @@ What tripped up earlier work, for whoever starts next.
   come with the run, or under it, and on a card only from the next step on (`readLast`, `lateLast`, `app/runs.js`);
   the test makes them answer late and checks the steps stay put. Something new that loads late above what can be
   touched needs the same care. Measure a row with `steady()`.
+- **A long screen's rows come in batches** (20 at once, then the rest after they're painted): a test that counts rows,
+  or looks for one far down, uses `expect` or waits with `loaded(page)` first. A project's Done shows its latest 100,
+  and search's done matches 50, with a row for more (`#more-done`).
 - **A screen opened again is the copy kept of it first.** A test that reads it once, right after going there, may read
   the old copy: wait with `expect`, or `loaded(page)`. A pending row is `.row.pending` from the start, and `.waits`
   (tinted, its tick dotted) only after `WAIT_MS`: move the page's clock with `later()` to see it.
@@ -545,5 +586,19 @@ server: open the file in a browser, and run it again after a change. It's for de
 
 Both libraries are kept in the repo rather than loaded from a CDN:
 
-- `pocket/app/alpine-<version>.min.js`: download `dist/cdn.min.js` from the `alpinejs` npm package, rename it, and update the `<script>` tag in `src/index.html`.
+- Alpine is kept readable, as published, in `src/vendor/alpine-<version>.js` (`dist/cdn.js` from the `alpinejs` npm
+  package), and patched there for long lists, each change marked with a comment starting `Pocket:`. There are two
+  patches, each in a commit of its own after the file as published (5d0950b): Alpine's scheduler (70f4fdd), whose queue
+  of updates was quadratic in three places (it sorted the rest of the queue again before each job, working out each
+  element's depth afresh for every sort, and searched the queue to add or take off a job): now a Set of the jobs
+  queued, a job put in its place by binary search during a flush, depths kept for the flush, and a job taken off
+  skipped when its place comes, the order jobs run in the same; and `x-for` (aea10ac), which reads a key that's a path
+  into the item (`t.id`, for `t in ...`) off the item, and keeps the key and scope of the items at the start of the
+  list that are where they were, rather than working every row out again for each change. `tests/unit/alpine.test.mjs`
+  checks both. `npm run build` minifies it into `pocket/app/alpine-<version>-pocket.<N>.min.js`, the name the
+  `<script>` tag in `src/index.html` gives: `sw.js` keeps the libraries by name, so a changed file under an old name
+  would never reach an installed Pocket. To upgrade Alpine, or change a patch: replace the file with the new version's
+  `dist/cdn.js` and commit it as published, redo each `Pocket:` change (compare with `git show 70f4fdd aea10ac`), run
+  `npm run test:unit`, and give the `<script>` tag the new version and the next `N` (the build writes that file; delete
+  the old one from `pocket/app/`).
 - `pocket/app/chrono-<version>.en.min.js`: the English-only build, from `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the Alpine `<script>` tag in `src/index.html`.
