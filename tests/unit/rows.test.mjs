@@ -33,6 +33,53 @@ test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a t
   assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
 });
 
+/* A row's title tapped (tapRow), by where the row is: what the markup's tap asked in one long line before. */
+test('a row\'s title tapped: a step goes on the card, the sheet\'s own title is changed, a subtask or a run\'s own row opens its task, a list\'s row what it\'s a row of', () => {
+  const app = component(views), calls = [];
+  Object.assign(app, { showStep: (i, tap) => calls.push(['step', i, tap]), editTitle: () => calls.push(['edit']), openTask: id => calls.push(['task', id]), openRow: t => calls.push(['row', t.id]) });
+  app.tapRow(step({ i: 2 }), RUN);
+  app.tapRow({ id: 5 }, SHEET_ROW);
+  app.tapRow({ id: 6 }, { depth: {}, sheet: true });
+  app.tapRow({ id: 7 }, { depth: {}, top: true });
+  app.tapRow({ id: 8 }, { depth: {} });
+  app.tapRow({ id: 9 }, { depth: {}, card: {} });
+  assert.deepEqual(calls, [['step', 2, true], ['edit'], ['task', 6], ['task', 7], ['row', 8], ['row', 9]]);
+  calls.length = 0;
+  for (const g of [{ depth: {} }, { depth: {}, sheet: true }, SHEET_ROW]) app.tapRow({ id: 'pending-a-0', pending: true }, g);
+  assert.deepEqual(calls, [], 'one not sent yet opens nothing');
+  app.tapRow(step({ i: 1, pending: true }), RUN);
+  assert.deepEqual(calls, [['step', 1, true]], 'a step added and not sent yet still goes on the card');
+});
+
+/* A ring tapped (tapRing): a run's own, atop its screen, has its own tap; any other is ringTap, told whether it's in a
+   sheet (no row to turn into a gap there) or on which card or row of a list. */
+test('a ring tapped: a run\'s own tap atop its screen; in a sheet, with no row; in a list, with its card or row', () => {
+  const app = component(views), calls = [], t = { id: 4 };
+  app.ringTap = (t, el, sheet) => calls.push([t.id, el, sheet]);
+  const at = found => ({ closest: sel => found[sel] ?? null });
+  app.tapRing(t, { tap: () => calls.push('own') }, at({}));
+  app.tapRing(t, {}, at({ '#sheet': 'sheet', '.day-card, .row': 'row in the sheet' }));
+  app.tapRing(t, {}, at({ '.day-card, .row': 'card' }));
+  assert.deepEqual(calls, ['own', [4, null, true], [4, 'card', false]]);
+});
+
+/* Enter in an add box, and its button (boxEnter, boxSend): each box's own send, which the add box's form asked in a
+   line of its own before. */
+test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks; a template\'s boxes go on to the next instead', () => {
+  const app = component(quickadd), calls = [], focused = [];
+  Object.assign(app, { user: { settings: { frontend_settings: { quick_add_magic_mode: 'disabled' } } }, cap: { text: '' },   // no @ or * to suggest for
+    submitCapture: () => calls.push('task'), insertStep: () => calls.push('steps'), addSubtasks: w => calls.push('subtasks ' + w),
+    addDraftRow: (which, at) => calls.push(`row ${which} ${at}`), draftRows: () => [{ key: 'a' }, { key: 'b' }], sheet: { stepEdit: { id: 3 } } });
+  document.getElementById = id => ({ focus: () => focused.push(id), blur: () => focused.push('blur ' + id) });
+  try {
+    for (const w of ['cap', 'ins', 'under', 'sub']) app.boxSend(w);
+    assert.deepEqual(calls.splice(0), ['task', 'steps', 'subtasks under', 'subtasks sub'], 'its button');
+    for (const w of ['cap', 'ins', 'under', 'sub', 'tname', 'edit', 'new:b', 'add:a']) app.boxEnter(w);
+    assert.deepEqual(calls, ['task', 'steps', 'subtasks under', 'subtasks sub', 'row new 2', 'row add 1'], 'Enter: the same, and a step being written opens the next row');
+    assert.deepEqual(focused, ['new-step-0', 'blur step-edit-3'], 'a template\'s name goes on to its first step; a step being changed is left, which saves it');
+  } finally { delete document.getElementById; }
+});
+
 /* A row, or a card, that's a gap (markup/gap.html): deleted, or done by a full swipe, until the batch clears. One
    rule says which (isGap), for the gap's drawing and for the tap that takes it back, a row's and a card's alike. */
 test('a row deleted or done by a full swipe is a gap, a card too; a tap anywhere on it takes it back and goes no further', () => {

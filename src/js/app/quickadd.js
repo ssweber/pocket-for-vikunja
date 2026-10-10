@@ -322,11 +322,14 @@ export default {
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
-    if (w === 'cap') this.submitCapture(); else if (w === 'ins') this.insertStep(); else if (this.isSubBox(w)) this.addSubtasks(w);
-    else if (w === 'tname') document.getElementById('new-step-0')?.focus();
+    if (w === 'tname') document.getElementById('new-step-0')?.focus();
     else if (w === 'edit') this.boxEl(w)?.blur();
-    else { const [which, key] = w.split(':'); this.addDraftRow(which, this.draftRows(which).findIndex(r => r.key === key) + 1); }
+    else if (w.includes(':')) { const [which, key] = w.split(':'); this.addDraftRow(which, this.draftRows(which).findIndex(r => r.key === key) + 1); }
+    else this.boxSend(w);
   },
+  // What a box sends, by Enter or its button: quick add's a task, a run's box steps after the card's, a subtask box
+  // (the sheet's, or quick add's while it adds to the task touched) subtasks.
+  boxSend(w){ return w === 'cap' ? this.submitCapture() : w === 'ins' ? this.insertStep() : this.addSubtasks(w); },
   // A template's step, or its name, as quick add reads it, without the chips tapped off: its time is its own.
   stepParsed(text, ignore){ return parseCapture(text || '', this.projects, {...this.parseOpts, ignore: {...STEP_IGNORE, ...ignore}}); },
   // Whether what's sent from a box gets a reminder at its due time: one line, with a time, and the 🔔 chip on.

@@ -63,7 +63,7 @@
     <template x-for="target in capTarget ? [capTarget] : []" :key="0">
       <!-- include markup/cap-target.html -->
     </template>
-    <form id="f-capture" autocomplete="off" @submit.prevent="capW === 'cap' ? submitCapture() : capW === 'ins' ? insertStep() : addSubtasks(capW)">
+    <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
         <textarea id="in-capture" x-ref="capture" x-model="capBox.text" rows="1" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"

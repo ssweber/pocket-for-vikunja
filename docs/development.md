@@ -71,7 +71,9 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   `reorder`. A list's `g` can't be reached from the row's element, so the row writes them on itself
   (`data-gestures`, `rowGestures`), and the gesture code reads them there, in one place (`allows`, `app/progress.js`).
   The row asks the component by those options: its tick (`tickRow`: `tickStep` through the outbox for a step,
-  `sheetDone` for `g.own`), or a parent's ring in its place (`rowRing`, below), what's under its title (`rowMeta`: a
+  `sheetDone` for `g.own`), or a parent's ring in its place (`rowRing`, below; tapped, `tapRing`), its title's tap
+  (`tapRow`: a step goes on the card, the sheet's own title is changed, a subtask in a sheet opens its task, a row in
+  a list what it's a row of), a tap on its gap (`tapGap`, below), what's under its title (`rowMeta`: a
   step's Inserted or Repeated, notes, and countdown; nothing on a run's row about its steps, which its ring says, nor
   who it's for, which its slot shows; no 🔔 on a run's step, whose reminder is Pocket's, for its countdown), and who's
   doing it (`rowSlot`, shown by `markup/claim-slot.html`; a done step shows who did or skipped it, ✅ or ⏭️ on their
@@ -323,7 +325,7 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   checklists' Done isn't counted by Vikunja (most of its done tasks are those), but once loaded.
 - On a project's list, quick add's box adds subtasks to the task touched last, the cursor (`cursor`, in
   `app/quickadd.js`): its sheet opened, ticked, or its progress swiped. It's then the box `'under'` (`capW`), which reads
-  lines as the sheet's subtask box (`'sub'`) does, and both send through `addSubtasks` (`app/actions.js`), each with its
+  lines as the sheet's subtask box (`'sub'`) does, and both send through `addSubtasks` (`app/actions.js`; what each box sends, by Enter or its button, is `boxSend`), each with its
   position (`placeAfter`, in `order.js`): after the cursor's row, if it's a subtask, or the
   parent's last. A subtask added from the box is the cursor in its turn (`aimAdded`): its waiting row at once
   (`cursor.wait`), then its task's row once it's sent (`aimSent`, from `placeSent`), so each goes after the one
@@ -512,7 +514,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   deepest first; a list with several parents and subtasks of subtasks, an entry kept from before, a waiting line
   cancelled, and what its Cancel is called; a subtask added from the add box lit at once, on its waiting row and once it's sent, now or later, one added done, called off or turned down leaving the light on its task, as the lit one ticked does, held done meanwhile, saved or not, and a tick taken back while its row is still held lighting it once it's open; and what a box says it read: the Done chip, a list's count tapped to leave those lines out, ↳ Under
   first line on by itself, a project's heading left out (`adding.test.mjs`); the one
-  copy of each task, a repeating one shown done kept so through a load (`tasks.test.mjs`); what the one row asks by its options: a step's tick, which rows and cards are a gap (deleted, or done by a full swipe; never the sheet's own row or a run's) and a tap on one taking it back, what's under its title (the
+  copy of each task, a repeating one shown done kept so through a load (`tasks.test.mjs`); what the one row asks by its options: a step's tick, its title's tap in each place, a ring's tap (in a sheet, on a card or a row, a run's own), what each add box sends by Enter or its button, which rows and cards are a gap (deleted, or done by a full swipe; never the sheet's own row or a run's) and a tap on one taking it back, what's under its title (the
   sheet's own row only when it's due; a run's row nothing, who it's for in its slot; a run's step without a 🔔) and
   who's on it, what a finger can do on each screen's rows (Delete everywhere, moved on a project and in a sheet, its dates
   on Today, nothing more in search), a run's step swiped (only an inserted one on into a Delete), a done step swiped

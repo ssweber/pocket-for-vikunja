@@ -141,7 +141,7 @@
         <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
         <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the run's screen: it's marked as added during the run.</p></template>
         <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox" x-data="{bw: 'sub'}">
-          <form id="d-subform" autocomplete="off" @submit.prevent="addSubtasks()">
+          <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
             <div class="cap-field">
               <div class="cap-marks" aria-hidden="true" x-html="marksHtml('sub')"></div>
               <textarea id="d-subin" x-model="sheet.sub.text" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" enterkeyhint="send"

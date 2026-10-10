@@ -130,6 +130,24 @@ export default {
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
   },
+  /* A row's title tapped. A step on a run's screen goes on the card (showStep); the sheet's own row's title is changed
+     where it is (editTitle); a subtask in a sheet, and a run's own row atop its screen, open their task; a row in a
+     list opens what it's a row of (openRow: a run's step its run, a template that comes round its Start). One not sent
+     yet has nothing to open. */
+  tapRow(t, g){
+    if (g.run) return this.showStep(t.i, true);
+    if (t.pending) return;
+    if (g.own) return this.editTitle();
+    return g.sheet || g.top ? this.openTask(t.id) : this.openRow(t);
+  },
+  /* A parent's ring tapped (ring.html; `el`, the ring). A run's atop its screen has a tap of its own (r.tap:
+     runRingTap). Else it's ringTap (app/cards.js), told where it was tapped: in a sheet, on the task's own row or a
+     subtask's, so nothing is left of a row to turn into a gap; in a list, on which card or row. */
+  tapRing(t, r, el){
+    if (r.tap) return r.tap();
+    const sheet = !!el.closest('#sheet');
+    return this.ringTap(t, sheet ? null : el.closest('.day-card, .row'), sheet);
+  },
   /* A row on one line (g.line: Today, and a card's rows there; motion-and-rows-plan, section 9): at its right, its
      priority's bars, small, as on a card's heading (one-concept-plan, part 4), when it's due, short (shortDue; a run's
      step's countdown, "in 18m", "12m late"; nothing for today with no time under the Today heading, g.key), red when
