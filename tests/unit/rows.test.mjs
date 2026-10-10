@@ -14,7 +14,7 @@ import cards from '../../src/js/app/cards.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import throwing from '../../src/js/app/throw.js';
 import { THROW_STAYS } from '../../src/js/throw.js';
-import { TEXT_FIELD } from '../../src/js/progress.js';
+import { HOLD_MS, TEXT_FIELD } from '../../src/js/progress.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -128,11 +128,11 @@ test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who
 
 /* What a finger can do on a row, besides its progress, by the screen its list is on (parent-tasks-plan, part 1): a row
    acts the same everywhere, so every screen's rows are swiped to Delete; a hold moves a row on a project's list and in
-   a task's sheet, on Today throws it at a ring of dates (plan 4b), and search has no order of its own. The row writes
-   its list's options on itself, and the gesture code reads them there. */
-test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, Today\'s thrown, search\'s not', () => {
+   a task's sheet, on Today moves it to another date (hold-to-reschedule-plan), and search has no order of its own. The
+   row writes its list's options on itself, and the gesture code reads them there. */
+test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, Today\'s to another date, search\'s not', () => {
   const on = name => rowGestures({ depth: {}, ...screenRows(name) });
-  assert.equal(on('today'), 'delete reschedule', 'Today: a hold throws it at the ring');
+  assert.equal(on('today'), 'delete reschedule', 'Today: a hold picks it another date');
   assert.equal(on('project'), 'delete reorder');
   assert.equal(on('search'), 'delete');
   assert.equal(on('checklists'), '', 'a screen that says nothing allows neither');
@@ -147,7 +147,7 @@ test('a row swiped or held: its Delete and its move only where its list allows t
   const row = gestures => ({ dataset: { gestures }, clientWidth: 360, closest: () => null }), t = { id: 5, percent_done: .25 };
   const today = app.rowGesture(t, row(rowGestures({ depth: {}, ...screenRows('today') })), false);
   assert.ok(today.swipe, 'Today: swiped left past 0%, its Delete');
-  assert.ok(today.reorder.lift, 'held: thrown at the ring of dates');
+  assert.ok(today.reorder.lift, 'held: its dates, around the finger');
   assert.equal(today.start, 25, 'its progress swipes from where it is');
   assert.deepEqual(asked.splice(0), ['ring 5'], 'its place among its siblings isn\'t looked up');
   const search = app.rowGesture(t, row('delete'), false);
@@ -437,20 +437,103 @@ test('who can see each project: how many besides you, kept on the phone, and loa
   assert.notEqual(app.access['2:bob'], true, 'bob no longer seen to see it (asked again if typed)');
 });
 
-/* A hold on Today (parent-tasks-plan, 4b): a row or a card thrown at a ring of dates (app/throw.js), a card's row
-   throwing its card; what Move all to today leaves where it is opens the ring with every target dimmed and a line saying
-   why; one that can't be changed, nothing. */
-test('a row held on Today is thrown at the ring, but one that repeats, a checklist, a run or its step can\'t be, and says why', () => {
-  const app = component(progress, throwing), thrown = [];
+/* A hold on Today (hold-to-reschedule-plan): a row's or a card's dates, around the finger (app/throw.js), a card's row
+   holding its card; what Move all to today leaves where it is has every date dimmed and a line saying why; one that
+   can't be changed, nothing. */
+test('a row held on Today has its dates, but one that repeats, a checklist, a run or its step can\'t move, and says why', () => {
+  const app = component(progress, throwing), held = [];
   Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, isRunTask: t => t.id === 4, stepRun: t => t.id === 5 ? 4 : null,
-    tasks: { 9: { id: 9, project_id: 1 } }, throwOf: (t, el, why) => (thrown.push([t.id, el.name, why]), { lift(){} }) });
+    tasks: { 9: { id: 9, project_id: 1 } }, throwOf: (t, el, why) => (held.push([t.id, el.name, why]), { lift(){} }) });
   const row = { name: 'row', closest: () => null }, card = { name: 'card', dataset: { id: '9' } };
   for (const t of [{ id: 1, done: true }, { id: 1, pending: true }, { id: 1, project_id: 9 }]) assert.equal(app.rescheduleOf(t, row), null, 'done, waiting to be sent, or read only: nothing');
   app.lines[6] = { text: 'Not saved' };
   assert.equal(app.rescheduleOf({ id: 6, project_id: 1 }, row), null, 'a line in its place: nothing');
   for (const [id, more] of Object.entries({ 1: {}, 2: { repeat_after: 86400 }, 3: { labels: [{ title: 'template' }] }, 4: {}, 5: {} })) app.rescheduleOf({ id: +id, project_id: 1, ...more }, row);
   app.holdOf({ id: 10, project_id: 1 }, { closest: () => card }, false, new Set(['reschedule']));
-  assert.deepEqual(thrown, [[1, 'row', null], [2, 'row', 'repeats'], [3, 'row', 'checklist'], [4, 'row', 'run'], [5, 'row', 'run'], [9, 'card', null]],
-    'a card\'s row throws its card, by its task');
-  assert.deepEqual(Object.keys(THROW_STAYS), ['repeats', 'checklist', 'run'], 'each says why in the ring');
+  assert.deepEqual(held, [[1, 'row', null], [2, 'row', 'repeats'], [3, 'row', 'checklist'], [4, 'row', 'run'], [5, 'row', 'run'], [9, 'card', null]],
+    'a card\'s row holds its card, by its task');
+  assert.deepEqual(Object.keys(THROW_STAYS), ['repeats', 'checklist', 'run'], 'each says why, over its dates');
+});
+
+/* The hold itself, run as it is on a pretend screen: holdToSlide (app/progress.js) drives the row's gesture
+   (rowGesture, throwOf in app/throw.js), with what's drawn stood in for (throwView: `seen` keeps what it's told to
+   show) and the move it ends in kept (`moved`: reschedule). `touch(x, y)` puts a finger down on the row and holds it
+   until the hold is felt; `to(x, y)` moves it, `up()` lets go, `away()` is the phone taking it (pointercancel). What's
+   felt is the phone's vibrate, standing in for haptic(): 12 as the hold is felt, 6 at each date lit. It's Wednesday 7
+   October 2026, 2:20 PM, and the task (`t`, which a test may change between holds) was due the morning before. */
+function heldOnToday(c){
+  c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date(2026, 9, 7, 14, 20) });
+  const app = component(progress, throwing), t = { id: 1, title: 'Call the plumber', project_id: 1, due_date: new Date(2026, 9, 6, 9).toISOString() };
+  const seen = [], moved = [], felt = [], on = {}, win = {}, classes = new Set();
+  const area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
+  const row = { dataset: { gestures: rowGestures({ depth: {}, ...screenRows('today') }) }, clientWidth: 360, closest: () => null, classList: { add: (...k) => k.forEach(x => classes.add(x)), remove: (...k) => k.forEach(x => classes.delete(x)) } };
+  Object.assign(app, { lines: {}, canWrite: () => true, canTick: () => true, canDelete: () => false, ringOf: () => null, rowRing: () => null, hintSeen(){}, flash(){},
+    reschedule: (x, to) => { moved.push([x.id, to.label, to.due]); },
+    throwView: (held, targets, why, x, y) => { seen.push(['drawn', why, x, y]); return { light: p => seen.push(['lit', p?.id ?? null]), close: () => seen.push(['closed']) }; } });
+  document.addEventListener = () => {}; globalThis.addEventListener = (type, fn) => { (win[type] ||= []).push(fn); }; globalThis.getSelection = () => null; navigator.vibrate = p => felt.push(p);
+  c.after(() => { delete document.addEventListener; delete globalThis.addEventListener; delete globalThis.getSelection; delete navigator.vibrate; });
+  app.holdToSlide(area, () => app.rowGesture(t, row, false));
+  const fire = (fns, e) => { for (const fn of fns || []) fn({ isPrimary: true, pointerType: 'touch', pointerId: 1, target: { closest: () => null }, preventDefault(){}, ...e }); };
+  let x0 = 0, y0 = 0;
+  return { app, t, seen, moved, felt,
+    touch(x = 180, y = 300){ x0 = x; y0 = y; seen.length = 0; felt.length = 0; fire(on.pointerdown, { clientX: x, clientY: y }); c.mock.timers.tick(HOLD_MS); },
+    to(dx, dy){ fire(win.pointermove, { clientX: x0 + dx, clientY: y0 + dy }); },
+    up(){ fire(win.pointerup, {}); },
+    away(){ fire(win.pointercancel, {}); } };
+}
+const oct = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+
+test('held on Today, a row\'s dates are drawn where the finger is; moved out, the date it points at lights, a tick felt, and let go there it moves', c => {
+  const h = heldOnToday(c);
+  h.touch(180, 300);
+  assert.deepEqual([h.seen, h.felt], [[['drawn', null, 180, 300]], [12]], 'as the hold is felt: drawn around the finger');
+  h.to(10, 2); h.to(20, 4);
+  assert.equal(h.seen.length, 1, 'short of 24px: none lit');
+  h.to(30, 4);
+  assert.deepEqual([h.seen.at(-1), h.felt], [['lit', 'tomorrow'], [12, 6]], 'to the right: Tomorrow lit, a tick felt');
+  h.to(60, 10);
+  assert.equal(h.seen.length, 2, 'further the same way: nothing new to show or feel');
+  h.to(8, -40);
+  assert.deepEqual([h.seen.at(-1), h.felt], [['lit', 'week'], [12, 6, 6]], 'round to above: Next week, another tick');
+  h.to(4, 40);
+  assert.deepEqual(h.seen.at(-1), ['lit', 'none'], 'down, the same short way: No date');
+  h.to(30, 4);
+  h.up();
+  assert.deepEqual(h.seen.at(-1), ['closed']);
+  assert.deepEqual(h.moved, [[1, 'Tomorrow', oct(8, 9)]], 'let go: moved to tomorrow, at the time of day it had');
+});
+
+test('held on Today and let go back near where it was held, or taken away by the phone, a row isn\'t moved; a flick counts before any date is lit', c => {
+  const h = heldOnToday(c);
+  h.touch();
+  h.to(-40, 0);
+  assert.deepEqual(h.seen.at(-1), ['lit', 'today']);
+  h.to(-6, 2);
+  assert.deepEqual([h.seen.at(-1), h.felt], [['lit', null], [12, 6]], 'back near where it was held: none lit, and no tick for that');
+  h.up();
+  assert.deepEqual([h.seen.at(-1), h.moved], [['closed'], []], 'let go there: closed, nothing changed');
+  h.touch();
+  h.to(0, -50);
+  h.away();
+  assert.deepEqual([h.seen.at(-1), h.moved], [['closed'], []], 'the touch taken away with a date lit: nothing');
+  h.touch();
+  h.to(14, -2);
+  assert.equal(h.seen.length, 1, 'short of 24px: nothing lit');
+  h.up();
+  assert.deepEqual(h.moved, [[1, 'Tomorrow', oct(8, 9)]], 'but let go that fast: a flick to the right');
+});
+
+test('held on Today, a date that would change nothing isn\'t lit or picked; nor any date of a task that repeats', c => {
+  const h = heldOnToday(c);
+  h.t.due_date = oct(7, 16);
+  h.touch();
+  h.to(-40, 0);
+  assert.deepEqual([h.seen.at(-1), h.felt], [['lit', null], [12]], 'due later today, towards Today: not lit, no tick');
+  h.up();
+  assert.deepEqual(h.moved, [], 'let go there: nothing');
+  h.t.repeat_after = 86400;
+  h.touch();
+  assert.deepEqual(h.seen, [['drawn', 'repeats', 180, 300]], 'a repeating task: drawn with why it can\'t move');
+  h.to(40, 0); h.up();
+  assert.deepEqual([h.felt, h.moved, h.seen.at(-1)], [[12], [], ['closed']], 'no date lit, none picked');
 });

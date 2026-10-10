@@ -1,9 +1,9 @@
 // What a finger does on a row (parent-tasks-plan, parts 1 and 1b): swiped, one mechanism with mirrored sides (swipeAt,
 // SIDES, in progress.js), each with one job, chosen as the swipe starts: right, its progress up, a full swipe done;
 // left, a row with progress, down, stopping at 0%; left, a row at 0%, its Delete, a full swipe deleted. Nothing changes
-// until it's let go. Held, then moved up or down, the row moves among its siblings; on Today, held, it's thrown at a
-// ring of dates (app/throw.js). Delete and moving only where the row's list allows them (rowGestures): search's rows are
-// only deleted, Today's deleted and thrown, a project's and a sheet's deleted and moved among their siblings. A task's sheet
+// until it's let go. Held, then moved up or down, the row moves among its siblings; on Today, held, it has four dates
+// around the finger (app/throw.js). Delete and moving only where the row's list allows them (rowGestures): search's rows are
+// only deleted, Today's deleted and moved to another date, a project's and a sheet's deleted and moved among their siblings. A task's sheet
 // leads with its own row, swiped as any (sheetRowGesture: parent-tasks-plan, 6b). A parent (a card's header, or a
 // parent's row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the
 // way, its ring's tap; left, its Delete.
@@ -260,7 +260,7 @@ export default {
      left, as has one already open on it, either way. Up or down is a scroll, as is a sideways move the row can't take (doing
      nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved up or down
      (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and moved
-     sideways, it's let go, changing nothing. A hold that takes the finger any way (`reorder.lift`: Today's ring,
+     sideways, it's let go, changing nothing. A hold that takes the finger any way (`reorder.lift`: Today's dates,
      app/throw.js) starts as it's felt, lift(x, y), and is then moved with the finger, move(dy, y, x), either way.
      A touch that starts in a text field (inTextField, progress.js) is never asked about: it's the field's. One beside
      a field that has the focus is a row's as ever: a swipe with the add box focused is the fast path. */
@@ -294,7 +294,7 @@ export default {
       let s = inTextField(e.target) ? null : find(e.target); if (!s || away.has(s.slide || s.el)) return;
       if (s.swipe?.base) s = {el: s.el, slide: s.slide, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait'};
-      // Held: lifted (what's lifted can be more than the row: on a project's list, its card), or on Today, thrown, at once.
+      // Held: lifted (what's lifted can be more than the row: on a project's list, its card), or on Today, its dates, at once.
       if (s.reorder) g.timer = setTimeout(() => {
         sliding = true; getSelection()?.removeAllRanges(); haptic('hold');
         if (s.reorder.lift) { g.mode = 'reorder'; s.reorder.lift(g.x, g.y); return; }
@@ -426,8 +426,8 @@ export default {
       }};
   },
   /* What a row held does, where its list allows it: on a project's list and in a task's sheet, moved up or down, its
-     place among its siblings (reorderOf); on Today (`reschedule`), thrown at a ring of dates (rescheduleOf, app/throw.js),
-     a card's row throwing its card. Search: nothing. */
+     place among its siblings (reorderOf); on Today (`reschedule`), four dates around the finger (rescheduleOf,
+     app/throw.js), a card's row holding its card. Search: nothing. */
   holdOf(t, row, sheet, can){
     if (can.has('reschedule')) { const card = row.closest('.day-card'); return card ? this.rescheduleOf(this.tasks[+card.dataset.id], card) : this.rescheduleOf(t, row); }
     return can.has('reorder') ? this.reorderOf(t, row, sheet) : null;
@@ -477,7 +477,7 @@ export default {
     return r.finish || swipe ? {slide: head, swipe, ...r} : null;
   },
   // A card's heading held, where its list allows (data-gestures, as a row's): the card moved up or down among the tasks
-  // at the top of a project's list, as a row is (reorderOf); on Today, thrown at a ring of dates (rescheduleOf).
+  // at the top of a project's list, as a row is (reorderOf); on Today, four dates around the finger (rescheduleOf).
   cardHold(card){
     const t = this.tasks[+card.dataset.id], can = allows(card);
     return !t ? null : can.has('reschedule') ? this.rescheduleOf(t, card) : can.has('reorder') ? this.reorderOf(t, card, false) : null;

@@ -206,7 +206,7 @@ await film(1500); hold(800);                                       // the new ro
   await page.waitForTimeout(250); await snap(300);
   const row = await page.locator('.row:has-text("Post next week")').boundingBox();
   const x = row.x + 30, y = row.y + row.height / 2;
-  // Sideways at once: held still for half a second, a row on Today would open the ring of dates instead.
+  // Sideways at once: held still for half a second, a row on Today would lift, with its dates around the finger, instead.
   await touch('touchStart', x, y); await touch('touchMove', x + 12, y);
   const width = row.width * .3;                            // 50% is reached at a quarter of the row, done at half
   for (let step = 1; step <= 6; step++) { await touch('touchMove', x + 12 + (width - 12) * step / 6, y); await snap(130); }

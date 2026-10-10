@@ -1836,8 +1836,8 @@ try {
 
   const positionsSent = () => { const sent = [], see = r => /\/position$/.test(r.url()) && sent.push(r.url()); page.on('request', see); return { sent, off: () => page.off('request', see) }; };
   const idsIn = (...ids) => page.locator(ids.map(id => `#view .row[data-id="${id}"]`).join(', ')).evaluateAll(els => els.map(el => +el.dataset.id));
-  /* Held where a hold does nothing (Today, whose order is its due dates; search, which has none): not lifted, then moved
-     up or down onto the row `to` and let go, nothing having followed the finger. */
+  /* Held where a hold does nothing (search, whose results have no order of their own): not lifted, then moved up or
+     down onto the row `to` and let go, nothing having followed the finger. */
   async function holdAndMove(sel, to){
     await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const box = await steady(page.locator(sel)), x = box.x + box.width / 2, y0 = box.y + box.height / 2, y = (await page.locator(to).boundingBox()).y + 4;
@@ -1852,9 +1852,9 @@ try {
   }
   /* Today acts as any list (parent-tasks-plan, part 1): swiped left at 0%, a row's Delete, a full swipe its gap with
      Restore. A row with progress takes two swipes to delete: the first only lowers it, stopping at 0% however far it's
-     pulled; the second is its Delete. Held, a row does nothing on Today (its order is its due dates): it isn't lifted,
-     moved after it stays where it was, and no position is written. */
-  await step('today-deletes-by-a-swipe-and-a-hold-does-nothing', async () => {
+     pulled; the second is its Delete. No position is written there: Today's order is its due dates (held, a row has
+     its dates around the finger instead: the steps after this one). */
+  await step('today-deletes-by-a-swipe', async () => {
     const a = await make(`Pocket smoke doing A ${stamp}`, { due_date: todayAt(21) }), b = await make(`Pocket smoke doing B ${stamp}`, { due_date: todayAt(22), percent_done: .5 });
     const A = rowOf(a.title), B = rowOf(b.title), moves = positionsSent();
     try {
@@ -1862,10 +1862,6 @@ try {
       await refreshToday();
       await expect(page.locator(B)).toBeVisible({ timeout: 15000 });
       if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('not in due order to start with');
-      // Held and moved up past the row above: not lifted, nothing follows the finger; let go, it's where it was.
-      await holdAndMove(B, A);
-      if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
-      if (JSON.stringify(await idsIn(a.id, b.id)) !== JSON.stringify([a.id, b.id])) throw new Error('moved on Today');
       // B, at 50%, swiped left all the way: only lowered, to 0%, no red on the way.
       await slideProgress(B, 0, async () => {
         await expect(uncovered(page)).toHaveAttribute('data-pct', '0');
@@ -1889,6 +1885,182 @@ try {
       if (await get(a.id) || await get(b.id)) throw new Error('not deleted');
       if (moves.sent.length) throw new Error('a position was written: ' + moves.sent.join(', '));
     } finally { moves.off(); for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  /* A task held on Today (hold-to-reschedule-plan): its row lifts where it is, and four dates draw in around the finger,
+     Today at the left, Tomorrow at the right, Next week above and No date below. `holdOnToday(sel)` presses `sel`
+     (`fx` of the way along it) until the hold is felt and its dates are drawn, and gives where the finger is, still
+     down; `datesSeen()` is what's drawn then, once the chips have drawn in; `movedLine(text)` the line saying where a
+     task went, on its row or by the add box, with its Undo. */
+  const DATES = '.throw .throw-t', dateChip = id => page.locator(`${DATES}[data-id="${id}"]`);
+  const dayAt = (days, h) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+  const mondayAt = h => dayAt((8 - new Date().getDay()) % 7 || 7, h);      // next Monday, a week on if it's Monday
+  const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
+  const movedLine = text => page.locator('.row-line, .place-line[data-place="cap"]').filter({ hasText: text });
+  async function holdOnToday(sel, { fx = .5, scroll = true } = {}){
+    if (scroll) await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const box = await steady(page.locator(sel)), x = box.x + box.width * fx, y = box.y + Math.min(box.height / 2, 28);
+    await page.mouse.move(x, y); await page.mouse.down();
+    await later(700);
+    await expect(page.locator(DATES)).toHaveCount(4);
+    return { x, y };
+  }
+  const datesSeen = () => page.evaluate(async () => {
+    const set = document.querySelector('.throw');
+    await Promise.all(set.getAnimations({ subtree: true }).map(a => a.finished));
+    const box = el => { const r = el.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; };
+    return { veil: !!document.querySelector('.throw-veil, .throw-box'), shade: getComputedStyle(set).backgroundColor, hidden: set.getAttribute('aria-hidden'),
+      top: document.querySelector('header.top').getBoundingClientRect().bottom, foot: document.getElementById('capture').getBoundingClientRect().top, width: innerWidth,
+      chips: Object.fromEntries([...set.querySelectorAll('.throw-t[data-id]')].map(c => [c.dataset.id, { ...box(c), dim: c.classList.contains('dim'), on: c.classList.contains('on'), dashed: getComputedStyle(c).borderTopStyle === 'dashed', text: c.innerText.replace(/\s+/g, ' ').trim() }])) };
+  });
+  // A hold, then the finger moved (dx, dy) from where it was held, and let go.
+  const flickOnToday = async (sel, dx, dy, lit) => {
+    const at = await holdOnToday(sel);
+    await page.mouse.move(at.x + dx, at.y + dy, { steps: 4 });
+    if (lit) await expect(dateChip(lit)).toHaveClass(/\bon\b/);
+    await page.mouse.up();
+    await expect(page.locator('.throw')).toHaveCount(0);
+  };
+  await step('a-hold-on-today-moves-a-task-to-the-date-its-flicked-at-with-an-undo', async () => {
+    const late = await make(`Pocket smoke hold late ${stamp}`, { due_date: dayAt(-1, 9) });
+    const a = await make(`Pocket smoke hold A ${stamp}`, { due_date: todayAt(21) }), b = await make(`Pocket smoke hold B ${stamp}`, { due_date: todayAt(22) }), c = await make(`Pocket smoke hold C ${stamp}`, { due_date: todayAt(23) });
+    const A = rowOf(a.title), B = rowOf(b.title), C = rowOf(c.title), L = rowOf(late.title), due = async t => (await get(t.id)).due_date;
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(C)).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      // Held: the row lifts where it is, and nothing covers the screen or follows the finger. The four dates are around
+      // the finger, each in its place and at least 56px each way; Today, where it's due already, is dimmed.
+      const at = await holdOnToday(A), rowAt = await page.locator(A).boundingBox();
+      await expect(page.locator(A)).toHaveClass(/\bthrow-from\b/);
+      const seen = await datesSeen(), { today, tomorrow, week, none } = seen.chips;
+      if (seen.veil || seen.shade !== 'rgba(0, 0, 0, 0)') throw new Error('something covers the screen: ' + JSON.stringify([seen.veil, seen.shade]));
+      if (!(today.r <= week.l + 1 && week.r <= tomorrow.l + 1 && week.b <= today.t + 1 && today.b <= none.t + 1)) throw new Error('not Today left, Tomorrow right, Next week above, No date below: ' + JSON.stringify(seen.chips));
+      if (Object.values(seen.chips).some(k => k.w < 56 || k.h < 56)) throw new Error('a date under 56px: ' + JSON.stringify(seen.chips));
+      if (!today.dim || tomorrow.dim || week.dim || none.dim || !none.dashed || today.dashed) throw new Error('dimmed or dashed wrongly: ' + JSON.stringify(seen.chips));
+      if (!/^Today \w{3} \d+$/.test(today.text) || !/^Tomorrow \w{3} \d+$/.test(tomorrow.text) || !/^Next week Mon \d+$/.test(week.text) || none.text !== 'No date') throw new Error('the dates say ' + JSON.stringify(Object.values(seen.chips).map(k => k.text)));
+      // Out to the right, past 24px: Tomorrow lit. Further, the row stays where it is. Back near where it was held: none
+      // lit, and let go there, nothing changed.
+      await page.mouse.move(at.x + 40, at.y + 4, { steps: 4 });
+      await expect(dateChip('tomorrow')).toHaveClass(/\bon\b/);
+      await page.mouse.move(at.x + 90, at.y - 6, { steps: 3 });
+      if (JSON.stringify(await page.locator(A).boundingBox()) !== JSON.stringify(rowAt)) throw new Error('the row followed the finger');
+      await page.mouse.move(at.x + 20, at.y - 60, { steps: 4 });
+      await expect(dateChip('week')).toHaveClass(/\bon\b/);
+      await page.mouse.move(at.x + 4, at.y + 2, { steps: 4 });
+      await expect(page.locator(DATES + '.on')).toHaveCount(0);
+      await page.mouse.up();
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await expect(page.locator(A)).not.toHaveClass(/\bthrow-from\b/);
+      if (await page.isVisible('#sheet')) throw new Error('letting go opened the task');
+      await synced(page);
+      if (!sameTime(await due(a), a.due_date)) throw new Error('let go near where it was held, it moved to ' + await due(a));
+      // Towards Today, dimmed: not lit, and let go there, nothing.
+      await flickOnToday(A, -50, 0, null);
+      await synced(page);
+      if (!sameTime(await due(a), a.due_date)) throw new Error('a dimmed date moved it to ' + await due(a));
+      // Right: tomorrow, at the time it had, said with an Undo, which puts it back.
+      await flickOnToday(A, 50, 4, 'tomorrow');
+      await expect(movedLine('Moved to tomorrow')).toBeVisible();
+      await expect(page.locator('#said')).toContainText('Moved to tomorrow. Undo is');
+      await synced(page);
+      if (!sameTime(await due(a), dayAt(1, 21))) throw new Error('right: ' + await due(a));
+      await movedLine('Moved to tomorrow').getByRole('button', { name: 'Undo' }).click();
+      await expect(movedLine('Moved to tomorrow')).toHaveCount(0);
+      await synced(page);
+      if (!sameTime(await due(a), a.due_date)) throw new Error('Undo left it due ' + await due(a));
+      await expect(page.locator(`.sec.today ~ .list ${A}`)).toBeVisible();
+      // Up: next Monday, at its time.
+      await flickOnToday(B, 6, -50, 'week');
+      await expect(movedLine(/^\s*Moved to Mon \d+/)).toBeVisible();
+      await synced(page);
+      if (!sameTime(await due(b), mondayAt(22))) throw new Error('up: ' + await due(b));
+      // Down, the same short move: its date off, with its Undo, which gives it back its date and its time.
+      await flickOnToday(C, -4, 50, 'none');
+      await expect(movedLine('Took its date off')).toBeVisible();
+      await synced(page);
+      if (!(await due(c)).startsWith('0001')) throw new Error('down: ' + await due(c));
+      await movedLine('Took its date off').getByRole('button', { name: 'Undo' }).click();
+      await synced(page);
+      if (!sameTime(await due(c), c.due_date)) throw new Error('Undo of No date left it due ' + await due(c));
+      // Left, one that's overdue: today, its time gone by, so later today.
+      await flickOnToday(L, -50, 2, 'today');
+      await expect(movedLine('Moved to today')).toBeVisible();
+      await synced(page);
+      const moved = new Date(await due(late));
+      if (moved.toDateString() !== new Date().toDateString() || moved <= new Date()) throw new Error('left: ' + moved.toISOString());
+      // A flick: let go short of 24px, with no date lit, but moving fast: it counts by its direction.
+      const from = await holdOnToday(C);
+      await page.mouse.move(from.x + 18, from.y);
+      if (await page.locator(DATES + '.on').count()) throw new Error('a date lit short of 24px');
+      await page.mouse.up();
+      await expect(movedLine('Moved to tomorrow')).toBeVisible();
+      await synced(page);
+      if (!sameTime(await due(c), dayAt(1, 23))) throw new Error('a flick: ' + await due(c));
+      // By a real finger, which the page mustn't scroll under once it's held: down, to No date.
+      await page.locator(A).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const box = await steady(page.locator(A)), fx = box.x + box.width / 2, fy = box.y + box.height / 2, scrolled = await page.evaluate(() => scrollY);
+      await touch('touchStart', fx, fy);
+      await later(700);
+      await expect(page.locator(DATES)).toHaveCount(4);
+      for (let i = 1; i <= 5; i++) await touch('touchMove', fx, fy + i * 10);
+      await expect(dateChip('none')).toHaveClass(/\bon\b/);
+      if (await page.evaluate(() => scrollY) !== scrolled) throw new Error('the page scrolled under the finger');
+      await touch('touchEnd', fx, fy + 50);
+      await expect(movedLine('Took its date off')).toBeVisible();
+      await synced(page);
+      if (!(await due(a)).startsWith('0001')) throw new Error('by a finger, down: ' + await due(a));
+      await noToast(page);
+    } finally { await page.mouse.up(); for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
+  await step('a-hold-on-today-leaves-a-repeating-task-where-it-is-and-says-why', async () => {
+    const r = await make(`Pocket smoke hold repeats ${stamp}`, { due_date: todayAt(21), repeat_after: 86400 }), R = rowOf(r.title);
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(R)).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      const at = await holdOnToday(R), seen = await datesSeen();
+      if (!Object.values(seen.chips).every(k => k.dim)) throw new Error('a repeating task\'s dates aren\'t all dimmed: ' + JSON.stringify(seen.chips));
+      await expect(page.locator('.throw .throw-why')).toHaveText('It repeats: tick it to move on to its next date.');
+      const why = await page.locator('.throw .throw-why').boundingBox();
+      if (why.x < 0 || why.x + why.width > seen.width || why.y < seen.top) throw new Error('the line saying why is off the screen: ' + JSON.stringify(why));
+      await page.mouse.move(at.x + 50, at.y, { steps: 4 });
+      if (await page.locator(DATES + '.on').count()) throw new Error('a date lit for a task that can\'t move');
+      await page.mouse.up();
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await synced(page);
+      if (!sameTime((await get(r.id)).due_date, r.due_date)) throw new Error('a repeating task moved');
+      if (await page.locator('.row-line, .place-line[data-place="cap"]').count()) throw new Error('something was said');
+    } finally { await page.mouse.up(); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+  });
+  await step('a-held-rows-dates-stay-on-the-screen-for-the-first-row-and-the-last', async () => {
+    // The first row on Today (overdue the longest) held near its right end, and the last (due latest in its 7 days) near
+    // its left: the whole set moves onto the screen, between the header and the add box, each date still in its place
+    // among the others; and the directions still count from the finger, wherever the set went. On a short screen, so the
+    // last row is by the add box however few tasks Today has.
+    const first = await make(`Pocket smoke hold first ${stamp}`, { due_date: new Date(2001, 0, 1, 9).toISOString() }), last = await make(`Pocket smoke hold last ${stamp}`, { due_date: dayAt(7, 23) });
+    try {
+      await toastGone();
+      await page.setViewportSize({ width: 390, height: 420 });
+      await refreshToday();
+      await expect(page.locator(rowOf(last.title))).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      for (const [t, top, fx] of [[first, true, .9], [last, false, .1]]) {
+        await page.evaluate(top => scrollTo(0, top ? 0 : document.documentElement.scrollHeight), top);
+        const at = await holdOnToday(rowOf(t.title), { fx, scroll: false }), seen = await datesSeen(), { today, tomorrow, week, none } = seen.chips, where = top ? 'the first row: ' : 'the last row: ';
+        for (const [id, k] of Object.entries(seen.chips)) if (k.l < 0 || k.r > seen.width || k.t < seen.top || k.b > seen.foot) throw new Error(`${where}${id} is off the screen, or under the header or the add box: ${JSON.stringify([k, seen.top, seen.foot])}`);
+        if (!(today.r <= week.l + 1 && week.r <= tomorrow.l + 1 && week.b <= today.t + 1 && today.b <= none.t + 1) || Math.abs(week.l - none.l) > 1 || Math.abs(today.t - tomorrow.t) > 1) throw new Error(where + 'the dates aren\'t in their places: ' + JSON.stringify(seen.chips));
+        const midX = (week.l + week.r) / 2, midY = (today.t + today.b) / 2;
+        if (top ? !(midX < at.x - 20 && midY >= at.y - 1) : !(midX > at.x + 20 && midY < at.y - 4)) throw new Error(`${where}the set didn't move onto the screen: its middle ${midX},${midY}, the finger ${at.x},${at.y}`);
+        await page.mouse.move(at.x + 2, at.y + (top ? -40 : 40), { steps: 4 });
+        await expect(dateChip(top ? 'week' : 'none')).toHaveClass(/\bon\b/);
+        await page.mouse.move(at.x + 2, at.y + 2, { steps: 4 });
+        await expect(page.locator(DATES + '.on')).toHaveCount(0);
+        await page.mouse.up();
+        await expect(page.locator('.throw')).toHaveCount(0);
+      }
+    } finally { await page.mouse.up(); await page.setViewportSize({ width: 390, height: 844 }); for (const t of [first, last]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
   /* Progress swiped on a task no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture, and
      the claim sent, once it's let go having changed something (parent-tasks-plan, 1b: nothing changes while it's held). Let go where it started, nothing is

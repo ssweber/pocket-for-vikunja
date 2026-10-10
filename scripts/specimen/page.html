@@ -15,9 +15,13 @@
   .row.fresh,.row.came-due{animation-play-state:paused}
   /* the bottom box, as it sits under a run's steps, not fixed to the page's foot */
   .spec-box{margin-top:16px}
-  /* the ring a task held on Today is thrown at: on a 375px screen, over its rows, not fixed to the page */
-  .spec-ring{position:relative;width:375px;height:480px;margin:0 -8.5px 16px;padding:8px;overflow:hidden;border-radius:16px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+  /* a task held on Today, its dates around the finger: on a phone's screen, 360px wide (.wide: 390), over its rows,
+     not fixed to the page; the dot is the finger (.was: where it was held, once it has moved) */
+  .spec-ring{position:relative;width:360px;height:344px;margin:0 -1px 16px;padding:8px;overflow:hidden;border-radius:16px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+  .spec-ring.wide{width:390px;margin:0 -16px 16px}
   .spec-ring .throw{position:absolute}
+  .spec-finger{position:absolute;z-index:16;width:40px;height:40px;margin:-20px;border-radius:50%;background:rgba(60,120,230,.3);box-shadow:0 0 0 2px rgba(60,120,230,.75);pointer-events:none}
+  .spec-finger.was{background:none;box-shadow:0 0 0 2px rgba(60,120,230,.45)}
   /* the question a ring asks, as the sheet shows it */
   .spec-sheet{margin-bottom:16px;padding:16px;border-radius:20px;background:var(--surface)}
   /* a task's sheet, as its scrolling part shows it: the page's colour, set apart from the next by a dashed line */
@@ -137,11 +141,11 @@
       <template x-for="sheet in specimenComplete" :key="sheet.complete.title"><div class="spec-sheet">
         <!-- include markup/sheet/complete.html -->
       </div></template>
-      <!-- The ring a task held on Today is thrown at (parent-tasks-plan, 4b): a still of each hold, on a 375px screen,
-           the ring drawn on the rows by the page's code with the app's own (app/throw.js: ringEl) -->
+      <!-- A task held on Today, its four dates around the finger (hold-to-reschedule-plan): a still of each hold, on a
+           phone's screen, the chips drawn on the rows by the page's code with the app's own (app/throw.js: chipsEl) -->
       <template x-for="r in specimenRings" :key="r.id"><div>
         <div class="sec" x-text="r.spec"></div>
-        <div class="spec-ring" :data-ring="r.id">
+        <div class="spec-ring" :class="{wide: r.wide}" :data-ring="r.id">
           <template x-for="g in [r.g]" :key="0"><div class="list">
             <template x-for="t in g.items" :key="t.id">
               <!-- include markup/list-item.html -->

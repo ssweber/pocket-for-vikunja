@@ -10,7 +10,7 @@ import {revealOf, swipeOf} from '../../src/js/app/progress.js';
 import {swipeAt} from '../../src/js/progress.js';
 import {completeAsk, moreDone} from '../../src/js/messages.js';
 import {throwLayout, throwTargets} from '../../src/js/throw.js';
-import {ringEl, ringLight} from '../../src/js/app/throw.js';
+import {chipsEl, chipsLight} from '../../src/js/app/throw.js';
 
 const ZERO = '0001-01-01T00:00:00Z', HOUR = 36e5;
 const at = ms => new Date(Date.now() + ms).toISOString();
@@ -166,24 +166,30 @@ function sections(){
     {spec: 'A done task: its row as a done row in a list; Details’ Progress line has no quarter pressed', parts: ['details'],
       task: task({title: 'Clean the grinder', done: true, percent_done: .5, due_date: dayAt(-1, 17), description: '<p>Burrs out, brush, then rice through it.</p>', attachments: [photo(4, 'burrs.jpg', 1.6e6)]})},
   ];
-  /* The ring a task held on Today is thrown at (parent-tasks-plan, 4b; app/throw.js): small Todays on a 375px screen,
-     each a still of a hold on a fixed day (`now`). `held`: the row held; `to`: the target the finger has gone into, lit,
-     the box over it saying where it would go; `why`: a task a hold can't move. */
+  /* A task held on Today, its four dates around the finger (hold-to-reschedule-plan; app/throw.js): small Todays on a
+     phone's screen, 360px wide (`wide`: 390), each a still of a hold on a fixed day (`now`). `held`: the row held, the
+     `row`th of the screen's (the third, unless said); `x`: where the finger is held, from the screen's left; `to`: the
+     date the finger has gone towards, lit; `why`: a task a hold can't move; `card`: held by its header, a card. */
   const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
   const others = () => [task({title: 'Fix the other air con', due_date: dayAt(-1, 15), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}),
     task({title: 'Order the cups', due_date: dayAt(1, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(3, 0)}), task({title: 'Collect the new aprons', due_date: dayAt(5, 11)})];
-  const ring = (spec, now, held, more = {}) => { const [a, b, ...rest] = others(); return {spec, now, held, rows: [a, b, held, ...rest], ...more}; };
-  const milk = () => task({title: 'Pay the milk invoice', due_date: on(10, 9).toISOString(), priority: 4});
+  const ring = (spec, now, held, more = {}) => { const rows = others(); rows.splice(more.row ?? 2, 0, held); return {spec, now, held, rows, x: 180, ...more}; };
+  const milk = () => task({title: 'Pay the milk invoice', due_date: on(8, 9).toISOString(), priority: 4});
+  const heldCard = task({title: 'Set up the hall', due_date: on(9, 15).toISOString(), related_tasks: {subtask: [{id: 761}, {id: 762}]}});
+  const ringSubs = [kid(761, {under: heldCard.id, title: 'Put out the chairs'}), kid(762, {under: heldCard.id, title: 'Test the microphone'})];
   const rings = [
-    ring('A Monday, held on an overdue row: Today and Tomorrow sideways; above, Monday to Friday, next week’s Monday and Tuesday at the left, quieter, this week’s Wednesday to Friday at the right, a gap and a label between; No date a long pull down', on(12), milk()),
-    ring('A Wednesday: only Friday is this week’s. The finger gone up and right, into Friday: lit, and the box says where it would go', on(14), milk(), {to: 'fri'}),
-    ring('A Friday: all five are next week’s, under one label', on(16), milk()),
-    ring('Due later today: Today dimmed, never moved or hidden; the finger gone right, into Tomorrow', on(12), task({title: 'Post next week’s rota', due_date: on(12, 16, 30).toISOString()}), {to: 'tomorrow'}),
-    ring('The long pull down, about twice as far as Today and Tomorrow: No date lit', on(12), milk(), {to: 'none'}),
-    ring('A repeating task: every target dimmed, and the line saying why', on(12), task({title: 'Water the plants', due_date: on(12).toISOString(), repeat_after: 86400}), {why: 'repeats'}),
+    ring('Held mid-screen, on a Friday, an overdue row: it lifts where it is, with its outline, and nothing covers the screen. Today at the left, Tomorrow at the right, Next week (Monday) above and No date, dashed, below, over the rows next to it. The dot is the finger', on(9), milk()),
+    ring('The first row, held near its right end: the whole set moves down and left onto the screen, and the directions still count from the finger', on(9), milk(), {row: 0, x: 310}),
+    ring('The last row, held near its left end: the whole set moves up and right', on(9), milk(), {row: 5, x: 44}),
+    ring('The finger gone right, past 24px: Tomorrow lit', on(9), milk(), {to: 'tomorrow'}),
+    ring('The finger gone down, the same short way: No date lit, still dashed', on(9), milk(), {to: 'none'}),
+    ring('On a 390px screen, due later today: Today dimmed, never moved or hidden; the finger gone up, Next week lit', on(9), task({title: 'Post next week’s rota', due_date: on(9, 16, 30).toISOString()}), {to: 'week', wide: true, x: 250}),
+    ring('A Sunday: next Monday is tomorrow, so up and right show the same day', on(11), milk()),
+    ring('A repeating task: every date dimmed, and the line saying why over them', on(9), task({title: 'Water the plants', due_date: on(9).toISOString(), repeat_after: 86400}), {why: 'repeats'}),
+    ring('A card held by its header: the card lifts whole, and only its task’s date moves', on(9), heldCard, {card: true, row: 1}),
   ];
   return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other air con', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}), opening,
-    task({title: 'Order the milk', priority: 2}), closing, sign, shelves, tasting], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
+    task({title: 'Order the milk', priority: 2}), closing, sign, shelves, tasting], cardSubs: [...cardSubs, ...ringSubs], parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -366,7 +372,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     // A task's sheet led by its row (parent-tasks-plan, 6b): each its own sheet, as the app's is for one task.
     for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.keep(x);
     this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.keep(sh.task)}));
-    // The ring: each still's rows as Today has them (screenRows('today')), the held one among them.
+    // A task held on Today: each still's rows as Today has them (screenRows('today')), the held one among them.
+    Object.assign(this.view.cards, Object.fromEntries(s.rings.filter(r => r.card).map(r => [r.held.id, {when: null, made: null, focus: null}])));
     this.specimenRings = s.rings.map((r, i) => ({...r, id: i, g: {key: 'today', cards: 'today', line: true, depth: {}, delete: true, reschedule: true, items: r.rows.map(t => this.keep(t)), tasks: r.rows}}));
     // A project's open list, as listGroups makes it: each subtask under its parent there, and what it shows.
     Object.assign(this.positions, s.project.positions);
@@ -396,15 +403,21 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         if (t.state?.head === 'delete') redUnder(head, t.title, -88, 'open');
         else if (t.state?.head) { const w = head.clientWidth; revealOf(head).move(swipeAt({start: 0, dx: t.state.head * w, x: w / 2, width: w, screen: 1e4, one: true})); }
       }
-      /* The ring, held (app/throw.js): drawn by the app's own code (throwTargets, throwLayout, ringEl) on its day, around
-         where the row was held, the row faded in its place; a target lit as the finger in it lights it (ringLight). */
+      /* A task held on Today (app/throw.js): drawn by the app's own code (throwTargets, throwLayout, chipsEl) on its
+         day, around where the finger is held, at the height of its row (a card's header), which lifts in its place;
+         a date lit as the finger pointing at it lights it (chipsLight). The dot is the finger: where it was held
+         (hollow), and where it has gone. */
       for (const r of this.specimenRings) for (const frame of document.querySelectorAll(`[data-ring="${r.id}"]`)) {
-        const item = frame.querySelector(`.item[data-id="${r.held.id}"]`), f = frame.getBoundingClientRect(), b = item.getBoundingClientRect();
-        item.classList.add('throw-from');
-        const lay = throwLayout(throwTargets(r.held.due_date, r.now), {x: b.left - f.left + 120, y: b.top - f.top + 28, width: f.width, height: f.height});
-        const el = ringEl(lay, r.held.title, r.why || null), p = r.to && lay.targets.find(t => t.id === r.to);
+        const held = frame.querySelector(`.item[data-id="${r.held.id}"] > :is(.row, .day-card)`), f = frame.getBoundingClientRect();
+        const strip = (held.querySelector('.card-head') || held).getBoundingClientRect(), x = r.x, y = strip.top - f.top + strip.height / 2;
+        const lay = throwLayout(throwTargets(r.held.due_date, r.now), {x, y, width: f.width, height: f.height, why: !!r.why});
+        const el = chipsEl(lay, r.why || null), p = lay.targets.find(t => t.id === r.to);
+        held.classList.add('throw-from');
         frame.append(el);
-        if (p) { el.querySelector('.throw-box').style.translate = `${p.x}px ${p.y}px`; ringLight(el, p, r.held.title); }
+        chipsLight(el, p);
+        const dot = (cls, dx, dy) => { const d = document.createElement('i'); d.className = cls; Object.assign(d.style, {left: x + dx + 'px', top: y + dy + 'px'}); frame.append(d); };
+        if (p) dot('spec-finger was', 0, 0);
+        dot('spec-finger', p ? Math.sign(p.x) * 30 : 0, p ? Math.sign(p.y) * 30 : 0);
       }
       // A sheet's subtasks swiped, still held: its stops, or its Delete, laid under the row in the subtasks' card.
       for (const sh of this.specimenSheets) for (const [id, st] of Object.entries(sh.subSwipes || {})) for (const row of document.querySelectorAll(`.spec-task-sheet .row[data-id="${id}"]`)) {
