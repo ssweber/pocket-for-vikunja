@@ -754,7 +754,7 @@ ways); the question a ring asks (3 open subtasks, 5 with one repeating, a run's)
 dates around the finger, on a 360px screen (mid-screen, the first row and the last with the whole set moved onto the
 screen, Tomorrow lit, No date lit, Today dimmed, a Sunday, a repeating task's with its line, open to tap with Pick a
 date…, a card held by its header, and three of them on a 390px screen; the dot is the finger);
-a project's list with its cards open; a run's step card; a run's screen's top, with its own row, and that row swiped part way; a run adding
+a project's list with its cards open; a run's step card (one with a photo still uploading, and its × not to upload it); a run's screen's top, with its own row, and that row swiped part way; a run adding
 steps from the bottom box; what the add box adds to; a template's steps; and a message in its place. It uses the real
 stylesheet and Pocket's own component, given made-up tasks instead of signing in (`scripts/specimen/`), and draws a
 swipe's stills with the app's own `revealOf` and `swipeOf`, so what's under each swiped row is laid as the app lays it; it needs no

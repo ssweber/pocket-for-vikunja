@@ -347,6 +347,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     // Its step card, on a step of yours counting down, one Priya is on, half done, and one done by Priya (tapped in the
     // list): each as runView has it then, to draw step-card.html with.
     this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
+    // A photo added to the first of them, still uploading: its line on the card, with the × not to upload it after all.
+    this.pending.push({id: 'specimen-photo', taskId: s.steps[7].id, at: new Date().toISOString(), items: [], files: [{key: 'specimen-photo-1', name: 'oven-dial.jpg', type: 'image/jpeg', size: 48213}]});
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {reveal: .4}};
     steps[5] = {...steps[5], state: {swiped: true}};                 // inserted during the run: it has a Delete
