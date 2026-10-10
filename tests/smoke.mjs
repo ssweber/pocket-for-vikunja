@@ -2156,6 +2156,10 @@ try {
       await refreshToday();
       await expect(page.locator(R)).toBeVisible({ timeout: 15000 });
       await loaded(page);
+      // (The step before ends on a move, whose Undo may still be by the add box: it goes after its few seconds, so what's
+      // looked for below is only what this hold says, which is nothing.)
+      await later(5000);
+      await expect(page.locator('.row-line, .place-line[data-place="cap"]')).toHaveCount(0);
       const at = await holdOnToday(R), seen = await datesSeen();
       if (!Object.values(seen.chips).every(k => k.dim)) throw new Error('a repeating task\'s dates aren\'t all dimmed: ' + JSON.stringify(seen.chips));
       await expect(page.locator('.throw .throw-why')).toHaveText('It repeats: tick it to move on to its next date.');
