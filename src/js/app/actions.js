@@ -473,6 +473,7 @@ export default {
     const writes = placeMove(sibs.map(s => ({id: s.id, pos: this.positions[s.id] || 0})), from, to);
     const was = Object.fromEntries(writes.map(([id]) => [id, this.positions[id]]));
     for (const [id, pos] of writes) this.positions[id] = pos;
+    this.aimMoved(t);                            // the add box, on it, goes back to its task's last (quickadd.js)
     this.said = `Moved ${t.title}: ${to + 1} of ${sibs.length}`;
     for (const [id, pos] of writes) {
       const r = await this.act({op: 'position', task: id, view, pos, run: null});

@@ -444,6 +444,7 @@ export default {
       if (entryDone(e)) await sync.remove(e.id);
     });
     this.refreshPending();
+    if (!sent) this.aimCancelled(entryId, index);  // the add box's cursor, on its row or one after it (quickadd.js)
     // Said by the box its words went back to: quick add's, or the subtask box in its parent's sheet.
     const place = !parent ? 'cap' : this.sheet.task?.id === parent.id ? 'sheet:subtasks' : null;
     if (sent) { this.say('It was sent before it could be cancelled.', {place}); this.render(); return; }

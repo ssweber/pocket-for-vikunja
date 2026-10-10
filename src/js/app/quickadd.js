@@ -7,6 +7,7 @@ import {placeAfter} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
+import {sync} from '../sync.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
 let peopleAt = 0;                              // when it last loaded, this session
@@ -411,9 +412,9 @@ export default {
      after it, under its parent. A subtask added from the box is the cursor in its turn (aimAdded), so the next goes
      after it: one row is lit, the one the line over the box names (capTarget), and touching a row lights that one,
      the one touched before too. `cursor` is {id, under: the task it's under on this list, or null}, with `wait` for a
-     subtask not sent yet: its waiting row. A task ticked done can't be one: its parent is, if it's on the list. The box
-     goes back to adding a task with its ×, when the cursor's row is out of sight (scrolling back doesn't bring it
-     back), or when the screen is left. */
+     subtask not sent yet: its waiting row. A task ticked done can't be one: its parent is, if it's on the list, as it
+     is for a cursor that's gone (keepAim). The box goes back to adding a task with its ×, when the cursor's row is out
+     of sight (scrolling back doesn't bring it back), or when the screen is left. */
   // A task that can be the cursor: open, on this project's list, one you can change, and not a run, a step of one or a
   // template, which add steps their own way.
   canAim(t){
@@ -442,12 +443,32 @@ export default {
     if (p.done || p.pct >= 100) return this.aim(parent);
     this.light({id, under: parent.id, wait: {id, pending: true, entry: entry.id, index: i, parent: parent.id, title: p.title, position: p.position || 0}});
   },
-  // What was waiting has been sent (placeSent, sending.js: `was`, the id each task's waiting row had): the cursor on a
-  // waiting row is on its task's row from now, lit still.
+  /* What was waiting has been sent, or tried (placeSent, sending.js: `was`, the id each task's waiting row had). The
+     cursor on a waiting row is on its task's row from now, lit still; one whose line has left the outbox without being
+     made (Vikunja turned it down) hands over to the task it was under. */
   aimSent(tasks){
-    const c = this.cursor, t = c?.wait && tasks.find(x => x.was === c.id);
+    const c = this.cursor, w = c?.wait;
+    if (!w) return;
+    const t = tasks.find(x => x.was === w.id);
     if (t) this.light({id: t.id, under: c.under});
+    else if (!sync.all(this.user?.id).some(e => e.id === w.entry)) this.aim(this.tasks[c.under]);
   },
+  // A waiting line called off (cancelPending, sending.js): the cursor on its row hands over to the task it was under; on
+  // a later line of the same list, it's that line still, now a place sooner.
+  aimCancelled(entry, index){
+    const c = this.cursor, w = c?.wait;
+    if (w?.entry !== entry || w.index < index) return;
+    if (w.index === index) return this.aim(this.tasks[c.under]);
+    const id = `pending-${entry}-${w.index - 1}`;
+    this.light({...c, id, wait: {...w, id, index: w.index - 1}});
+  },
+  // A subtask moved up or down (reorder, actions.js): the cursor on it hands over to its task, and the box goes back to
+  // that task's last.
+  aimMoved(t){ const c = this.cursor; if (c?.id === t.id && c.under !== null) this.aim(this.tasks[c.under]); },
+  /* The cursor never points at a row that's gone: deleted, done, or off the list. Then the task it was under is lit,
+     and the box goes back to that task's last; with none, to adding a task. Asked whenever that may have changed
+     (core.js), but not behind a sheet, where the task opened may be ticked and opened again. */
+  keepAim(){ const c = this.cursor; if (c && !this.cursorTask) this.aim(this.tasks[c.under]); },
   /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
      isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
      A row that can't be leaves the target as it was: one waiting to be sent too, lit only by being added. A light tick

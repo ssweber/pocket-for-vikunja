@@ -154,6 +154,8 @@ export default () => ({
     // as the sheet that changed it closes. (On a run, the step card's step is said as it changes, and the box's label
     // names where a step goes.)
     this.$watch(() => !this.sheet.open && this.capTargetText, (v, was) => { if (this.route.name === 'project' && v !== false && (v || was)) this.said = v || this.capPlaceholder; });
+    // The row the box adds subtasks at, gone (deleted, done, off the list): the task it was under is lit (keepAim).
+    this.$watch(() => !this.sheet.open && !!this.cursor && !this.cursorTask, gone => { if (gone) this.keepAim(); });
     // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])

@@ -7,6 +7,7 @@ import { nestSubtasks } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
 import tasks from '../../src/js/app/tasks.js';
 import quickadd from '../../src/js/app/quickadd.js';
+import actions from '../../src/js/app/actions.js';
 
 const ids = list => list.map(t => t.id);
 
@@ -66,7 +67,7 @@ test('new subtasks go after the one given, before the next, each after the one b
    subtask added from the box is the cursor in its turn. A project's list here: Pack the van (Load chairs, Tables),
    Lights. `lit` is what each row reads: the one row lit, by its id. */
 function projectList(){
-  const app = component(tasks, quickadd);
+  const app = component(tasks, quickadd, { reorder: actions.reorder });
   Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
   const van = app.keep({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
   const sub = (id, title) => app.keep({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
@@ -156,6 +157,66 @@ test('a tick moves the cursor: to the task while it\'s open, to its parent once 
   app.aim(van);
   van.done = true;
   assert.equal(app.capW, 'cap', 'done since: the box adds a task again');
+});
+
+test('the cursor never points at a row that\'s gone: deleted, done or moved, its task is lit; called off or turned down while waiting, too', async () => {
+  const { app, van, chairs, tables, lights } = projectList();
+  // Deleted (off the lists while its Restore shows): the task it was under. Restored, the light stays where it went.
+  app.aim(chairs);
+  app.deleting = [11];
+  assert.equal(app.capW, 'cap', 'until it\'s asked: nothing lit, and a task');
+  app.keepAim();
+  assert.deepEqual([app.lit, app.capTarget], [{ 10: true }, { to: 'Pack the van', after: '' }]);
+  app.deleting = [];
+  app.keepAim();
+  assert.deepEqual(app.lit, { 10: true }, 'restored: not lit again behind your back');
+  // Ticked done somewhere else than its tick here (its sheet, the web app): the same.
+  app.aim(tables);
+  tables.done = true;
+  app.keepAim();
+  assert.deepEqual(app.lit, { 10: true });
+  tables.done = false;
+  // A task with none over it, gone: a task for the project again.
+  app.aim(lights);
+  app.view.groups[0].tasks.pop();
+  app.keepAim();
+  assert.deepEqual([app.cursor, app.lit, app.capW], [null, {}, 'cap']);
+  // Its task deleted with it: nothing to hand over to.
+  app.aim(chairs);
+  app.deleting = [10, 11, 12];
+  app.keepAim();
+  assert.deepEqual([app.cursor, app.lit], [null, {}]);
+  app.deleting = [];
+  // Moved up or down among its siblings: the box goes back to its task's last. A task moved stays lit.
+  Object.assign(app, { act: async () => ({ status: 'sent' }), saveProject(){} });
+  app.aim(tables);
+  await app.reorder(tables, [chairs, tables], 0, 5);
+  assert.deepEqual([app.lit, app.capTarget, app.cursorPlaces(1)], [{ 10: true }, { to: 'Pack the van', after: '' }, [100 + SPACING]]);
+  app.aim(van);
+  await app.reorder(van, [van, lights], 1, 5);
+  assert.deepEqual(app.lit, { 10: true });
+  // Waiting to be sent, "Rope" then "Straps" in one go, Straps lit: the line before it called off, it's the same line, a
+  // place sooner (its row's id is by its place); called off itself, its task is lit.
+  const e = { id: 'e1', items: [{ p: { title: 'Rope', position: 250 }, under: null }, { p: { title: 'Straps', position: 275 }, under: null }] };
+  app.aimAdded(e, 1, van);
+  e.items.shift(); app.pendingTasks = waiting(e, 10);
+  app.aimCancelled('e1', 0);
+  assert.deepEqual([app.lit, app.capTarget], [{ 'pending-e1-0': true }, { to: 'Pack the van', after: 'Straps' }]);
+  app.aimCancelled('e2', 0);
+  assert.deepEqual(app.lit, { 'pending-e1-0': true }, 'another list\'s line called off: nothing to do with it');
+  app.pendingTasks = [];
+  app.aimCancelled('e1', 0);
+  assert.deepEqual([app.lit, app.capTarget], [{ 10: true }, { to: 'Pack the van', after: '' }]);
+  // Turned down by Vikunja: its line has left the outbox without a task made for it.
+  app.aimAdded(added('e3', 'Tarp', 300), 0, van);
+  app.aimSent([]);
+  assert.deepEqual(app.lit, { 10: true });
+  // Its task gone while it waits: nothing lit, a task again.
+  app.aimAdded(added('e4', 'Tarp', 300), 0, van);
+  van.done = true;
+  assert.equal(app.capW, 'cap');
+  app.keepAim();
+  assert.deepEqual([app.cursor, app.lit], [null, {}]);
 });
 
 /* The box goes back to adding a task once the lit row is out of sight (watchCursor), told by the browser's

@@ -316,7 +316,7 @@ test('a first line ending with a colon is the parent of the rest in quick add, i
 const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
-  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'flush'));
+  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'cancelPending', 'flush'));
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   const van = app.keep(v.task(9)), chairs = app.keep(v.task(8));
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
@@ -385,6 +385,51 @@ test('a subtask added done isn\'t lit, as it leaves with the batch: its task is,
   await add('Straps');
   assert.deepEqual(aimed(), [['102'], 'Straps']);
   assert.ok(pos(102) > pos(101));
+});
+
+test('a waiting subtask called off, or turned down: the light goes to its task; the line before it called off, it stays on it', async t => {
+  const { v, app, add, aimed } = underBox(t);
+  v.trouble = () => 'offline';
+  await add('Rope\nStraps');
+  const e = sync.all(1)[0].id;
+  assert.deepEqual(aimed(), [[`pending-${e}-1`], 'Straps']);
+  await app.cancelPending(e, 0);
+  assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[[`pending-${e}-0`], 'Straps'], [[`pending-${e}-0`, 'Straps']]], 'the same line, lit, a place sooner');
+  await app.cancelPending(e, 0);
+  assert.deepEqual([aimed(), app.toast.msg], [[['9'], ''], 'Cancelled.'], 'called off: its task is lit');
+  // Turned down by Vikunja: back in the box, with why, and the task lit.
+  v.trouble = r => r.method === 'POST' ? 400 : null;
+  await add('Straps');
+  assert.deepEqual([aimed(), app.cap.text, app.toast.msg], [[['9'], ''], 'Straps', 'Not added: HTTP 400']);
+  assert.equal(sync.all(1).length, 0);
+});
+
+/* A row ticked is held done where it is from the tap, before Vikunja answers (holdRow, leaving.js). The cursor on it
+   hands over to its task then, by its tick (aimAfterTick) or, ticked some other way, as it's asked (keepAim). Not
+   saved, the row is let go of, open again: the light stays where it went, as after a Restore. */
+test('the lit subtask ticked: its task is lit from the tap, the row held meanwhile; not saved, the row is open again and its task lit still', async t => {
+  const { v, app, chairs, aimed } = underBox(t);
+  app.aim(chairs);
+  assert.deepEqual(aimed(), [['8'], 'Chairs']);
+  // Its tick, with no connection (tickRow, views.js: the save, then the aim).
+  v.trouble = r => r.method === 'PATCH' ? 'offline' : null;
+  let ticking = app.toggleDone(chairs, {});
+  assert.deepEqual([chairs.done, app.leaving, app.capW], [true, { 8: 'done' }, 'cap'], 'held done, the save not answered: it can\'t be the cursor');
+  app.aimAfterTick(chairs);
+  assert.deepEqual(aimed(), [['9'], '']);
+  await ticking;
+  assert.deepEqual([!!chairs.done, app.leaving, app.toast.msg], [false, {}, 'Not saved: no connection'], 'let go of, open again, and its row says why');
+  app.keepAim();
+  assert.deepEqual(aimed(), [['9'], ''], 'not lit again behind your back');
+  // Lit again by a touch, then done some other way than its tick (a parent's ring, say): as it's asked, while it's held.
+  app.aim(chairs);
+  v.trouble = () => null;
+  ticking = app.toggleDone(chairs, {});
+  app.keepAim();
+  assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 8: 'done' }]);
+  await ticking;
+  app.keepAim();
+  assert.deepEqual([aimed(), app.leaving, v.task(8).done], [[['9'], ''], { 8: 'done' }, true], 'saved and marked: its task lit still');
 });
 
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {
