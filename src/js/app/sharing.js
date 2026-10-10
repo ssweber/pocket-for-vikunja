@@ -31,7 +31,12 @@ export default {
     const subs = (hasOwnOrder(full) ? stepsOf(full) : [...(full.related_tasks?.subtask || [])].sort(positionOrder(this.positions)))
       .filter(s => !seen.has(s.id) && !this.hiddenRows.has(s.id));
     return {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, people || t.assignees || full.assignees || []),
-      ring: this.shareRing(full), items: subs.map(s => this.shareItem(s, seen))};
+      ...this.shareWords(t, full), ring: this.shareRing(full), items: subs.map(s => this.shareItem(s, seen))};
+  },
+  /* What else a copy that comes back writes of a task (share.js, quickWords): its priority, its labels' names and its
+     repeat. `full`: the one copy of it, if Pocket has it: Vikunja gives a task's subtasks without their labels. */
+  shareWords(t, full = t){
+    return {priority: t.priority || 0, labels: (t.labels || full.labels || []).map(l => l.title), repeat: {after: t.repeat_after || 0, mode: t.repeat_mode || 0}};
   },
   /* A parent's worked-out figure, as its ring shows it (ringOf: parent-tasks-plan, part 5), for the text's percent and
      its bar, a segment per subtask; null for any other task. */
@@ -45,9 +50,9 @@ export default {
       const t = this.sheet.task;
       if (!t) return null;
       const seen = new Set([t.id]), item = {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || []),
-        ring: this.shareRing(t), items: this.subtasks.map(s => this.shareItem(s, seen, this.sheet.subPeople[s.id]))};
+        ...this.shareWords(t), ring: this.shareRing(t), items: this.subtasks.map(s => this.shareItem(s, seen, this.sheet.subPeople[s.id]))};
       // Those still waiting to be sent, after them.
-      for (const p of this.pendingSubtasks) item.items.push({title: p.title, done: false, pct: 0, items: []});
+      for (const p of this.pendingSubtasks) item.items.push({title: p.title, done: !!p.done, pct: pctOf(p), due: p.due_date, ...this.shareWords(p), items: []});
       return {kind: 'task', ...item};
     }
     if (what === 'project') {
@@ -56,7 +61,7 @@ export default {
       const items = [], under = [];
       for (const t of g?.tasks || []) {
         const d = g.depth[t.id] || 0, subs = t.related_tasks?.subtask || [];
-        const item = {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || []), items: [], ring: this.shareRing(t),
+        const item = {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || []), ...this.shareWords(t), items: [], ring: this.shareRing(t),
           subs: {done: subs.filter(s => this.stepDone(s.id, s.done)).length, total: subs.length}};
         under.length = d;
         (d ? under[d - 1]?.items || items : items).push(item);
@@ -85,7 +90,8 @@ export default {
     }
     await this.copyOut(text, 'sheet:top', COPIED.text);
   },
-  copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc), 'sheet:top', COPIED.markdown); },
+  // As a Markdown list that comes back, written in quick add's words with this person's own prefixes and due time.
+  copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {prefixes: this.prefixes, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },
   // Its page in Vikunja's web app: a task's (a run is one), or a project's.
   vikunjaUrl(what){
     const id = what === 'task' ? this.sheet.task?.id : what === 'run' ? this.view.run?.run.id : this.sheet.project?.id;

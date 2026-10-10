@@ -1,8 +1,13 @@
-/* A task's, a project's or a run's progress as text, to send: plain text for a text message (shareText), or a Markdown
-   list (markdownText). Built from data only, never from HTML, so the unit tests check every rule here. Each item is
+/* What Pocket sends out of a list, each with a job of its own (design rule 9). Share as text is what you see
+   (shareText): a task's, a project's or a run's progress as plain text for a message, with the figures the screen
+   shows, for a person to read. Copy as a Markdown list comes back (markdownText): a task or a project written in quick
+   add's words, so pasted into Pocket's add box it makes the same tasks. Built from data only, never from HTML, so the
+   unit tests check every rule here. Each item is
    {title, done, pct: its own progress (0–100), due, people: who's on it, by: who did it (a run's step), skipped,
+   priority, labels: their names, repeat: {after, mode}, as Vikunja keeps them (repeat_after, repeat_mode),
    items: what's under it, subs: {done, total} when items leaves out the done ones (a project's list), ring: a parent's
    worked-out figure, {pct, done, total}, as its ring shows it (ringOf, app/cards.js; parent-tasks-plan, part 5)}. */
+import {QUICK_ADD_PREFIXES} from './quickadd.js';
 
 // A person as a text names them: the first word of their name, else their username.
 export const firstName = u => String(u?.name || '').trim().split(/\s+/)[0] || u?.username || '';
@@ -95,23 +100,65 @@ export function shareText(doc, now = new Date()){
   return [head, ...textLines(items, 0, {long: count(items) > COLLAPSE.lines, bars: false, now})].join('\n');
 }
 
-// One item as a Markdown task: "- [ ] Tables (50%, due Fri) @sam", what's under it indented two spaces.
-function mdLines(items, depth, now){
+// A run's steps as a Markdown list, who did each and who skipped one: words for people, as it was written before.
+function runLines(items, depth, now){
   return items.flatMap(it => {
     const p = progress(it), due = !it.done && dueWords(it.due, now), extra = [!it.done && p.words, due].filter(Boolean).join(', ');
     let line = '  '.repeat(depth) + `- [${it.done ? 'x' : ' '}] ` + (it.skipped ? `~~${it.title}~~` : it.title) + (extra ? ` (${extra})` : '');
     const who = handles(it.done ? it.by : it.people);
     if (it.skipped) line += ' (skipped' + (who ? ' by ' + who : '') + ')'; else if (who) line += ' ' + who;
-    return [line, ...mdLines(it.items || [], depth + 1, now)];
+    return [line, ...runLines(it.items || [], depth + 1, now)];
   });
 }
-/* The same as a Markdown list, to paste into notes: "## Pack the van (38%)", then a task list. Nothing collapsed: it's
-   a copy to keep. A project: "# Café", its counts, then its open tasks. */
-export function markdownText(doc, now = new Date()){
-  const items = doc.items || [];
+
+/* ---------- a copy that comes back: quick add's words ---------- */
+const two = n => String(n).padStart(2, '0');
+/* A due date as quick add reads it at the end of a line: in numbers, with its year, so it means the same day pasted
+   next week or next year, overdue or not ("Oct 1" pasted after October 1 would be next year's); then "at 15:30" when
+   its time isn't the default due time (`dueTime`, "HH:MM"), which a date alone gets. The hour has two digits: quick
+   add reads a bare "at 5:30" as the afternoon's. */
+export function dueStamp(due, dueTime = '12:00'){
+  if (!due || String(due).startsWith('0001')) return '';
+  const d = new Date(due), [h, m] = String(dueTime).split(':').map(Number);
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}` + (d.getHours() === (h || 0) && d.getMinutes() === (m || 0) ? '' : ` at ${two(d.getHours())}:${two(d.getMinutes())}`);
+}
+/* A repeat in quick add's words: "every month" for the same day each month (Vikunja's monthly mode), else "every week",
+   "every 3 days", in the largest unit that fits, as quick add counts them back (a year 365 days). '' for none, or for
+   one that isn't whole hours. */
+export function repeatPhrase(r){
+  if (r?.mode === 1) return 'every month';
+  const after = r?.after || 0;
+  for (const [unit, s] of [['year', 365 * 86400], ['week', 604800], ['day', 86400], ['hour', 3600]])
+    if (after > 0 && after % s === 0) return after === s ? 'every ' + unit : `every ${after / s} ${unit}s`;
+  return '';
+}
+// A name after a prefix, quoted when it has a space in it: *"call back".
+const named = w => /\s/.test(w) ? (w.includes('"') ? `'${w}'` : `"${w}"`) : w;
+// Whether an item has subtasks, shown or not: then it has no progress of its own.
+const isParent = it => !!(it.ring || (it.items || []).length || it.subs?.total);
+/* An item in quick add's words: its title, its own progress "(50%)" if it has some and no subtasks (a parent's is
+   worked out from what's under it), then who's on it, its priority, its labels and its repeat, with the user's own
+   prefixes (`P`: +user and @label in Todoist mode), then its due date, last. With quick add turned off (no `P`), only
+   its title and progress, which are read all the same. */
+function quickWords(it, {prefixes: P, dueTime}){
+  const pct = Math.round(it.pct || 0), own = !it.done && !isParent(it) && pct >= 1 && pct <= 99 ? `(${pct}%)` : '';
+  const words = !P ? [] : [...[...new Set((it.people || []).map(u => u?.username).filter(Boolean))].map(n => P.assignee + named(n)),
+    it.priority >= 1 && it.priority <= 5 ? '!' + it.priority : '', ...[...new Set(it.labels || [])].map(l => P.label + named(l)), repeatPhrase(it.repeat), dueStamp(it.due, dueTime)];
+  return [it.title, own, ...words].filter(Boolean).join(' ');
+}
+// Each item as a Markdown task, "- [x]" done or "- [ ]" open, what's under it two spaces further in.
+const mdLines = (items, depth, opts) => items.flatMap(it => ['  '.repeat(depth) + `- [${it.done ? 'x' : ' '}] ` + quickWords(it, opts), ...mdLines(it.items || [], depth + 1, opts)]);
+/* A task or a project as a Markdown list that comes back: pasted into Pocket's add box, it makes the same tasks, with
+   the same done state, nesting, people, labels, priority, dates, repeats and progress (design rule 9; quickadd.js reads
+   it, and share.test.mjs reads each one back). A task is a heading, "## Pack the van @priya !3 2026-10-16" ("## [x]"
+   when it's done), then its subtasks, each a line. Nothing collapsed. A project: "# Café", its counts, then its open
+   tasks, each with its open subtasks. What it never carries, so a paste never makes: notes, comments, photos, and a
+   project's done tasks. `opts`: {prefixes: the user's quick add prefixes, null when it's turned off; dueTime: their
+   default due time}. A run's is still its record, for people (runLines). */
+export function markdownText(doc, {prefixes = QUICK_ADD_PREFIXES.vikunja, dueTime = '12:00', now = new Date()} = {}){
+  const items = doc.items || [], opts = {prefixes, dueTime};
+  if (doc.kind === 'run') return [`## ${doc.title}` + (progress(doc).words ? ` (${progress(doc).words})` : ''), '', ...runLines(items, 0, now)].join('\n').trimEnd();
   if (doc.kind === 'project')
-    return [`# ${doc.title}`, '', `${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), '', ...mdLines(items, 0, now)].join('\n').trimEnd();
-  const p = progress(doc), due = !doc.done && dueWords(doc.due, now), who = handles(doc.people);
-  const under = [due && due[0].toUpperCase() + due.slice(1), who].filter(Boolean).join(' · ');
-  return [`## ${doc.title}` + (p.words ? ` (${p.words})` : ''), ...under ? [under] : [], '', ...mdLines(items, 0, now)].join('\n').trimEnd();
+    return [`# ${doc.title}`, '', `${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''), '', ...mdLines(items, 0, opts)].join('\n').trimEnd();
+  return [`## ${doc.done ? '[x] ' : ''}` + quickWords(doc, opts), ...mdLines(items, 0, opts)].join('\n');
 }

@@ -3070,6 +3070,7 @@ ${footName('Hooks')}`);
     } finally { await api('/tasks/' + d.id, { method: 'DELETE' }); }
   });
 
+  let vanCopy = '', vanId = 0;                    // the task's Markdown copy, and the task, for the step that pastes it back
   await step('share-progress-copy-it-and-open-it-in-vikunja', async () => {
     // A project of its own: Pack the van at 60%, its subtasks in this order (one done, one half way, one yours), with
     // notes and a comment; and Order milk after it.
@@ -3116,10 +3117,12 @@ ${footName('Hooks')}`);
     await (await menu()).getByRole('menuitem', { name: 'Share progress as a text' }).click();
     await placeSays(page, 'sheet:top', 'Copied: paste it into a message');
     await expect.poll(clip).toBe(text);
-    // As a Markdown list.
+    // As a Markdown list, in quick add's words, so it comes back (design rule 9): the task a heading, without its
+    // figure, which is worked out from what's under it; each subtask a line.
     await (await menu()).getByRole('menuitem', { name: 'Copy as a Markdown list' }).click();
     await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
-    await expect.poll(clip).toBe([`## Pack the van ${stamp} (38%)`, '', '- [x] Load chairs', '- [ ] Tables (50%)', `- [ ] Sound system @${me.username}`, '- [ ] Lights'].join('\n'));
+    await expect.poll(clip).toBe([`## Pack the van ${stamp}`, '- [x] Load chairs', '- [ ] Tables (50%)', `- [ ] Sound system @${me.username}`, '- [ ] Lights'].join('\n'));
+    vanCopy = await clip(); vanId = van.id;
     // Its page in Vikunja, in the browser.
     const open = (await menu()).getByRole('menuitem', { name: 'Open in Vikunja' });
     await expect(open).toHaveAttribute('href', `${SERVER}/tasks/${van.id}`);
@@ -3142,10 +3145,37 @@ ${footName('Hooks')}`);
       `  ○ Sound system · ${my}`, '  ○ Lights', `○ Order milk ${stamp}`, '✓ 1 done'].join('\n'));
     await page.click('#p-copy-md');
     await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
-    await expect.poll(clip).toBe([`# PocketSmokeShare${stamp}`, '', '5 open · 1 done', '', `- [ ] Pack the van ${stamp} (38%)`, '  - [ ] Tables (50%)',
+    await expect.poll(clip).toBe([`# PocketSmokeShare${stamp}`, '', '5 open · 1 done', '', `- [ ] Pack the van ${stamp}`, '  - [ ] Tables (50%)',
       `  - [ ] Sound system @${me.username}`, '  - [ ] Lights', `- [ ] Order milk ${stamp}`].join('\n'));
     await expect(page.locator('#p-open-vikunja')).toHaveAttribute('href', `${SERVER}/projects/${proj.id}`);
     await page.click('#btn-sheet-close');
+  });
+  /* The copy comes back (design rule 9): a task's Markdown, pasted into quick add's box, makes the same task again, with
+     the same subtasks: done or not, how far along, who's on them. Its figure, not written, is worked out again: 38%. */
+  await step('a-tasks-copy-pasted-into-quick-add-makes-the-same-tasks', async () => {
+    if (!vanCopy) throw new Error('no copy to paste: the step before didn\'t get that far');
+    const title = `Pack the van ${stamp}`;
+    // What's under a task in Vikunja, each as [title, done, progress, who's on it], by title.
+    const shape = async id => {
+      const subs = [];
+      for (const s of (await get(id)).related_tasks?.subtask || []) { const t = await get(s.id); subs.push([t.title, t.done, Math.round(t.percent_done * 100), (t.assignees || []).map(u => u.username).join()]); }
+      return JSON.stringify(subs.sort());
+    };
+    await refreshToday();                                                          // where the box adds a task, not a subtask
+    await page.fill('#in-capture', vanCopy);
+    await expect(page.locator('#cap-nest')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 arrives done');
+    if (!(await page.textContent('#cap-chips')).includes('1 task + 4 subtasks')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
+    await page.click('#f-capture .go');
+    await expect(page.locator(`#view ${cardOf(title)} > .card-head > .ring .n`)).toHaveText('1/4', { timeout: 20000 });
+    await synced(page);
+    const twin = ((await (await api('/tasks?q=' + encodeURIComponent(title))).json()).items || []).find(x => x.title === title && x.id !== vanId);
+    if (!twin) throw new Error('no second task titled ' + title);
+    const made = [...(await get(twin.id)).related_tasks?.subtask || [], twin];
+    try {
+      if (await shape(twin.id) !== await shape(vanId)) throw new Error(`the copy's subtasks ${await shape(twin.id)}, the original's ${await shape(vanId)}`);
+      await expect.poll(async () => Math.round((await get(twin.id)).percent_done * 100)).toBe(38);
+    } finally { for (const t of made) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
   // ---- Instant feel: a tab opens at once with its last copy; a change looks waiting only after a few seconds ----

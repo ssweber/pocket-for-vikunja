@@ -1,8 +1,12 @@
-// Progress as a text and as a Markdown list (src/js/share.js), with the clock at Wednesday 7 October 2026, 14:20.
+// Progress as a text, and a task or a project as a Markdown list that comes back (src/js/share.js), with the clock at
+// Wednesday 7 October 2026, 14:20. The copy is read back by quick add (src/js/quickadd.js), with chrono as the page
+// has it, so a date's time is read too.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bar, dueWords, firstName, markdownText, progress, shareText } from '../../src/js/share.js';
+import { readdirSync } from 'node:fs';
+import { bar, dueStamp, dueWords, firstName, markdownText, progress, repeatPhrase, shareText } from '../../src/js/share.js';
+import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee } from '../../src/js/quickadd.js';
 import { component } from './fake.mjs';
 import sharing from '../../src/js/app/sharing.js';
 import cards from '../../src/js/app/cards.js';
@@ -17,7 +21,8 @@ const day = d => new Date(2026, 9, d).toLocaleDateString([], { weekday: 'short' 
 const date = d => new Date(2026, 9, d).toLocaleDateString([], { month: 'short', day: 'numeric' });
 const priya = { username: 'priya', name: 'Priya Shah' }, sam = { username: 'sam', name: '' }, jo = { username: 'jo', name: 'Jo' };
 const item = (title, more = {}) => ({ title, done: false, pct: 0, items: [], ...more });
-const text = doc => shareText(doc, NOW), md = doc => markdownText(doc, NOW);
+const text = doc => shareText(doc, NOW), md = (doc, opts) => markdownText(doc, { now: NOW, ...opts });
+globalThis.chrono = await import('../../pocket/app/' + readdirSync(new URL('../../pocket/app/', import.meta.url)).find(f => /^chrono-.*\.js$/.test(f)));
 // The van, as agreed: its own 60%, a subtask done, one half way, one Priya's on, one not begun.
 const van = { kind: 'task', ...item('Pack the van', { pct: 60 }), items: [
   item('Load chairs', { done: true }), item('Tables', { pct: 50 }), item('Sound system', { people: [priya] }), item('Lights')] };
@@ -58,7 +63,8 @@ test('subtasks of a subtask, two spaces further in at each level', () => {
   const doc = { kind: 'task', ...item('Event'), items: [
     item('Stage', { items: [item('Lights', { done: true }), item('Cables', { items: [item('Long one', { pct: 25 })] })] }), item('Food')] };
   assert.equal(text(doc), ['Event  ▱▱▱▱▱ 0 of 2 done', '◐ Stage (1 of 2 done)', '  ✓ Lights', '  ○ Cables (0 of 1 done)', '    ◐ Long one 25%', '○ Food'].join('\n'));
-  assert.equal(md(doc), ['## Event (0 of 2 done)', '', '- [ ] Stage (1 of 2 done)', '  - [x] Lights', '  - [ ] Cables (0 of 1 done)', '    - [ ] Long one (25%)', '- [ ] Food'].join('\n'));
+  // The copy: what has subtasks has no figure of its own, as it's worked out from them.
+  assert.equal(md(doc), ['## Event', '- [ ] Stage', '  - [x] Lights', '  - [ ] Cables', '    - [ ] Long one (25%)', '- [ ] Food'].join('\n'));
 });
 
 test('who\'s on it: several by their names, each once; due dates in a few words', () => {
@@ -106,8 +112,8 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
     { ...item('Old menu', { done: true }), items: [item('Reprint')], subs: { done: 0, total: 1 } }] };
   assert.equal(text(doc), ['Café  6 open · 5 done', `○ Order milk · due ${day(9)}`, '◐ Pack the van  ▰▰▰▱▱ 60% · Priya', '  ◐ Tables 50%', '  ○ Sound system · sam',
     '◐ Deep clean  ▰▰▰▱▱ 2 of 3 done', '  ○ Fridge', '✓ Old menu', '  ○ Reprint', '✓ 5 done'].join('\n'));
-  assert.equal(md(doc), ['# Café', '', '6 open · 5 done', '', `- [ ] Order milk (due ${day(9)})`, '- [ ] Pack the van (60%) @priya', '  - [ ] Tables (50%)',
-    '  - [ ] Sound system @sam', '- [ ] Deep clean (2 of 3 done)', '  - [ ] Fridge', '- [x] Old menu', '  - [ ] Reprint'].join('\n'));
+  assert.equal(md(doc), ['# Café', '', '6 open · 5 done', '', '- [ ] Order milk 2026-10-09 at 00:00', '- [ ] Pack the van @priya', '  - [ ] Tables (50%)',
+    '  - [ ] Sound system @sam', '- [ ] Deep clean', '  - [ ] Fridge', '- [x] Old menu', '  - [ ] Reprint'].join('\n'));
   assert.equal(text({ kind: 'project', title: 'Empty', open: 0, doneCount: 0, items: [] }), 'Empty  0 open');
   // Its Done shows its latest 100 and counts all of them (performance-plan, part 9): the text says that count, written
   // as its heading writes it.
@@ -116,9 +122,86 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
   assert.equal(md(big), ['# Big', '', `${n(1200)} open · ${n(3000)} done`].join('\n'));
 });
 
-test('the van as a Markdown list', () => {
-  assert.equal(md(van), ['## Pack the van (60%)', '', '- [x] Load chairs', '- [ ] Tables (50%)', '- [ ] Sound system @priya', '- [ ] Lights'].join('\n'));
-  assert.equal(md({ ...van, due: on(9), people: [priya] }).split('\n').slice(0, 2).join('\n'), `## Pack the van (60%)\nDue ${day(9)} · @priya`);
+/* Copy as a Markdown list comes back (design rule 9; done-and-markdown-plan, part 3): written in quick add's words, so
+   pasted into Pocket's add box it makes the same tasks. */
+// The van again, with all a line can say: the task Priya's, priority 3, due on the 16th at the default due time; a
+// subtask with one of its own; one Sam's, labelled, every week, due at 15:30.
+const packed = { kind: 'task', ...item('Pack the van', { pct: 60, due: on(16, 12), people: [priya], priority: 3 }), items: [
+  item('Load chairs', { done: true }), item('Tables', { pct: 50, items: [item('Legs')] }), item('Lights', { pct: 50 }),
+  item('Sound system', { people: [sam], labels: ['hire'], repeat: { after: 604800, mode: 0 }, due: new Date(2026, 9, 15, 15, 30).toISOString() })] };
+test('the van as a Markdown list, in quick add\'s words: the task a heading, each subtask a line, its date last', () => {
+  assert.equal(md(packed), ['## Pack the van @priya !3 2026-10-16', '- [x] Load chairs', '- [ ] Tables', '  - [ ] Legs', '- [ ] Lights (50%)',
+    '- [ ] Sound system @sam *hire every week 2026-10-15 at 15:30'].join('\n'));
+  assert.equal(md({ kind: 'task', ...item('Order milk', { pct: 25 }) }), '## Order milk (25%)', 'with no subtasks, its own progress');
+  assert.equal(md({ kind: 'task', ...item('Order milk', { done: true, pct: 25 }) }), '## [x] Order milk', 'a done task says so');
+  assert.equal(md(van), ['## Pack the van', '- [x] Load chairs', '- [ ] Tables (50%)', '- [ ] Sound system @priya', '- [ ] Lights'].join('\n'));
+});
+
+test('the copy\'s words: the user\'s own prefixes, a name with a space quoted, and none with quick add turned off', () => {
+  const doc = { kind: 'task', ...item('Call the hire shop', { people: [priya, sam, priya], priority: 5, labels: ['call back', 'hire'], due: on(16, 12) }), items: [item('Ask for a quote', { pct: 50, people: [sam] })] };
+  assert.equal(md(doc), '## Call the hire shop @priya @sam !5 *"call back" *hire 2026-10-16\n- [ ] Ask for a quote (50%) @sam');
+  assert.equal(md(doc, { prefixes: QUICK_ADD_PREFIXES.todoist }), '## Call the hire shop +priya +sam !5 @"call back" @hire 2026-10-16\n- [ ] Ask for a quote (50%) +sam');
+  assert.equal(md(doc, { prefixes: null }), '## Call the hire shop\n- [ ] Ask for a quote (50%)', 'only what\'s read whichever mode is set');
+  assert.equal(md({ kind: 'task', ...item('x', { priority: 9 }) }), '## x', 'a priority Vikunja doesn\'t have isn\'t written');
+});
+
+test('a due date in numbers with its year, its time only when it isn\'t the default due time', () => {
+  assert.equal(dueStamp(on(16, 12)), '2026-10-16');
+  assert.equal(dueStamp(new Date(2026, 9, 5, 15, 30).toISOString()), '2026-10-05 at 15:30', 'overdue or not');
+  assert.equal(dueStamp(new Date(2027, 0, 3, 5, 5).toISOString()), '2027-01-03 at 05:05', 'two digits, so "at 05:05" isn\'t read as the afternoon\'s');
+  assert.equal(dueStamp(new Date(2026, 9, 16, 9, 0).toISOString(), '9:00'), '2026-10-16', 'the user\'s own default due time');
+  assert.equal(dueStamp(on(16, 12), '09:00'), '2026-10-16 at 12:00');
+  assert.equal(dueStamp('0001-01-01T00:00:00Z'), '');
+  assert.equal(dueStamp(null), '');
+});
+
+test('a repeat in quick add\'s words, which read back as the same repeat', () => {
+  const H = 3600, D = 86400;
+  const cases = [[{ mode: 1 }, 'every month'], [{ after: D, mode: 0 }, 'every day'], [{ after: 3 * D, mode: 0 }, 'every 3 days'], [{ after: 7 * D, mode: 0 }, 'every week'],
+    [{ after: 14 * D, mode: 0 }, 'every 2 weeks'], [{ after: 30 * D, mode: 0 }, 'every 30 days'], [{ after: 365 * D, mode: 0 }, 'every year'], [{ after: 730 * D, mode: 0 }, 'every 2 years'],
+    [{ after: 6 * H, mode: 0 }, 'every 6 hours'], [{ after: H, mode: 0 }, 'every hour']];
+  for (const [r, words] of cases) {
+    assert.equal(repeatPhrase(r), words);
+    const back = parseCapture('Water the plants ' + words, [], { now: NOW }).repeat;
+    assert.deepEqual([back.after, back.mode], [r.after || 0, r.mode], words + ' read back');
+  }
+  assert.equal(repeatPhrase({ after: 0, mode: 0 }), '');
+  assert.equal(repeatPhrase({ after: 5400, mode: 0 }), '', 'an hour and a half has no words');
+  assert.equal(repeatPhrase(undefined), '');
+});
+
+/* The rule's own test: a copy pasted into quick add's box makes the same tasks. `pasted`: what quick add makes of a
+   text, as items again; `same`: an item as a paste can bring it back (a parent's progress is worked out, a done task's
+   isn't kept, and a time has no seconds). */
+const NO_REPEAT = { after: 0, mode: 0 };
+function pasted(text, { mode = 'vikunja', dueTime = '12:00' } = {}){
+  const list = readList(text, { colon: true }), P = QUICK_ADD_PREFIXES[mode];
+  const nodes = list.lines.map(l => {
+    const p = parseCapture(l.text, [], { mode, dueTime, now: NOW });
+    // A person leaves the title once they're assigned, as createTask does it (sync.js).
+    return { title: p.assignees.reduce((t, n) => removeAssignee(t, P.assignee, n), p.title), done: l.done, pct: p.pct, due: p.due ? p.due.toISOString() : null, people: p.assignees,
+      priority: p.priority, labels: p.labels, repeat: p.repeat ? { after: p.repeat.after, mode: p.repeat.mode } : NO_REPEAT, items: [] };
+  });
+  const top = [];
+  list.lines.forEach((l, i) => (l.under === null ? top : nodes[l.under].items).push(nodes[i]));
+  for (const n of nodes) if (n.items.length) n.pct = 0;                        // dropped, as boxParsedLines drops it
+  return top;
+}
+const same = it => ({ title: it.title, done: !!it.done, pct: it.done || (it.items || []).length ? 0 : it.pct || 0, due: it.due || null, people: [...new Set((it.people || []).map(u => u.username))],
+  priority: it.priority || 0, labels: it.labels || [], repeat: it.repeat || NO_REPEAT, items: (it.items || []).map(same) });
+
+test('a task\'s copy pasted into quick add makes the same tasks: done or not, nested, with their people, labels, priority, dates, repeats and progress', () => {
+  assert.deepEqual(pasted(md(packed)), [same(packed)]);
+  assert.deepEqual(pasted(md(van)), [same(van)]);
+  // In Todoist mode, with its prefixes; and with another default due time.
+  assert.deepEqual(pasted(md(packed, { prefixes: QUICK_ADD_PREFIXES.todoist }), { mode: 'todoist' }), [same(packed)]);
+  assert.deepEqual(pasted(md(packed, { dueTime: '15:30' }), { dueTime: '15:30' }), [same(packed)]);
+  // Subtasks of subtasks, a done task, one with no subtasks and its own progress.
+  const deep = { kind: 'task', ...item('Event', { done: true }), items: [item('Stage', { items: [item('Lights', { done: true }), item('Cables', { items: [item('Long one', { pct: 25, priority: 2 })] })] }), item('Food')] };
+  assert.deepEqual(pasted(md(deep)), [same(deep)]);
+  const one = { kind: 'task', ...item('Order milk', { pct: 75, due: new Date(2025, 0, 2, 8, 5).toISOString(), repeat: { mode: 1, after: 0 }, labels: ['call back'] }) };
+  assert.equal(md(one), '## Order milk (75%) *"call back" every month 2025-01-02 at 08:05');
+  assert.deepEqual(pasted(md(one)), [same(one)], 'a date long past comes back as that date');
 });
 
 /* A parent's progress is the figure its ring shows (parent-tasks-plan, part 5): the average of its subtasks' progress, a
@@ -127,7 +210,7 @@ test('a parent: its ring\'s worked-out figure, and a bar of a segment per subtas
   const doc = { kind: 'task', ...item('A test task', { due: on(7, 18), people: [sam], ring: { pct: 13, done: 0, total: 4 } }), items: [
     item('One subtask', { pct: 50, due: on(7, 18), people: [sam] }), item('Another'), item('And another'), item('And another')] };
   assert.equal(text(doc), ['A test task  ▱▱▱▱ 13% · due today · sam', '◐ One subtask 50% · due today · sam', '○ Another', '○ And another', '○ And another'].join('\n'));
-  assert.equal(md(doc).split('\n')[0], '## A test task (13%)');
+  assert.equal(md(doc).split('\n')[0], '## A test task @sam 2026-10-07 at 18:00', 'the copy leaves a parent\'s figure out: it\'s worked out again');
   assert.equal(bar(60, { pct: 60, done: 2, total: 3 }), '▰▰▱');
   assert.deepEqual(progress(item('x', { pct: 40, ring: { pct: 70, done: 1, total: 2 } })).pct, 70, 'the ring\'s, not a figure of its own');
   // A run: its skipped steps are done in its ring, and said apart.
@@ -155,7 +238,7 @@ test('the text shared from a task\'s sheet matches its ring: the percent and a s
   const ring = app.ringOf(t), head = shareText(app.shareDoc('task'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [44, 1, 4], '(50 + 0 + 100 + 25) / 4');
   assert.equal(head, `Paint the back wall  ${'▰'.repeat(ring.done)}${'▱'.repeat(ring.total - ring.done)} ${ring.pct}%`);
-  assert.equal(markdownText(app.shareDoc('task'), NOW).split('\n')[0], `## Paint the back wall (${ring.pct}%)`);
+  assert.equal(markdownText(app.shareDoc('task')).split('\n')[0], '## Paint the back wall');
   // A subtask with subtasks of its own: its ring's figure on its line.
   subs[1].related_tasks = { subtask: [sub(6, { done: true }), sub(7)] }; app.tasks[6] = sub(6, { done: true }); app.tasks[7] = sub(7);
   assert.equal(shareText(app.shareDoc('task'), NOW).split('\n')[2], `◐ Sub 3 ${app.ringOf(subs[1]).pct}%`);
