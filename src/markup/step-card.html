@@ -22,13 +22,15 @@
     <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" @click="tickStep(runView.step, 'skip')">Skip</button></template>
     <template x-if="runView.step.done"><button class="btn ghost go-on" id="step-undo" @click="tickStep(runView.step, 'undone')">Not done</button></template>
   </div>
-  <!-- Photos and comments on this step (Vikunja's comments): photos wait on the phone without a connection, as everywhere in Pocket -->
+  <!-- Photos and comments on this step (Vikunja's comments): photos wait on the phone without a connection, as everywhere
+       in Pocket, each with its × not to upload it after all, as one waiting on a task has -->
   <div class="step-extra" id="step-extra">
     <template x-for="a in runView.step.attachments || []" :key="a.id">
       <button class="att" @click="openAttachment(a, runView.step.id)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
     </template>
     <template x-for="f in waitingByTask.get(runView.step.id) || []" :key="f.key">
-      <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span></div>
+      <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span>
+        <button class="icon-btn plain" :aria-label="'Don\'t upload ' + f.name" @click="cancelFile(f.entry, f.key)"><svg class="i"><use href="#i-close"/></svg></button></div>
     </template>
     <template x-if="attachmentsOn && !runView.step.pending"><label class="att add-att">
       <svg class="i"><use href="#i-camera"/></svg><span class="nm">Add a photo</span>

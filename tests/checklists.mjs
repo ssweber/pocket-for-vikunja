@@ -1214,6 +1214,27 @@ try {
     await page.unroute('**/api/v2/tasks/*/comments', lose);
   });
 
+  /* A photo waiting to upload to a run's step has "Don't upload", as one waiting on a task has
+     (rows-and-sheet-fixes-plan, part 5): called off, it goes at once and never reaches Vikunja; the other goes up. */
+  await step('a-photo-waiting-on-a-step-can-be-called-off', async () => {
+    const run = runs[runs.length - 1], id = (await runStep(run, 1)).id;
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const photo = name => ({ name, mimeType: 'image/png', buffer: png });
+    await page.waitForSelector('#step-title:text-is("Warm up the press")');
+    await context.setOffline(true);
+    await page.setInputFiles('#step-file', [photo('keep.png'), photo('drop.png')]);
+    await page.waitForSelector('#step-extra .att.uploading:has-text("keep.png"):has-text("Waiting for a connection")');
+    await page.getByRole('button', { name: 'Don\'t upload drop.png' }).click();
+    await expect(page.locator('#step-extra .att:has-text("drop.png")')).toHaveCount(0);
+    await expect(page.locator('#step-extra .att.uploading')).toHaveCount(1);
+    await context.setOffline(false);
+    await online();
+    await until('the photo kept never reached Vikunja', async () => ((await task(id)).attachments || []).some(a => a.file.name === 'keep.png'));
+    await expect(page.locator('#step-extra .att.uploading')).toHaveCount(0, { timeout: 20000 });
+    const names = ((await task(id)).attachments || []).map(a => a.file.name);
+    if (names.join() !== 'keep.png') throw new Error('attachments: ' + names.join());
+  });
+
   await step('insert-and-repeat-a-step', async () => {
     // The bottom box adds a step after the step on the card, the line above it saying so: a step typed there goes after
     // it, the next after that one, and Repeat adds a fresh copy of the card's step there. Neither changes the template.

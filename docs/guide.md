@@ -434,7 +434,7 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
 4. **Work through it.** One step at a time, on its card: **Done**, or **Skip**. A comment typed on the step goes with
    either: Done posts it on the step, and Skip makes it the reason. The run opens on its next step in order, even one
    still counting down, and after Done the next in order is on the card; a timed step whose time has come goes before
-   it. Add a photo or a comment to a step, or a
+   it. Add a photo or a comment to a step (a photo still waiting to upload has an **×**, not to upload it after all), or a
    comment to the whole run (they're Vikunja's comments, which its web app shows too); a step with comments has a mark
    on its row. **Last time** shows the comments from the last finished run of the same template, as a handover, and each step's card shows the ones left on it (ones that come after the
    run is on screen from the next step on, so the steps don't move). The steps listed under the card, under **Steps**,
