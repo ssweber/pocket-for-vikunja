@@ -24,6 +24,26 @@ test('a task loaded again has only what changed written to it, so an unchanged r
   assert.equal(t.related_tasks.subtask[0].done, true);
 });
 
+test('a repeating task shown done until the batch clears stays as it is through a load, though Vikunja has it open at its next date', () => {
+  const app = component(tasks), t = app.keep({ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-10T09:00:00Z', repeat_after: 86400 });
+  // Ticked: Vikunja moved it on, and its row shows it done, with the date it had, until its mark goes.
+  t.done = true; app.leaving[1] = 'done';
+  const again = app.keep({ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 });
+  assert.equal(again, t);
+  assert.deepEqual([t.done, t.due_date], [true, '2026-10-10T09:00:00Z'], 'as it\'s shown');
+  // Its mark gone, it's as Vikunja has it.
+  delete app.leaving[1];
+  app.keep({ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 });
+  assert.deepEqual([t.done, t.due_date], [false, '2026-10-11T09:00:00Z']);
+  // A row marked for anything else is written as ever: one opened again, one done that Vikunja has done too.
+  app.leaving[1] = 'open';
+  app.keep({ id: 1, title: 'Water them', done: false });
+  assert.equal(t.title, 'Water them');
+  t.done = true; app.leaving[1] = 'done';
+  app.keep({ id: 1, title: 'Water them all', done: true });
+  assert.equal(t.title, 'Water them all');
+});
+
 test('a task kept is a copy: changing what was loaded leaves it alone', () => {
   const app = component(tasks), loaded = { id: 1, title: 'Call Jo' };
   app.keep(loaded).title = 'Changed on screen';

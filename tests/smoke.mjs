@@ -1060,6 +1060,53 @@ try {
     madeFrom.push(...(await get(made.id)).related_tasks?.subtask || [], made);
     if (JSON.stringify(await subsDone(made.id)) !== JSON.stringify([[sub('a'), false], [sub('b'), false]])) throw new Error('under it: ' + JSON.stringify(await subsDone(made.id)));
   });
+  /* A repeating task added done moves on to its next date, as a tick moves it: its row shows ticked, with the date it
+     was given, where it was put, until the batch clears, through the reload that follows an add and another after;
+     then it's open, at its next date. A repeating task ticked stays as it is through a reload the same way. A finger
+     down holds the batch meanwhile. */
+  await step('a-repeating-task-added-done-shows-ticked-then-its-next-date', async () => {
+    const t = `Pocket smoke repeat arrived ${stamp}`, ticked = await make(`Pocket smoke repeat ticked ${stamp}`, { due_date: todayAt(23), repeat_after: 86400 });
+    madeFrom.push(ticked);
+    const week = title => page.locator(`div:has(> .sec:has-text("Next 7 days")) ${rowOf(title)}`), due = title => page.locator(`${rowOf(title)} .when .due`).textContent();
+    const reload = async () => { await page.evaluate(() => document.getElementById('btn-refresh').click()); await page.waitForSelector('#btn-refresh:not([disabled])'); await loaded(page); };
+    const shownDone = async (title, was) => {
+      await expect(page.locator(rowOf(title))).toHaveClass(/\bdone\b/);
+      await expect(page.locator(rowOf(title))).toHaveClass(/\bleaving\b/);
+      await expect(week(title)).toHaveCount(0);
+      if (await due(title) !== was) throw new Error(`"${title}" shows ${await due(title)} while it's ticked, not ${was}`);
+    };
+    await toastGone();
+    await refreshToday();
+    await expect(page.locator(rowOf(ticked.title))).toBeVisible();
+    const was = await due(ticked.title);
+    await page.fill('#in-capture', `x ${t} every day today at 23:00`);
+    await page.click('#f-capture .go');
+    await expect(page.locator(`${rowOf(t)}:not(.pending)`)).toHaveClass(/\bleaving\b/, { timeout: 15000 });
+    await tick(ticked.title);
+    await expect(page.locator(rowOf(ticked.title))).toHaveClass(/\bleaving\b/);
+    // A finger down on a heading: nothing leaves while it's checked.
+    await page.locator('#view .sec').first().evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const sec = await page.locator('#view .sec').first().boundingBox();
+    await page.mouse.move(sec.x + 4, sec.y + sec.height / 2);
+    await page.mouse.down();
+    try {
+      await synced(page);
+      await loaded(page);                                                         // the reload that follows an add
+      const made = await taskTitled(t);
+      if (made) madeFrom.push(made);
+      const next = new Date(todayAt(23)).getTime() + 864e5;
+      if (!made || made.done || new Date(made.due_date).getTime() !== next) throw new Error('in Vikunja: ' + JSON.stringify(made && { done: made.done, due: made.due_date }));
+      for (const title of [t, ticked.title]) await shownDone(title, was);
+      await reload();
+      for (const title of [t, ticked.title]) await shownDone(title, was);
+    } finally { await page.mouse.up(); }
+    await later(3100);
+    for (const title of [t, ticked.title]) {
+      await expect(page.locator(rowOf(title))).not.toHaveClass(/\bleaving\b/);
+      await expect(page.locator(rowOf(title))).not.toHaveClass(/\bdone\b/);
+      await expect(week(title)).toHaveCount(1);                                   // open, at its next date
+    }
+  });
   await step('parents-in-a-pasted-list-clean-up', async () => { for (const t of madeFrom) await api('/tasks/' + t.id, { method: 'DELETE' }); });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger

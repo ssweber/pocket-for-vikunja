@@ -13,10 +13,14 @@ export default {
   /* A task as Vikunja has it now, in place of what was kept of it (a list loaded again): the object its rows show. Only
      the fields that changed are written, so the row of a task that didn't change has nothing to do: a list or an object
      from Vikunja is a new one each time, though nothing in it changed. (Not by its `updated` alone: a subtask ticked
-     leaves its parent's as it was, and its ring shows it.) */
+     leaves its parent's as it was, and its ring shows it.)
+     A task shown done until the batch clears (leaving.js) that Vikunja has open is a repeating one, ticked, or added
+     done: Vikunja moved it on to its next date. Its row stays as it is, ticked, with the date it had: its mark gives it
+     Vikunja's copy when it goes (toggleDone, actions.js; arrivedDone, sending.js). */
   keep(t){
     const had = this.tasks[t.id];
     if (!had) { this.tasks[t.id] = {...t}; return this.tasks[t.id]; }
+    if (this.leaving[t.id] === 'done' && had.done && !t.done) return had;
     const was = raw(had);
     for (const k of Object.keys(was)) if (!(k in t)) delete had[k];
     for (const [k, v] of Object.entries(t)) if (!same(was[k], v)) had[k] = v;

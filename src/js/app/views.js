@@ -361,12 +361,16 @@ export default {
     return true;
   },
   /* Rows marked done or deleted, waiting for the batch to clear (leaving.js), stay where they were through a load of
-     their list, though Vikunja's no longer has them (a task done): they go with the batch. */
+     their list, though Vikunja's no longer has them (a task done): they go with the batch. On Today, whose groups
+     are by date, so does one Vikunja now has in another group: a repeating task ticked, or added done, is open again
+     at its next date, and moves there when its mark goes (its row shown done meanwhile: keep, tasks.js). */
   keepMarked(groups){
-    const ids = new Set(groups.flatMap(g => g.tasks.map(t => t.id)));
+    const now = new Map(groups.flatMap(g => g.tasks.map(t => [t.id, g]))), today = this.route.name === 'today';
     for (const old of this.view.groups) old.tasks.forEach((t, i) => {
-      const g = this.leaving[t.id] && !ids.has(t.id) && groups.find(x => x.key === old.key);
-      if (g) { g.tasks.splice(Math.min(i, g.tasks.length), 0, t); ids.add(t.id); }
+      const g = this.leaving[t.id] && groups.find(x => x.key === old.key), has = now.get(t.id);
+      if (!g || has === g || (has && !today)) return;
+      if (has) has.tasks.splice(has.tasks.findIndex(x => x.id === t.id), 1);
+      g.tasks.splice(Math.min(i, g.tasks.length), 0, t); now.set(t.id, g);
     });
     return groups;
   },

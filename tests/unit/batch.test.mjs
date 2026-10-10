@@ -123,6 +123,25 @@ test('rows gone after a load: a few on the screen fold, all measured first; many
   assert.deepEqual(log.filter(x => x !== 'read'), [], 'too many on the screen at once: they simply go');
 });
 
+test('rows marked stay where they were through a load: one Vikunja no longer lists, and on Today one it now has under another day', async () => {
+  const { component } = await import('./fake.mjs'), views = (await import('../../src/js/app/views.js')).default;
+  const app = component(views), task = id => ({ id }), [a, b, c, d] = [1, 2, 3, 4].map(task);
+  const ids = groups => groups.map(g => g.tasks.map(t => t.id));
+  app.view = { groups: [{ key: 'today', tasks: [a, b, c] }, { key: 'week', tasks: [d] }] };
+  app.leaving = { 2: 'done', 3: 'done' };
+  // b is done, so Vikunja's Today no longer has it; c repeats, and is now due next week.
+  assert.deepEqual(ids(app.keepMarked([{ key: 'today', tasks: [a] }, { key: 'week', tasks: [d, c] }])), [[1, 2, 3], [4]], 'both where they were');
+  // Not marked, a task goes where Vikunja has it.
+  app.leaving = {};
+  assert.deepEqual(ids(app.keepMarked([{ key: 'today', tasks: [a] }, { key: 'week', tasks: [d, c] }])), [[1], [4, 3]]);
+  // In search and a project, a ticked task Vikunja now lists under Done is left there: its mark moves nothing more.
+  app.route = { name: 'search' };
+  app.view = { groups: [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [] }] };
+  app.leaving = { 2: 'done' };
+  assert.deepEqual(ids(app.keepMarked([{ key: 'open', tasks: [a] }, { key: 'done', tasks: [b] }])), [[1], [2]]);
+  assert.deepEqual(ids(app.keepMarked([{ key: 'open', tasks: [a] }, { key: 'done', tasks: [] }])), [[1, 2], []], 'one it doesn\'t list stays, as before');
+});
+
 test('a load finds the rows gone from the page in one pass, not one for each', async () => {
   const { component } = await import('./fake.mjs'), views = (await import('../../src/js/app/views.js')).default;
   const app = component(views), log = [], asked = [];
