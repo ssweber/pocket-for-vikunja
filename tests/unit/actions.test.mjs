@@ -689,7 +689,7 @@ test('a card moved to a new date moves only its task\'s date; one whose subtask 
   assert.deepEqual([v.task(10).due_date, v.task(11).due_date, app.view.cards[10].when, key(10)], [at(7, 17), ZERO, at(7, 17), 'today'], 'Undo: the card back where it was');
   await moveTo(app, app.tasks[20], new Date(2026, 9, 9), 'Fri 9');
   assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [at(9, 0), at(7, 18), 'today'], 'Friday, with no time; its subtask due today keeps it under Today');
-  assert.deepEqual(said(app), ['Moved to Fri 9. Its subtask “Sub 21” is due sooner, so it stays here.', 'Undo', 20, 'cap'], 'said in its place, with its Undo');
+  assert.deepEqual(said(app), ['Moved to Fri 9. Its subtask “Sub 21” is due sooner, so it stays here.', 'Undo', null, 'cap'], 'said by the add box, where the whole sentence fits, with its Undo');
   await app.toast.action.fn();
   assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [ZERO, at(7, 18), 'today'], 'Undo: its date off again, its subtask\'s as it was');
 });

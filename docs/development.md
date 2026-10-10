@@ -280,7 +280,8 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   the finger was. Any date picked is `moveHeld`, then `reschedule` (`app/actions.js`): the date moved on screen at
   once (`placeOnToday`), then saved, and said with its Undo (`undoMoves`, as Move all to today's: the date and time
   it had, unless it was changed elsewhere since) on its row, where that's in sight in its new place (`rowSeen`,
-  `app/lines.js`), else by the add box; not saved, it goes back with Try again. A card moves only its task's date.
+  `app/lines.js`), else by the add box; not saved, it goes back with Try again. A card moves only its task's date,
+  and one kept where it is by a subtask due sooner says so by the add box, where the sentence has room.
   It's hooked in at one place: `screenRows('today')`'s `reschedule`; without it a hold on Today does nothing.
   A row held or swiped is never text: no selection starts meanwhile (`noSelect`, on `selectstart`), and one the
   phone's long press made is cleared at the hold and as the row moves. A long press picks the nearest words it can

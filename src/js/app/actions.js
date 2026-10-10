@@ -418,7 +418,8 @@ export default {
      and said where it went, with an Undo for a few seconds (design rule 8: hold-to-reschedule-plan), which puts back
      the date it had, its time too (undoMoves): on its row, where that's in sight once it's in its new place, else by
      the add box (one that left Today, or is scrolled away). A card whose subtask is due sooner stays where that puts
-     it, and the line says why. Not saved, it goes back, and its place says so, with Try again. */
+     it, and the line says why, by the add box, where there's room for the sentence (a row's line is cut short to one
+     line). Not saved, it goes back, and its place says so, with Try again. */
   async reschedule(t, to){
     const c = this.view.cards?.[t.id], m = {t, was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
     this.placeOnToday(t, to.due);
@@ -430,7 +431,7 @@ export default {
     const back = this.undoMoves([m], to.label && dayWord(to.label), {place: 'cap'}, done => { if (done.length) { this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived'); } });
     const undo = {label: 'Undo', fn: async () => { if (!await saving) await back.fn(); }};
     await this.$nextTick();                                                 // its row is where it is now
-    const text = movedTo(to.label, kept?.title), where = this.say(text, {row: this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
+    const text = movedTo(to.label, kept?.title), where = this.say(text, {row: !kept && this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
     const e = await saving;
     if (!e) return true;
     this.placeOnToday(t, m.was, m.when, m.key);
