@@ -2,7 +2,7 @@
 import {cache, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
-import {addedWhere, doneText} from '../messages.js';
+import {addedWhere, cancelName, doneText} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
@@ -340,8 +340,11 @@ export default {
     this.waitShown = slow.length > 0;
     if (next !== null) waitTimer = setTimeout(() => this.markSlow(), next - Date.now());
   },
-  // Whether lines wait under an entry's first line.
-  pendingNested(entryId){ const e = this.pending.find(x => x.id === entryId); return !!e && e.items.some((x, i) => underOf(e, i) === 0); },
+  // What a waiting row's Cancel is called: with what becomes of the lines waiting under it, whichever line it is.
+  cancelLabel(t){
+    const e = this.pending.find(x => x.id === t.entry), up = e ? underOf(e, t.index) : null;
+    return cancelName(t.title, e ? e.items.filter((x, i) => underOf(e, i) === t.index).length : 0, up !== null ? e.items[up].p.title : e?.parent?.title);
+  },
   // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
   get pendingTasks(){
     const out = [];

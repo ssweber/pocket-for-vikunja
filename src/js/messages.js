@@ -66,6 +66,11 @@ export const doneText = (closed, open, title) => {
 // A done task shown over its open subtasks on a project's list: why it's there.
 export const headText = n => n ? `Done, but ${n === 1 ? '1 subtask is' : n + ' subtasks are'} still open` : 'Done';
 
+/* What a waiting row's Cancel is called, for a screen reader: with what becomes of the `n` lines waiting under it,
+   which go under what it was under (`over`, its title; none for a line at the top: they're tasks of their own), as
+   cancelPending (app/sending.js) does it. */
+export const cancelName = (title, n = 0, over = '') => 'Cancel ' + title + (!n ? '' : `: the line${n === 1 ? '' : 's'} under it `
+  + (over ? `${n === 1 ? 'goes' : 'go'} under “${over}”` : n === 1 ? 'becomes a task of its own' : 'become tasks of their own'));
 // A run's step done or skipped without a connection: when it goes.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
 

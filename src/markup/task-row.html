@@ -79,7 +79,7 @@
   <template x-if="!g.own && !g.top && (swept[t.id] || (!g.run && leaving[t.id] === 'deleted'))"><div class="del-gap"><span class="what"><span x-text="swept[t.id] ? 'Done' : 'Deleted'"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="(swept[t.id] ? 'Undo: ' : 'Restore ') + t.title"><span class="me" x-text="swept[t.id] ? 'Undo' : 'Restore'"></span></button></div></template>
   <!-- A step inserted during the run, on its card and not done: likely a mistake, so it can go -->
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
-  <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="'Cancel ' + t.title + (t.index === 0 && pendingNested(t.entry) ? ': the lines under it become tasks of their own' : '')" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
+  <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-for="line in !g.run && !g.own && !g.top && lines[t.id] ? [lines[t.id]] : []" :key="0">
     <!-- include markup/row-line.html -->
   </template>

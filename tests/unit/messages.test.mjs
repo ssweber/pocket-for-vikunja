@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, completeAsk, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, cancelName, completeAsk, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -173,4 +173,12 @@ test('a run says who started it and when, with the day when it was another day o
   assert.equal(startedText('Priya', at.toISOString(), {now, day: true}), 'Started by Priya, ' + full(at));
   assert.equal(startedText('Priya', null, {now}), 'Started by Priya');
   assert.equal(startedText(null, at.toISOString(), {now}), '');
+});
+
+test('a waiting row\'s Cancel says what becomes of the lines waiting under it', () => {
+  assert.equal(cancelName('Pack the van'), 'Cancel Pack the van');
+  assert.equal(cancelName('Pack the van', 2), 'Cancel Pack the van: the lines under it become tasks of their own');
+  assert.equal(cancelName('Pack the van', 1), 'Cancel Pack the van: the line under it becomes a task of its own');
+  assert.equal(cancelName('Load chairs', 1, 'Pack the van'), 'Cancel Load chairs: the line under it goes under “Pack the van”');
+  assert.equal(cancelName('Load chairs', 3, 'Pack the van'), 'Cancel Load chairs: the lines under it go under “Pack the van”');
 });

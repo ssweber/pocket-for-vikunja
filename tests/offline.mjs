@@ -465,6 +465,9 @@ try {
     await page.waitForSelector(pendingRow(T('H1')));
     await page.waitForSelector(pendingRow(T('H2')));
     if (await page.isVisible(pendingRow(T('H1a'))) || await page.isVisible(pendingRow(T('H2a')))) throw new Error('a subtask is shown in Today');
+    // Each parent's Cancel says what becomes of the lines waiting under it, the second's too.
+    await expect(page.locator(`${pendingRow(T('H1'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H1')}: the lines under it become tasks of their own`);
+    await expect(page.locator(`${pendingRow(T('H2'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H2')}: the line under it becomes a task of its own`);
     await page.unroute('**/api/v2/projects/*/tasks', drop);
     await online();
     await synced(page);

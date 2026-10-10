@@ -19,7 +19,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 // the test's, so it doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'cancelPending', 'pendingNested'));
+  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow', 'cancelPending', 'cancelLabel'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], canWrite: () => true });
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   app.view = { groups: todayGroups(), route: '' };
@@ -172,15 +172,18 @@ test('a waiting line cancelled: the lines under it go under what it was under, a
   v.trouble = () => 'offline';
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1), line('Tables', {}, 0)]);
   await send(app, e);
+  // Each waiting row's Cancel says what becomes of the lines under it, a later parent's too.
+  assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Pack the van: the lines under it become tasks of their own',
+    'Cancel Load chairs: the line under it goes under “Pack the van”', 'Cancel Stack them', 'Cancel Tables']);
   await app.cancelPending(e.id, 1);
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Pack the van', null], ['Stack them', 0], ['Tables', 0]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 1 line under it is now under “Pack the van”.');
   assert.equal(app.cap.text, 'Load chairs');
-  assert.equal(app.pendingNested(e.id), true, 'lines still wait under the first');
+  assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van: the lines under it become tasks of their own', 'two still wait under the first');
   await app.cancelPending(e.id, 0);
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Stack them', null], ['Tables', null]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now tasks of their own.');
-  assert.equal(app.pendingNested(e.id), false);
+  assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Stack them', 'Cancel Tables']);
   // One kept from before, its first line cancelled: the rest are tasks of their own, as they were then.
   const old = entry([oldLine('Order cups'), oldLine('Small'), oldLine('Large')], { nest: true });
   await send(app, old);
