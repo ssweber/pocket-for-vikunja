@@ -117,7 +117,16 @@ export default {
     haptic(tickFeel(t.done));
     if (g.own) return this.sheetDone();
     if (g.card) this.pinCard(g.card);                    // the step after it comes in once it has gone (app/cards.js)
-    if (this.unmark(t.id)) { if (!g.sheet) this.aimAfterTick(t); return; }
+    const back = this.unmark(t.id);
+    if (back) {
+      if (g.sheet) return;
+      this.aimAfterTick(t);
+      // Tapped while it's still held, its save not answered (holdRow, leaving.js), it's taken back only once that has:
+      // open then, it's what the box adds to, as its tick has it, unless another row was touched meanwhile.
+      const at = this.cursor?.id;
+      if (t.done && back.then) back.then(() => { if (!t.done && this.cursor?.id === at) this.aimAfterTick(t); });
+      return;
+    }
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row); this.aimAfterTick(t);
   },

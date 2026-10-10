@@ -9,6 +9,7 @@ import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import leaving from '../../src/js/app/leaving.js';
 import quickadd from '../../src/js/app/quickadd.js';
+import views from '../../src/js/app/views.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { sync } from '../../src/js/sync.js';
@@ -430,6 +431,29 @@ test('the lit subtask ticked: its task is lit from the tap, the row held meanwhi
   await ticking;
   app.keepAim();
   assert.deepEqual([aimed(), app.leaving, v.task(8).done], [[['9'], ''], { 8: 'done' }, true], 'saved and marked: its task lit still');
+});
+
+/* A tick always selects (tickRow, views.js). Ticked, then tapped again while the row is still held, its save not
+   answered: the tap takes it back once that has, and only then is it open again, to be the row the box adds at. */
+test('a tick taken back while its row is still held: open again, it\'s the lit row; not if another row was touched meanwhile', async t => {
+  const { v, app, chairs, add, aimed } = underBox(t), g = { depth: {} };
+  app.tickRow = views.tickRow;
+  // What's on its way has gone and come back: the save, the mark taken back, and the save of that.
+  const quiet = async () => { for (let k = 0; k < 20; k++) { const n = v.requests.length; for (let i = 0; i < 20; i++) await new Promise(ok => setImmediate(ok)); if (v.requests.length === n) return; } };
+  await add('Rope');
+  app.aim(chairs);
+  app.tickRow(chairs, g, {});
+  assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 8: 'done' }], 'ticked: held done, its task lit');
+  app.tickRow(chairs, g, {});
+  assert.deepEqual([aimed(), chairs.done], [[['9'], ''], true], 'tapped again at once: still held, until its save is answered');
+  await quiet();
+  assert.deepEqual([aimed(), !!chairs.done, !!v.task(8).done, app.leaving], [[['8'], 'Chairs'], false, false, {}], 'answered, and taken back: open, and lit');
+  // The same, and Rope touched while it's on its way: the light stays on Rope.
+  app.tickRow(chairs, g, {});
+  app.tickRow(chairs, g, {});
+  app.aim(app.tasks[101]);
+  await quiet();
+  assert.deepEqual([aimed(), !!chairs.done], [[['101'], 'Rope'], false]);
 });
 
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {

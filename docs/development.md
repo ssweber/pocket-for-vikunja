@@ -501,7 +501,7 @@ This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456`, on Postgres, w
   outbox: a line that says it's done made, then marked done, once after a lost reply, ticked on its row and gone with
   the batch, one that repeats moved on; a line's progress; a parent's figure written once its lines are in, the
   deepest first; a list with several parents and subtasks of subtasks, an entry kept from before, a waiting line
-  cancelled, and what its Cancel is called; a subtask added from the add box lit at once, on its waiting row and once it's sent, now or later, one added done, called off or turned down leaving the light on its task, as the lit one ticked does, held done meanwhile, saved or not; and what a box says it read: the Done chip, a list's count tapped to leave those lines out, ↳ Under
+  cancelled, and what its Cancel is called; a subtask added from the add box lit at once, on its waiting row and once it's sent, now or later, one added done, called off or turned down leaving the light on its task, as the lit one ticked does, held done meanwhile, saved or not, and a tick taken back while its row is still held lighting it once it's open; and what a box says it read: the Done chip, a list's count tapped to leave those lines out, ↳ Under
   first line on by itself, a project's heading left out (`adding.test.mjs`); the one
   copy of each task, a repeating one shown done kept so through a load (`tasks.test.mjs`); what the one row asks by its options: a step's tick, what's under its title (the
   sheet's own row only when it's due; a run's row nothing, who it's for in its slot; a run's step without a 🔔) and
