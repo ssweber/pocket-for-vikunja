@@ -12,7 +12,8 @@
          up or down its list, making it a checklist template, deleting it -->
     <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
-    <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)" @keydown.escape.stop="sheet.menu = false">
+    <!-- Escape closes it before the sheet, wherever the focus is (escapeKey) -->
+    <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)">
       <button role="menuitem" id="d-share-text" @click="sheet.menu = false; shareProgress('task')">Share progress as a text</button>
       <!-- Not for a run opened as a task: a run has Share as text only (share.js) -->
       <template x-if="checklistRole !== 'run'"><button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button></template>

@@ -36,7 +36,7 @@ export default {
     if (already) this.$nextTick(() => { sh.querySelector('.scroll').scrollTop = 0; });
     else this.$nextTick(() => { void sh.offsetHeight; this.sheet.show = true; });   // reflow so the slide-in animates
   },
-  /* The ×, a slide down, the shade, Escape and the phone's Back all come here. The question a ring asks, asked from a
+  /* The ×, a slide down, the shade, Escape (escapeKey) and the phone's Back all come here. The question a ring asks, asked from a
      task's sheet, goes back to that sheet, as Cancel does; `instant` (confirmed, or leaving for a screen) closes it. */
   closeSheet(instant){
     if (!this.sheet.open) return;
@@ -52,6 +52,15 @@ export default {
     // Closed with ×, a swipe or Escape: its history entry is marked closed (see the popstate listener). A screen opened
     // from the sheet replaces the entry (go()).
     if (history.state?.sheet === true) { history.replaceState({...history.state, sheet: 'closed'}, ''); shared.onClosedSheet = true; shared.closedAt = location.href; }
+  },
+  /* Escape, on a desktop, closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the task's ⋯ menu, wherever
+     the focus is (still on ⋯, which opened it), the focus back on ⋯; then the sheet. What's being typed in takes Escape
+     itself and stops it there (@keydown.escape.stop in the markup): a title being changed is called off, a task's and a
+     template's; a step being changed too, once its own ⋯ menu is closed; the label picker and the box that assigns
+     someone close. */
+  escapeKey(){
+    if (this.sheet.menu) { this.sheet.menu = false; document.getElementById('d-more')?.focus(); }
+    else if (this.sheet.open) this.closeSheet();
   },
   /* Leaving a task's sheet, closed or for another task: notes being changed are saved, and a comment or subtasks being
      written are kept for when it's opened again. Not again for a sheet already closing (a task opened again within its

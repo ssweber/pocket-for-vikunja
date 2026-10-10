@@ -756,3 +756,21 @@ test('a title being changed is saved when its sheet closes, however it closes, a
     assert.deepEqual((await sent())[1], [2, { title: 'TEMPLATE: Opening up' }]);
   } finally { delete document.activeElement; delete document.getElementById; delete globalThis.history; }
 });
+
+/* Escape, on a desktop, closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the task's ⋯ menu, wherever
+   the focus is, which goes back to ⋯; only then the sheet. With no sheet open it does nothing. */
+test('Escape closes the task\'s menu before its sheet, the focus back on ⋯', () => {
+  const app = component(sheet), did = [];
+  document.getElementById = id => ({ focus: () => did.push('focus ' + id) });
+  app.closeSheet = () => did.push('close');
+  try {
+    app.sheet = { open: true, menu: true };
+    app.escapeKey();
+    assert.deepEqual([app.sheet.menu, did], [false, ['focus d-more']], 'the menu first, the sheet left open');
+    app.escapeKey();
+    assert.deepEqual(did, ['focus d-more', 'close'], 'then the sheet');
+    app.sheet = { open: false, menu: false };
+    app.escapeKey();
+    assert.equal(did.length, 2, 'nothing open: nothing done');
+  } finally { delete document.getElementById; }
+});

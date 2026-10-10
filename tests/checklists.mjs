@@ -315,7 +315,27 @@ try {
     await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
     await expect(page.locator('#d-subtasks .row:nth-of-type(1) [aria-label^="Remove step"]')).toBeVisible();
     await expect(page.locator('#d-subtasks [aria-label^="Move up"], #d-subtasks [aria-label^="Move down"]')).toHaveCount(0);
-    await page.press('#d-subtasks .step-box textarea', 'Escape');
+    /* Escape closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the step's ⋯ menu, then the step being
+       changed, each leaving the template's sheet open; and its name being changed is called off, as a task's title is,
+       not saved with the sheet closing. */
+    const open = page.locator('#sheet.show'), box = page.locator('#d-subtasks .step-box textarea'), menu = page.locator('#d-subtasks .step-menu');
+    await page.click('#d-subtasks .row:nth-of-type(1) [aria-label^="More for step"]');
+    await expect(menu).toBeVisible();
+    await expect(box).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(box).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(box).toHaveCount(0);
+    await page.focus('#d-title');
+    await page.keyboard.type(' renamed');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#d-title')).toHaveValue(TEMPLATE);
+    await expect(page.locator('#d-title')).not.toBeFocused();
+    await page.waitForTimeout(400);                                          // a sheet closing would be gone by now
+    await expect(open, 'Escape in a template\'s name closed its sheet').toBeVisible();
+    await synced(page);
+    if ((await api('/tasks/' + template.id)).title !== 'TEMPLATE: ' + TEMPLATE) throw new Error('the name called off was saved: ' + (await api('/tasks/' + template.id)).title);
     // The order stays after a reload.
     await page.reload();
     await loaded(page);

@@ -3176,6 +3176,34 @@ try {
     const roots = (await viewOrder()).filter(t => !t.related_tasks?.parenttask?.length && !t.done).map(t => t.title.replace(` ${stamp}`, ''));
     if (JSON.stringify(roots) !== JSON.stringify(['Alpha', 'Bravo', 'Charlie'])) throw new Error('Vikunja has ' + roots);
   });
+  /* Escape, on a desktop, closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the task's ⋯ menu before
+     its sheet, wherever the focus is (on ⋯ still, which Chrome gives it; nowhere, as Safari leaves it; on one of the
+     menu's own), the focus back on ⋯; and a title being changed is called off before the sheet closes. */
+  await step('escape-closes-what-is-innermost-first', async () => {
+    const T = order.tasks, open = page.locator('#sheet.show'), menu = page.locator('#d-menu'), more = page.locator('#d-more');
+    await page.click(`${rowById(T.Bravo.id)} > .body`);
+    for (const [where, focus] of [['on ⋯', null], ['nowhere', () => page.evaluate(() => document.activeElement.blur())], ['in the menu', () => page.focus('#d-share-text')]]) {
+      await more.click();
+      await expect(menu).toBeVisible();
+      if (focus) await focus(); else await expect(more).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(menu, `the menu is still open, the focus ${where}`).toHaveCount(0);
+      await expect(more).toBeFocused();
+      await page.waitForTimeout(400);                                        // a sheet closing would be gone by now
+      await expect(open, `Escape closed the sheet with its menu, the focus ${where}`).toBeVisible();
+    }
+    await ownTitle().click();
+    await expect(page.locator('#d-title')).toBeFocused();
+    await page.keyboard.type(' renamed');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#d-title')).toHaveCount(0);
+    await expect(ownTitle()).toHaveText(`Bravo ${stamp}`);
+    await expect(open).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await synced(page);
+    if ((await (await api('/tasks/' + T.Bravo.id)).json()).title !== `Bravo ${stamp}`) throw new Error('a title called off was saved');
+  });
   await step('the-done-section-opens-loads-and-reopens', async () => {
     const T = order.tasks, done = page.getByRole('button', { name: /^Done/ }), delta = page.locator('#view .row', { hasText: `Delta ${stamp}` });
     // An old link to a project's done tasks opens its list with the Done section open.

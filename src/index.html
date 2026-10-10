@@ -16,7 +16,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body x-data="pocket" :class="{'sheet-open': sheet.open}" @keydown.escape.window="sheet.open && closeSheet()"
+<body x-data="pocket" :class="{'sheet-open': sheet.open}" @keydown.escape.window="escapeKey()"
       x-effect="if (screen === 'app') document.title = head.title + ' · Pocket'">
 
 <!-- include markup/icons.html -->

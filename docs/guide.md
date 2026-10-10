@@ -191,6 +191,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   subtask), only the bar pulls it down: a pull beside the box just puts the keyboard away, and a touch in the box is
   the box's own, so the sheet never moves under what you're writing. The notes box grows with what you write, so long
   notes scroll with the sheet. A title or notes you were changing are saved as the sheet closes, whichever way.
+  With a keyboard, **Escape** closes what's innermost first: the **⋯** menu, if it's open; a title being changed,
+  which is left as it was (a template's name too, and a template's step being changed); then the sheet.
 - **Sharing progress:** a task's **⋯**, a project's **⋯** and a run's **⋯** have **Share progress as a text**. It opens
   the phone's share sheet, to send it in a message, as a few plain lines:
 
