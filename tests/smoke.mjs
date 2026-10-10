@@ -1341,6 +1341,54 @@ try {
     }
   });
 
+  /* A title being changed is saved when its sheet closes, whichever way (rows-and-sheet-fixes-plan, part 1). Its box
+     saves as it loses the focus, which the × or a tap on the shade take from it; a sheet slid down by its bar, or
+     closed by the phone's Back, doesn't, so leaving the sheet saves it too. Emptied, it stays as it was. */
+  await step('a-title-being-changed-is-saved-however-the-sheet-closes', async () => {
+    const name = how => `Pocket smoke title ${how} ${stamp}`, t = await make(name('as made'), { due_date: todayAt(23) });
+    const R = `#view .row[data-id="${t.id}"]`;
+    // Its sheet opened as on an iPhone, where a tap gives a button no focus: nothing to hand the focus back to as the
+    // sheet closes (a mouse's click would leave it on the row, and the title's box would lose it then).
+    const change = async to => {
+      await expect(page.locator(`${R} > .body`)).toBeVisible({ timeout: 15000 });
+      await page.$eval(`${R} > .body`, el => { document.activeElement?.blur(); el.click(); });
+      await expect(page.locator('#sheet .row.own')).toBeVisible();
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // slid in
+      await ownTitle().click();
+      await expect(page.locator('#d-title')).toBeFocused();
+      await page.fill('#d-title', to);
+    };
+    const saved = async (to, how) => {
+      await page.waitForSelector('#sheet', { state: 'hidden', timeout: 5000 });
+      await expect(page.locator(`${R} > .body .title > span:not(.sr)`).first(), `its row after the sheet was ${how}`).toHaveText(to);
+      await synced(page);
+      if ((await get(t.id)).title !== to) throw new Error(`the sheet ${how}: Vikunja has "${(await get(t.id)).title}"`);
+    };
+    try {
+      await toastGone();
+      await refreshToday();
+      await change(name('slid down'));
+      await touchDrag('#sheet .bar', 160);
+      await saved(name('slid down'), 'slid down by its bar');
+      await change(name('gone back from'));
+      await page.goBack();
+      await saved(name('gone back from'), 'closed by the phone\'s Back');
+      await change(name('closed'));
+      await page.click('#btn-sheet-close');
+      await saved(name('closed'), 'closed by its ×');
+      await change(name('shaded'));
+      await page.mouse.click(195, 20);                                         // the shade above the sheet
+      await saved(name('shaded'), 'closed by a tap on the shade');
+      // Emptied, then slid down: its title as it was.
+      await change('   ');
+      await touchDrag('#sheet .bar', 160);
+      await saved(name('shaded'), 'slid down with its title emptied');
+    } finally {
+      if (await page.isVisible('#sheet')) await page.click('#btn-sheet-close', { timeout: 2000 }).catch(() => {});
+      await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   await step('leaving-the-screen-sends-a-deletion-at-once', async () => {
     // Deleted on its project's list, then another tab tapped before the batch clears: it's sent then, not left waiting.
     const x = await make(`Pocket smoke leave ${stamp}`, { due_date: todayAt(23) }), X = rowOf(x.title);

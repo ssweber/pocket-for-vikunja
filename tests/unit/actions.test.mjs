@@ -12,6 +12,7 @@ import leaving from '../../src/js/app/leaving.js';
 import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
 import sheet from '../../src/js/app/sheet.js';
+import views from '../../src/js/app/views.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
 import { cache } from '../../src/js/util.js';
@@ -542,4 +543,47 @@ test('a card thrown to a new date moves only its task\'s date; one whose subtask
   await throwTo(app, app.tasks[20], new Date(2026, 9, 9), 'Fri 9');
   assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [at(9, 0), at(7, 18), 'today'], 'Friday, with no time; its subtask due today keeps it under Today');
   assert.deepEqual([app.toast.msg, app.toast.action], ['Moved to Fri 9. Its subtask “Sub 21” is due sooner, so it stays here.', null], 'said in its place, with no Undo');
+});
+
+/* A title being changed, in the box in the sheet's own row or a template's over its card, is saved by its box as it
+   loses the focus. A sheet slid down, or closed by the phone's Back, doesn't take the focus from it, and on an iPhone
+   there's no button to hand it back to: leaving the sheet saves it too, once, whichever comes first. */
+test('a title being changed is saved when its sheet closes, however it closes, and once; emptied, it stays as it was', async c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', project_id: 1 }, { id: 2, title: 'TEMPLATE: Opening', project_id: 1, done: true, labels: [{ id: 9, title: 'template' }] }]);
+  const app = component(tasks, actions, views, sheet);
+  globalThis.history = { state: null, pushState(s){ this.state = s; }, replaceState(s){ this.state = s; } };
+  document.getElementById = () => ({ querySelector: () => ({}) });
+  Object.defineProperty(app, 'canEdit', { get: () => true });
+  Object.assign(app, { picker: {}, $nextTick(){}, keepTemplate(){}, aim(){}, unsay(){} });
+  const open = id => { app.openSheet('task'); app.sheet.show = true; app.showTask(structuredClone(v.task(id))); };
+  const sent = async () => { for (let i = 0; i < 20; i++) await new Promise(setImmediate); return patches(v); };
+  try {
+    open(1);
+    app.editTitle();
+    app.sheet.title = 'Wipe the menus and the tables ';
+    app.closeSheet();                                                          // slid down, or the phone's Back: the box keeps the focus
+    assert.deepEqual(await sent(), [[1, { title: 'Wipe the menus and the tables' }]], 'saved as the sheet is left');
+    assert.equal(app.sheet.titleEdit, false);
+    app.saveTitle();                                                           // the box's blur, after
+    c.mock.timers.tick(300);                                                   // the sheet gone
+    app.saveTitle();                                                           // or only now, as its box goes with it
+    assert.equal((await sent()).length, 1, 'once');
+    // Emptied: as it was.
+    open(1);
+    app.editTitle();
+    app.sheet.title = '   ';
+    app.closeSheet(true);
+    assert.equal((await sent()).length, 1, 'nothing sent for a title emptied');
+    // Not being changed: nothing to save.
+    open(1);
+    app.closeSheet(true);
+    assert.equal((await sent()).length, 1);
+    // A template's name, in the box over its card, which has the focus: saved with "TEMPLATE: " kept before it.
+    open(2);
+    document.activeElement = { id: 'd-title' };
+    app.sheet.title = 'Opening up';
+    app.closeSheet(true);
+    assert.deepEqual((await sent())[1], [2, { title: 'TEMPLATE: Opening up' }]);
+  } finally { delete document.activeElement; delete document.getElementById; delete globalThis.history; }
 });

@@ -55,10 +55,13 @@ export default {
   },
   /* Leaving a task's sheet, closed or for another task: notes being changed are saved, and a comment or subtasks being
      written are kept for when it's opened again. Not again for a sheet already closing (a task opened again within its
-     slide down): that was done as it closed. */
+     slide down): that was done as it closed. A title being changed is saved too: its box saves as it loses the focus,
+     which the × takes from it, but a sheet slid down, or closed by the phone's Back, doesn't (on an iPhone a tap gives
+     a button no focus, so there's nothing to hand it back to either). Saved once, whichever comes first (saveTitle). */
   leaveTask(){
     const sh = this.sheet, t = sh.task;
     if (!sh.open || !sh.show || sh.kind !== 'task' || !t) return;
+    if (sh.titleEdit || document.activeElement?.id === 'd-title') { this.saveTitle(); sh.titleEdit = false; }
     if (sh.editingDesc && sh.descDraft.trim() !== this.notesText(t).trim()) {
       const v = sh.descDraft, base = sh.descConflict ?? sh.descBase;
       sh.editingDesc = false; sh.dirty = true;
@@ -233,9 +236,11 @@ export default {
   // The title of the task the sheet leads with, tapped on its row: a box in its place to change it (task-row.html, g.own),
   // saved once it's left (saveTitle). Not one shared with you to read.
   editTitle(){ if (this.canEdit) { this.sheet.title = this.rowTitle(this.sheet.task); this.sheet.titleEdit = true; } },
-  // A template's name: its title keeps "TEMPLATE: " before it.
+  // A template's name: its title keeps "TEMPLATE: " before it. Saved already, or emptied, it's as the task has it. (Its
+  // box may lose the focus only as its sheet goes, with no task left to save.)
   saveTitle(){
-    const t = this.sheet.task, v = this.sheet.title.trim();
+    const t = this.sheet.task, v = (this.sheet.title || '').trim();
+    if (!t) return;
     if (v && v !== this.rowTitle(t)) this.save({title: hasTemplateLabel(t) ? templateTitle(v) : v}); else this.sheet.title = this.rowTitle(t);
   },
   // The notes as text, and as saved: Pocket's lines (a template's order, a run's) are left out while they're edited, and
