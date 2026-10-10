@@ -14,6 +14,7 @@ import cards from '../../src/js/app/cards.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import throwing from '../../src/js/app/throw.js';
 import { THROW_STAYS } from '../../src/js/throw.js';
+import { TEXT_FIELD } from '../../src/js/progress.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
@@ -302,6 +303,47 @@ test('the sheet\'s own row: swiped for its progress, springing back; at 0% its D
   role = null; edit = false;
   assert.equal(app.sheetRowGesture(row), null, 'shared with you to read');
 });
+
+/* Where a gesture starts (holdToSlide, watchNudges), run as they are on a pretend screen: `area` keeps the listeners
+   they add, `fire` calls them. What a finger went down on says only what it's in (`closest`): a text field, a row. */
+function screen(){
+  const on = {}, area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
+  return { area, fire: (type, e) => { for (const fn of on[type] || []) fn(e); } };
+}
+const within = (field, rows) => ({ closest: sel => sel === TEXT_FIELD ? (field ? {} : null) : Object.entries(rows).find(([k]) => sel.includes(k))?.[1] || null });
+const noWindow = fn => { document.addEventListener = () => {}; globalThis.addEventListener = () => {}; try { fn(); } finally { delete document.addEventListener; delete globalThis.addEventListener; } };
+const down = target => ({ isPrimary: true, pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 100, target });
+
+test('in a sheet, a touch that starts in a text field is never a row\'s: the title being changed, in its row; beside it, it is', () => noWindow(() => {
+  const app = component(progress, cards), asked = [], { area, fire } = screen(), own = { id: 'own' };
+  Object.assign(app, { $refs: { sheet: area }, sheetRowGesture: row => { asked.push(row.id); return null; } });
+  app.initSheetProgress();
+  fire('pointerdown', down(within(true, { '.row.own': own })));
+  assert.deepEqual(asked, [], 'in the title\'s box, in the sheet\'s own row: the box takes the finger');
+  fire('pointerdown', down(within(false, { '.row.own': own })));
+  assert.deepEqual(asked, ['own'], 'on the row beside it: the row is asked (whatever has the focus)');
+  fire('pointerdown', down(within(false, { '.row-del': {}, '.row.own': own })));
+  assert.deepEqual(asked, ['own'], 'its Delete, shown: only a tap');
+}));
+
+test('on a list, a touch that starts in a text field is never a row\'s swipe or hold, nor a nudge', () => noWindow(() => {
+  const app = component(progress, cards), asked = [], nudged = [], { area, fire } = screen(), row = { dataset: { id: '7' }, parentElement: { id: 'run-steps' } };
+  document.getElementById = () => area;
+  try {
+    Object.assign(app, { route: { name: 'project' }, stepSlide: r => { asked.push(r.dataset.id); return null; }, nudged: id => nudged.push(id) });
+    app.initProgressDrag();
+    // A finger down on a row, moved 30px down over 300ms and lifted, slowly: a nudge.
+    const nudge = target => {
+      const at = (y, t) => ({ target, timeStamp: t, touches: [{ clientX: 100, clientY: y }], changedTouches: [{ clientX: 100, clientY: y }] });
+      fire('touchstart', at(100, 0)); fire('touchmove', at(110, 100)); fire('touchmove', at(120, 200)); fire('touchend', { ...at(130, 300), touches: [] });
+    };
+    const on = field => within(field, { '.item > .row': row });
+    fire('pointerdown', down(on(true))); nudge(on(true));
+    assert.deepEqual([asked, nudged], [[], []], 'in a field: the field takes the finger');
+    fire('pointerdown', down(on(false))); nudge(on(false));
+    assert.deepEqual([asked, nudged], [['7'], [7]], 'on the row: its swipe or hold is asked for, and a short, slow scroll is a nudge');
+  } finally { delete document.getElementById; }
+}));
 
 // Progress set in the sheet, by a swipe on its row or a quarter in Details, claims as a row's swipe does (user,
 // 2026-10-08: the same rule everywhere), after its save, whose reply would otherwise be shown over the claim.

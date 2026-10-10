@@ -7,6 +7,7 @@ import {hasOwnOrder, hasTemplateLabel, notesOnly, stepInfos, stepsOf, templateNa
 import {listViewOf, positionOrder} from '../order.js';
 import {atTime} from '../quickadd.js';
 import {notSaved} from '../messages.js';
+import {inTextField, slideStarts, typedIn} from '../progress.js';
 import {fileEntry, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
@@ -71,9 +72,17 @@ export default {
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
   },
-  initSwipe(){                                   // swipe down to close
+  /* The sheet slides down with a finger, and closes let go past 110px. Where that may start is slideStarts'
+     (progress.js): from its bar (the strip at its top: the grab, the task's number, ⋯ and ×); from anywhere else with
+     the sheet scrolled to its top, but not while a field in it is being typed in, when a pull down beside the field
+     only puts the keyboard away; and never from a text field. Decided as the finger goes down: a slide under way
+     carries on whatever takes the focus meanwhile. Not while a row is held or swiped (`sliding`). */
+  initSwipe(){
     let y0 = null; const sh = this.$refs.sheet;
-    sh.addEventListener('touchstart', e => { const sc = sh.querySelector('.scroll'); y0 = (sc.scrollTop <= 0 || e.target.closest('.bar')) ? e.touches[0].clientY : null; }, {passive:true});
+    sh.addEventListener('touchstart', e => {
+      const at = document.activeElement;
+      y0 = slideStarts({field: inTextField(e.target), bar: !!e.target.closest('.bar'), top: sh.querySelector('.scroll').scrollTop <= 0, typing: sh.contains(at) && typedIn(at)}) ? e.touches[0].clientY : null;
+    }, {passive:true});
     sh.addEventListener('touchmove', e => { if (y0 !== null && sliding) { y0 = null; sh.style.transform = ''; } if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
     sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) this.closeSheet(); });
   },

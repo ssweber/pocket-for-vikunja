@@ -1218,6 +1218,75 @@ try {
     }
   });
 
+  /* The sheet's slide down, by a finger (rows-and-sheet-fixes-plan, part 1; `finger`, helpers.mjs: Chrome's own touch
+     input). A pull down that starts in a text field moves nothing, nor does one beside a field being typed in, which
+     only puts the phone's keyboard away. From its bar it follows the finger and closes, a field focused or not; and
+     with nothing being typed in, from anywhere at its top, as before: a select that kept the focus doesn't hold it. */
+  const { touch, touchDrag } = await finger(page);
+  await step('a-touch-in-a-text-field-never-slides-the-sheet-and-its-bar-always-does', async () => {
+    const t = await make(`Pocket smoke sheet slide ${stamp}`, { due_date: todayAt(23), description: '<p>Bring the ladder</p>' });
+    const R = `#view ${rowOf(t.title)}`, sheet = page.locator('#sheet');
+    const open = async () => {
+      await page.click(`${R} > .body`, { timeout: 15000 });
+      await expect(page.locator('#sheet .row.own')).toBeVisible();
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // slid in
+    };
+    // How far the sheet is pulled down while a finger is on it (its own style: none once it's let go), and where it's scrolled to.
+    const pulled = () => sheet.evaluate(el => el.style.transform);
+    const still = what => async () => { if (await pulled()) throw new Error(`a pull down ${what} moved the sheet: ${await pulled()}`); };
+    const follows = what => () => expect.poll(pulled, { message: `a pull down ${what} moves the sheet with the finger` }).toBe('translateY(160px)');
+    const atTop = async () => { if (await page.$eval('#sheet .scroll', el => el.scrollTop)) throw new Error('the sheet isn\'t scrolled to its top'); };
+    const pull = (sel, check) => touchDrag(sel, 160, 8, 40, 0, { check });
+    const closed = () => page.waitForSelector('#sheet', { state: 'hidden', timeout: 5000 });
+    try {
+      await toastGone();
+      await refreshToday();
+      await open();
+      // Its notes being changed: a pull down that starts in them moves nothing, nor one beside them.
+      await page.click('#d-desc');
+      await expect(page.locator('#d-desc-in')).toBeFocused();
+      await atTop();
+      await pull('#d-desc-in', still('that starts in the notes'));
+      await pull('#sheet #d-path', still('beside the notes, which have the focus,'));
+      await expect(sheet).toBeVisible();
+      await expect(page.locator('#d-desc-in')).toBeFocused();
+      // From its bar, it follows the finger and closes, the notes still focused.
+      await pull('#sheet .bar', follows('from the bar, with the notes focused,'));
+      await closed();
+      // Its title being changed: the same, and a pull that starts in its box isn't the row's either.
+      await open();
+      await ownTitle().click();
+      await expect(page.locator('#d-title')).toBeFocused();
+      await pull('#d-title', still('that starts in the title\'s box'));
+      await pull('#sheet #d-path', still('beside the title, which has the focus,'));
+      await expect(page.locator('#d-title')).toBeFocused();
+      await page.press('#d-title', 'Escape');
+      // With nothing focused: from its bar, and from anywhere at its top, as before.
+      await expect(page.locator('#sheet #d-title')).toHaveCount(0);
+      await pull('#sheet .bar', follows('from the bar'));
+      await closed();
+      await open();
+      await atTop();
+      await pull('#sheet #d-path', follows('at the sheet\'s top, with nothing focused,'));
+      await closed();
+      // A date, like a select, keeps the focus once its picker has closed, with no keyboard up: it doesn't hold the
+      // sheet. A pull that starts on it is still its own.
+      await open();
+      await page.focus('#d-due');
+      await atTop();
+      await pull('#d-due', still('that starts on the due date'));
+      await expect(page.locator('#d-due')).toBeFocused();
+      await pull('#sheet #d-path', follows('beside a date that kept the focus'));
+      await closed();
+      await synced(page);
+      const now = await get(t.id);
+      if (now.title !== t.title || !now.description.includes('Bring the ladder')) throw new Error('something was changed: ' + JSON.stringify([now.title, now.description]));
+    } finally {
+      if (await page.isVisible('#sheet')) await page.click('#btn-sheet-close', { timeout: 2000 }).catch(() => {});   // (it may be on its way down)
+      await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   await step('leaving-the-screen-sends-a-deletion-at-once', async () => {
     // Deleted on its project's list, then another tab tapped before the batch clears: it's sent then, not left waiting.
     const x = await make(`Pocket smoke leave ${stamp}`, { due_date: todayAt(23) }), X = rowOf(x.title);
@@ -2413,7 +2482,6 @@ ${footName('Hooks')}`);
      fast one, a hold, a tap (which opens the sheet, aiming as it closes), a row done or read only, and Today don't. The
      finger is Chrome's own touch input (`finger`, helpers.mjs), so the page scrolls under it as on a phone. Each one
      goes down from the top of the list, where the page can't scroll, so no row moves out of sight meanwhile. */
-  const { touch, touchDrag } = await finger(page);
   const cursorId = () => page.evaluate(() => Alpine.$data(document.body).cursor?.id ?? null);
   await step('a-nudge-aims-the-add-box', async () => {
     const T = foot.tasks, Fuel = rowOf(footName('Fuel')), Hooks = rowOf(footName('Hooks'));

@@ -70,18 +70,30 @@ export async function steady(locator, timeout = 5000){
    touch hold (touch-action, a scroll taking the touch away from the page), which a mouse (swipeRow) never meets.
    `touch(type, x, y, at)` is one touchStart, touchMove or touchEnd. Each says when it happened (`at`, in ms), as a
    phone's do, since Chrome takes its own time to pass them on: how fast the finger went is then the test's to say.
-   `touchDrag(sel, by, n, every, hold)`: `sel` touched in its middle, moved `by` px down in `n` moves `every` ms apart,
-   then lifted; held `hold` ms first (really waited). */
+   `touchDrag(sel, by, n, every, hold, {check})`: `sel` touched in its middle, moved `by` px down in `n` moves `every`
+   ms apart, then lifted; held `hold` ms first (really waited). `check` runs before it's lifted, the finger still
+   down, once the page has had its last move: Chrome hands a page its touch moves a frame at a time, later than it
+   takes them from here, so a check that nothing moved would otherwise pass before the page had the chance. */
 export async function finger(page){
   const cdp = await page.context().newCDPSession(page);
   const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0) => {
+  // Where the page last saw the finger: a listener that only looks, added once per page load.
+  const watch = () => page.evaluate(() => {
+    if (window.__finger) return;
+    window.__finger = {};
+    addEventListener('touchmove', e => { const p = e.touches[0]; window.__finger = { x: p.clientX, y: p.clientY }; }, { capture: true, passive: true });
+  });
+  const seenAt = (x, y) => page.waitForFunction(([x, y]) => Math.abs(window.__finger.x - x) < 1 && Math.abs(window.__finger.y - y) < 1, [x, y], { polling: 50, timeout: 5000 });
+  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0, { check = null } = {}) => {
     const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    if (check) await watch();
     await touch('touchStart', x, y);
     if (hold) await page.waitForTimeout(hold);
     const t0 = Date.now();
     for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
-    await touch('touchEnd', x, y + by, t0 + n * every + 8);
+    // The finger lifts whatever the check found, so the next touch starts afresh.
+    try { if (check) { await seenAt(x, y + by); await check(); } }
+    finally { await touch('touchEnd', x, y + by, t0 + n * every + 8); }
   };
   return { touch, touchDrag };
 }

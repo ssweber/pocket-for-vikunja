@@ -39,6 +39,22 @@ export const EDGE_GUARD = 24;                           // a swipe starting this
    Which way it can go is the row's (holdToSlide, app/progress.js). */
 export const swipeStarts = (dx, dy, x0, screen, open = false) => Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_SLOPE
   && (open || (x0 > EDGE_GUARD && x0 < screen - EDGE_GUARD));
+/* A touch that starts in a text field is the field's: its caret, its selection, its own scrolling. It never starts a
+   gesture: not a row's swipe or hold, nor a nudge, nor the sheet's slide down (holdToSlide and watchNudges,
+   app/progress.js, and initSwipe, app/sheet.js, each ask here as they start). A text field is an input, a textarea, a
+   select, or anything contenteditable; `target` is what the finger went down on. */
+export const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+export const inTextField = target => !!target?.closest?.(TEXT_FIELD);
+/* Whether `el` is a field that's typed in, so the phone's keyboard is up while it has the focus: a textarea, anything
+   contenteditable, or an input that takes words. Not a select, a date, a file or a tick box: those keep the focus
+   after their own picker has closed, with no keyboard to put away. */
+const NOT_TYPED = /^(button|checkbox|color|date|datetime-local|file|hidden|image|month|radio|range|reset|submit|time|week)$/;
+export const typedIn = el => !!el && (el.tagName === 'TEXTAREA' || !!el.isContentEditable || (el.tagName === 'INPUT' && !NOT_TYPED.test(el.type || 'text')));
+/* Whether a touch may slide the sheet down, to close it (initSwipe): never from a text field (`field`: inTextField).
+   From the sheet's bar (`bar`), always. From anywhere else only with the sheet scrolled to its top (`top`), where
+   pulling down has nothing left to scroll, and not while a field in the sheet is being typed in (`typing`: typedIn):
+   one pulls down beside a field to put the phone's keyboard away, which mustn't close the sheet too. */
+export const slideStarts = ({field, bar, top, typing}) => !field && (bar || (top && !typing));
 
 /* ---------- swiping a row: one mechanism, mirrored sides (parent-tasks-plan, 1b) ----------
    A row swiped either way works the same: its content moves with the finger, the space it uncovers shows what letting

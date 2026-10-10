@@ -7,7 +7,7 @@
 // leads with its own row, swiped as any (sheetRowGesture: parent-tasks-plan, 6b). A parent (a card's header, or a
 // parent's row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the
 // way, its ring's tap; left, its Delete.
-import {DELETE_W, HOLD_MS, isNudge, lockDirection, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
+import {DELETE_W, HOLD_MS, inTextField, isNudge, lockDirection, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {store} from '../util.js';
@@ -187,7 +187,9 @@ export default {
      nothing, not even a tap). Held still (a tick is felt, and the row lifts), it can only be moved up or down
      (`reorder`: start(y), move(dy, y), end(commit)): nothing scrolls or swipes until the finger lifts, and moved
      sideways, it's let go, changing nothing. A hold that takes the finger any way (`reorder.lift`: Today's ring,
-     app/throw.js) starts as it's felt, lift(x, y), and is then moved with the finger, move(dy, y, x), either way. */
+     app/throw.js) starts as it's felt, lift(x, y), and is then moved with the finger, move(dy, y, x), either way.
+     A touch that starts in a text field (inTextField, progress.js) is never asked about: it's the field's. One beside
+     a field that has the focus is a row's as ever: a swipe with the add box focused is the fast path. */
   holdToSlide(area, find){
     let g = null;
     document.addEventListener('selectstart', noSelect, true);
@@ -214,7 +216,8 @@ export default {
     area.addEventListener('pointerdown', e => {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false;                             // a new tap: its click is its own
-      let s = find(e.target); if (!s) return;
+      // In a text field (a title being changed, in a row): the field's, never a gesture.
+      let s = inTextField(e.target) ? null : find(e.target); if (!s) return;
       if (s.swipe?.base) s = {el: s.el, slide: s.slide, swipe: s.swipe, width: s.width};   // an open row is swiped on, or tapped shut: not held, its progress 0%
       g = {s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait'};
       // Held: lifted (what's lifted can be more than the row: on a project's list, its card), or on Today, thrown, at once.
@@ -298,14 +301,14 @@ export default {
      turns into a short, slow scroll aims the add box at that row (isNudge, in progress.js beside app/, where its numbers
      are; `nudged`, app/quickadd.js: on a run, the step goes on the card); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
      scrolling: once the phone scrolls, it ends the pointer events (pointercancel), but these carry on. A hold, a swipe
-     or a second finger on the way, and it's not one. */
+     or a second finger on the way, and it's not one; nor a touch that starts in a text field (inTextField). */
   watchNudges(area){
     let n = null;
     area.addEventListener('touchstart', e => {
       n = null;
       const run = this.route.name === 'run';
       // (a row, a card's row, or a card's heading, for its task)
-      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !e.target.closest('.row-del')
+      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !inTextField(e.target) && !e.target.closest('.row-del')
         && (e.target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || e.target.closest('.card-head')?.closest('.day-card'));
       if (!row) return;
       const p = e.touches[0];
@@ -467,7 +470,7 @@ export default {
   // In a task's sheet: its own row (sheetRowGesture), and its subtasks' rows, as in a list.
   initSheetProgress(){
     this.holdToSlide(this.$refs.sheet, target => {
-      if (target.closest('.row-del, textarea')) return null;
+      if (target.closest('.row-del')) return null;
       const own = target.closest('.row.own');
       if (own) return this.sheetRowGesture(own);
       const row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');

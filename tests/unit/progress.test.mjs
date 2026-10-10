@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimsOnSlide, DELETE_W, EDGE_GUARD, figureOf, figurePatch, isNudge, isSubtask, LOCK_PX, lockDirection, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, quarterOn, QUARTERS, releaseSpeed, SIDES, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, trackMoves, undoing, workedOut } from '../../src/js/progress.js';
+import { claimsOnSlide, DELETE_W, EDGE_GUARD, figureOf, figurePatch, inTextField, isNudge, isSubtask, LOCK_PX, lockDirection, NUDGE_MAX_PX, NUDGE_MAX_SPEED, NUDGE_MIN_PX, NUDGE_SPEED_MS, openSubtasks, pctOf, progressPatch, quarterOn, QUARTERS, releaseSpeed, SIDES, slideStarts, SWIPE_SLOPE, swipeAt, swipeEnd, swipeFeel, swipeOffset, swipeStarts, TEXT_FIELD, trackMoves, typedIn, undoing, workedOut } from '../../src/js/progress.js';
 
 test('progress in percent, from Vikunja\'s 0 to 1', () => {
   assert.equal(pctOf({ percent_done: 0.3 }), 30);
@@ -57,6 +57,49 @@ test('a swipe: either way, clearly sideways, not from the screen\'s edges; on an
   assert.equal(swipeStarts(-9, 2, 390 - 10, 390), false, 'from the right edge: the phone\'s too');
   assert.equal(swipeStarts(9, 2, 200, 390, true), true, 'an open row, swiped back');
   assert.equal(swipeStarts(-9, 2, 380, 390, true), true, 'an open row, swiped on');
+});
+
+/* What a finger went down on, as far as the guard asks: its tag, whether it's contenteditable (true, false, or not
+   said), and what it's in. There's no DOM here, so `closest` reads the guard's own list of selectors. */
+const el = (tag, parent = null, editable) => ({ tag, parent, editable, closest(sel){
+  const is = e => sel.split(',').map(x => x.trim()).some(x => x.startsWith('[contenteditable]') ? e.editable === true : x === e.tag);
+  for (let e = this; e; e = e.parent) if (is(e)) return e;
+  return null;
+} });
+test('a touch that starts in a text field never starts a gesture: an input, a textarea, a select, anything contenteditable', () => {
+  for (const tag of ['input', 'textarea', 'select']) assert.equal(inTextField(el(tag)), true, tag);
+  assert.equal(inTextField(el('div', null, true)), true, 'contenteditable');
+  assert.equal(inTextField(el('b', el('p', el('div', null, true)))), true, 'anything inside it');
+  assert.equal(inTextField(el('div', null, false)), false, 'contenteditable="false" is not');
+  assert.equal(inTextField(el('span', el('button', el('div')))), false, 'a row\'s title, its tick, the space beside a field');
+  assert.equal(inTextField(el('span', el('label'))), false, 'a label over a hidden file input: the label is what\'s touched');
+  assert.equal(inTextField({}), false, 'what has no closest (a text node)');
+  assert.equal(inTextField(null), false);
+  assert.deepEqual(TEXT_FIELD.split(',').map(x => x.trim()), ['input', 'textarea', 'select', '[contenteditable]:not([contenteditable="false"])'], 'one list, in one place');
+});
+
+test('a field that\'s typed in keeps the phone\'s keyboard up while it has the focus; a select, a date or a file doesn\'t', () => {
+  assert.equal(typedIn({ tagName: 'TEXTAREA' }), true, 'notes, a title, a comment');
+  for (const type of ['text', 'search', 'email', 'number', '']) assert.equal(typedIn({ tagName: 'INPUT', type }), true, 'input ' + type);
+  for (const type of ['datetime-local', 'date', 'time', 'file', 'checkbox', 'radio', 'range', 'button', 'submit']) assert.equal(typedIn({ tagName: 'INPUT', type }), false, 'input ' + type);
+  assert.equal(typedIn({ tagName: 'DIV', isContentEditable: true }), true);
+  assert.equal(typedIn({ tagName: 'SELECT' }), false, 'a select keeps the focus once its list has closed');
+  assert.equal(typedIn({ tagName: 'BUTTON' }), false);
+  assert.equal(typedIn({ tagName: 'BODY' }), false, 'nothing focused');
+  assert.equal(typedIn(null), false);
+});
+
+test('the sheet slides down from its bar, or from anywhere at its top with nothing being typed in; never from a text field', () => {
+  const at = (field, bar, top, typing) => slideStarts({ field, bar, top, typing });
+  assert.equal(at(false, false, true, false), true, 'scrolled to its top, nothing focused: from anywhere');
+  assert.equal(at(false, false, false, false), false, 'scrolled down: a pull down scrolls it back up');
+  assert.equal(at(false, true, false, false), true, 'from its bar, wherever it\'s scrolled to');
+  assert.equal(at(false, false, true, true), false, 'a field being typed in: a pull down beside it only puts the keyboard away');
+  assert.equal(at(false, true, true, true), true, 'from its bar, even so');
+  assert.equal(at(false, true, false, true), true);
+  assert.equal(at(true, false, true, false), false, 'a touch that starts in the notes: never, at the top');
+  assert.equal(at(true, false, true, true), false, 'nor while they have the focus');
+  assert.equal(at(true, true, true, false), false, 'nor would a field in the bar');
 });
 
 test('let go, a swiped row goes back, stays open on its Delete, or past half its width is deleted', () => {
