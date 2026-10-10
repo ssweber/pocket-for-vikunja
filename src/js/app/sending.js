@@ -19,8 +19,9 @@ export default {
   /* Create a task from a parsed line, by LINE_STEPS. `job` keeps each step's progress and `save` keeps the job: for a
      line in the outbox, job is its item. `made` hears of the task as soon as it exists, and `parent` makes it a
      subtask of that task. Returns the task (just {id, project_id} if an earlier try made it), with `problems`: what
-     couldn't be done, like an @username who can't see the project, and `arrived`: Vikunja's copy once it was marked
-     done, for a line that said it's done. A lost connection or a busy Vikunja is thrown. */
+     couldn't be done, like an @username who can't see the project, and `arrived`, for a line that said it's done or
+     how far along it is: {now: Vikunja's copy once that was marked, done: whether it's done}. A lost connection or a
+     busy Vikunja is thrown. */
   async createTask(parsed, pid, {job = {}, save = async () => {}, made, at, skip, parent} = {}){
     job.problems ||= [];
     job.key ||= randomId();                      // this line, for the record of which task was added for it
@@ -139,13 +140,14 @@ export default {
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : child ? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
           made: t => { taken.add(t.id); tasks.push({...t, child, parent: under}); if (i === 0) entry.parentProject = t.project_id; }});
-        // One that arrived done: its row shows it (placeSent).
+        // One that arrived done, or with progress: its row shows it (placeSent).
         if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
         ids.push(item.taskId);
       }
       // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them. And a
-      // pasted list's first line, over the lines under it, has the figure they give it, when any of them arrived done.
-      const first = !entry.parent && entry.items.some((x, i) => i && isChild(entry, i) && x.p.done) ? entry.items[0].taskId : null;
+      // pasted list's first line, over the lines under it, has the figure they give it, when any of them arrived done
+      // or with progress.
+      const first = !entry.parent && entry.items.some((x, i) => i && isChild(entry, i) && (x.p.done || x.p.pct > 0)) ? entry.items[0].taskId : null;
       if ((entry.parent || first) && !entry.figured) { await this.writeFigure(entry.parent?.id ?? first); entry.figured = true; await save(); }
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
@@ -215,7 +217,10 @@ export default {
     for (const {child, problems, arrived, ...t} of tasks) {
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
-      if (arrived) Object.assign(t, arrived.done ? arrived : {done: true});   // it said it's done: ticked on its row
+      // It said it's done, or how far along it is: ticked on its row, or its tick showing how far. One that repeats is
+      // shown done as it was made, until the batch clears (arrivedDone).
+      const now = arrived?.now;
+      if (now) Object.assign(t, arrived.done && !now.done ? {done: true} : {done: now.done, done_at: now.done_at, percent_done: now.percent_done, updated: now.updated});
       const g = this.view.groups.find(g => g.key === key);
       // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again.
       if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
@@ -224,7 +229,7 @@ export default {
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
       if (g) g.tasks.push(this.keep(t));
       else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
-      if (arrived) this.arrivedDone(this.tasks[t.id], arrived);
+      if (arrived?.done) this.arrivedDone(this.tasks[t.id], now);
       placed = true;
     }
     // And in the copy kept for opening offline.
@@ -343,7 +348,7 @@ export default {
         if (x.taskId) return;
         const p = x.p;
         const child = isChild(e, i);
-        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: !!p.done, priority: p.priority || 0, position: p.position || 0,
+        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: e.parent?.id ?? (child ? e.items[0].taskId || `pending-${e.id}-0` : null), title: p.title, done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
           waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});

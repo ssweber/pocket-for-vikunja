@@ -41,10 +41,12 @@ export default {
     return this.$refs.capture;
   },
   /* What a box never reads: a subtask stays in its task's project, so "+Garden" stays in its title; and in a checklist
-     project a step's time is its T#30m, so "Check at 3pm" stays as it is. */
+     project a step's time is its T#30m, so "Check at 3pm" stays as it is. A step has no progress to arrive with, so
+     "Fill to 50%" stays as it is too; a subtask has. */
   boxBase(w){
     if (w === 'cap') return {};
-    return this.isSubBox(w) && !this.checklistIds.has(this.boxParent(w)?.project_id) ? {project: true} : STEP_IGNORE;
+    if (!this.isSubBox(w)) return STEP_IGNORE;
+    return this.checklistIds.has(this.boxParent(w)?.project_id) ? {...STEP_IGNORE, progress: false} : {project: true};
   },
   // The boxes whose lines are subtasks, and the task they go under: the open sheet's, or the cursor's.
   isSubBox(w){ return w === 'sub' || w === 'under'; },
@@ -73,13 +75,15 @@ export default {
     return parseCapture(this.boxLines(w)[0] || '', this.projects, {...this.parseOpts, ignore: all ? base : {...base, ...this.box(w).ignore}});
   },
   get parsed(){ return this.boxParsed('cap'); },
-  // Each line of a box, parsed: a pasted list in quick add goes to one project (parseList); subtasks are read one by one.
-  // `done`: the line said it's done (boxList).
+  /* Each line of a box, parsed: a pasted list in quick add goes to one project (parseList); subtasks are read one by one.
+     `done`: the line said it's done (boxList). A line with lines under it has no progress of its own, so a figure at its
+     end is taken off and dropped: a parent's is worked out from its subtasks (design rule 5). */
   boxParsedLines(w){
     const list = this.boxList(w).lines, lines = list.map(l => l.text), first = this.boxParsed(w);
     const parsed = w === 'cap' ? (lines.length > 1 ? this.parseList(lines, first).parsed : [first])
       : lines.map((l, i) => i ? parseCapture(l, this.projects, {...this.parseOpts, ignore: this.boxBase(w)}) : first);
-    return parsed.map((p, i) => list[i]?.done ? {...p, done: true} : p);
+    const parent = i => w === 'cap' && this.cap.nest && i === 0 && lines.length > 1;
+    return parsed.map((p, i) => ({...p, done: !!list[i]?.done, ...parent(i) && {pct: 0}}));
   },
   /* A pasted list goes to one project: the first +project in it, on whichever line. A different +project on a later line
      stays in that line's text, as a second one does within a line. (Vikunja's own quick add reads each line on its own.)
@@ -352,6 +356,8 @@ export default {
     if (all.repeatWarn) out.push({key: 'rw', cls: 'warn', text: `Vikunja can't repeat “${all.repeatWarn}”: it stays in the title`});
     if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
+    // Its own progress, from a figure at its end; 100% is done.
+    if (all.pct) out.push({key: 'pct', kind: 'progress', cls: 'num', text: all.pct < 100 ? all.pct + '%' : '100%: done', off: off('progress')});
     all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: this.prefixes.label + l, off: off('labels')}));
     all.assignees.forEach((u, i) => out.push({key: 'a' + i, kind: 'assignees', text: this.prefixes.assignee + u, off: off('assignees')}));
     warn.forEach((text, i) => out.push({key: 'w' + i, cls: 'warn', text}));

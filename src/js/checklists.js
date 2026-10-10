@@ -148,9 +148,10 @@ export function skippedBy(s){
   const since = Date.parse(s.done_at), marked = new Set((s.reactions?.[SKIP_MARK] || []).map(u => u.id));
   return (s.comments || []).filter(c => marked.has(c.author?.id) && Date.parse(c.created) >= since && /^skipped\b/i.test(htmlToText(c.comment))).pop()?.author || null;
 }
-// What quick add leaves alone in a checklist's steps: dates (a step's time is its T#), and the project, so every step
-// stays in its template's project, as Pocket's plugin needs.
-export const STEP_IGNORE = {due: true, repeat: true, project: true};
+// What quick add leaves alone in a checklist's steps: dates (a step's time is its T#), the project, so every step
+// stays in its template's project, as Pocket's plugin needs, and a figure at its end ("Fill to 50%"): a step has no
+// progress to arrive with.
+export const STEP_IGNORE = {due: true, repeat: true, project: true, progress: true};
 /* When a step is due, written in its title in the template, the way IEC 61131-3 writes times:
      Put the roast in {#roast}    names the step "roast"
      Peel the potatoes T#20m      due 20 minutes after the step before it is done (the first step: after the run starts)

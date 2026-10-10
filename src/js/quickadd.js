@@ -65,15 +65,29 @@ function ordinalDate(day, now){
 }
 // Prefixes for each of Vikunja's Quick Add Magic modes (the user's setting); "disabled" turns parsing off.
 export const QUICK_ADD_PREFIXES = {vikunja: {project: '+', label: '*', assignee: '@'}, todoist: {project: '#', label: '@', assignee: '+'}};
-/* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat, marks}.
+/* A figure at the end of a line, "(50%)" or "50%", is the task's own progress, 1 to 100, as a swipe would set it (100 is
+   done). Pocket's own: Vikunja's quick add has no word for progress, so it's read whichever mode is set. The end of the
+   line is the end of its title once the other words are read, so "Tables 50% tomorrow *hire" has one; only people
+   (`tail`, a pattern for " @sam @jo") may follow it, as they stay in the title until they're assigned. Something has
+   to come before it: "50%" alone is a title. {start, end, pct} in `title`, or null. */
+function endFigure(title, tail = ''){
+  const m = title.match(new RegExp(`\\s(?:\\((\\d{1,3})%\\)|(\\d{1,3})%)(?=${tail}\\s*$)`)), pct = m ? +(m[1] ?? m[2]) : 0;
+  return pct >= 1 && pct <= 100 && title.slice(0, m.index).trim() ? {start: m.index + 1, end: m.index + m[0].length, pct} : null;
+}
+/* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat, pct, marks}.
+   pct: its own progress, from a figure at its end (endFigure); 0 for none.
    marks: the words that were read, as [{start, end, kind, name}] positions in `text`, one per phrase; kind is one of the
    `ignore` keys below, and name the person, for @username.
-   opts: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off; their words stay in the title),
-   now, dueTime ("HH:MM"). */
+   opts: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off; their words stay in the title:
+   project, labels, assignees, priority, repeat, due, progress), now, dueTime ("HH:MM"). */
 export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new Date(), dueTime = '12:00'} = {}){
-  const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: '', dueFromRepeat: false, repeat: null, repeatWarn: '', marks: []};
+  const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: '', dueFromRepeat: false, repeat: null, repeatWarn: '', pct: 0, marks: []};
   const P = QUICK_ADD_PREFIXES[mode];
-  if (!P) return out;
+  if (!P) {
+    const f = !ignore.progress && endFigure(text);
+    if (f) Object.assign(out, {pct: f.pct, title: (text.slice(0, f.start) + text.slice(f.end)).trim(), marks: [{start: f.start, end: f.end, kind: 'progress'}]});
+    return out;
+  }
   // Wrapping the whole text in quotes turns everything off: "delete mails up to january 30th"
   const quoted = text.match(/^\s*(["'])([\s\S]*)\1\s*$/);
   if (quoted) { out.title = quoted[2].trim(); return out; }
@@ -230,6 +244,9 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   }
   if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
   if (out.due && out.timeRead && !/\d:\d\d/.test(out.dueLabel)) out.dueLabel += ' ' + fmtTime(out.due);   // as "Oct 12 3:30 PM"
+  // Its own progress: a figure at the end of what's left, before the people in it.
+  const figure = !ignore.progress && endFigure(out.title, ignore.assignees ? '' : `(?:\\s+\\${P.assignee}(?:"[^"]+"|'[^']+'|\\S+))*`);
+  if (figure) { out.pct = figure.pct; cut(figure.start, figure.end, 'progress'); }
 
   out.title = unhide(out.title).replace(/\s{2,}/g, ' ').trim();
   // One mark per phrase: neighbouring characters read as the same thing join up, across the spaces between them.

@@ -152,7 +152,7 @@ export const NO_ROOM = 'There\'s no room left on this phone to keep this until t
 export const KEPT = ' It\'s kept: tap the warning sign at the top to try again.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
 export const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
-  labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind, done: !!p.done});
+  labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind, done: !!p.done, pct: p.pct || 0});
 export const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
 export const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
 export const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
@@ -225,16 +225,18 @@ export const LINE_STEPS = [
     try { await app.linkSubtask(c.parent, j.taskId); } catch (e) { if (e.code !== ALREADY.link) throw e; }
     j.linked = true;
   }},
-  /* A line that said it's done (quickadd.js) arrives done: made as any task, then marked done the way a tick marks
-     it, so one that repeats moves on to its next date, and its parent's figure counts it. Last, once it's under its
-     parent. A repeating task ticked twice would skip a date: after a try that was cut off, Vikunja's copy says whether
-     that tick got there (done, or moved on from the date it was made with). */
-  {name: 'arrive', done: (j, c) => !c.parsed.done || !!j.arrived, async run(j, c){
+  /* A line that said it's done, or how far along it is (quickadd.js): made as any task, then marked the way a tick or
+     a swipe marks it (a figure of 100% is done), so one that repeats moves on to its next date, and its parent's
+     figure counts it. Last, once it's under its parent. A repeating task ticked twice would skip a date: after a try
+     that was cut off, Vikunja's copy says whether that tick got there (done, or moved on from the date it was made
+     with). `c.arrived`, for its row: Vikunja's copy after (`now`), and whether it was marked done. */
+  {name: 'arrive', done: (j, c) => !!j.arrived || !(c.parsed.done || c.parsed.pct > 0), async run(j, c){
+    const done = !!c.parsed.done || c.parsed.pct >= 100;
     const got = t => t.done || (repeats(t) && Date.parse(t.due_date) !== Date.parse(j.body.due_date));
-    let t = j.arriving ? await api('/tasks/' + j.taskId) : null;
-    if (!t || !got(t)) { j.arriving = true; await c.save(); t = await patchTask(j.taskId, {done: true}); }
+    let t = done && j.arriving ? await api('/tasks/' + j.taskId) : null;
+    if (!t || !got(t)) { j.arriving = true; await c.save(); t = await patchTask(j.taskId, done ? {done: true} : {percent_done: c.parsed.pct / 100}); }
     j.arrived = true;
-    c.arrived = t;
+    c.arrived = {now: t, done};
   }},
 ];
 /* How a run is set up from its template, in the same way: the outbox entry (`j`) keeps how far it got, so a try that's

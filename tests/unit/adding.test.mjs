@@ -16,14 +16,14 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 // the test's, so it doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'refreshPending', 'markSlow'));
+  const app = component(tasks, actions, leaving, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'markSlow'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], canWrite: () => true });
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   app.view = { groups: todayGroups(), route: '' };
   return app;
 };
 // A line as an add box keeps it in the outbox (packParsed): `p`, what was read in it.
-const line = (title, p = {}) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, ...p }, taskId: null, done: false, linked: false });
+const line = (title, p = {}) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0, ...p }, taskId: null, done: false, linked: false });
 let n = 0;
 const entry = (items, more = {}) => ({ id: 'e' + ++n, user: 1, at: new Date().toISOString(), nest: false, pid: 5, items, files: [], ...more });
 const send = async (app, e) => { await sync.add(e, []); app.refreshPending(); return app.sendEntry(e.id); };
@@ -91,12 +91,32 @@ test('a repeating task that arrived done shows ticked with the date it was given
   assert.ok(app.view.groups.some(g => g.tasks.includes(row)), 'still on Today: its next date is within the week');
 });
 
-test('a pasted list\'s first line, over lines that arrived done, has the figure they give it', async t => {
+test('a line\'s progress is written once it\'s made, as a swipe would set it, and shows in its row\'s tick; 100% is done', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  const e = entry([line('Tables', { pct: 50 }), line('Chairs', { pct: 100 })]);
+  v.trouble = () => 'offline';
+  await send(app, e);
+  app.refreshPending();
+  assert.deepEqual(app.pendingTasks.map(x => [x.title, x.percent_done, x.done]), [['Tables', 0.5, false], ['Chairs', 1, true]], 'while they wait, too');
+  v.trouble = () => null;
+  v.requests.length = 0;
+  const r = await app.sendEntry(e.id);
+  assert.deepEqual(sent(v), [['POST', '/projects/5/tasks', { title: 'Tables' }], ['PATCH', '/tasks/101', { percent_done: 0.5 }],
+    ['POST', '/projects/5/tasks', { title: 'Chairs' }], ['PATCH', '/tasks/102', { done: true }]]);
+  app.placeSent(r.tasks);
+  assert.deepEqual(group(app, 'nodate').map(x => [x.title, x.percent_done, x.done]).sort(), [['Chairs', 0, true], ['Tables', 0.5, false]]);
+  assert.deepEqual(app.leaving, { 102: 'done' }, 'only the one that\'s done leaves with the batch');
+});
+
+test('a pasted list\'s first line, over lines that arrived done or with progress, has the figure they give it', async t => {
   const v = fakeVikunja(), app = adding(t);
   await send(app, entry([line('Pack the van'), line('Load chairs', { done: true }), line('Tables')], { nest: true }));
   await app.saveTask(101, null, () => null);
   assert.deepEqual([v.task(101).percent_done, v.task(102).done, v.task(103).done], [0.5, true, false], 'one of two done');
   assert.deepEqual(v.task(101).related_tasks.subtask.map(s => s.id), [102, 103]);
+  await send(app, entry([line('Set the hall'), line('Tables', { pct: 50 }), line('Lights')], { nest: true }));
+  await app.saveTask(104, null, () => null);
+  assert.equal(v.task(104).percent_done, 0.25, 'one at 50% of two');
   // With none done, its figure is 0, as Vikunja made it: nothing is written.
   v.requests.length = 0;
   await send(app, entry([line('Order cups'), line('Small'), line('Large')], { nest: true }));

@@ -42,7 +42,7 @@ const ymd = d => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 const plus = (n, from = REF) => { const d = new Date(from); d.setDate(d.getDate() + n); return ymd(d); };
 const cases = [];
 // c: {text, now?, dueTime?, ignore?, title?, date? ('Y-M-D' | null | 'any'), time? ('H:M'), repeat? ({after, mode} | null),
-//     labels?, assignees?, project?, priority?, pocket?, why?}
+//     labels?, assignees?, project?, priority?, pct?, pocket?, why?}
 const add = c => cases.push(c);
 
 // ---------- general ----------
@@ -231,6 +231,22 @@ add({ text: 'Water lawn every other day', title: 'Water lawn', repeat: { after: 
 add({ text: 'Standup every weekday at 9', title: 'Standup every weekday', repeat: null, date: '2021-6-25', time: '9:0', ...extra('weekdays only can’t repeat in Vikunja') });
 add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursday', repeat: null, date: null, ...extra('two days a week can’t repeat in Vikunja') });
 
+// A figure at the end of a line is the task's own progress, whichever mode is set: Vikunja's quick add has no word for it.
+add({ text: 'Tables (50%)', title: 'Tables', pct: 50, marked: ['progress:(50%)'], ...extra('a figure at the end is its progress') });
+add({ text: 'Tables 50%', title: 'Tables', pct: 50, marked: ['progress:50%'], ...extra('without brackets too') });
+add({ text: 'Tables (50%) @sam', title: 'Tables @sam', pct: 50, assignees: ['sam'], ...extra('people may follow it: they stay in the title until they’re assigned') });
+add({ text: 'Tables 50% tomorrow *hire !2', title: 'Tables', pct: 50, date: plus(1), labels: ['hire'], priority: 2, ...extra('the end of the line, once its other words are read') });
+add({ text: 'Tables (100%)', title: 'Tables', pct: 100, ...extra('100% is done') });
+add({ text: 'Discount 50% on mugs', title: 'Discount 50% on mugs', pct: 0, ...extra('a figure in the middle is a word') });
+add({ text: 'Tables (150%)', title: 'Tables (150%)', pct: 0, ...extra('past 100% it isn’t progress') });
+add({ text: 'Growth 0%', title: 'Growth 0%', pct: 0, ...extra('nor is 0%') });
+add({ text: '50%', title: '50%', pct: 0, ...extra('a figure alone is a title') });
+add({ text: 'Tables (50%)', ignore: { progress: true }, title: 'Tables (50%)', pct: 0, marked: [], ...extra('its chip tapped off keeps its words') });
+add({ text: 'Fill to 50%', ignore: { due: true, repeat: true, project: true, progress: true }, title: 'Fill to 50%', pct: 0, ...extra('a step has no progress to arrive with') });
+add({ text: 'Tables (50%)', mode: 'disabled', title: 'Tables', pct: 50, ...extra('read with quick add turned off too') });
+add({ text: 'Tables (50%) @sam', mode: 'disabled', title: 'Tables (50%) @sam', pct: 0, assignees: [], ...extra('where @sam is a word, so the figure isn’t at the end') });
+add({ text: 'Tables (50%) +sam @hire', mode: 'todoist', title: 'Tables +sam', pct: 50, assignees: ['sam'], labels: ['hire'], ...extra('with Todoist’s prefixes') });
+
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
@@ -343,7 +359,7 @@ const PROJECTS = ['project', 'project with long name', 'today', 'project1'].map(
 const results = await page.evaluate(([cases, projects]) => cases.map(c => {
   const r = parseCapture(c.text, projects, { now: new Date(c.now), dueTime: c.dueTime, ignore: c.ignore, mode: c.mode });
   return { title: r.title, date: r.due && `${r.due.getFullYear()}-${r.due.getMonth() + 1}-${r.due.getDate()}`, time: r.due && `${r.due.getHours()}:${r.due.getMinutes()}`,
-    repeat: r.repeat && { after: r.repeat.after, mode: r.repeat.mode }, labels: r.labels, assignees: r.assignees, project: r.project?.title ?? r.projectMiss, priority: r.priority,
+    repeat: r.repeat && { after: r.repeat.after, mode: r.repeat.mode }, labels: r.labels, assignees: r.assignees, project: r.project?.title ?? r.projectMiss, priority: r.priority, pct: r.pct,
     marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
@@ -411,7 +427,7 @@ cases.forEach((c, i) => {
   if (c.date === 'any') { if (!r.date) bad.push('no date'); }
   else if ('date' in c && r.date !== c.date) bad.push(`date ${r.date}`);
   if ('time' in c && r.time !== c.time) bad.push(`time ${r.time}`);
-  for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority']) if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
+  for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority', 'pct']) if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
   // The marks are what was read: taking them out of the text leaves the title, give or take spaces. (@username stays.)

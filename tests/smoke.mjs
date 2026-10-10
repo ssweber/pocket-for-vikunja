@@ -926,6 +926,28 @@ try {
       await expect(page.locator(R)).toHaveCount(0);                               // gone with the batch
     } finally { if (made) await api('/tasks/' + made.id, { method: 'DELETE' }); }
   });
+  /* A figure at the end of a line is the task's own progress, as a swipe would set it: marked in the box, with a chip
+     that keeps its words in the title when it's tapped off. Its row's tick shows it, and Vikunja has it. */
+  await step('a-figure-at-the-end-of-a-line-is-its-progress', async () => {
+    const t = `Pocket smoke figure ${stamp}`, R = rowOf(t), chip = page.locator('#cap-chips .chip[data-kind=progress]');
+    const marks = () => page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent).join());
+    await page.fill('#in-capture', `${t} (50%)`);
+    await expect(chip).toHaveText('50%');
+    await expect.poll(marks).toBe('progress:(50%)');
+    await chip.click();
+    await expect(chip).toHaveClass(/\boff\b/);
+    await expect.poll(marks).toBe('');
+    await chip.click();
+    await expect(chip).not.toHaveClass(/\boff\b/);
+    await page.click('#f-capture .go');
+    await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
+    await synced(page);
+    await expect.poll(() => tickPct(R)).toBe(50);
+    const made = await found(t);
+    try {
+      if (!made || made.done || Math.round(made.percent_done * 100) !== 50) throw new Error('in Vikunja: ' + JSON.stringify(made && { title: made.title, progress: made.percent_done, done: made.done }));
+    } finally { if (made) await api('/tasks/' + made.id, { method: 'DELETE' }); }
+  });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger
      lifts; then they leave together, the rows below closing up once. A finger down holds them. */

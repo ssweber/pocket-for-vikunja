@@ -277,6 +277,8 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
 | `Oct 12`, `21st June`, `2026-10-12`, `10/12`, `01.02`, `17th` | Due date. Dates in numbers only, and a bare `17th`, count only at the start or end, so "Table 4/5 wobbles" stays as it is. |
 | `at 5`, `at 5pm`, `at 17:30`, `@ 3pm` | Due time. A bare hour is daytime: `at 1` to `at 7` mean the afternoon or evening, `at 8` to `at 11` the morning. Write `am` or `pm`, or `05:00`, to say otherwise. Without a time, the task is due at your default due time from Vikunja's settings, noon unless you changed it. |
 | `every day`, `every 3 days`, `every other day`, `every two weeks`, `every month`, `daily`, `weekly`, `biannually` | Repeat. Without a date, it starts at the next due time. Vikunja can't repeat on weekdays only, or on two days a week: `every weekday` or `every monday and thursday` stay in the title, and a chip says so. |
+| `(50%)` or `50%`, at the end | Progress, as a swipe would set it; `100%` is done. Pocket's own. |
+| `x ` or `[x] `, at the start | Done already. Pocket's own (below). |
 
 - **Suggestions:** as you type a label or a person, chips offer your labels and the people you share projects with,
   those who can see the task's project first. Tap one to finish the word, or press Enter for the first.
@@ -293,6 +295,11 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
   Pocket's own: Vikunja's quick add has no word for done. It works in quick add and in the subtask boxes, whichever
   quick add mode is set. On a run's screen and in a template's steps, a ticked line is left out instead: a step is done
   by doing it.
+- **How far along it is:** a figure at the end of a line, `Tables (50%)` or `Tables 50%`, is the task's progress, as
+  swiping its row would set it, and `100%` is done. It can come before the line's other words, `Tables 50% tomorrow
+  @priya`, but not in the middle of the title: "Discount 50% on mugs" stays as typed. A task with subtasks has no
+  progress of its own, so on a line with lines under it the figure is taken off and dropped. Pocket's own too, and not
+  read in a checklist's steps, where "Fill to 50%" is a step's name.
 - **New projects:** if a `+project` doesn't exist yet, tap **Create project** to make it.
 - **A photo:** the camera button attaches one to the new task.
 
