@@ -4,8 +4,8 @@
 //   npm run perf:rows -- <what> [--profile fast] [--runs 3] [--label name]
 //     run     a run's screen (20 and 60 steps, one of each with a step counting down): how often the run is worked
 //             out a second while it sits idle, the main thread's time a second and its longest task, what its reload
-//             every 20 seconds takes, and a step's row swiped for 3 seconds, frame by frame (the longest wait between
-//             two frames at a second's tick, and away from one)
+//             every 20 seconds takes, a step's row swiped for 3 seconds, frame by frame (the longest wait between
+//             two frames at a second's tick, and away from one), and that step's tick tapped (to the step drawn done)
 //     list    Big (660 rows) and Errands (25): a tick tapped (from the finger lifting to the tick drawn), a full swipe
 //             (the finger going down, before the row can follow it; from letting go to the row moving, and to its gap
 //             drawn; the longest wait between two frames of the slide), the batch clearing (the main thread's time around the rows going, and its longest task), a nudge
@@ -46,18 +46,19 @@ async function runScreen(key){
     await sleep(12500);
     return page.evaluate(() => { const P = window.__pf; P.stopCount(); return P.ticks; });
   });
-  const seen = idle.out.slice(1, 12), ticks = seen.map(t => t.t);             // (the first is the effect starting)
-  if (ticks.length < 11) throw new Error('the clock ticked ' + ticks.length + ' times');
-  const secs = ticks.slice(0, 10).map((t, i) => idle.sum(t - 2, ticks[i + 1] - 2));
-  const span = (ticks[10] - ticks[0]) / 1000;
+  // From its clock's first tick to its last in those seconds (the first entry is the effect starting). A phone that
+  // takes over a second to work a tick out ticks less often than once a second: `ticks` says how many it managed.
+  const seen = idle.out.slice(1, 12), ticks = seen.map(t => t.t), last = ticks.length - 1;
+  if (last < 1) throw new Error('the clock ticked ' + ticks.length + ' times');
+  const span = (ticks[last] - ticks[0]) / 1000;
   // How long working the run out takes by itself, here: 200 times over.
   const each = await page.evaluate(() => { const a = window.__pf.app(), t = performance.now(); for (let i = 0; i < 200; i++) void a.runView; return (performance.now() - t) / 200; });
-  const res = { callsPerSec: r1((seen[10].n - seen[0].n) / 10), msPerSec: r1(median(secs)), longest: r1(idle.longest(ticks[0] - 2, ticks[10] - 2)),
-    layoutPerSec: r1(idle.layout(ticks[0] - 2, ticks[10] - 2) / span), runViewMs: Math.round(each * 1000) / 1000 };
+  const res = { ticks: last, callsPerSec: r1((seen[last].n - seen[0].n) / span), msPerSec: r1(idle.sum(ticks[0] - 2, ticks[last] - 2) / span), longest: r1(idle.longest(ticks[0] - 2, ticks[last] - 2)),
+    layoutPerSec: r1(idle.layout(ticks[0] - 2, ticks[last] - 2) / span), runViewMs: Math.round(each * 1000) / 1000 };
   // Its reload, 40 s after Pocket opened: the main thread's time from just before it to 4 s after, less what idling takes.
-  await until(page, 39000);
-  const reload = await traced(browser, page, async () => { await sleep(5500); });
-  res.reloadMs = r1(reload.sum(39500, 44500) - res.msPerSec * 5); res.reloadLongest = r1(reload.longest(39500, 44500));
+  await until(page, 38500);
+  const reload = await traced(browser, page, async () => { const from = await pageTime(page); await sleep(6000); return { from, to: await pageTime(page) }; });
+  res.reloadMs = r1(reload.sum(reload.out.from, reload.out.to) - res.msPerSec * (reload.out.to - reload.out.from) / 1000); res.reloadLongest = r1(reload.longest(reload.out.from, reload.out.to));
   // A step's row swiped for 3 seconds, the finger never still: each frame's time, and each tick's.
   await until(page, 45500);
   const box = await page.evaluate(() => {
@@ -72,12 +73,26 @@ async function runScreen(key){
   await page.mouse.move(box.x + 3, box.y); await page.mouse.up();
   const sw = await page.evaluate(() => { const P = window.__pf; return { frames: P.stopRec(), ticks: P.ticks.map(t => t.t) }; });
   const moving = sw.frames.filter(f => f[1] > 0), gaps = moving.slice(1).map((f, i) => ({ at: moving[i][0], ms: f[0] - moving[i][0] }));
-  // (A tick's time is when the screen had been worked out again: the end of the wait it caused, if it caused one.)
-  const ticked = g => sw.ticks.some(t => t > g.at - 20 && t < g.at + g.ms + 20);
-  const atTick = gaps.filter(ticked).map(g => g.ms), away = gaps.filter(g => !ticked(g)).map(g => g.ms);
+  // Each second's tick while the row was aside: the longest wait between two frames around it. (A tick's time is when
+  // the clock's own effect ran: at the end of the wait, if working the screen out again caused one.)
+  const near = (g, t) => t > g.at - 20 && t < g.at + g.ms + 20, swiped = sw.ticks.filter(t => t > moving[0][0] + 50 && t < moving.at(-1)[0] - 50);
+  const atTick = swiped.map(t => Math.max(0, ...gaps.filter(g => near(g, t)).map(g => g.ms))), away = gaps.filter(g => !sw.ticks.some(t => near(g, t))).map(g => g.ms);
   Object.assign(res, { frame: r1(median(gaps.map(g => g.ms))), frameAtTick: r1(median(atTick)), frameAtTickMost: r1(Math.max(0, ...atTick)), frameAway: r1(Math.max(0, ...away)), ticksSwiped: atTick.length,
     late: gaps.filter(g => g.ms > 25).length, frames: gaps.length });
+  // That step's tick tapped: from the finger lifting to the step drawn done, and the main thread's longest task.
+  await sleep(600);
+  const cb = await boxOf(page, '#pf-row > .check'), stepId = await page.evaluate(() => +document.getElementById('pf-row').dataset.id);
+  const tk = await traced(browser, page, async () => {
+    await page.evaluate(() => window.__pf.clear());
+    const done = page.evaluate(() => { const row = document.getElementById('pf-row'); return window.__pf.when(() => row.matches('.done'), row, { attributes: true, attributeFilter: ['class'] }); });
+    await page.touchscreen.tap(cb.x + cb.w / 2, cb.y + cb.h / 2);
+    const d = await done, up = await lastEv(page, 'pointerup');
+    await idleSync(page); await sleep(400);
+    return { up, d };
+  });
+  Object.assign(res, { stepTick: r1(tk.out.d.drawn - tk.out.up), stepTickLongest: r1(tk.longest(tk.out.up - 5, tk.out.up + 400)) });
   await page.close();
+  await vikunja('PATCH', '/tasks/' + stepId, { done: false });               // as it was, for the next run
   return res;
 }
 
@@ -92,7 +107,7 @@ const boxOf = (page, sel) => page.evaluate(sel => { const b = document.querySele
 // The row gone from its list, as the batch clears: when, in the page's time.
 const gone = (page, id) => page.evaluate(id => { const row = document.querySelector(`#view .item > .row[data-id="${id}"]`); return window.__pf.when(() => !row.isConnected, document.getElementById('view'), { subtree: true, childList: true }); }, id);
 const lastEv = (page, type) => page.evaluate(type => window.__pf.ev[type]?.at(-1)?.t ?? null, type);
-const idleSync = page => page.waitForFunction(() => document.documentElement.dataset.sync === 'idle', null, { polling: 100, timeout: 30000 });
+const idleSync = page => page.waitForFunction(() => document.documentElement.dataset.sync === 'idle', null, { polling: 100, timeout: 180000 });
 
 async function listScreen(name, pid, undo){
   const { page, cdp } = await ph.page('#/project/' + pid);
@@ -102,8 +117,9 @@ async function listScreen(name, pid, undo){
   const ids = await plainRows(page);
   if (ids.length < 6) throw new Error(name + ': only ' + ids.length + ' plain rows in sight');
   const res = { rows };
-  // The batch clearing, around the moment the row is gone: 700 ms before (its fold) to 900 ms after.
-  const clearing = (tr, at) => ({ clearMs: r1(tr.sum(at - 700, at + 900)), clearLongest: r1(tr.longest(at - 700, at + 900)) });
+  // The batch clearing, around the moment the row is seen to be gone: whatever the main thread was doing from 400 ms
+  // before (its fold; on a slow phone the task that takes it off the list started long before) to 900 ms after.
+  const clearing = (tr, at) => ({ clearMs: r1(tr.sumOver(at - 400, at + 900)), clearLongest: r1(tr.longestOver(at - 400, at + 900)) });
 
   // 1. A tick tapped.
   let id = ids[0], b = await boxOf(page, rowSel(id) + ' > .check');

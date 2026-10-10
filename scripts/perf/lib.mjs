@@ -160,7 +160,7 @@ export const loaded = (page, timeout = 900000) => page.waitForFunction(() => { c
 
 /* The page's main thread while fn() runs: {out: what fn gave, tasks: [{at, ms}] (each thing the main thread did, when
    it started, in the page's own time, performance.now(), and how long it took), sum(a, b) and longest(a, b) of those
-   that started between two of the page's times, events: the whole trace, at(ts): a trace time as the page's}.
+   that started between two of the page's times (sumOver, longestOver: that were going on between them), events: the whole trace, at(ts): a trace time as the page's}.
    `more`: other things to trace; `timeline` false leaves the main thread's tasks out (tasks is then empty), for a
    trace kept going while a long list draws, which would be too big. */
 export async function traced(browser, page, fn, more = [], timeline = true){
@@ -178,5 +178,8 @@ export async function traced(browser, page, fn, more = [], timeline = true){
   const within = (a, b) => tasks.filter(t => t.at >= a && t.at < b);
   // Working out styles and laying the page out, of that: the rest is mostly script.
   const layout = (a, b) => main.filter(e => (e.name === 'UpdateLayoutTree' || e.name === 'Layout') && at(e.ts) >= a && at(e.ts) < b).reduce((s, e) => s + e.dur / 1000, 0);
-  return { out, tasks, events, at, layout, sum: (a, b) => within(a, b).reduce((s, t) => s + t.ms, 0), longest: (a, b) => Math.max(0, ...within(a, b).map(t => t.ms)) };
+  // (over: those going on at any time between the two, for something whose task may have started well before it's seen)
+  const over = (a, b) => tasks.filter(t => t.at < b && t.at + t.ms > a);
+  return { out, tasks, events, at, layout, sum: (a, b) => within(a, b).reduce((s, t) => s + t.ms, 0), longest: (a, b) => Math.max(0, ...within(a, b).map(t => t.ms)),
+    sumOver: (a, b) => over(a, b).reduce((s, t) => s + t.ms, 0), longestOver: (a, b) => Math.max(0, ...over(a, b).map(t => t.ms)) };
 }

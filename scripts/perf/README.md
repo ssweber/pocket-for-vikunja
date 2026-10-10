@@ -44,10 +44,12 @@ npm run perf:rows -- run --profile phone   # what a screen costs once it's open:
     (`reloadMs`, `reloadLongest`); then a step's row swiped back and forth for 3 seconds, watched frame by frame:
     the usual time between two frames (`frame`), the wait at a second's tick (`frameAtTick`, and the longest,
     `frameAtTickMost`) and the longest away from one (`frameAway`), and how many frames came late (`late`, over
-    25 ms, of `frames`).
+    25 ms, of `frames`); then that step's tick tapped: from the finger lifting to the step drawn done (`stepTick`),
+    and the main thread's longest task (`stepTickLongest`). The step is opened again through Vikunja's API.
   - `list`: Big, then Errands (25 rows, for what a short list takes). A tick tapped: from the finger lifting to the
     tick drawn (`tick`), with the main thread's longest task (`tickLongest`); the batch clearing, 3 s later: the main
-    thread's time around the row going (`clearMs`) and its longest task (`clearLongest`). A full swipe: how long the
+    thread's time around the row going (`clearMs`: every task going on from 400 ms before the row is seen to be
+    gone to 900 ms after) and the longest of them (`clearLongest`). A full swipe: how long the
     page takes over the finger going down before the row can follow it (`swipePress`), from letting go to the row
     moving (`swipeMoves`) and to its gap drawn (`swipeGap`), the longest wait between two frames of the slide
     (`swipeFrame`). A nudge: from the finger lifting to the row lit (`nudge`). Two subtasks added from the add box
