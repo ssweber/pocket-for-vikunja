@@ -10,8 +10,8 @@ import {THROW, THROW_STAYS, throwFlick, throwLayout, throwPick, throwTargets, th
 import {hasTemplateLabel} from '../checklists.js';
 import {repeats} from '../dates.js';
 import {haptic} from '../haptics.js';
+import {motion} from '../util.js';
 
-const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const el = (tag, cls, text = '') => { const x = document.createElement(tag); x.className = cls; x.textContent = text; return x; };
 const BOX = {w: 112, h: 44};                            // the small box the task shrinks to: styles.css's .throw-box
 
@@ -89,7 +89,7 @@ export default {
       const ref = moves.findLast(m => last.t - m.t >= 16) || {t: moves[0].t - 16, dx: 0, dy: 0};
       return Math.hypot(last.dx - ref.dx, last.dy - ref.dy) / (last.t - ref.t);
     };
-    const fade = (x, frames, ms) => still() ? Promise.resolve() : x.animate(frames, {duration: ms, easing: 'ease-out', fill: 'forwards'}).finished.catch(() => {});
+    const fade = (x, frames, ms) => motion() ? x.animate(frames, {duration: ms, easing: 'ease-out', fill: 'forwards'}).finished.catch(() => {}) : Promise.resolve();
     return {el: held,
       lift(x, y){
         x0 = x; y0 = y;
@@ -99,7 +99,7 @@ export default {
         ring = ringEl(lay, t.title, why); box = ring.querySelector('.throw-box');
         document.body.append(ring);
         from.classList.add('throw-from');
-        if (still()) return;
+        if (!motion()) return;
         // The task shrinks from its place to the box; the ring draws in around it.
         const r = from.getBoundingClientRect(), sx = r.width / BOX.w, sy = r.height / BOX.h;
         box.animate([{transform: `translate(${r.left + r.width / 2 - lay.x}px, ${r.top + r.height / 2 - lay.y}px) scale(${sx}, ${sy})`, opacity: .6}, {transform: 'none', opacity: 1}],

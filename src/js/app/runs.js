@@ -1,5 +1,5 @@
 // Starting a run, and working through one.
-import {andList, cache, store, taskDrafts, ZERO} from '../util.js';
+import {andList, cache, motion, store, taskDrafts, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, workedOut} from '../progress.js';
@@ -522,7 +522,7 @@ export default {
     if (this.runView?.step?.i !== i) this.runAdded = null;               // the bottom box aims at it now (runAim)
     this.view.run.at = i;
     if (this.view.run.last) this.view.run.last.held = null;                // Last time's notes on its card from now on
-    if (scroll) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+    if (scroll) scrollTo({top: 0, behavior: motion() ? 'smooth' : 'auto'});
   },
   // Done, skipped (with the note being written as the reason, if any) or not done after all. On to the next step.
   // Resolves to false if it was asked about and not done.

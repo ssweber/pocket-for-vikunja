@@ -10,7 +10,7 @@
 import {DELETE_W, HOLD_MS, inTextField, isNudge, lockDirection, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
-import {store} from '../util.js';
+import {motion, store} from '../util.js';
 
 export let sliding = false;                             // a row is held or swiped: the sheet doesn't swipe away meanwhile
 let opened = null;                                      // the row swiped open, its Delete showing
@@ -93,7 +93,7 @@ const SWEEP_MS = 200;
 async function sweep(row, going, right = false){
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
   const fill = row.querySelector(right ? ':scope > .row-prog:not(.going)' : ':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
-  const moving = fill && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const moving = fill && motion();
   if (!right) row.classList.add('swiping', 'swipe-full');
   // The row's offset and the fill's width move together, so the fill always reaches the list's edge.
   const go = {duration: SWEEP_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
@@ -129,7 +129,7 @@ const edgeRoll = (scroller, y, moved) => {
 /* Let go, what was held slides from where it was (`was`: each one's top then) into its place, once it's drawn there:
    its new one, or back where it was. One drawn again elsewhere is found by its id. */
 const slideHome = (els, was, all = els) => requestAnimationFrame(() => {
-  const slide = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const slide = motion();
   els.forEach((el, i) => {
     const now = el.isConnected ? el : document.querySelector(`#view .list > [data-id="${el.dataset.id}"]`);
     const d = now && was[i] - now.getBoundingClientRect().top;

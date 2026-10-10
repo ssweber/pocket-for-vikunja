@@ -379,7 +379,7 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   is one scale: 17px for body text, row titles and headings (a card's header and the sheet's own row heavier, 650), 15
   for labels, 14 for what's under a title, 13 small, and 22 for every sheet's title (one rule in `styles.css`); inputs
   never go under 16, or an iPhone zooms in.
-- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. It also fails on `fetch()` anywhere but `api.js`, which signs the request and renews the session (the two other requests, signing out and looking for a new version of Pocket, say why where they are), and, with `scripts/check.mjs`, on a colour written out (`#hex`, `rgb()`, `hsl()`) in `styles.css` outside `:root`, or anywhere in `markup/`, and on `:style` given an object in `markup/` (`x-style`, in `component.js`, does that). CI runs it.
+- `npm run lint` (ESLint) catches a name that isn't defined or imported, and a variable that's never used. It also fails on `fetch()` anywhere but `api.js`, which signs the request and renews the session (the two other requests, signing out and looking for a new version of Pocket, say why where they are), on asking whether less motion is wanted (`prefers-reduced-motion`) anywhere but `motion()` in `util.js`, which everything that animates from code asks, and, with `scripts/check.mjs`, on a colour written out (`#hex`, `rgb()`, `hsl()`) in `styles.css` outside `:root`, or anywhere in `markup/`, and on `:style` given an object in `markup/` (`x-style`, in `component.js`, does that). CI runs it.
 
 ## Running it locally
 

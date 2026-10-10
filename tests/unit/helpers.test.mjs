@@ -3,7 +3,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
-import { andList, colorOf, esc, fmtSize, grow, sizeLimit, taskDrafts } from '../../src/js/util.js';
+import { andList, colorOf, esc, fmtSize, grow, motion, sizeLimit, taskDrafts } from '../../src/js/util.js';
 import { entryDone, heldTasks, isChild, itemDone, packParsed, sendState, slowness, unpackParsed, WAIT_MS } from '../../src/js/sync.js';
 
 test('the screen in the address', () => {
@@ -13,6 +13,20 @@ test('the screen in the address', () => {
   assert.deepEqual(routeOf('#/run/7'), { name: 'run', id: 7, step: null });
   assert.deepEqual(routeOf('#/add?title=Milk'), { name: 'add', text: 'Milk' });
   assert.deepEqual(routeOf('#/nowhere'), { name: 'today' });
+});
+
+// Whether things may move is asked in one place (rows-and-sheet-fixes-plan, part 2), each time, as the phone's setting
+// can change while Pocket is open; npm run lint keeps the question out of every other file.
+test('things move unless the phone asks for less motion, asked each time', () => {
+  const was = globalThis.matchMedia, asked = [];
+  let less = false;
+  globalThis.matchMedia = q => { asked.push(q); return { matches: less }; };
+  try {
+    assert.equal(motion(), true);
+    less = true;
+    assert.equal(motion(), false, 'turned on meanwhile: it only changes');
+    assert.deepEqual(asked, ['(prefers-reduced-motion: reduce)', '(prefers-reduced-motion: reduce)']);
+  } finally { globalThis.matchMedia = was; }
 });
 
 test('words in a list as a sentence has them', () => {

@@ -51,9 +51,13 @@ export const userCache = new Map();                   // lowercased username -> 
 export const raw = x => globalThis.Alpine?.raw(x) ?? x;
 export let app;                                       // the Alpine component, set in init()
 export const setApp = a => { app = a; };
+/* Whether things may move: not with less motion asked for on the phone (prefers-reduced-motion), when a change is only
+   shown, with no slide, fold or fade on the way. Everything that animates from code asks here, the one place; the
+   stylesheet asks for itself (its own @media rules). */
+export const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 /* Collapse a list row before it's removed, so ticked-off tasks slide away instead of vanishing. */
 export async function collapse(el){
-  if (!el || !el.isConnected || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!el || !el.isConnected || !motion()) return;
   el.style.overflow = 'hidden';
   await el.animate([{height: el.offsetHeight + 'px', opacity: 1}, {height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px'}],
     {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
@@ -63,7 +67,7 @@ export async function collapse(el){
    laid out once, not once a row (3.5 s for 2,000 rows). */
 export const FOLD_FEW = 8;
 export async function collapseRows(els){
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!motion()) return;
   const shown = els.filter(el => el.isConnected).map(el => ({el, r: el.getBoundingClientRect(), h: el.offsetHeight}))
     .filter(({r}) => r.height && r.bottom > 0 && r.top < innerHeight);
   if (shown.length > FOLD_FEW) return;

@@ -6,7 +6,7 @@
    the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
    project, a repeating task shows its next date, a deletion is sent (held in the outbox until then: holdDelete).
    Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from #said. */
-import {app} from '../util.js';
+import {app, motion} from '../util.js';
 import {batchTimer} from '../batch.js';
 
 // The hint's space closes this long after it's put away, from when the finger lifts: sooner than rows leaving, as
@@ -23,7 +23,6 @@ const of = c => {
   return s;
 };
 const EXIT_MS = 250;
-const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The rows leaving go together: each folds to nothing at once, so the rows below close up in one movement. With less
 // motion asked for, they only fade. Resolves to the animations, to be taken off once the rows are gone.
 function exit(els){

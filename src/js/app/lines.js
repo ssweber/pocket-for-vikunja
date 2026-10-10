@@ -10,12 +10,11 @@
      save that failed), on a run's step card. A sheet's lines go with it.
    - Only where there's none of those: the toast at the bottom (toast.js).
    A screen reader hears each from #said. */
-import {collapse} from '../util.js';
+import {collapse, motion} from '../util.js';
 import {UNDO_MS} from './toast.js';
 
 export const SAY_MS = 4000;                             // how long a message with nothing to tap shows
 const timers = new Map();
-const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The rows of a task on the page: in the list (its card, on Today), and in a task's sheet.
 // (Not a sheet's own row, its task's head: what's said about the task in a sheet goes in the sheet's places.)
 const rowsOf = id => [...document.querySelectorAll(`:is(.row:not(.own), .day-card)[data-id="${id}"]`)];

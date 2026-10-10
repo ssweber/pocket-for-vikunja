@@ -5,7 +5,7 @@
    a slim footer, "More", a tap opening it in place; opened, it collapses again once scrolled off the screen, or by
    "Less". Which tasks are cards on Today, and why, is cards.js; what a card needs is read once per project shown, not
    once per card (readCards). */
-import {PRIOS, TZ} from '../util.js';
+import {motion, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, repeats, shortDue} from '../dates.js';
 import {hasTemplateLabel, parseStep, runWithoutDay, stepsOf, whereNext} from '../checklists.js';
@@ -17,7 +17,6 @@ import {completeAsk} from '../messages.js';
 const shownStep = new Map();                     // card id -> the step on its top row last, to tell a new one
 let cardIO = null;                               // what tells when an opened card is scrolled off the screen
 const closing = new Set();                       // parents being closed, still cards until they're marked (closeParent)
-const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export default {
   /* Task `t`, in list `g`, as a stacked card: null for any other row. Where its list has cards (g.cards, screenRows):
