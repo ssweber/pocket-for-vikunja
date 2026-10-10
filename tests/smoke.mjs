@@ -1179,6 +1179,13 @@ try {
       await page.waitForSelector(K, { timeout: 10000 });
       await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // slid in
       await swipe(K);
+      // Open on its Delete, which lies under it in the subtasks' card; the card clips to its rounded corners meanwhile,
+      // both ways, as the row over them is solid.
+      await page.waitForSelector(`${K}.swiped`);
+      const clips = await page.locator('#d-subtasks').evaluate(el => { const s = getComputedStyle(el); return [s.overflowX, s.overflowY, s.position, parseFloat(s.borderTopLeftRadius) > 0]; });
+      if (JSON.stringify(clips) !== '["clip","clip","relative",true]') throw new Error('a swiped subtask\'s card doesn\'t clip to its corners: ' + clips);
+      const lies = await laidUnder(page, K, '.row-red');
+      if (lies.inside || lies.off > .5) throw new Error('a subtask\'s Delete isn\'t laid under it: ' + JSON.stringify(lies));
       await tapDelete(K);
       await page.waitForSelector(`${K}.deleted`);
       if (!await page.isVisible('#sheet')) throw new Error('the sheet closed');

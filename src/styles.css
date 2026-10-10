@@ -281,7 +281,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    taking the move for a scroll: everything that's swiped is named here, once (a list's rows, a run's steps among them;
    a card, for its header and its rows; a sheet's subtasks; the sheet's own row; a run's own row atop its screen). */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row,#d-card > .row.own,#run-own > .row{touch-action:pan-y pinch-zoom}
-#d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow-x:clip}
+/* a sheet's subtasks' card clips only while one of its rows is swiped (held and moved, a row lifts over its edge): to
+   its rounded corners, both ways, as the row is solid meanwhile and would square them */
+#d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow:clip}
 /* Only the row moves (rows-and-sheet-fixes-plan, part 2): swiped (.revealing for its progress, .swiping for its
    Delete, .swiped resting open on it), by its transform alone, set as the finger moves and animated once when it's
    let go (slideTo, glide: app/progress.js), never by its own transition. What it uncovers lies still under it

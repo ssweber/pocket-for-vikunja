@@ -132,6 +132,9 @@ function sections(){
     task({id: 1202, title: 'Tape the edges', assignees: [priya], related_tasks: {parenttask: [{id: 1200}]}}), task({id: 1203, title: 'First coat', due_date: dayAt(1, 0), related_tasks: {parenttask: [{id: 1200}]}}),
     task({id: 1204, title: 'Second coat', related_tasks: {parenttask: [{id: 1200}]}})]}, description: '<p>The side facing the car park.</p>'});
   fence.id = 1200;
+  const gate = task({title: 'Fix the side gate', related_tasks: {subtask: [task({id: 1301, title: 'Oil the hinges', percent_done: .5, related_tasks: {parenttask: [{id: 1300}]}}),
+    task({id: 1302, title: 'Tighten the latch', related_tasks: {parenttask: [{id: 1300}]}}), task({id: 1303, title: 'Paint it', related_tasks: {parenttask: [{id: 1300}]}})]}});
+  gate.id = 1300;
   const sheets = [
     {spec: 'A task’s sheet led by its row: at 50%, with notes and two photos, Priya on it; under the card, what stays: Due and Reminders, Subtasks, Comments (stand-ins), and Details (a stand-in, but its Progress line, as the sheet has it)',
       parts: ['due', 'subtasks', 'comments', 'details'], task: task({title: 'Repaint the front door', percent_done: .5, due_date: dayAt(1, 9), priority: 2, assignees: [priya], comment_count: 1,
@@ -142,6 +145,8 @@ function sections(){
       parts: ['subtasks', 'details'], subPeople: {1201: [me], 1202: [priya]}, task: fence},
     {spec: 'The card’s row swiped right from 25%, still held at 50%: only the row moves; its notes and photo stay', parts: [], state: {reveal: .22},
       task: task({title: 'Restock the napkins', percent_done: .25, assignees: [me], description: '<p>The big packs, from the cash and carry.</p>', attachments: [photo(3, 'shelf.jpg', 0.9e6)]})},
+    {spec: 'A parent’s sheet with its subtasks swiped, still held: the first right from 50% to 75%, the last left onto its Delete; what each uncovers lies under its row, inside the card’s rounded corners',
+      parts: ['subtasks'], subSwipes: {1301: {reveal: .3}, 1303: {swiped: true}}, task: gate},
     {spec: 'Its title tapped: a box to change it in, in the row’s place, saved once it’s left', parts: [], titleEdit: true, title: 'Restock the napkins and the straws',
       task: task({title: 'Restock the napkins', due_date: dayAt(1, 0), description: '<p>The big packs.</p>'})},
     {spec: 'Its notes tapped, short ones: the box to change them in keeps its least height, with Cancel and Save notes under it', parts: [], editingDesc: true, descDraft: 'The big packs.',
@@ -329,6 +334,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
        above), who it's for in its slot: you; you and Priya; on a project only you can see, no slot. */
     const top = this.view.run.run;
     this.specimenRunTops = [{spec: 'For you', run: {...top, id: ++n, assignees: [me]}},
+      {spec: 'Swiped right part way, still held (it springs back, as a parent’s header does): what it uncovers stays between Back and ⋯', run: {...top, id: ++n, assignees: [me]}, reveal: .3},
       {spec: 'For you and Priya, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Front counter and the till · Oct 7'}},
       {spec: 'On a project only you can see: no slot', run: {...top, id: ++n, project_id: 5, assignees: [me]}}];
     // Today's cards: their subtasks in the store, the van's opened by its footer's More.
@@ -392,6 +398,16 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         const el = ringEl(lay, r.held.title, r.why || null), p = r.to && lay.targets.find(t => t.id === r.to);
         frame.append(el);
         if (p) { el.querySelector('.throw-box').style.translate = `${p.x}px ${p.y}px`; ringLight(el, p, r.held.title); }
+      }
+      // A sheet's subtasks swiped, still held: its stops, or its Delete, laid under the row in the subtasks' card.
+      for (const sh of this.specimenSheets) for (const [id, st] of Object.entries(sh.subSwipes || {})) for (const row of document.querySelectorAll(`.spec-task-sheet .row[data-id="${id}"]`)) {
+        const w = row.clientWidth, sub = sh.task.related_tasks.subtask.find(x => x.id === +id);
+        if (st.reveal) revealOf(row).move(swipeAt({start: Math.round((sub.percent_done || 0) * 100), dx: st.reveal * w, x: w / 2, width: w, screen: 1e4}));
+        if (st.swiped) redUnder(row, sub.title, -88, 'open');
+      }
+      // A run's own row atop its screen swiped right part way, still held: a parent's, with only its full point.
+      for (const top of this.specimenRunTops) if (top.reveal) for (const row of document.querySelectorAll(`#run-own > .row[data-id="${top.run.id}"]`)) {
+        const w = row.clientWidth; revealOf(row).move(swipeAt({start: 0, dx: top.reveal * w, x: w / 2, width: w, screen: 1e4, one: true}));
       }
       // The sheet's own row swiped, still held, as a list's row is (below).
       for (const sh of this.specimenSheets) if (sh.state?.reveal) for (const row of document.querySelectorAll(`.task-card > .row[data-id="${sh.task.id}"]`)) {

@@ -53,7 +53,7 @@
           <!-- The subtasks: the real rows, as the sheet has them (g.sheet); the add box under them, a stand-in -->
           <template x-if="sheet.parts.includes('subtasks')"><div>
             <div class="h3"><span>Subtasks</span><span class="n num" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
-            <div class="card">
+            <div class="card" id="d-subtasks">
               <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true}]" :key="0"><template x-for="t in subtasks" :key="t.id">
                 <!-- include markup/task-row.html -->
               </template></template>
