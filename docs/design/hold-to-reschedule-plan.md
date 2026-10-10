@@ -92,3 +92,38 @@ The user's answers, 2026-10-10:
 Chosen while writing this plan, for the user to read: Pick a date… in the middle; letting go near the start closes it
 only if the finger had moved out first; a time already gone becomes the next whole hour, and a date that changes
 nothing is dimmed, both as the ring did.
+
+## As built
+
+Built on the branch `hold-reschedule` (2026-10-10), from this plan. What it left open, and what was chosen:
+
+- **Sizes** (`THROW`, `src/js/throw.js`): each chip 100 by 60px; the middle left clear between them 88 by 56px, the
+  height of a row on one line, which is also Pick a date…'s size; 6px between them; 8px kept from the screen's edges,
+  the header and the add box. The set is 300px wide and 188px tall, so on a 360px screen it follows the finger
+  sideways only between 158 and 202px from the left: held anywhere else, it's moved in.
+- **The set is drawn at the height of the row held** (a card's header, or its row), not of the finger's exact place in
+  it, so the chips above and below lie over the rows next to it and the row shows between them. The directions still
+  count from the finger. Today and Tomorrow lie over the ends of the row held: around the finger, there's nowhere
+  else for them.
+- **No dim at all while the finger is down;** about 8% once the dates are open to tap, when a tap on the screen only
+  closes them.
+- **A date lit is a change of colour,** with no growing. The chips draw in over 120ms; closing, they're simply gone.
+- **A direction is lit at 24px and stays lit back to 16px,** so a finger resting at the edge doesn't flicker it.
+- **The row held has its outline in the accent colour** as well as its shadow. A card's is around the card, not the
+  footer hanging under it.
+- **Where the Undo's line goes:** on its row when the row is in sight in its new place, else by the add box (a task
+  that left Today, or whose new place is scrolled away). On its row, the row is a line for those five seconds, and
+  can't be held again until it's back; a card folds to a line meanwhile. Always by the add box would be one changed
+  line (`reschedule`, `src/js/app/actions.js`).
+- **What's said:** "Moved to today", "Moved to tomorrow", "Moved to Mon 12" for Next week, "Took its date off", and
+  "Moved to Thu, Oct 15" for a day picked. The chips: "Today", "Tomorrow" and "Next week", each over its day ("Fri
+  9"), "No date", and "Pick a date…".
+- **Pick a date… offers today and later only:** a hold moves a task on, and a day gone by would come out as today's
+  next whole hour, as a time gone by does. It opens on the task's own day, and picking that day changes nothing.
+- **Open to tap:** the first date has the focus even when it's dimmed, as the plan says the first one; the arrow keys
+  go to the date in their direction, and Tab stays among the five. A task that can't move opens too, all dimmed, so
+  its line can be read. The line saying why is over the top chip, across the screen.
+- **A flick** is a let-go under 24px that moved at least 12px at 0.3px/ms or faster.
+- **Found on the way:** a message in its place (by the add box, under a heading, in a sheet) never went after its
+  time, as its timer asked about the line as it was put in the component's data, never the copy Alpine gives back
+  (`sayAt`, `src/js/app/lines.js`). Fixed, in a commit of its own, as the Undo's few seconds need it.

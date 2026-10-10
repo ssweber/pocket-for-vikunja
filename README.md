@@ -30,7 +30,7 @@ with subtasks or steps still open is a card showing the one to do next. A task y
 the ones you ticked leave together a few seconds later; tick it again to take it back. Swipe a task right to say how
 far along it is, a quarter at a time, or all the way to finish it; swipe it left to lower that, or, at 0%, to delete
 it, its place staying as a gap with **Restore** until the gap closes. A row works the same on every screen. On Today,
-hold a task and flick it at a ring of dates, Today, Tomorrow or a weekday, to move it there. A task with subtasks is
+hold a task and flick it towards a date, Today, Tomorrow, Next week or No date, to move it there, with **Undo**. A task with subtasks is
 finished by its ring once its subtasks are done: it waits for **Close**, and never closes behind your back.
 
 <img src="docs/screenshots/pocket-today.png" width="300" alt="Pocket's Today: 'Order oat milk from Riverside Dairy' overdue, a card headed by a ring with 1/3 inside it, its title and its urgent priority's bars, then its next subtask, 'Ask about the October price', with a small tab under it; 'Call the plumber about the dishwasher' (Priya's, her picture at its end), 'Post next week's rota' and 'Pick up change from the bank' due today, each other row with '+ me' at its end; and the café's week ahead">

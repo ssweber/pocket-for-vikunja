@@ -136,16 +136,19 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   its own; swiped left, the header is its **Delete**. A task done in Vikunja's web app with subtasks still open is a
   card struck through; tap its ring to open it again. A repeating task's ring moves it on to its next date, its
   subtasks as they are.
-- **Moving a task on Today:** hold a task's row, or a card, until it lifts: it shrinks to a small box, and a ring of
-  dates opens around it, always in the same places, so with practice it's a flick that needs no looking. **Today** is
-  to the left and **Tomorrow** to the right; above, an arc of five tiles, Monday to Friday, each the next one of that
-  day after tomorrow, with its date (early in the week most are this week's, by Wednesday most are next week's, with a
-  gap and a label, "this week" and "next week", where the week changes); and **No date** is a long pull down, past the
-  ring, so it's never a slip. Move the box onto one, with a tick felt as you cross into it, and let go: the task moves
-  there at once, keeping its time of day, with no Undo; let go in the middle and nothing changes. A target that would
-  change nothing (Today, for a task due later today) is dimmed. A card moves only its task's date. A repeating task, a
-  checklist that comes round and a run stay where they are, and the ring says why. Weekends, and any other date, are
-  the sheet's **Due**.
+- **Moving a task on Today:** hold a task's row, or a card, until it lifts where it is: four dates open around your
+  finger, always in the same places, so with practice it's a flick that needs no looking. **Today** is to the left,
+  **Tomorrow** to the right, **Next week** (next Monday) above and **No date** below, each with its day. Move your
+  finger a short way towards one, and it lights up, with a tick felt; let go, and the task moves there at once,
+  keeping its time of day (one with no time stays without; moved to today with its time gone by, it's due the next
+  whole hour). Pocket says where it went, "Moved to tomorrow", on its row or by the add box, with **Undo** for a few
+  seconds, which puts back the date and the time it had. Move back to where you started and none is lit: let go
+  there, and nothing changes. A date that would change nothing (Today, for a task due later today) is dimmed. Let go
+  without moving at all, and the four dates stay open, to tap, with **Pick a date…** in the middle for any other
+  day, which opens your phone's own date picker; a tap anywhere else closes them. Near the screen's edge the dates
+  move onto the screen together, and still count from where your finger was. A card moves only its task's date. A
+  repeating task, a checklist that comes round and a run stay where they are: their dates are dimmed, and a line says
+  why. On a Sunday, next Monday is tomorrow, so both show the same day.
 - **Order:** a project's list is in the order of its **List view** in Vikunja's web app, each subtask under its
   parent in its own order, so both show the same order; a task's subtasks in its sheet are in that order too. To move
   a task, hold it until it lifts, then move it up or down: it follows your finger, with its subtasks, the tasks it
