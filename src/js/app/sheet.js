@@ -79,7 +79,8 @@ export default {
      (progress.js): from its bar (the strip at its top: the grab, the task's number, ⋯ and ×); from anywhere else with
      the sheet scrolled to its top, but not while a field in it is being typed in, when a pull down beside the field
      only puts the keyboard away; and never from a text field. Decided as the finger goes down: a slide under way
-     carries on whatever takes the focus meanwhile. Not while a row is held or swiped (`sliding`). */
+     carries on whatever takes the focus meanwhile. Not while a row is held or swiped (`sliding`), and called off when
+     the phone takes the touch away. */
   initSwipe(){
     let y0 = null; const sh = this.$refs.sheet;
     sh.addEventListener('touchstart', e => {
@@ -88,6 +89,9 @@ export default {
     }, {passive:true});
     sh.addEventListener('touchmove', e => { if (y0 !== null && sliding) { y0 = null; sh.style.transform = ''; } if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
     sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) this.closeSheet(); });
+    // Taken away by the phone mid-slide (its own gesture from an edge, a call coming in): the sheet goes back up, still
+    // open, however far it was pulled, rather than staying where the finger left it.
+    sh.addEventListener('touchcancel', () => { if (y0 === null) return; y0 = null; sh.style.transform = ''; }, {passive:true});
   },
   // The header slides away once the list has scrolled down past it, and comes back as soon as it scrolls up a little.
   initHeader(){

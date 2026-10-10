@@ -68,15 +68,16 @@ export async function steady(locator, timeout = 5000){
 
 /* A finger on `page`: Chrome's own touch input, so the page scrolls under it as on a phone, and the phone's rules for a
    touch hold (touch-action, a scroll taking the touch away from the page), which a mouse (swipeRow) never meets.
-   `touch(type, x, y, at)` is one touchStart, touchMove or touchEnd. Each says when it happened (`at`, in ms), as a
+   `touch(type, x, y, at)` is one touchStart, touchMove, touchEnd or touchCancel. Each says when it happened (`at`, in ms), as a
    phone's do, since Chrome takes its own time to pass them on: how fast the finger went is then the test's to say.
-   `touchDrag(sel, by, n, every, hold, {check})`: `sel` touched in its middle, moved `by` px down in `n` moves `every`
-   ms apart, then lifted; held `hold` ms first (really waited). `check` runs before it's lifted, the finger still
-   down, once the page has had its last move: Chrome hands a page its touch moves a frame at a time, later than it
-   takes them from here, so a check that nothing moved would otherwise pass before the page had the chance. */
+   `touchDrag(sel, by, n, every, hold, {check, cancel})`: `sel` touched in its middle, moved `by` px down in `n` moves
+   `every` ms apart, then lifted; held `hold` ms first (really waited). `check` runs before it's lifted, the finger
+   still down, once the page has had its last move: Chrome hands a page its touch moves a frame at a time, later than
+   it takes them from here, so a check that nothing moved would otherwise pass before the page had the chance.
+   `cancel`: not lifted, but taken away by the phone (touchcancel), as its own gesture or a call does mid-touch. */
 export async function finger(page){
   const cdp = await page.context().newCDPSession(page);
-  const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x, y }] });
   // Where the page last saw the finger: a listener that only looks, added once per page load.
   const watch = () => page.evaluate(() => {
     if (window.__finger) return;
@@ -84,7 +85,7 @@ export async function finger(page){
     addEventListener('touchmove', e => { const p = e.touches[0]; window.__finger = { x: p.clientX, y: p.clientY }; }, { capture: true, passive: true });
   });
   const seenAt = (x, y) => page.waitForFunction(([x, y]) => Math.abs(window.__finger.x - x) < 1 && Math.abs(window.__finger.y - y) < 1, [x, y], { polling: 50, timeout: 5000 });
-  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0, { check = null } = {}) => {
+  const touchDrag = async (sel, by, n = 8, every = 40, hold = 0, { check = null, cancel = false } = {}) => {
     const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
     if (check) await watch();
     await touch('touchStart', x, y);
@@ -93,7 +94,7 @@ export async function finger(page){
     for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
     // The finger lifts whatever the check found, so the next touch starts afresh.
     try { if (check) { await seenAt(x, y + by); await check(); } }
-    finally { await touch('touchEnd', x, y + by, t0 + n * every + 8); }
+    finally { await touch(cancel ? 'touchCancel' : 'touchEnd', x, y + by, t0 + n * every + 8); }
   };
   return { touch, touchDrag };
 }

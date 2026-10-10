@@ -1221,7 +1221,8 @@ try {
   /* The sheet's slide down, by a finger (rows-and-sheet-fixes-plan, part 1; `finger`, helpers.mjs: Chrome's own touch
      input). A pull down that starts in a text field moves nothing, nor does one beside a field being typed in, which
      only puts the phone's keyboard away. From its bar it follows the finger and closes, a field focused or not; and
-     with nothing being typed in, from anywhere at its top, as before: a select that kept the focus doesn't hold it. */
+     with nothing being typed in, from anywhere at its top, as before: a date that kept the focus doesn't hold it.
+     When the phone takes the touch away mid-slide, the sheet goes back up. */
   const { touch, touchDrag } = await finger(page);
   await step('a-touch-in-a-text-field-never-slides-the-sheet-and-its-bar-always-does', async () => {
     const t = await make(`Pocket smoke sheet slide ${stamp}`, { due_date: todayAt(23), description: '<p>Bring the ladder</p>' });
@@ -1263,6 +1264,11 @@ try {
       await page.press('#d-title', 'Escape');
       // With nothing focused: from its bar, and from anywhere at its top, as before.
       await expect(page.locator('#sheet #d-title')).toHaveCount(0);
+      // The touch taken away by the phone mid-slide, well past where letting go closes it: the sheet goes back up, open.
+      await touchDrag('#sheet .bar', 160, 8, 40, 0, { check: follows('from the bar'), cancel: true });
+      await expect.poll(pulled, { message: 'the touch taken away, the sheet is let go of' }).toBe('');
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // back up
+      if (!await page.evaluate(() => Alpine.$data(document.body).sheet.show)) throw new Error('a touch taken away mid-slide closed the sheet');
       await pull('#sheet .bar', follows('from the bar'));
       await closed();
       await open();
