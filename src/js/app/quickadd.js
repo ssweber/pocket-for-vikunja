@@ -450,7 +450,9 @@ export default {
   },
   /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
      isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
-     A row that can't be leaves the target as it was. A light tick is felt when the target changes, not when it stays.
+     A row that can't be leaves the target as it was: one waiting to be sent too, lit only by being added. A light tick
+     is felt whenever the lit row changes, not when it stays: back on the row touched before, too, once a subtask added
+     since has the light.
      On a run's screen, a step's row nudged puts that step on the card, as a tap on it does (without scrolling up to
      it), so the box aims there: one current step, never two. Only while the box shows. */
   nudged(id){

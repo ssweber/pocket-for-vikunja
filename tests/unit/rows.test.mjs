@@ -387,6 +387,46 @@ test('on a list, a touch that starts in a text field is never a row\'s swipe or 
   } finally { delete document.getElementById; }
 }));
 
+/* A nudge always selects (rows-and-sheet-fixes-plan, part 3), through the real listeners (watchNudges) and `nudged`
+   (quickadd.js): the row touched before a subtask was added, too. A tick is felt whenever the lit row changes, which
+   the phone's vibrate stands in for here. Pack the van, with Load chairs under it; each row is on the pretend screen. */
+test('a nudge lights the row it starts on, the one touched before too, and is felt when the lit row changes; a waiting or a done row is left alone', () => noWindow(() => {
+  const app = component(progress, cards, quickadd), felt = [], { area, fire } = screen(), els = {};
+  const rowEl = id => els[id] ||= { dataset: { id: String(id) }, parentElement: {}, getBoundingClientRect: () => ({ top: 100, bottom: 150 }) };
+  document.getElementById = () => area;
+  document.querySelector = sel => els[sel.match(/data-id="([^"]+)"/)[1]] || null;
+  navigator.vibrate = p => felt.push(p);
+  globalThis.innerHeight = 800;
+  try {
+    const van = { id: 10, title: 'Pack the van', project_id: 1, done: false }, chairs = { id: 11, title: 'Load chairs', project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } };
+    Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], lines: {}, checklistIds: new Set(), canWrite: () => true, $refs: {},
+      tasks: { 10: van, 11: chairs }, positions: { 10: 1000, 11: 100 }, view: { groups: [{ key: 'open', tasks: [van, chairs] }], listView: 5 } });
+    app.initProgressDrag();
+    // A finger down on a row, moved 30px down over 300ms and lifted, slowly.
+    const nudge = id => {
+      const target = within(false, { '.item > .row': rowEl(id) }), at = (y, t) => ({ target, timeStamp: t, touches: [{ clientX: 100, clientY: y }], changedTouches: [{ clientX: 100, clientY: y }] });
+      fire('touchstart', at(100, 0)); fire('touchmove', at(110, 100)); fire('touchmove', at(120, 200)); fire('touchend', { ...at(130, 300), touches: [] });
+    };
+    const now = () => [Object.keys(app.lit), app.capTarget, felt.length];
+    nudge(10);
+    assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 1], 'lit, and felt');
+    nudge(10);
+    assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 1], 'the lit row again: nothing changes, nothing felt');
+    // A subtask added from the box has the light (aimAdded); its row, still waiting to be sent, nudged: left alone.
+    app.aimAdded({ id: 'e1', items: [{ p: { title: 'Rope', position: 2000 }, under: null }] }, 0, van);
+    nudge('pending-e1-0');
+    assert.deepEqual(now(), [['pending-e1-0'], { to: 'Pack the van', after: 'Rope' }, 1]);
+    // The task touched before, nudged again: it's selected, the line goes back to it, and that's felt.
+    nudge(10);
+    assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 2]);
+    nudge(11);
+    assert.deepEqual(now(), [['11'], { to: 'Pack the van', after: 'Load chairs' }, 3], 'a subtask: after it, under its task');
+    van.done = true;
+    nudge(10);
+    assert.deepEqual([Object.keys(app.lit), felt.length], [['11'], 3], 'a done row can\'t be one: the target stays where it was');
+  } finally { delete document.getElementById; delete document.querySelector; delete navigator.vibrate; delete globalThis.innerHeight; }
+}));
+
 // Progress set in the sheet, by a swipe on its row or a quarter in Details, claims as a row's swipe does (user,
 // 2026-10-08: the same rule everywhere), after its save, whose reply would otherwise be shown over the claim.
 test('the sheet\'s progress, swiped or a quarter tapped, claims a task no one is doing, after its save; someone else\'s stays theirs', async () => {
