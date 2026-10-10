@@ -138,8 +138,9 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .row.done .title{color:var(--muted);text-decoration:line-through}
 /* a task's sheet leads with its row: its title the sheet's heading, over its subtasks, as a card's header is */
 .row.own .title{font-weight:650}
-/* On one line (Today): the title cut short with "…", and at its right, when it's due, short, and its project's dot. Its
-   height is a row's with one line; a screen reader hears the rest (rowWhen) */
+/* On one line (Today): the title cut short with "…", and at its right, when it's due, short, and its project's dot (a
+   card's row leaves the dot to its card's header). Its height is a row's with one line; a screen reader hears the rest
+   (rowWhen) */
 .row.one-line .title-line{display:flex;align-items:baseline;gap:8px}
 .row.one-line .title{position:relative;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
 /* what only a screen reader hears, kept at the start, not past the end of a title cut short */
@@ -396,6 +397,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
+/* its project's dot, last, once for the card (its rows leave theirs out): on the middle of the time's letters, as a
+   row's is, a dot having no baseline of its own but its foot */
+.card-open > .dot{flex:none;margin:0;position:relative;top:-1px}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */

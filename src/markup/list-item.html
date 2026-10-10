@@ -5,8 +5,9 @@
      springs back, as a parent has no progress of its own, unless it's swiped all the way, its ring's tap; swiped left,
      its Delete (headGesture); on a project's list, held, the card moves up or down, as a row does, and it's lit up while
      the add box adds subtasks to it (the cursor, quickadd.js), watched meanwhile, as a row is. On one line: its title (a
-     run's without its day, struck through if it's done), its priority's bars, when it's due, short, and to a screen
-     reader its count and figure and its project (cardHead, worked out once per card, as a row's slot is). Then its rows,
+     run's without its day, struck through if it's done), its priority's bars, when it's due, short, its project's dot
+     (on Today and in search: once for the card, its rows leaving theirs out), and to a screen reader its count and
+     figure and its project (cardHead, worked out once per card, as a row's slot is). Then its rows,
      the shared row with the card's own options (c.g), each acting as any row does: collapsed, its top row only, and under
      it a slim tab, ⌄ ("More" to a screen reader), that opens it in place; opened, every open subtask, and a plain ⌃ in
      the tab's place ("Show less"), to collapse it again (as does scrolling it off the screen: watchCard). With one open subtask, no footer. On a project's list it's always open, with
@@ -26,7 +27,7 @@
         <template x-for="r in [c.ring].filter(Boolean)" :key="0">
           <!-- include markup/ring.html -->
         </template>
-        <button class="card-open" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="h.said ? ', ' + h.said : ''"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template></button>
+        <button class="card-open" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="h.said ? ', ' + h.said : ''"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template><template x-if="h.color"><i class="dot" aria-hidden="true" x-style="{background: h.color}"></i></template></button>
       </div>
       <!-- Every subtask done: it waits for Close (design rule 7), which is its ring's tap -->
       <template x-if="c.closes"><div class="card-close"><span x-text="c.run ? 'All steps done' : 'All subtasks done'"></span><button type="button" class="close-btn" :disabled="!canWrite(t.project_id)" :aria-label="c.ring?.label" @click="ringTap(t, $el.closest('.day-card'))">Close</button></div></template>

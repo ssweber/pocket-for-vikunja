@@ -173,6 +173,32 @@ test('a card’s heading: its priority’s bars as its row shows them, only when
   assert.equal(app.cardHead({ ...urgent, assignees: [me] }).said.split(', ').pop(), 'For you', 'or who it’s for');
 });
 
+// rows-and-sheet-fixes-plan, part 4: the dot's room goes to a subtask's words.
+test('a card’s header has its project’s dot, once: its rows leave theirs out, and a row in another project keeps its own', () => {
+  const { app, parent, g } = today();
+  app.projById = new Map([[5, { id: 5, title: 'Café', hex_color: '1d6b52' }], [6, { id: 6, title: 'Upkeep', hex_color: '3d85c6' }]]);
+  const c = app.cardOf(parent, g);
+  assert.equal(app.cardHead(parent, g).color, '#1d6b52', 'its header: its project’s colour');
+  assert.equal(c.project, 5, 'the card knows its task’s project, for its rows');
+  const w = app.rowWhen(c.step, c.g);
+  assert.deepEqual([w.color, /Café/.test(w.said)], [null, false], 'a row of the card, in its project: no dot, nor its project said, as its header says it');
+  assert.equal(app.rowWhen(c.step, { line: true, depth: {} }).color, '#1d6b52', 'the same task as a plain row: its dot');
+  const far = app.keep(task(13, { title: 'Tables', project_id: 6, related_tasks: under(10) })), f = app.rowWhen(far, c.g);
+  assert.deepEqual([f.color, f.said], ['#3d85c6', 'Upkeep'], 'a subtask in another project: its own dot, and its project said');
+  assert.deepEqual(app.rowMeta(far, c.g).map(m => m.text), ['Upkeep'], 'not the task it’s under: that is its card');
+  // In search a card's rows keep their second line, with no project on it but for one in another; the header has the dot.
+  app.route = { name: 'search' };
+  const found = app.cardOf(parent, { cards: 'found', delete: true });
+  assert.equal(app.cardHead(parent, { cards: 'found' }).color, '#1d6b52', 'in search too');
+  assert.deepEqual([app.rowMeta(found.step, found.g).map(m => m.text), app.rowMeta(far, found.g).map(m => [m.color, m.text])], [[], [['#3d85c6', 'Upkeep']]]);
+  // On its project's own list no row says its project, nor does the header.
+  app.route = { name: 'project' };
+  assert.equal(app.cardHead(parent, { cards: 'list' }).color, null, 'not on its own project’s list');
+  app.route = { name: 'today' };
+  app.projById = new Map();
+  assert.equal(app.cardHead(parent, g).color, null, 'a project Pocket doesn’t know: no dot');
+});
+
 test('on a project’s list a card is open, its rows the subtasks under it there, in its List view’s order, with those waiting to be sent', () => {
   const { app, parent } = today();
   app.route = { name: 'project' };

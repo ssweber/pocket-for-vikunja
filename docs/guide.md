@@ -59,14 +59,14 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   to five, red from high up; none for no priority), then when it's due, short: the time today ("11:55 AM"), the
   weekday this week ("Fri"), or the date beyond ("Oct 20"), red when it's late, with a run's step's countdown instead
   ("in 18m", "12m late"). Under the **Today** heading, a task due today with no time of its own shows no time: the
-  heading says it (under **Overdue**, and anywhere else, it still says "Today"). Then its project's colour dot, and
+  heading says it (under **Overdue**, and anywhere else, it still says "Today"). Then its project's colour dot (a card has it once, on its header, so its subtasks have more room for their words; a subtask in another project than its card keeps its own), and
   **+ me** or who's on it. A tick is never coloured: red means late, or Delete. Labels and counts (comments, attachments, subtasks) are left off Today: they're on Projects, in
   search and in the sheet, which keep their second line. A screen reader hears it all: the whole title, when it's due
   in words, its priority and its project.
 - **Cards:** a task with subtasks still open (or a checklist run with steps still open) is a card wherever it's
   listed: its header, then its subtasks as rows, a little indented, each working as any task's row does. The header
   has the task's ring where a tick would be (see **Finishing a task with subtasks**, below), its title, which opens
-  it, its priority's bars and when it's due (a run's name without the day it was started, "Opening up · run 3"). On
+  it, its priority's bars, when it's due, and on Today and in search its project's colour dot (a run's name without the day it was started, "Opening up · run 3"). On
   Today and in search a card is folded to its top row, the subtask to do next: the most urgent, overdue first, then
   due today, then the earliest date, then in its project's **List view** order. A run's top row is its next step in
   order, even one still counting down, with its countdown; a timed step whose time has come goes before it. Under the

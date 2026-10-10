@@ -110,11 +110,13 @@
           <!-- include markup/more-row.html -->
         </div>
       </div></template>
-      <!-- Today's stacked cards (list-item.html): the header (its ring, title, priority bars and time); its top row, the
+      <!-- Today's stacked cards (list-item.html): the header (its ring, title, priority bars, time and its project's dot,
+           which its rows leave out); its top row, the
            most urgent, one line as a row on Today; and under it the footer, a slim tab with ⌄. A task of high priority
            opened by it, a plain ⌃ in its place; a run's, its next step counting down; a run due at 6 PM, its heading as a
-           task's, without the day it was started; one with one open subtask, no footer; one of 14, low priority -->
-      <div class="sec">Today’s stacked cards: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
+           task's, without the day it was started; one with one open subtask, no footer; one of 14, low priority; and one
+           opened whose rows have a priority and a time before "+ me", one of them in another project, with its own dot -->
+      <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
       <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->

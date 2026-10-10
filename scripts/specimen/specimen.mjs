@@ -63,13 +63,21 @@ function sections(){
   // the store, as Today keeps them. A run's heading reads as a task's: its name without the day it was started
   // (runWithoutDay), and when it's due at the right.
   const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
+  const dayAt = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
   const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), priority: 3, related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
   const opening = task({title: `Opening up · run 2 · ${day}`, created: now.toISOString(), project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
   const closing = task({title: `Closing up · run 5 · ${day}`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, priya], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
   const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 12}))}});
-  const cardSubs = [kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
+  /* A card whose rows have the most at their right (rows-and-sheet-fixes-plan, part 4), opened: a priority and a time
+     before "+ me", and a subtask in another project, which keeps its own dot while the rest leave theirs to the
+     header; one with nothing there, its title's the whole row. */
+  const tasting = task({title: 'Get ready for the tasting evening', due_date: dayAt(0, 18, 30), priority: 2, related_tasks: {subtask: [{id: 1401}, {id: 1402}, {id: 1403}, {id: 1404}]}});
+  const cardSubs = [kid(1401, {under: tasting.id, title: 'Print the tasting notes', due_date: dayAt(0, 10, 30), priority: 3}),
+    kid(1402, {under: tasting.id, title: 'Borrow glasses from next door', project_id: 4, due_date: dayAt(0, 12), priority: 1}),
+    kid(1403, {under: tasting.id, title: 'Chill the white wine', due_date: dayAt(0, 15), assignees: [priya]}), kid(1404, {under: tasting.id, title: 'Set out the tables'}),
+    kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
     kid(703, {under: van2.id, title: 'Sound system', assignees: [me], percent_done: .5}), kid(704, {under: van2.id, title: 'Lights'}), kid(705, {under: van2.id, title: 'The extension leads'}),
     kid(711, {under: opening.id, project_id: 2, title: 'Turn on the espresso machine', done: true, related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 1}]}}),
     kid(712, {under: opening.id, project_id: 2, title: 'Take the croissants out', due_date: at(18 * 6e4), related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 2}]}}),
@@ -81,7 +89,6 @@ function sections(){
   // Today's rows, on one line (line: section 9): the title cut short; and at the right its priority's bars, small, from
   // none to do now (one-concept-plan, part 4), when it's due, short (a time today, a weekday this week, a date beyond,
   // red when late), and the project's dot.
-  const dayAt = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
   const today = [task({title: 'Post next week’s rota', due_date: dayAt(0, 10, 30), priority: 3}),
     task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [priya]}),
     task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),
@@ -176,7 +183,7 @@ function sections(){
     ring('A repeating task: every target dimmed, and the line saying why', on(12), task({title: 'Water the plants', due_date: on(12).toISOString(), repeat_after: 86400}), {why: 'repeats'}),
   ];
   return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other air con', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}), opening,
-    task({title: 'Order the milk', priority: 2}), closing, sign, shelves], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
+    task({title: 'Order the milk', priority: 2}), closing, sign, shelves, tasting], cardSubs, parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
@@ -341,7 +348,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
-    this.cardOpen = {[s.cards[0].id]: true};
+    this.cardOpen = {[s.cards[0].id]: true, [s.cards.at(-1).id]: true};
     // The parents' rings, on Today's cards; and the question their ring asks (sheet/complete.html), for a task's and a run's.
     for (const x of s.parentSubs) this.keep(x);
     this.specimenParents = s.parents.map(t => this.keep(t));

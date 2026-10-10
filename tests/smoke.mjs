@@ -1480,7 +1480,8 @@ try {
 
   /* A card's header is a 44px strip (rows-and-sheet-fixes-plan, part 2): its ring and its title's line are centred in
      it, the title's tap the strip's full height, and the ring a swipe uncovers there is centred in it too, clear of
-     its edges (it sat on the strip's foot, and was cut). */
+     its edges (it sat on the strip's foot, and was cut). Its project's dot, last (part 4), is on the middle of its
+     time's letters, as a row's is, clear of the strip's end, and leaves the strip as tall as it was. */
   await step('a-cards-header-has-its-line-and-its-swipes-ring-centred-in-its-strip', async () => {
     const p = await make(`Pocket smoke strip ${stamp}`, { due_date: todayAt(23), priority: 3 }), k = await make(`Pocket smoke strip kid ${stamp}`);
     await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
@@ -1492,9 +1493,11 @@ try {
       const lies = await page.locator(head).evaluate(h => {
         const mid = el => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; }, r = h.getBoundingClientRect();
         return { h: r.height, ring: mid(h.querySelector(':scope > .ring')) - mid(h), title: mid(h.querySelector('.card-title')) - mid(h), bars: !!h.querySelector('.bars'),
-          tap: h.querySelector('.card-open').getBoundingClientRect().height };
+          tap: h.querySelector('.card-open').getBoundingClientRect().height,
+          dot: [h.querySelector('.card-open > .dot')].filter(Boolean).map(d => ({ off: mid(d) - mid(h.querySelector('.due')), after: d.getBoundingClientRect().left - h.querySelector('.due').getBoundingClientRect().right, end: r.right - d.getBoundingClientRect().right }))[0] };
       });
       if (lies.h !== 44 || Math.abs(lies.ring) > .5 || Math.abs(lies.title) > .5 || lies.tap !== 44 || !lies.bars) throw new Error('its header\'s line isn\'t centred in its strip: ' + JSON.stringify(lies));
+      if (!lies.dot || Math.abs(lies.dot.off) > 1.5 || lies.dot.after < 4 || lies.dot.end < 12) throw new Error('its project\'s dot isn\'t on its time\'s line, after it and clear of the strip\'s end: ' + JSON.stringify(lies));
       await swipeRow(page, head, 'back', { one: true, check: async () => {
         await expect(uncovered(page)).toHaveClass(/\bhead\b/);
         const under = await laidUnder(page, head), ring = await uncovered(page).evaluate(u => {
@@ -3340,6 +3343,11 @@ ${footName('Hooks')}`);
       await expect(card.locator('.card-head .sr')).toContainText('Priority: High');
       await expect(card.locator('.card-head .sr')).toContainText('Due Today');
       await expect(line).toHaveClass(/\bone-line\b/);
+      // Its project's dot is on its header, once: its top row leaves its own out, for its words' room, where a plain row
+      // beside it has one (rows-and-sheet-fixes-plan, part 4).
+      await expect(card.locator('.card-open > .dot')).toHaveCount(1);
+      await expect(line.locator('.dot')).toHaveCount(0);
+      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .dot`)).toHaveCount(1);
       if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 46 || await line.evaluate(el => el.offsetHeight) > 57) throw new Error('its heading or its top row is more than one line');
       // Its top row, indented one level: its tick under the header's title, as a subtask's under its parent (a row's
       // tick sits 14px in); a plain row, each zone 48px across at least over its full height: the tick (the whole

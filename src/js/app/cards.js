@@ -5,7 +5,7 @@
    a slim footer, "More", a tap opening it in place; opened, it collapses again once scrolled off the screen, or by
    "Less". Which tasks are cards on Today, and why, is cards.js; what a card needs is read once per project shown, not
    once per card (readCards). */
-import {motion, PRIOS, TZ} from '../util.js';
+import {colorOf, motion, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, repeats, shortDue} from '../dates.js';
 import {hasTemplateLabel, parseStep, runWithoutDay, stepsOf, whereNext} from '../checklists.js';
@@ -26,8 +26,9 @@ export default {
      row, steps: its open subtasks in the card's order (a step ticked stays, done, until the batch clears: leaving.js),
      rows: those shown (the top one; opened, all), n, peek: the next, under a collapsed card (its footer, More, shows
      for it), more: how many it stands for, open, folds: whether it can be collapsed, all: every subtask, done ones too, ring: its ring (ringOf),
-     closes, g: its rows' options (a row's on that screen: Delete; on Today, one line)}. A task marked done in place
-     (its ring, Close) stays a card until the batch clears. */
+     closes, project: its task's project, whose dot is on its header, so a row leaves its own out unless it's in another
+     (rowWhen, rowMeta), g: its rows' options (a row's on that screen: Delete; on Today, one line)}. A task marked done
+     in place (its ring, Close) stays a card until the batch clears. */
   cardOf(t, g){
     const kind = g?.cards;
     if (kind === 'list') return this.listCard(t, g);
@@ -41,7 +42,7 @@ export default {
     else steps = [...steps].sort(urgentFirst(this.rowNow(), positionOrder(this.positions)));
     const n = steps.length, open = n > 1 && !!this.cardOpen[t.id];
     const card = {id: t.id, run, step: steps[0], steps, rows: open ? steps : steps.slice(0, 1), n, peek: !open && n > 1 ? steps[1] : null, more: n - 1,
-      open, folds: true, all, ring: this.ringOf(t), closes: false};
+      open, folds: true, all, ring: this.ringOf(t), closes: false, project: t.project_id};
     // (its group: under Today's heading, "Today" goes unsaid; on Today, a row held carries the card to another day)
     card.g = {depth: {}, card, line: g.line, key: g.key, delete: true, reschedule: g.reschedule};
     return card;
@@ -49,7 +50,7 @@ export default {
   // An open task whose subtasks are all done, as a card: its header, its ring full, and "All subtasks done" with Close,
   // in place of its rows.
   closingCard(t, g, run, all){
-    const card = {id: t.id, run, step: null, steps: [], rows: [], n: 0, peek: null, more: 0, open: false, folds: false, all, ring: this.ringOf(t), closes: true};
+    const card = {id: t.id, run, step: null, steps: [], rows: [], n: 0, peek: null, more: 0, open: false, folds: false, all, ring: this.ringOf(t), closes: true, project: t.project_id};
     card.g = {depth: {}, card, key: g.key};
     return card;
   },
@@ -66,7 +67,7 @@ export default {
     const run = this.isRunTask(t), all = this.cardSubs(t, run), waiting = rows.filter(s => s.pending).length;
     if (!rows.length) return all.length && (!t.done || this.leaving[t.id] || closing.has(t.id)) && all.every(s => this.subDone(s, run)) ? this.closingCard(t, g, run, all) : null;
     const card = {id: t.id, run, step: rows[0], steps: rows, rows, n: rows.length, peek: null, more: rows.length - 1, open: true, folds: false,
-      all, ring: this.ringOf(t, waiting), closes: false};
+      all, ring: this.ringOf(t, waiting), closes: false, project: t.project_id};
     card.g = {depth: {}, card, key: g.key, delete: g.delete, reorder: g.reorder, heads: g.heads, tasks: g.tasks};
     return card;
   },
@@ -168,15 +169,18 @@ export default {
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
   /* A card's heading, on one line, worked out once per card (list-item.html): its title, a run's without the day it
      was started, which its name ends with (runWithoutDay), so it reads as a task's; its priority's bars, small, as a row
-     on Today has them; and when it's due, short, at the right (shortDue: nothing for today with no time under the Today
-     heading, `g`'s key). A screen reader hears the rest (`said`): done, on a project's list over subtasks still open;
-     when it's due, in words, its priority, and its project (not on its own list), or for a run, who it's for. */
+     on Today has them; when it's due, short, at the right (shortDue: nothing for today with no time under the Today
+     heading, `g`'s key); and last its project's colour dot, once for the card, which its rows leave out (rows-and-sheet-
+     fixes-plan, part 4): on Today and in search, not on the project's own list, where a row has none either. A screen
+     reader hears the rest (`said`): done, on a project's list over subtasks still open; when it's due, in words, its
+     priority, and its project (not on its own list), or for a run, who it's for. */
   cardHead(t, g){
     const run = this.isRunTask(t), when = dueInfo(t.due_date), p = this.projById.get(t.project_id);
     const said = [t.done && 'Done, with subtasks still open', this.ringOf(t)?.said, when && (when.cls === 'overdue' ? 'Late: ' : 'Due ') + when.label, t.priority && 'Priority: ' + PRIOS[t.priority].label,
       run ? ((t.assignees || []).length ? this.forText(t) : 'Checklist run') : this.route.name !== 'project' && p?.title];
     return {title: run ? runWithoutDay(t.title, t.created) : this.rowTitle(t), prio: t.priority || 0,
-      due: shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'}), said: said.filter(Boolean).join(', ')};
+      due: shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'}),
+      color: p && this.route.name !== 'project' ? colorOf(p.hex_color) : null, said: said.filter(Boolean).join(', ')};
   },
   // A tick or a slide on a card's row: a run's card stays on its top row until that has gone, then goes by its rule from
   // there (runTop). (A task's top row is the most urgent, which a tick doesn't change.)

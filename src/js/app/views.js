@@ -124,14 +124,15 @@ export default {
   /* A row on one line (g.line: Today, and a card's rows there; motion-and-rows-plan, section 9): at its right, its
      priority's bars, small, as on a card's heading (one-concept-plan, part 4), when it's due, short (shortDue; a run's
      step's countdown, "in 18m", "12m late"; nothing for today with no time under the Today heading, g.key), red when
-     late, and its project's colour dot. Labels and counts are off Today (rowMeta's `extra`), and all of what's under its
-     title elsewhere (rowMeta: when, in words, priority, project or run, the task it's under) is said to a screen reader
-     instead (`said`). Worked out once per row (task-row.html). */
+     late, and its project's colour dot: not a card's row's, whose card's header has it once (cardHead), unless the row
+     is in another project than its card (rows-and-sheet-fixes-plan, part 4). Labels and counts are off Today (rowMeta's
+     `extra`), and all of what's under its title elsewhere (rowMeta: when, in words, priority, project or run, the task
+     it's under) is said to a screen reader instead (`said`). Worked out once per row (task-row.html). */
   rowWhen(t, g){
     const meta = this.rowMeta(t, g), left = meta.find(m => m.key === 'due')?.countdown, p = this.projById.get(t.project_id);
     const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'});
     const said = meta.filter(m => !m.extra).map(m => m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text).filter(Boolean);
-    return {prio: t.priority || 0, due, color: p ? colorOf(p.hex_color) : null, said: said.join(', ')};
+    return {prio: t.priority || 0, due, color: p && g?.card?.project !== t.project_id ? colorOf(p.hex_color) : null, said: said.join(', ')};
   },
   // Now, for a row's countdown and when it's due: on Today, its minute (groupedAt), which redraws it once a minute.
   rowNow(){ return this.route.name === 'today' && this.groupedAt || Date.now(); },
@@ -164,15 +165,16 @@ export default {
       if (tp && this.route.name !== 'project') out.push({key: 'p', color: colorOf(tp.hex_color), text: tp.title});
       return out;
     }
-    // (A card's step has its project and its run or task on the card, over it.)
-    const p = !card && (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
+    // (A card's step has its run or task on the card, over it, and its project on the card's header: only one in another
+    // project than its card says its own.)
+    const p = (!card || card.project !== t.project_id) && (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
     // A step of a run on Today or in search: which run, instead of the project (the run's), so two runs' steps can be
     // told apart. (In a project's list, it's under its run already.)
     const run = !card && (this.route.name === 'today' || this.route.name === 'search') && this.stepRun(t) && t.related_tasks.parenttask[0];
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
     // A subtask with its parent not above it here (not due this week, say, or done): the parent's name, to know it by.
-    const up = !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
+    const up = !card && !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
