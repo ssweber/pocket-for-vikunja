@@ -16,6 +16,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
+import { shortTime } from '../src/js/dates.js';
 import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, rowLine, signIn, slideSeen, steady, still, swipeRow, synced, toastGone as toastGoneOn, uncovered, watchSlide } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
@@ -3348,6 +3349,28 @@ ${footName('Hooks')}`);
       await expect(card.locator('.card-open > .dot')).toHaveCount(1);
       await expect(line.locator('.dot')).toHaveCount(0);
       await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .dot`)).toHaveCount(1);
+      // When each is due is written short, "11p" where the phone writes "11:00 PM" (part 4): on the card's header, its
+      // row and a plain row; a screen reader hears it in full.
+      const clock = (p, h) => p.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), todayAt(h));
+      const [at23, at22] = [await clock(page, 23), await clock(page, 22)];
+      if (/PM$/.test(at23) && (shortTime(at23) !== '11p' || shortTime(at22) !== '10p')) throw new Error(`${at23} and ${at22}, short, are ${shortTime(at23)} and ${shortTime(at22)}`);
+      await expect(card.locator('.card-head .due')).toHaveText(shortTime(at23));
+      await expect(line.locator('.when .due')).toHaveText(shortTime(at22));
+      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .due`)).toHaveText(shortTime(at23));
+      await expect(card.locator('.card-head .sr')).toContainText('Today ' + at23);
+      await expect(line.locator('.title')).toContainText('Today ' + at22);
+      // On a phone with a 24-hour clock, the time as it writes it: "23:00".
+      const other = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB' }), p24 = await other.newPage();
+      try {
+        await hintSeen(other);
+        p24.on('pageerror', e => errors.push(String(e)));
+        await signIn(p24, APP, TOKEN);
+        await p24.evaluate(() => { location.hash = '#/today'; });
+        const theirs = await clock(p24, 23);
+        if (!/^23[:.]00$/.test(theirs)) throw new Error('a browser set to en-GB writes 11 PM as ' + theirs);
+        await expect(p24.locator(`${cardOf(P.title)} .card-head .due`)).toHaveText(theirs, { timeout: 15000 });
+        await expect(p24.locator(`${stepLine(P.title)} .when .due`)).toHaveText(await clock(p24, 22));
+      } finally { await other.close(); }
       if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 46 || await line.evaluate(el => el.offsetHeight) > 57) throw new Error('its heading or its top row is more than one line');
       // Its top row, indented one level: its tick under the header's title, as a subtask's under its parent (a row's
       // tick sits 14px in); a plain row, each zone 48px across at least over its full height: the tick (the whole

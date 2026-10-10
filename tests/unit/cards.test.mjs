@@ -5,7 +5,7 @@ import { component, fakeVikunja } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
-import { dueInfo } from '../../src/js/dates.js';
+import { dueInfo, shortTime } from '../../src/js/dates.js';
 import { listItems, nestSubtasks, rowGestures, RUN_ROW } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
@@ -377,10 +377,12 @@ test('a row on Today, on one line: when it is due, short, its project’s dot, a
   const due = new Date(); due.setHours(23, 30, 0, 0);
   const t = app.keep(task(20, { title: 'Post the rota', due_date: due.toISOString(), priority: 3, project_id: 5, labels: [{ id: 1, title: 'Front' }], comment_count: 2 }));
   const w = app.rowWhen(t, { line: true, depth: {} });
-  assert.equal(w.due.text, due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  const full = due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  assert.equal(w.due.text, shortTime(full), 'its time, short: “11:30p” where the phone writes “11:30 PM”');
   assert.equal(w.prio, 3, 'its priority, as bars before its time (one-concept-plan, part 4)');
   assert.ok(w.color, 'its project’s dot');
   assert.match(w.said, /^Due Today .*, Priority: High, Café$/, 'when in words, its priority and its project; not its label nor its comments');
+  assert.equal(w.said.split(', ')[0], 'Due Today ' + full, 'a screen reader hears its time in full');
   assert.equal(app.rowWhen({ ...t, priority: 0 }, { line: true, depth: {} }).prio, 0, 'no priority, no bars');
   // Due today with no time: "Today" under Overdue's heading and elsewhere, nothing under Today's, which says it.
   const day = new Date(); day.setHours(0, 0, 0, 0);
@@ -418,7 +420,9 @@ test('a run’s card has a heading like a task’s: its name without the day it 
   assert.equal(app.cardHead(task(31, { title: `Pack the van · front · ${day(made)}`, created: made.toISOString() })).title, `Pack the van · front · ${day(made)}`, 'a task’s title as it is');
   // Due when its template was (started from Today), it shows that at the right, as a task's card does.
   const due = new Date(); due.setHours(23, 30, 0, 0);
-  assert.equal(app.cardHead({ ...run, due_date: due.toISOString() }, { key: 'today' }).due.text, due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  const full = due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), h = app.cardHead({ ...run, due_date: due.toISOString() }, { key: 'today' });
+  assert.equal(h.due.text, shortTime(full), 'short, as a row on Today has it');
+  assert.match(h.said, new RegExp(`Due Today ${full}`), 'and in full to a screen reader');
   assert.equal(app.cardHead(run, { key: 'today' }).due, null, 'none: nothing at the right');
 });
 

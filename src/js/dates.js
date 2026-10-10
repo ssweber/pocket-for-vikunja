@@ -29,15 +29,21 @@ export function dueInfo(due){
   if (hasTime && Math.abs(diff) < 7) label += ' ' + fmtTime(d);
   return {label, cls: diff < 0 || isLate(due) ? 'overdue' : diff === 0 ? 'today' : '', diff};
 }
-/* When a task is due, short, for a row on one line (Today: motion-and-rows-plan, section 9): its time today ("11:55
-   AM", or "Today" with no time); its weekday in the coming week ("Fri"); else its date ("Oct 2", with the year when
-   it isn't this one's). `cls` as dueInfo's: 'overdue' when late, 'today'. null with no date, and, `underToday` (a row
-   under Today's heading), for today with no time: "Today" there says nothing new. */
+/* A time written short, for a row on one line, where a title has little room (rows-and-sheet-fixes-plan, part 4), from
+   the time as the phone writes it (`text`, fmtTime's): one that ends with AM or PM, however the phone writes them
+   ("10:30 AM", "3:00 pm", "3:00 p.m."), is "10:30a" and "3p", a whole hour without its ":00", noon "12p". Any other is
+   kept as it is: a 24-hour clock's "15:30", and a day's halves in other words or before the time. Not for what a
+   screen reader hears, nor a sheet or a row's second line: those have fmtTime's. */
+export const shortTime = text => { const m = /^(\d{1,2})([:.])(\d\d)\s*([ap])\.?\s?m\.?$/i.exec(text); return m ? m[1] + (m[3] === '00' ? '' : m[2] + m[3]) + m[4].toLowerCase() : text; };
+/* When a task is due, short, for a row on one line (Today: motion-and-rows-plan, section 9): its time today, short
+   ("11:55a", shortTime; or "Today" with no time); its weekday in the coming week ("Fri"); else its date ("Oct 2", with
+   the year when it isn't this one's). `cls` as dueInfo's: 'overdue' when late, 'today'. null with no date, and,
+   `underToday` (a row under Today's heading), for today with no time: "Today" there says nothing new. */
 export function shortDue(due, now = new Date(), {underToday = false} = {}){
   if (!isSet(due)) return null;
   const d = new Date(due), diff = Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
   if (underToday && diff === 0 && noTime(d)) return null;
-  const text = diff === 0 ? (noTime(d) ? 'Today' : fmtTime(d)) : diff > 0 && diff < 7 ? d.toLocaleDateString([], {weekday: 'short'})
+  const text = diff === 0 ? (noTime(d) ? 'Today' : shortTime(fmtTime(d))) : diff > 0 && diff < 7 ? d.toLocaleDateString([], {weekday: 'short'})
     : d.toLocaleDateString([], {month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined});
   return {text, cls: diff < 0 || isLate(due, now) ? 'overdue' : diff === 0 ? 'today' : ''};
 }

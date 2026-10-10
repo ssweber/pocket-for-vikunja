@@ -71,8 +71,8 @@ function sections(){
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
   const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 12}))}});
   /* A card whose rows have the most at their right (rows-and-sheet-fixes-plan, part 4), opened: a priority and a time
-     before "+ me", and a subtask in another project, which keeps its own dot while the rest leave theirs to the
-     header; one with nothing there, its title's the whole row. */
+     before "+ me" ("10:30a"), noon ("12p") and a whole hour ("3p"), and a subtask in another project, which keeps its
+     own dot while the rest leave theirs to the header; one with nothing there, its title's the whole row. */
   const tasting = task({title: 'Get ready for the tasting evening', due_date: dayAt(0, 18, 30), priority: 2, related_tasks: {subtask: [{id: 1401}, {id: 1402}, {id: 1403}, {id: 1404}]}});
   const cardSubs = [kid(1401, {under: tasting.id, title: 'Print the tasting notes', due_date: dayAt(0, 10, 30), priority: 3}),
     kid(1402, {under: tasting.id, title: 'Borrow glasses from next door', project_id: 4, due_date: dayAt(0, 12), priority: 1}),
@@ -87,8 +87,8 @@ function sections(){
     kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]}),
     ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 12}))];
   // Today's rows, on one line (line: section 9): the title cut short; and at the right its priority's bars, small, from
-  // none to do now (one-concept-plan, part 4), when it's due, short (a time today, a weekday this week, a date beyond,
-  // red when late), and the project's dot.
+  // none to do now (one-concept-plan, part 4), when it's due, short (a time today, "10:30a" where the browser writes
+  // "10:30 AM", a weekday this week, a date beyond, red when late), and the project's dot.
   const today = [task({title: 'Post next week’s rota', due_date: dayAt(0, 10, 30), priority: 3}),
     task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [priya]}),
     task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),

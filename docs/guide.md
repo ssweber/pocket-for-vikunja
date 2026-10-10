@@ -56,7 +56,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   run times them.
 - **Today is on one line:** each task there is one line, and the sheet has the rest. Its title
   is cut short with "…" when it's too long, and at the right are its priority's bars, small, as everywhere else (one
-  to five, red from high up; none for no priority), then when it's due, short: the time today ("11:55 AM"), the
+  to five, red from high up; none for no priority), then when it's due, short: the time today with few letters ("11:55a", "3p" for 3:00 PM; on a phone with a 24-hour clock, "15:00" as it writes it), the
   weekday this week ("Fri"), or the date beyond ("Oct 20"), red when it's late, with a run's step's countdown instead
   ("in 18m", "12m late"). Under the **Today** heading, a task due today with no time of its own shows no time: the
   heading says it (under **Overdue**, and anywhere else, it still says "Today"). Then its project's colour dot (a card has it once, on its header, so its subtasks have more room for their words; a subtask in another project than its card keeps its own), and

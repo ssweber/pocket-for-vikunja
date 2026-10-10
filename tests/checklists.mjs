@@ -12,6 +12,7 @@
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { shortTime } from '../src/js/dates.js';
 import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn, uncovered } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
@@ -1774,7 +1775,7 @@ try {
     const runCard = page.locator(cardOf(dayless(run.title)));
     await expect(runCard.locator('.card-title')).toHaveText(dayless(run.title), { timeout: 15000 });
     const at = await page.evaluate(ms => new Date(ms).toDateString() === new Date().toDateString() && new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), +due);
-    await expect(runCard.locator('.card-head .due.overdue')).toHaveText(at || /\S/);             // its time, if it was today
+    await expect(runCard.locator('.card-head .due.overdue')).toHaveText(at ? shortTime(at) : /\S/);   // its time, short ("9a"), if it was today
     // The template, moved on a day by Vikunja, and still not done.
     if (tpl.done || !sameTime(tpl.due_date, new Date(+due + 864e5).toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
   });
