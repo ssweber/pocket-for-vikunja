@@ -16,7 +16,7 @@
     <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || (canEdit && editDesc())" @keydown.enter="canEdit && editDesc()"></div></template>
     <template x-if="!sheet.editingDesc && notesText(sheet.task).trim()"><button class="icon-btn plain copy-btn" id="d-desc-copy" aria-label="Copy the notes" @click="copyNotes()"><svg class="i"><use href="#i-copy"/></svg></button></template>
     <template x-if="sheet.editingDesc"><div class="desc-edit">
-      <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())"></textarea>
+      <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())" x-effect="sheet.descDraft; $nextTick(() => grow($el))"></textarea>
       <template x-if="sheet.descUnsaved"><p class="note" id="d-desc-unsaved" style="margin:6px 2px">Not saved yet: these notes are kept on this phone until they're saved.</p></template>
       <template x-if="sheet.descConflict !== null"><p class="note" id="d-desc-conflict" style="margin:6px 2px; white-space:pre-wrap">They were changed elsewhere while you wrote. The notes in Vikunja now:
 <span x-text="sheet.descConflict || '(none)'"></span>

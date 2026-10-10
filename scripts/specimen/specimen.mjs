@@ -124,7 +124,8 @@ function sections(){
   /* A task's sheet led by its row (parent-tasks-plan, 6b): a task at 50% with notes and two photos, Priya on it, the
      whole sheet under it; a subtask with no notes or photos, its parent in the path; a parent, its ring at 13% (one
      subtask of four at 50%), its subtasks below; the card's row swiped right from 25% to 50%, still held; its title
-     tapped, a box to change it in; and a done task. `parts`: what of the rest of the sheet is drawn under the card. */
+     tapped, a box to change it in; its notes tapped, short ones in the box at its least height and long ones in a box
+     as tall as they are; and a done task. `parts`: what of the rest of the sheet is drawn under the card. */
   const photo = (id, name, size) => ({id, file: {name, size}});
   const notes = '<p>Use the green from the shed: <strong>two coats</strong>, a day apart.</p><ul><li>Sand the old paint off first</li><li>Tape round the letterbox</li></ul>';
   const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, related_tasks: {parenttask: [{id: 1200}]}}),
@@ -143,6 +144,13 @@ function sections(){
       task: task({title: 'Restock the napkins', percent_done: .25, assignees: [me], description: '<p>The big packs, from the cash and carry.</p>', attachments: [photo(3, 'shelf.jpg', 0.9e6)]})},
     {spec: 'Its title tapped: a box to change it in, in the row’s place, saved once it’s left', parts: [], titleEdit: true, title: 'Restock the napkins and the straws',
       task: task({title: 'Restock the napkins', due_date: dayAt(1, 0), description: '<p>The big packs.</p>'})},
+    {spec: 'Its notes tapped, short ones: the box to change them in keeps its least height, with Cancel and Save notes under it', parts: [], editingDesc: true, descDraft: 'The big packs.',
+      task: task({title: 'Restock the napkins', description: '<p>The big packs.</p>'})},
+    {spec: 'Long notes being changed: the box is as tall as its text, so they scroll with the sheet, never inside the box', parts: [], editingDesc: true,
+      descDraft: ['Closing the café, in order:', '', ...['Last orders at half past four', 'Empty and wipe the coffee machine', 'Cakes into the fridge, labelled with today’s date', 'Stack the chairs, sweep, then mop',
+        'Bins out to the yard: glass on Tuesdays only', 'Count the till and write it in the book', 'Lights, heating, alarm, then both locks'].map((line, i) => `${i + 1}. ${line}`), '',
+        'If the alarm won’t set, the back door isn’t shut: push it until it clicks.'].join('\n'),
+      task: task({title: 'Close up', due_date: dayAt(0, 17), description: '<p>Closing the café, in order:</p>'})},
     {spec: 'A done task: its row as a done row in a list; Details’ Progress line has no quarter pressed', parts: ['details'],
       task: task({title: 'Clean the grinder', done: true, percent_done: .5, due_date: dayAt(-1, 17), description: '<p>Burrs out, brush, then rice through it.</p>', attachments: [photo(4, 'burrs.jpg', 1.6e6)]})},
   ];

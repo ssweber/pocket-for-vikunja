@@ -1287,6 +1287,60 @@ try {
     }
   });
 
+  /* The notes box is as tall as its text, as every other box is (rows-and-sheet-fixes-plan, part 1): long notes scroll
+     with the sheet, never inside their box, which would pull the sheet down as they're scrolled back up. Short ones
+     keep the box's least height. Typing at their end leaves the sheet where it was scrolled to. */
+  await step('the-notes-box-grows-with-its-text', async () => {
+    const t = await make(`Pocket smoke long notes ${stamp}`, { due_date: todayAt(23), description: '<p>Short notes</p>' });
+    const lines = n => Array.from({ length: n }, (_, i) => `Line ${i + 1} of the notes`).join('\n');
+    // The box's height, how far its text can scroll inside it, and where the sheet is scrolled to.
+    const box = () => page.$eval('#d-desc-in', ta => ({ height: ta.offsetHeight, inside: ta.scrollHeight - ta.clientHeight, line: parseFloat(getComputedStyle(ta).lineHeight), sheet: ta.closest('.scroll').scrollTop }));
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.click(`#view ${rowOf(t.title)} > .body`, { timeout: 15000 });
+      await page.click('#d-desc');
+      await expect(page.locator('#d-desc-in')).toBeFocused();
+      const short = await box();
+      if (short.height !== 140 || short.inside > 0) throw new Error('short notes: ' + JSON.stringify(short));
+      await page.fill('#d-desc-in', lines(120));
+      await expect.poll(async () => (await box()).height).toBeGreaterThanOrEqual(120 * short.line);
+      const long = await box();
+      if (long.inside > 0) throw new Error(`long notes can scroll ${long.inside}px inside their box`);
+      // Typed in their middle, the sheet scrolled so that line is in sight and their end isn't: the sheet stays where
+      // it was (the box is measured at its least height first, which would pull the sheet's end up).
+      await page.$eval('#d-desc-in', ta => ta.scrollIntoView({ block: 'end', behavior: 'instant' }));
+      await page.$eval('#sheet .scroll', el => { el.scrollTop -= 300; });
+      const was = await box();
+      if (was.sheet < 100) throw new Error('the sheet didn\'t scroll with the notes: ' + JSON.stringify(was));
+      await page.$eval('#d-desc-in', (ta, at) => ta.setSelectionRange(at, at), lines(100).length);
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('and more');
+      await expect.poll(async () => (await box()).height).toBeGreaterThanOrEqual(was.height + short.line - 1);   // a line taller
+      if (await page.inputValue('#d-desc-in') !== lines(100) + '\nand more' + lines(120).slice(lines(100).length)) throw new Error('typed somewhere else');
+      const more = await box();
+      if (Math.abs(more.sheet - was.sheet) > 1 || more.inside > 0) throw new Error(`a line typed moved the sheet from ${was.sheet} to ${more.sheet}, or scrolls inside the box (${more.inside}px)`);
+      // The phone turned: its lines wrap anew, and the box fits them again, both ways.
+      await page.fill('#d-desc-in', 'some words to fill a line of the notes up, and on to the next. '.repeat(12));
+      await expect.poll(async () => (await box()).height).toBeGreaterThan(300);
+      const upright = await box();
+      await page.setViewportSize({ width: 844, height: 390 });
+      await expect.poll(async () => (await box()).height).toBeLessThan(upright.height - 100);
+      if ((await box()).inside > 0) throw new Error('turned, the notes scroll inside their box');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect.poll(async () => (await box()).height).toBe(upright.height);
+      if ((await box()).inside > 0) throw new Error('turned back, the notes scroll inside their box');
+      // Most of them taken out: back to its least height.
+      await page.fill('#d-desc-in', lines(2));
+      await expect.poll(async () => (await box()).height).toBe(140);
+      await page.click('#d-desc-cancel');
+    } finally {
+      await page.setViewportSize({ width: 390, height: 844 });
+      if (await page.isVisible('#sheet')) await page.click('#btn-sheet-close', { timeout: 2000 }).catch(() => {});
+      await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   await step('leaving-the-screen-sends-a-deletion-at-once', async () => {
     // Deleted on its project's list, then another tab tapped before the batch clears: it's sent then, not left waiting.
     const x = await make(`Pocket smoke leave ${stamp}`, { due_date: todayAt(23) }), X = rowOf(x.title);

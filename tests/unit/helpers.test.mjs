@@ -3,7 +3,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
-import { andList, colorOf, esc, fmtSize, sizeLimit, taskDrafts } from '../../src/js/util.js';
+import { andList, colorOf, esc, fmtSize, grow, sizeLimit, taskDrafts } from '../../src/js/util.js';
 import { entryDone, heldTasks, isChild, itemDone, packParsed, sendState, slowness, unpackParsed, WAIT_MS } from '../../src/js/sync.js';
 
 test('the screen in the address', () => {
@@ -40,6 +40,31 @@ test('a label\'s colour only if it is one, and text made safe for HTML', () => {
   assert.equal(colorOf(''), 'var(--muted)');
   assert.equal(esc(`<a href="x">Tom's</a>`), '&lt;a href=&quot;x&quot;&gt;Tom&#39;s&lt;/a&gt;');
   assert.equal(esc(null), '');
+});
+
+/* A text box as a browser measures it: its text `text` px tall, its borders `border` px in all, its least height `least`.
+   In a sheet scrolled to `top`, which can't stay scrolled past its end: with the box at its least height, that's `end`. */
+function textBox({ text, border = 0, least = 24, top = 0, end = Infinity }){
+  const sheet = { scrollTop: top }, ta = { get scrollHeight(){ return text; }, get clientHeight(){ return this.offsetHeight - border; }, closest: sel => sel === '#sheet .scroll' ? sheet : null };
+  let height = 'auto';
+  ta.style = { get height(){ return height; }, set height(v){ height = v; if (v === 'auto') sheet.scrollTop = Math.min(sheet.scrollTop, end); } };
+  Object.defineProperty(ta, 'offsetHeight', { get: () => height === 'auto' ? least : parseFloat(height) });
+  return { ta, sheet };
+}
+test('a text box is as tall as its text and its borders, and the sheet it\'s in stays where it was scrolled to', () => {
+  const plain = textBox({ text: 72 });
+  grow(plain.ta);
+  assert.equal(plain.ta.style.height, '72px', 'a box with no border: its text\'s height');
+  const notes = textBox({ text: 2978, border: 3, least: 140, top: 2075, end: 440 });
+  grow(notes.ta);
+  assert.equal(notes.ta.style.height, '2981px', 'its borders too, so nothing is left to scroll inside it');
+  assert.equal(notes.sheet.scrollTop, 2075, 'measured at its least height, the sheet\'s end came up: it\'s put back');
+  const hidden = textBox({ text: 0 });
+  grow(hidden.ta);
+  assert.equal(hidden.ta.style.height, 'auto', 'a hidden box measures 0: left until it can be measured');
+  const alone = { style: {}, scrollHeight: 40, offsetHeight: 24, clientHeight: 24, closest: () => null };
+  grow(alone);
+  assert.equal(alone.style.height, '40px', 'a box outside a sheet (the add box, a run\'s comment)');
 });
 
 test('drafts are kept until they\'re empty', () => {

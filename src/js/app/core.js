@@ -185,9 +185,9 @@ export default () => ({
       this.initHeader();
       // Keep the list's bottom padding in step with the capture bar as it grows.
       new ResizeObserver(() => document.documentElement.style.setProperty('--cap-h', this.$refs.captureBar.offsetHeight + 'px')).observe(this.$refs.captureBar);
-      // Turning the phone, or the keyboard opening or closing, changes the boxes' width: each fits its text again, and
-      // quick add's highlights stay over the words they mark.
-      const refit = () => { for (const id of ['in-capture', 'd-subin']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
+      // Turning the phone, or the keyboard opening or closing, changes the boxes' width: each fits its text again (notes being
+      // changed too, however long), and quick add's highlights stay over the words they mark.
+      const refit = () => { for (const id of ['in-capture', 'd-subin', 'd-desc-in']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
       (window.visualViewport || window).addEventListener('resize', refit);
       addEventListener('orientationchange', () => setTimeout(refit, 300));
       /* The keyboard covers the bottom of the page without making it shorter (Chrome on Android and Safari on iPhone
