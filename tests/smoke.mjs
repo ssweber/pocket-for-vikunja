@@ -1891,10 +1891,11 @@ try {
      (`fx` of the way along it) until the hold is felt and its dates are drawn, and gives where the finger is, still
      down; `datesSeen()` is what's drawn then, once the chips have drawn in; `movedLine(text)` the line saying where a
      task went, on its row or by the add box, with its Undo. */
-  const DATES = '.throw .throw-t', dateChip = id => page.locator(`${DATES}[data-id="${id}"]`);
+  const DATES = '.throw .throw-t[data-id]', dateChip = id => page.locator(`.throw .throw-t[data-id="${id}"]`);
   const dayAt = (days, h) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return d.toISOString(); };
   const mondayAt = h => dayAt((8 - new Date().getDay()) % 7 || 7, h);      // next Monday, a week on if it's Monday
   const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
+  const asPicked = iso => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };   // a day, as a date picker has it
   const movedLine = text => page.locator('.row-line, .place-line[data-place="cap"]').filter({ hasText: text });
   async function holdOnToday(sel, { fx = .5, scroll = true } = {}){
     if (scroll) await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
@@ -1935,6 +1936,7 @@ try {
       await expect(page.locator(A)).toHaveClass(/\bthrow-from\b/);
       const seen = await datesSeen(), { today, tomorrow, week, none } = seen.chips;
       if (seen.veil || seen.shade !== 'rgba(0, 0, 0, 0)') throw new Error('something covers the screen: ' + JSON.stringify([seen.veil, seen.shade]));
+      if (await page.locator('.throw .pick, .throw .throw-date').first().isVisible()) throw new Error('Pick a date… shows while the finger is still down');
       if (!(today.r <= week.l + 1 && week.r <= tomorrow.l + 1 && week.b <= today.t + 1 && today.b <= none.t + 1)) throw new Error('not Today left, Tomorrow right, Next week above, No date below: ' + JSON.stringify(seen.chips));
       if (Object.values(seen.chips).some(k => k.w < 56 || k.h < 56)) throw new Error('a date under 56px: ' + JSON.stringify(seen.chips));
       if (!today.dim || tomorrow.dim || week.dim || none.dim || !none.dashed || today.dashed) throw new Error('dimmed or dashed wrongly: ' + JSON.stringify(seen.chips));
@@ -2039,8 +2041,8 @@ try {
       if (open.hidden !== null) throw new Error('still hidden from a screen reader');
       const shade = +(open.shade.match(/[,/] ?([\d.]+)\)$/) || [])[1];      // how dark, of 1: its colour's last figure
       if (!(shade > .04 && shade < .12)) throw new Error('the screen behind isn\'t dimmed very lightly: ' + open.shade);
-      await expect(menu(a).getByRole('button')).toHaveCount(4);
-      for (const name of [/^Today, \w{3} \d+$/, /^Tomorrow, \w{3} \d+$/, /^Next week, Mon \d+$/, /^No date$/]) await expect(menu(a).getByRole('button', { name })).toBeVisible();
+      await expect(menu(a).getByRole('button')).toHaveCount(5);
+      for (const name of [/^Today, \w{3} \d+$/, /^Tomorrow, \w{3} \d+$/, /^Next week, Mon \d+$/, /^No date$/, /^Pick a date…$/]) await expect(menu(a).getByRole('button', { name })).toBeVisible();
       await expect(menu(a).getByRole('button', { name: /^Today, / })).toBeFocused();
       await expect(menu(a).getByRole('button', { name: /^Today, / })).toHaveAttribute('aria-disabled', 'true');
       await expect(page.locator(A)).toHaveClass(/\bthrow-from\b/);
@@ -2088,6 +2090,24 @@ try {
       await expect(movedLine('Moved to today')).toBeVisible();
       await synced(page);
       if (new Date(await due(late)).toDateString() !== new Date().toDateString()) throw new Error('Today tapped: ' + await due(late));
+      // Pick a date…, in the middle, where the finger was, at least 56px each way: it opens the phone's own date picker,
+      // straight from the tap (only noted here: a headless browser shows none), and the day picked there moves the task
+      // as a date does, at its time, with the same Undo.
+      await page.evaluate(() => { window.pickedFrom = []; HTMLInputElement.prototype.showPicker = function(){ window.pickedFrom.push(this.className + (navigator.userActivation?.isActive ? '' : ', but not from a tap')); }; });
+      const from = await openDates(B, b), pick = menu(b).getByRole('button', { name: 'Pick a date…' }), box = await pick.boundingBox();
+      if (!(box.x <= from.x && from.x <= box.x + box.width && box.y <= from.y && from.y <= box.y + box.height) || box.width < 56 || box.height < 56) throw new Error('Pick a date… isn\'t where the finger was, 56px each way: ' + JSON.stringify([box, from]));
+      await pick.click();
+      await expect.poll(() => page.evaluate(() => window.pickedFrom)).toEqual(['throw-date']);
+      await expect(menu(b)).toBeVisible();
+      if (await page.locator('.throw-date').getAttribute('min') !== asPicked(new Date())) throw new Error('the picker\'s first day isn\'t today');
+      await page.locator('.throw-date').fill(asPicked(dayAt(9, 22)));
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await expect(movedLine(/^\s*Moved to \w{3}, \w{3} \d+/)).toBeVisible();
+      await synced(page);
+      if (!sameTime(await due(b), dayAt(9, 22))) throw new Error('a day picked: ' + await due(b));
+      await movedLine(/^\s*Moved to \w{3}, \w{3} \d+/).getByRole('button', { name: 'Undo' }).click();
+      await synced(page);
+      if (!sameTime(await due(b), mondayAt(22))) throw new Error('Undo of a day picked left it due ' + await due(b));
       // By the keys: an arrow goes to the date in its direction, and Enter picks it.
       await openDates(A, a);
       await page.keyboard.press('ArrowDown');
@@ -2120,8 +2140,8 @@ try {
       await synced(page);
       if (!sameTime((await get(r.id)).due_date, r.due_date)) throw new Error('a repeating task moved');
       if (await page.locator('.row-line, .place-line[data-place="cap"]').count()) throw new Error('something was said');
-      // Let go without a move, its dates are left open as any task's, to read why: still dimmed, and a tap on one does
-      // nothing.
+      // Let go without a move, its dates are left open as any task's, to read why: still dimmed, Pick a date… too, and
+      // a tap on one does nothing.
       await holdOnToday(R);
       await page.mouse.up();
       const menu = page.getByRole('dialog', { name: `Move “${r.title}” to another day` });

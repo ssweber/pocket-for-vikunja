@@ -3,7 +3,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { THROW, throwEnd, throwFlick, throwLayout, throwPick, throwTargets } from '../../src/js/throw.js';
+import { dateValue, THROW, throwDate, throwEnd, throwFlick, throwLayout, throwPick, throwTargets } from '../../src/js/throw.js';
 
 // October 2026: Monday the 12th to Sunday the 18th, and the weeks either side.
 const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
@@ -107,4 +107,18 @@ test('let go with a date lit, the task moves; back near where it was held after 
   assert.deepEqual(end({ commit: true, on: by('tomorrow'), out: true, why: 'repeats' }), ['close', null], 'a task that can\'t move: nothing');
   assert.deepEqual(end({ commit: true, why: 'repeats' }), ['open', null], 'but held without a move, its dates are left open too, dimmed, to read why');
   assert.deepEqual([end({ commit: false, on: by('tomorrow'), out: true }), end({ commit: false })], [['close', null], ['close', null]], 'taken away by the phone: nothing, and nothing left open');
+});
+
+test('a day picked in the phone\'s own picker keeps the task\'s time of day, and is said by its day; the day it has is dimmed, and none before today', () => {
+  const now = on(12, 14, 20), day = (d, m = 9) => new Date(2026, m, d).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  const pick = (due, value) => { const p = throwDate(due, value, now); return p && [p.due, p.label, p.dim]; };
+  assert.deepEqual(pick(iso(12, 16), '2026-10-22'), [iso(22, 16), day(22), false], 'the 22nd at 4 PM');
+  assert.deepEqual(pick(iso(12, 0), '2026-11-03'), [new Date(2026, 10, 3).toISOString(), day(3, 10), false], 'no time: still none');
+  assert.deepEqual(pick(ZERO, '2026-10-22'), [iso(22, 0), day(22), false], 'no date: that day, with no time');
+  assert.deepEqual(pick(iso(12, 16), '2026-10-13'), [iso(13, 16), 'Tomorrow', false], 'tomorrow, said so');
+  assert.deepEqual(pick(iso(9, 9), '2026-10-12'), [iso(12, 15), 'Today', false], 'today, its time gone by: the next whole hour');
+  assert.deepEqual(pick(iso(22, 16), '2026-10-22'), [iso(22, 16), day(22), true], 'the day it has: dimmed');
+  assert.equal(throwDate(iso(12, 16), '2027-01-04', now).label, new Date(2027, 0, 4).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }), 'another year: said with it');
+  assert.deepEqual([pick(iso(12, 16), '2026-10-11'), pick(iso(12, 16), ''), pick(iso(12, 16), 'soon')], [null, null, null], 'a day gone by, or no day: none');
+  assert.deepEqual([dateValue(iso(22, 16), now), dateValue(ZERO, now), dateValue(null, now)], ['2026-10-22', '2026-10-12', '2026-10-12'], 'as a picker has a day: the task\'s, or today');
 });

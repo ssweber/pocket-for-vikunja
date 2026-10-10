@@ -457,7 +457,8 @@ test('a row held on Today has its dates, but one that repeats, a checklist, a ru
 
 /* The hold itself, run as it is on a pretend screen: holdToSlide (app/progress.js) drives the row's gesture
    (rowGesture, throwOf in app/throw.js), with what's drawn stood in for (throwView: `seen` keeps what it's told to
-   show; left open to tap, `tap(id)` taps a date) and the move it ends in kept (`moved`: reschedule). `touch(x, y)` puts a finger down on the row and holds it
+   show; left open to tap, `tap(id)` taps a date and `pickDay(day)` chooses one in the phone's picker) and the move it
+   ends in kept (`moved`: reschedule). `touch(x, y)` puts a finger down on the row and holds it
    until the hold is felt; `to(x, y)` moves it, `up()` lets go, `away()` is the phone taking it (pointercancel). What's
    felt is the phone's vibrate, standing in for haptic(): 12 as the hold is felt, 6 at each date lit. It's Wednesday 7
    October 2026, 2:20 PM, and the task (`t`, which a test may change between holds) was due the morning before. */
@@ -465,18 +466,18 @@ function heldOnToday(c){
   c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date(2026, 9, 7, 14, 20) });
   const app = component(progress, throwing), t = { id: 1, title: 'Call the plumber', project_id: 1, due_date: new Date(2026, 9, 6, 9).toISOString() };
   const seen = [], moved = [], felt = [], on = {}, win = {}, classes = new Set();
-  let tap = null;
+  let tap = null, choose = null;
   const area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
   const row = { dataset: { gestures: rowGestures({ depth: {}, ...screenRows('today') }) }, clientWidth: 360, closest: () => null, classList: { add: (...k) => k.forEach(x => classes.add(x)), remove: (...k) => k.forEach(x => classes.delete(x)) } };
   Object.assign(app, { lines: {}, canWrite: () => true, canTick: () => true, canDelete: () => false, ringOf: () => null, rowRing: () => null, hintSeen(){}, flash(){}, $nextTick(){},
     reschedule: (x, to) => { moved.push([x.id, to.label, to.due]); },
-    throwView: (x, held, targets, why, px, py) => { seen.push(['drawn', why, px, py]); return { light: p => seen.push(['lit', p?.id ?? null]), close: () => seen.push(['closed']), open: pick => { seen.push(['open']); tap = pick; } }; } });
+    throwView: (x, held, targets, why, px, py) => { seen.push(['drawn', why, px, py]); return { light: p => seen.push(['lit', p?.id ?? null]), close: () => seen.push(['closed']), open: (pick, picked) => { seen.push(['open']); tap = pick; choose = picked; } }; } });
   document.addEventListener = () => {}; globalThis.addEventListener = (type, fn) => { (win[type] ||= []).push(fn); }; globalThis.getSelection = () => null; navigator.vibrate = p => felt.push(p);
   c.after(() => { delete document.addEventListener; delete globalThis.addEventListener; delete globalThis.getSelection; delete navigator.vibrate; });
   app.holdToSlide(area, () => app.rowGesture(t, row, false));
   const fire = (fns, e) => { for (const fn of fns || []) fn({ isPrimary: true, pointerType: 'touch', pointerId: 1, target: { closest: () => null }, preventDefault(){}, ...e }); };
   let x0 = 0, y0 = 0;
-  return { app, t, seen, moved, felt, tap: id => tap(id),
+  return { app, t, seen, moved, felt, tap: id => tap(id), pickDay: day => choose(day),
     touch(x = 180, y = 300){ x0 = x; y0 = y; seen.length = 0; felt.length = 0; fire(on.pointerdown, { clientX: x, clientY: y }); c.mock.timers.tick(HOLD_MS); },
     to(dx, dy){ fire(win.pointermove, { clientX: x0 + dx, clientY: y0 + dy }); },
     up(){ fire(win.pointerup, {}); },
@@ -552,4 +553,18 @@ test('held on Today and let go without ever having moved out, a row\'s dates sta
   h.t.repeat_after = 86400;
   h.touch(); h.up();
   assert.deepEqual(h.seen, [['drawn', 'repeats', 180, 300], ['open']], 'a repeating task: left open too, every date dimmed, to read why');
+});
+
+test('open to tap, a day picked in the phone\'s own picker moves the task there, at the time of day it had; the day it has, or one gone by, nothing', c => {
+  const h = heldOnToday(c);
+  h.touch(); h.up();
+  h.pickDay('2026-10-15');
+  assert.deepEqual(h.moved, [[1, new Date(2026, 9, 15).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }), oct(15, 9)]], 'Thursday the 15th, at 9 AM, said by its day');
+  h.t.due_date = oct(15, 9);
+  h.touch(); h.up(); h.pickDay('2026-10-15');
+  assert.equal(h.moved.length, 1, 'the day it has: nothing');
+  h.touch(); h.up(); h.pickDay('2026-10-01');
+  assert.equal(h.moved.length, 1, 'a day gone by: nothing');
+  h.touch(); h.up(); h.pickDay('2026-10-08');
+  assert.deepEqual(h.moved.at(-1), [1, 'Tomorrow', oct(8, 9)], 'tomorrow, picked: said as Tomorrow');
 });

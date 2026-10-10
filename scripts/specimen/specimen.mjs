@@ -187,8 +187,13 @@ function sections(){
     ring('On a 390px screen, due later today: Today dimmed, never moved or hidden; the finger gone up, Next week lit', on(9), task({title: 'Post next week’s rota', due_date: on(9, 16, 30).toISOString()}), {to: 'week', wide: true, x: 250}),
     ring('A Sunday: next Monday is tomorrow, so up and right show the same day', on(11), milk()),
     ring('A repeating task: every date dimmed, and the line saying why over them', on(9), task({title: 'Water the plants', due_date: on(9).toISOString(), repeat_after: 86400}), {why: 'repeats'}),
-    ring('Let go without a move: the four stay open, to tap, where they were, the screen behind dimmed very lightly; a tap anywhere else closes them', on(9), milk(), {open: true}),
+    ring('Let go without a move: the four stay open, to tap, where they were, with Pick a date… in the middle, where the finger was, the screen behind dimmed very lightly; a tap anywhere else closes them', on(9), milk(), {open: true}),
+    ring('A repeating task’s, open to tap: still dimmed, Pick a date… too, with its line', on(9), task({title: 'Water the plants', due_date: on(9).toISOString(), repeat_after: 86400}), {why: 'repeats', open: true}),
     ring('A card held by its header: the card lifts whole, and only its task’s date moves', on(9), heldCard, {card: true, row: 1}),
+    // The same on a 390px screen: the first row, the last, and open to tap.
+    ring('On a 390px screen, the first row held near its right end', on(9), milk(), {row: 0, x: 340, wide: true}),
+    ring('On a 390px screen, the last row held near its left end, the finger gone down: No date lit, though the set moved up', on(9), milk(), {row: 5, x: 44, to: 'none', wide: true}),
+    ring('On a 390px screen, open to tap, held right of the middle', on(9), milk(), {open: true, x: 230, wide: true}),
   ];
   return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other air con', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}), opening,
     task({title: 'Order the milk', priority: 2}), closing, sign, shelves, tasting], cardSubs: [...cardSubs, ...ringSubs], parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [

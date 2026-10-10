@@ -8,7 +8,7 @@
    - Down, No date: the due date taken off. It takes the same short move as the others, as every date changed by a hold
      has an Undo (reschedule, app/actions.js).
    - Back near where it was held, none: letting go there changes nothing. Let go without ever having moved out, the
-     four stay open, to tap (throwEnd).
+     four stay open, to tap (throwEnd), with Pick a date… in the middle, for any other day (throwDate).
    A date that would leave the task as it is (Today, on a task due later today) is dimmed, never moved or hidden.
    To change which is where (Next week and No date may change places), or any number, change THROW: */
 import {addDays, isSet, movedDue, startOfDay} from './dates.js';
@@ -93,6 +93,21 @@ export function throwEnd({commit, on = null, flick = null, out = false, why = nu
   if (p) return !p.dim && !why ? {then: 'move', to: p} : {then: 'close', to: null};
   return {then: commit && !out ? 'open' : 'close', to: null};
 }
+
+/* A day picked with the phone's own date picker (Pick a date…), for a task due `due`: `value` is the picker's
+   ("2026-10-15"). As a date of throwTargets': {id, day, due (movedDue: its time of day kept), label (as it's said once
+   moved there: "Today", "Tomorrow", else "Thu, Oct 15", with the year when it isn't this one's), dim: it's the day it
+   has}. null for no day, or one before today: a hold moves a task on, and the picker is given today as its first day
+   (dateValue). */
+export function throwDate(due, value, now = new Date()){
+  const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(value || ''), day = m && new Date(+m[1], m[2] - 1, +m[3]), today = startOfDay(now);
+  if (!day || day < today) return null;
+  const to = movedDue(due, day, now), n = Math.round((day - today) / 864e5);
+  const label = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : day.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric', year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined});
+  return {id: 'pick', day, due: to, label, dim: isSet(due) && Date.parse(to) === Date.parse(due)};
+}
+// A day as a date picker has it ("2026-10-15"): the day `due` is on; with no date, today (the picker's first day).
+export const dateValue = (due, now = new Date()) => { const d = isSet(due) ? new Date(due) : now, p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 
 // Why a task held on Today can't be moved, said with its dates all dimmed: as Move all to today leaves them.
 export const THROW_STAYS = {repeats: 'It repeats: tick it to move on to its next date.', checklist: 'A checklist comes round by itself: start it to move on.',
