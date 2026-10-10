@@ -1389,6 +1389,44 @@ try {
     }
   });
 
+  /* Whatever is swiped tells the phone that sideways on it is a swipe, not a scroll (touch-action), so the phone never
+     takes the touch away as a swipe starts: a list's row, a card, a sheet's subtasks, and the sheet's own row (a run's
+     own row and its steps: checklists.mjs). The mouse the other swipes use never meets that rule, so the sheet's own
+     row is swiped here by a finger. */
+  await step('whatever-is-swiped-tells-the-phone-sideways-is-a-swipe', async () => {
+    const P = await make(`Pocket smoke sideways ${stamp}`, { due_date: todayAt(23) }), kid = await make(`Pocket smoke sideways kid ${stamp}`);
+    const plain = await make(`Pocket smoke sideways plain ${stamp}`, { due_date: todayAt(23) });
+    await api(`/tasks/${P.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: kid.id, relation_kind: 'subtask' }) });
+    const sideways = (what, sel) => expect(page.locator(sel).first(), what).toHaveCSS('touch-action', 'pan-y pinch-zoom');
+    const own = '#d-card > .row.own', shut = async () => { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); };
+    try {
+      await toastGone();
+      await refreshToday();
+      await sideways('a list\'s row', `#view ${rowOf(plain.title)}`);
+      await sideways('a card, for its header and its rows', cardOf(P.title));
+      // A parent's sheet: its subtasks' rows, and its own row, which a full swipe right completes.
+      await page.click(`${cardOf(P.title)} > .card-head .card-open`, { timeout: 15000 });
+      await expect(page.locator(own)).toBeVisible();
+      await sideways('a subtask in a sheet', '#d-subtasks > .row');
+      await sideways('a parent\'s own row in its sheet', own);
+      await shut();
+      // A task's: its own row, swiped by a finger to 25%, with nothing taken away on the way.
+      await page.click(`#view ${rowOf(plain.title)} > .body`);
+      await expect(page.locator(own)).toBeVisible();
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('sheet')).transform === 'none', null, { timeout: 5000 });   // slid in
+      await sideways('the sheet\'s own row', own);
+      await swipeRow(page, own, 25, { finger: touch });
+      await expect.poll(() => page.$eval(own, el => getComputedStyle(el).getPropertyValue('--pct').trim())).toBe('0.25');
+      await expect(page.locator('#sheet')).toBeVisible();
+      await synced(page);
+      if (Math.round((await get(plain.id)).percent_done * 100) !== 25) throw new Error('swiped by a finger, Vikunja has ' + (await get(plain.id)).percent_done);
+      await shut();
+    } finally {
+      if (await page.isVisible('#sheet')) await page.click('#btn-sheet-close', { timeout: 2000 }).catch(() => {});
+      for (const t of [kid, P, plain]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   await step('leaving-the-screen-sends-a-deletion-at-once', async () => {
     // Deleted on its project's list, then another tab tapped before the batch clears: it's sent then, not left waiting.
     const x = await make(`Pocket smoke leave ${stamp}`, { due_date: todayAt(23) }), X = rowOf(x.title);

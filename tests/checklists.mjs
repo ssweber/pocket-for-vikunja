@@ -1392,6 +1392,9 @@ try {
     await expect(page.locator('#run-last .loading')).toHaveCount(0);
     const after = await steady(page.locator(row));
     if (Math.abs(after.y - before.y) > 0.5) throw new Error(`the steps moved ${after.y - before.y}px as Last time came`);
+    // A step's row, and the run's own row atop the screen, tell the phone that sideways on them is a swipe, not a scroll
+    // (as a task's rows do: smoke.mjs), so it never takes the touch away as the swipe starts.
+    for (const sel of [row, '#run-own > .row']) await expect(page.locator(sel), sel).toHaveCSS('touch-action', 'pan-y pinch-zoom');
     // Swiped to `to`% from `from`% (swipeRow: in the middle of the screen, clear of its edges and of the box at its foot).
     const slide = (to, from, check) => swipeRow(page, row, to, { start: from, check });
     // Its tick shows it, as a task's does: its pie (--pct).

@@ -108,8 +108,10 @@ export const hintSeen = context => context.addInitScript(() => { try { localStor
    springs back). Where that is comes from the app's own sums (swipeAt), so a change to its numbers (SIDES) changes no
    test: the finger is let go in the middle of the stretch that does it, or a little past a full point. Right from near
    the row's left, left from near its right, so each side has its room. `start`: its progress as the swipe starts (a done
-   row's 100); `one`: a parent's header or row, whose right side has only its full point; `check` runs while it's held. */
-export async function swipeRow(page, sel, to, { start = 0, one = false, check = null } = {}){
+   row's 100); `one`: a parent's header or row, whose right side has only its full point; `check` runs while it's held.
+   By the mouse, which the page takes as a finger, but the phone's own rules for a touch never meet it: `finger`
+   (finger(page).touch) swipes it by a real touch instead. */
+export async function swipeRow(page, sel, to, { start = 0, one = false, check = null, finger = null } = {}){
   const el = page.locator(sel);
   await el.evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
   const box = await steady(el), width = await el.evaluate(e => e.clientWidth), screen = page.viewportSize().width;
@@ -123,6 +125,14 @@ export async function swipeRow(page, sel, to, { start = 0, one = false, check = 
   }
   if (!band.length) throw new Error(`no swipe of ${sel} from ${start}% does ${to}`);
   const full = to === 'delete' || to >= 100 || (to === 0 && start > 0), dx = full ? band[0] + 16 : band[Math.floor(band.length / 2)];
+  if (finger) {
+    const x1 = x + (right ? dx : -dx), t0 = Date.now();
+    await finger('touchStart', x, y, t0);
+    for (let i = 1; i <= 10; i++) await finger('touchMove', x + (x1 - x) * i / 10, y + 2, t0 + i * 16);
+    try { await check?.(); }
+    finally { await finger('touchEnd', x1, y + 2, t0 + 180); }
+    return;
+  }
   await page.mouse.move(x, y); await page.mouse.down();
   await page.mouse.move(x + (right ? dx : -dx), y + 2, { steps: 10 });
   await check?.();

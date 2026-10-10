@@ -282,8 +282,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    ring, the tick's shape (square for a step), on green, filling a quarter at a time to the right, emptying to the left
    (a row with progress), pulsing at each; past the right side's full point, the green solid, the ring full with its ✓.
    A row at 0% swiped left: its Delete instead (.row-del), which comes in from the row's end. A row can be swiped sideways without the page
-   taking the move for a scroll. */
-.list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row{touch-action:pan-y pinch-zoom}
+   taking the move for a scroll: everything that's swiped is named here, once (a list's rows, a run's steps among them;
+   a card, for its header and its rows; a sheet's subtasks; the sheet's own row; a run's own row atop its screen). */
+.list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row,#d-card > .row.own,#run-own > .row{touch-action:pan-y pinch-zoom}
 :is(.row,.card-head).swiping,:is(.row,.card-head).swiped,:is(.row,.card-head).revealing{transform:translateX(var(--swipe,0px))}
 :is(.row,.card-head).swiping,:is(.row,.card-head).revealing{transition:none}
 #d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow-x:clip}
