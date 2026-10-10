@@ -353,14 +353,25 @@ export default {
     el.focus();
     if (typed) { const at = atEnd ? el.value.length : typed.length; el.setSelectionRange(at, at); }
   },
+  /* A row's ↑, ↓ and × leave the focus where it was (@mousedown.prevent), so the keyboard stays up. A row moved takes
+     the focus off its box all the same: it's given back once the row has moved, as moveStep does. */
   moveDraftRow(which, k, dir){
-    const rows = this.draftRows(which), j = k + dir;
-    if (j >= 0 && j < rows.length) [rows[k], rows[j]] = [rows[j], rows[k]];
+    const rows = this.draftRows(which), j = k + dir, box = document.activeElement;
+    if (j < 0 || j >= rows.length) return;
+    [rows[k], rows[j]] = [rows[j], rows[k]];
+    if (box?.classList.contains('draft-in')) setTimeout(() => box.isConnected && box.focus({preventScroll: true}));
   },
+  // The row being typed in, removed, takes its box with it: the unseen field holds the focus meanwhile, as when a row is
+  // added, and the box that's in its place then (the last, if it was the last) has it.
   dropDraftRow(which, k){
-    const rows = this.draftRows(which);
+    const rows = this.draftRows(which), typing = document.activeElement?.id === `${which}-step-${k}`;
     rows.splice(k, 1);
     if (which === 'new' && !rows.length) this.addDraftRow('new');
+    else if (typing && rows.length) {
+      const r = rows[Math.min(k, rows.length - 1)];
+      this.keepFocus();
+      this.$nextTick(() => this.passFocus(document.getElementById(`${which}-step-${rows.indexOf(r)}`), t => { r.text += t; }, true));
+    }
   },
   // A list pasted into a row: a row a line, in place of the row if it was empty.
   pasteDraft(which, e, k){

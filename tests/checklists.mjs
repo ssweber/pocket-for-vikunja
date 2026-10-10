@@ -271,6 +271,28 @@ try {
     if (await page.isEnabled('#nt-create')) throw new Error('can be made');
     await row(0).locator('select').selectOption({ label: 'the start' });
     await page.waitForSelector('#nt-create:not([disabled])');
+    /* A step being written keeps the keyboard up when its ↑, ↓ or × is tapped, as a step being changed does
+       (rows-and-sheet-fixes-plan, part 5): the box being typed in keeps the focus, through its own row's move too; and
+       its own row removed, the box in its place has it. */
+    const typing = () => page.evaluate(() => document.activeElement?.classList.contains('draft-in') ? document.activeElement.value : document.activeElement?.tagName);
+    const types = async (what, value) => { await page.waitForTimeout(200); if (await typing() !== value) throw new Error(`${what}: the focus is on ${await typing()}`); };
+    await page.click('#new-add-step');
+    await row(1).locator('.draft-in').fill('Rest it');
+    await page.click('#new-add-step');
+    await row(2).locator('.draft-in').fill('Carve it');
+    await row(0).locator('.draft-in').focus();
+    await row(1).locator('[aria-label^="Move down"]').click();
+    await types('another row moved down', 'Baste in 20 min');
+    await row(0).locator('[aria-label^="Move down"]').click();
+    if (await row(1).locator('.draft-in').inputValue() !== 'Baste in 20 min') throw new Error('not moved down');
+    await types('its own row moved down', 'Baste in 20 min');
+    await row(1).locator('[aria-label^="Move up"]').click();
+    await types('its own row moved up', 'Baste in 20 min');
+    await row(2).locator('[aria-label^="Remove"]').click();
+    await types('another row removed', 'Baste in 20 min');
+    await row(0).locator('[aria-label^="Remove"]').click();
+    await types('its own row removed', 'Carve it');
+    await expect(page.locator('#new-steps > .draft-step')).toHaveCount(1);
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click(`${tplRow} .body`);                                    // back to the template's sheet

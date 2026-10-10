@@ -417,7 +417,7 @@ one is a run, with who did each step and when. They're ordinary Vikunja projects
    **Add a step** starts the next one, and a pasted list becomes a row a line. The name and each step are read as quick
    add reads a task, with the same chips: `@priya` assigns it, `*front` labels it, `!3` sets its priority. Dates aren't
    read there: a step's time is its own, and a chip says so. Each box, empty, says what it reads. Move steps up or
-   down, then tap **Make template**. When it comes round, if it should, is set in its sheet once it's made. In a template's sheet, tap a step to change it, or remove it with ×; hold a step, then move it
+   down with their ↑ and ↓, or take one out with its ×, without the keyboard going away, then tap **Make template**. When it comes round, if it should, is set in its sheet once it's made. In a template's sheet, tap a step to change it, or remove it with ×; hold a step, then move it
    up or down, to move it (or tap it, and its **⋯** has **Move up** and **Move down**, as **Alt+↑** and **Alt+↓** do in its
    box). Runs already started keep theirs. **Notes and photos** under it opens the step in its own sheet: each run's copy of the step
    comes with its notes, so that's the place for how to do it. The steps are numbered, as on the Start sheet, not in
