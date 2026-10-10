@@ -94,7 +94,7 @@
               <!-- Quick add's box ('edit', x-box): @people assign the step, *labels label it, as when it was written.
                    Its own: Escape calls the change off, after closing its ⋯ menu (`more`) if that's open (what's
                    innermost first), and Alt+↑ and ↓ move the step. -->
-              <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" x-box.loads="bw" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
+              <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" x-box="bw" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
                         x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })"
                         @keydown.escape.stop="if (more) more = false; else sheet.stepEdit = null"
                         @keydown.alt.up.prevent="moveStep(i, -1)" @keydown.alt.down.prevent="moveStep(i, 1)"></textarea></div></div>

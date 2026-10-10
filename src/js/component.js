@@ -63,29 +63,45 @@ export const directives = Alpine => {
        its name by then (quick add's is the run's box on a run's screen; a step being changed gives way to another).
      - Enter sends it, or takes the suggestion on top (boxEnter); not while a word is being composed (isComposing: the
        Enter that picks from an input method's own list).
+     - Starting an @username or a *label in it loads what there is to suggest: who can be assigned, the labels.
+     - Once typing pauses (half a second), the @usernames in it are looked up (checkAccess): whether there's such a
+       person, and whether they can see the project its lines go to, for the chips that warn before it's sent. Again
+       only when they, or that project, change.
      x-box.lines: a box that takes a list (quick add's, a subtask box), where Shift+Enter breaks the line. In a box
      that holds one line (a template's name, a step), Shift+Enter is Enter.
-     x-box.loads: focused, it loads who can be assigned and the labels there are, for its suggestions and its chips (a
-     template's boxes).
      What else a box does is its own, beside this in its markup: a pasted list made rows, Escape, Alt+↑ and ↓. */
   Alpine.directive('box', (el, {expression, modifiers}, {evaluate, effect, cleanup}) => {
     const app = Alpine.$data(el), name = () => evaluate(expression), box = () => app.box(name());
     // It listens until Alpine takes it off the page, as an @event does: a box that goes while it has the focus is
     // blurred on its way out, with nothing left around it to ask which box it was.
     const on = (type, fn) => { el.addEventListener(type, fn); cleanup(() => el.removeEventListener(type, fn)); };
-    fit(el, effect, () => box().text);
+    // And each thing it keeps up to date is let go of then. (The `effect` Alpine hands a directive lets go of only the
+    // last one made with it: one left running asks, at the next change, about a box that has nothing around it.)
+    const watch = fn => { const made = effect(fn); cleanup(() => Alpine.release(made)); };
+    fit(el, watch, () => box().text);
     for (const type of ['input', 'click', 'keyup']) on(type, () => { box().caret = el.selectionStart; });
     on('scroll', () => { el.previousElementSibling.scrollTop = el.scrollTop; });
-    on('focus', () => {
-      box().focus = true;
-      if (modifiers.includes('loads')) { app.loadPeople().catch(() => {}); app.loadLabels().catch(() => {}); }
-    });
+    on('focus', () => { box().focus = true; });
     on('blur', () => { const b = box(); setTimeout(() => { b.focus = document.activeElement === el; }, 150); });
     on('keydown', e => {
       if (e.key !== 'Enter' || e.isComposing || (e.shiftKey && modifiers.includes('lines'))) return;
       e.preventDefault();
       app.boxEnter(name());
     });
+    watch(() => {
+      const kind = app.boxToken(name())?.kind;
+      if (kind === 'label') app.loadLabels().catch(() => {});
+      if (kind === 'assignee') app.loadPeople().catch(() => {});
+    });
+    let asked = '', timer;
+    watch(() => {
+      const q = app.accessQuery(name());
+      if (q === asked) return;
+      asked = q;
+      clearTimeout(timer);
+      if (q) timer = setTimeout(() => app.checkAccess(name()), 500);
+    });
+    cleanup(() => clearTimeout(timer));
   });
 };
 

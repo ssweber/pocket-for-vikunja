@@ -5,7 +5,7 @@
       <!-- Its name, in quick add's box ('tname', x-box): "Opening up @priya" makes it for Priya. One line: Enter goes
            on to its first step -->
       <div class="nt-name" x-data="{bw: 'tname'}"><label for="nt-name">Name</label>
-        <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" id="nt-name" x-model="sheet.newTpl.box.text" x-box.loads="bw" placeholder="Like Startup, or Closing up" autocomplete="off" enterkeyhint="next"></textarea></div></div>
+        <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" id="nt-name" x-model="sheet.newTpl.box.text" x-box="bw" placeholder="Like Startup, or Closing up" autocomplete="off" enterkeyhint="next"></textarea></div></div>
         <!-- include markup/sheet/box-chips.html -->
       </div>
       <div class="h3">Steps</div>

@@ -169,17 +169,8 @@ export default () => ({
     // Search once typing pauses.
     let searchTimer;
     this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });
-    // And the boxes that aren't in a list of rows: a run's insert box, a template's name and a step being changed.
-    for (const w of ['cap', 'sub', 'under', 'ins', 'tname', 'edit']) {
-      // Once typing pauses, find out whether each @username can see the task's project.
-      let accessTimer;
-      this.$watch(`accessQuery('${w}')`, q => { clearTimeout(accessTimer); if (q) accessTimer = setTimeout(() => this.checkAccess(w), 500); });
-      // Starting an @username or *label: load what to suggest.
-      this.$watch(`boxToken('${w}')`, tk => {
-        if (tk?.kind === 'label') this.loadLabels().catch(() => {});
-        if (tk?.kind === 'assignee') this.loadPeople().catch(() => {});
-      });
-    }
+    // (What an add box loads to suggest, and its @usernames looked up once typing pauses, are each box's own: x-box,
+    // component.js.)
     this.$nextTick(() => {
       this.initSwipe();
       this.initBatch();

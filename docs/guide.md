@@ -381,6 +381,8 @@ in a project they can see.
 
 - Without a `+project`: if your default project isn't shared with them but exactly one of your projects is, Pocket picks
   that one and shows it as a chip; tap it to undo. Otherwise a chip says they can't see the project, before you send.
+- Every box that reads an `@name` says so the same way, once you pause typing: a subtask box, the box on a run's
+  screen, a template's name and each of its steps. A name no one has gets a chip too, "No user @prya".
 - In the sheet, only people who can see the task's project are suggested.
 - A checklist run is for one person, picked when it's started or later from its **⋯**. Vikunja tells them about it once,
   not once per step.

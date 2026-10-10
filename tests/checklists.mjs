@@ -1666,6 +1666,11 @@ try {
     await page.waitForSelector(`.nt-name .box-chips .chip:has-text("${other ? '@' + OTHER : 'Priority 2'}")`);
     await page.focus('#new-step-0');
     await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .hint:has-text("who does it")');
+    // A step being written looks up its @people as every add box does: no such person, and a chip says so before
+    // it's made, the name left unmarked.
+    await page.keyboard.type(`Sweep up @nobody${stamp}`);
+    await expect(page.locator('#new-steps .draft-step:nth-of-type(1) .box-chips .chip.warn')).toHaveText(`No user @nobody${stamp}`);
+    await expect(page.locator('#new-steps .draft-step:nth-of-type(1) .cap-marks mark')).toHaveCount(0);
     await page.fill('#new-step-0', 'Unlock the door !3');
     await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .chip:has-text("Priority 3")');
     await page.press('#new-step-0', 'Enter');
