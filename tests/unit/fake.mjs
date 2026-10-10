@@ -68,7 +68,7 @@ export function component(...parts){
     tasks: {}, view: { groups: [] }, sheet: { task: null }, route: { name: 'today' }, toasts: [], leaving: {}, swept: {},
     notify(msg, action){ this.toasts.push({ msg, action }); },
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
-    said: '', places: {}, rowEl(){ return null; },
+    said: '', places: {}, rowEl(){ return null; }, unsay(){},
     get toast(){ return this.toasts.at(-1); },
     render(){}, flush(){}, regroupToday(){}, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };

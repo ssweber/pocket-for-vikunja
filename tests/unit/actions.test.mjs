@@ -9,6 +9,7 @@ import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
 import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
+import lines from '../../src/js/app/lines.js';
 import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
 import sheet from '../../src/js/app/sheet.js';
@@ -87,6 +88,25 @@ test('a subtask that fails to close stops the rest, and its row says so', async 
   assert.equal(v.task(10).done, true);
   assert.equal(v.task(14).done, false, 'stopped at the first that failed');
   assert.deepEqual([app.toast.msg, app.toast.row.id, app.toast.cls], ['Done: Pack the van — its 2 subtasks couldn\'t be closed', 10, 'failed']);
+});
+
+/* A tick not saved says so, with Try again. In a list that's a line in its row's place, gone after a few seconds, the
+   row back to be ticked again. From the task's own sheet there's no row to give back: it's said at the sheet's top,
+   and stays there, not on a timer, until it's tried again or the tick is saved. (Said by lines.js as it is, here.) */
+test('a tick not saved from its own sheet says so at its top, with Try again, and stays until the tick is saved', async c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', done: false }]), app = component(tasks, actions, lines);
+  document.querySelectorAll = () => [];
+  c.after(() => { delete document.querySelectorAll; });
+  Object.assign(app, { lines: {}, sheet: { open: true, show: true, kind: 'task', lines: {}, task: structuredClone(v.task(1)) } });
+  v.trouble = () => 'offline';
+  await app.toggleDone(app.sheet.task, null, { sheet: true });
+  assert.deepEqual([app.sheet.task.done, app.sheet.lines.top.text, app.sheet.lines.top.action.label], [false, 'Not saved: no connection', 'Try again']);
+  c.mock.timers.tick(60000);
+  assert.ok(app.sheet.lines.top, 'still there a minute on: it\'s the sheet\'s word that the tick didn\'t take');
+  v.trouble = () => null;
+  await app.toggleDone(app.sheet.task, null, { sheet: true });
+  assert.deepEqual([v.task(1).done, app.sheet.lines.top], [true, undefined], 'ticked again and saved: the line goes with it');
 });
 
 test('completed from its sheet the same way: its subtasks closed, said under them, and Undo opens them again', async () => {

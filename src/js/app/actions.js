@@ -19,6 +19,7 @@ import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '.
 import {parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
+import {UNDO_MS} from './toast.js';
 
 // How long a deletion is held in another tab, or after Pocket was closed without sending it: its rows can stay a while
 // in this tab, as long as a finger is down or the batch keeps being restarted (leaving.js).
@@ -123,7 +124,7 @@ export default {
       const saved = await this.saveTask(t.id, {done: !was, ...patch});
       Object.assign(t, saved);
       if (sub) this.refigure(t, inSheet ? this.sheet.task?.id : null);
-      if (sheet) this.sheet.dirty = true;
+      if (sheet) { this.sheet.dirty = true; this.unsay('sheet:top'); }      // (a tick that wasn't saved before is now)
       if (!was && !saved.done) {                 // repeating task rolled forward: the undo puts its date back
         const err = {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'};
         const undo = async () => {
@@ -180,7 +181,9 @@ export default {
         gone: () => { if (over) this.moveInSearch(t, closed); else if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) ids.forEach(id => this.removeRow(id)); }});
     } catch (e) {
       t.done = was;
-      this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top', action: {label: 'Try again', fn: () => this.toggleDone(t, this.rowEl(t.id), extra, undoExtra)}});
+      // On its row, for its few seconds, and the row is back to be ticked again. From its own sheet there's no row to
+      // give back: said at the sheet's top, it stays until it's tried again, saved, or the sheet is closed.
+      this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed', ms: UNDO_MS}, place: 'sheet:top', ms: null, action: {label: 'Try again', fn: () => this.toggleDone(t, this.rowEl(t.id), extra, undoExtra)}});
     } finally { letGo?.(); }
   },
   /* A parent's worked-out progress (parent-tasks-plan, part 3), written to its percent_done after a change to its
@@ -419,7 +422,7 @@ export default {
      the date it had, its time too (undoMoves): on its row, where that's in sight once it's in its new place, else by
      the add box (one that left Today, or is scrolled away). A card whose subtask is due sooner stays where that puts
      it, and the line says why, by the add box, where there's room for the sentence (a row's line is cut short to one
-     line). Not saved, it goes back, and its place says so, with Try again. */
+     line). Not saved, it goes back, and its row says so, with Try again, once it's drawn where it was. */
   async reschedule(t, to){
     const c = this.view.cards?.[t.id], m = {t, was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
     this.placeOnToday(t, to.due);
@@ -436,6 +439,7 @@ export default {
     if (!e) return true;
     this.placeOnToday(t, m.was, m.when, m.key);
     if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false);   // by the add box: there's nothing to undo
+    await this.$nextTick();                                                 // (one that had left Today has its row again)
     this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'cap', action: {label: 'Try again', fn: () => this.reschedule(t, to)}});
     return false;
   },
