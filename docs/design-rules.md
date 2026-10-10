@@ -17,8 +17,7 @@ these, and a plan in `design/` says where it bends one, and why.
 7. **Nothing closes behind your back.** A parent whose subtasks are all done waits for **Close**, and ticked rows wait
    for the batch before they leave.
 8. **Bulk actions confirm; single actions undo.** Completing a parent's open subtasks asks first; a tick, a delete or a
-   move of one task has its Undo or Restore instead. One exception: a task thrown to a new date on Today moves with no
-   Undo, because the throw can be called off before it's let go.
+   move of one task has its Undo or Restore instead.
 9. **What you share matches what you see; what you copy comes back.** A shared text says the same figures the screen
    shows. A copied Markdown list is written in quick add's words, so pasting it into Pocket's add box makes the same
    tasks.

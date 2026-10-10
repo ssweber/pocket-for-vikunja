@@ -568,56 +568,113 @@ test('the page says where sending stands: waiting while an Undo shows or offline
   assert.equal(app.syncState, 'idle');
 });
 
-/* A row or a card thrown on Today to a new date (parent-tasks-plan, 4b: app/throw.js): Move all to today, one at a
-   time, with no Undo (the throw could be called off before it was let go). */
+/* A row or a card held on Today and moved to a new date (hold-to-reschedule-plan: app/throw.js): Move all to today, one
+   at a time, each with an Undo for a few seconds that puts back the date and the time it had (design rule 8). There's
+   no screen here: `seen` is the tasks whose row is in sight once it's in its new place (rowSeen), which says where the
+   line with the Undo goes: on its row, or by the add box. */
 const onToday = (c, list, cardsBy = {}) => {
   c?.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
-  const v = fakeVikunja(list), app = component(tasks, actions, cards, alerts, sending);
-  Object.assign(app, { setBadge(){}, lines: {}, positions: {}, route: { name: 'today' }, pending: [] });
+  const v = fakeVikunja(list), app = component(tasks, actions, cards, alerts, sending), seen = new Set(list.map(t => t.id));
+  const shown = id => app.listBase.some(g => g.tasks.some(t => t.id === id));       // on Today's lists, as they're drawn
+  Object.assign(app, { setBadge(){}, lines: {}, positions: {}, route: { name: 'today' }, pending: [], flashed: {}, flash(ids, kind){ this.flashed[kind] = ids; },
+    $nextTick: async () => {}, rowSeen: id => seen.has(id) && shown(id) });
   app.view = { groups: todayGroups(), cards: cardsBy };
   for (const t of list) app.keep(v.task(t.id));
-  return { v, app, at: (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString(), key: id => app.todayKey(app.tasks[id]) };
+  return { v, app, seen, shown, at: (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString(), key: id => app.todayKey(app.tasks[id]) };
 };
-const throwTo = (app, t, day, label) => app.reschedule(t, { label, due: day ? movedDue(t.due_date, day, new Date()) : ZERO });
+const moveTo = (app, t, day, label) => app.reschedule(t, { label, due: day ? movedDue(t.due_date, day, new Date()) : ZERO });
 const ZERO = '0001-01-01T00:00:00Z';
+// What was last said, and where: its words, its action's name, the row it's on (or none) and the place it goes otherwise.
+const said = app => { const s = app.toast; return [s.msg, s.action?.label ?? null, s.row?.id ?? null, s.place]; };
 
-test('a row thrown to a new date moves there at its own time, at once, with no Undo; past the week it leaves Today', async c => {
-  const { v, app, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() },
+test('a row moved to a new date goes there at its own time, at once, said on its row with an Undo; off Today, by the add box', async c => {
+  const { v, app, seen, shown, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() },
     { id: 2, title: 'Order milk', due_date: new Date(2026, 9, 6, 9).toISOString() }, { id: 3, title: 'No date yet', due_date: ZERO, created: new Date(2026, 9, 7, 9).toISOString() },
     { id: 4, title: 'Fix the gate', due_date: new Date(2026, 9, 7, 17).toISOString(), created: new Date(2026, 8, 1).toISOString() }]);
   app.view.groups[1].tasks.push(app.tasks[1], app.tasks[4]); app.view.groups[0].tasks.push(app.tasks[2]); app.view.groups[3].tasks.push(app.tasks[3]);
-  const going = throwTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  const going = moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
   assert.deepEqual([app.tasks[1].due_date, key(1)], [at(9, 16), 'week'], 'moved on screen at once, before Vikunja answers');
   assert.equal(await going, true);
   assert.equal(v.task(1).due_date, at(9, 16), 'Friday at 4 PM: its time of day kept');
-  assert.deepEqual(app.toasts, [], 'nothing said in its place: no Undo');
-  await throwTo(app, app.tasks[2], new Date(), 'Today');
+  assert.deepEqual(said(app), ['Moved to Fri 9', 'Undo', 1, 'cap'], 'said on its row, in its new place, with an Undo');
+  assert.equal(app.toast.row.stays, true, 'the row is back once the line goes');
+  await moveTo(app, app.tasks[2], new Date(), 'Today');
   assert.deepEqual([v.task(2).due_date, key(2)], [at(7, 15), 'today'], 'overdue to today: its time gone, the next whole hour');
-  await throwTo(app, app.tasks[3], new Date(), 'Today');
+  assert.deepEqual(said(app), ['Moved to today', 'Undo', 2, 'cap']);
+  await moveTo(app, app.tasks[3], new Date(), 'Today');
   assert.deepEqual([v.task(3).due_date, key(3)], [at(7, 0), 'today'], 'no date: today, with no time');
-  await throwTo(app, app.tasks[1], new Date(2026, 9, 19), 'Mon 19');
+  seen.delete(3);
+  await moveTo(app, app.tasks[3], new Date(2026, 9, 8), 'Tomorrow');
+  assert.deepEqual([key(3), said(app)], ['week', ['Moved to tomorrow', 'Undo', null, 'cap']], 'still on Today, but its row scrolled out of sight: by the add box');
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 19), 'Mon 19');
   assert.deepEqual([v.task(1).due_date, key(1)], [at(19, 16), null], 'past its next 7 days: off Today');
-  await throwTo(app, app.tasks[3], null, null);
+  assert.deepEqual(said(app), ['Moved to Mon 19', 'Undo', null, 'cap'], 'no row left to say it on: by the add box');
+  seen.add(3);
+  await moveTo(app, app.tasks[3], null, null);
   assert.deepEqual([v.task(3).due_date, key(3)], [ZERO, 'nodate'], 'its date taken off: under Added today, no date, made today');
-  await throwTo(app, app.tasks[4], null, null);
+  assert.deepEqual(said(app), ['Took its date off', 'Undo', 3, 'cap']);
+  await moveTo(app, app.tasks[4], null, null);
   assert.equal(v.task(4).due_date, ZERO);
-  assert.equal(app.listBase.some(g => g.tasks.some(t => t.id === 4)), false, 'made before today, with no date: off Today');
-  assert.deepEqual(app.toasts, []);
+  assert.equal(shown(4), false, 'made before today, with no date: off Today');
+  assert.deepEqual(said(app), ['Took its date off', 'Undo', null, 'cap']);
 });
 
-test('a row thrown and not saved goes back, its place saying so with Try again', async c => {
+test('every date changed by a hold has an Undo, which puts back the date and the time it had', async c => {
+  const { v, app, shown, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString(), created: new Date(2026, 8, 1).toISOString() },
+    { id: 2, title: 'Order milk', due_date: new Date(2026, 9, 6, 9).toISOString() }, { id: 3, title: 'No date yet', due_date: ZERO, created: new Date(2026, 9, 7, 9).toISOString() }]);
+  app.view.groups[1].tasks.push(app.tasks[1]); app.view.groups[0].tasks.push(app.tasks[2]); app.view.groups[3].tasks.push(app.tasks[3]);
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(1).due_date, key(1), app.flashed.arrived], [at(7, 16), 'today', [1]], 'back today at 4 PM, lit up where it was');
+  await moveTo(app, app.tasks[2], new Date(), 'Today');
+  assert.equal(v.task(2).due_date, at(7, 15), 'its time gone by: the next whole hour');
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(2).due_date, key(2)], [at(6, 9), 'overdue'], 'back overdue, at the time it had, not the hour it was given');
+  await moveTo(app, app.tasks[1], null, null);
+  assert.deepEqual([v.task(1).due_date, shown(1)], [ZERO, false], 'No date: off Today, not being made today');
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(1).due_date, key(1)], [at(7, 16), 'today'], 'its date and its time back, and it on Today');
+  await moveTo(app, app.tasks[3], new Date(2026, 9, 8), 'Tomorrow');
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(3).due_date, key(3)], [ZERO, 'nodate'], 'one that had no date has none again');
+  // Tapped before Vikunja has answered the move: it waits for that, then puts the date back.
+  const real = globalThis.fetch;
+  let answer;
+  const held = new Promise(r => { answer = r; });
+  globalThis.fetch = async (...a) => { await held; return real(...a); };
+  const going = moveTo(app, app.tasks[1], new Date(2026, 9, 8), 'Tomorrow');
+  await new Promise(setImmediate);
+  assert.deepEqual(said(app), ['Moved to tomorrow', 'Undo', 1, 'cap'], 'said before it\'s saved');
+  const undone = app.toast.action.fn();
+  answer(); globalThis.fetch = real;
+  assert.equal(await going, true);
+  await undone;
+  assert.deepEqual([v.task(1).due_date, key(1)], [at(7, 16), 'today'], 'moved, then moved back');
+  // Changed elsewhere since: left as it is, and said so.
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  const undo = app.toast.action;
+  v.task(1).updated = new Date(2026, 9, 7, 14, 30).toISOString();
+  await undo.fn();
+  assert.deepEqual([v.task(1).due_date, key(1)], [at(9, 16), 'week'], 'not written over');
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.cls], ['1 task couldn\'t be moved back (changed since, or not saved) and is still due Fri 9.', 'cap', 'failed']);
+});
+
+test('a row moved and not saved goes back, its place saying so with Try again, and its Undo then does nothing', async c => {
   const { v, app, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() }]);
   app.view.groups[1].tasks.push(app.tasks[1]);
   v.trouble = () => 'offline';
-  assert.equal(await throwTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9'), false);
+  assert.equal(await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9'), false);
   assert.deepEqual([app.tasks[1].due_date, key(1)], [at(7, 16), 'today'], 'back where it was');
   assert.deepEqual([app.toast.msg, app.toast.action.label, app.toast.cls], ['Not saved: no connection', 'Try again', 'failed']);
+  const sent = v.requests.length;
+  await app.toasts.at(-2).action.fn();
+  assert.deepEqual([app.toasts.at(-2).msg, v.requests.length], ['Moved to Fri 9', sent], 'the Undo said with the move: nothing to put back');
   v.trouble = () => null;
   await app.toast.action.fn();
   assert.deepEqual([v.task(1).due_date, key(1)], [at(9, 16), 'week'], 'Try again: moved');
 });
 
-test('a card thrown to a new date moves only its task\'s date; one whose subtask is due sooner stays, and says why', async c => {
+test('a card moved to a new date moves only its task\'s date; one whose subtask is due sooner stays, and says why; each with its Undo', async c => {
   const at = (d, h) => new Date(2026, 9, d, h).toISOString();
   const sub = (id, due) => ({ id, title: 'Sub ' + id, done: false, due_date: due, related_tasks: { parenttask: [{ id: id - 1 }] } });
   const { v, app, key } = onToday(c, [
@@ -625,12 +682,16 @@ test('a card thrown to a new date moves only its task\'s date; one whose subtask
     { id: 20, title: 'Fix the van', due_date: ZERO, related_tasks: { subtask: [{ id: 21 }] } }, sub(21, at(7, 18)),
   ], { 10: { when: at(7, 17), made: null, focus: null }, 20: { when: at(7, 18), made: null, focus: null } });
   app.view.groups[1].tasks.push(app.tasks[10], app.tasks[20]);
-  await throwTo(app, app.tasks[10], new Date(2026, 9, 9), 'Fri 9');
+  await moveTo(app, app.tasks[10], new Date(2026, 9, 9), 'Fri 9');
   assert.deepEqual([v.task(10).due_date, v.task(11).due_date, app.view.cards[10].when, key(10)], [at(9, 17), ZERO, at(9, 17), 'week'], 'its task\'s date only; the card goes with it');
-  assert.deepEqual(app.toasts, [], 'nothing to say');
-  await throwTo(app, app.tasks[20], new Date(2026, 9, 9), 'Fri 9');
+  assert.deepEqual(said(app), ['Moved to Fri 9', 'Undo', 10, 'cap']);
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(10).due_date, v.task(11).due_date, app.view.cards[10].when, key(10)], [at(7, 17), ZERO, at(7, 17), 'today'], 'Undo: the card back where it was');
+  await moveTo(app, app.tasks[20], new Date(2026, 9, 9), 'Fri 9');
   assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [at(9, 0), at(7, 18), 'today'], 'Friday, with no time; its subtask due today keeps it under Today');
-  assert.deepEqual([app.toast.msg, app.toast.action], ['Moved to Fri 9. Its subtask “Sub 21” is due sooner, so it stays here.', null], 'said in its place, with no Undo');
+  assert.deepEqual(said(app), ['Moved to Fri 9. Its subtask “Sub 21” is due sooner, so it stays here.', 'Undo', 20, 'cap'], 'said in its place, with its Undo');
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [ZERO, at(7, 18), 'today'], 'Undo: its date off again, its subtask\'s as it was');
 });
 
 /* A title being changed, in the box in the sheet's own row or a template's over its card, is saved by its box as it

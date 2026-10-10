@@ -12,7 +12,7 @@ import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
-import {doneText, movedText, movedTo, notMoved, notMovedBack, notSaved, sentLater} from '../messages.js';
+import {dayWord, doneText, movedText, movedTo, notMoved, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
@@ -379,8 +379,8 @@ export default {
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
   /* "Move all to today": each overdue task to today, at the time of day it had (movedDue). Undo puts every date back
      (undoMoves). Not a repeating task: moved, its next times would follow the new date; ticked, it moves on to its next
-     date. What it did is said under the Overdue heading, which stays meanwhile. A row or a card thrown on Today to a new
-     date is the same, one at a time (reschedule). */
+     date. What it did is said under the Overdue heading, which stays meanwhile. A row or a card held on Today and moved
+     to a new date is the same, one at a time (reschedule). */
   async moveOverdueToToday(){
     // Nor a checklist that comes round: moved, a weekly one would come round on another day from then on.
     // On a card, its task and subtasks that are overdue themselves (overdueTasks).
@@ -399,9 +399,9 @@ export default {
     this.say(movedText(n, left, stays), {place: 'overdue', action: this.undoMoves(moves.filter(m => moved.includes(m.t)), 'today', {place: 'overdue'}, () => this.render())});
     this.render();
   },
-  /* The Undo of tasks moved to other dates (`moves`: {t, was}), Move all to today's: each put
-     back, unless it was changed since, elsewhere; those that couldn't be are said (`at`: where, as say's), still due
-     `still`. `after(back)`: given the moves put back, to show them. */
+  /* The Undo of tasks moved to other dates (`moves`: {t, was}), Move all to today's, and that of one held on Today
+     (reschedule): each put back, unless it was changed since, elsewhere; those that couldn't be are said (`at`: where,
+     as say's), still due `still` (null: with no date). `after(back)`: given the moves put back, to show them. */
   undoMoves(moves, still, at, after){
     return {label: 'Undo', fn: async () => {
       const same = [];                                                      // not changed since, elsewhere
@@ -412,26 +412,31 @@ export default {
       after(same.filter(m => back.includes(m.t)));
     }};
   },
-  /* A row or a card thrown on Today to a new date (its ring: app/throw.js): Move all to today, one at a time. `to`:
-     {due: its new date (movedDue: its time of day kept; none for No date), label: the day's name, null for No date}. A
+  /* A row or a card held on Today, moved to a new date (app/throw.js): Move all to today, one at a time. `to`: {due:
+     its new date (movedDue: its time of day kept; none for No date), label: the day's name, null for No date}. A
      card's is its task's date only, its subtasks as they are. It's moved on screen at once (placeOnToday), then saved,
-     with no Undo: the throw could be called off before it was let go (design rule 8's one exception). A card whose
-     subtask is due sooner stays where that puts it, and its place says why. Not saved, it goes back, and its place says
-     so, with Try again. */
+     and said where it went, with an Undo for a few seconds (design rule 8: hold-to-reschedule-plan), which puts back
+     the date it had, its time too (undoMoves): on its row, where that's in sight once it's in its new place, else by
+     the add box (one that left Today, or is scrolled away). A card whose subtask is due sooner stays where that puts
+     it, and the line says why. Not saved, it goes back, and its place says so, with Try again. */
   async reschedule(t, to){
-    const c = this.view.cards?.[t.id], m = {was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
+    const c = this.view.cards?.[t.id], m = {t, was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
     this.placeOnToday(t, to.due);
     // (Where a task due then goes: the same rule as for one waiting to be sent.)
     const want = this.pendingPlace({due_date: to.due}), kept = c && this.todayKey(t) !== want && c.when !== t.due_date
       ? this.cardSubs(t, false).filter(s => !s.done && isSet(s.due_date)).sort((a, b) => Date.parse(a.due_date) - Date.parse(b.due_date))[0] : null;
-    if (kept) this.say(movedTo(to.label, kept.title), {row: {id: t.id, stays: true}});
-    try { await this.saveTask(t.id, {due_date: to.due}); }
-    catch (e) {
-      this.placeOnToday(t, m.was, m.when, m.key);
-      this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, action: {label: 'Try again', fn: () => this.reschedule(t, to)}});
-      return false;
-    }
-    return true;
+    const saving = this.saveTask(t.id, {due_date: to.due}).then(() => null, e => e);
+    // Its Undo, once the move is saved (tapped sooner, it waits for that): back where it was, lit up there.
+    const back = this.undoMoves([m], to.label && dayWord(to.label), {place: 'cap'}, done => { if (done.length) { this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived'); } });
+    const undo = {label: 'Undo', fn: async () => { if (!await saving) await back.fn(); }};
+    await this.$nextTick();                                                 // its row is where it is now
+    this.say(movedTo(to.label, kept?.title), {row: this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
+    const e = await saving;
+    if (!e) return true;
+    this.placeOnToday(t, m.was, m.when, m.key);
+    if (this.places.cap?.action === undo) this.endPlace('cap', this.places.cap, false);   // by the add box: there's nothing to undo
+    this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'cap', action: {label: 'Try again', fn: () => this.reschedule(t, to)}});
+    return false;
   },
   // The group of Today's that task `t` is in (its key), or null.
   todayKey(t){ return this.view.groups.find(g => g.tasks.some(x => x.id === t.id))?.key ?? null; },

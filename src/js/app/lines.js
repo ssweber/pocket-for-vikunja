@@ -50,6 +50,14 @@ export default {
   },
   // A task's row on screen (the first, if it's in the list and a sheet), to carry on from: a Try again.
   rowEl(id){ return rowsOf(id)[0] || null; },
+  // Whether a row of task `id` is in sight: all of it between the header and the add box, not scrolled away, nor
+  // behind an open sheet. What's said with an Undo goes on its row only then (reschedule), else where it's seen.
+  rowSeen(id){
+    if (this.sheet.open && this.sheet.show) return false;
+    const top = Math.max(0, document.querySelector('header.top')?.getBoundingClientRect().bottom || 0);
+    const bottom = document.getElementById('capture')?.getBoundingClientRect().top || innerHeight;
+    return rowsOf(id).some(el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.top >= top && r.bottom <= bottom; });
+  },
 
   /* ---------- a row's place ---------- */
   /* A line in place of task `id`'s rows: {text: what happened ("Not saved: no connection"), title: the task's, shown

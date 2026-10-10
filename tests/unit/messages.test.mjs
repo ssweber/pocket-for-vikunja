@@ -153,9 +153,12 @@ test('the question a parent’s ring asks names what goes with it in a sentence:
   assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, '“Closing up” is finished, and its step not done stays that way: Mop.');
 });
 
-test('a card thrown to a new date but kept by its subtask says why; Move all to today\'s Undo, what couldn\'t go back', () => {
+test('a task held on Today and moved says where it went; a card kept by its subtask, why; an Undo, what couldn\'t go back', () => {
   assert.equal(movedTo('Friday'), 'Moved to Friday');
   assert.equal(movedTo('Today'), 'Moved to today');
+  assert.equal(movedTo('Mon 12'), 'Moved to Mon 12');
+  assert.equal(movedTo(null), 'Took its date off');
+  assert.equal(notMovedBack(1, null), '1 task couldn\'t be moved back (changed since, or not saved) and is still without a date.');
   assert.equal(movedTo('Tomorrow', 'Buy paint'), 'Moved to tomorrow. Its subtask “Buy paint” is due sooner, so it stays here.');
   assert.equal(movedTo(null, 'Buy paint'), 'Took its date off. Its subtask “Buy paint” has a date, so it stays here.');
   assert.equal(dayWord('Friday'), 'Friday');

@@ -1,8 +1,8 @@
 /* A row or a card held on Today, thrown at a ring of dates (parent-tasks-plan, 4b; the targets, their days and where
    they sit are ../throw.js). Held, it shrinks to a small box, and the ring draws in around where it was held; the box
    follows the finger from there, a tick felt crossing into each target, and letting go in one moves the task's date
-   there at once, with no Undo (design rule 8's one exception: let go in the middle, nothing changes). A card moves only
-   its task's date. What a hold can't move there, as Move all to today leaves it, opens the ring with every target
+   there at once, with an Undo for a few seconds (design rule 8; reschedule, app/actions.js); let go in the middle,
+   nothing changes. A card moves only its task's date. What a hold can't move there, as Move all to today leaves it, opens the ring with every target
    dimmed and a line saying why. The tap path is the sheet's Due (rule 3); the ring itself is only for a finger.
    It's hooked in at one place: Today's rows and cards give `reschedule` (screenRows, lists.js), and holdOf and cardHold
    (app/progress.js) then ask rescheduleOf here. Taking those out, and this file and ../throw.js, takes it all out. */

@@ -38,13 +38,14 @@ export function movedText(n, left, stays){
     + (stays ? (left ? ' ' : '. ') + stays : '');
 }
 
-// Move all to today's Undo, or a drop's, with `k` tasks changed since (or not saved), still due `still` ("today").
-export const notMovedBack = (k, still) => `${plural(k, 'task')} couldn't be moved back (changed since, or not saved) and ${k === 1 ? 'is' : 'are'} still due ${still}.`;
+// Move all to today's Undo, or that of a task held on Today and moved, with `k` tasks changed since (or not saved),
+// still due `still` ("today"; null: its date was taken off, and still is).
+export const notMovedBack = (k, still) => `${plural(k, 'task')} couldn't be moved back (changed since, or not saved) and ${k === 1 ? 'is' : 'are'} still ${still ? 'due ' + still : 'without a date'}.`;
 
-/* A card thrown on Today to a new date (app/throw.js) whose subtask `kept` (its title) is due sooner, so the card stays
-   where that puts it, said in its place: "Moved to Friday. Its subtask “Buy paint” is due sooner, so it stays here."
-   (`day`: dueInfo's label or the ring's, "Today", "Tomorrow", "Thu 15"; null: its date taken off, "… has a date, so it
-   stays here.") Without `kept`, only the first sentence. */
+/* A row or a card held on Today and moved to a new date (app/throw.js), said with its Undo: "Moved to tomorrow". A card
+   whose subtask `kept` (its title) is due sooner stays where that puts it, and says so: "Moved to Friday. Its subtask
+   “Buy paint” is due sooner, so it stays here." (`day`: the date's name as its chip has it, "Today", "Tomorrow", "Mon
+   12"; null: its date taken off, "… has a date, so it stays here.") */
 export const movedTo = (day, kept = null) => (day ? `Moved to ${dayWord(day)}` : 'Took its date off')
   + (kept ? `. Its subtask “${kept}” ${day ? 'is due sooner' : 'has a date'}, so it stays here.` : '');
 // A day's name inside a sentence: "today", "tomorrow", "Friday".
