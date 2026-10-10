@@ -209,8 +209,10 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* before a × (a task waiting to be sent), on the first line too, taking no more height than a tick */
 .row > .claim{margin:-8px -8px -12px 0}
 /* On one line (Today), one width, what it shows against the right edge, so the time and the dot before it make a
-   column down the list whether it holds "+ me" or a picture */
-.row.one-line > .claim:not(:has(~ .icon-btn)){min-width:84px;justify-content:flex-end}
+   column down the list whether it holds "+ me" or a picture: as wide as "+ me" needs and no wider, 8px before it and
+   12px to the row's end as anywhere (it was 84px, with 18px before it), so the title has the rest (rows-and-sheet-
+   fixes-plan, part 4). Its tap is still the row's full height, and well over 48px across */
+.row.one-line > .claim:not(:has(~ .icon-btn)){min-width:74px;padding-left:8px;justify-content:flex-end}
 .claim[aria-disabled=true]{cursor:default}
 /* People's pictures on a row (pics.html): one size everywhere, two at most, a little overlapped, yours ringed; a done
    step's doer has a ✓ on the corner of theirs */

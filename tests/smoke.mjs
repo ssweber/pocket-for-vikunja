@@ -3365,6 +3365,13 @@ ${footName('Hooks')}`);
       });
       if (zones.wrong.length) throw new Error('taps land elsewhere: ' + zones.wrong.join('; '));
       if (Object.values(zones.widths).some(w => w < 48) || zones.height < 48) throw new Error('a zone under 48px: ' + JSON.stringify(zones));
+      // Today's slot is as wide as "+ me" needs, 74px with 8px before it, on a card's row and on a plain row alike, so
+      // what's before it, a time or a dot, ends in one line down the list (rows-and-sheet-fixes-plan, part 4).
+      const slotOf = R => R.evaluate(el => { const c = el.querySelector(':scope > .claim'), s = getComputedStyle(c), w = el.querySelector('.when');
+        return { min: s.minWidth, before: s.paddingLeft, width: c.getBoundingClientRect().width, when: w ? Math.round((el.getBoundingClientRect().right - w.getBoundingClientRect().right) * 2) / 2 : null }; });
+      const slots = [await slotOf(line), await slotOf(page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`))];
+      for (const s of slots) if (s.min !== '74px' || s.before !== '8px' || s.width < 74 || s.width > 84) throw new Error('Today\'s slot isn\'t 74px, with 8px before it: ' + JSON.stringify(slots));
+      if (slots[0].when === null || slots[0].when !== slots[1].when) throw new Error('a card\'s row\'s time and a plain row\'s dot don\'t end in one line: ' + JSON.stringify(slots));
       const rowTick = await page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`).evaluate(el => el.querySelector(':scope > .check').getBoundingClientRect().left - el.getBoundingClientRect().left);
       if (Math.abs(zones.under) > 0.5 || zones.tick <= rowTick + 20) throw new Error(`its top row's tick isn't under the header's title, a level in: ${JSON.stringify(zones)}, a row's at ${rowTick}`);
       // More, a slim tab hanging under its top row, ⌄ in it: its tap from the row's foot, 48px down to the next thing
