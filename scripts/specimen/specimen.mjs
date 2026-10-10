@@ -6,7 +6,7 @@ import {CHECKLIST_MARK} from '../../src/js/checklists.js';
 import {blankSheet} from '../../src/js/app/core.js';
 import {listItems, nestSubtasks} from '../../src/js/lists.js';
 import {positionOrder} from '../../src/js/order.js';
-import {revealOf} from '../../src/js/app/progress.js';
+import {revealOf, swipeOf} from '../../src/js/app/progress.js';
 import {swipeAt} from '../../src/js/progress.js';
 import {completeAsk, moreDone} from '../../src/js/messages.js';
 import {throwLayout, throwTargets} from '../../src/js/throw.js';
@@ -375,10 +375,12 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
     for (const t of all) if (t.state.claim) this.slideClaim = t.id;
     for (const t of s.parents) if (t.state?.swept) { t.done = true; this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
+    // A still of a row swiped left onto its Delete, `off` px aside, where letting go does `to` (swipeOf, as a swipe uses it).
+    const redUnder = (row, name, off, to) => { const s = swipeOf(row, () => {}, name); s.begin(); s.move({off, to}); };
     this.$nextTick(() => {
       // A parent's header swiped: part way right (the empty ring, as it springs back short of the full point), or left onto its Delete.
       for (const t of s.parents) for (const head of document.querySelectorAll(`.day-card[data-id="${t.id}"] > .card-head`)) {
-        if (t.state?.head === 'delete') { head.classList.add('swiped'); head.style.setProperty('--swipe', '-88px'); }
+        if (t.state?.head === 'delete') redUnder(head, t.title, -88, 'open');
         else if (t.state?.head) { const w = head.clientWidth; revealOf(head).move(swipeAt({start: 0, dx: t.state.head * w, x: w / 2, width: w, screen: 1e4, one: true})); }
       }
       /* The ring, held (app/throw.js): drawn by the app's own code (throwTargets, throwLayout, ringEl) on its day, around
@@ -399,10 +401,11 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         // A still of a swipe, held (progress.js: revealOf, swipeAt), put down where its room isn't cut short by the edge.
         if (t.state.reveal) { const w = row.clientWidth; revealOf(row).move(swipeAt({start: t.done ? 100 : t.pct ?? Math.round(t.percent_done * 100), dx: t.state.reveal * w, x: t.state.reveal < 0 ? w : w / 2, width: w, screen: 1e4})); }
         if (t.state.sweepRight) revealOf(row).move({off: row.clientWidth * t.state.sweepRight, pct: 100, to: 'done'});
-        if (t.state.swiped) { row.classList.add('swiped'); row.style.setProperty('--swipe', '-88px'); }
-        if (t.state.full) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', '-240px'); }
-        // A still of a delete following through (progress.js: sweep), partway off the screen, the red filling behind it.
-        if (t.state.sweep) { row.classList.add('swiping', 'swipe-full'); row.style.setProperty('--swipe', -row.clientWidth * t.state.sweep + 'px'); }
+        // Its Delete (progress.js: swipeOf), laid under the row as the app lays it: resting open on its button, past half
+        // the row, and following through (sweep), partway off the screen, the red still under it.
+        if (t.state.swiped) redUnder(row, t.title, -88, 'open');
+        if (t.state.full) redUnder(row, t.title, -240, 'delete');
+        if (t.state.sweep) redUnder(row, t.title, -row.clientWidth * t.state.sweep, 'delete');
         if (t.state.drag) { row.classList.add('dragged', ...t.state.with ? [] : ['held']); row.style.transform = `translateY(${t.state.drag}px)`; row.parentElement.classList.add('reordering'); }
         if (t.state.shift) row.style.transform = `translateY(${t.state.shift}px)`;
         if (t.state.aimed) row.classList.add('aimed');

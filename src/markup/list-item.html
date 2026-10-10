@@ -27,8 +27,6 @@
           <!-- include markup/ring.html -->
         </template>
         <button class="card-open" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="h.said ? ', ' + h.said : ''"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template></button>
-        <!-- Off its end, shown only by a swipe left (headGesture), as a row's Delete -->
-        <template x-if="g.delete && canDelete(t)"><button class="row-del" :aria-label="'Delete ' + t.title" @click="swipeDelete(t, false)">Delete</button></template>
       </div>
       <!-- Every subtask done: it waits for Close (design rule 7), which is its ring's tap -->
       <template x-if="c.closes"><div class="card-close"><span x-text="c.run ? 'All steps done' : 'All subtasks done'"></span><button type="button" class="close-btn" :disabled="!canWrite(t.project_id)" :aria-label="c.ring?.label" @click="ringTap(t, $el.closest('.day-card'))">Close</button></div></template>

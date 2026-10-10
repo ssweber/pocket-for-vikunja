@@ -101,7 +101,7 @@ export async function finger(page){
 
 /* What a swiped row uncovers (lay, app/progress.js): a layer laid still under the row, first in the box the row is
    placed by, not inside the row. One row is swiped at a time, so it's found by its kind: a row's stops, on green
-   ('.row-prog'). */
+   ('.row-prog'), or its Delete, red, with its button ('.row-red'). */
 export const uncovered = (page, kind = '.row-prog') => page.locator(`${kind}.row-under`);
 /* How row `sel`, swiped and still held, lies over what it uncovers: `x`, how far aside the row is; `inside`, whether
    the layer is in the row (it mustn't be); `off`, how far the layer's box is from the row's place at rest (0: laid
@@ -113,23 +113,35 @@ export const laidUnder = (page, sel, kind = '.row-prog') => page.locator(sel).ev
   return { x, inside: row.contains(u), ring: ring ? (u.dataset.side === 'right' ? b.right - ring.right : ring.left - b.left) : null,
     off: Math.max(Math.abs(b.left - (a.left - x)), Math.abs(b.width - a.width), Math.abs(b.top - a.top - row.clientTop), Math.abs(b.height - row.clientHeight)) };
 }, kind);
-/* Row `sel` watched frame by frame for `ms` from now, as it's let go: how far aside it is (`x`), where the ring under
-   it is (`ring`, its left edge on the screen) and how wide the layer under it (`under`), and everything on the page
-   that's moving or changing size then (`moving`: 'row' for the row itself, else the class of what it is). Only the
-   row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform, over a layer that stays still.
-   slideSeen() waits for the frames. */
+/* Row `sel` watched frame by frame for `ms` from now, as it's let go: how far aside it is (`x`) and its width (`w`);
+   the layer under it, while there is one: where its ring or its Delete's word is (`ring`, its left edge on the
+   screen), how wide the layer is (`under`) and where its right edge is (`right`); and everything on the page that's
+   moving or changing size then (`moving`: 'row:transform' for the row moved by its transform, else whose it is, by
+   its class, and what of it). Only the row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform,
+   over a layer that stays still. slideSeen() waits for the frames. still(frames) says what else moved, as a
+   sentence, or '' if nothing did. */
 export const watchSlide = (page, sel, ms = 700) => page.locator(sel).evaluate((row, ms) => {
-  const seen = window.__slide = [], t0 = performance.now(), moves = /^(transform|translate|scale|rotate|width|height|left|right|top|bottom|inset|margin|padding)/i;
+  const seen = window.__slide = [], t0 = performance.now(), moves = /^(transform|translate|scale|rotate|width|height|left|right|top|bottom|inset|margin|padding|flex|justify|align)/i;
+  const own = k => !['offset', 'computedOffset', 'easing', 'composite'].includes(k);
   window.__slid = false;
   (function look(){
-    const u = document.querySelector('.row-under'), ring = u?.querySelector('.ring');
-    seen.push({ x: new DOMMatrix(getComputedStyle(row).transform).m41, w: row.clientWidth, ring: ring ? ring.getBoundingClientRect().left : null, under: u ? u.getBoundingClientRect().width : null,
-      moving: document.getAnimations().filter(a => a.playState === 'running' && Object.keys(a.effect?.getKeyframes()[0] || {}).some(k => moves.test(k)))
-        .map(a => a.effect.target === row ? 'row' : String(a.effect.target?.className)) });
+    const u = document.querySelector('.row-under'), mark = u?.querySelector('.ring, .row-del'), box = u?.getBoundingClientRect();
+    seen.push({ x: new DOMMatrix(getComputedStyle(row).transform).m41, w: row.clientWidth, ring: mark ? mark.getBoundingClientRect().left : null, under: u ? box.width : null, right: u ? box.right : null,
+      moving: document.getAnimations().filter(a => a.playState === 'running').map(a => [a.effect?.target, Object.keys(a.effect?.getKeyframes()[0] || {}).filter(own)])
+        .filter(([, keys]) => keys.some(k => moves.test(k))).map(([el, keys]) => (el === row ? 'row' : String(el?.className)) + ':' + keys.join('+')) });
     if (performance.now() - t0 < ms) requestAnimationFrame(look); else window.__slid = true;
   })();
 }, ms);
 export const slideSeen = async page => { await page.waitForFunction(() => window.__slid, null, { polling: 100 }); return page.evaluate(() => window.__slide); };
+export function still(frames){
+  const laid = frames.filter(s => s.under !== null), spread = k => Math.max(...laid.map(s => s[k])) - Math.min(...laid.map(s => s[k]));
+  const others = [...new Set(frames.flatMap(s => s.moving))].filter(m => m !== 'row:transform');
+  if (others.length) return 'more than the row\'s transform moved: ' + others.join(', ');
+  if (!laid.length) return 'nothing was laid under the row';
+  for (const [k, what] of [['ring', 'what\'s on the layer under the row moved'], ['under', 'the layer under the row changed size'], ['right', 'the layer\'s right edge moved']])
+    if (spread(k) > .01) return `${what}: ${[...new Set(laid.map(s => s[k]))].join(', ')}`;
+  return '';
+}
 
 /* The one-time hint to hold and slide put away, as on a phone that has slid a row: otherwise it adds a line to the
    first row of each screen, which a test measuring rows doesn't expect. Every page of `context`, from the start. */

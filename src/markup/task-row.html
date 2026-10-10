@@ -6,7 +6,8 @@
      again, takes it back with its progress as it was. Where its list allows (g.delete: Today, a project, search, a
      sheet), swiped left at 0%, its Delete (canDelete; also in the task's ⋯, the way for a keyboard or a screen
      reader); where it allows g.reorder (a project, a sheet), held and moved up or down, its place. The gesture code
-     reads those off the row (data-gestures, rowGestures). Ticked, or deleted, it stays where it is until the batch
+     reads those off the row (data-gestures, rowGestures), and makes the Delete as the swipe starts, laid under the row
+     (swipeOf, progress.js): the row doesn't carry one. Ticked, or deleted, it stays where it is until the batch
      clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap at its height, holding only
      "Deleted" and Restore, and a tap anywhere on it restores it (restoreRow); done by a full swipe (swept[t.id]), the
      same gap, holding "Done" and Undo, a step on a run's screen too. A tick not saved is a line in its place, with Try
@@ -82,6 +83,4 @@
   <template x-for="line in !g.run && !g.own && !g.top && lines[t.id] ? [lines[t.id]] : []" :key="0">
     <!-- include markup/row-line.html -->
   </template>
-  <!-- Off the row's end, shown only by a swipe (progress.js); on a run, a step inserted or repeated during it, not done -->
-  <template x-if="g.run ? t.added && !t.done && !t.pending && !g.locked : g.delete && canDelete(t, g.sheet)"><button class="row-del" :aria-label="'Delete ' + t.title" @click="g.run ? swipeDeleteStep(t) : swipeDelete(t, g.sheet)">Delete</button></template>
 </div>

@@ -7,7 +7,7 @@
 // leads with its own row, swiped as any (sheetRowGesture: parent-tasks-plan, 6b). A parent (a card's header, or a
 // parent's row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the
 // way, its ring's tap; left, its Delete.
-import {DELETE_W, HOLD_MS, inTextField, isNudge, lockDirection, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
+import {DELETE_W, HOLD_MS, inTextField, isNudge, lockDirection, pctOf, releaseSpeed, SIDES, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {motion, store} from '../util.js';
@@ -27,29 +27,11 @@ const swallow = () => { swallowClick = true; setTimeout(() => swallowClick = fal
 // phone's long press would otherwise select the words under it, or the nearest it can, around a sheet's subtasks), and
 // one made is cleared as the hold ends and as the row moves. One function, so it's added once.
 const noSelect = e => { if (sliding) e.preventDefault(); };
-const shut = (row = opened) => {
-  if (!row) return;
-  row.classList.remove('swiping', 'swiped', 'swipe-full'); row.style.removeProperty('--swipe');
-  if (opened === row) opened = null;
-};
 // What's uncovered as a row is swiped (swipeAt's `to`): its Delete, red, or its stops, the ring on green.
 const RED = new Set(['shut', 'open', 'delete']);
-/* A row's Delete, uncovered as it's swiped left at 0%, as on a phone's mail: the row moves with the finger, from
-   where it rests or, open, from its Delete (`base`). Let go a third of the way across the Delete button, it stays open
-   on it; past the left side's full point, the Delete fills what the row left, and letting go there deletes it
-   (`remove`, which carries it on off the screen: sweep). The Delete isn't in the page's tab order until it's shown: a
-   keyboard or a screen reader deletes from the task's ⋯ instead. */
-const swipeOf = (row, remove) => ({
-  base: opened === row ? -DELETE_W : 0,
-  begin(){ if (opened !== row) shut(); row.classList.add('swiping'); },
-  move({off, to}){ row.style.setProperty('--swipe', off + 'px'); row.classList.toggle('swipe-full', to === 'delete'); },
-  end(to){
-    if (to === 'delete') { remove(); return; }            // from where the finger left it (sweep)
-    row.classList.remove('swiping', 'swipe-full');
-    if (to !== 'open') { shut(row); return; }
-    row.classList.add('swiped'); row.style.setProperty('--swipe', -DELETE_W + 'px'); opened = row; openAt = scrolled();
-  },
-});
+// What a swipe marks its row with (styles.css, "Swiped"): aside for its progress, for its Delete, resting open on it,
+// and past its Delete's full point.
+const SWIPED = ['revealing', 'swiping', 'swiped', 'swipe-full'];
 
 /* Only the row moves (rows-and-sheet-fixes-plan, part 2). Swiped, a row follows the finger by its transform alone
    (slideTo); let go, it gets where it's going by one animation of that transform (glide): back home, or on off the
@@ -98,9 +80,53 @@ function unlay(row){
   u.seen?.disconnect(); u.el.remove(); laid.delete(row);
 }
 // Let go to go back: the row glides home over what it uncovered, which goes once it's covered again.
-const home = row => glide(row, 0).then(there => { if (there) { row.classList.remove('revealing'); unlay(row); } });
-// A new swipe takes the row as it is: whatever it was on its way to is over, and what was under it gone.
-const fresh = row => { stopGlide(row); unlay(row); row.classList.remove('revealing'); slideTo(row, 0); };
+const home = row => glide(row, 0).then(there => { if (there) { row.classList.remove(...SWIPED); unlay(row); } });
+// A row open on its Delete (the one open, unless another is given) shuts: home, as any row let go to go back.
+const shut = (row = opened) => {
+  if (!row) return;
+  if (opened === row) opened = null;
+  row.classList.remove('swipe-full'); laid.get(row)?.el.classList.remove('full');
+  return home(row);
+};
+// A new swipe takes the row as it is: whatever it was on its way to is over, and what was under it gone. One open on
+// its Delete stays open on it: the swipe carries on from there.
+const fresh = row => { stopGlide(row); if (opened === row) return; unlay(row); row.classList.remove(...SWIPED); slideTo(row, 0); };
+
+/* A row's Delete, uncovered as it's swiped left at 0%, as on a phone's mail: the row moves with the finger, from
+   where it rests or, open, from its Delete (`base`). It's laid under the row as its stops are (lay): red, the row's
+   whole size, with a real button at its end, named for the task (`name`), which is all of it in sight while the row
+   rests open on it. So it never moves or changes size: let go a third of the way across the button, the row glides to
+   rest open on it; sooner, back home over it, and then it goes. Past the left side's full point, its word steps to
+   the middle of the row, where the row's end has just passed, and letting go there deletes it, as tapping the button
+   does (`remove`, which takes the row on off the screen: sweep). Made by the swipe, it isn't in the page until then:
+   a keyboard or a screen reader deletes from the task's ⋯ instead. (The specimen draws its stills with it.) */
+export const swipeOf = (row, remove, name = '') => ({
+  base: opened === row ? -DELETE_W : 0,
+  begin(){
+    if (opened !== row) shut();
+    row.classList.add('swiping');
+    if (laid.get(row)?.el.matches('.row-red')) return;    // open on it already
+    const el = document.createElement('span'), del = document.createElement('button');
+    el.className = 'row-red'; el.style.setProperty('--open', DELETE_W + 'px'); el.style.setProperty('--full', SIDES.delete.full * 100 + '%');
+    del.type = 'button'; del.className = 'row-del'; del.textContent = 'Delete'; del.setAttribute('aria-label', 'Delete ' + name);
+    // Tapped, once the row is open on it (a tick felt then); not twice, nor while the row is already on its way off.
+    del.addEventListener('click', () => { if (away.has(row)) return; haptic('done'); remove(); });
+    el.append(del); lay(row, el);
+  },
+  move({off, to}){
+    const full = to === 'delete';
+    if (full !== row.classList.contains('swipe-full')) { row.classList.toggle('swipe-full', full); laid.get(row)?.el.classList.toggle('full', full); }
+    slideTo(row, off);
+  },
+  end(to){
+    if (to === 'delete') { remove(); return; }            // from where the finger left it (sweep)
+    if (to !== 'open') { shut(row); return; }
+    row.classList.remove('swiping', 'swipe-full'); row.classList.add('swiped'); laid.get(row)?.el.classList.remove('full');
+    opened = row; openAt = scrolled(); glide(row, -DELETE_W);
+  },
+  // Gone at once: its stops take the space (revealOf).
+  drop(){ if (opened === row) opened = null; fresh(row); },
+});
 
 /* A row's stops, uncovered as it's swiped for its progress, either way: a large ring, the tick's shape, filling (right)
    or emptying (left) a quarter at a time, the tick seen where it can't be felt; past the right side's full point, full
@@ -130,43 +156,24 @@ export const revealOf = row => {
 
 /* A full swipe follows through. Right (`right`), done: the row glides on off the screen, over the green and its ✓,
    which stay where they are, and doesn't come back: its place stays, at its height, as a gap with "Done" and Undo
-   (setProgress, `gap`), which the green fades away over. One animation, of the row's transform (glide); with less
-   motion asked for, it only changes. A row deleted by a full swipe, or its Delete tapped, carries on to the left the
-   same way, the red filling the row behind it, and leaves a gap holding only "Deleted" and Restore (removeTask,
-   `going`, marks it meanwhile: task-row.html), the red fading into it. Resolves to what `going` did: not deleted after
-   all (a question about its subtasks said no), or no gap (a tick not saved), the row is back. */
+   (setProgress, `gap`), which the green fades away over. A row deleted by a full swipe, or its Delete tapped, goes on
+   to the left the same way, over the red, and leaves a gap holding only "Deleted" and Restore (removeTask, `going`,
+   marks it meanwhile: task-row.html). One animation either way, of the row's transform (glide); with less motion
+   asked for, it only changes. Resolves to what `going` did: not deleted after all (a question about its subtasks said
+   no), or no gap (a tick not saved), the row is back. */
 const away = new WeakSet();                             // rows on their way off the screen: not swiped until they're back
 async function sweep(row, going, right = false){
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
-  if (right) {
-    away.add(row); row.classList.add('revealing');
-    const [done] = await Promise.all([Promise.resolve(going).catch(() => false), glide(row, row.clientWidth)]);
-    // Its content back in its place at once, unseen under the green, which is over it meanwhile, and not sliding
-    // back: it's taken in while the row's own transition is still off.
-    const under = laid.get(row)?.el;
-    under?.classList.add('going');
-    slideTo(row, 0); void row.offsetWidth; row.classList.remove('revealing'); away.delete(row);
-    if (!under) return done;
-    if (motion() && row.isConnected) await under.animate([{opacity: 1}, {opacity: 0}], {duration: BACK_MS, easing: 'ease-out'}).finished.catch(() => {});
-    if (laid.get(row)?.el === under) unlay(row);
-    return done;
-  }
-  const fill = row.querySelector(':scope > .row-del'), w = row.clientWidth, from = parseFloat(row.style.getPropertyValue('--swipe')) || 0;
-  const moving = fill && motion();
-  row.classList.add('swiping', 'swipe-full');
-  // The row's offset and the fill's width move together, so the fill always reaches the list's edge.
-  const go = {duration: SLIDE_MS, easing: 'ease-out', fill: 'forwards'}, anims = moving
-    ? [row.animate([{transform: `translateX(${from}px)`}, {transform: `translateX(${-w}px)`}], go), fill.animate([{width: Math.abs(from) + 'px'}, {width: w + 'px'}], go)] : [];
-  const [done] = await Promise.all([going, ...anims.map(a => a.finished.catch(() => {}))]);
-  // Its content back in its place at once, unseen under the gap, not sliding back (.row's transition).
-  const color = fill && getComputedStyle(fill).backgroundColor;
-  row.style.transition = 'none'; shut(row); anims.forEach(a => a.cancel());
-  void row.offsetWidth; row.style.transition = '';
-  if (!moving || !row.isConnected) return done;
-  const gap = row.querySelector(':scope > .del-gap'), fade = {duration: BACK_MS, easing: 'ease-out'};
-  if (!gap) { row.animate([{opacity: 0}, {opacity: 1}], fade); return done; }
-  gap.animate([{backgroundColor: color}, {backgroundColor: getComputedStyle(gap).backgroundColor}], fade);
-  for (const el of gap.children) el.animate([{opacity: 0}, {opacity: 1}], fade);
+  away.add(row); row.classList.add(right ? 'revealing' : 'swiping');
+  const [done] = await Promise.all([Promise.resolve(going).catch(() => false), glide(row, right ? row.clientWidth : -row.clientWidth)]);
+  // Its content back in its place at once, unseen under what it uncovered, which is over it meanwhile, and not
+  // sliding back: it's taken in while the row's own transition is still off.
+  const under = laid.get(row)?.el;
+  under?.classList.add('going');
+  slideTo(row, 0); void row.offsetWidth; row.classList.remove(...SWIPED); away.delete(row);
+  if (!under) return done;
+  if (motion() && row.isConnected) await under.animate([{opacity: 1}, {opacity: 0}], {duration: BACK_MS, easing: 'ease-out'}).finished.catch(() => {});
+  if (laid.get(row)?.el === under) unlay(row);
   return done;
 }
 
@@ -306,7 +313,7 @@ export default {
       if (g.mode === 'swipe') {
         const r = at(s, e.clientX - g.x0), red = RED.has(r.to);
         // Its Delete (red) or its stops, as the side it started on has them.
-        if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) shut(s.slide || s.el); g.red = red; }
+        if (red !== g.red) { if (red) { g.ring.drop(); s.swipe.begin(); } else if (g.red) s.swipe.drop(); g.red = red; }
         if (red) s.swipe.move(r); else g.ring.move(r);
         const feel = swipeFeel(g.r, r);
         if (feel) haptic(feel);
@@ -338,16 +345,17 @@ export default {
   // In the list: a row swiped for its progress, its Delete, or held to move it. A run's step the same, through the outbox.
   initProgressDrag(){
     // A row swiped open shuts again when anything else is touched, or anything scrolls. (Touched itself, it's swiped on,
-    // or tapped shut: holdToSlide.)
-    document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target)) shut(); }, true);
+    // or tapped shut: holdToSlide; its Delete, under it, is tapped.)
+    document.addEventListener('pointerdown', e => { if (opened && !opened.contains(e.target) && !laid.get(opened)?.el.contains(e.target)) shut(); }, true);
     addEventListener('scroll', () => { if (opened && !sliding && scrolled().some((y, i) => Math.abs(y - openAt[i]) > 10)) shut(); }, {capture: true, passive: true});
     this.holdToSlide(document.getElementById('view'), target => {
       // A stacked card: each of its rows as any row (cardGesture); its header the parent's (headGesture), and held, on a
       // project's list, the card moved up or down (cardHold); its footer (More, Less) and Close, only a tap.
       if (target.closest('#run-own > .row')) return this.runRowGesture(target.closest('.row'));
       const card = target.closest('.day-card'), row = target.closest('.card-rows > .row, .list:not(.tree) > .row, .item > .row');
-      if (card && !row) return target.closest('.card-head') && !target.closest('.row-del') ? this.cardGesture(card, this.headGesture(card), this.cardHold(card)) : null;
-      if (!row || target.closest('.row-del')) return null;
+      // (A Delete showing is under its row, not in it: only a tap.)
+      if (card && !row) return target.closest('.card-head') ? this.cardGesture(card, this.headGesture(card), this.cardHold(card)) : null;
+      if (!row) return null;
       if (row.parentElement.id === 'run-steps') return this.stepSlide(row, target);
       const t = this.rowTask(+row.dataset.id), s = t && this.rowGesture(t, row, false);
       return card ? this.cardGesture(card, s) : s;
@@ -365,7 +373,7 @@ export default {
       n = null;
       const run = this.route.name === 'run';
       // (a row, a card's row, or a card's heading, for its task)
-      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !inTextField(e.target) && !e.target.closest('.row-del')
+      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !inTextField(e.target)
         && (e.target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || e.target.closest('.card-head')?.closest('.day-card'));
       if (!row) return;
       const p = e.touches[0];
@@ -393,7 +401,7 @@ export default {
   rowGesture(t, row, sheet){
     if (this.lines[t.id] || this.leaving[t.id]) return null;   // a line in its place, or marked done or deleted: only its tap
     const slides = sheet ? !t.pending && this.canWrite(t.project_id) && this.checklistRole !== 'run' : this.rowSlides(t);
-    const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row)) : null;
+    const can = allows(row), swipe = can.has('delete') && this.canDelete(t, sheet) ? swipeOf(row, () => this.swipeDelete(t, sheet, row), t.title) : null;
     const reorder = this.holdOf(t, row, sheet, can);
     // A parent's row (its ring for a tick): no progress of its own, a full swipe its ring's tap (ringSwipe).
     if (!sheet && this.rowRing(t, {depth: {}})) { const r = {el: row, swipe, reorder, ...this.ringSwipe(t, row)}; return (r.finish || swipe || reorder) && r; }
@@ -455,7 +463,7 @@ export default {
   headGesture(card){
     const t = this.tasks[+card.dataset.id], head = card.querySelector(':scope > .card-head');
     if (!t || !head || this.leaving[t.id] || this.lines[t.id]) return null;
-    const swipe = allows(card).has('delete') && this.canDelete(t) ? swipeOf(head, () => this.swipeDelete(t, false, head)) : null, r = this.ringSwipe(t, head, card);
+    const swipe = allows(card).has('delete') && this.canDelete(t) ? swipeOf(head, () => this.swipeDelete(t, false, head), t.title) : null, r = this.ringSwipe(t, head, card);
     return r.finish || swipe ? {slide: head, swipe, ...r} : null;
   },
   // A card's heading held, where its list allows (data-gestures, as a row's): the card moved up or down among the tasks
@@ -493,20 +501,16 @@ export default {
     if (blocks.some(b => !b.length)) return null;
     return {el: row, reorder: dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true))};
   },
-  /* A row's Delete, tapped once it's swiped open (a tick felt then), or a full swipe let go (felt as it passed half): the
-     row carries on off the screen, leaving a gap at its height with Restore (sweep, removeTask). */
-  async swipeDelete(t, sheet, row = null){
-    if (!row) { row = opened; haptic('done'); }
-    const removing = this.removeTask(t);
-    if (await (row ? sweep(row, removing) : removing) && sheet) this.sheet.dirty = true;
+  /* A row's Delete, tapped once it's swiped open (a tick felt then: swipeOf), or a full swipe let go (felt as it passed
+     half): the row goes on off the screen, leaving a gap at its height with Restore (sweep, removeTask). */
+  async swipeDelete(t, sheet, row){
+    if (await sweep(row, this.removeTask(t)) && sheet) this.sheet.dirty = true;
   },
   /* A step inserted or repeated during a run, swiped to its Delete or its Delete tapped: deleteAddedStep, which asks
      first, as the × on the card's step does, and has no Restore; deleted, its row stays hidden in its place until the
      run is drawn again without it. Said no to, it comes back. */
-  async swipeDeleteStep(s, row = null){
-    if (!row) { row = opened; haptic('done'); }
-    const removing = this.deleteAddedStep(s).then(ok => { if (ok && row) row.style.visibility = 'hidden'; return ok; });
-    await (row ? sweep(row, removing) : removing);
+  async swipeDeleteStep(s, row){
+    await sweep(row, this.deleteAddedStep(s).then(ok => { if (ok) row.style.visibility = 'hidden'; return ok; }));
   },
   /* A run's step swiped on its row, as a task's is: not one waiting to be sent, or in a finished run, or done by a full
      swipe and waiting for the batch (its gap: only its Undo); a done one only down, not done again (stepProgress). With
@@ -516,7 +520,7 @@ export default {
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
     if (!s || s.pending || this.swept[s.id] || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('.step-del')) return null;
-    return {el: row, start: s.done ? 100 : s.pct, width: row.clientWidth, swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row)) : null,
+    return {el: row, start: s.done ? 100 : s.pct, width: row.clientWidth, swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row), s.title) : null,
       finish: pct => {
         if (pct === null) return;
         this.claimOnSlide(s.slot)(true);
@@ -527,7 +531,6 @@ export default {
   // In a task's sheet: its own row (sheetRowGesture), and its subtasks' rows, as in a list.
   initSheetProgress(){
     this.holdToSlide(this.$refs.sheet, target => {
-      if (target.closest('.row-del')) return null;
       const own = target.closest('.row.own');
       if (own) return this.sheetRowGesture(own);
       const row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');
@@ -546,7 +549,7 @@ export default {
   sheetRowGesture(row){
     const t = this.sheet.task;
     if (!t || this.ofTemplate || !this.canEdit || this.sheet.titleEdit) return null;
-    const swipe = this.canDelete(t) ? swipeOf(row, () => sweep(row, this.deleteTask())) : null;
+    const swipe = this.canDelete(t) ? swipeOf(row, () => sweep(row, this.deleteTask()), t.title) : null;
     if (this.sheetRing) { const r = this.ringSwipe(t, row, row, true); return (r.finish || swipe) && {el: row, swipe, ...r}; }
     return {el: row, swipe, start: t.done ? 100 : pctOf(t), width: row.clientWidth, springs: true, finish: pct => { if (pct !== null) this.setSheetProgress(pct); }};
   },

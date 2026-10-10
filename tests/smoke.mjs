@@ -16,7 +16,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
-import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, rowLine, signIn, slideSeen, steady, swipeRow, synced, toastGone as toastGoneOn, uncovered, watchSlide } from './helpers.mjs';
+import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, rowLine, signIn, slideSeen, steady, still, swipeRow, synced, toastGone as toastGoneOn, uncovered, watchSlide } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE;         // optional: a username to assign; the token needs Other -> Users
@@ -216,12 +216,10 @@ try {
     if ('percent_done' in body) throw new Error('done sent ' + JSON.stringify(body));
     // Let go, frame by frame: the row goes on to the right, off the screen; the ✓ under it never moves, nor does the
     // green change size; and nothing else on the page moves.
-    const slid = await slideSeen(page), rings = slid.filter(s => s.ring !== null), others = [...new Set(slid.flatMap(s => s.moving))].filter(m => m !== 'row');
+    const slid = await slideSeen(page);
     if (Math.max(...slid.map(s => s.x)) < .9 * slid[0].w) throw new Error(`the row went only to ${Math.max(...slid.map(s => s.x))}px of ${slid[0].w}`);
-    if (!slid.some(s => s.moving.includes('row'))) throw new Error('the row never glided: it only jumped');
-    if (others.length) throw new Error('more than the row moved as it left: ' + others.join(', '));
-    if (!rings.length || Math.max(...rings.map(s => s.ring)) - Math.min(...rings.map(s => s.ring)) > .01) throw new Error('the ✓ moved while the row left: ' + [...new Set(rings.map(s => s.ring))]);
-    if (Math.max(...rings.map(s => s.under)) - Math.min(...rings.map(s => s.under)) > .01) throw new Error('the green changed size while the row left: ' + [...new Set(rings.map(s => s.under))]);
+    if (!slid.some(s => s.moving.includes('row:transform'))) throw new Error('the row never glided: it only jumped');
+    if (still(slid)) throw new Error('as the row left, ' + still(slid));
     await expect(uncovered(page)).toHaveCount(0);                                // faded away over the gap
     await expect(page.locator(row)).toHaveClass(/\bswept\b/);
     await expect(page.locator(`${row} > .del-gap`)).toContainText('Done');
@@ -996,11 +994,14 @@ try {
     })();
   });
   const framesSeen = async () => { await page.waitForFunction(() => window.__framed, null, { polling: 100 }); return page.evaluate(() => window.__frames); };
-  // Its Delete, once the row has moved aside for it: tapped where it is, as a finger would.
+  // Its Delete, once the row has come to rest open on it: tapped where it is, as a finger would. (It's under the row,
+  // not in it: uncovered.)
+  const redButton = () => page.locator('.row-red.row-under:not(.going) > .row-del');     // (not one fading away over its gap)
   const tapDelete = async sel => {
-    await page.waitForSelector(`${sel}.swiped > .row-del`);
+    await page.waitForSelector(`${sel}.swiped`);
+    await expect(redButton()).toBeVisible();
     await page.waitForTimeout(300);
-    const b = await page.locator(`${sel} > .row-del`).boundingBox();
+    const b = await redButton().boundingBox();
     await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   };
   await step('a-rows-slot-tick-and-swipe-to-delete', async () => {
@@ -1058,11 +1059,43 @@ try {
       // Not from the screen's edge, where the phone's Back starts; tapped elsewhere, an open row shuts.
       await swipe(K, 370);
       if (await page.$(`${K}.swiped`)) throw new Error('a swipe from the edge opened the row');
-      await swipe(P);
-      await page.waitForSelector(`${P}.swiped > .row-del`);
-      await page.click('#view .sec .n >> nth=0');                              // anything else, tapped
+      /* A short swipe left, let go: the row comes to rest open on its Delete. Only the row moves (rows-and-sheet-fixes-
+         plan, part 2): the red is laid under the whole row from the start, a real button named for the task at its
+         end, and it never moves, vanishes or changes size while the row gets there, watched frame by frame. */
+      await swipeRow(page, P, 'open', { check: async () => {
+        const lies = await laidUnder(page, P, '.row-red');
+        if (lies.inside || lies.off > .5 || lies.x > -20) throw new Error('its Delete isn\'t laid still under the row: ' + JSON.stringify(lies));
+        await watchSlide(page, P);
+      } });
+      await page.waitForSelector(`${P}.swiped`);
+      let rest = await slideSeen(page);
+      if (still(rest)) throw new Error('as the row came to rest open, ' + still(rest));
+      if (rest.some(s => s.under === null)) throw new Error('its Delete vanished on the way');
+      if (Math.abs(rest.at(-1).x + 88) > .5) throw new Error('it rests ' + rest.at(-1).x + 'px aside, not on its 88px Delete');
+      const del = page.getByRole('button', { name: 'Delete ' + o.title, exact: true }), pb = await page.locator(P).boundingBox(), db = await del.boundingBox();
+      if (Math.abs(db.width - 88) > .5 || Math.abs(db.x + db.width - (pb.x + 88 + pb.width)) > .5 || Math.abs(db.height - pb.height) > 1.5) throw new Error('its Delete isn\'t the 88px the row uncovers: ' + JSON.stringify([db, pb]));
+      if (await page.locator(P).evaluate((row, b) => row.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)), db)) throw new Error('the row is over its Delete');
+      // Anything else tapped: it shuts, the row gliding home over the red, which goes only once it's covered again.
+      await watchSlide(page, P);
+      await page.click('#view .sec .n >> nth=0');
       await page.waitForSelector(`${P}.swiped`, { state: 'detached' });
+      rest = await slideSeen(page);
+      if (still(rest)) throw new Error('as the row shut, ' + still(rest));
+      if (rest.some(s => s.x < -1 && s.under === null)) throw new Error('its Delete went before the row was back over it');
+      if (rest.at(-1).x || rest.at(-1).under !== null) throw new Error('shut, it\'s not as it was: ' + JSON.stringify(rest.at(-1)));
+      await expect(del).toHaveCount(0);
       if (await page.isVisible('#sheet')) throw new Error('shutting the row opened a task');
+      // Let go sooner, under a third of its Delete: it goes back the same way, the red there until it's covered.
+      const sb = await page.locator(P).boundingBox();
+      await page.mouse.move(sb.x + sb.width - 40, sb.y + sb.height / 2); await page.mouse.down();
+      await page.mouse.move(sb.x + sb.width - 62, sb.y + sb.height / 2 + 1, { steps: 4 });
+      await expect(uncovered(page, '.row-red')).toHaveCount(1);
+      await watchSlide(page, P);
+      await page.mouse.up();
+      rest = await slideSeen(page);
+      if (still(rest)) throw new Error('as the row went back, ' + still(rest));
+      if (rest.some(s => s.x < -1 && s.under === null) || rest.at(-1).x || rest.at(-1).under !== null) throw new Error('let go short of its Delete, the red went before the row was back: ' + JSON.stringify(rest.map(s => [Math.round(s.x), s.under])));
+      if (await page.$(`${P}.swiped, ${P}.swiping`)) throw new Error('let go short of its Delete, it stayed open');
       // Delete: the row goes, leaving a gap at its height, holding only "Deleted" and Restore where "+ me" was, and
       // nothing is sent; a tap anywhere on the gap brings the row back, sliding in from the left.
       const kh = await page.locator(K).evaluate(el => el.offsetHeight);
@@ -1105,8 +1138,14 @@ try {
       await page.mouse.move(250, ky); await page.mouse.down();
       await page.mouse.move(90, ky + 3, { steps: 10 });
       await watchFrames(K);
+      await watchSlide(page, K);
       await page.mouse.up();
       await page.waitForSelector(`${K}.deleted`);
+      // Only the row moves, by its transform, as it does when it's done: the red, its word and its right edge stay put.
+      const left = await slideSeen(page);
+      if (!left.some(s => s.moving.includes('row:transform'))) throw new Error('the row never glided off: it only jumped');
+      if (still(left)) throw new Error('as the row left, ' + still(left));
+      await expect(uncovered(page, '.row-red')).toHaveCount(0);                  // faded away over the gap
       const seen = await framesSeen(), far = seen.reduce((m, s, i) => s.x < seen[m].x ? i : m, 0);
       if (seen.some(s => s.h !== kh)) throw new Error('its height changed as it went: ' + [...new Set(seen.map(s => s.h))]);
       if (seen[far].x > -.9 * seen[far].w) throw new Error(`it went only to ${seen[far].x}px of ${seen[far].w}`);

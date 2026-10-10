@@ -264,8 +264,8 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 :is(.row,.card-head) > .ring{position:static;margin:2px 0 0}
 :is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + var(--tick) + 12px)}
-/* Held, to be moved, the row lifts, and the rows it passes slide aside to make room; a row swiped onto its Delete and
-   let go slides to rest (with less motion, each is only there) */
+/* Held, to be moved, the row lifts, and the rows it passes slide aside to make room (with less motion, they're only
+   there). A swipe never uses this: it moves the row itself (below). */
 .row,.card-head{transition:box-shadow .15s,transform .2s ease}
 @media (prefers-reduced-motion:reduce){.row,.card-head{transition:box-shadow .15s}}
 .row.held{z-index:2;box-shadow:var(--shadow-lift)}
@@ -277,21 +277,20 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    ring, the tick's shape (square for a step), on green, filling a quarter at a time to the right, emptying to the left
    (a row with progress); past the right side's full point, the green solid, the ring full with its ✓. Nothing bounces
    (rows-and-sheet-fixes-plan, part 2): the pie stepping, the green turning solid and the ✓ say where letting go lands.
-   A row at 0% swiped left: its Delete instead (.row-del), which comes in from the row's end. A row can be swiped sideways without the page
+   A row at 0% swiped left: its Delete instead (.row-red, swipeOf), red, with its button at the row's end. A row can be swiped sideways without the page
    taking the move for a scroll: everything that's swiped is named here, once (a list's rows, a run's steps among them;
    a card, for its header and its rows; a sheet's subtasks; the sheet's own row; a run's own row atop its screen). */
 .list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row,#d-card > .row.own,#run-own > .row{touch-action:pan-y pinch-zoom}
-:is(.row,.card-head).swiping,:is(.row,.card-head).swiped{transform:translateX(var(--swipe,0px))}
-:is(.row,.card-head).swiping{transition:none}
 #d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow-x:clip}
-/* Only the row moves (rows-and-sheet-fixes-plan, part 2): swiped for its progress, by its transform alone, set as the
-   finger moves and animated once when it's let go (slideTo, glide: app/progress.js), never by its own transition. What
-   it uncovers lies still under it (.row-under, laid by `lay` at the row's place, first in the box the row is placed
-   by, each named here, which clips it to its rounded corners), so the row is solid meanwhile, in its own colour (one
-   waiting to be sent or lit up keeps its tint: :where), and a light still fading on it (just added, just come due)
-   is over. Let go past the full point, the row gone, the layer is over the gap in its place (.going) and fades away. */
-:where(.row,.card-head).revealing{background-color:var(--surface);transition:none}
-:is(.row,.card-head).revealing{animation:none}
+/* Only the row moves (rows-and-sheet-fixes-plan, part 2): swiped (.revealing for its progress, .swiping for its
+   Delete, .swiped resting open on it), by its transform alone, set as the finger moves and animated once when it's
+   let go (slideTo, glide: app/progress.js), never by its own transition. What it uncovers lies still under it
+   (.row-under, laid by `lay` at the row's place, first in the box the row is placed by, each named here, which clips
+   it to its rounded corners), so the row is solid meanwhile, in its own colour (one waiting to be sent or lit up
+   keeps its tint: :where), and a light still fading on it (just added, just come due) is over. Let go past a full
+   point, the row gone, the layer is over the gap in its place (.going) and fades away. */
+:where(.row,.card-head):is(.revealing,.swiping,.swiped){background-color:var(--surface);transition:none}
+:is(.row,.card-head):is(.revealing,.swiping,.swiped){animation:none}
 .list,.task-card,#d-subtasks,#run-own{position:relative}
 .row-under{position:absolute;overflow:hidden}
 .row-under.going{z-index:2;pointer-events:none}
@@ -312,16 +311,19 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row-prog.full{background:var(--accent)}
 .row-prog.full .ring{border-color:var(--accent-ink);background:var(--accent-ink)}
 .row-prog.full .ring svg{opacity:1}
-.row-del{display:none;position:absolute;top:0;bottom:0;left:100%;width:max(88px,calc(-1 * var(--swipe,0px)));border:0;background:var(--danger);color:var(--danger-ink);font-size:15px;font-weight:700;align-items:center;justify-content:center}
+/* A row's Delete: red under the whole row, and at its end the button, as wide as the row rests open on it (--open:
+   DELETE_W, progress.js), which is all of the red in sight then */
+.row-red{background:var(--danger)}
+.row-del{position:absolute;top:0;bottom:0;right:0;width:var(--open,88px);display:flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;color:var(--danger-ink);font-size:15px;font-weight:700}
 .row-del:focus-visible{outline-color:var(--danger-ink);outline-offset:-6px}
-:is(.row,.card-head):is(.swiping,.swiped) > .row-del{display:flex}
-/* past half the row, a full swipe: let go, it's deleted; the Delete fills what the row left, its word by the finger */
-:is(.row,.card-head).swipe-full > .row-del{justify-content:flex-start;padding-left:28px}
+/* past the full point (--full: half the row), a full swipe: let go, it's deleted; its word steps there, to where the
+   row's end has just passed, and stays, the red filling what the row leaves */
+.row-red.full > .row-del{left:var(--full,50%);width:auto;justify-content:flex-start;padding-left:28px}
 /* Deleted, or done by a full swipe, until the batch clears (leaving.js): gone from its place, which stays, at its
    height, so nothing moves: a gap holding only "Deleted" or "Done", in muted words, from the row's edge whatever its
    indent, and Restore or Undo where who's doing it was, the same shape as "+ me". (What the swipe uncovered stays
    while the row goes on off the screen: sweep.) */
-.row:is(.deleted,.swept) > :not(.del-gap,.row-del){visibility:hidden}
+.row:is(.deleted,.swept) > :not(.del-gap){visibility:hidden}
 .del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14px}
 .del-gap .what{flex:1;min-width:0}
 .del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
@@ -389,7 +391,6 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
-.card-head:is(.swiping,.swiped){z-index:1}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
 .day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */

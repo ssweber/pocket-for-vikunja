@@ -322,8 +322,8 @@ test('in a sheet, a touch that starts in a text field is never a row\'s: the tit
   assert.deepEqual(asked, [], 'in the title\'s box, in the sheet\'s own row: the box takes the finger');
   fire('pointerdown', down(within(false, { '.row.own': own })));
   assert.deepEqual(asked, ['own'], 'on the row beside it: the row is asked (whatever has the focus)');
-  fire('pointerdown', down(within(false, { '.row-del': {}, '.row.own': own })));
-  assert.deepEqual(asked, ['own'], 'its Delete, shown: only a tap');
+  fire('pointerdown', down(within(false, { '.row-del': {} })));
+  assert.deepEqual(asked, ['own'], 'its Delete, shown: laid under the row, not in it, so only a tap');
 }));
 
 test('on a list, a touch that starts in a text field is never a row\'s swipe or hold, nor a nudge', () => noWindow(() => {
