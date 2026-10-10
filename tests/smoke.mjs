@@ -905,15 +905,23 @@ try {
   });
 
   /* A line that says it's done arrives done (done-and-markdown-plan, part 1): "x " at its start, or a ticked checkbox.
-     A chip says so before it's sent. Its row is ticked from the start, where the task goes, and leaves with the batch, as
+     A Done chip says so before it's sent, and the marker is marked in the box; tapped off, the marker's words stay in
+     the title, as any chip's do. Its row is ticked from the start, where the task goes, and leaves with the batch, as
      a row ticked there does; Vikunja has it done. */
   const found = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
+  const capMarks = () => page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent).join());
   await step('a-line-that-says-its-done-arrives-done', async () => {
-    const t = `Pocket smoke arrived ${stamp}`, R = rowOf(t);
+    const t = `Pocket smoke arrived ${stamp}`, R = rowOf(t), chip = page.locator('#cap-chips .chip[data-kind=done]');
     await toastGone();
     await refreshToday();
     await page.fill('#in-capture', `x ${t}`);
-    await expect(page.locator('#cap-chips .chip', { hasText: /^Done$/ })).toBeVisible();
+    await expect(chip).toHaveText('Done');
+    await expect.poll(capMarks).toBe('done:x');
+    await chip.click();
+    await expect(chip).toHaveClass(/\boff\b/);
+    await expect.poll(capMarks).toBe('');
+    await chip.click();
+    await expect(chip).not.toHaveClass(/\boff\b/);
     await page.click('#f-capture .go');
     await expect(page.locator(R)).toHaveClass(/\bdone\b/, { timeout: 15000 });      // ticked while it's sent, too
     await expect(page.locator(`${R}:not(.pending)`)).toHaveClass(/\bleaving\b/, { timeout: 15000 });
@@ -930,13 +938,12 @@ try {
      that keeps its words in the title when it's tapped off. Its row's tick shows it, and Vikunja has it. */
   await step('a-figure-at-the-end-of-a-line-is-its-progress', async () => {
     const t = `Pocket smoke figure ${stamp}`, R = rowOf(t), chip = page.locator('#cap-chips .chip[data-kind=progress]');
-    const marks = () => page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent).join());
     await page.fill('#in-capture', `${t} (50%)`);
     await expect(chip).toHaveText('50%');
-    await expect.poll(marks).toBe('progress:(50%)');
+    await expect.poll(capMarks).toBe('progress:(50%)');
     await chip.click();
     await expect(chip).toHaveClass(/\boff\b/);
-    await expect.poll(marks).toBe('');
+    await expect.poll(capMarks).toBe('');
     await chip.click();
     await expect(chip).not.toHaveClass(/\boff\b/);
     await page.click('#f-capture .go');
@@ -947,6 +954,34 @@ try {
     try {
       if (!made || made.done || Math.round(made.percent_done * 100) !== 50) throw new Error('in Vikunja: ' + JSON.stringify(made && { title: made.title, progress: made.percent_done, done: made.done }));
     } finally { if (made) await api('/tasks/' + made.id, { method: 'DELETE' }); }
+  });
+  /* A pasted list with lines ticked off already: one chip counts them, "2 arrive done"; tapped, it leaves them out, as
+     Pocket did before, and says so; tapped again, they're back. Added, they're done under the first line, whose ring
+     counts them from the start, its figure written with them: (100 + 50 + 100 + 0) / 4 = 63%. */
+  await step('a-pasted-list-with-lines-done-and-the-chip-that-leaves-them-out', async () => {
+    const p = `Pocket smoke packed ${stamp}`, sub = n => `Pocket smoke pack ${n} ${stamp}`, chip = page.locator('#cap-chips .chip[data-kind=done]');
+    const says = async text => { if (!(await page.textContent('#cap-chips')).includes(text)) throw new Error(`chips, without "${text}": ` + await page.textContent('#cap-chips')); };
+    await page.fill('#in-capture', `${p} tomorrow\n- [x] ${sub('A')}\n- [ ] ${sub('B')} (50%)\nx ${sub('C')}\n- ${sub('D')}`);
+    await page.click('#cap-nest');
+    await expect(chip).toHaveText('2 arrive done');
+    await says('1 task + 4 subtasks');
+    await chip.click();
+    await expect(chip).toHaveText('2 ticked off already: left out');
+    await says('1 task + 2 subtasks');
+    await chip.click();
+    await expect(chip).toHaveText('2 arrive done');
+    await page.click('#f-capture .go');
+    const ring = page.locator(`#view ${cardOf(p)} > .card-head > .ring`);
+    await expect(ring.locator('.n')).toHaveText('2/4', { timeout: 20000 });
+    await synced(page);
+    await noToast(page);
+    const made = await found(p), subs = made ? (await get(made.id)).related_tasks?.subtask || [] : [];
+    try {
+      const got = JSON.stringify(subs.map(s => [s.title, s.done, Math.round(s.percent_done * 100)]).sort());
+      if (got !== JSON.stringify([[sub('A'), true, 0], [sub('B'), false, 50], [sub('C'), true, 0], [sub('D'), false, 0]])) throw new Error('its subtasks in Vikunja: ' + got);
+      await expect.poll(async () => Math.round((await get(made.id)).percent_done * 100)).toBe(63);
+      await expect.poll(() => ring.evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--ring')) * 100))).toBe(63);
+    } finally { for (const t of [...subs, made]) if (t) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
   /* Rows ticked stay where they are, at their height, until 3 seconds after the last tick, counted from when the finger

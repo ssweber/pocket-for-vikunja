@@ -291,6 +291,9 @@ none. As you type, the words it reads are highlighted in the box, and chips unde
 - **A line that's done already:** an `x` and a space at the start of a line, or a ticked checkbox, adds the task done:
   `x Call the plumber`, `x - Call the plumber`, `[x] Call the plumber`, `- [x] napkins`, `☑ napkins`. It shows ticked
   where it went and leaves with the tasks you ticked, as a tick does; one that repeats moves on to its next date.
+  A **Done** chip says so, and the marker is highlighted in the box; tap the chip and the marker stays in the title
+  instead, as with any chip. In a pasted list, one chip counts them, **2 arrive done**: tap it to leave those lines
+  out, **2 ticked off already: left out**, and again to bring them back.
   Without the space it's a word, so "x-ray the pipe" stays as typed, and so does a capital "X marks the spot". This is
   Pocket's own: Vikunja's quick add has no word for done. It works in quick add and in the subtask boxes, whichever
   quick add mode is set. On a run's screen and in a template's steps, a ticked line is left out instead: a step is done

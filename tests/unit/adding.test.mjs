@@ -1,5 +1,6 @@
 // What an add box's lines become, through the outbox (src/js/app/sending.js, LINE_STEPS in src/js/sync.js), against a
-// pretend Vikunja: what's sent for each line, in which order, and what its row shows once it's there.
+// pretend Vikunja: what's sent for each line, in which order, and what its row shows once it's there. And what a box
+// says it read before that: its chips and the words marked in it (src/js/app/quickadd.js).
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,6 +8,8 @@ import actions from '../../src/js/app/actions.js';
 import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import leaving from '../../src/js/app/leaving.js';
+import quickadd from '../../src/js/app/quickadd.js';
+import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { sync } from '../../src/js/sync.js';
 
@@ -121,4 +124,62 @@ test('a pasted list\'s first line, over lines that arrived done or with progress
   v.requests.length = 0;
   await send(app, entry([line('Order cups'), line('Small'), line('Large')], { nest: true }));
   assert.deepEqual(sent(v).filter(([m]) => m === 'PATCH'), []);
+});
+
+/* What a box reads, before it's sent (src/js/app/quickadd.js): the chips under it, as their words (a chip tapped off
+   with a ~ before them), and the words marked in it, each as kind:words. */
+const boxes = () => {
+  const app = component(quickadd), cafe = { id: 5, title: 'Café' };
+  Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, cap: newBox(), runInsert: newBox(), capPhotos: [], projects: [cafe], projById: new Map([[5, cafe]]),
+    labels: [], people: [], access: {}, userKnown: {}, accessBlocked: false, checklistIds: new Set(), remindersReach: false, defaultProjectId: () => 5, canWrite: () => true });
+  app.sheet = { task: { id: 9, project_id: 5, title: 'Pack the van' }, sub: newBox() };
+  return app;
+};
+const chipsOf = (app, w) => app.chips(w).map(c => (c.off ? '~' : '') + c.text);
+const marksOf = (app, w) => app.marks(w).map(m => m.kind + ':' + app.box(w).text.slice(m.start, m.end));
+const linesOf = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.done]);
+const tap = (app, w, text) => app.tapChip(w, app.chips(w).find(c => c.text.includes(text)));
+
+test('one line that says it\'s done: a Done chip, its marker marked; tapped off, the marker\'s words stay in the title', () => {
+  const app = boxes();
+  app.cap.text = 'x Call Sam !2';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Done', 'Café', 'Priority 2']);
+  assert.deepEqual(marksOf(app, 'cap'), ['done:x', 'priority:!2']);
+  assert.deepEqual(linesOf(app, 'cap'), [['Call Sam', true]]);
+  tap(app, 'cap', 'Done');
+  assert.deepEqual(chipsOf(app, 'cap'), ['~Done', 'Café', 'Priority 2']);
+  assert.deepEqual(marksOf(app, 'cap'), ['priority:!2']);
+  assert.deepEqual(linesOf(app, 'cap'), [['x Call Sam', false]]);
+  tap(app, 'cap', 'Done');
+  assert.deepEqual(linesOf(app, 'cap'), [['Call Sam', true]], 'tapped again: read again');
+  // With quick add turned off in Vikunja, it's read all the same: it's about the list, not Vikunja's shortcuts.
+  app.user.settings.frontend_settings.quick_add_magic_mode = 'disabled';
+  app.cap.text = '- [x] Call Sam tomorrow (50%)';
+  assert.deepEqual(marksOf(app, 'cap'), ['done:[x]', 'progress:(50%)']);
+  assert.deepEqual(app.boxParsedLines('cap').map(p => [p.title, p.done, p.pct]), [['Call Sam tomorrow', true, 50]]);
+});
+
+test('a list with lines that say they\'re done: one chip counts them; tapped, they\'re left out, and tapped again they\'re back', () => {
+  const app = boxes();
+  app.cap.text = 'Groceries\n- [x] Eggs\n- [ ] Milk tomorrow\nx Bread';
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 arrive done', '4 tasks', 'Café']);
+  assert.deepEqual(marksOf(app, 'cap'), ['done:[x]', 'due:tomorrow', 'done:x']);
+  assert.deepEqual(linesOf(app, 'cap'), [['Groceries', false], ['Eggs', true], ['Milk', false], ['Bread', true]]);
+  tap(app, 'cap', 'arrive done');
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 ticked off already: left out', '2 tasks', 'Café']);
+  assert.deepEqual(marksOf(app, 'cap'), ['due:tomorrow']);
+  assert.deepEqual(linesOf(app, 'cap'), [['Groceries', false], ['Milk', false]]);
+  tap(app, 'cap', 'left out');
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 arrive done', '4 tasks', 'Café']);
+  // A subtask box reads them the same way.
+  app.sheet.sub.text = '[x] Load chairs\nTables';
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 arrives done', '2 subtasks']);
+  assert.deepEqual(linesOf(app, 'sub'), [['Load chairs', true], ['Tables', false]]);
+});
+
+test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {
+  const app = boxes();
+  app.runInsert.text = 'x Wipe the counter\n[x] Mop\nLock up';
+  assert.deepEqual(app.chips('ins').map(c => [c.text, c.kind]), [['1 line ticked off already: left out', undefined], ['2 steps', undefined]]);
+  assert.deepEqual(linesOf(app, 'ins'), [['x Wipe the counter', false], ['Lock up', false]]);
 });

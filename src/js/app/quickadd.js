@@ -60,8 +60,11 @@ export default {
     return this.defaultProjectId();
   },
   /* A box's text read as a list (readList): its lines, and which say they're done. Quick add and the subtask boxes add
-     those done; a run's box and a template's boxes leave a ticked line out, as a step is done by doing it. */
-  boxList(w){ return readList(this.box(w).text, w === 'cap' || this.isSubBox(w) ? {} : {steps: true}); },
+     those done, unless the chip that says so was tapped (ignore.done: a single line then keeps the marker's words, a
+     list leaves those lines out); a run's box and a template's boxes leave a ticked line out, as a step is done by
+     doing it. */
+  readsDone(w){ return w === 'cap' || this.isSubBox(w); },
+  boxList(w){ const b = this.box(w); return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done} : {steps: true}); },
   boxLines(w){ return this.boxList(w).lines.map(l => l.text); },
   get capLines(){ return this.boxLines('cap'); },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
@@ -318,10 +321,14 @@ export default {
     if (!b.text.trim()) return photos;
     const sg = this.suggestions(w);
     if (sg) return sg;
-    // Lines that say they're done: added done, or, in a run's box and a template's, left out.
-    const list = this.boxList(w), ticked = list.ticked, arrive = list.lines.filter(l => l.done).length;
-    if (arrive) photos.push({key: 'tk', text: list.lines.length === 1 ? 'Done' : `${arrive} arrive${arrive === 1 ? 's' : ''} done`});
-    else if (ticked) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
+    /* Lines that say they're done. One line: a Done chip, which keeps the marker's words in the title when it's tapped
+       off, as the others do. A list: one chip counts them, "2 arrive done"; tapped, those lines are left out, and it
+       says so, and tapped again they're back. In a run's box and a template's they're left out, with nothing to tap. */
+    const list = this.boxList(w), ticked = list.ticked, left = !!b.ignore?.done;
+    if (ticked && !this.readsDone(w)) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
+    else if (ticked && list.one) photos.push({key: 'tk', kind: 'done', text: 'Done', off: left});
+    else if (ticked) photos.push({key: 'tk', kind: 'done', text: left ? `${ticked} ticked off already: left out` : `${ticked} arrive${ticked === 1 ? 's' : ''} done`,
+      hint: left ? `Tap to add ${ticked === 1 ? 'it' : 'them'}, done` : `Tap to leave ${ticked === 1 ? 'this line' : 'these lines'} out`});
     const parsed = this.boxParsed(w), p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = list.lines.length;
     out.push(...photos);
     // A pasted list: how many, where they go, and anyone in it who can't see that project, before it's sent.
@@ -452,13 +459,15 @@ export default {
   /* ---------- the words quick add read, marked in the box ---------- */
   // Marks in the text as typed, over every line of a pasted list. A tapped-off chip's words aren't marked, since they
   // stay in the title, nor is an @username that won't be assigned: no such user, or one who can't see the project.
+  // What says a line is done is marked too, and a figure for its progress, whichever quick add mode is set.
   marks(w){
-    if (!this.prefixes || !this.boxLines(w).length) return [];
+    if (!this.boxLines(w).length) return [];
     const parsed = this.boxParsedLines(w), target = parsed.length === 1 ? this.boxPid(w) : this.boxPeople(w).target;
     const stays = n => this.userKnown[n.toLowerCase()] === false || (target && this.access[target + ':' + n.toLowerCase()] === false);
     const out = [];
     // Each line's marks, from where its words start in the box (boxList): after its indent, list marker and spaces.
     this.boxList(w).lines.forEach((l, k) => {
+      if (l.mark) out.push({kind: 'done', start: l.mark[0], end: l.mark[1]});
       for (const m of parsed[k]?.marks || []) if (!(m.kind === 'assignees' && stays(m.name))) out.push({...m, start: m.start + l.at, end: m.end + l.at});
     });
     // A step's time, read on its own ("in 20 min"), marked like the rest, unless its chip was tapped off.
