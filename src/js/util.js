@@ -49,6 +49,30 @@ export const taskDrafts = {
 export const userCache = new Map();                   // lowercased username -> user
 // An object Alpine watches, as it is: read without Alpine noting each read (in Node's tests, there's no Alpine).
 export const raw = x => globalThis.Alpine?.raw(x) ?? x;
+/* A value worked out once per change to what working it out reads: for a getter that many bindings read and that
+   costs something (a run's screen, runView: read about 45 times each time it's drawn). `fn` runs inside an effect of
+   Alpine's, which notes what it reads. When any of that changes, the value is old there and then, not a moment later
+   when Alpine runs its effects: whatever reads it straight after a change gets it worked out afresh. And what read it
+   before is told to read it again (`rev`). The effect's own scheduler is set for that, which Alpine's `effect`
+   doesn't offer: tests/unit/alpine.test.mjs checks it against Pocket's copy of Alpine, so an upgrade that changes it
+   fails there. Without Alpine (the unit tests), it's worked out each time it's read. */
+export function memo(fn){
+  let old = true, value, run = null, rev = null;
+  return function(){
+    const A = globalThis.Alpine;
+    if (!A) return fn.call(this);
+    if (old) {
+      if (run) A.release(run);
+      rev ||= A.reactive({n: 0});
+      old = false;
+      try { run = A.effect(() => { value = fn.call(this); }); }
+      catch (e) { old = true; run = null; throw e; }
+      run.effect.scheduler = () => { if (!old) { old = true; rev.n++; } };
+    }
+    void rev.n;                                        // read here, so read again once it's old
+    return value;
+  };
+}
 export let app;                                       // the Alpine component, set in init()
 export const setApp = a => { app = a; };
 /* Whether things may move: not with less motion asked for on the phone (prefers-reduced-motion), when a change is only

@@ -96,7 +96,11 @@ export default () => ({
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
-  clock: Date.now(),                           // now, every second while a run is on screen, for its countdowns
+  clock: Date.now(),                           // now, every second while a run is on screen
+  // The moment a run's screen is worked out for: moved on only once what it shows of the time has changed (tickRun,
+  // alerts.js), so the seconds going by cost an idle run nothing. runMemo: the run as last worked out (runView, runs.js);
+  // runG: its steps' rows' options, one object, so a step going on the card changes its `at` and nothing else.
+  runNow: Date.now(), runMemo: null, runG: {depth: {}, run: true, at: null, locked: false},
   todayDay: 0,                                 // the day Today's groups were loaded for (alerts.js)
   groupedAt: 0,                                // when they were last placed in groups, for the heading's date
   avatars: saved.get('avatars') || {},         // username -> {url, at}: people's pictures (claims.js)

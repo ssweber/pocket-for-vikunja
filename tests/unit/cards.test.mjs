@@ -19,7 +19,8 @@ import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
 import sheetPart from '../../src/js/app/sheet.js';
-import { whereNext } from '../../src/js/checklists.js';
+import { countText, runShows, whereNext } from '../../src/js/checklists.js';
+import { watching } from './reactive.mjs';
 
 const NONE = '0001-01-01T00:00:00Z', me = { id: 1 }, other = { id: 2 };
 const at = (d, h) => `2026-10-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:00:00Z`;
@@ -465,7 +466,7 @@ const runScreen = () => {
   const app = component(runs, claims, checklists, cards, views), now = Date.now(), NONE = '0001-01-01T00:00:00Z';
   const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
     assignees: [], attachments: [], reactions: {}, comments: [], tpl: title, added: '', from: null, ...f });
-  Object.assign(app, { user: me, pending: [], slow: [], perms: {}, clock: now, actTask: a => a.task,
+  Object.assign(app, { user: me, pending: [], slow: [], perms: {}, clock: now, runNow: now, runMemo: null, runG: { depth: {}, run: true, at: null, locked: false }, actTask: a => a.task,
     view: { run: { run: { id: 50, title: 'Opening up', done: false, project_id: 5, assignees: [me], created_by: me, comments: [] },
       steps: [step(51, 'A', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [me] } }), step(52, 'B', { tpl: 'B T#30m' }), step(53, 'C', { percent_done: .5 }), step(54, 'D')], at: null, last: null } } });
   return app;
@@ -479,6 +480,69 @@ test('a run’s screen opens on the next step in order, counting down, and a tic
   assert.equal(app.nextStep(v.steps[2]), 3, 'C ticked, on to D, with B still counting down');
   app.showStep(0);                                                         // A tapped in the list
   assert.deepEqual([app.runView.step.title, app.runView.step.done], ['A', true], 'a done step comes on the card from its row');
+});
+
+/* What every row costs (rows-and-sheet-fixes-plan, part 6): a run is worked out once per change, not once for each
+   binding that reads it nor once a second, and a step nothing happened to is the same object, so its row has nothing
+   to do. On Alpine's own reactivity (reactive.mjs), as on the phone. */
+test('a run is worked out once while nothing in it changes; a tick works it out again, and only that step is a new object', c => {
+  const { Alpine } = watching(c), app = Alpine.reactive(runScreen());
+  let worked = 0;
+  const work = app.workOutRun; app.workOutRun = function(){ worked++; return work.call(this); };
+  const v = app.runView;
+  assert.equal(app.runView, v, 'read again: the same object');
+  assert.deepEqual([app.runRows.at, app.runRows.locked, worked], [1, false, 1], 'its rows\' options, with the step on the card');
+  const g = app.runRows;
+  app.clock += 1000;                                                       // a second goes by
+  assert.deepEqual([app.runView, worked], [v, 1], 'a second later: nothing to work out');
+  app.pending = [{ kind: 'act', id: 'a1', run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // C ticked, waiting to be sent
+  const w = app.runView;
+  assert.notEqual(w, v, 'a tick: worked out again, at once');
+  assert.equal(worked, 2);
+  assert.deepEqual(w.steps.map((s, i) => s === v.steps[i]), [true, true, false, true], 'only the step ticked is a new object');
+  assert.equal(w.steps[2].done, true);
+  app.showStep(3);
+  assert.deepEqual([app.runRows === g, app.runRows.at, app.runView.step.title], [true, 3, 'D'], 'a step put on the card: the rows\' options are the same object, its `at` moved');
+  assert.deepEqual(app.runView.steps.map((s, i) => s === w.steps[i]), [true, true, true, true], 'and no step is a new object');
+});
+
+/* The time: a run's screen is worked out for runNow, which tickRun moves on, once a second at most, only when the
+   time has changed something the run shows (runShows, checklists.js). B is due 30 minutes after A, done a minute ago. */
+test('the seconds going by work a run out again only when a countdown\'s words change, or a step\'s time comes', c => {
+  const { Alpine } = watching(c), app = Alpine.reactive(Object.defineProperties(runScreen(), Object.getOwnPropertyDescriptors(alerts))), t0 = app.runNow;
+  c.mock.timers.enable({ apis: ['Date'], now: t0 });
+  Object.assign(app, { route: { name: 'run' }, keepAwake(){}, chime(){}, notify(){} });
+  globalThis.document.visibilityState = 'visible';
+  const v = app.runView;
+  assert.equal(v.steps[1].countText, 'in 29m');
+  for (let s = 1; s <= 59; s++) { c.mock.timers.setTime(t0 + s * 1000); app.tickRun(); }
+  assert.equal(app.runView, v, '59 seconds on: still "in 29m", and the same run');
+  c.mock.timers.setTime(t0 + 60000); app.tickRun();
+  const w = app.runView;
+  assert.deepEqual([w === v, w.steps[1].countText], [false, 'in 28m'], 'a minute on: its words change, so it\'s worked out again');
+  assert.deepEqual(w.steps.map((s, i) => s === v.steps[i]), [true, false, true, true], 'and only the step counting down is a new object');
+  // In its last minute, each second; and as its time comes, the run goes to it.
+  c.mock.timers.setTime(t0 + 29 * 60000 - 5000); app.tickRun();
+  assert.equal(app.runView.steps[1].countText, 'in 5s');
+  c.mock.timers.setTime(t0 + 29 * 60000 - 4000); app.tickRun();
+  assert.equal(app.runView.steps[1].countText, 'in 4s');
+  app.view.run.at = 2;                                                      // C is on the card
+  c.mock.timers.setTime(t0 + 29 * 60000 + 2000); app.tickRun();
+  assert.deepEqual([app.runView.steps[1].late, app.runView.steps[1].countText], [true, '2s late']);
+});
+
+test('what a run shows of the time: each countdown\'s words, whether its time has come, and the day', () => {
+  const now = new Date(2026, 9, 7, 14, 20).getTime(), steps = [{ id: 1, done: true, dueAt: now - 5000 }, { id: 2, done: false, dueAt: now + 18 * 60000 }, { id: 3, done: false, dueAt: Infinity }];
+  const at = ms => runShows(steps, now + ms);
+  assert.equal(at(0), at(59000), 'the same for the 59 seconds its words are the same');
+  assert.notEqual(at(0), at(60000), 'other words: "in 17m"');
+  assert.notEqual(at(18 * 60000 - 3000), at(18 * 60000 - 2000), 'each second of its last minute');
+  assert.notEqual(at(18 * 60000 - 1), at(18 * 60000), 'its time come');
+  assert.notEqual(at(18 * 60000), at(18 * 60000 + 1), 'and gone by: late');
+  assert.equal(runShows([steps[0], steps[2]], now), runShows([steps[0], steps[2]], now + 3600000), 'no step with a time to come: the same all day');
+  assert.notEqual(runShows([], now), runShows([], now + 10 * 3600000), 'until the day changes');
+  assert.equal(countText(18 * 60000), 'in 18m');
+  assert.equal(countText(-12 * 60000 - 30000), '12m late');
 });
 
 test('the step card shows who’s on its step, as its row does, until it’s done', () => {

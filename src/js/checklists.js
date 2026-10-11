@@ -205,6 +205,15 @@ export function durText(ms){
   for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60], ['s', 1]]) if (left >= n) { parts.push(Math.floor(left / n) + u); left %= n; }
   return parts.slice(0, 2).join(' ') || '0s';
 }
+/* A countdown's words, `left` ms before its time: "in 18m", to the second in its last minute, then "12m late" (to the
+   second in its first minute late). */
+export const countText = left => left >= 0 ? 'in ' + durText(left < 6e4 ? Math.ceil(left / 1e3) * 1e3 : Math.ceil(left / 6e4) * 6e4) : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
+/* Everything a run's screen shows that the time alone changes, as one string: for each step not done that has a time
+   (`dueAt`, ms), whether it has come, whether it's within a day, and its countdown's words; and the day it is, which
+   "Due tomorrow" and "Started at 9:02" go by. While it's the same, the run needn't be worked out again (tickRun,
+   app/alerts.js): an idle run does no work as the seconds go by, and one counting down only when its words change. */
+export const runShows = (steps, now) => new Date(now).toDateString() + steps.filter(s => !s.done && Number.isFinite(s.dueAt))
+  .map(s => { const left = s.dueAt - now; return `|${s.id}:${left < 0 ? 'l' : ''}${left <= 0 ? 'c' : ''}${Math.abs(left) < 864e5 ? countText(left) : ''}`; }).join('');
 /* Where a run goes next, the one rule for it (parent-tasks-plan, part 2): the run's screen after a tick and as it opens,
    and a run's card on Today, as it opens and once the step it showed has gone. Steps go in order: of its `steps`
    ({id, done, counting: a countdown running, dueAt: when it ends}), the next open one after `from` (the step just done,

@@ -1,11 +1,11 @@
 // Starting a run, and working through one.
-import {andList, cache, motion, store, taskDrafts, ZERO} from '../util.js';
+import {andList, cache, memo, motion, raw, store, taskDrafts, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, comesRound, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, comesRound, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
@@ -20,6 +20,10 @@ const LAST_WAIT = 600;                           // how much longer than its ste
    {here, there: Vikunja's done time, while it's that tick's, kept: when}. Kept a day. */
 let ticks = null;
 const keptTicks = () => ticks ||= saved.get('ticks') || {};
+/* A run's steps as its screen last worked them out, by id, each with all of it as one string: a step that comes out
+   the same is that same object (runView), so its row and whatever else shows it have nothing to do when the run is
+   worked out again for another step's tick, or a countdown's words. */
+const lastSteps = new Map();
 
 export default {
   async openStart(id){
@@ -276,6 +280,7 @@ export default {
     if (!keep) { this.runInsert = newBox(); this.runAdded = null; }
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // opened on a step, from a list
     const before = last === undefined ? saved.get('run.' + id)?.run?.last : null;
+    this.runNow = Date.now();                                                // worked out for now (runView), not for when a run was last on screen
     this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null,
       last: keep?.last || last || (before?.notes ? {...before, held: null} : null)};
     this.saveRun();
@@ -316,8 +321,22 @@ export default {
     r.last = same ? {...last, held: r.last.held} : {...last, held: this.runView?.step?.id ?? null};
     this.saveRun();
   },
-  /* The run on screen, with what's waiting to be sent laid over it, so ticks, skips and notes show straight away. */
-  get runView(){
+  /* The run on screen, with what's waiting to be sent laid over it, so ticks, skips and notes show straight away.
+     Worked out once per change to what it reads (memo, util.js), not once for each of the 45 bindings that read it;
+     and the time it reads is runNow, which moves only when the time has changed something the run shows (tickRun), not
+     every second. A step that comes out as it did last time is the same object (lastSteps). */
+  get runView(){ return (this.runMemo ||= memo(function(){ return this.workOutRun(); })).call(this); },
+  // Its steps' rows' options, `g` in task-row.html: one object, so the step on the card changing (`at`) is all a row
+  // has to look at again. (Read as it is, raw: writing what was just read would ask for this again.)
+  get runRows(){
+    const v = this.runView, g = raw(this.runG);
+    if (!v) return this.runG;
+    const locked = v.finished || !this.canWrite(this.view.run.run.project_id);
+    if (g.at !== v.at) this.runG.at = v.at;
+    if (g.locked !== locked) this.runG.locked = locked;
+    return this.runG;
+  },
+  workOutRun(){
     const r = this.view.run;
     if (!r) return null;
     const me = this.user, myName = me?.name || me?.username || 'You';
@@ -367,7 +386,7 @@ export default {
        "The step before" and names are read among the template's steps only, as the plugin does: an inserted step has no
        time and isn't seen. A repeated one has no time of its own, but stands in for the one it repeats: a step timed from
        that counts from whichever of them was done last. */
-    const group = [], timing = [], place = [], now = serverTime(this.clock);
+    const group = [], timing = [], place = [], now = serverTime(this.runNow);
     base.forEach((s, i) => {
       group[i] = -1;
       if (!s.added) { group[i] = timing.length; timing.push(parseStep(s.tpl || '')); place.push(i); }
@@ -386,18 +405,21 @@ export default {
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
       s.counting = !s.done && t.offset !== null && !!due && soon;      // a countdown: pinned at the top while it runs
       s.dueAt = due ? +due : Infinity;
-      s.countText = !s.counting ? '' : left >= 0 ? 'in ' + durText(left < 6e4 ? Math.ceil(left / 1e3) * 1e3 : Math.ceil(left / 6e4) * 6e4) : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
+      s.countText = s.counting ? countText(left) : '';
       s.dueText = waitsOn ? 'Due ' + waitsOn : s.counting ? (left >= 0 ? 'Due ' : '') + s.countText : due ? 'Due ' + dueInfo(due.toISOString()).label : '';
     });
     // On the step a tick would go to (whereNext): the next open one in order, or a timed one whose time has come, unless
     // a step was put on the card.
+    // Each step that came out as it did last time is that same object.
+    steps.forEach((s, i) => { const all = JSON.stringify(s), was = lastSteps.get(s.id); if (was?.all === all) steps[i] = was.step; else lastSteps.set(s.id, {all, step: s}); });
+    if (lastSteps.size > steps.length) { const ids = new Set(steps.map(s => s.id)); for (const id of lastSteps.keys()) if (!ids.has(id)) lastSteps.delete(id); }
     const total = steps.length, doneCount = steps.filter(s => s.done).length, next = whereNext(steps, now);
     const allDone = total > 0 && doneCount === total, at = r.at ?? (next >= 0 ? next : total - 1);
     // Skipped steps are out of the way (doneCount, for the line), but not done (didCount, in words).
     const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length, didCount = doneCount - skippedN;
     // Who started it is its history: in the summary once every step is done, and at the top of its ⋯ (runStarted). Who
     // it's for is in its row's slot, at the top of the screen (forSlot).
-    const started = startedText(this.runStarter(r.run), r.run.created, {now: new Date(serverTime(this.clock))});
+    const started = startedText(this.runStarter(r.run), r.run.created, {now: new Date(now)});
     const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish';
     // Finished, or every step done, no step is on screen until one is tapped.
     // (Where the run is, the steps listed under the card say: tapping one puts it on the card.)
@@ -708,6 +730,7 @@ export default {
     ticks = Object.fromEntries(Object.entries(keptTicks()).filter(([, x]) => Date.now() - x.kept < 864e5));
     ticks[a.task] = {here: new Date(here).toISOString(), there, kept: Date.now()};
     saved.set('ticks', ticks);
+    this.runNow = Date.now();                                              // the run on screen is worked out with it (runView reads the kept ticks, which Alpine doesn't watch)
   },
   // What a sent act changed, on the run on screen at once, so it doesn't flicker back until Vikunja's copy arrives.
   applyAct(a, comment){

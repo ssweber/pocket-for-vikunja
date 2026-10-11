@@ -4,6 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { watching } from './reactive.mjs';
+import { memo } from '../../src/js/util.js';
 
 // Alpine 3.17.4's scheduler (MIT), as in its published dist/cdn.js, before Pocket patched it.
 const OWN = `
@@ -211,4 +213,47 @@ test('x-for keyed any other way, or with the list named, works out every key as 
     x.set([a, b]); x.set([b, a]); drawn(x, [b, a], expression + ' by ' + key);
     assert.equal(x.state.keyRuns, 4, expression + ' by ' + key + ': each key, each time');
   }
+});
+
+/* memo (util.js): a value worked out once per change to what working it out reads, on Alpine's own reactivity as
+   Pocket's copy has it (reactive.mjs). It sets its effect's own scheduler, which Alpine doesn't offer: an upgrade that
+   moves that fails here. */
+test('a memo is worked out once per change to what it reads, at once after a change, and tells what read it to read it again', c => {
+  const { Alpine, flush } = watching(c);
+  const data = Alpine.reactive({ steps: [{ id: 1, done: false }, { id: 2, done: false }], other: 0 }), self = { data };
+  let worked = 0, drawn = 0, seen = null;
+  const open = memo(function(){ worked++; return { n: this.data.steps.filter(s => !s.done).length }; });
+  const first = open.call(self);
+  assert.deepEqual([first.n, worked], [2, 1]);
+  assert.equal(open.call(self), first, 'read again with nothing changed: the same object');
+  data.other++;
+  assert.deepEqual([open.call(self), worked], [first, 1], 'something it doesn\'t read changed: still the same, not worked out again');
+  // Something that shows it: drawn once, and again only once the value is old.
+  Alpine.effect(() => { drawn++; seen = open.call(self).n; });
+  assert.deepEqual([drawn, seen, worked], [1, 2, 1]);
+  data.steps[0].done = true;                                                // deep inside what it read
+  assert.deepEqual([open.call(self).n, worked], [1, 2], 'read straight after a change, before Alpine has run anything: worked out afresh');
+  assert.equal(drawn, 1, 'what showed it hasn\'t run yet');
+  flush();
+  assert.deepEqual([drawn, seen, worked], [2, 1, 2], 'then it runs, once, and the value isn\'t worked out a third time');
+  data.steps[1].done = true; data.steps.push({ id: 3, done: false }); data.steps[2].done = true;
+  flush();
+  assert.deepEqual([drawn, seen, worked], [3, 0, 3], 'three changes before anything read it: worked out once');
+  flush();
+  assert.equal(drawn, 3, 'and nothing left to run');
+});
+
+test('a memo whose working out throws is worked out again the next time it\'s read', c => {
+  watching(c);
+  let n = 0;
+  const m = memo(() => { if (!n++) throw new Error('not yet'); return n; });
+  assert.throws(() => m(), /not yet/);
+  assert.equal(m(), 2);
+  assert.equal(m(), 2);
+});
+
+test('without Alpine (the unit tests), a memo is worked out each time it\'s read', () => {
+  let n = 0;
+  const m = memo(() => ++n);
+  assert.deepEqual([m(), m()], [1, 2]);
 });

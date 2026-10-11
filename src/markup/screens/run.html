@@ -22,7 +22,7 @@
       <div class="h3">Steps</div>
       <div class="list" id="run-steps">
         <!-- Its steps: the task row, as a run's screen has it (g.run, in task-row.html) -->
-        <template x-for="g in [{depth: {}, run: true, at: runView.at, locked: runView.finished || !canWrite(view.run.run.project_id)}]" :key="0"><template x-for="t in runView.steps" :key="t.id">
+        <template x-for="g in [runRows]" :key="0"><template x-for="t in runView.steps" :key="t.id">
           <!-- include markup/task-row.html -->
         </template></template>
       </div>

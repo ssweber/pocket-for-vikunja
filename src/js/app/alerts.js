@@ -6,6 +6,7 @@ import {store} from '../util.js';
 import {serverTime} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
 import {todayAt, todayOrder} from '../lists.js';
+import {runShows} from '../checklists.js';
 
 let sound = null;                                // the AudioContext, made on a tap so the browser lets it play
 let wakeLock = null, askingLock = false, lockFailed = 0;
@@ -71,6 +72,9 @@ export default {
     this.keepAwake(!!v && !v.finished && v.steps.some(s => s.counting));
     if (!v) return;
     const now = serverTime(Date.now());
+    // The run is worked out again only when the time has changed something it shows: a countdown's words, a step's
+    // time come, the day (runShows). Otherwise the screen has nothing to do this second.
+    if (runShows(v.steps, now) !== runShows(v.steps, serverTime(this.runNow))) this.runNow = Date.now();
     for (const s of v.steps) {
       if (!s.counting || s.dueAt > now || now - s.dueAt > 6e4) continue;   // only as it happens, not long after
       const k = s.id + '@' + s.dueAt;
