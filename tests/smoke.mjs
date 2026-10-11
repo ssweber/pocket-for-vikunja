@@ -215,12 +215,12 @@ try {
     await synced(page);
     if ((await apiTask()).due_date !== due) throw new Error('held and let go where it was, its date changed to ' + (await apiTask()).due_date);
   });
-  /* A full swipe right is done (1b): the row glides on off the screen, leaving a gap at its height, "Done" and Undo,
-     until the batch clears; only `done` is sent, so Undo puts it back at its progress. Only the row moves on the way
-     (rows-and-sheet-fixes-plan, part 2): one animation of its transform, over the green and its ✓, which stay where
-     they are. A partly done tick tapped is done, whatever its progress, and tapped again, open with its progress as it
-     was. */
-  await step('a-full-swipe-is-done-with-undo-and-a-partly-done-tick-ticks', async () => {
+  /* A full swipe right is done (1b): the row glides on off the screen, and is shown in its place as one ticked is, done,
+     with no gap, until the batch clears; only `done` is sent, so its tick puts it back at its progress. Only the row
+     moves on the way (rows-and-sheet-fixes-plan, part 2): one animation of its transform, over the green and its ✓,
+     which stay where they are. A partly done tick tapped is done, whatever its progress, and tapped again, open with its
+     progress as it was. */
+  await step('a-full-swipe-is-done-as-a-tick-is-and-a-partly-done-tick-ticks', async () => {
     const sent = page.waitForRequest(r => r.method() === 'PATCH' && /\/tasks\/\d+$/.test(r.url()) && JSON.parse(r.postData() || '{}').done === true);
     const h = await page.locator(row).evaluate(el => el.offsetHeight);
     await slideProgress(row, 100, async () => {
@@ -237,18 +237,18 @@ try {
     if (Math.max(...slid.map(s => s.x)) < .9 * slid[0].w) throw new Error(`the row went only to ${Math.max(...slid.map(s => s.x))}px of ${slid[0].w}`);
     if (!slid.some(s => s.moving.includes('row:transform'))) throw new Error('the row never glided: it only jumped');
     if (still(slid)) throw new Error('as the row left, ' + still(slid));
-    await expect(uncovered(page)).toHaveCount(0);                                // faded away over the gap
-    await expect(page.locator(row)).toHaveClass(/\bswept\b/);
-    await expect(page.locator(`${row} > .del-gap`)).toContainText('Done');
-    const undo = page.locator(row).getByRole('button', { name: 'Undo: ' + title });
+    await expect(uncovered(page)).toHaveCount(0);                                // faded away over the row, done
+    await expect(page.locator(row)).toHaveClass(/\bdone\b/);
+    await expect(page.locator(`${row} > .del-gap`)).toHaveCount(0);
+    await expect(page.locator(`${row} .title`)).toBeVisible();                   // its title in sight, struck through, as a ticked one's
+    const undo = page.locator(row).getByRole('button', { name: 'Mark not done: ' + title, exact: true });
     await expect(undo).toBeVisible();
     if (await page.locator(row).evaluate(el => el.offsetHeight) !== h) throw new Error('its height changed');
     await undo.click();
-    await expect(page.locator(row)).not.toHaveClass(/\bswept\b/);
     await expect(page.locator(row)).not.toHaveClass(/\bdone\b/);
     await synced(page);
     let t = await apiTask();
-    if (t.done || Math.round(t.percent_done * 100) !== 50) throw new Error(`after Undo: done ${t.done}, percent_done ${t.percent_done}`);
+    if (t.done || Math.round(t.percent_done * 100) !== 50) throw new Error(`after its tick: done ${t.done}, percent_done ${t.percent_done}`);
     await expect.poll(() => tickPct(row)).toBe(50);
     // Its tick, half filled: tapped, done (only `done` sent); tapped again, open at 50%.
     const ticked = page.waitForRequest(r => r.method() === 'PATCH' && /\/tasks\/\d+$/.test(r.url()) && JSON.parse(r.postData() || '{}').done === true);
@@ -691,7 +691,7 @@ try {
   /* A parent's ring (parent-tasks-plan, part 3): its progress worked out from its subtasks, a done one 100%, and written
      to its percent_done with the change that caused it, once; tapped, or its header swiped right all the way, it asks
      before completing its open subtasks with it, naming them in a sentence; a partial swipe springs back. Completed, the
-     card is a gap with Undo, which opens again exactly those. With one open subtask, no question: both done, with Undo.
+     card stays, done, its ring opening again exactly those. With one open subtask, no question: both done, the same way.
      Every subtask done, it waits for Close; a subtask added takes Close away and drops the ring back. Ticking a
      parent no longer closes its subtasks by itself (its tick is the ring). */
   await step('a-parents-ring-its-figure-and-the-question-it-asks', async () => {
@@ -745,33 +745,36 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await synced(page);
     if ((await subs()).filter(s => !s.done).length !== 3 || (await read()).done) throw new Error('Cancel changed something');
-    // Complete all: the card a gap, "Done" and Undo; all done in Vikunja. Undo opens again exactly those.
+    // Complete all: the card stays where it is, done, its title struck through, with no gap; all done in Vikunja. Its
+    // ring again opens exactly those.
     await ring.click();
     await page.click('#complete-yes');
-    await expect(card).toHaveClass(/\bswept\b/);
-    await expect(card.locator('.del-gap')).toContainText('Done');
+    await expect(card).toHaveClass(/\bdone\b/);
+    await expect(card.locator('.del-gap')).toHaveCount(0);
+    await expect(card.locator('.card-title')).toBeVisible();
     await synced(page);
     if (!(await read()).done || (await subs()).some(s => !s.done)) throw new Error('not all completed in Vikunja');
-    await card.getByRole('button', { name: 'Undo: ' + parentTitle }).click();
-    await expect(card).not.toHaveClass(/\bswept\b/);
+    await expect(ring).toHaveAccessibleName('Mark not done: ' + parentTitle);
+    await ring.click();
+    await expect(card).not.toHaveClass(/\bdone\b/);
     await synced(page);
     if ((await read()).done) throw new Error('the parent is still done');
-    if (JSON.stringify((await subs()).filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify(open.map(s => s.id).sort())) throw new Error('after Undo, open: ' + JSON.stringify((await subs()).map(s => [s.title, s.done])));
-    // Two of its open subtasks ticked: with one open, its ring asks nothing: it and the parent are done, with Undo.
+    if (JSON.stringify((await subs()).filter(s => !s.done).map(s => s.id).sort()) !== JSON.stringify(open.map(s => s.id).sort())) throw new Error('after its ring again, open: ' + JSON.stringify((await subs()).map(s => [s.title, s.done])));
+    // Two of its open subtasks ticked: with one open, its ring asks nothing: it and the parent are done, its ring the undo.
     for (const s of open.slice(1)) await page.getByRole('button', { name: 'Mark done: ' + s.title, exact: true }).click();
     await synced(page);                                                        // (saved, so marked: the batch is counting)
     await later(3000);
     await expect(card.locator('.card-rows > .row')).toHaveCount(1);
     await expect(ring.locator('.n')).toHaveText('3/4');
     await ring.click();
-    await expect(card).toHaveClass(/\bswept\b/);
+    await expect(card).toHaveClass(/\bdone\b/);
     if (await page.isVisible('#sheet')) throw new Error('it asked, with one open subtask');
     await synced(page);
     if (!(await read()).done || (await subs()).some(s => !s.done)) throw new Error('not both done');
-    await card.getByRole('button', { name: 'Undo: ' + parentTitle }).click();
-    await expect(card).not.toHaveClass(/\bswept\b/);
+    await ring.click();
+    await expect(card).not.toHaveClass(/\bdone\b/);
     await synced(page);
-    if ((await read()).done || (await subs()).filter(s => !s.done).length !== 1) throw new Error('Undo: ' + JSON.stringify((await subs()).map(s => [s.title, s.done])));
+    if ((await read()).done || (await subs()).filter(s => !s.done).length !== 1) throw new Error('its ring again: ' + JSON.stringify((await subs()).map(s => [s.title, s.done])));
     // The last one ticked: nothing closes by itself. "All subtasks done", and Close.
     await page.getByRole('button', { name: 'Mark done: ' + open[0].title, exact: true }).click();
     await synced(page);
@@ -794,12 +797,18 @@ try {
     await expect(ring.locator('.n')).toHaveText('4/5');
     await synced(page);
     await expect.poll(async () => Math.round((await read()).percent_done * 100)).toBe(80);
-    // Ticked, then Close: the parent done, a gap with Undo, gone with the batch.
+    // Ticked, then Close: the parent done, its card still there, struck through, its Close gone and its line's height
+    // kept; gone with the batch.
     await page.getByRole('button', { name: 'Mark done: ' + late, exact: true }).click();
     await synced(page);
     await later(3000);
-    await card.getByRole('button', { name: 'Close' }).click();
-    await expect(card).toHaveClass(/\bswept\b/);
+    await expect(card.locator('.card-close')).toBeVisible();                  // (its last row has folded away)
+    await expect(card.locator('.card-rows > .row')).toHaveCount(0);
+    const closing = await card.evaluate(el => el.offsetHeight);
+    await card.locator('.close-btn').click();                                  // (its ring says Close too, and does the same)
+    await expect(card).toHaveClass(/\bdone\b/);
+    await expect(card.locator('.close-btn')).toBeHidden();
+    if (await card.evaluate(el => el.offsetHeight) !== closing) throw new Error('closed, its card changed height');
     await synced(page);
     if (!(await read()).done) throw new Error('Close didn\'t complete it');
     await later(3000);
@@ -2943,7 +2952,7 @@ try {
       await expect(page.locator('#complete-note')).toHaveText('The one that repeats stays as it is.');
       await expect(page.locator('#complete-yes')).toHaveText('Complete it');
       await page.click('#complete-yes');
-      await expect(page.locator(`#view ${cardOf(parent.title)}`)).toHaveClass(/\bswept\b/, { timeout: 20000 });
+      await expect(page.locator(`#view ${cardOf(parent.title)}`)).toHaveClass(/\bdone\b/, { timeout: 20000 });
       await synced(page);
       if (!(await get(parent.id)).done) throw new Error('the parent isn\'t done');
       const s = await get(sub.id);
@@ -2988,11 +2997,11 @@ try {
       if (!(await get(r.id)).done) throw new Error('Try again did not tick it');
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
-  /* A full swipe's gap shows when the row has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2):
-     with its reply held back, the row is the gap, "Done" and Undo, the green gone from over it, and its Undo tapped
-     then is taken once the answer is in. A save not made: the gap gives way to the row, which says so, with Try
-     again, as a tick's does. */
-  await step('a-full-swipes-gap-shows-as-the-row-goes-and-gives-way-when-its-not-saved', async () => {
+  /* A full swipe's row shows done when it has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2):
+     with its reply held back, the row is in its place, ticked, the green gone from over it, and its tick tapped
+     then is taken once the answer is in. A save not made: the row is open again, and says so, with Try again, as a
+     tick's does. */
+  await step('a-full-swipes-row-shows-done-as-it-goes-and-is-open-again-when-its-not-saved', async () => {
     const r = await make(`Pocket smoke gap ${stamp}`, { due_date: todayAt(23) }), R = rowOf(r.title), at = `**/api/v2/tasks/${r.id}`;
     let answer = () => {}, sent = 0;
     const answered = new Promise(ok => { answer = ok; });
@@ -3003,37 +3012,36 @@ try {
       await refreshToday();
       await page.route(at, hold);
       await swipeRow(page, R, 100);
-      await expect(page.locator(R)).toHaveClass(/\bswept\b/);
-      await expect(page.locator(`${R} > .del-gap`)).toContainText('Done');
+      await expect(page.locator(R)).toHaveClass(/\bdone\b/);
+      await expect(page.locator(`${R} > .del-gap`)).toHaveCount(0);
       await expect(uncovered(page)).toHaveCount(0);
-      const undo = page.locator(R).getByRole('button', { name: 'Undo: ' + r.title });
+      const undo = page.locator(R).getByRole('button', { name: 'Mark not done: ' + r.title, exact: true });
       await expect(undo).toBeVisible();
-      if (!sent || (await get(r.id)).done) throw new Error('the gap only came with Vikunja\'s answer');
+      if (!sent || (await get(r.id)).done) throw new Error('it only showed done with Vikunja\'s answer');
       await undo.click();
-      await expect(page.locator(R)).toHaveClass(/\bswept\b/);                  // nothing to undo yet
+      await expect(page.locator(R)).toHaveClass(/\bdone\b/);                   // nothing to undo yet
       answer();
-      await expect(page.locator(R)).not.toHaveClass(/\bswept\b/);
       await expect(page.locator(R)).not.toHaveClass(/\bdone\b/);
       await synced(page);
-      if ((await get(r.id)).done) throw new Error('its Undo, tapped before the answer, was lost');
+      if ((await get(r.id)).done) throw new Error('its tick, tapped before the answer, was lost');
       await page.unroute(at, hold);
-      // Not saved: the gap is there as the row goes, then gives way to the row and its line.
+      // Not saved: it shows done as the row goes, then is open again, with its line.
       await page.route(at, cut);
       await swipeRow(page, R, 100);
       const line = rowLine(page, 'Not saved: no connection');
       await expect(line).toBeVisible({ timeout: 20000 });
-      await expect(page.locator(R)).not.toHaveClass(/\bswept\b/);
+      await expect(page.locator(R)).not.toHaveClass(/\bdone\b/);
       await expect(page.locator(`${R} > .del-gap`)).toHaveCount(0);
       await expect(uncovered(page)).toHaveCount(0);
       await page.unroute(at, cut);
       await line.getByRole('button', { name: 'Try again' }).click();
-      await expect(page.locator(R)).toHaveClass(/\bswept\b/);
+      await expect(page.locator(`${R}.leaving`)).toHaveClass(/\bdone\b/);
       await synced(page);
       if (!(await get(r.id)).done) throw new Error('Try again did not make it done');
     } finally { answer(); await page.unroute(at, hold); await page.unroute(at, cut); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
   /* With less motion asked for on the phone, a swipe only changes things: the row still follows the finger, but let go,
-     it's back, or gone with its gap in its place, with no glide and no fade (motion(), util.js, asked as it's let go). */
+     it's back, or done in its place, with no glide and no fade (motion(), util.js, asked as it's let go). */
   await step('with-less-motion-a-row-let-go-is-only-there', async () => {
     const r = await make(`Pocket smoke still ${stamp}`, { due_date: todayAt(23) }), R = rowOf(r.title);
     try {
@@ -3044,10 +3052,10 @@ try {
       let seen = await slideSeen(page);
       if (seen.some(s => s.moving.length) || seen.slice(3).some(s => s.x || s.under !== null)) throw new Error('let go, it moved back: ' + JSON.stringify(seen.slice(0, 6)));
       await swipeRow(page, R, 100, { start: 25, check: () => watchSlide(page, R, 400) });
-      await expect(page.locator(R)).toHaveClass(/\bswept\b/);
+      await expect(page.locator(R)).toHaveClass(/\bdone\b/);
       seen = await slideSeen(page);
       if (seen.some(s => s.moving.length) || seen.slice(3).some(s => s.x || s.under !== null)) throw new Error('let go past half, it moved off: ' + JSON.stringify(seen.slice(0, 6)));
-      if (await page.locator(R).evaluate(el => el.getAnimations({ subtree: true }).length)) throw new Error('its gap faded in');
+      if (await page.locator(R).evaluate(el => el.getAnimations({ subtree: true }).length)) throw new Error('it faded in, done');
       await synced(page);
       if (!(await get(r.id)).done) throw new Error('never done');
     } finally { await page.emulateMedia({ reducedMotion: null }); await api('/tasks/' + r.id, { method: 'DELETE' }); }
@@ -3284,7 +3292,7 @@ try {
     await expect(page.getByRole('button', { name: 'Done (1)' })).toBeVisible();
   });
   /* A parent completed from its ring, after asking (parent-tasks-plan, part 3), closes its open subtasks with it: its
-     card a gap with "Done" and Undo. Undo opens those two again, and not the one done before. */
+     card stays, done, those two ticked on it. Its ring again opens those two again, and not the one done before. */
   const doneIn = async (...names) => Promise.all(names.map(async n => (await (await api('/tasks/' + order.tasks[n].id)).json()).done));
   const echoCard = () => page.locator(`#view .day-card[data-id="${order.tasks.Echo.id}"]`);
   await step('a-parent-completed-from-its-ring-and-undone-opens-only-those', async () => {
@@ -3300,15 +3308,16 @@ try {
     await echoCard().locator('.card-head > .ring').click();
     await expect(page.locator('#complete-note')).toHaveText(/^Its 2 open subtasks will be marked done too: echo (one|two) \d+ and echo (one|two) \d+\.$/);
     await page.click('#complete-yes');
-    await expect(echoCard()).toHaveClass(/\bswept\b/);
+    await expect(echoCard()).toHaveClass(/\bdone\b/);
+    await expect(echoCard().locator('.card-rows > .row.done')).toHaveCount(2);
     await synced(page);
     if (JSON.stringify(await doneIn('Echo', 'echo one', 'echo two')) !== '[true,true,true]') throw new Error('not all closed in Vikunja');
-    await echoCard().getByRole('button', { name: `Undo: Echo ${stamp}` }).click();
-    await expect(echoCard()).not.toHaveClass(/\bswept\b/);
-    await expect(echoCard().locator('.card-rows > .row')).toHaveCount(2);
+    await echoCard().locator('.card-head > .ring').click();
+    await expect(echoCard()).not.toHaveClass(/\bdone\b/);
+    await expect(echoCard().locator('.card-rows > .row:not(.done)')).toHaveCount(2);
     await synced(page);
     const now = await doneIn('Echo', 'echo one', 'echo two', 'echo done');
-    if (JSON.stringify(now) !== '[false,false,false,true]') throw new Error('after Undo, done: ' + now);
+    if (JSON.stringify(now) !== '[false,false,false,true]') throw new Error('after its ring again, done: ' + now);
   });
   /* A parent done with subtasks still open (ticked done on the web, which leaves them): a card, its title struck
      through, over them, not left out with them on their own at the top. It can't be moved, nor be what the add box adds
@@ -3922,8 +3931,9 @@ ${footName('Hooks')}`);
       if (!opened.from || !opened.to || opened.tab !== 'rgba(0, 0, 0, 0)') throw new Error('opened, its footer: ' + JSON.stringify(opened));
       await more.click();
       await expect(cardRows(P.title)).toHaveText([C.title]);
-      // Ticked: done where it is, the card's height kept, until the batch clears; then the next comes in, and the ring
-      // counts it.
+      // Ticked: done where it is, the card's height kept; then the next comes in, and the ring counts it. A collapsed
+      // card's top row gives its place a second and a half after the tick, sooner than the batch's three (clearTops,
+      // leaving.js), and not at once.
       const h = await card.evaluate(el => el.offsetHeight);
       await line.locator('> .check').click();
       await expect(line).toHaveClass(/\bdone\b/);
@@ -3931,8 +3941,10 @@ ${footName('Hooks')}`);
       await synced(page);
       if (!(await get(C.id)).done) throw new Error('never done');
       if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height');
-      await later(3000);
-      await expect(title).toHaveText(B.title);
+      await later(500);
+      await expect(title).toHaveText(C.title);
+      await later(1100);
+      await expect(title).toHaveText(B.title, { timeout: 400 });               // (well before the batch's three seconds)
       await expect(line).not.toHaveClass(/\bdone\b/);
       await expect(ring.locator('.n')).toHaveText('1/3');
       if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height as the batch cleared');
@@ -3948,10 +3960,11 @@ ${footName('Hooks')}`);
       await swipeRow(page, `${cardOf(P.title)} > .card-head`, 'back', { one: true });
       await page.waitForTimeout(300);
       if (await page.isVisible('#sheet')) throw new Error('a partial swipe on its header opened something');
-      // A full swipe right on its top row: done, the gap with Undo in its place; once the batch clears, the next slides
-      // up, the last one open, so no More.
+      // A full swipe right on its top row: done in its place, as ticked, with no gap; then the next slides up, the last
+      // one open, so no More.
       await slideProgress(stepLine(P.title), 100, null, 50);
-      await expect(page.locator(`${cardOf(P.title)} .card-rows > .row.swept`)).toContainText('Done');
+      await expect(page.locator(`${cardOf(P.title)} .card-rows > .row.done`)).toContainText(B.title);
+      await expect(page.locator(`${cardOf(P.title)} .del-gap`)).toHaveCount(0);
       await synced(page);
       await later(3000);
       await expect(title).toHaveText(A.title);
@@ -3959,26 +3972,28 @@ ${footName('Hooks')}`);
       await expect(ring.locator('.n')).toHaveText('2/3');
       await synced(page);
       if (!(await get(B.id)).done || (await get(A.id)).done || (await get(P.id)).done) throw new Error('more than that subtask was changed');
-      // Its ring tapped, with one open: no question; it and the task completed, the card a gap with Undo.
+      // Its ring tapped, with one open: no question; it and the task completed, the card still there, done, and its
+      // ring again opens both.
       await ring.click();
-      await expect(card).toHaveClass(/\bswept\b/);
+      await expect(card).toHaveClass(/\bdone\b/);
       if (await page.isVisible('#sheet')) throw new Error('it asked, with one open subtask');
-      await card.getByRole('button', { name: 'Undo: ' + P.title }).click();
-      await expect(card).not.toHaveClass(/\bswept\b/);
       await synced(page);
-      if ((await get(P.id)).done || (await get(A.id)).done) throw new Error('Undo left them done');
+      await ring.click();
+      await expect(card).not.toHaveClass(/\bdone\b/);
+      await synced(page);
+      if ((await get(P.id)).done || (await get(A.id)).done) throw new Error('its ring again left them done');
     } finally { for (const t of [A, B, C, P, Q]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
-  /* A card's top row done is still its top row until the batch clears, however long Vikunja takes to answer (user,
+  /* A card's top row done is still its top row until its wait is over, however long Vikunja takes to answer (user,
      2026-10-10: "the next subtask sorta races the animation, cuts it short, pulls up into its spot, THEN the 'undo'
      shows up"). A card is worked out from what's done, and a subtask is done on the phone the moment it's let go, so
      its row is held from then (holdRow, leaving.js), not from the answer. With the save's reply held back, a full
      swipe right watched frame by frame: the swiped row is the card's one row all along, on the page and gliding all
-     the way off, the next subtask never under the card's header; its gap, "Done" and Undo, is drawn as the slide ends
-     and not before, with nothing answered; and only when the batch clears does the next slide up. Its tick tapped,
-     the same: done in its place, the next not coming up until the batch clears. */
-  await step('a-cards-top-row-done-stays-its-top-row-until-the-batch-clears-however-late-the-answer', async () => {
+     the way off, the next subtask never under the card's header; it's shown done, with no gap, with nothing answered;
+     and only once it's answered and its wait is over does the next slide up. Its tick tapped, the same: done in its
+     place, the next not coming up until then. */
+  await step('a-cards-top-row-done-stays-its-top-row-until-its-wait-is-over-however-late-the-answer', async () => {
     const P = await make(`Pocket smoke top ${stamp}`, { due_date: todayAt(23) });
     const [A, B, C] = [await make(`Pocket smoke top A ${stamp}`), await make(`Pocket smoke top B ${stamp}`), await make(`Pocket smoke top C ${stamp}`)];
     await under(P, [A, B, C]);
@@ -4007,25 +4022,27 @@ ${footName('Hooks')}`);
       if (gaveWay(seen).length) throw new Error('its top row gave way while it slid: ' + JSON.stringify(gaveWay(seen).slice(0, 3)));
       if (Math.max(...seen.map(s => s.x)) < .9 * seen[0].w) throw new Error(`its slide was cut short, at ${Math.max(...seen.map(s => s.x))}px of ${seen[0].w}`);
       if (still(seen)) throw new Error('as its top row left, ' + still(seen));
-      if (seen.some(s => s.gap && s.x)) throw new Error('its gap was drawn while its row was still sliding');
-      if (!seen.at(-1).gap) throw new Error('no gap as the slide ended, with Vikunja still to answer');
+      if (seen.some(s => s.gap)) throw new Error('a gap was drawn for a row done');
       if ((await get(A.id)).done) throw new Error('(its save was answered: nothing was held back)');
       await expect(title).toHaveText(A.title);
-      await expect(page.locator(line)).toHaveClass(/\bswept\b/);
-      await expect(card.getByRole('button', { name: 'Undo: ' + A.title })).toBeVisible();
+      await expect(page.locator(line)).toHaveClass(/\bdone\b/);
+      await expect(card.getByRole('button', { name: 'Mark not done: ' + A.title, exact: true })).toBeVisible();
       await expect(card.locator('.card-rows > .row')).toHaveCount(1);
       await expect(more).toHaveAccessibleName('More');
       if (await card.evaluate(el => el.offsetHeight) !== h) throw new Error('the card changed height');
-      // Answered: nothing changes on the card. The batch clears: the next slides up.
+      // Unanswered, it waits as long as it takes: its wait starts with its mark, once Vikunja has answered.
+      await later(2000);
+      await expect(title).toHaveText(A.title);
+      // Answered: nothing changes on the card. Its wait over: the next slides up.
       a.answer();
       await synced(page);
       if (!(await get(A.id)).done) throw new Error('never done');
       await expect(title).toHaveText(A.title);
-      await expect(page.locator(line)).toHaveClass(/\bswept\b/);
+      await expect(page.locator(line)).toHaveClass(/\bdone\b/);
       await later(3000);
       await expect(title).toHaveText(B.title);
-      await expect(page.locator(line)).not.toHaveClass(/\bswept\b/);
-      // Its tick tapped, its save unanswered: done where it is, still the card's one row, until the batch clears.
+      await expect(page.locator(line)).not.toHaveClass(/\bdone\b/);
+      // Its tick tapped, its save unanswered: done where it is, still the card's one row, until its wait is over.
       await b.on();
       await watchSlide(page, line, 600);
       await page.locator(line).locator('> .check').click();
@@ -4043,6 +4060,65 @@ ${footName('Hooks')}`);
     } finally {
       a.answer(); b.answer(); await a.off(); await b.off();
       for (const t of [A, B, C, P]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
+  /* A subtask's ⋯ has "Turn into its own task" (ownTask, actions.js): it's taken out from under its task, in Vikunja
+     too, on both sides, and put right after it on the project's list; the top of its sheet says so, with Undo, which
+     puts it back under its task. Its old task's ring counts without it. A task that's under none doesn't have it. */
+  await step('a-subtask-turned-into-its-own-task-and-back', async () => {
+    const P = await make(`Pocket smoke own parent ${stamp}`), [A, B] = [await make(`Pocket smoke own A ${stamp}`), await make(`Pocket smoke own B ${stamp}`)];
+    await under(P, [A, B]);
+    await placeIn(await listView(home2), [[P, 50000], [A, 100], [B, 200]]);
+    const card = page.locator(`#view ${cardOf(P.title)}`), n = card.locator('.card-head > .ring .n'), item = page.getByRole('menuitem', { name: 'Turn into its own task' });
+    const line = placeLine(page, 'sheet:top'), parentLink = page.locator('#d-parent');
+    const linked = async () => [((await get(B.id)).related_tasks?.parenttask || []).map(x => x.id), ((await get(P.id)).related_tasks?.subtask || []).map(x => x.id).sort((x, y) => x - y)];
+    try {
+      await toastGone();
+      await page.evaluate(id => { location.hash = '#/project/' + id; }, home2);
+      await loaded(page);
+      await page.click('#btn-refresh');
+      await page.waitForSelector('#btn-refresh:not([disabled])');
+      await expect(n).toHaveText('0/2', { timeout: 15000 });
+      // The task itself, under none: no such item in its ⋯.
+      await card.locator('.card-head > .card-open').click();
+      await expect(ownTitle()).toHaveText(P.title);
+      await page.click('#d-more');
+      await expect(page.locator('#d-menu')).toBeVisible();
+      await expect(item).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+      // Its subtask's ⋯: out from under it, said at the top of its sheet, the path over its title without its task.
+      await card.locator(`.row[data-id="${B.id}"] > .body`).click();
+      await expect(ownTitle()).toHaveText(B.title);
+      await expect(parentLink).toHaveText(P.title);
+      await page.click('#d-more');
+      await item.click();
+      await expect(line).toContainText(`Now its own task, no longer under “${P.title}”`, { timeout: 15000 });
+      await expect(parentLink).toHaveCount(0);
+      await synced(page);
+      if (JSON.stringify(await linked()) !== JSON.stringify([[], [A.id]])) throw new Error('in Vikunja, its tasks over it and its old task\'s subtasks: ' + JSON.stringify(await linked()));
+      // Undo: under its task again.
+      await line.getByRole('button', { name: 'Undo' }).click();
+      await expect(parentLink).toHaveText(P.title, { timeout: 15000 });
+      await synced(page);
+      if (JSON.stringify(await linked()) !== JSON.stringify([[P.id], [A.id, B.id].sort((x, y) => x - y)])) throw new Error('after Undo: ' + JSON.stringify(await linked()));
+      // Again, and the sheet closed: on the list it's a row of its own, right after its old task's card, whose ring
+      // counts without it.
+      await page.click('#d-more');
+      await item.click();
+      await expect(parentLink).toHaveCount(0, { timeout: 15000 });
+      await synced(page);
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+      await expect(n).toHaveText('0/1', { timeout: 15000 });
+      await expect(page.locator(`#view .item[data-id="${P.id}"] + .item[data-id="${B.id}"] > .row`)).toHaveCount(1, { timeout: 15000 });
+      await expect(card.locator(`.row[data-id="${B.id}"]`)).toHaveCount(0);
+    } finally {
+      for (const t of [A, B, P]) await api('/tasks/' + t.id, { method: 'DELETE' });
+      await page.evaluate(() => { location.hash = '#/today'; });
+      await loaded(page);
     }
   });
 

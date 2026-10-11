@@ -118,8 +118,8 @@ export const laidUnder = (page, sel, kind = '.row-prog') => page.locator(sel).ev
    screen), how wide the layer is (`under`) and where its right edge is (`right`); and everything on the page that's
    moving or changing size then (`moving`: 'row:transform' for the row moved by its transform, else whose it is, by
    its class, and what of it). And whether it's still the row it was among its list's: `there` (still on the page),
-   `at` (which of its list's rows it is, the first 0), `rows` (how many the list has), and `gap` (its gap, "Done" or
-   "Deleted", drawn): a card's top row let go must stay its top row, with no other coming up meanwhile. Only the row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform,
+   `at` (which of its list's rows it is, the first 0), `rows` (how many the list has), and `gap` (its gap, "Deleted",
+   drawn: never for one done): a card's top row let go must stay its top row, with no other coming up meanwhile. Only the row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform,
    over a layer that stays still. slideSeen() waits for the frames. still(frames) says what else moved, as a
    sentence, or '' if nothing did. */
 export const watchSlide = (page, sel, ms = 700) => page.locator(sel).evaluate((row, ms) => {

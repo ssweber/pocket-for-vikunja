@@ -1040,7 +1040,7 @@ try {
   await step('a-run-finished-from-its-ring-in-its-project', async () => {
     // On its project's list a run in progress is a card, open, its steps not done its rows (parent-tasks-plan, part 2).
     // Its ring asks first, naming them in a sentence, then finishes it as Finish run does, through the outbox, and leaves
-    // its steps as they are: the card a gap with "Done" and Undo, which opens it again.
+    // its steps as they are: the card stays where it is, done, and its ring again opens it again.
     const { id } = await startRun();
     const title = (await api('/tasks/' + id)).title, want = (await subtasks(id)).map(s => s.title);
     // The project's group headed `name`: its count, and its tasks' titles, rows' and cards' (a card's rows too).
@@ -1070,11 +1070,13 @@ try {
       await page.click('#complete-yes');
       await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
       if ((await subtasks(id)).some(x => x.done)) throw new Error('a step was ticked with it');
-      // Shown done where it is, a gap with Undo, until the batch clears: Undo opens it again.
-      await expect(card).toHaveClass(/\bswept\b/);
-      await card.getByRole('button', { name: 'Undo: ' + title }).click();
-      await until('Undo never opened it', async () => !(await api('/tasks/' + id)).done);
-      await expect(card).not.toHaveClass(/\bswept\b/);
+      // Shown done where it is, its title struck through, with no gap, until the batch clears: its ring opens it again.
+      await expect(card).toHaveClass(/\bdone\b/);
+      await expect(card.locator('.del-gap')).toHaveCount(0);
+      await synced(page);
+      await ring.click();
+      await until('its ring never opened it again', async () => !(await api('/tasks/' + id)).done);
+      await expect(card).not.toHaveClass(/\bdone\b/);
       // Finished again, it goes with the batch, to Done, as a task does: its steps not done aren't on the list to stay
       // over.
       await synced(page);
@@ -1475,7 +1477,7 @@ try {
   });
 
   await step('swipe-a-step-to-set-its-progress', async () => {
-    // As on a task's row: a plain swipe, in snaps of 25%. Sent like a tick; a full swipe is Done, with its ✅ and Undo.
+    // As on a task's row: a plain swipe, in snaps of 25%. Sent like a tick; a full swipe is Done, with its ✅, as its box tapped.
     // Last time's notes answer late this time, after the run is on screen: a step's go on its card, above the steps, so
     // they're held back from the card on screen, and nothing under a finger moves as they come.
     const last = ((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).filter(x => x.done).sort((a, b) => Date.parse(b.done_at) - Date.parse(a.done_at))[0];
@@ -1530,7 +1532,7 @@ try {
     await until('the progress set offline never reached Vikunja', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 75);
     await toastGone().catch(() => {});
     // Swiped all the way and held while the run's screen redraws (every second, for countdowns): still full; let go,
-    // done with its ✅, the gap in its place, "Done" and Undo, which unticks it.
+    // done with its ✅, in its place, with no gap, as its box tapped is; its box unticks it.
     await slide(100, 75, async () => {
       await page.waitForTimeout(1500);
       await expect(uncovered(page)).toHaveClass(/\bfull\b/);
@@ -1540,10 +1542,12 @@ try {
       await expect(uncovered(page)).toHaveClass(/\bsq\b/);
     });
     await until('a full swipe never made it done', async () => { const t = await task(step2); return t.done && t.reactions?.['✅']?.some(u => u.id === me.id); });
-    await expect(page.locator(row)).toHaveClass(/\bswept\b/);
-    await expect(page.locator(`${row} > .del-gap`)).toContainText('Done');
-    await page.locator(row).getByRole('button', { name: 'Undo: Warm up the press' }).click();
-    await until('Undo never made it not done', async () => !(await task(step2)).done);
+    await expect(page.locator(row)).toHaveClass(/\bdone\b/);
+    await expect(page.locator(`${row} > .del-gap`)).toHaveCount(0);
+    await expect(page.locator('#said')).toHaveText('Done: Warm up the press');
+    await expect(uncovered(page)).toHaveCount(0);
+    await page.locator(row).getByRole('button', { name: 'Mark not done: Warm up the press', exact: true }).click();
+    await until('its box never made it not done', async () => !(await task(step2)).done);
   });
 
   await step('a-time-after-a-step-named-in-words', async () => {
