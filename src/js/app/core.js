@@ -51,6 +51,7 @@ export default () => ({
   cap: newBox(),
   cursor: null,                                // on a project's list, the row quick add adds subtasks at, lit up: {id, under, wait} (quickadd.js)
   lit: {},                                     // that row's id -> true, for the row itself to read (light, quickadd.js)
+  shown: {at: '', groups: {}},                 // the screen's lists as they're drawn, one object each while it's this screen (shownGroups, sending.js)
   // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
   // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → Users search.
   access: {}, userKnown: {}, accessBlocked: false,

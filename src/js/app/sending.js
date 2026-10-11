@@ -1,12 +1,12 @@
 // Sending what was added to Vikunja, through the outbox, and the "Waiting to send" rows.
-import {cache, userCache, ZERO} from '../util.js';
+import {cache, raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
 import {addedWhere, cancelName, doneText} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
-import {keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {intoGroup, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -402,6 +402,20 @@ export default {
       if (sameGroup(was, out)) return was;
       lastGroups.set(g.key, out);
       return out;
+    });
+  },
+  /* The same groups as the screen draws them (screens/lists.html): for each, one object kept for as long as the
+     screen is the same one (`shown`, by the group's key), with the group written into it (intoGroup, lists.js): only
+     what changed, its depths and its cards' subtasks one task at a time. A row leaving with the batch, or one added,
+     used to hand every row of its list a new group, and each row worked all of itself out again: on 660 rows, half a
+     second, and seconds on a slow phone. Now the list draws the one row, and the others aren't asked. */
+  get shownGroups(){
+    const r = this.route, at = r.name + ':' + (r.id ?? '');
+    if (raw(this.shown).at !== at) this.shown = {at, groups: {}};
+    const kept = this.shown.groups;
+    return this.listGroups.map(g => {
+      if (!raw(kept)[g.key]) kept[g.key] = {depth: {}, kids: new Map()};
+      return intoGroup(kept[g.key], g, raw);
     });
   },
   get listBase(){

@@ -2,8 +2,9 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { batchMs, doneParentIds, drawnOf, FIRST_ROWS, FRAME_MS, LATER_MS, NEAR_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { batchMs, doneParentIds, drawnOf, FIRST_ROWS, FRAME_MS, intoGroup, LATER_MS, NEAR_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
+import { watching } from './reactive.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
 import views, { renderSeq } from '../../src/js/app/views.js';
@@ -326,4 +327,49 @@ test('search\'s done matches show 50, counted all, with a row for 50 more', asyn
   await app.showMore('done');
   assert.deepEqual(ids(g.tasks), Array.from({ length: 120 }, (_, k) => k + 1));
   assert.equal(app.moreOf('done'), null, 'all shown: no row');
+});
+
+/* What every row costs (rows-and-sheet-fixes-plan, part 6): a list's group as the screen draws it is one object for
+   as long as the screen is the same (shownGroups, app/sending.js), with each group listGroups works out written into
+   it (intoGroup): only what changed, its depths and its cards' subtasks a task at a time. A row reads its list's
+   options off it, so a row gone or one added asks nothing of the rows it changed nothing for. On Alpine's own
+   reactivity (reactive.mjs): each thing a row might read is watched, and counted each time it's asked again. */
+test('a group as the screen draws it stays one object: a row gone or added changes its lists, and only what read something changed is asked again', c => {
+  const { Alpine, flush } = watching(c);
+  const a = { id: 1 }, b = { id: 2 }, s = { id: 3, related_tasks: { parenttask: [{ id: 2 }] } }, x = { id: 4 }, n = { id: 9, related_tasks: { parenttask: [{ id: 2 }] } };
+  const group = (tasks, more = {}) => ({ key: 'open', title: 'Open', cards: 'list', delete: true, reorder: true, ...nestSubtasks(tasks), before: 0, ...more });
+  const g = Alpine.reactive({ depth: {}, kids: new Map() }), into = (tasks, more) => { intoGroup(g, group(tasks, more), Alpine.raw); flush(); };
+  into([a, b, s, x]);
+  assert.deepEqual([Alpine.raw(g).tasks, { ...Alpine.raw(g).depth }, [...Alpine.raw(g.kids)]], [[a, b, s, x], { 1: 0, 2: 0, 3: 1, 4: 0 }, [[2, [s]]]]);
+  const asked = {}, watch = (what, read) => Alpine.effect(() => { asked[what] = (asked[what] || 0) + 1; read(); });
+  watch('row 1', () => [g.cards, g.delete, g.depth[1], g.kids.get(1)]);
+  watch('card 2', () => [g.cards, g.depth[2], g.kids.get(2)]);
+  watch('row 3', () => g.depth[3]);
+  watch('the list', () => g.tasks.length);
+  watch('row 9', () => g.depth[9]);                                          // (not there yet)
+  const once = { 'row 1': 1, 'card 2': 1, 'row 3': 1, 'the list': 1, 'row 9': 1 };
+  into([a, b, s, x]);
+  assert.deepEqual(asked, once, 'worked out again, the same: nothing is asked again');
+  into([a, b, s]);                                                           // x leaves with the batch
+  assert.deepEqual(asked, { ...once, 'the list': 2 }, 'a row gone: the list draws, and no other row is asked');
+  assert.equal(4 in Alpine.raw(g).depth, false);
+  into([a, b, s, n]);                                                        // a subtask added under 2
+  assert.deepEqual(asked, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }, 'a subtask added: its card, the list and its own row');
+  assert.deepEqual([...Alpine.raw(g.kids).get(2)], [s, n]);
+  into([a, b, s, n], { before: 3 });
+  assert.deepEqual([Alpine.raw(g).before, asked], [3, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }], 'a field changed is written, and whoever read it would be asked');
+  into([a]);
+  assert.deepEqual([{ ...Alpine.raw(g).depth }, Alpine.raw(g.kids).size, asked['row 1']], [{ 1: 0 }, 0, 1], 'all but one gone: its depths and subtasks with them, and the row left was never asked again');
+  into([a], { cards: null });
+  assert.equal(asked['row 1'], 2, 'the list\'s own options changed: every row');
+});
+
+test('a group written into the one the screen keeps: what it no longer has is taken off, with no Alpine too', () => {
+  const a = { id: 1 }, g = { depth: {}, kids: new Map() };
+  const first = intoGroup(g, { key: 'done', fold: true, open: true, tasks: [a], ...nestSubtasks([a]), count: 3 });
+  assert.equal(first, g, 'the same object');
+  assert.deepEqual([g.tasks, g.depth, g.count, g.open], [[a], { 1: 0 }, 3, true]);
+  const tasks = g.tasks;
+  intoGroup(g, { key: 'done', fold: true, tasks: [a], ...nestSubtasks([a]) });
+  assert.deepEqual(['open' in g, 'count' in g, g.tasks === tasks], [false, false, true], 'fields gone are taken off; a list that\'s the same is the list it had');
 });

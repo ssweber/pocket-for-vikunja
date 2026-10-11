@@ -2,7 +2,7 @@
          the open ones, folded until it's tapped (loaded then), and kept open or folded for each project. A long screen's
          rows are drawn a batch at a time, its first screenful first (drawn, views.js). -->
     <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div x-effect="hint.pick && pickHint()">
-      <template x-for="g in listGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
+      <template x-for="g in shownGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
         <!-- Nothing open: said above the Done section -->
         <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
         <template x-if="!g.fold"><div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="(g.count ?? g.tasks.length) ? (g.count ?? g.tasks.length).toLocaleString() : ''"></span>

@@ -68,7 +68,8 @@ export default {
     if (!rows.length) return all.length && (!t.done || this.leaving[t.id] || closing.has(t.id)) && all.every(s => this.subDone(s, run)) ? this.closingCard(t, g, run, all) : null;
     const card = {id: t.id, run, step: rows[0], steps: rows, rows, n: rows.length, peek: null, more: rows.length - 1, open: true, folds: false,
       all, ring: this.ringOf(t, waiting), closes: false, project: t.project_id};
-    card.g = {depth: {}, card, key: g.key, delete: g.delete, reorder: g.reorder, heads: g.heads, tasks: g.tasks};
+    // (its list's heads and tasks read when a row asks, rowMeta, not here: every card would be made again as any row came or went)
+    card.g = {depth: {}, card, key: g.key, delete: g.delete, reorder: g.reorder, get heads(){ return g.heads; }, get tasks(){ return g.tasks; }};
     return card;
   },
 

@@ -118,6 +118,27 @@ const sameField = (a, b) => a === b || (Array.isArray(a) ? Array.isArray(b) && s
   : !!a && !!b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(b) && !(b instanceof Map) && sameKeys(a, b, (x, y) => x === y));
 const sameKeys = (a, b, same) => { const ks = Object.keys(a); return ks.length === Object.keys(b).length && ks.every(k => k in b && same(a[k], b[k])); };
 export const sameGroup = (a, b) => !!a && !!b && sameKeys(a, b, sameField);
+/* A group as the screen draws it (shownGroups, app/sending.js): `to`, one object kept while the screen is the same,
+   with group `from` (listGroups') written into it, each field only if it changed (sameField), its depths (`depth`,
+   by task id) and its subtasks (`kids`, a Map by task id) entry by entry. So a row, which reads its list's options
+   off it (g.cards, g.depth[t.id], a card its g.kids.get(t.id)), is asked again only about what changed for it. `to`
+   is read as it is (`raw`), not as Alpine watches it: what's compared here isn't something the caller shows. */
+export function intoGroup(to, from, raw = x => x){
+  const was = raw(to);
+  for (const k of Object.keys(was)) if (!(k in from)) delete to[k];
+  for (const [k, v] of Object.entries(from)) {
+    if (k === 'depth' && was.depth && v) {
+      const d = raw(was.depth);
+      for (const id of Object.keys(d)) if (!(id in v)) delete to.depth[id];
+      for (const id of Object.keys(v)) if (d[id] !== v[id]) to.depth[id] = v[id];
+    } else if (k === 'kids' && was.kids instanceof Map && v instanceof Map) {
+      const m = raw(was.kids);
+      for (const id of [...m.keys()]) if (!v.has(id)) to.kids.delete(id);
+      for (const [id, list] of v) if (!m.has(id) || !sameField(raw(m.get(id)), list)) to.kids.set(id, list);
+    } else if (!sameField(raw(was[k]), v)) to[k] = v;
+  }
+  return to;
+}
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
 /* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
    days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task
