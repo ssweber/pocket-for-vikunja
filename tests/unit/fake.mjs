@@ -9,7 +9,8 @@ const reply = (body, status = 200) => new Response(JSON.stringify(body), { statu
 /* Tasks by id, which GET, PATCH and DELETE /tasks/:id read and change, as Vikunja does: a repeating task marked done
    moves on to its next date instead (where Pocket thinks Vikunja moves it, vikunjaNext), and a task read has its
    subtasks as they are now, one deleted gone (related_tasks). A task is made by POST /projects/:id/tasks, with the next
-   id, put under another by POST /tasks/:id/relations, and looked for by its title with GET /tasks?q=, as the outbox
+   id, put under another by POST /tasks/:id/relations (taken out again by DELETE /tasks/:id/relations/subtask/:other,
+   which takes both sides off, as Vikunja does), and looked for by its title with GET /tasks?q=, as the outbox
    does for a line (LINE_STEPS). Every request is kept in
    `requests`. `trouble(request)` can make one go wrong: 'offline' (it never reaches Vikunja), 'lost' (it does, and the
    reply is lost on the way back), or an HTTP status to answer with. */
@@ -30,6 +31,7 @@ export function fakeVikunja(tasks = []){
     if (typeof trouble === 'number') return reply({ message: `HTTP ${trouble} from the fake` }, trouble);
     const id = +(req.path.match(/^\/tasks\/(\d+)$/) || [])[1], t = v.tasks.get(id);
     const into = +(req.path.match(/^\/projects\/(\d+)\/tasks$/) || [])[1], over = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/relations$/) || [])[1]);
+    const cut = req.path.match(/^\/tasks\/(\d+)\/relations\/(\w+)\/(\d+)$/);
     let res;
     if (into && method === 'POST') {
       const made = { id: Math.max(100, ...v.tasks.keys()) + 1, done: false, percent_done: 0, due_date: '0001-01-01T00:00:00Z', ...req.body, project_id: into,
@@ -41,6 +43,11 @@ export function fakeVikunja(tasks = []){
       ((over.related_tasks ||= {}).subtask ||= []).push({ id: sub.id });
       ((sub.related_tasks ||= {}).parenttask ||= []).push({ id: over.id });
       res = reply(req.body);
+    } else if (cut && method === 'DELETE') {
+      const [, a, kind, b] = cut, back = { subtask: 'parenttask', parenttask: 'subtask' }[kind];
+      const drop = (x, k, id) => { const r = v.tasks.get(x)?.related_tasks; if (r?.[k]) r[k] = r[k].filter(s => s.id !== id); };
+      if (!v.tasks.get(+a)?.related_tasks?.[kind]?.some(s => s.id === +b)) res = reply({ message: 'The task relation does not exist.' }, 404);
+      else { drop(+a, kind, +b); drop(+b, back, +a); res = reply({ message: 'Successfully deleted.' }); }
     } else if (req.path === '/tasks' && method === 'GET') res = reply({ items: [...v.tasks.values()].filter(x => x.title === new URL(url).searchParams.get('q')) });
     else if (!id) res = reply({ message: `the fake has no ${method} ${req.path}` }, 404);
     else if (!t) res = reply({ message: 'The task does not exist.' }, 404);

@@ -15,7 +15,7 @@ import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../pro
 import {dayWord, doneText, movedText, movedTo, notMoved, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
-import {listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
+import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
@@ -375,6 +375,60 @@ export default {
       if (kids.length) this.say(`Moved, with ${kids.length} subtask${kids.length === 1 ? '' : 's'}`, {place: 'sheet:props'});
     } catch (e) { this.say(`Moved, but not all its subtasks: ${e.message}`, {place: 'sheet:props', cls: 'failed'}); }
     this.sheet.dirty = true;
+  },
+  /* "Make it its own task" (the sheet's ⋯, on a subtask's sheet): the open task is taken out from under the task it's
+     under (each, if it's under more than one), and is a task of its own in its project. In its old parent's project,
+     with the parent's place in the List view known, it goes right after it: before the task after that, where the
+     project's list is on screen to say which, else a little after the parent. Said at the sheet's top, with an Undo,
+     which puts it back under what it was, where it was among the subtasks. Its old parent's worked-out progress is
+     written again, without it (writeFigure: with no subtask left, it keeps its last figure, as when its last is
+     deleted). Not a run's step or a template's, which their order line names (canOwn). */
+  get canOwn(){ return this.sheet.kind === 'task' && this.canEdit && !!this.parentTask && !this.checklistRole; },
+  async ownTask(){
+    const t = this.sheet.task;
+    if (!this.canOwn) return;
+    const parents = t.related_tasks.parenttask.map(p => ({id: p.id, title: p.title, project_id: p.project_id})), first = parents[0], out = [];
+    const view = listViewOf(this.projById.get(t.project_id))?.id, at = this.positions[first.id], was = this.positions[t.id];
+    // Vikunja's copies as they are now, on the sheet and the rows; each parent's is read as its figure is written.
+    const fresh = async () => {
+      const now = await this.readTask(t.id).catch(() => null) || await this.readTask(t.id).catch(() => null);
+      if (now) { cache.set(t.id, now); this.syncTask(now); if (this.sheet.task?.id === t.id) this.showTask(now); }
+      await Promise.all(parents.map(p => this.writeFigure(p.id).catch(() => {})));
+      if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]);              // the add box, on it: no longer "after" it under its task
+      this.sheet.dirty = true;
+    };
+    const place = async pos => {
+      const had = this.positions[t.id];
+      this.positions[t.id] = pos;
+      const r = await this.act({op: 'position', task: t.id, view, pos, run: null});
+      if (r.status !== 'error') return;
+      this.positions[t.id] = had;
+      this.say(notMoved(r.error), {place: 'sheet:top', cls: 'failed'});
+    };
+    try {
+      // (Not under it any more already, taken out elsewhere: the same.)
+      for (const p of parents) { await patiently(() => api(`/tasks/${p.id}/relations/subtask/${t.id}`, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; }); out.push(p); }
+    } catch (e) {
+      this.say(notSaved(e), {place: 'sheet:top', cls: 'failed', action: {label: 'Try again', fn: () => this.ownTask()}});
+      if (out.length) await fresh();
+      return;
+    }
+    let moved = false;
+    if (view && at && first.project_id === t.project_id) {
+      const g = this.route.name === 'project' && this.view.project?.id === t.project_id && this.listGroups.find(x => x.key === 'open');
+      const tops = g ? g.tasks.filter(x => !g.depth[x.id] && !x.pending) : [], i = tops.findIndex(x => x.id === first.id);
+      await place(between(at, i < 0 ? at : this.positions[tops[i + 1]?.id] || null));
+      moved = true;
+    }
+    await fresh();
+    const undo = async () => {
+      try {
+        for (const p of out) await patiently(() => this.linkSubtask(p.id, t.id));
+        if (moved && was) await place(was);
+      } catch (e) { this.say('Not undone: ' + (e instanceof NetError ? 'no connection' : e.message), {place: 'sheet:top', cls: 'failed'}); }
+      await fresh();
+    };
+    this.say(`It's its own task now, no longer under ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },

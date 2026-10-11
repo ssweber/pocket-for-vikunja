@@ -763,3 +763,36 @@ test('Escape closes the task\'s menu before its sheet, the focus back on ⋯', (
     assert.equal(did.length, 2, 'nothing open: nothing done');
   } finally { delete document.getElementById; }
 });
+
+/* "Make it its own task" (the sheet's ⋯ on a subtask's sheet: ownTask): the subtask is taken out from under its task,
+   put right after it in the project's List view, and its old parent's worked-out progress is written without it. Said
+   at the sheet's top, with an Undo, which puts it back under it, where it was. Not for a run's step or a template's. */
+test('a subtask made its own task leaves its parent, goes right after it, and the parent\'s progress is worked out without it; Undo puts it back', async () => {
+  const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0.5, project_id: 5, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } };
+  const kid = (id, f = {}) => ({ id, title: 'Kid ' + id, done: false, percent_done: 0, project_id: 5, related_tasks: { parenttask: [{ id: 10, title: 'Pack the van', project_id: 5 }] }, ...f });
+  const v = fakeVikunja([parent, kid(11, { done: true }), kid(12)]), app = component(tasks, actions), moves = [];
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors({
+    positions: { 10: 1000, 11: 100, 12: 200 }, projById: new Map([[5, { id: 5, views: [{ id: 7, view_kind: 'list', position: 1 }] }]]), cursor: null,
+    canEdit: true, checklistRole: null, get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
+    showTask(t){ Object.assign(this.sheet.task, t); }, linkSubtask: sending.linkSubtask,
+    act: async a => { moves.push([a.op, a.task, a.view, a.pos]); return { status: 'sent' }; } }));
+  app.keep(v.task(10)); app.keep(v.task(12));
+  app.sheet = { kind: 'task', task: structuredClone(v.task(12)) };
+  app.checklistRole = 'step';
+  assert.equal(app.canOwn, false, 'not a run\'s step');
+  app.checklistRole = null;
+  assert.equal(app.canOwn, true);
+  await app.ownTask();
+  assert.deepEqual([v.task(12).related_tasks.parenttask, v.task(10).related_tasks.subtask.map(s => s.id)], [[], [11]], 'out from under it, on both sides');
+  assert.deepEqual(moves, [['position', 12, 7, 1000.01]], 'right after its old parent: its list not on screen to say what\'s next, a little after it');
+  assert.deepEqual([app.sheet.task.related_tasks.parenttask, app.tasks[12].related_tasks.parenttask, app.canOwn], [[], [], false], 'on its sheet and its row');
+  assert.deepEqual(patches(v).at(-1), [10, { percent_done: 1 }], 'its old parent\'s progress, without it');
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['It\'s its own task now, no longer under “Pack the van”', 'sheet:top', 'Undo']);
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(12).related_tasks.parenttask.map(p => p.id), v.task(10).related_tasks.subtask.map(s => s.id)], [[10], [11, 12]], 'Undo: under it again');
+  assert.deepEqual([moves.at(-1), patches(v).at(-1)], [['position', 12, 7, 200], [10, { percent_done: 0.5 }]], 'where it was among the subtasks, and counted again');
+  // Vikunja turns it down: said, with Try again, and nothing changed.
+  v.trouble = r => r.method === 'DELETE' ? 403 : null;
+  await app.ownTask();
+  assert.deepEqual([app.toast.action.label, app.toast.cls, v.task(12).related_tasks.parenttask.map(p => p.id), moves.length], ['Try again', 'failed', [10], 2]);
+});

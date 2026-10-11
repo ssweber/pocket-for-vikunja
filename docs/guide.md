@@ -72,8 +72,9 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   order, even one still counting down, with its countdown; a timed step whose time has come goes before it. Under the
   top row, a small tab with ⌄ opens the card where it is, listing every open subtask, and ⌃ folds it again; it also
   folds by itself once you scroll it off the screen, and every card folds when you leave the screen. A card with one
-  open subtask has no tab. Ticked, the top row stays on the card, ticked, until the ticks leave together; then the next
-  slides up. On a project's list a card is always open, its subtasks in their order, and it moves, held by its header,
+  open subtask has no tab. Ticked, the top row stays on the card, ticked, for a second and a half after your finger
+  lifts, sooner than other ticked rows leave, as the next subtask is waiting behind it; then the next slides up into
+  its place, and nothing around the card moves. On a project's list a card is always open, its subtasks in their order, and it moves, held by its header,
   as a task does. A card is set apart from the rows around it by a small gap. Done subtasks are in the task's sheet, or
   on a run's screen. A screen reader hears the card named by its title, with its ring's figure: "1 of 4 subtasks done,
   25%".
@@ -156,7 +157,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   passes move aside to make room, with a tick at each, and near the top or bottom of the screen the list scrolls on. A
   card moves the same way, held by its header, with its subtasks.
   Let go, and it's there, in Vikunja too. A task moves only among the tasks at its level: a top-level task among the
-  top-level ones, a subtask among its parent's subtasks (moving one to another parent is for later). Today and search
+  top-level ones, a subtask among its parent's subtasks (moving one to another parent is for later). A subtask's **⋯**
+  has **Make it its own task**: it's taken out from under its task and put right after it on the project's list, and
+  the top of its sheet says so, with **Undo**; its old task's ring is worked out without it. A checklist's steps
+  don't have it. Today and search
   keep their own order, and a done task, one waiting to be sent, or one in a project shared with you to read stays
   where it is. Without a connection, a move is kept and sent later; one Vikunja turns down goes back, and its row says
   why. The task's **⋯** has **Move up** and **Move down**, and **Alt+↑** and **Alt+↓** move the row that has the focus:
