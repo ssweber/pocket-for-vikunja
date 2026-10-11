@@ -338,9 +338,10 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* A row's Delete: under the whole row, and at its end the button, as wide as the row rests open on it (--open:
    DELETE_W, progress.js), which is all of it in sight then. A light red, its word in red, while a finger moves the
    row and letting go wouldn't delete; solid red, its word light, whenever it would act: at rest with the row open on
-   it, a button to tap (.open); once letting go deletes (.full: past half the row, a full swipe); and tapped, the row
-   on its way off (.sure: sweep, progress.js). As a row's progress turns solid green at its full point. The colour
-   says it all: its word stays where it is, at the row's end. */
+   it, a button to tap (.open: from then on, swiped again or shut, so it changes colour once); once letting go
+   deletes (.full: past half the row, a full swipe); and tapped, the row on its way off (.sure: sweep, progress.js).
+   As a row's progress turns solid green at its full point. The colour says it all: its word stays where it is, at
+   the row's end. */
 .row-red{background:var(--danger-soft)}
 .row-red:is(.open,.full,.sure){background:var(--danger)}
 .row-del{position:absolute;top:0;bottom:0;right:0;width:var(--open,88px);display:flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;color:var(--danger);font-size:15px;font-weight:700}

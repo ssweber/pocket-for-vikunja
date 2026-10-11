@@ -85,7 +85,7 @@ const home = row => glide(row, 0).then(there => { if (there) { row.classList.rem
 const shut = (row = opened) => {
   if (!row) return;
   if (opened === row) opened = null;
-  row.classList.remove('swipe-full'); laid.get(row)?.el.classList.remove('full', 'open');
+  row.classList.remove('swipe-full'); laid.get(row)?.el.classList.remove('full');
   return home(row);
 };
 // A new swipe takes the row as it is: whatever it was on its way to is over, and what was under it gone. One open on
@@ -97,17 +97,16 @@ const fresh = row => { stopGlide(row); if (opened === row) return; unlay(row); r
    one, until letting go would delete: styles.css), the row's whole size, with a real button at its end, named for
    the task (`name`), which is all of it in sight while the row rests open on it. So it never moves or changes size:
    let go a third of the way across the button, the row glides to rest open on it; sooner, back home over it, and
-   then it goes; at rest there, a button, its red is solid. Past the left side's full point, its red turns solid, its word where it was, and letting go there
-   deletes it, as tapping the button does (`remove`, which takes the row on off the screen: sweep). Made by the
-   swipe, it isn't in the page until then: a keyboard or a screen reader deletes from the task's ⋯ instead. (The
-   specimen draws its stills with it.) */
+   then it goes; at rest there, a button, its red is solid, and stays so, swiped again or shut. Past the left side's
+   full point, its red turns solid, its word where it was, and letting go there deletes it, as tapping the button
+   does (`remove`, which takes the row on off the screen: sweep). Made by the swipe, it isn't in the page until then:
+   a keyboard or a screen reader deletes from the task's ⋯ instead. (The specimen draws its stills with it.) */
 export const swipeOf = (row, remove, name = '') => ({
   base: opened === row ? -DELETE_W : 0,
   begin(){
     if (opened !== row) shut();
     row.classList.add('swiping');
-    // Open on it already: swiped again, it's no longer a button at rest, so its red is light again until the full point.
-    if (laid.get(row)?.el.matches('.row-red')) { laid.get(row).el.classList.remove('open'); return; }
+    if (laid.get(row)?.el.matches('.row-red')) return;    // open on it already: solid red, and it stays so
     const el = document.createElement('span'), del = document.createElement('button');
     el.className = 'row-red'; el.style.setProperty('--open', DELETE_W + 'px');
     del.type = 'button'; del.className = 'row-del'; del.textContent = 'Delete'; del.setAttribute('aria-label', 'Delete ' + name);
@@ -124,7 +123,7 @@ export const swipeOf = (row, remove, name = '') => ({
     if (to === 'delete') { remove(); return; }            // from where the finger left it (sweep)
     if (to !== 'open') { shut(row); return; }
     row.classList.remove('swiping', 'swipe-full'); row.classList.add('swiped');
-    laid.get(row)?.el.classList.remove('full'); laid.get(row)?.el.classList.add('open');   // at rest, a button: solid red
+    laid.get(row)?.el.classList.remove('full'); laid.get(row)?.el.classList.add('open');   // at rest, a button: solid red, from now on
     opened = row; openAt = scrolled(); glide(row, -DELETE_W);
   },
   // Gone at once: its stops take the space (revealOf).
