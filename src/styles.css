@@ -324,9 +324,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
   background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
 .row-prog[data-side=left] .ring{left:10px}
 .row-prog[data-side=right] .ring{right:10px}
-/* a card's header uncovers only its 38px strip: its ring smaller there, its middle 22px down, as the header's own
-   ring's and title's are, clear of the strip's edges */
-.row-prog.head .ring{top:7px;width:30px;height:30px;padding:3px}
+/* a card's header uncovers only its 44px strip: its ring smaller there, and centred in it, clear of its edges, as
+   the header's own ring and title are */
+.row-prog.head .ring{top:calc(50% - 16px);width:32px;height:32px;padding:3px}
 .row-prog.sq .ring{border-radius:10px}
 .row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
 /* at 100% (a done row swiped left, before its first stop), the ring is a done tick: filled, with its ✓ */
@@ -419,13 +419,12 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .day-card{position:relative}
 /* its header: the parent's ring, where its rows' ticks are, then its title, which opens it, on one line: the title cut
    short with "…", its priority's bars, small, and when it's due, short, on the title's baseline as on a row. The ring
-   and the title's line are 22px down (rows-and-sheet-fixes-plan, part 2: the title's 24px line with 10px over it), as
-   is the ring a swipe uncovers there (.row-prog.head), and only 4px under it, so its first row is close under its
-   title: a 38px strip. Its taps stay 44px tall, the ring's and the title's reaching 6px over its first row's top. */
-.card-head{position:relative;z-index:1;display:flex;align-items:flex-start;gap:12px;min-height:38px;padding:0 14px;background:var(--surface)}
-.card-head > .ring{margin:8px 0 0}
-.card-head > .ring::after{bottom:-6px}
-.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px -6px 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
+   and the title's line are centred in its 44px strip (rows-and-sheet-fixes-plan, part 2: 22px down, the title's 24px
+   line with 10px over and under it), as is the ring a swipe uncovers there (.row-prog.head). It lies over the top of
+   its first row (.card-rows, below), so the strip is whole whatever that row's colour, and its taps are its 44px. */
+.card-head{position:relative;z-index:1;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;background:var(--surface)}
+.card-head > .ring{margin:0}
+.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px 0 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
 .card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
@@ -437,7 +436,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
 .day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
-.card-close{display:flex;align-items:center;gap:12px;min-height:52px;margin-top:6px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
+.card-close{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
 .card-close > span{flex:1;min-width:0}
 .close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700}
 .close-btn:disabled{background:var(--sunk);color:var(--muted)}
@@ -461,7 +460,11 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
     radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
 .day-card.deleted:not(.sweeping) > :not(.del-gap,.row-under){visibility:hidden}
 /* its rows, one level in, as a subtask under its parent (.row.sub: its smaller tick, its step in), the lines between
-   them starting at the ticks, the tick's tap still the whole gutter and the swipe's space the whole row */
+   them starting at the ticks, the tick's tap still the whole gutter and the swipe's space the whole row. The first
+   is close under the header's title: the rows start 6px up, under the foot of the header, where both are empty, so
+   every row keeps its height and the next takes the first's place without a move. That row's top 6px is the
+   header's: of its colour, and of what it uncovers swiped, only what's under the header shows. */
+.card-rows:has(> .row){margin-top:-6px}
 .card-rows > .row{--tick:var(--sub-tick);--row-inset:calc(14px + var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
 .card-rows > .row:not(:first-of-type) > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
