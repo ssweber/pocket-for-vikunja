@@ -151,6 +151,9 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec{positi
 .row.one-line .title{position:relative;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
 /* what only a screen reader hears, kept at the start, not past the end of a title cut short */
 .row.one-line .title .sr,.card-open > .sr{left:0}
+/* A card's row there has the least room, a step in and its priority, time and slot at its right: its title goes on to
+   a second line, and is cut short there. What's at its right stays on the first line. */
+.card-rows > .row.one-line .title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow-wrap:anywhere}
 .when{flex:none;display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);white-space:nowrap}
 .when .dot{margin:0}
 /* its priority's bars, small, before its time, as on a card's heading (one-concept-plan, part 4) */
