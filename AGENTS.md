@@ -29,5 +29,8 @@ the code is organised. Check any change to how Pocket looks or what a finger doe
 - Commits follow conventional commits: `feat(checklists): let a step whose step to count from is gone pick the start`.
   Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`. Work happens on `dev`, merged into `main` by
   pull request; a release is a GitHub release with a tag like `v0.1.0` (see `docs/roadmap.md`).
+- `docs/development.md` is a map: where things are, the rules that hold across files, and what has tripped people
+  up. What a function or a file does is a comment where it is, not a line there. A change edits `development.md`
+  only when it changes the map or one of those rules, and `npm run lint` fails when the file passes its size.
 - Discuss a change to the UI before building it. Plans for features go in `docs/design/`, and every change is checked
   against `docs/design-rules.md`.

@@ -1,7 +1,8 @@
 // What ESLint can't check, run with it by npm run lint: no colour is written out (#hex, rgb(), rgba(), hsl(), hsla())
 // in src/styles.css outside its :root blocks, nor anywhere in src/markup/. Colours are the custom properties set in
 // :root, with their dark mode values beside them, so a colour written anywhere else would be the same in dark mode.
-// And no :style given an object in the markup: x-style does that (component.js says why).
+// And no :style given an object in the markup: x-style does that (component.js says why). And docs/development.md
+// stays a map: under a size, in lines short enough to read (below).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,7 +30,19 @@ for (const file of walk(join(ROOT, 'src', 'markup'))) {
   for (const m of html.matchAll(/(?:\s:|x-bind:)style="\s*\{/g)) report(file, html, m.index, ':style with an object starts a timer each time: use x-style');
 }
 
+// docs/development.md is the map: where things are, the rules that hold across files, and gotchas. It grew to 115 KB
+// once, a clause at a time, retelling what each function does, which the comments in the code already say. So it has
+// a size it may not pass, and its lines stay short enough to read (a table's row and a code block's line as they are).
+const DOC_BYTES = 24000, DOC_LINE = 120;
+const docFile = join(ROOT, 'docs', 'development.md'), doc = readFileSync(docFile);
+if (doc.length > DOC_BYTES) problems.push(`${relative(ROOT, docFile)}: ${doc.length} bytes, over ${DOC_BYTES}: say what a function or a file does in a comment where it is, and keep here only the map and the rules that hold across files`);
+let fenced = false;
+doc.toString('utf8').split('\n').forEach((line, i) => {
+  if (line.startsWith('```')) fenced = !fenced;
+  else if (!fenced && !line.startsWith('|') && line.length > DOC_LINE) problems.push(`${relative(ROOT, docFile)}:${i + 1}: a line of ${line.length} characters, over ${DOC_LINE}`);
+});
+
 if (problems.length) {
-  console.error(problems.join('\n') + `\n${problems.length} colour${problems.length === 1 ? '' : 's'} written out`);
+  console.error(problems.join('\n') + `\n${problems.length} problem${problems.length === 1 ? '' : 's'}`);
   process.exit(1);
 }
