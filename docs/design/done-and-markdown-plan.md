@@ -49,8 +49,9 @@ What a copy never carries, so a paste never makes: notes, comments, photos, and 
 
 - At the start of a line, an x marker followed by a space makes the task arrive done: `x Call Sam`, `x - Call Sam`,
   `x- Call Sam`, `[x] Call Sam`, `- [x] Call Sam`, `* [X] Call Sam`, and `☑ Call Sam` and `☒ Call Sam` as now.
-- No space after the marker means it's a title: `x-ray the pipe` stays as typed. A bare capital `X ` is a title ("X
-  marks the spot").
+- No space after the marker means it's a title: `x-ray the pipe` stays as typed. A capital `X ` is a marker too
+  (changed 2026-10-11: an iPhone's keyboard starts a line with a capital, so a small x had to be typed on purpose);
+  "X marks the spot" is had by tapping its chip off.
 - `[ ]`, `- [ ]` and `* [ ]` mean open, and are taken off the title, as now.
 - A figure at the end of a line, `(50%)` or `50%`, is the task's own progress, as a slide would set it. On a line with
   lines under it, it's dropped: a parent's progress is worked out from its subtasks (rule 5).
@@ -121,7 +122,7 @@ The user's ask: a little marker that says "the first line is the parent". Two wa
 
 ## Tests
 
-- `tests/parse.mjs`: each done marker, `x-ray` and `X ` staying titles, open markers taken off, `(50%)` read and a
+- `tests/parse.mjs`: each done marker, a capital `X ` among them, `x-ray` staying a title, open markers taken off, `(50%)` read and a
   parent's figure dropped, headings, indenting and a first line's colon making parents, and a quoted title read as
   typed with the words after it read.
 - `tests/unit/share.test.mjs`: the new Markdown, with the user's prefixes in Todoist mode; and a copied task's and a

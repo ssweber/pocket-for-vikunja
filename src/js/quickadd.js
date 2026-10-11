@@ -267,9 +267,10 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
    start of a line still work. An empty checkbox, or a ✓ (often just a bullet), is an open item's. */
 const QUOTE_MARKS = /^(?:>\s*)+/, BULLET = /^(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}\)\s+)/, OPEN_BOX = /^(?:\[ ?\]|[☐✓✔])\s*/;
 /* A line that says it's done: a ticked checkbox after its bullet, "- [x] eggs", "☑ eggs"; or, Pocket's own, an x at
-   its very start with a space after it: "x eggs", "x - eggs", "x- eggs". With no space it's a word, "x-ray the pipe",
-   and a capital X is one too, "X marks the spot". */
-const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^x(?:\s+-|-)?\s+/;
+   its very start with a space after it: "x eggs", "x - eggs", "x- eggs". A capital X too, "X eggs", as a phone's
+   keyboard makes a line's first letter a capital: a title that starts so, "X marks the spot", is had by tapping its
+   chip off. With no space it's a word, "x-ray the pipe". */
+const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^[xX](?:\s+-|-)?\s+/;
 /* A heading, as Markdown notes write one and a task's copy starts with (share.js): "## Pack the van" is a task, and
    the lines under it, up to the next heading, are its subtasks. A heading with more #s is under the one before it
    with fewer. One #, "# Café · 12 open · 5 done", is the name of the whole list, as a project's copy starts with:

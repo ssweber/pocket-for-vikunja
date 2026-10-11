@@ -268,18 +268,21 @@ addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'T
 addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
 addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
-addList('x Call Sam\n[x] Eggs\nMilk', ['x Call Sam', 'Milk'], 'in a step\'s box an x is a word, and a ticked line is left out');
+addList('x Call Sam\nX Call Priya\n[x] Eggs\nMilk', ['x Call Sam', 'X Call Priya', 'Milk'], 'in a step\'s box an x is a word, a capital X too, and a ticked line is left out');
 
 // ---------- quick add and the subtask boxes: a line that says it's done arrives done ----------
 // readList(text, opts): each line as [its words, whether it's done].
 const reads = [];
 const addRead = (text, lines, why, opts = {}) => reads.push({ text, lines, why, opts });
-for (const m of ['x ', 'x - ', 'x- ', '[x] ', '- [x] ', '* [X] ', '☑ ', '☒ ', '> - [x] ', '1. [✓] ', '  - [x]'])
+for (const m of ['x ', 'x - ', 'x- ', 'X ', 'X - ', 'X- ', '[x] ', '- [x] ', '* [X] ', '☑ ', '☒ ', '> - [x] ', '1. [✓] ', '  - [x]'])
   addRead(m + 'Call Sam', [['Call Sam', true]], `"${m}" at its start: it arrives done`);
 addRead('x-ray the pipe', [['x-ray the pipe', false]], 'no space after the x: it\'s a word');
-addRead('X marks the spot', [['X marks the spot', false]], 'a capital X is a word');
+addRead('X-ray the pipe', [['X-ray the pipe', false]], 'nor after a capital X');
+addRead('X marks the spot', [['marks the spot', true]], 'a capital X and a space say done too: a phone starts a line with a capital');
+addRead('X marks the spot', [['X marks the spot', false]], 'its chip tapped: the title as typed', { done: false });
 addRead('- x marks the spot', [['x marks the spot', false]], 'an x after a bullet is a word');
 addRead('x', [['x', false]], 'an x alone is a title');
+addRead('X', [['X', false]], 'and a capital X alone');
 addRead('[ ] Milk\n- [ ] Bread\n* [ ] Jam\n- [] Tea\n☐ Rice\n✓ Salt', ['Milk', 'Bread', 'Jam', 'Tea', 'Rice', 'Salt'].map(t => [t, false]), 'an empty checkbox means open, and is taken off');
 addRead('Groceries\n- [x] Eggs\n\n- [ ] Milk\nx Bread', [['Groceries', false], ['Eggs', true], ['Milk', false], ['Bread', true]], 'in a list, each line that says so');
 addRead('Groceries\n- [x] Eggs\n- [ ] Milk\nx Bread', [['Groceries', false], ['Milk', false]], 'the list\'s chip tapped: those lines are left out', { done: false });

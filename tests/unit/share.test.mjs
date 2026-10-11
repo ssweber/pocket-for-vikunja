@@ -231,6 +231,7 @@ test('a title quick add would read words in is quoted, with \' when it has a " i
   // After its bullet and checkbox a line's start is only words; a heading's can say it's done, or be a list's first line.
   assert.equal(line('x marks the spot'), '- [ ] x marks the spot');
   assert.equal(head('x marks the spot'), '## "x marks the spot"');
+  assert.equal(head('X marks the spot'), '## "X marks the spot"', 'a capital X says done too');
   assert.equal(head('- [x] a box in its name'), '## "- [x] a box in its name"');
   assert.equal(head('Groceries:'), '## "Groceries:"', 'a first line\'s colon would make it a parent, and be taken off');
   assert.equal(line('Groceries:'), '- [ ] Groceries:');

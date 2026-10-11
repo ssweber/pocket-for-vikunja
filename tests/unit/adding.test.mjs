@@ -220,6 +220,12 @@ test('one line that says it\'s done: a Done chip, its marker marked; tapped off,
   assert.deepEqual(linesOf(app, 'cap'), [['x Call Sam', false]]);
   tap(app, 'cap', 'Done');
   assert.deepEqual(linesOf(app, 'cap'), [['Call Sam', true]], 'tapped again: read again');
+  // A capital X, as a phone's keyboard starts a line: the same chip, and tapped off, the title as typed.
+  app.cap.text = 'X Call Sam';
+  assert.deepEqual([chipsOf(app, 'cap')[0], marksOf(app, 'cap'), linesOf(app, 'cap')], ['Done', ['done:X'], [['Call Sam', true]]]);
+  tap(app, 'cap', 'Done');
+  assert.deepEqual(linesOf(app, 'cap'), [['X Call Sam', false]]);
+  tap(app, 'cap', 'Done');
   // With quick add turned off in Vikunja, it's read all the same: it's about the list, not Vikunja's shortcuts.
   app.user.settings.frontend_settings.quick_add_magic_mode = 'disabled';
   app.cap.text = '- [x] Call Sam tomorrow (50%)';
