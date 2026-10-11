@@ -135,6 +135,8 @@ const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).b
   await page.screenshot({ path: out('pocket-capture.png'), clip: await box('Order 6 bags of house blend fri at 9 +orders !3') });
   // Handing it off: @priya, in the café, which Priya can see.
   await page.screenshot({ path: out('pocket-assign.png'), clip: await box('Clean the milk steamer tomorrow @priya', () => page.waitForTimeout(1500)) });
+  // Something done already, written down after the fact: the x at its start adds it ticked.
+  await page.screenshot({ path: out('pocket-done-already.png'), clip: await box('x Called the plumber') });
   await page.screenshot({ path: out('pocket-chip-undo.png'), clip: await box('Write the Sunday brunch menu', () => page.click('#cap-chips .chip[data-kind=due]')) });
   await page.screenshot({ path: out('pocket-paste-list.png'), clip: await box('Supplier order\n• oat milk\n• paper cups\n• napkins', () => page.click('#cap-nest')) });
   await page.screenshot({ path: out('pocket-new-project.png'), clip: await box('Get quotes for patio heaters friday +Patio') });

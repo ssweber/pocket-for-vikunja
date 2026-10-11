@@ -43,10 +43,10 @@ read and shows them as chips before you send. The shortcuts are Vikunja's own, `
 Start a line with `x` for something you've done already: "x Called the plumber" goes in ticked. Now you can answer
 "what have I done today?"
 
+<img src="docs/screenshots/pocket-done-already.png" width="320" alt="Typing 'x Called the plumber' highlights the x, and chips show Done and Café">
+
 Paste a list from your notes or a message: each line is a task, the lines indented or under a heading are its
 subtasks, and the ones ticked with `[x]` are done.
-
-<img src="docs/screenshots/pocket-paste-list.png" width="320" alt="A pasted supplier order with 'Under first line' turned on, showing '1 task + 3 subtasks'">
 
 ## Say it's yours, and how far along
 
