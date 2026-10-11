@@ -40,10 +40,10 @@ async function runScreen(key){
   const { page } = await ph.page('#/run/' + run.id);
   await page.waitForFunction(n => document.querySelectorAll('#run-steps > .row').length === n && document.getElementById('view').getAttribute('aria-busy') !== 'true', n, { polling: 200, timeout: 120000 });
   // Idle: 10 whole seconds, from one tick of its clock to the tenth after, counted and traced, nothing asked of the page meanwhile.
-  await until(page, 23000);
+  await until(page, 26000);                                                  // (well past the reload at 20 s: on a slow phone, reading 60 steps again takes a few seconds)
   const idle = await traced(browser, page, async () => {
     await page.evaluate(() => { const P = window.__pf; P.stopCount = P.counted(['runView']); P.clock(() => P.stopCount.now.runView.n); });
-    await sleep(12500);
+    await sleep(10500);
     return page.evaluate(() => { const P = window.__pf; P.stopCount(); return P.ticks; });
   });
   // From its clock's first tick to its last in those seconds (the first entry is the effect starting). A phone that
@@ -121,6 +121,30 @@ async function listScreen(name, pid, undo){
   // before (its fold; on a slow phone the task that takes it off the list started long before) to 900 ms after.
   const clearing = (tr, at) => ({ clearMs: r1(tr.sumOver(at - 400, at + 900)), clearLongest: r1(tr.longestOver(at - 400, at + 900)) });
 
+  // From the add box: Enter to the waiting row drawn, to the sent one drawn, and the main thread's time for all of it.
+  const addOne = async (k, text) => {
+    await page.locator('#in-capture').fill(text);
+    await sleep(700);                                                             // its chips read, its @people looked up
+    const tr = await traced(browser, page, async () => {
+      await page.evaluate(() => window.__pf.clear());
+      const waiting = page.evaluate(() => window.__pf.when(() => !!document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
+      await page.keyboard.press('Enter');
+      const w = await waiting, down = await lastEv(page, 'keydown');
+      const sent = await page.evaluate(() => window.__pf.when(() => !document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
+      await idleSync(page); await sleep(900);                                     // (a task of its own has its screen drawn again once it's sent)
+      return { down, w, sent, end: await pageTime(page) };
+    });
+    Object.assign(res, { [k]: r1(tr.out.w.drawn - tr.out.down), [k + 'Longest']: r1(tr.longest(tr.out.down - 5, tr.out.down + 400)), [k + 'Sent']: r1(tr.out.sent.drawn - tr.out.down),
+      [k + 'Work']: r1(tr.sum(tr.out.down - 5, tr.out.end)), [k + 'SentLongest']: r1(tr.longest(tr.out.down + 400, tr.out.end)) });
+  };
+  // 0. A task added with no row lit: a task of the project's own.
+  {
+    const title = `perf add0 ${Date.now() % 100000}`;
+    await addOne('add0', title);
+    const made = await page.evaluate(t => +([...document.querySelectorAll('#view .row[data-id]')].find(r => r.textContent.includes(t))?.dataset.id || 0), title);
+    if (made) undo.push(() => vikunja('DELETE', '/tasks/' + made));
+  }
+
   // 1. A tick tapped.
   let id = ids[0], b = await boxOf(page, rowSel(id) + ' > .check');
   undo.push(() => vikunja('PATCH', '/tasks/' + id0, { done: false })); const id0 = id;
@@ -177,22 +201,7 @@ async function listScreen(name, pid, undo){
 
   // 4. Two subtasks added from the add box, aimed at that row: the first makes it a card, the second goes under a lit card.
   const parent = id; undo.push(async () => { for (const s of (await vikunja('GET', '/tasks/' + parent)).related_tasks?.subtask || []) await vikunja('DELETE', '/tasks/' + s.id); });
-  for (const k of ['add1', 'add2']) {
-    await page.locator('#in-capture').fill(`perf ${k} ${Date.now() % 100000}`);
-    await sleep(700);                                                             // its chips read, its @people looked up
-    tr = await traced(browser, page, async () => {
-      await page.evaluate(() => window.__pf.clear());
-      const waiting = page.evaluate(() => window.__pf.when(() => !!document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
-      await page.keyboard.press('Enter');
-      const w = await waiting, down = await lastEv(page, 'keydown');
-      const sent = await page.evaluate(() => window.__pf.when(() => !document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
-      await sleep(600);
-      return { down, w, sent };
-    });
-    Object.assign(res, { [k]: r1(tr.out.w.drawn - tr.out.down), [k + 'Longest']: r1(tr.longest(tr.out.down - 5, tr.out.down + 400)), [k + 'Sent']: r1(tr.out.sent.drawn - tr.out.down),
-      [k + 'Work']: r1(tr.sum(tr.out.down - 5, tr.out.sent.drawn + 300)), [k + 'SentLongest']: r1(tr.longest(tr.out.down + 400, tr.out.sent.drawn + 300)) });
-    await idleSync(page);
-  }
+  for (const k of ['add1', 'add2']) await addOne(k, `perf ${k} ${Date.now() % 100000}`);
   await page.close();
   return res;
 }
@@ -260,6 +269,17 @@ async function counts(){
   const res = {}, undo = [];
   let { page, cdp } = await ph.page('#/today');
   await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(6000);
+  // On Today (506 rows): a tick, its save answered, the batch clearing.
+  {
+    const of = await page.evaluate(() => document.querySelectorAll('#view .row').length), id = (await plainRows(page))[1], b = await boxOf(page, rowSel(id) + ' > .check');
+    undo.push(() => vikunja('PATCH', '/tasks/' + id, { done: false }));
+    await fx(page);
+    const left = gone(page, id);
+    await page.touchscreen.tap(b.x + b.w / 2, b.y + b.h / 2); await sleep(40); res['on Today, a tick, at once'] = { ...flat(await fx(page)), of };
+    await idleSync(page); await sleep(300); res['on Today, its save answered'] = flat(await fx(page));
+    await left; await sleep(800); res['on Today, the batch clearing'] = flat(await fx(page));
+    await sleep(1500);
+  }
   // Big opened: the bindings worked out, and what its rows asked.
   await page.evaluate(names => { window.__fx.reset(); window.__pf.stop = window.__pf.counted(names); }, ASKED);
   await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);

@@ -52,10 +52,11 @@ npm run perf:rows -- run --profile phone   # what a screen costs once it's open:
     gone to 900 ms after) and the longest of them (`clearLongest`). A full swipe: how long the
     page takes over the finger going down before the row can follow it (`swipePress`), from letting go to the row
     moving (`swipeMoves`) and to its gap drawn (`swipeGap`), the longest wait between two frames of the slide
-    (`swipeFrame`). A nudge: from the finger lifting to the row lit (`nudge`). Two subtasks added from the add box
-    at the row nudged, the first making it a card, the second under a lit card: Enter to the waiting row drawn
-    (`add1`, `add2`), to the sent one drawn (`…Sent`), and the main thread's time for all of it (`…Work`). It ticks
-    and adds, and puts back what it changed through Vikunja's API as each run ends.
+    (`swipeFrame`). A nudge: from the finger lifting to the row lit (`nudge`). From the add box, a task of the
+    project's own with no row lit (`add0`, first of all), then two subtasks at the row nudged, the first making it
+    a card, the second under a lit card (`add1`, `add2`): Enter to the waiting row drawn, to the sent one drawn
+    (`…Sent`), and the main thread's time for all of it (`…Work`), with its longest task once the waiting row is
+    drawn (`…SentLongest`). It ticks and adds, and puts back what it changed through Vikunja's API as each run ends.
   - `scroll`: a finger's scroll (Chrome's own touch input) that starts on a plain row of Big: while its later
     batches draw (`drawing`), once it's all drawn (`drawn`), and as its Done's rows come (`done`). From the finger's
     first move being sent to the page's listeners hearing of it (`heard`), and Chrome's own account of the scroll's
@@ -63,7 +64,7 @@ npm run perf:rows -- run --profile phone   # what a screen costs once it's open:
   - `counts`: counted, not timed (fast, once): the bindings worked out for each thing done (`runs`), on how many
     rows (`rows`) and how many on one (`most`), how many rows had their own class worked out (`cls`); what the rows
     ask of the component as Big opens, each method counted; the listeners a row has; a sheet's lists; a run's idle
-    second. Counted with Pocket's own copy of Alpine and one line more (`countingAlpine`, `lib.mjs`), served in the
+    second; and a tick with its batch on Today. Counted with Pocket's own copy of Alpine and one line more (`countingAlpine`, `lib.mjs`), served in the
     place of the minified one, and with the component's methods wrapped from the page (`counted`): nothing in `src/`
     counts.
 - `lib.mjs`: what the two benches share (the profiles, the proxy, a browser signed in, a trace of the main thread).
