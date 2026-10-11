@@ -131,8 +131,25 @@ copies that had drifted apart became one piece each, in commits of their own tha
    gap's (`tapGap`, by `isGap`), what a box sends (`boxSend`).
 
 Left as it is, on purpose: the gestures (one engine, nothing bound per row), plain taps bound on each row, and one
-row for every list, with the parts of it that a list doesn't show (design rule 4). What every row costs is measured
-before anything there is changed (the plan's part 6).
+row for every list, with the parts of it that a list doesn't show (design rule 4).
+
+## What every row costs (October 2026)
+
+Part 6 of the same plan measured before it built (`npm run perf:rows`, `scripts/perf/README.md`), and what cost
+something a person would feel was never the row's own bindings, listeners or helpers: it was every row being worked
+out again for a change that was one row's. Five rules came of it, each with its fix in a commit of its own
+(`development.md`, "What a change costs a long screen"):
+
+1. What every row reads stays the same object, and changes inside: a list's group as it's drawn (`shownGroups`), the
+   screen's `route` when it's the same screen.
+2. What's said of one task is read by that task's id (`leaving`, `lit`, `flashed`, `slideClaim`, `waiting`): never a
+   list to look through, nor the whole outbox.
+3. A getter many bindings read, that costs something, is worked out once per change (`memo`): a run's screen.
+4. The time moves a screen only when it changes what the screen shows (`runNow`, `runShows`).
+5. What a finger going down asks of a row goes over the list at most once, and draws nothing.
+
+Left as measured: what a row asks of the component as its list opens (`isRunTask` 15 times a row, `cardOf` 5,
+`ringOf` 4, `rowMeta` twice), 9% of opening a long list at most, and a row's five listeners.
 
 ## Next, only if needed
 
