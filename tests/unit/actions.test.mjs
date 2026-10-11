@@ -764,7 +764,7 @@ test('Escape closes the task\'s menu before its sheet, the focus back on ⋯', (
   } finally { delete document.getElementById; }
 });
 
-/* "Make it its own task" (the sheet's ⋯ on a subtask's sheet: ownTask): the subtask is taken out from under its task,
+/* "Turn into its own task" (the sheet's ⋯ on a subtask's sheet: ownTask): the subtask is taken out from under its task,
    put right after it in the project's List view, and its old parent's worked-out progress is written without it. Said
    at the sheet's top, with an Undo, which puts it back under it, where it was. Not for a run's step or a template's. */
 test('a subtask made its own task leaves its parent, goes right after it, and the parent\'s progress is worked out without it; Undo puts it back', async () => {
@@ -787,7 +787,7 @@ test('a subtask made its own task leaves its parent, goes right after it, and th
   assert.deepEqual(moves, [['position', 12, 7, 1000.01]], 'right after its old parent: its list not on screen to say what\'s next, a little after it');
   assert.deepEqual([app.sheet.task.related_tasks.parenttask, app.tasks[12].related_tasks.parenttask, app.canOwn], [[], [], false], 'on its sheet and its row');
   assert.deepEqual(patches(v).at(-1), [10, { percent_done: 1 }], 'its old parent\'s progress, without it');
-  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['It\'s its own task now, no longer under “Pack the van”', 'sheet:top', 'Undo']);
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['Now its own task, no longer under “Pack the van”', 'sheet:top', 'Undo']);
   await app.toast.action.fn();
   assert.deepEqual([v.task(12).related_tasks.parenttask.map(p => p.id), v.task(10).related_tasks.subtask.map(s => s.id)], [[10], [11, 12]], 'Undo: under it again');
   assert.deepEqual([moves.at(-1), patches(v).at(-1)], [['position', 12, 7, 200], [10, { percent_done: 0.5 }]], 'where it was among the subtasks, and counted again');

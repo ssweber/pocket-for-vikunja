@@ -376,7 +376,7 @@ export default {
     } catch (e) { this.say(`Moved, but not all its subtasks: ${e.message}`, {place: 'sheet:props', cls: 'failed'}); }
     this.sheet.dirty = true;
   },
-  /* "Make it its own task" (the sheet's ⋯, on a subtask's sheet): the open task is taken out from under the task it's
+  /* "Turn into its own task" (the sheet's ⋯, on a subtask's sheet): the open task is taken out from under the task it's
      under (each, if it's under more than one), and is a task of its own in its project. In its old parent's project,
      with the parent's place in the List view known, it goes right after it: before the task after that, where the
      project's list is on screen to say which, else a little after the parent. Said at the sheet's top, with an Undo,
@@ -428,7 +428,7 @@ export default {
       } catch (e) { this.say('Not undone: ' + (e instanceof NetError ? 'no connection' : e.message), {place: 'sheet:top', cls: 'failed'}); }
       await fresh();
     };
-    this.say(`It's its own task now, no longer under ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
+    this.say(`Now its own task, no longer under${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },

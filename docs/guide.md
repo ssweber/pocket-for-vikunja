@@ -158,7 +158,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   card moves the same way, held by its header, with its subtasks.
   Let go, and it's there, in Vikunja too. A task moves only among the tasks at its level: a top-level task among the
   top-level ones, a subtask among its parent's subtasks (moving one to another parent is for later). A subtask's **⋯**
-  has **Make it its own task**: it's taken out from under its task and put right after it on the project's list, and
+  has **Turn into its own task**: it's taken out from under its task and put right after it on the project's list, and
   the top of its sheet says so, with **Undo**; its old task's ring is worked out without it. A checklist's steps
   don't have it. Today and search
   keep their own order, and a done task, one waiting to be sent, or one in a project shared with you to read stays
