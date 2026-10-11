@@ -110,13 +110,13 @@ export default {
   },
   // A task's open subtasks its completion closes: not one that repeats (done, it would only move to its next date).
   closable(t){ return this.cardSubs(t, false).filter(s => !s.done && !repeats(s)); },
-  /* A parent done: closed (its open subtasks with it, `close`), its card or row a gap with Undo until the batch clears;
-     from its sheet, or with no row of it on screen, said with an Undo. A run's is its finish. It stays a card meanwhile
-     (closing). */
+  /* A parent done: closed (its open subtasks with it, `close`), its card or row shown done where it is until the batch
+     clears, as a ticked row is, its ring the undo; from its sheet, or with no row of it on screen, said with an Undo.
+     A run's is its finish. It stays a card meanwhile (closing). */
   async closeParent(t, el, {sheet = false, close = false} = {}){
     if (this.isRunTask(t)) return this.tickRunTask(t, sheet ? null : el);
     closing.add(t.id);
-    try { await this.toggleDone(t, sheet ? null : el, {gap: !sheet && !!el, close, sheet: sheet || !el}); }
+    try { await this.toggleDone(t, sheet ? null : el, {close, sheet: sheet || !el}); }
     finally { closing.delete(t.id); }
   },
   /* The question, in a sheet of its own (sheet/complete.html): "Complete “Pack the van”?", the open subtasks completed

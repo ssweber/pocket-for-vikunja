@@ -809,16 +809,11 @@ export default {
     this.said = `Not repeated: ${title}`;
   },
   /* A step's progress, swiped on its row as a task's is: through the outbox, as a tick is. 100%, a full swipe, is done,
-     with its ✅, as Done is, its row a gap holding Undo, which unticks it, until the batch clears (markRow, leaving.js),
-     then done in its place; a done step swiped down is not done again first, then at that progress. `undoing`: putting
-     back what it was. */
+     with its ✅, as Done is, and as its box tapped: done in its place, its box unticking it. A done step swiped down is
+     not done again first, then at that progress. `undoing`: putting back what it was. */
   async stepProgress(s, pct, undoing = false){
     if (s.done && pct < 100 && !undoing && await this.tickStep(s, 'undone', true) === false) return;
-    if (pct >= 100 && !undoing) {
-      await this.tickStep(s, 'done', true);
-      this.markRow(s.id, {kind: 'done', out: [], gap: true, said: `Done: ${s.title}`, undo: () => this.tickStep(s, 'undone')});
-      return;
-    }
+    if (pct >= 100 && !undoing) { await this.tickStep(s, 'done', true); this.said = `Done: ${s.title}`; return; }   // (a swipe has no box in focus to say it)
     // Below 100%, on its row only, as a task's: its tick shows what was set, and swiping it back is the undo.
     const r = await this.act({op: 'progress', task: s.id, pct});
     if (r.status !== 'error' && !undoing) this.said = `Progress of ${s.title} set to ${pct}%`;

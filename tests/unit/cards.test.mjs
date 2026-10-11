@@ -234,7 +234,7 @@ test('ticked, a card’s top row stays until the batch clears, then the next com
 
 /* A card is worked out from what's done, and a task is done the moment it's ticked, before Vikunja has answered and its
    row is marked: without more, a card's top row done drops off its card while the save is on its way, the next subtask
-   comes up in its place, and then the done one is back, its gap after it (user, 2026-10-10, on a phone, where an
+   comes up in its place, and then the done one is back (user, 2026-10-10, on a phone, where an
    answer takes longer than a frame: "the next subtask sorta races the animation, cuts it short, pulls up into its
    spot, THEN the 'undo' shows up"). So a row done in a list is held where it is from that moment (holdRow,
    leaving.js): by a tap or a full swipe, a task's subtask or a run's step, on a collapsed card or an opened one. */
@@ -258,21 +258,21 @@ test('a card’s top row done is still its top row from the tap, or the swipe’
     assert.deepEqual([app.tasks[12].done, v.task(12).done], [true, false], 'done on the phone, nothing answered yet');
     assert.deepEqual([top(), card().peek.title, card().more], ['Chairs', 'Tables', 2], 'ticked: still on top, the next still under More');
     await over(doing);
-    assert.deepEqual([top(), app.leaving, app.swept, v.task(12).done], ['Chairs', { 12: 'done' }, {}, true], 'answered: marked, and where it was');
+    assert.deepEqual([top(), app.leaving, v.task(12).done], ['Chairs', { 12: 'done' }, true], 'answered: marked, and where it was');
     await app.clearBatch(true);
     assert.deepEqual([top(), card().peek.title, card().more], ['Tables', 'Lights', 1], 'the batch cleared: the next comes up, and not before');
-    // A full swipe right, let go: its gap is its row's from that moment (drawn once the row has slid away: sweep).
-    doing = app.setProgress(app.tasks[13], 100, ROW, { gap: true });
+    // A full swipe right, let go: held done from that moment, as a tick is.
+    doing = app.setProgress(app.tasks[13], 100, ROW);
     await turn();
-    assert.deepEqual([top(), card().peek.title, card().more, app.swept, v.task(13).done], ['Tables', 'Lights', 1, { 13: true }, false], 'let go: still on top, its gap its own, nothing answered yet');
+    assert.deepEqual([top(), card().peek.title, card().more, app.leaving, v.task(13).done], ['Tables', 'Lights', 1, { 13: 'done' }, false], 'let go: still on top, done, nothing answered yet');
     await over(doing);
-    assert.deepEqual([top(), app.leaving, app.swept], ['Tables', { 13: 'done' }, { 13: true }]);
+    assert.deepEqual([top(), app.leaving], ['Tables', { 13: 'done' }]);
     await over(Promise.resolve(app.unmark(13)));
-    assert.deepEqual([top(), app.tasks[13].done, app.leaving], ['Tables', false, {}], 'its Undo: open again, where it was');
+    assert.deepEqual([top(), app.tasks[13].done, app.leaving], ['Tables', false, {}], 'its tick: open again, where it was');
     // On an opened card, its rows stay as they are, the done one among them.
     app.openCard(card());
     assert.deepEqual(card().rows.map(s => s.title), ['Tables', 'Lights']);
-    doing = app.setProgress(app.tasks[13], 100, ROW, { gap: true });
+    doing = app.setProgress(app.tasks[13], 100, ROW);
     await turn();
     assert.deepEqual(card().rows.map(s => s.title), ['Tables', 'Lights'], 'no row gone from under the finger, to come back when Vikunja answers');
     await over(doing);
@@ -284,7 +284,7 @@ test('a card’s top row done is still its top row from the tap, or the swipe’
     await turn();
     assert.deepEqual([top(), app.leaving[11]], ['Lights', 'done'], 'held while it\'s tried');
     await over(doing);
-    assert.deepEqual([top(), app.leaving, app.swept, app.tasks[11].done], ['Lights', {}, {}, false], 'not saved: not held, not done');
+    assert.deepEqual([top(), app.leaving, app.tasks[11].done], ['Lights', {}, false], 'not saved: not held, not done');
     assert.match(app.toast.msg, /^Not saved: /);
   } finally { globalThis.fetch = send; }
 });
@@ -318,8 +318,8 @@ test('a run’s card’s top step done is still its top row while the outbox tak
   Object.assign(app, { isRunTask: t => t.id === 10, stepRun: t => t.id === 10 ? null : 10, act: () => new Promise(ok => { taken = ok; }) });
   const top = () => app.cardOf(parent, g).step.title;                        // (a run's steps in its order: Lights, Chairs, Tables)
   app.pinCard(app.cardOf(parent, g));
-  const doing = app.toggleDone(app.tasks[11], ROW, { gap: true });           // a full swipe on its row
-  assert.deepEqual([app.tasks[11].done, top(), app.swept], [true, 'Lights', { 11: true }], 'let go: done, and still on top, its gap its own');
+  const doing = app.toggleDone(app.tasks[11], ROW);                           // its tick, or a full swipe on its row
+  assert.deepEqual([app.tasks[11].done, top(), app.leaving], [true, 'Lights', { 11: 'done' }], 'let go: done, and still on top');
   taken({ status: 'ok' });
   await doing;
   assert.deepEqual([top(), app.leaving], ['Lights', { 11: 'done' }]);
@@ -630,13 +630,13 @@ const ringed = (c, list) => {
 const ROW = {}, parentOf = (...kids) => ({ id: 10, title: 'Pack the van', done: false, project_id: 5, related_tasks: { subtask: kids.map(k => ({ id: k.id, done: !!k.done })) } });
 const kid = (id, f = {}) => ({ id, title: 'Kid ' + id, done: false, project_id: 5, related_tasks: under(10), ...f });
 
-test('a parent’s ring with one open subtask: it and the parent completed at once, shown as a gap with Undo', async c => {
+test('a parent’s ring with one open subtask: it and the parent completed at once, its card shown done, its ring the undo', async c => {
   const kids = [kid(11), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
   await app.ringTap(app.tasks[10], ROW);
   assert.deepEqual([v.task(10).done, v.task(11).done], [true, true]);
-  assert.deepEqual([app.leaving, app.swept], [{ 10: 'done', 11: 'done' }, { 10: true }], 'its card a gap holding Undo until the batch clears');
+  assert.deepEqual([app.leaving, app.isGap(app.tasks[10], { depth: {}, cards: 'list' })], [{ 10: 'done', 11: 'done' }, false], 'its card done where it is, never a gap, until the batch clears');
   assert.equal(app.sheet.kind, undefined, 'nothing asked');
-  await app.ringTap(app.tasks[10], ROW);                                     // its ring again, or the gap's Undo
+  await app.ringTap(app.tasks[10], ROW);                                     // its ring again: the undo
   assert.deepEqual([v.task(10).done, v.task(11).done], [false, false], 'both open again');
 });
 
@@ -689,7 +689,7 @@ test('a parent with every subtask done waits for Close; a repeating one is done 
   const kids = [kid(11, { done: true }), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
   assert.equal(app.ringOf(app.tasks[10]).open, 0);
   await app.ringTap(app.tasks[10], ROW);                                     // Close
-  assert.deepEqual([v.task(10).done, app.leaving[10], app.swept[10]], [true, 'done', true]);
+  assert.deepEqual([v.task(10).done, app.leaving[10], app.cardOf(app.tasks[10], { depth: {}, cards: 'found' })?.closes], [true, 'done', true], 'closed: still its card, done, until the batch clears');
   const open = [kid(21), kid(22)], rep = { ...parentOf(...open), id: 20, repeat_after: 86400, due_date: '2026-10-09T09:00:00Z' };
   const r = ringed(null, [rep, ...open]);
   await r.app.ringTap(r.app.tasks[20], ROW);

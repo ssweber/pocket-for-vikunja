@@ -1,5 +1,5 @@
-<!-- A row, or a card, that's a gap (isGap, app/leaving.js), for task `t` in the list `g`: deleted, or done by a full
-     swipe or from its ring, until the batch clears. A gap where it was, at its height, so nothing moves, holding only
-     "Deleted" and Restore, or "Done" and Undo, where who's doing it was. A tap anywhere on the row or the card takes it
-     back (tapGap, on each). -->
-<template x-if="isGap(t, g)"><div class="del-gap"><span class="what"><span x-text="swept[t.id] ? 'Done' : 'Deleted'"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="(swept[t.id] ? 'Undo: ' : 'Restore ') + t.title"><span class="me" x-text="swept[t.id] ? 'Undo' : 'Restore'"></span></button></div></template>
+<!-- A row, or a card, that's a gap (isGap, app/leaving.js), for task `t` in the list `g`: deleted, until the batch
+     clears. A gap where it was, at its height, so nothing moves, holding only "Deleted" and Restore, where who's doing
+     it was. A tap anywhere on the row or the card restores it (tapGap, on each). One done is never a gap: it's shown
+     done in its place, however it was done, and its tick is the undo. -->
+<template x-if="isGap(t, g)"><div class="del-gap"><span class="what">Deleted<span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="'Restore ' + t.title"><span class="me">Restore</span></button></div></template>

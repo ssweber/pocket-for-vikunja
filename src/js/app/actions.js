@@ -102,15 +102,15 @@ export default {
      repeating task shows done, then its next date. From its sheet, whose tick shows it, only subtasks closed are said,
      under them, with an Undo; a subtask in its parent's sheet stays where it is, done. Not saved, its row says so, with
      Try again. A done task shown over its open subtasks (isHead), opened again, stays where it is (reopenedHead).
-     `extra.gap`: done by a full swipe, or a parent completed, its row (or card) a gap holding Undo until the batch
-     clears (markRow), a subtask's in its parent's sheet too, which then shows it done. Its row is held as that from
-     this moment, not from Vikunja's answer (holdRow, leaving.js), so nothing worked out from what's done (a card's
-     rows, its top row) changes while the save is on its way; not saved, it's let go of. */
+     Done by a full swipe, or a parent completed from its ring, it's shown the same way: one look for done, however it
+     was done. Its row is held as that from this moment, not from Vikunja's answer (holdRow, leaving.js), so nothing
+     worked out from what's done (a card's rows, its top row) changes while the save is on its way; not saved, it's
+     let go of. */
   async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const run = this.stepRun(t);
-    if (run) return this.tickRunStep(t, run, rowEl, extra.gap);
+    if (run) return this.tickRunStep(t, run, rowEl);
     if (this.isRunTask(t) && !extra.quiet) return this.tickRunTask(t, rowEl);
-    const {quiet, sub: inSheet, sheet, gap = false, close = false, ...patch} = extra, sub = inSheet || isSubtask(t), was = t.done, head = was && this.isHead(t);
+    const {quiet, sub: inSheet, sheet, close = false, ...patch} = extra, sub = inSheet || isSubtask(t), was = t.done, head = was && this.isHead(t);
     const inList = !!rowEl && !quiet && !sheet && !inSheet;
     // Its open subtasks as they're shown (a run's steps are ticked on its screen, with who did each)
     const subs = was || quiet || !close || this.isRunTask(t) ? [] : openSubtasks(t).map(s => this.tasks[s.id] || s).filter(s => !s.done);
@@ -119,7 +119,7 @@ export default {
     for (const k of ['start_date', 'end_date']) if (isSet(t[k])) back[k] = t[k];
     if ((t.reminders || []).some(r => !r.relative_to)) back.reminders = plainReminders(t);
     t.done = !was;
-    const letGo = !was && (inList || (gap && inSheet)) ? this.holdRow(t.id, 'done', gap) : null;
+    const letGo = !was && inList ? this.holdRow(t.id, 'done') : null;
     try {
       const saved = await this.saveTask(t.id, {done: !was, ...patch});
       Object.assign(t, saved);
@@ -141,7 +141,7 @@ export default {
         // past the coming week.
         Object.assign(t, shown, {done: true});
         const beyond = () => this.route.name === 'today' && !(new Date(saved.due_date) < addDays(startOfDay(), 8));
-        this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, gap, said: `Done: ${t.title}. It repeats${next ? ', ' + next : ''}`,
+        this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: `Done: ${t.title}. It repeats${next ? ', ' + next : ''}`,
           gone: () => { Object.assign(t, saved); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
         return;
       }
@@ -166,7 +166,6 @@ export default {
       // From a sheet, the subtasks closed are said under them, with the Undo: its own tick, or a subtask's there.
       if (sheet || inSheet) {
         if (closed.length || (sheet && subs.length)) this.say(text, {place: 'sheet:subtasks', action: {label: 'Undo', fn: undo}});
-        if (gap && inSheet) this.markRow(t.id, {kind: 'done', out: [], undo, gap, said: text});   // its gap, then done in its place
         return;
       }
       if (!inList) return;
@@ -176,7 +175,7 @@ export default {
       // task left over its subtasks still open stays, and only those closed with it go.
       const moves = () => !!this.searchGroups(t);
       if (was && !moves()) { this.said = 'Not done: ' + t.title; return; }
-      this.markRow(t.id, {kind: was ? 'open' : 'done', ids, undo, gap, said: was ? 'Not done: ' + t.title : text,
+      this.markRow(t.id, {kind: was ? 'open' : 'done', ids, undo, said: was ? 'Not done: ' + t.title : text,
         out: () => over ? closed : this.bothWays && !moves() ? [] : ids,
         gone: () => { if (over) this.moveInSearch(t, closed); else if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) ids.forEach(id => this.removeRow(id)); }});
     } catch (e) {
@@ -239,7 +238,7 @@ export default {
   /* A run finished, or opened again, from its ring or its Close (parent-tasks-plan, part 3: a run is a parent, its steps
      its subtasks), or its sheet, as on its screen, through the outbox. Its steps are ticked one by one on its screen, with
      who did each, so finishing it leaves them as they are: with steps not done, its ring asks first (askComplete). In a
-     list, it's shown in place, its card a gap holding Undo, until the batch clears, as a task's tick is; its steps go
+     list, it's shown in place, done, until the batch clears, as a task's tick is, its ring the undo; its steps go
      with it. */
   async tickRunTask(t, rowEl){
     const was = t.done, head = was && this.isHead(t);
@@ -255,17 +254,17 @@ export default {
     if (!rowEl) { if (!was) this.say(offline ? sentLater('Finished') : said, {place: 'sheet:top', action: {label: 'Undo', fn: undo}}); return; }
     const moves = () => !!this.searchGroups(t), steps = () => stepsOf(t).map(s => s.id);
     if (was && !moves()) { this.said = said; return; }
-    this.markRow(t.id, {kind: was ? 'open' : 'done', undo, said, gap: !was, out: () => this.bothWays && !moves() ? [] : [t.id],
+    this.markRow(t.id, {kind: was ? 'open' : 'done', undo, said, out: () => this.bothWays && !moves() ? [] : [t.id],
       gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) [t.id, ...steps()].forEach(id => this.removeRow(id)); }});
   },
   /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
-     waits without a connection (felt where it was tapped, tickRow, or swiped). In a list, it's shown in place until the batch clears, as a task's tick is (by a full
-     swipe, `gap`, a gap with Undo); in a sheet, it stays, done. */
-  async tickRunStep(t, run, rowEl, gap = false){
+     waits without a connection (felt where it was tapped, tickRow, or swiped). In a list, it's shown in place until the batch clears, as a task's tick is, by a
+     full swipe too; in a sheet, it stays, done. */
+  async tickRunStep(t, run, rowEl){
     const was = t.done;
     t.done = !was;
     // (Its row held where it is while the outbox takes it, as a task's is while it's saved: toggleDone, holdRow.)
-    const letGo = !was && rowEl ? this.holdRow(t.id, 'done', gap) : null;
+    const letGo = !was && rowEl ? this.holdRow(t.id, 'done') : null;
     try {
       const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
       if (r.status === 'error') { if (!r.error.saved) t.done = was; return; }
@@ -274,7 +273,7 @@ export default {
       if (!rowEl) { if (later) this.say(later, {row: {id: t.id, text: sentLater('Done'), stays: true}, place: 'sheet:top'}); return; }
       const moves = () => !!this.searchGroups(t);
       if (was && !moves()) { this.said = 'Not done: ' + t.title; return; }
-      this.markRow(t.id, {kind: was ? 'open' : 'done', gap, said: later || (was ? 'Not done: ' : 'Done: ') + t.title, undo: () => this.tickRunStep(t, run, null),
+      this.markRow(t.id, {kind: was ? 'open' : 'done', said: later || (was ? 'Not done: ' : 'Done: ') + t.title, undo: () => this.tickRunStep(t, run, null),
         out: () => this.bothWays && !moves() ? [] : [t.id],
         gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) this.removeRow(t.id); }});
     } finally { letGo?.(); }
@@ -333,12 +332,11 @@ export default {
      ticked off; a done one set below it is opened again, at that progress, as its tick would (its tick again is the
      undo). Below that, it shows on its row only, with no message: the row's tick is what was set, and
      swiping it back is the undo (a line over the row would hide it, and stop the next slide). Not saved, the row says
-     so, with Try again. `undoing`: putting back what it was, exactly, without marking it done. `gap`: 100% by a full
-     swipe, the row a gap with Undo until the batch clears (toggleDone). */
-  async setProgress(t, pct, rowEl, {undoing = false, sub = false, gap = false} = {}){
+     so, with Try again. `undoing`: putting back what it was, exactly, without marking it done. */
+  async setProgress(t, pct, rowEl, {undoing = false, sub = false} = {}){
     const was = pctOf(t), patch = undoing ? {percent_done: pct / 100} : progressPatch(t, pct);
     if (t.done && !undoing && pct < 100) return this.toggleDone(t, rowEl, {...patch, sub});
-    if (patch.done) return this.toggleDone(t, rowEl, {...patch, sub, gap}, {percent_done: was / 100});
+    if (patch.done) return this.toggleDone(t, rowEl, {...patch, sub}, {percent_done: was / 100});
     t.percent_done = patch.percent_done;
     try {
       await this.saveTask(t.id, patch);

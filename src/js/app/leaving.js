@@ -1,8 +1,9 @@
 /* Done and deleted, in place: a row ticked done, not done again, or deleted keeps its height and its place until the
    batch clears (batch.js), so nothing moves under a finger; then every row waiting goes at once, and the rows below
    close up once. Meanwhile the mark can be taken back from the row itself: its tick opens it again (or ticks it again),
-   and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it; a row done by a
-   full swipe is the same gap, holding Undo (`gap`, kept in `swept`). So it needs no Undo of its own. A row is held
+   and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it. A row done by a
+   full swipe, or a parent closed from its ring, is shown as one ticked is, done in its place, and its tick (or its
+   ring) is the undo: one look for done, however it was done. So it needs no Undo of its own. A row is held
    this way from the moment it's ticked or let go, before Vikunja has answered and its mark is made (holdRow): what's
    on screen is worked out from what's done and what's marked, and mustn't change in between. What happens when
    the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
@@ -46,43 +47,39 @@ export default {
   /* Task `id`'s row marked, until the batch clears: {kind: 'done', 'open' (not done again) or 'deleted'; ids: the rows
      shown with it (the subtasks closed with a task, or deleted with it); out: those that leave when it clears (all of
      them unless said; a function, to be worked out then); undo: what its tick (or Restore) does meanwhile; gone: what's
-     done when it clears; said: for a screen reader; gap: done by a full swipe, its row (`id`'s, not those shown with it)
-     a gap at its height holding "Done" and Undo, as a deleted one's holds Restore}. A row marked again keeps only the
-     new mark. */
-  markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = '', gap = false}){
+     done when it clears; said: for a screen reader}. A row marked again keeps only the new mark. */
+  markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = ''}){
     const {marks, batch} = of(this), m = {id, kind, ids, out, undo, gone, going: false};
     for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); this.leaving[x] = kind; }
-    if (gap) this.swept[id] = true;
     if (said) this.said = said;
     batch.mark();
   },
   /* Row `id` held where it is from the moment something is done to it, before Vikunja has answered and its mark is
-     made: as the mark to come will have it (`kind`: 'done' or 'deleted'; `gap`: done by a full swipe, its gap). A task
+     made: as the mark to come will have it (`kind`: 'done' or 'deleted'). A task
      is done on the phone the moment it's ticked, and a card is worked out from what's done and what's marked
      (cardOf, app/cards.js): without this its row would drop off its card while the save is on its way, the next
      subtask come up in its place, and the done one be back when it's marked. Returns what lets go of it, to call once
      it has answered: the mark made meanwhile is then in its place (markRow); with none (not saved, or called off),
      the row is as it was, with the line that says why. A tap on it meanwhile waits for the answer (unmark,
      restoreRow). */
-  holdRow(id, kind, gap = false){
+  holdRow(id, kind){
     const s = of(this);
     if (s.marks.has(id) || s.early.has(id)) return () => {};
     this.leaving[id] = kind;
-    if (gap) this.swept[id] = true;
     let answered;
     s.early.set(id, new Promise(ok => { answered = ok; }));
     return () => {
       s.early.delete(id);
-      if (!s.marks.has(id)) { delete this.swept[id]; delete this.leaving[id]; }
+      if (!s.marks.has(id)) delete this.leaving[id];
       answered();
     };
   },
-  /* A full swipe's row held, with its gap, from the moment it's let go until what's being done to it (`settled`, its
-     promise) has answered: where that doesn't hold it itself (a deletion; a step on a run's screen). The gap is its
-     row's at once, and drawn when the row has slid away, not when Vikunja answers (sweep, app/progress.js;
-     rows-and-sheet-fixes-plan, part 2): "Done" and Undo, or for 'deleted', "Deleted" and Restore. */
-  gapNow(id, kind, settled){
-    const letGo = this.holdRow(id, kind, kind === 'done');
+  /* A row deleted by a full swipe, or its Delete, held as its gap from the moment it's let go until the deletion
+     (`settled`, its promise) has answered, which doesn't hold it itself. The gap is its row's at once, and drawn when
+     the row has slid away, not when Vikunja answers (sweep, app/progress.js; rows-and-sheet-fixes-plan, part 2):
+     "Deleted" and Restore. */
+  gapNow(id, settled){
+    const letGo = this.holdRow(id, 'deleted');
     Promise.resolve(settled).catch(() => {}).then(letGo);
   },
   /* A marked row's tick, or a deleted row tapped: the mark taken back (its undo), and it doesn't go. A subtask that was
@@ -99,27 +96,27 @@ export default {
     this.said = m.kind === 'deleted' ? 'Restored: ' + title : m.kind === 'done' ? 'Not done: ' + title : 'Done: ' + title;
     return m.undo?.() || true;
   },
-  /* Whether row `t` of the list `g`, or its card there, is a gap now (markup/gap.html): deleted, or done by a full swipe
-     or from its ring, until the batch clears. Never the sheet's own row nor a run's own, whose marks are their list
-     row's; and a step on a run's screen only when done by a full swipe, as a step deleted has no gap. */
-  isGap(t, g){ return !g.own && !g.top && !!(this.swept[t.id] || (!g.run && this.leaving[t.id] === 'deleted')); },
-  // A tap anywhere on a gap takes back what made it (restoreRow), and goes no further: to its tick, its title or its slot.
+  /* Whether row `t` of the list `g`, or its card there, is a gap now (markup/gap.html): deleted, until the batch
+     clears. Only that: one done, however it was done, is shown done in its place. Never the sheet's own row nor a
+     run's own, whose marks are their list row's, nor a step on a run's screen, which has no gap when it's deleted. */
+  isGap(t, g){ return !g.own && !g.top && !g.run && this.leaving[t.id] === 'deleted'; },
+  // A tap anywhere on a gap restores its row (restoreRow), and goes no further: to its tick, its title or its slot.
   tapGap(t, g, e){ if (this.isGap(t, g)) { e.stopPropagation(); e.preventDefault(); this.restoreRow(t.id); } },
-  /* A gap tapped: a deleted row restored (unmark), its rows sliding back in from the left, where the delete took them;
-     a row done by a full swipe not done again, sliding back in from the right. One held before its mark was made
-     (holdRow): once what was done to it has answered, and there's a mark to take back. */
+  /* A gap tapped: its deleted row restored (unmark), its rows sliding back in from the left, where the delete took
+     them. One held before its mark was made (holdRow): once the deletion has answered, and there's a mark to take
+     back. */
   restoreRow(id){
     const early = of(this).early.get(id);
     if (early) return early.then(() => this.restoreRow(id));
-    const m = of(this).marks.get(id), back = m?.kind === 'deleted' ? -1 : 1;
-    const els = m && !m.going && motion() ? back < 0 ? rowsOf(m.ids) : [...document.querySelectorAll(`.row[data-id="${id}"]`)] : [], r = this.unmark(id);
-    for (const el of els) el.animate([{transform: `translateX(${back * el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
+    const m = of(this).marks.get(id);
+    const els = m?.kind === 'deleted' && !m.going && motion() ? rowsOf(m.ids) : [], r = this.unmark(id);
+    for (const el of els) el.animate([{transform: `translateX(${-el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
     return r;
   },
   // A mark taken off its rows (or off row `only`); with none left waiting, the batch has nothing to clear.
   dropMark(m, only){
     const {marks, batch} = of(this);
-    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; delete this.swept[x]; }
+    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; }
     if (only !== undefined) m.ids = m.ids.filter(x => x !== only);
     if (!marks.size) batch.stop();
   },

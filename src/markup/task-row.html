@@ -9,8 +9,8 @@
      reads those off the row (data-gestures, rowGestures), and makes the Delete as the swipe starts, laid under the row
      (swipeOf, progress.js): the row doesn't carry one. Ticked, or deleted, it stays where it is until the batch
      clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap at its height (gap.html),
-     holding only "Deleted" and Restore, and a tap anywhere on it restores it (tapGap); done by a full swipe
-     (swept[t.id]), the same gap, holding "Done" and Undo, a step on a run's screen too. A tick not saved is a line in its place, with Try
+     holding only "Deleted" and Restore, and a tap anywhere on it restores it (tapGap); done by a full swipe, it's
+     shown as one ticked is, and its tick opens it again. A tick not saved is a line in its place, with Try
      again (lines.js). One not sent yet (pending) is on its list at once, where
      it'll be; once it has waited a while (waits), it looks it: tinted, its tick dotted. On a project's list it's lit up
      (aimed) while quick add's box adds subtasks at it (lit[t.id]: the row touched last, or the subtask just added from
@@ -36,7 +36,7 @@
      On a stacked card (g.card, list-item.html), each of its rows is this row too, a subtask or a run's step: its own
      tick, slot and progress, and its Delete, as any row's. A collapsed card's top row (.step-line) doesn't fold with the
      batch: the next slides up into its place (cardEntered). -->
-<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at, swept: !!swept[t.id]} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', swept: !!swept[t.id], pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
+<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
      @click.capture="tapGap(t, g, $event)">

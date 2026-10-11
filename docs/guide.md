@@ -104,10 +104,10 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   is green, with a large ring that fills to 25%, then 50%, then 75% over the first half of the row, with a tick at each
   on a phone that can. Nothing changes until you let go: then the progress shown is set, and the row slides back, its
   tick showing the quarter. Swipe on past half the row, until the green turns solid and the ring shows ✓, and let go:
-  the task is done, the row slides on off the screen to the right, and its place stays as a gap with "Done" and
-  **Undo** until the ticks leave together. Only the row moves: the green and its ring stay where they are under it,
-  so the motion stays smooth on a phone that's saving power. The gap is there as soon as the row has gone, on a slow
-  connection too; if the task can't be saved, the row comes back and says so, with **Try again**. Near the screen's right edge, the stops come closer, so done is always within reach.
+  the task is done, the row slides on off the screen to the right, and it's shown in its place as a ticked task is,
+  struck through, until the ticks leave together: tap its tick to take it back. Only the row moves: the green and its
+  ring stay where they are under it, so the motion stays smooth on a phone that's saving power. It shows done as soon
+  as the row has gone, on a slow connection too; if the task can't be saved, the row comes back and says so, with **Try again**. Near the screen's right edge, the stops come closer, so done is always within reach.
   To lower it, swipe a task with progress to the left: the ring empties a quarter at a time and stops at 0%, however far
   you pull, and lets go the same way. A done task swiped left opens again, at 75% and on down. The swipe takes over only
   once your finger is clearly going sideways, so a scroll never catches, and not from the screen's very edge, where the
@@ -130,7 +130,8 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   a subtask never closes its task: once they're all done, the card says "All subtasks done" with **Close**, and waits
   for you, so nothing closes behind your back. A subtask added takes **Close** away again. Tapping the ring, or
   swiping the header all the way to the right, completes the task: with one subtask left open, it and the task are
-  done at once, with **Undo**; with more, Pocket asks first, naming them: "Its 3 open subtasks will be marked done too:
+  done at once, the card staying where it is, its title struck through, until the ticks leave together: tap its ring
+  again to take it back. With more, Pocket asks first, naming them: "Its 3 open subtasks will be marked done too:
   Load chairs, Book the hall and Wipe the tables", with **Complete all 4** and **Cancel**. A subtask that repeats is
   left as it is, and the question says so. A partial swipe on the header springs back, as the task has no progress of
   its own; swiped left, the header is its **Delete**. A task done in Vikunja's web app with subtasks still open is a

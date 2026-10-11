@@ -61,8 +61,8 @@ export const slideStarts = ({field, bar, top, typing}) => !field && (bar || (top
    go there does, and nothing changes until it's let go. Each side has one job, chosen by which way the finger goes and
    by the row as the swipe starts:
    - `up` (right): its progress up, through the quarters above where it is, a tick felt at each, spread evenly over
-     the way to its full point; past it, done (the full action: the row carries on off the screen and leaves a gap with
-     Undo, sweep in app/progress.js).
+     the way to its full point; past it, done (the full action: the row carries on off the screen, and is shown done in
+     its place, as one ticked is: sweep in app/progress.js).
    - `down` (left, a row with progress, or a done one, opened again): its progress down the same way, stopping at 0%
      at its full point with a firmer tick, however far it's pulled: no Delete on the same swipe.
    - `delete` (left, a row at 0%, or one whose progress isn't swiped): its Delete, open on its button, `open` px wide,

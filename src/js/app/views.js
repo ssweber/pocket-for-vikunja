@@ -142,7 +142,7 @@ export default {
   },
   /* A parent's ring tapped (ring.html; `el`, the ring). A run's atop its screen has a tap of its own (r.tap:
      runRingTap). Else it's ringTap (app/cards.js), told where it was tapped: in a sheet, on the task's own row or a
-     subtask's, so nothing is left of a row to turn into a gap; in a list, on which card or row. */
+     subtask's, where what was closed is said with an Undo; in a list, on which card or row, which then shows it. */
   tapRing(t, r, el){
     if (r.tap) return r.tap();
     const sheet = !!el.closest('#sheet');

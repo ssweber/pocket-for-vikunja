@@ -82,19 +82,20 @@ test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks
   } finally { delete document.getElementById; }
 });
 
-/* A row, or a card, that's a gap (markup/gap.html): deleted, or done by a full swipe, until the batch clears. One
-   rule says which (isGap), for the gap's drawing and for the tap that takes it back, a row's and a card's alike. */
-test('a row deleted or done by a full swipe is a gap, a card too; a tap anywhere on it takes it back and goes no further', () => {
+/* A row, or a card, that's a gap (markup/gap.html): deleted, until the batch clears. One rule says which (isGap), for
+   the gap's drawing and for the tap that restores it, a row's and a card's alike. One done is never a gap, however it
+   was done, by its tick, a full swipe or its ring: it's shown done in its place, and its tick is the undo. */
+test('a row deleted is a gap, a card too, and a tap anywhere on it restores it and goes no further; one done never is', () => {
   const app = component(views, leaving), LIST = { depth: {} }, CARDS = { depth: {}, cards: 'list' }, did = [];
-  Object.assign(app, { leaving: { 1: 'deleted', 2: 'done', 3: 'done' }, swept: { 3: true }, restoreRow: id => did.push(['restore', id]) });
+  Object.assign(app, { leaving: { 1: 'deleted', 2: 'done' }, restoreRow: id => did.push(['restore', id]) });
   const tap = (id, g) => { const e = { stopPropagation: () => did.push('stop'), preventDefault: () => did.push('prevent') }; app.tapGap({ id }, g, e); return did.splice(0); };
-  assert.deepEqual([1, 2, 3, 4].map(id => app.isGap({ id }, LIST)), [true, false, true, false], 'deleted; ticked, which stays a row; done by a full swipe; not marked');
-  assert.deepEqual([1, 2, 3].map(id => app.isGap({ id }, CARDS)), [true, false, true], 'a card, in its list');
-  assert.deepEqual([1, 3].map(id => app.isGap({ id }, { depth: {}, sheet: true })), [true, true], 'a subtask in a sheet');
-  assert.deepEqual([1, 3].map(id => app.isGap({ id }, RUN)), [false, true], 'a step on a run\'s screen: only done by a full swipe');
-  assert.deepEqual([1, 3].flatMap(id => [SHEET_ROW, { depth: {}, top: true }].map(g => app.isGap({ id }, g))), [false, false, false, false], 'never the sheet\'s own row, nor a run\'s own');
+  assert.deepEqual([1, 2, 3].map(id => app.isGap({ id }, LIST)), [true, false, false], 'deleted; done, which stays a row; not marked');
+  assert.deepEqual([1, 2].map(id => app.isGap({ id }, CARDS)), [true, false], 'a card, in its list');
+  assert.deepEqual([1, 2].map(id => app.isGap({ id }, { depth: {}, sheet: true })), [true, false], 'a subtask in a sheet');
+  assert.deepEqual([1, 2].map(id => app.isGap({ id }, RUN)), [false, false], 'a step on a run\'s screen: never');
+  assert.deepEqual([1, 2].flatMap(id => [SHEET_ROW, { depth: {}, top: true }].map(g => app.isGap({ id }, g))), [false, false, false, false], 'never the sheet\'s own row, nor a run\'s own');
   assert.deepEqual(tap(1, LIST), ['stop', 'prevent', ['restore', 1]], 'a gap tapped: restored, and the tap is no one else\'s');
-  assert.deepEqual(tap(3, CARDS), ['stop', 'prevent', ['restore', 3]]);
+  assert.deepEqual(tap(1, CARDS), ['stop', 'prevent', ['restore', 1]]);
   assert.deepEqual(tap(2, LIST), [], 'a row that isn\'t a gap: the tap goes on to its tick or its title');
   assert.deepEqual(tap(1, SHEET_ROW), []);
 });
@@ -304,20 +305,16 @@ test('a done step swiped down is not done again first, then at that progress; as
   assert.deepEqual(sent, [['progress', 50]], 'an open step: only its progress');
 });
 
-/* A step swiped right past half its row is done (parent-tasks-plan, 1b), through the outbox, and its row a gap holding
-   Undo until the batch clears, as a task's row is; Undo unticks it. The batch over, it's done in its place. */
-test('a step done by a full swipe: its row a gap with Undo, which unticks it; the batch over, done in its place', async c => {
-  c.mock.timers.enable({ apis: ['setTimeout'] });
+/* A step swiped right past half its row is done (parent-tasks-plan, 1b), through the outbox, as its box tapped is: done
+   in its place, with nothing marked and no gap, its box unticking it. A screen reader hears it, as a swipe has no box
+   in focus to say it. */
+test('a step done by a full swipe is done as its box tapped is: in its place, with no gap and nothing marked', async () => {
   const app = component(runs, leaving), sent = [];
   Object.assign(app, { tickStep: async (s, op) => { sent.push(op); } });
   await app.stepProgress(step({ id: 4, title: 'Wipe the tables' }), 100);
-  assert.deepEqual([sent, app.swept, app.leaving], [['done'], { 4: true }, { 4: 'done' }]);
+  assert.deepEqual([sent, app.leaving], [['done'], {}]);
   assert.equal(app.said, 'Done: Wipe the tables');
-  await app.unmark(4);
-  assert.deepEqual([sent, app.swept], [['done', 'undone'], {}], 'Undo: not done, the gap gone');
-  await app.stepProgress(step({ id: 4, title: 'Wipe the tables' }), 100);
-  await app.clearBatch(true);
-  assert.deepEqual([app.swept, app.leaving], [{}, {}], 'the batch over: no gap, the step done in its place');
+  assert.equal(app.isGap({ id: 4 }, RUN), false);
 });
 
 /* Progress slid on a row no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture as the

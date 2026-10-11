@@ -231,38 +231,35 @@ test('progress taken to 100% marks the task done, and its tick again puts back t
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.4]);
 });
 
-/* A full swipe right is done (parent-tasks-plan, 1b): the row carries on off the screen and leaves a gap at its height
-   holding "Done" and Undo, the same mark as a tick's, so Undo is the tick's undo; it closes with the batch. In a sheet,
-   a subtask's row is the gap until then, and done in its place after. */
-test('a full swipe is done, its row a gap with Undo until the batch clears, and Undo puts back the progress it had', async c => {
+/* A full swipe right is done (parent-tasks-plan, 1b), and shown as a tick shows it (the user, 2026-10-11: one look for
+   done, however it was done): the row carries on off the screen and is done in its place, never a gap, with the same
+   mark as a tick's, so its tick is the undo; it leaves with the batch. In a sheet, a subtask's row stays, done, with
+   nothing marked. */
+test('a full swipe is done as a tick is: its row done in place, never a gap, until the batch clears, and its tick puts back the progress it had', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c);
   app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
-  await app.setProgress(app.tasks[1], 100, ROW, { gap: true });
-  assert.deepEqual([app.leaving, app.swept, v.task(1).done], [{ 1: 'done' }, { 1: true }, true]);
+  await app.setProgress(app.tasks[1], 100, ROW);
+  assert.deepEqual([app.leaving, app.isGap(app.tasks[1], { depth: {} }), v.task(1).done], [{ 1: 'done' }, false, true]);
   await app.unmark(1);
-  assert.deepEqual([app.leaving, app.swept], [{}, {}]);
-  assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.5 }], 'Undo: open, at the progress it had');
-  await app.setProgress(app.tasks[1], 100, ROW, { gap: true });
+  assert.deepEqual(app.leaving, {});
+  assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.5 }], 'its tick: open, at the progress it had');
+  await app.setProgress(app.tasks[1], 100, ROW);
   await app.toggleDone(app.tasks[2], ROW);
-  assert.deepEqual(app.swept, { 1: true }, 'a tick leaves its row ticked in place, no gap');
+  assert.deepEqual(app.leaving, { 1: 'done', 2: 'done' }, 'swiped or ticked: marked the same');
   await app.clearBatch(true);
-  assert.deepEqual([app.view.groups[0].tasks, app.swept], [[], {}], 'both gone with the batch');
-  // A subtask in its parent's sheet: the gap, then done where it is.
+  assert.deepEqual([app.view.groups[0].tasks, app.leaving], [[], {}], 'both gone with the batch');
+  // A subtask in its parent's sheet: done where it is, with nothing marked.
   v.tasks.set(3, { id: 3, title: 'Prime it', done: false });
   const inSheet = { id: 3, title: 'Prime it', done: false };
-  await app.setProgress(inSheet, 100, null, { sub: true, gap: true });
-  assert.deepEqual([app.swept, app.leaving], [{ 3: true }, { 3: 'done' }]);
-  await app.clearBatch(true);
-  assert.deepEqual([app.swept, inSheet.done], [{}, true]);
+  await app.setProgress(inSheet, 100, null, { sub: true });
+  assert.deepEqual([app.leaving, inSheet.done, v.task(3).done], [{}, true, true]);
 });
 
-/* The gap shows when the row has slid away, not when Vikunja answers (rows-and-sheet-fixes-plan, part 2): it's the
-   row's from the moment it's let go, held by what's done to it (toggleDone's holdRow; gapNow, where that doesn't hold
-   it itself: a deletion, a step on a run's screen), and the mark takes its place once the save is made. A tap on it
-   meanwhile waits for the answer, and is then its Undo. A save not made: the gap gives way, and the row says so, with
-   Try again, as a tick's does. A deletion's gap the same, until it's kept to send. A row ticked by a tap is held the
-   same way, with no gap. */
-test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\'s undone once it has; not saved, the gap gives way to the row\'s line', async c => {
+/* A row done is held where it is, done, from the moment it's ticked or let go, not from when Vikunja answers
+   (rows-and-sheet-fixes-plan, part 2; toggleDone's holdRow), and the mark takes its place once the save is made. Its
+   tick tapped meanwhile waits for the answer, and is then its undo. A save not made: it's let go of, and the row says
+   so, with Try again. A deletion's gap is held the same way (gapNow), until it's kept to send. */
+test('a full swipe\'s row is held done before Vikunja answers; its tick tapped meanwhile undoes it once it has; not saved, the row says so', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c), send = globalThis.fetch;
   // Vikunja's answers, held back until `answer()`.
   let held = [];
@@ -271,46 +268,38 @@ test('a full swipe\'s gap is there before Vikunja answers; tapped meanwhile, it\
   document.querySelectorAll = () => [];                                       // (no rows to slide back in)
   try {
     app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
-    let setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
-    assert.deepEqual([app.swept, app.leaving, v.task(1).done], [{ 1: true }, { 1: 'done' }, false], 'held as the gap from the let-go, with nothing answered yet');
-    app.gapNow(1, 'done', setting);                                            // (held already: nothing more)
-    const tapped = app.restoreRow(1);
+    let setting = app.setProgress(app.tasks[1], 100, ROW);
+    assert.deepEqual([app.leaving, app.tasks[1].done, v.task(1).done], [{ 1: 'done' }, true, false], 'held done from the let-go, with nothing answered yet');
+    const tapped = app.unmark(1);
     await turn();
-    assert.deepEqual([app.swept, patches(v)], [{ 1: true }, []], 'its Undo tapped: nothing until the answer');
+    assert.deepEqual([app.leaving, patches(v)], [{ 1: 'done' }, []], 'its tick tapped: nothing until the answer');
     answer();
     await setting; await tapped;
-    assert.deepEqual([app.swept, app.leaving], [{}, {}], 'answered: marked, and the tap was its Undo');
+    assert.deepEqual(app.leaving, {}, 'answered: marked, and the tap was its undo');
     assert.deepEqual([v.task(1).done, v.task(1).percent_done, patches(v).length], [false, 0.5, 2], 'open again, at the progress it had');
-    // Answered before the row has gone: the mark is there already, and nothing is put there twice.
-    setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
-    await setting;
-    app.gapNow(1, 'done', setting);
-    await turn();
-    assert.deepEqual([app.swept, app.leaving], [{ 1: true }, { 1: 'done' }]);
-    await app.unmark(1);
-    // Not saved: the gap gives way to the row, which says so.
+    // Not saved: it's let go of, and the row says so.
     v.trouble = () => 500;
-    setting = app.setProgress(app.tasks[1], 100, ROW, { gap: true });
-    assert.deepEqual([app.swept, app.leaving], [{ 1: true }, { 1: 'done' }]);
+    setting = app.setProgress(app.tasks[1], 100, ROW);
+    assert.deepEqual(app.leaving, { 1: 'done' });
     await setting; await turn();
-    assert.deepEqual([app.swept, app.leaving, app.tasks[1].done], [{}, {}, false], 'no gap, and not done');
+    assert.deepEqual([app.leaving, app.tasks[1].done], [{}, false], 'not held, and not done');
     assert.match(app.toast.msg, /^Not saved: /);
     assert.deepEqual([app.toast.row.id, app.toast.action.label], [1, 'Try again']);
     v.trouble = () => null; app.rowEl = () => ROW;                             // (its row is on screen)
     await app.toast.action.fn();
-    assert.deepEqual([app.swept, v.task(1).done], [{ 1: true }, true], 'Try again: done, its row the gap');
-    // A tick tapped: held where it is, done, with no gap; tapped again before the answer, that's its undo once it's in.
+    assert.deepEqual([app.leaving, v.task(1).done], [{ 1: 'done' }, true], 'Try again: done, in its place');
+    // A tick tapped is held the same way; tapped again before the answer, that's its undo once it's in.
     await app.unmark(1);
     held = [];
     const ticking = app.toggleDone(app.tasks[1], ROW), again = app.unmark(1);
-    assert.deepEqual([app.leaving, app.swept, typeof again.then], [{ 1: 'done' }, {}, 'function']);
+    assert.deepEqual([app.leaving, typeof again.then], [{ 1: 'done' }, 'function']);
     answer();
     await ticking; await again;
     assert.deepEqual([app.leaving, v.task(1).done, app.tasks[1].done], [{}, false, false], 'ticked and ticked again: open, and nothing left marked');
     // A deletion's: "Deleted" and Restore at once; called off (its question said no), the row is back.
     let said = null;
     const asked = new Promise(ok => { said = ok; });
-    app.gapNow(2, 'deleted', asked);
+    app.gapNow(2, asked);
     assert.deepEqual(app.leaving[2], 'deleted');
     said(false);
     await asked; await turn();
