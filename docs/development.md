@@ -113,8 +113,9 @@ change against them, and say in its plan where it bends one. These are the code'
 11. **Content from Vikunja goes through `sanitize`** (`html.js`) before it's shown: Pocket shares Vikunja's origin
     and sign-in.
 12. **Colours are custom properties,** in `styles.css`'s `:root`, with dark mode's in the block after it; lint fails
-    on one written anywhere else. So are the two sizes a row is laid out by, `--tick` and `--title-x`. Type is one
-    scale (17, 15, 14, 13, and 22 for a sheet's title); an input never goes under 16px, or an iPhone zooms in.
+    on one written anywhere else. So are the sizes a row is laid out by: `--tick` and `--title-x`, and a subtask's
+    smaller tick and step in, `--sub-tick` and `--sub-in`. Type is one scale (17, 15, 14, 13, and 22 for a sheet's
+    title); an input never goes under 16px, or an iPhone zooms in.
 13. **Whether less motion is wanted is asked in one place,** `motion()` in `util.js`. Everything felt goes through
     `haptic()`: an iPhone has no `navigator.vibrate`.
 14. **`sw.js` keeps the libraries by name,** so a changed file under an old name never reaches an installed Pocket. A

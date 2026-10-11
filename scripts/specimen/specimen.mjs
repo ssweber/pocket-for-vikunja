@@ -314,7 +314,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
     {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
   c.specimenSheets = [];
-  c.specimen = []; c.specimenCards = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenRunTops = []; c.specimenAdding = {steps: [], at: null, target: {}};
+  c.specimen = []; c.specimenCards = []; c.specimenEnds = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenRunTops = []; c.specimenAdding = {steps: [], at: null, target: {}};
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -373,6 +373,10 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
     this.cardOpen = {[s.cards[0].id]: true, [s.cards.at(-1).id]: true};
+    // A screen's headings, each under the end of the list before it: a collapsed card's tab, an opened card's ⌃, a card
+    // with no footer, and a row.
+    const [van, , , opening, milk, , sign] = this.specimenCards;
+    this.specimenEnds = [[milk, opening], [van], [sign], [milk], []];
     // The parents' rings, on Today's cards; and the question their ring asks (sheet/complete.html), for a task's and a run's.
     for (const x of s.parentSubs) this.keep(x);
     this.specimenParents = s.parents.map(t => this.keep(t));
@@ -409,10 +413,10 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
     for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', action: {label: 'Undo', fn(){}}, ...t.state.line};
     for (const t of all) if (t.state.leaving) this.leaving[t.id] = t.state.leaving;
-    for (const t of all) if (t.state.swept) { this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
+    for (const t of all) if (t.state.swept) this.leaving[t.id] = 'done';
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash][t.id] = true;
     for (const t of all) if (t.state.claim) this.slideClaim[t.id] = true;
-    for (const t of s.parents) if (t.state?.swept) { t.done = true; this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
+    for (const t of s.parents) if (t.state?.swept) { t.done = true; this.leaving[t.id] = 'done'; }
     // A still of a row swiped left onto its Delete, `off` px aside, where letting go does `to` (swipeOf, as a swipe uses it).
     const redUnder = (row, name, off, to) => { const s = swipeOf(row, () => {}, name); s.begin(); s.move({off, to}); };
     this.$nextTick(() => {

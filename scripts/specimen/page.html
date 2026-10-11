@@ -126,6 +126,17 @@
           <!-- include markup/list-item.html -->
         </template>
       </div></template>
+      <!-- A screen's headings (screens/lists.html, its groups), each under the end of the list before it: under a card's
+           footer, as far from its tab as from any list's last row -->
+      <div class="sec">A heading under the list before it: after a collapsed card’s tab, after an opened card’s ⌃, after a card with no footer, and after a row: each as far under what’s drawn above it</div>
+      <template x-for="(items, i) in specimenEnds" :key="i"><div>
+        <div class="sec"><span x-text="['Today', 'Next 7 days', 'Later', 'No date', 'Done'][i]"></span><span class="n num" x-text="items.length || ''"></span></div>
+        <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list" x-show="items.length">
+          <template x-for="t in items" :key="t.id">
+            <!-- include markup/list-item.html -->
+          </template>
+        </div></template>
+      </div></template>
       <!-- A parent's ring (parent-tasks-plan, part 3): on a card's header, in place of a tick, its arc the worked-out
            figure and done of all inside it; every subtask done, "All subtasks done" with Close; closed, a gap with Undo;
            its header swiped right part way (it springs back), and left onto its Delete -->

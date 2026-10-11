@@ -9,8 +9,9 @@
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
   --pad:16px; --cap-h:64px; --kb:0px;
   /* A tick, a step's box and a ring are one size, and a row's title starts after it: the row's padding, the marker, the
-     gap. A subtask is indented by a marker and a gap, so its tick is under its parent's title. */
-  --tick:28px; --title-x:calc(14px + var(--tick) + 12px);
+     gap. A subtask's are a little smaller (--sub-tick), and it's indented by less than its parent's marker and gap
+     (--sub-in), so it sits close under its parent, its tick starting a little before the parent's title. */
+  --tick:28px; --title-x:calc(14px + var(--tick) + 12px); --sub-tick:24px; --sub-in:30px;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
@@ -117,12 +118,17 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .sec-date{margin-left:auto;color:var(--muted);font-weight:600;font-size:14px}
 .sec-act{margin-left:auto;border:0;background:transparent;color:var(--accent);font-size:14px;font-weight:650;padding:6px 2px}
 .sec-act[disabled]{opacity:.55}
+/* A heading under a list that ends in a card's footer: the footer's own gap is most of the space over it, so it's as
+   far under the tab as under any list's last row. The footer keeps its 48px to tap, the last of it under the
+   heading's line, whose words let the tap through. */
+div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec{position:relative;margin-top:-10px;pointer-events:none}
+.sec > :is(button,a){pointer-events:auto}
 .list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
 .row{--row-inset:0px;display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
 .row:first-of-type{border-top:0}
-/* a subtask, under its parent: its tick lines up with the parent's title, and the line between them starts there too,
-   as does the fill while its progress is set (--row-inset, read by each) */
-.row.sub{--row-inset:calc(14px + var(--depth) * (var(--tick) + 12px));padding-left:var(--row-inset);border-top-color:transparent}
+/* a subtask, under its parent: its tick smaller, a step in for each task it's under, and the line between them starts
+   there too, as does the fill while its progress is set (--row-inset, read by each) */
+.row.sub{--tick:var(--sub-tick);--row-inset:calc(14px + var(--depth) * var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
 .row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
 /* a row's title takes taps over the row's full height, and up to its edge when there's nothing after it. Its first line
@@ -164,7 +170,8 @@ main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
 .slide-hint.gone{opacity:0;visibility:hidden}
 @media (prefers-reduced-motion:reduce){.slide-hint{transition:none}}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
-.check{width:var(--tick);height:var(--tick);border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:2px;display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
+/* whatever its size, its middle is on the title's first line, 28px down the row */
+.check{width:var(--tick);height:var(--tick);border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:calc(16px - var(--tick) / 2);display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
 /* a tick's touch target is 48px, past its circle; on a row, the whole left gutter, at the row's full height, up to its
    title (a subtask's from the row's edge) */
 button.check{position:relative}
@@ -177,6 +184,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* A checklist's step has a square box, a task and a subtask a round one: they behave differently (a step is ticked
    through its run, with its ✅), so they look it. */
 .check.sq{border-radius:7px}
+/* a subtask's, smaller: its ✓ and a step's corners with it */
+:is(.row.sub,.card-rows > .row) > .check svg{width:13px;height:13px}
+:is(.row.sub,.card-rows > .row) > .check.sq{border-radius:6px}
 .empty{text-align:center;color:var(--muted);padding:48px 12px}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 .loading{padding:40px 0;text-align:center;color:var(--muted)}
@@ -265,10 +275,12 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .ring .n{font-size:10px;font-weight:650;letter-spacing:-.03em;line-height:1}
 /* off the scale, inside a ring only: 10px, and 8.5px with five characters (12/14), so they fit */
 .ring.long .n{font-size:8.5px;letter-spacing:-.05em}
+/* and in a subtask's smaller ring, five characters a little smaller again */
+:is(.row.sub,.card-rows > .row) > .ring.long .n{font-size:7.5px}
 .ring.full .n{color:var(--accent);font-weight:750}
 .ring:disabled{opacity:.7}
 button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
-:is(.row,.card-head) > .ring{position:static;margin:2px 0 0}
+:is(.row,.card-head) > .ring{position:static;margin:calc(16px - var(--tick) / 2) 0 0}
 :is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + var(--tick) + 12px)}
 /* Held, to be moved, the row lifts, and the rows it passes slide aside to make room (with less motion, they're only
    there). A swipe never uses this: it moves the row itself (below). */
@@ -309,9 +321,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
   background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
 .row-prog[data-side=left] .ring{left:10px}
 .row-prog[data-side=right] .ring{right:10px}
-/* a card's header uncovers only its 44px strip: its ring smaller there, and centred in it, clear of its edges, as
-   the header's own ring and title are */
-.row-prog.head .ring{top:calc(50% - 16px);width:32px;height:32px;padding:3px}
+/* a card's header uncovers only its 38px strip: its ring smaller there, its middle 22px down, as the header's own
+   ring's and title's are, clear of the strip's edges */
+.row-prog.head .ring{top:7px;width:30px;height:30px;padding:3px}
 .row-prog.sq .ring{border-radius:10px}
 .row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
 /* at 100% (a done row swiped left, before its first stop), the ring is a done tick: filled, with its ✓ */
@@ -400,11 +412,13 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .day-card{position:relative}
 /* its header: the parent's ring, where its rows' ticks are, then its title, which opens it, on one line: the title cut
    short with "…", its priority's bars, small, and when it's due, short, on the title's baseline as on a row. The ring
-   and the title's line are centred in its 44px strip (rows-and-sheet-fixes-plan, part 2: 22px down, the title's 24px
-   line with 10px over and under it), as is the ring a swipe uncovers there (.row-prog.head). */
-.card-head{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;background:var(--surface)}
-.card-head > .ring{margin:0}
-.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px 0 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
+   and the title's line are 22px down (rows-and-sheet-fixes-plan, part 2: the title's 24px line with 10px over it), as
+   is the ring a swipe uncovers there (.row-prog.head), and only 4px under it, so its first row is close under its
+   title: a 38px strip. Its taps stay 44px tall, the ring's and the title's reaching 6px over its first row's top. */
+.card-head{position:relative;z-index:1;display:flex;align-items:flex-start;gap:12px;min-height:38px;padding:0 14px;background:var(--surface)}
+.card-head > .ring{margin:8px 0 0}
+.card-head > .ring::after{bottom:-6px}
+.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px -6px 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
 .card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
@@ -416,7 +430,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
 .day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
-.card-close{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
+.card-close{display:flex;align-items:center;gap:12px;min-height:52px;margin-top:6px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
 .card-close > span{flex:1;min-width:0}
 .close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700}
 .close-btn:disabled{background:var(--sunk);color:var(--muted)}
@@ -439,9 +453,9 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
   background:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) left top/var(--r-row) var(--r-row) no-repeat,
     radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
 .day-card.deleted:not(.sweeping) > :not(.del-gap,.row-under){visibility:hidden}
-/* its rows, one level in, as a subtask under its parent: each tick under the header's title, the lines between them
-   starting at the ticks (as .row.sub's), the tick's tap still the whole gutter and the swipe's space the whole row */
-.card-rows > .row{--row-inset:var(--title-x);padding-left:var(--row-inset);border-top-color:transparent}
+/* its rows, one level in, as a subtask under its parent (.row.sub: its smaller tick, its step in), the lines between
+   them starting at the ticks, the tick's tap still the whole gutter and the swipe's space the whole row */
+.card-rows > .row{--tick:var(--sub-tick);--row-inset:calc(14px + var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
 .card-rows > .row:not(:first-of-type) > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
 .day-card.lined > :not(.row-line){display:none}
