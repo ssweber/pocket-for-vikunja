@@ -231,7 +231,10 @@ export default {
       this.cap.text = r.text; this.$nextTick(() => this.$refs.capture.focus());
       return;
     }
-    this.route = r;
+    // The same screen drawn again keeps the route it has. (A new one, though it says the same, asks everything that
+    // reads it to be worked out again: every row asks which screen it's on, and a screen is drawn again after each
+    // thing sent, each refresh and each time Pocket comes back to the front.)
+    if (JSON.stringify(raw(this.route)) !== JSON.stringify(r)) this.route = r;
     if (r.name !== 'run') this.runFrom = location.hash || '#/today';
     if (r.name !== 'run' && r.name !== 'project') this.projectFrom = location.hash || '#/today';
     const seq = ++renderSeq;
