@@ -428,7 +428,7 @@ export default {
       } catch (e) { this.say('Not undone: ' + (e instanceof NetError ? 'no connection' : e.message), {place: 'sheet:top', cls: 'failed'}); }
       await fresh();
     };
-    this.say(`Now its own task, no longer under${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
+    this.say(`Now its own task, no longer under ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
