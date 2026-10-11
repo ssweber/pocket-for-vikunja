@@ -80,7 +80,8 @@ export default {
       people: s.done ? [] : this.peopleOf(s.id, r.steps.find(x => x.id === s.id)?.assignees || [])}))};
   },
   /* Progress as a text, through the phone's share sheet (to a message, say), or, where there's none, copied to paste
-     into one. Said in the sheet it was shared from. */
+     into one. Said in the sheet it was shared from. The share sheet is asked for straight from the tap, with nothing
+     awaited before it: a phone allows it only then. */
   async shareProgress(what){
     const doc = this.shareDoc(what);
     if (!doc) return;

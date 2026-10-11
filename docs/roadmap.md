@@ -138,7 +138,7 @@ row for every list, with the parts of it that a list doesn't show (design rule 4
 Part 6 of the same plan measured before it built (`npm run perf:rows`, `scripts/perf/README.md`), and what cost
 something a person would feel was never the row's own bindings, listeners or helpers: it was every row being worked
 out again for a change that was one row's. Five rules came of it, each with its fix in a commit of its own
-(`development.md`, "What a change costs a long screen"):
+(`development.md`, rule 10, "A change to one row costs one row"):
 
 1. What every row reads stays the same object, and changes inside: a list's group as it's drawn (`shownGroups`), the
    screen's `route` when it's the same screen.
