@@ -168,7 +168,7 @@ adding and finishing tasks, handing them on, and checklists. Boards, project set
   tasks were made, and can't be reordered. A checklist's steps keep an order of their own (see **In Vikunja's web
   app**, under Checklists).
 - **Deleting:** swipe a task's row to the left, starting away from the screen's edge, and tap **Delete**; or swipe on
-  past half the row, until the word Delete steps to the middle of the row (and, on a phone that can, you feel a tick), and let go. A task with
+  past half the row, until the light red behind Delete turns solid (and, on a phone that can, you feel a tick), and let go. A task with
   progress first swipes down to 0% (see **Progress**), so it takes a second swipe to delete: a slip can't. Back under half before you let go, it's only left open. Swipe
   back, or tap anywhere else, to leave it: the row slides back over the red. Deleted, the row slides on off the screen to the left, and its place stays
   as a gap, at the same height, so nothing moves, with only "Deleted" and **Restore** where "+ me" was: tap anywhere

@@ -239,7 +239,7 @@ function sections(){
     {title: 'Swiped left from 75%, still held: the ring empties to 50% and 25%, and stops at 0% however far it’s pulled, with no Delete; let go, its progress is set and the row springs back', depth: {}, delete: true, tasks: [
       task({title: 'Order more cups', percent_done: .75, state: {reveal: -.2}}), task({title: 'Order more cups', percent_done: .75, state: {reveal: -.38}}),
       task({title: 'Order more cups', percent_done: .75, state: {reveal: -.7}})]},
-    {title: 'Then, at 0%, a second swipe left: its Delete, a light red, open on its button if let go; past half the row, solid red: let go there, it’s deleted', depth: {}, delete: true, tasks: [
+    {title: 'Then, at 0%, a second swipe left: its Delete, a light red, open on its button if let go; past half the row, solid red, its word where it was: let go there, it’s deleted', depth: {}, delete: true, tasks: [
       task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
     {title: 'A done row swiped left: the ring a done tick, then 75% (open again), on down to 0%', depth: {}, delete: true, tasks: [
       task({title: 'Sweep the yard', done: true, state: {reveal: -.09}}), task({title: 'Sweep the yard', done: true, state: {reveal: -.15}})]},

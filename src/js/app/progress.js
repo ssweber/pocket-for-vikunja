@@ -7,7 +7,7 @@
 // leads with its own row, swiped as any (sheetRowGesture: parent-tasks-plan, 6b). A parent (a card's header, or a
 // parent's row: parent-tasks-plan, part 3) has no progress of its own: swiped right it springs back, unless all the
 // way, its ring's tap; left, its Delete.
-import {DELETE_W, HOLD_MS, inTextField, isNudge, lockDirection, pctOf, releaseSpeed, SIDES, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
+import {DELETE_W, HOLD_MS, inTextField, isNudge, lockDirection, pctOf, releaseSpeed, SWIPE_PX, SWIPE_SLOPE, swipeAt, swipeFeel, swipeStarts, trackMoves} from '../progress.js';
 import {dragPlace} from '../order.js';
 import {haptic} from '../haptics.js';
 import {motion, store} from '../util.js';
@@ -95,11 +95,12 @@ const fresh = row => { stopGlide(row); if (opened === row) return; unlay(row); r
 /* A row's Delete, uncovered as it's swiped left at 0%, as on a phone's mail: the row moves with the finger, from
    where it rests or, open, from its Delete (`base`). It's laid under the row as its stops are (lay): red (a light
    one, until letting go would delete: styles.css), the row's whole size, with a real button at its end, named for
-   the task (`name`), which is all of it in sight while the row rests open on it. So it never moves or changes size: let go a third of the way across the button, the row glides to
-   rest open on it; sooner, back home over it, and then it goes. Past the left side's full point, its word steps to
-   the middle of the row, where the row's end has just passed, and letting go there deletes it, as tapping the button
-   does (`remove`, which takes the row on off the screen: sweep). Made by the swipe, it isn't in the page until then:
-   a keyboard or a screen reader deletes from the task's ⋯ instead. (The specimen draws its stills with it.) */
+   the task (`name`), which is all of it in sight while the row rests open on it. So it never moves or changes size:
+   let go a third of the way across the button, the row glides to rest open on it; sooner, back home over it, and
+   then it goes. Past the left side's full point, its red turns solid, its word where it was, and letting go there
+   deletes it, as tapping the button does (`remove`, which takes the row on off the screen: sweep). Made by the
+   swipe, it isn't in the page until then: a keyboard or a screen reader deletes from the task's ⋯ instead. (The
+   specimen draws its stills with it.) */
 export const swipeOf = (row, remove, name = '') => ({
   base: opened === row ? -DELETE_W : 0,
   begin(){
@@ -107,7 +108,7 @@ export const swipeOf = (row, remove, name = '') => ({
     row.classList.add('swiping');
     if (laid.get(row)?.el.matches('.row-red')) return;    // open on it already
     const el = document.createElement('span'), del = document.createElement('button');
-    el.className = 'row-red'; el.style.setProperty('--open', DELETE_W + 'px'); el.style.setProperty('--full', SIDES.delete.full * 100 + '%');
+    el.className = 'row-red'; el.style.setProperty('--open', DELETE_W + 'px');
     del.type = 'button'; del.className = 'row-del'; del.textContent = 'Delete'; del.setAttribute('aria-label', 'Delete ' + name);
     // Tapped, once the row is open on it (a tick felt then); not twice, nor while the row is already on its way off.
     del.addEventListener('click', () => { if (away.has(row)) return; haptic('done'); remove(); });

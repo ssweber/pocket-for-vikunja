@@ -337,16 +337,14 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row-prog.full .ring svg{opacity:1}
 /* A row's Delete: under the whole row, and at its end the button, as wide as the row rests open on it (--open:
    DELETE_W, progress.js), which is all of it in sight then. A light red, its word in red, while letting go only
-   leaves the row open on it; solid red, its word light, once letting go deletes (.full, below), and when it's tapped,
-   the row on its way off (.sure: sweep, progress.js): as a row's progress turns solid green at its full point. */
+   leaves the row open on it; solid red, its word light, once letting go deletes (.full: past half the row, a full
+   swipe), and when it's tapped, the row on its way off (.sure: sweep, progress.js): as a row's progress turns solid
+   green at its full point. The colour says it all: its word stays where it is, at the row's end. */
 .row-red{background:var(--danger-soft)}
 .row-red:is(.full,.sure){background:var(--danger)}
 .row-del{position:absolute;top:0;bottom:0;right:0;width:var(--open,88px);display:flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;color:var(--danger);font-size:15px;font-weight:700}
 .row-red:is(.full,.sure) > .row-del{color:var(--danger-ink)}
 .row-del:focus-visible{outline-color:currentColor;outline-offset:-6px}
-/* past the full point (--full: half the row), a full swipe: let go, it's deleted; its word steps there, to where the
-   row's end has just passed, and stays, the red filling what the row leaves */
-.row-red.full > .row-del{left:var(--full,50%);width:auto;justify-content:flex-start;padding-left:28px}
 /* Deleted, until the batch clears (leaving.js): gone from its place, which stays, at its height, so nothing moves: a
    gap holding only "Deleted", in muted words, from the row's edge whatever its indent, and Restore where who's doing
    it was, the same shape as "+ me". A row still on its way off the screen (.sweeping: sweep, app/progress.js) keeps
