@@ -465,12 +465,10 @@ export default {
     const id = `pending-${entry}-${w.index - 1}`;
     this.light({...c, id, wait: {...w, id, index: w.index - 1}});
   },
-  // A subtask moved up or down (reorder, actions.js): the cursor on it hands over to its task, and the box goes back to
-  // that task's last.
-  aimMoved(t){ const c = this.cursor; if (c?.id === t.id && c.under !== null) this.aim(this.tasks[c.under]); },
   /* The cursor never points at a row that's gone: deleted, done, or off the list. Then the task it was under is lit,
      and the box goes back to that task's last; with none, to adding a task. Asked whenever that may have changed
-     (core.js), but not behind a sheet, where the task opened may be ticked and opened again. */
+     (core.js), but not behind a sheet, where the task opened may be ticked and opened again. A row moved up or down
+     (reorder, actions.js) isn't gone: it stays lit, and the next subtask goes after it where it is now. */
   keepAim(){ const c = this.cursor; if (c && !this.cursorTask) this.aim(this.tasks[c.under]); },
   /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
      isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.

@@ -169,7 +169,7 @@ test('a tick moves the cursor: to the task while it\'s open, to its parent once 
   assert.equal(app.capW, 'cap', 'done since: the box adds a task again');
 });
 
-test('the cursor never points at a row that\'s gone: deleted, done or moved, its task is lit; called off or turned down while waiting, too', async () => {
+test('the cursor never points at a row that\'s gone: deleted or done, its task is lit; called off or turned down while waiting, too; moved, it stays lit', async () => {
   const { app, van, chairs, tables, lights } = projectList();
   // Deleted (off the lists while its Restore shows): the task it was under. Restored, the light stays where it went.
   app.aim(chairs);
@@ -197,11 +197,12 @@ test('the cursor never points at a row that\'s gone: deleted, done or moved, its
   app.keepAim();
   assert.deepEqual([app.cursor, app.lit], [null, {}]);
   app.deleting = [];
-  // Moved up or down among its siblings: the box goes back to its task's last. A task moved stays lit.
+  // Moved up or down among its siblings, it isn't gone: it stays lit, and the next goes after it where it is now,
+  // between it and Load chairs. A task moved stays lit too.
   Object.assign(app, { act: async () => ({ status: 'sent' }), saveProject(){} });
   app.aim(tables);
   await app.reorder(tables, [chairs, tables], 0, 5);
-  assert.deepEqual([app.lit, app.capTarget, app.cursorPlaces(1)], [{ 10: true }, { to: 'Pack the van', after: '' }, [100 + SPACING]]);
+  assert.deepEqual([app.lit, app.capTarget, app.cursorPlaces(1)], [{ 12: true }, { to: 'Pack the van', after: 'Tables' }, [75]]);
   app.aim(van);
   await app.reorder(van, [van, lights], 1, 5);
   assert.deepEqual(app.lit, { 10: true });

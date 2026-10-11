@@ -104,7 +104,9 @@ never decided.
 - **A nudge always selects.** A nudge, a tick or a swipe on any row aims the box there, also on the row touched
   before: the line goes back to "after" that row, and a tick is felt whenever the lit row changes.
 - **The aim never points at a row that's gone.** The subtask the box adds after deleted, called off while waiting,
-  moved or ticked done: the box goes back to its parent's last, and the parent is lit.
+  or ticked done: the box goes back to its parent's last, and the parent is lit. Moved up or down, it isn't gone: it
+  stays lit, and the next goes after it where it is now (the user, 2026-10-11; built first as handing over to its
+  parent).
 - The box goes back to adding a task when the lit row is out of sight, as now.
 - **The line keeps its words:** "Add a subtask to P, after X". Its comment and `cap-target.html`'s say "unless that's
   the last", which the code doesn't do: the comments are put right.

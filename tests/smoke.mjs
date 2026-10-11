@@ -3565,7 +3565,8 @@ ${footName('Hooks')}`);
   });
   /* The lit row follows what's added, and a nudge always selects (rows-and-sheet-fixes-plan, part 3): the row touched
      before a subtask was added, nudged again, is lit again, and the line goes back to it. The lit row is never one
-     that's gone: deleted, or moved, its task is lit, and the box goes back to that task's last. */
+     that's gone: deleted, its task is lit, and the box goes back to that task's last. Moved up or down, it isn't
+     gone: it stays lit. */
   await step('a-nudge-selects-the-row-touched-before-and-a-lit-row-gone-hands-over-to-its-task', async () => {
     const T = foot.tasks, head = `#view .day-card[data-id="${T.Van.id}"] > .card-head`, van = `Add a subtask to ${footName('Van')}`;
     await page.evaluate(() => scrollTo(0, 0));
@@ -3599,7 +3600,7 @@ ${footName('Hooks')}`);
     await expect(target).toHaveText(van);
     await onlyLit(itemById(T.Van.id));
     await synced(page);
-    // Its own tick, then moved up a place (Alt+↑, as holding it and moving it does): lit by the tick, its task by the move.
+    // Its own tick, then moved up a place (Alt+↑, as holding it and moving it does): lit by the tick, and still after the move.
     await page.getByRole('button', { name: 'Mark done: ' + footName('Flags'), exact: true }).click();
     await onlyLit(itemById(T.Van.id));
     await synced(page);                                                         // marked, not only held: its tick takes the mark back
@@ -3609,8 +3610,8 @@ ${footName('Hooks')}`);
     await synced(page);
     await page.locator(subRow('Flags') + ' > .body').focus();
     await page.keyboard.press('Alt+ArrowUp');
-    await expect(target).toHaveText(van);
-    await onlyLit(itemById(T.Van.id));
+    await expect(target).toHaveText(`${van}, after ${footName('Flags')}`);
+    await onlyLit(subRow('Flags'));
     await synced(page);
     p = await footPositions();
     if (!(p.Flags.position < p.Cones.position)) throw new Error('Flags didn\'t move up: ' + ['Cones', 'Flags'].map(s => p[s].position));
