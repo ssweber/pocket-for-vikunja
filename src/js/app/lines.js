@@ -154,8 +154,11 @@ export default {
 
   /* ---------- a row lit up ---------- */
   // Rows that light up for a moment, to show where they are: tasks just added (fresh), or just come due (due).
+  // By id, changed a row at a time (not a new list, which every row on the screen would have to look through again).
   flash(ids, kind = 'fresh'){
-    this.flashed[kind] = ids;
-    clearTimeout(flashTimers[kind]); flashTimers[kind] = setTimeout(() => { this.flashed[kind] = []; }, 2000);
+    const lit = this.flashed[kind], now = new Set(ids.map(String));
+    for (const id of Object.keys(lit)) if (!now.has(id)) delete lit[id];
+    for (const id of ids) if (!lit[id]) lit[id] = true;
+    clearTimeout(flashTimers[kind]); flashTimers[kind] = setTimeout(() => { for (const id of Object.keys(lit)) delete lit[id]; }, 2000);
   },
 };

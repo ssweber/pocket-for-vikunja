@@ -67,7 +67,9 @@ export default () => ({
   settingUp: false,                            // Set up checklists is making the project and its example
   startedHidden: (() => { try { return JSON.parse(store.get('started.hidden')) || {}; } catch { return {}; } })(),   // project id -> Getting started hidden
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
-  flashed: {fresh: [], due: [], arrived: []},  // rows lit up for a moment: tasks just added, just come due, and new to the screen on a refresh (lines.js)
+  // Rows lit up for a moment: tasks just added, just come due, and new to the screen on a refresh (flash, lines.js).
+  // Each a task id -> true, for a row to read by its own id, so lighting one row asks nothing of the others.
+  flashed: {fresh: {}, due: {}, arrived: {}},
   movingOverdue: false,                        // "Move all to today" is saving
   showingMore: null,                           // the list of done tasks whose next part is being read: its key (showMore, views.js)
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows

@@ -373,3 +373,22 @@ test('a group written into the one the screen keeps: what it no longer has is ta
   intoGroup(g, { key: 'done', fold: true, tasks: [a], ...nestSubtasks([a]) });
   assert.deepEqual(['open' in g, 'count' in g, g.tasks === tasks], [false, false, true], 'fields gone are taken off; a list that\'s the same is the list it had');
 });
+
+/* Rows lit up for a moment (flash, app/lines.js: just added, just come due, new to the screen) are kept by task id,
+   changed a row at a time, so each row reads its own: lighting one asks nothing of the others, where a new list of
+   ids had every row on the screen look through it (rows-and-sheet-fixes-plan, part 6). */
+test('rows lit up for a moment are kept by id: lighting one asks nothing of the others, and they go dark after 2 seconds', c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(lines));
+  app.flashed = { fresh: {}, due: {}, arrived: {} };
+  const asked = {}, lit = () => Object.fromEntries(Object.entries(Alpine.raw(app).flashed).map(([k, v]) => [k, Object.keys(Alpine.raw(v))]));
+  for (const id of [1, 2]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; return [app.flashed.fresh[id], app.flashed.arrived[id]]; });
+  app.flash([1]); flush();
+  assert.deepEqual([lit(), asked], [{ fresh: ['1'], due: [], arrived: [] }, { 1: 2, 2: 1 }], 'one added: its row, not the other');
+  app.flash([2]); flush();
+  assert.deepEqual([lit().fresh, asked], [['2'], { 1: 3, 2: 2 }], 'another added: the first goes dark, the second lights');
+  app.flash([2]); app.flash([3, 4], 'arrived'); flush();
+  assert.deepEqual([lit(), asked], [{ fresh: ['2'], due: [], arrived: ['3', '4'] }, { 1: 3, 2: 2 }], 'lit again, and others new to the screen: neither row is asked');
+  c.mock.timers.tick(2000); flush();
+  assert.deepEqual([lit(), asked], [{ fresh: [], due: [], arrived: [] }, { 1: 3, 2: 3 }], '2 seconds on: dark');
+});
