@@ -226,6 +226,37 @@ test('a row swiped or held: its Delete and its move only where its list allows t
   assert.equal(app.rowGesture({ id: 7, pending: true }, row(''), false), null, 'one waiting to be sent: only its tap');
 });
 
+/* What a hold moves is asked each time a finger goes down on a row, tap, swipe or scroll alike (reorderOf, from
+   rowGesture), so it mustn't cost what a long list costs: its siblings' rows are found in one pass over the list, and
+   a list still being drawn is drawn to its end only once the hold is felt. A list of 3 tasks, the second with a
+   subtask under it on its card; the pretend list can't be searched (it has no querySelectorAll), only gone over. */
+test('a finger down on a row doesn\'t search a long list, nor draw the rest of one still being drawn: that waits for the hold', c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = component(progress), drawn = [], read = { n: 0 };
+  const list = { get children(){ read.n++; return kids; } }, item = id => ({ dataset: { id: String(id) }, parentElement: list, matches: sel => sel === '.item', classList: { add(){}, remove(){} } });
+  const kids = [{ dataset: {} }, item(1), item(2), item(3)];                // (its <template> first, as Alpine leaves it)
+  const row = { parentElement: kids[2], matches: () => false, dataset: { id: '2', gestures: 'reorder' }, clientWidth: 360, closest: () => null, classList: { add(){}, remove(){} } };
+  const sibs = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  Object.assign(app, { drawing: false, drawAll: () => drawn.push('all'), orderOf: () => ({ sibs, view: 5, blocks: [{ ids: [1] }, { ids: [2, 21] }, { ids: [3] }] }), $refs: {} });
+  const still = app.reorderOf({ id: 2 }, row, false);
+  assert.ok(still.start && !still.held, 'a list all drawn: ready to move from the start');
+  assert.equal(read.n, 1, 'its siblings\' rows found by going over the list once');
+  app.drawing = true;
+  const hold = app.reorderOf({ id: 2 }, row, false);
+  assert.deepEqual([drawn, read.n], [[], 1], 'a list still being drawn: nothing drawn, nothing looked for, as the finger goes down');
+  // Through the real listeners: down, and the hold felt 450 ms later.
+  const on = {}, win = {}, area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
+  document.addEventListener = () => {}; globalThis.addEventListener = (type, fn) => { (win[type] ||= []).push(fn); }; globalThis.getSelection = () => null;
+  c.after(() => { delete document.addEventListener; delete globalThis.addEventListener; delete globalThis.getSelection; });
+  app.holdToSlide(area, () => ({ el: row, reorder: hold }));
+  for (const fn of on.pointerdown) fn({ isPrimary: true, pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 100, target: { closest: () => null } });
+  c.mock.timers.tick(HOLD_MS - 1);
+  assert.deepEqual(drawn, [], 'not before the hold');
+  c.mock.timers.tick(1);
+  assert.deepEqual(drawn, ['all'], 'the hold felt: the rest of the list is drawn, for the row to be moved among all its siblings');
+  for (const fn of win.pointerup) fn({ pointerId: 1 });                     // let go, so nothing is held for the tests after
+});
+
 /* A run's step is swiped as a task's row is (parent-tasks-plan, part 1): its progress either way, a done one down, and
    past 0% only a step inserted or repeated during the run, not done, has a Delete; a template's step stops at 0%. */
 test('a run\'s step: swiped for its progress as a task is; only one inserted during the run goes on into a Delete', () => {

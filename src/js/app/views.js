@@ -285,7 +285,8 @@ export default {
      frame, each a frame's work for the first few screens and then about a second's (batchMs, nextBatch), down the
      screen's lists in order (drawn, listGroups' `before`), until every row is drawn. Meanwhile the screen counts as busy (#view[aria-busy], app.html), so the tests wait for it.
      Scrolling to within a screen of the end of what's drawn draws the rest at once, so the end of what's drawn is never
-     taken for the end of the list; and so does holding a row to move it (reorderOf), which needs all its siblings. */
+     taken for the end of the list; and so does holding a row to move it (reorderOf, once the hold is felt), which
+     needs all its siblings. */
   drawFrom(n){
     this.drawTo = Math.min(this.drawTo, n + FIRST_ROWS);
     if (this.drawing) return;

@@ -299,6 +299,7 @@ export default {
         sliding = true; getSelection()?.removeAllRanges(); haptic('hold');
         if (s.reorder.lift) { g.mode = 'reorder'; s.reorder.lift(g.x, g.y); return; }
         g.mode = 'held'; (s.reorder.el || s.el)?.classList.add('held');
+        s.reorder.held?.();                             // what it needs before it's moved (reorderOf: the rest of a long list drawn)
       }, HOLD_MS);
     });
     // Where a row swiped `dx` is, and what letting go there does (swipeAt).
@@ -488,19 +489,22 @@ export default {
   reorderOf(t, row, sheet){
     const o = this.orderOf(t, sheet ? 'sheet' : 'list');
     if (!o || o.sibs.length < 2) return null;
-    const el = row.parentElement.matches('.item') ? row.parentElement : row;
-    const box = el.parentElement, rows = id => [...box.querySelectorAll(`:scope > [data-id="${id}"]`)];
+    const el = row.parentElement.matches('.item') ? row.parentElement : row, box = el.parentElement;
     const drag = () => {
-      const blocks = (o.blocks || o.sibs.map(s => ({ids: [s.id]}))).map(b => b.ids.flatMap(rows));
+      /* Each sibling's rows, found in one pass over the list. (Asking the list for each sibling's goes through the
+         whole list once per sibling, and this is asked each time a finger goes down on a row: on 660 rows, a third of
+         a second before a tap, a swipe or a scroll was answered, and seconds on a slow phone.) */
+      const at = new Map();
+      for (const x of box.children) { const id = x.dataset?.id; if (id !== undefined) at.set(id, [...(at.get(id) || []), x]); }
+      const blocks = (o.blocks || o.sibs.map(s => ({ids: [s.id]}))).map(b => b.ids.flatMap(id => at.get(String(id)) || []));
       return blocks.some(b => !b.length) ? null : dragOf(blocks, o.sibs.findIndex(s => s.id === t.id), sheet ? this.$refs.sheet.querySelector('.scroll') : null,
         to => this.reorder(t, o.sibs, to, o.view));
     };
     if (sheet || !this.drawing) return drag();
-    // A list's rows still being drawn a batch at a time (drawFrom, views.js): the rest drawn now, before the hold is
-    // felt, and its siblings found once it's moved.
-    this.drawAll();
+    // A list's rows still being drawn a batch at a time (drawFrom, views.js): the rest drawn as the hold is felt
+    // (`held`), not as the finger goes down, which may be a tap or a scroll, and its siblings found once it's moved.
     let d = null;
-    return {start: y => (d = drag())?.start(y), move: (dy, y) => d?.move(dy, y), end: commit => d?.end(commit)};
+    return {held: () => this.drawAll(), start: y => (d = drag())?.start(y), move: (dy, y) => d?.move(dy, y), end: commit => d?.end(commit)};
   },
   // A template's step held and moved up or down: its place in the template's order line (moveStep). Not while a step
   // is being changed, or the template is saving.

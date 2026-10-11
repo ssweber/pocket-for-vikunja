@@ -415,7 +415,9 @@ The JavaScript is ES modules, each importing what it uses. The helpers in `src/j
   through `drawn(g)` too: its `x-for` is handed the list as it is, not as Alpine watches it (`raw`), and keyed by a path
   into the item (`:key="t.id"`), which the patched Alpine reads off the item and, for the rows at the start that are
   where they were, keeps (Upgrading the libraries, below); otherwise each batch goes over every row drawn so far.
-  A row held to move it draws the rest first (`reorderOf`, which needs all its siblings); Done opened, and its row for
+  A row held to move it draws the rest first, once the hold is felt (`reorderOf`'s `held`, as it needs all its
+  siblings; not as the finger goes down, which may be a tap or a scroll: what a touch asks of a row, `rowGesture`,
+  is asked on every touch, so nothing in it may go over the whole list more than once); Done opened, and its row for
   more, draw from where they start (`drawFrom(n)`). Rows gone after a load are found in one pass (`settle`), and
   `collapseRows` (`util.js`) folds them only when a few (`FOLD_FEW`) are on screen, reading every height before any
   animation starts; more, or off screen, simply go.
