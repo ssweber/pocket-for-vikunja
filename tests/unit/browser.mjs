@@ -16,7 +16,7 @@ const empty = () => ({
   get innerHTML(){ return ''; },
   set innerHTML(html){ if (html) throw new Error(`unit tests have no DOM to read HTML in: ${html} (test it in tests/parse.mjs)`); },
 });
-globalThis.document = { lastModified: '', visibilityState: 'visible', implementation: { createHTMLDocument: () => ({ createElement: empty }) } };
+globalThis.document = { lastModified: '', visibilityState: 'visible', querySelector: () => null, implementation: { createHTMLDocument: () => ({ createElement: empty }) } };
 
 // localStorage, in memory: Pocket's drafts, saved lists and settings.
 const kept = new Map();

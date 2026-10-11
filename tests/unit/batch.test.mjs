@@ -105,6 +105,40 @@ test('a row marked: its tap takes the mark back; a subtask closed with its paren
   assert.deepEqual(app.leaving, {});
 });
 
+/* A collapsed card's top row done gives its place to the next subtask sooner than the batch (clearTops): half the
+   wait, by the same rules. Only that row's own mark: any other row, a parent closed with its subtasks, and a deleted
+   one wait for the batch. */
+test('a collapsed card\'s top row done goes after 1.5 seconds, for the next to come up; every other row waits for the batch', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default;
+  const { TOP_MS } = await import('../../src/js/batch.js');
+  const app = component(leaving), did = [], was = { one: document.querySelector, all: document.querySelectorAll };
+  // On the page: task 1 is a collapsed card's top row; 2 is a plain row; 4 is a top row, and a row of its own elsewhere.
+  const tops = [1, 4, 5, 6], plain = [2, 4];
+  document.querySelector = sel => tops.some(id => sel.includes(`.step-line[data-id="${id}"]`)) ? {} : null;
+  document.querySelectorAll = sel => plain.some(id => sel.includes(`[data-id="${id}"]`)) ? [{ offsetHeight: 50, style: {}, animate: () => ({ finished: Promise.resolve(), cancel(){}, effect: { target: { style: {} } } }) }] : [];
+  try {
+    assert.equal(TOP_MS, 1500);
+    for (const id of [1, 2, 4]) app.markRow(id, { kind: 'done', gone: () => did.push('gone ' + id) });
+    app.markRow(5, { kind: 'done', ids: [5, 7], gone: () => did.push('gone 5') });      // a parent closed with its subtask
+    app.markRow(6, { kind: 'deleted', gone: () => did.push('sent 6') });
+    t.mock.timers.tick(TOP_MS - 1);
+    assert.deepEqual(did, [], 'not before');
+    t.mock.timers.tick(1);
+    assert.deepEqual([did, app.leaving], [['gone 1'], { 2: 'done', 4: 'done', 5: 'done', 7: 'done', 6: 'deleted' }], 'the top row alone');
+    // Ticked again in time, it's taken back, and nothing goes.
+    app.markRow(1, { kind: 'done', undo: () => did.push('opened 1'), gone: () => did.push('gone 1 again') });
+    t.mock.timers.tick(1000);
+    app.unmark(1);
+    t.mock.timers.tick(1000);
+    assert.deepEqual(did, ['gone 1', 'opened 1']);
+    // The screen left: it goes with the rest, at once.
+    app.markRow(1, { kind: 'done', gone: () => did.push('gone 1 again') });
+    app.clearNow();
+    assert.deepEqual(did.slice(2).sort(), ['gone 1 again', 'gone 2', 'gone 4', 'gone 5', 'sent 6'], 'the screen left: all at once');
+  } finally { document.querySelector = was.one; if (was.all) document.querySelectorAll = was.all; else delete document.querySelectorAll; }
+});
+
 // Rows gone from a list loaded afresh (settle, collapseRows in util.js): a few on the screen fold away, every one
 // measured before any is changed; more than a few at once, or any off the screen, simply go.
 const fakeRow = (id, top, log) => ({ isConnected: true, style: {}, dataset: { id: String(id) },

@@ -8,9 +8,10 @@
    on screen is worked out from what's done and what's marked, and mustn't change in between. What happens when
    the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
    project, a repeating task shows its next date, a deletion is sent (held in the outbox until then: holdDelete).
+   A collapsed card's top row done goes sooner, on its own, for the next subtask to come up (clearTops).
    Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from #said. */
 import {app, motion} from '../util.js';
-import {batchTimer} from '../batch.js';
+import {batchTimer, TOP_MS} from '../batch.js';
 
 // The hint's space closes this long after it's put away, from when the finger lifts: sooner than rows leaving, as
 // nothing else is waiting on it.
@@ -19,11 +20,13 @@ const HINT_MS = 1000;
    by its `leaving`: `this` in a method called from the markup is the row's scope, not the component, but `leaving` is
    the same object from either. `hint`: when the one-time hint, put away, gives its space back (closeHint), on the
    component that first asked (initBatch, as Pocket starts). `early`: task id -> the rows held before their mark is
-   made (holdRow), each a promise of when what was done to it has answered. */
+   made (holdRow), each a promise of when what was done to it has answered. `tops`: when the top rows of collapsed
+   cards, done, give their place to the next (clearTops). */
 const state = new WeakMap();
 const of = c => {
   let s = state.get(c.leaving);
-  if (!s) state.set(c.leaving, s = {marks: new Map(), early: new Map(), batch: batchTimer(() => app.clearBatch()), hint: batchTimer(() => c.closeHint(), HINT_MS)});
+  if (!s) state.set(c.leaving, s = {marks: new Map(), early: new Map(), batch: batchTimer(() => app.clearBatch()), tops: batchTimer(() => app.clearTops(), TOP_MS),
+    hint: batchTimer(() => c.closeHint(), HINT_MS)});
   return s;
 };
 const EXIT_MS = 250;
@@ -42,6 +45,8 @@ function exit(els){
 // place (cardEntered).
 // (Not a sheet's own row, its task's head: what's marked is shown on its rows in lists.)
 const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`:is(.row:not(.step-line, .own), .day-card)[data-id="${id}"]`)]);
+// Whether task `id`'s only row on the screen is a collapsed card's top row.
+const isTop = id => !!document.querySelector(`.row.step-line[data-id="${id}"]`) && !rowsOf([id]).length;
 
 export default {
   /* Task `id`'s row marked, until the batch clears: {kind: 'done', 'open' (not done again) or 'deleted'; ids: the rows
@@ -49,10 +54,11 @@ export default {
      them unless said; a function, to be worked out then); undo: what its tick (or Restore) does meanwhile; gone: what's
      done when it clears; said: for a screen reader}. A row marked again keeps only the new mark. */
   markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = ''}){
-    const {marks, batch} = of(this), m = {id, kind, ids, out, undo, gone, going: false};
+    const {marks, batch, tops} = of(this), m = {id, kind, ids, out, undo, gone, going: false};
     for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); this.leaving[x] = kind; }
     if (said) this.said = said;
     batch.mark();
+    if (kind === 'done') tops.mark();
   },
   /* Row `id` held where it is from the moment something is done to it, before Vikunja has answered and its mark is
      made: as the mark to come will have it (`kind`: 'done' or 'deleted'). A task
@@ -133,8 +139,21 @@ export default {
     // The rows are off the list by the next turn; one that stayed (it wasn't for this list after all) comes back.
     if (anims.length) setTimeout(() => anims.forEach(a => { a.cancel(); a.effect.target.style.overflow = ''; }));
   },
+  /* A collapsed card's top row done gives its place to the next subtask sooner than the batch (TOP_MS, batch.js), by
+     the same rules, never under a finger or while the list scrolls. Nothing folds or closes up there: once its mark
+     has gone, the next slides up into the same place (cardEntered, app/cards.js), so the rows around the card don't
+     move. Only a mark of that one row (not a parent's, with the subtasks closed with it), shown nowhere else on the
+     screen; every other row waits for the batch, as before. */
+  clearTops(){
+    for (const m of new Set(of(this).marks.values())) {
+      if (m.going || m.kind !== 'done' || m.ids.length !== 1 || !isTop(m.id)) continue;
+      m.going = true;
+      this.dropMark(m);
+      m.gone?.();
+    }
+  },
   // Leaving the screen, or Pocket put away: the batch clears at once.
-  clearNow(){ of(this).batch.now(); this.clearBatch(true); },
+  clearNow(){ const s = of(this); s.batch.now(); s.tops.now(); this.clearBatch(true); },
   /* The one-time hint put away (hintSeen, progress.js): it has faded, keeping its space, and gives it back by the
      batch's rules, never under a finger or while the list scrolls: HINT_MS after the finger lifts, its row closing to
      its own height, the rows below with it (with less motion, at once). */
@@ -151,7 +170,7 @@ export default {
   /* What holds the batch back (and the hint's space closing): a finger down anywhere, and the list (or a sheet)
      scrolling. Each starts its wait again once it's over. */
   initBatch(){
-    const {batch, hint} = of(this), both = [batch, hint];
+    const {batch, tops, hint} = of(this), both = [batch, tops, hint];
     document.addEventListener('pointerdown', e => both.forEach(b => b.down(e.pointerId)), true);
     for (const k of ['pointerup', 'pointercancel']) addEventListener(k, e => both.forEach(b => b.up(e.pointerId)), true);
     let still;

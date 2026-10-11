@@ -3,6 +3,11 @@
    Each mark, each touch and each scroll starts the wait again. `go` is called when it's up, once for everything waiting.
    Apart from the screen, so the unit tests can run it with their own timers. */
 export const BATCH_MS = 3000;
+/* A collapsed card's top row done gives its place to the next subtask sooner (clearTops, app/leaving.js): this long
+   after the last mark, by the same rules. Nothing folds there, the next slides up into the same place, and it's the
+   one waited for (the user, 2026-10-11: "you'd expect the next one to slide up a little sooner"). Long enough to see
+   it ticked, and to tap its tick again to take it back. */
+export const TOP_MS = 1500;
 
 export function batchTimer(go, ms = BATCH_MS){
   let waiting = false, scrolling = false, timer = null;
