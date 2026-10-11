@@ -78,7 +78,10 @@ export default () => ({
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
-  slideClaim: null,                            // a task or step whose progress is being slid, which you'll be doing (claimOnSlide)
+  slideClaim: {},                              // a task or step whose progress is being slid, which you'll be doing: its id -> true (claimOnSlide)
+  // What's waiting to be sent for each task, by its id, for a row to ask about its own (keyWaiting, sending.js): its
+  // last claim or let-go ('claim', 'unclaim'), and how many photos and files wait to upload.
+  waiting: {claims: {}, files: {}},
   // The one-time hint to swipe right (progress.js): the row (or card) it's on, on this screen; whether to pick one as
   // the screen is first drawn; and whether it has done its job, on this phone.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},

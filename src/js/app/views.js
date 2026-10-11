@@ -211,7 +211,7 @@ export default {
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments', extra: true});
     // Photos and files still uploading count too, so a photo added with a task shows on its row straight away. (Said on
     // one line while some wait: that's not a count, it's work still to send.)
-    const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waitingByTask.get(t.id)?.length || 0;
+    const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waiting.files[t.id] || 0;
     if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : ''), extra: !waiting});
     // (Not a run's step's: its reminder is Pocket's own, for the countdown it shows.)
     if (!this.stepRun(t) && (t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});

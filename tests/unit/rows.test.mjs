@@ -1,6 +1,8 @@
 // The one row (src/markup/task-row.html), for a task, a subtask in its sheet, and a step on a run's screen: what it asks
 // the component, by the options of the list it's in (g).
 import { component } from './fake.mjs';
+import { watching } from './reactive.mjs';
+import sending from '../../src/js/app/sending.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';
@@ -323,24 +325,47 @@ test('a step done by a full swipe: its row a gap with Undo, which unticks it; th
 test('a slide shows you on a task no one is doing, and claims it only once it has changed something', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
   const app = component(claims);
-  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, act: async a => { acts.push(a); } });
+  Object.assign(app, { user: me, pending: [], canWrite: () => true, act: async a => { acts.push(a); } });
   const free = app.claimSlot({ id: 5, title: 'Wipe the menus', project_id: 1 }, [], false);
   const end = app.claimOnSlide(free);
-  assert.equal(app.slideClaim, 5);
+  assert.deepEqual(app.slideClaim, { 5: true });
   assert.deepEqual(app.peopleOf(5, []), [me], 'your picture takes the place of "+ me" as it starts');
   await end(false);
-  assert.equal(app.slideClaim, null);
+  assert.deepEqual(app.slideClaim, {});
   assert.deepEqual(app.peopleOf(5, []), [], 'let go where it started: no one claimed');
   assert.deepEqual(acts, []);
   await app.claimOnSlide(free)(true);
   assert.deepEqual(acts, [{ op: 'claim', task: 5, run: null }], 'changed: claimed, through the outbox');
-  assert.equal(app.slideClaim, null, 'from then on the outbox says who');
+  assert.deepEqual(app.slideClaim, {}, 'from then on the outbox says who');
   const theirs = app.claimSlot({ id: 6, title: 'Count the till', project_id: 1 }, [priya], false);
   await app.claimOnSlide(theirs)(true);
-  assert.equal(app.slideClaim, null);
+  assert.deepEqual(app.slideClaim, {});
   assert.equal(acts.length, 1, 'someone else\'s stays theirs');
   await app.claimOnSlide(app.claimSlot({ id: 7, title: 'Mine', project_id: 1 }, [me], false))(true);
   assert.equal(acts.length, 1, 'yours already: nothing to send, and sliding back to 0% later keeps it');
+});
+
+/* What's waiting to be sent, by task (keyWaiting, sending.js): a row asks about its own claim and its own files, so the
+   outbox changing asks nothing of the other rows (rows-and-sheet-fixes-plan, part 6). On Alpine's own reactivity
+   (reactive.mjs): each row's question is watched, and counted each time it's asked again. */
+test('a claim, a let-go and files waiting to be sent are kept by their task: the last claim counts, and only that task\'s row is asked again', c => {
+  const { Alpine, flush } = watching(c), me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' };
+  const app = Alpine.reactive(component(claims, sending));
+  Object.assign(app, { user: me, pending: [] });
+  const asked = {}, seen = {};
+  for (const id of [5, 6]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; seen[id] = [app.peopleOf(id, [priya]).map(u => u.username), app.waiting.files[id] || 0]; });
+  const act = (task, op) => ({ kind: 'act', id: op + task, task, op, items: [] });
+  const outbox = list => { app.pending = list; app.keyWaiting(); flush(); };
+  outbox([act(5, 'claim')]);
+  assert.deepEqual([seen[5], asked], [[['priya', 'alex'], 0], { 5: 2, 6: 1 }], 'a claim waiting: you\'re on it, and the other row wasn\'t asked');
+  outbox([act(5, 'claim'), act(5, 'unclaim'), { kind: 'task', id: 'e1', items: [{ taskId: 6 }], files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }]);
+  assert.deepEqual([seen[5], seen[6], asked], [[['priya'], 0], [['priya'], 2], { 5: 3, 6: 2 }], 'let go after: the last counts; two of its files still to upload');
+  outbox([act(5, 'claim'), act(5, 'unclaim'), { kind: 'task', id: 'e1', items: [{ taskId: 6 }], files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }, { kind: 'task', id: 'e2', items: [{ p: { title: 'New' } }] }]);
+  assert.deepEqual(asked, { 5: 3, 6: 2 }, 'something else put in the outbox: neither row is asked');
+  app.dropping.push('c'); app.keyWaiting(); flush();
+  assert.deepEqual([seen[6], asked], [[['priya'], 1], { 5: 3, 6: 3 }], 'one called off: it no longer counts');
+  outbox([]);
+  assert.deepEqual([seen, { ...Alpine.raw(app).waiting.claims }], [{ 5: [['priya'], 0], 6: [['priya'], 0] }, {}], 'all sent: nothing waits');
 });
 
 /* "+ me" only where someone else could take it (one-concept-plan, part 4): in a project no one else can see (seenBy,
@@ -349,7 +374,7 @@ test('a slide shows you on a task no one is doing, and claims it only once it ha
 test('in a project only you can see, no "+ me" nor your picture, someone else\'s still, and a slide claims nothing', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
   const app = component(claims);
-  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, act: async a => { acts.push(a); }, seenBy: { 1: 2, 4: 0 } });
+  Object.assign(app, { user: me, pending: [], canWrite: () => true, act: async a => { acts.push(a); }, seenBy: { 1: 2, 4: 0 } });
   const slot = (people, pid = 4, done = false) => app.claimSlot({ id: 5, title: 'Wipe the menus', project_id: pid }, people, done);
   assert.equal(slot([]), null, 'no one on it: no "+ me"');
   assert.equal(slot([me]), null, 'yours: not your picture either');
@@ -357,7 +382,7 @@ test('in a project only you can see, no "+ me" nor your picture, someone else\'s
   assert.deepEqual([theirs.users, theirs.can, theirs.label], [[priya], false, 'Assigned to priya: Wipe the menus'], 'someone else given it: shown, not tapped');
   assert.deepEqual(slot([priya], 4, true).users, [priya], 'done too');
   await app.claimOnSlide(slot([]))(true);
-  assert.equal(app.slideClaim, null, 'a slide shows no one');
+  assert.deepEqual(app.slideClaim, {}, 'a slide shows no one');
   assert.deepEqual(acts, [], 'and claims nothing');
   assert.equal(slot([], 7).can, true, 'unknown (a project not loaded yet): "+ me", as anywhere');
   assert.equal(slot([], 1).can, true, 'shared with someone: "+ me"');
@@ -530,7 +555,7 @@ test('the sheet\'s progress, swiped or a quarter tapped, claims a task no one is
   const t = { id: 5, title: 'Wipe the menus', project_id: 1, percent_done: 0, assignees: [] };
   let ring = null;
   Object.defineProperty(app, 'sheetRing', { get: () => ring });
-  Object.assign(app, { user: me, pending: [], slideClaim: null, canWrite: () => true, sheet: { task: t }, stepRun: () => null,
+  Object.assign(app, { user: me, pending: [], canWrite: () => true, sheet: { task: t }, stepRun: () => null,
     act: async a => { order.push(['claim', a.task]); }, sheetProgress: async (x, pct) => { order.push(['save', pct]); } });
   const setting = app.setSheetProgress(25);
   assert.deepEqual(app.peopleOf(5, t.assignees), [me], 'shown in Assigned at once');

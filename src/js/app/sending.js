@@ -6,7 +6,7 @@ import {addedWhere, cancelName, doneText} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
-import {intoGroup, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -330,7 +330,21 @@ export default {
     // Tasks being deleted, unless Vikunja turned it down: off every list until they're gone (but rows deleted in place,
     // leaving.js), or back with Restore or Undo.
     this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
+    this.keyWaiting();
     this.markSlow();
+  },
+  /* What's waiting to be sent for each task, by its id (`waiting`): its last claim or let-go, and how many photos and
+     files wait to upload. Kept an entry at a time (intoKeys), as the outbox changes: a row asks about its own
+     (peopleOf, rowMeta), where each row used to go through the whole outbox each time anything in it changed, an add
+     on a long list asking every row twice over. */
+  keyWaiting(){
+    const claims = {}, files = {};
+    for (const e of this.pending) {
+      if (e.kind === 'act' && (e.op === 'claim' || e.op === 'unclaim')) claims[e.task] = e.op;
+      const id = e.taskId || e.items?.[0]?.taskId;
+      if (id) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) files[id] = (files[id] || 0) + 1;
+    }
+    intoKeys(this.waiting.claims, claims, raw); intoKeys(this.waiting.files, files, raw);
   },
   // What has waited long enough to look waiting (slowness), worked out again when the next will have. Once it looks
   // waiting, it does until it's sent.
@@ -469,7 +483,7 @@ export default {
   },
   // Don't upload a waiting photo or file after all. Its row goes at once; one already uploading finishes first.
   async cancelFile(entryId, key){
-    this.dropping.push(key);
+    this.dropping.push(key); this.keyWaiting();
     await sync.lock(async () => {
       const e = await sync.fresh(entryId); if (!e) return;
       const was = e.files.length;
@@ -478,7 +492,7 @@ export default {
       await sync.save(e, [key]);
       if (entryDone(e)) await sync.remove(e.id);
     });
-    this.refreshPending();
     this.dropping = this.dropping.filter(k => k !== key);
+    this.refreshPending();
   },
 };

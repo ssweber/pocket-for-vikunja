@@ -411,7 +411,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const t of all) if (t.state.leaving) this.leaving[t.id] = t.state.leaving;
     for (const t of all) if (t.state.swept) { this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash].push(t.id);
-    for (const t of all) if (t.state.claim) this.slideClaim = t.id;
+    for (const t of all) if (t.state.claim) this.slideClaim[t.id] = true;
     for (const t of s.parents) if (t.state?.swept) { t.done = true; this.leaving[t.id] = 'done'; this.swept[t.id] = true; }
     // A still of a row swiped left onto its Delete, `off` px aside, where letting go does `to` (swipeOf, as a swipe uses it).
     const redUnder = (row, name, off, to) => { const s = swipeOf(row, () => {}, name); s.begin(); s.move({off, to}); };

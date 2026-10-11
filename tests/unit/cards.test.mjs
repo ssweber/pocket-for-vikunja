@@ -394,9 +394,9 @@ test('a row on Today, on one line: when it is due, short, its project’s dot, a
   assert.equal(app.rowWhen(t, { line: true, depth: {}, key: 'today' }).due.text, w.due.text, 'a time still shows');
   // Its attachments are a count, unsaid; photos still waiting to upload are work still to send, said.
   assert.doesNotMatch(app.rowWhen({ ...t, attachments: [{ id: 1 }] }, { line: true, depth: {} }).said, /Attachments/);
-  app.waitingByTask.set(20, [{ key: 'f' }]);
+  app.waiting.files[20] = 1;
   assert.match(app.rowWhen(t, { line: true, depth: {} }).said, /, Attachments, 1 waiting to upload$/);
-  app.waitingByTask.delete(20);
+  delete app.waiting.files[20];
   // A run's step counting down: its countdown at the right, as under its title elsewhere, and said.
   const soon = app.keep(task(22, { title: 'Proof the dough', due_date: new Date(Date.now() + 10 * 6e4 + 3e4).toISOString(), related_tasks: under(50) }));
   app.stepRun = x => x.id === 22 ? 50 : null;

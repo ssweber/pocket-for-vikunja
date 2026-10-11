@@ -45,13 +45,15 @@ export default {
     const all = [...by.map(u => ({...u, badge})), ...people.filter(u => !by.some(d => d.id === u.id))];
     return all.length ? {users: all.slice(0, 2), more: Math.max(0, all.length - 2), can: false} : null;
   },
-  /* A task's assignees as shown: Vikunja's, with your claims and let-gos still waiting to be sent laid over them, and
-     you on the one whose progress is being slid (claimOnSlide). */
+  /* A task's assignees as shown: Vikunja's, with your claim or let-go still waiting to be sent laid over them (the
+     last, if there are several: `waiting.claims`, by task id), and you on the one whose progress is being slid
+     (claimOnSlide). Both read by the task's own id, so a claim, or anything else put in the outbox, asks nothing of
+     the other rows. */
   peopleOf(id, base){
     let list = base || [];
-    for (const a of this.pending) if (a.kind === 'act' && a.task === id && (a.op === 'claim' || a.op === 'unclaim'))
-      list = [...list.filter(u => u.id !== this.user?.id), ...a.op === 'claim' ? [this.user] : []];
-    if (this.slideClaim === id && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
+    const op = this.waiting.claims[id];
+    if (op) list = [...list.filter(u => u.id !== this.user?.id), ...op === 'claim' ? [this.user] : []];
+    if (this.slideClaim[id] && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
     return list;
   },
   /* Progress slid on a task or a step no one is doing says you're doing it: your picture takes the place of "+ me" as
@@ -60,10 +62,10 @@ export default {
      sliding back to 0% later keeps it: letting go is a tap of its own. Resolves the slide's end: end(changed). */
   claimOnSlide(slot){
     if (!claimsOnSlide(slot)) return () => {};
-    this.slideClaim = slot.id;
+    this.slideClaim[slot.id] = true;
     return async changed => {
       try { if (changed) await this.act({op: 'claim', task: slot.id, run: slot.run}); }
-      finally { if (this.slideClaim === slot.id) this.slideClaim = null; }     // from then on, the outbox or Vikunja says
+      finally { delete this.slideClaim[slot.id]; }                             // from then on, the outbox or Vikunja says
     };
   },
   // Claim it, or let it go. Through the outbox, like a tick on a run: without a connection it waits, shown as done.
