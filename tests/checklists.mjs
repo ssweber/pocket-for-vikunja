@@ -495,6 +495,24 @@ try {
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (3h|2h 5[0-9]m)$")', { timeout: 15000 });
   });
 
+  /* What every row costs (rows-and-sheet-fixes-plan, part 6): a run on screen is worked out when something in it
+     changes, not once for each binding that reads it, nor as each second goes by. Its countdown here is hours away,
+     so in 5 seconds its words change at most once (a minute's turn) and the run is read again at most once (every 20
+     seconds): it used to be worked out about 45 times each second. Counted on the page. */
+  await step('a-run-on-screen-is-worked-out-when-it-changes-not-every-second', async () => {
+    const counting = on => page.evaluate(on => {
+      const a = window.Alpine.raw(document.body._x_dataStack[0]);
+      if (on) { window.__worked = 0; window.__workOut = a.workOutRun; a.workOutRun = function(...x){ window.__worked++; return window.__workOut.apply(this, x); }; return 0; }
+      a.workOutRun = window.__workOut; return window.__worked;
+    }, on);
+    await loaded(page);
+    await counting(true);
+    let n;
+    try { await later(5000); } finally { n = await counting(false); }
+    if (n > 4) throw new Error(`worked out ${n} times in 5 seconds with nothing done to it`);
+    await expect(page.locator('#step-card .step-due')).toHaveText(/^Due in (3h|2h 5[0-9]m)$/);
+  });
+
   /* The run's step card has no strip (parent-tasks-plan, part 2): its steps, listed under it, say where the run is, and
      a tap on one puts it on the card, a done one too. And who's on that step, as its row says. */
   await step('the-step-card-and-the-steps-under-it', async () => {

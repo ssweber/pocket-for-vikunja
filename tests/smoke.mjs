@@ -4208,6 +4208,50 @@ ${footName('Hooks')}`);
     } finally { await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await cdp.detach(); }
     if (shown.length !== 80 || !shown.includes(big.open.at(-1).id)) throw new Error(`${shown.length} rows once loaded, the last task's ${shown.includes(big.open.at(-1).id) ? '' : 'not '}among them`);
   });
+  /* What every row costs (rows-and-sheet-fixes-plan, part 6): a task added, or a row ticked and gone with the batch,
+     asks nothing of the list's other rows. Each row asks who's on it once (rowSlot) and what's under its title twice
+     (rowMeta) each time it's worked out: counted on the page while one is added and one ticked, among 80 rows. Every
+     row used to be worked out again each time the list changed, hundreds of times over for each of these. */
+  await step('an-add-or-a-tick-on-a-long-list-asks-nothing-of-its-other-rows', async () => {
+    const counting = on => page.evaluate(on => {
+      const a = window.Alpine.raw(document.body._x_dataStack[0]), W = window.__asked ||= { n: 0, was: {} };
+      for (const k of ['rowSlot', 'rowMeta']) {
+        if (on) { W.was[k] = a[k]; a[k] = function(...x){ W.n++; return W.was[k].apply(this, x); }; } else a[k] = W.was[k];
+      }
+      const n = W.n; W.n = 0; return n;
+    }, on);
+    const t = big.open[3], title = `${word} added`;
+    let added, ticked, made;
+    // (Once Pocket knows what you may do in this project, new just now, and who else can see it: each is asked of
+    // every row of it, once, whenever it comes.)
+    await page.waitForFunction(id => id in window.Alpine.$data(document.body).perms, big.project.id);
+    await page.evaluate(() => window.Alpine.$data(document.body).loadPeople(true));
+    await later(100);
+    await counting(true);
+    try {
+      await page.fill('#in-capture', title);
+      await page.press('#in-capture', 'Enter');
+      await expect(bigRows()).toHaveCount(81);
+      await synced(page);
+      await expect(page.locator('#view .row.pending')).toHaveCount(0);
+      made = +await page.locator('#view .row[data-id]', { hasText: title }).getAttribute('data-id');
+      added = await counting(false); await counting(true);
+      await page.getByRole('button', { name: 'Mark done: ' + t.title, exact: true }).click();
+      await synced(page);
+      await later(3000);
+      await expect(bigRows()).toHaveCount(80);
+    } finally {
+      ticked = await counting(false);
+      // As it was, for the steps after: the task ticked open again, the one added gone.
+      await api('/tasks/' + t.id, { method: 'PATCH', headers: json, body: JSON.stringify({ done: false }) });
+      if (made) await api('/tasks/' + made, { method: 'DELETE' });
+      await page.click('#btn-refresh');
+      await page.waitForSelector('#btn-refresh:not([disabled])');
+      await loaded(page);
+    }
+    await expect(bigRows()).toHaveCount(80);
+    if (added > 20 || ticked > 20) throw new Error(`its rows were asked ${added} times for an add and ${ticked} for a tick and its batch`);
+  });
   /* Done shows the 100 done most recently, its heading counting them all, and a row at its end for the rest; a tap shows
      them, and the row goes with none left, the focus on the first it showed (performance-plan, part 9). */
   await step('done-shows-its-latest-100-and-a-row-for-the-rest', async () => {
