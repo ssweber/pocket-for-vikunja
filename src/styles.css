@@ -336,14 +336,15 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row-prog.full .ring{border-color:var(--accent-ink);background:var(--accent-ink)}
 .row-prog.full .ring svg{opacity:1}
 /* A row's Delete: under the whole row, and at its end the button, as wide as the row rests open on it (--open:
-   DELETE_W, progress.js), which is all of it in sight then. A light red, its word in red, while letting go only
-   leaves the row open on it; solid red, its word light, once letting go deletes (.full: past half the row, a full
-   swipe), and when it's tapped, the row on its way off (.sure: sweep, progress.js): as a row's progress turns solid
-   green at its full point. The colour says it all: its word stays where it is, at the row's end. */
+   DELETE_W, progress.js), which is all of it in sight then. A light red, its word in red, while a finger moves the
+   row and letting go wouldn't delete; solid red, its word light, whenever it would act: at rest with the row open on
+   it, a button to tap (.open); once letting go deletes (.full: past half the row, a full swipe); and tapped, the row
+   on its way off (.sure: sweep, progress.js). As a row's progress turns solid green at its full point. The colour
+   says it all: its word stays where it is, at the row's end. */
 .row-red{background:var(--danger-soft)}
-.row-red:is(.full,.sure){background:var(--danger)}
+.row-red:is(.open,.full,.sure){background:var(--danger)}
 .row-del{position:absolute;top:0;bottom:0;right:0;width:var(--open,88px);display:flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;color:var(--danger);font-size:15px;font-weight:700}
-.row-red:is(.full,.sure) > .row-del{color:var(--danger-ink)}
+.row-red:is(.open,.full,.sure) > .row-del{color:var(--danger-ink)}
 .row-del:focus-visible{outline-color:currentColor;outline-offset:-6px}
 /* Deleted, until the batch clears (leaving.js): gone from its place, which stays, at its height, so nothing moves: a
    gap holding only "Deleted", in muted words, from the row's edge whatever its indent, and Restore where who's doing

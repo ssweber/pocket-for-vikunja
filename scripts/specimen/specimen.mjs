@@ -239,8 +239,8 @@ function sections(){
     {title: 'Swiped left from 75%, still held: the ring empties to 50% and 25%, and stops at 0% however far it’s pulled, with no Delete; let go, its progress is set and the row springs back', depth: {}, delete: true, tasks: [
       task({title: 'Order more cups', percent_done: .75, state: {reveal: -.2}}), task({title: 'Order more cups', percent_done: .75, state: {reveal: -.38}}),
       task({title: 'Order more cups', percent_done: .75, state: {reveal: -.7}})]},
-    {title: 'Then, at 0%, a second swipe left: its Delete, a light red, open on its button if let go; past half the row, solid red, its word where it was: let go there, it’s deleted', depth: {}, delete: true, tasks: [
-      task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Return the crates', state: {full: true}})]},
+    {title: 'Then, at 0%, a second swipe left: its Delete, a light red while it’s held; let go there, the row rests open on its button, solid red; and held past half the row, solid red, its word where it was: let go there, it’s deleted', depth: {}, delete: true, tasks: [
+      task({title: 'Order more cups', state: {swiped: true}}), task({title: 'Order more cups', state: {swiped: true, rest: true}}), task({title: 'Return the crates', state: {full: true}})]},
     {title: 'A done row swiped left: the ring a done tick, then 75% (open again), on down to 0%', depth: {}, delete: true, tasks: [
       task({title: 'Sweep the yard', done: true, state: {reveal: -.09}}), task({title: 'Sweep the yard', done: true, state: {reveal: -.15}})]},
     {title: 'A full swipe left, or Delete tapped: the row carries on off the screen, leaving a gap with Restore', depth: {}, delete: true,
@@ -463,6 +463,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         // Its Delete (progress.js: swipeOf), laid under the row as the app lays it: resting open on its button, past half
         // the row, and following through (sweep), partway off the screen, the red still under it.
         if (t.state.swiped) redUnder(row, t.title, -88, 'open');
+        if (t.state.rest) row.offsetParent.querySelector(':scope > .row-red').classList.add('open');   // (the one just laid is first)
         if (t.state.full) redUnder(row, t.title, -240, 'delete');
         if (t.state.sweep) redUnder(row, t.title, -row.clientWidth * t.state.sweep, 'delete');
         if (t.state.drag) { row.classList.add('dragged', ...t.state.with ? [] : ['held']); row.style.transform = `translateY(${t.state.drag}px)`; row.parentElement.classList.add('reordering'); }
