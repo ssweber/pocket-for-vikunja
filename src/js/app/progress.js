@@ -93,9 +93,9 @@ const shut = (row = opened) => {
 const fresh = row => { stopGlide(row); if (opened === row) return; unlay(row); row.classList.remove(...SWIPED); slideTo(row, 0); };
 
 /* A row's Delete, uncovered as it's swiped left at 0%, as on a phone's mail: the row moves with the finger, from
-   where it rests or, open, from its Delete (`base`). It's laid under the row as its stops are (lay): red, the row's
-   whole size, with a real button at its end, named for the task (`name`), which is all of it in sight while the row
-   rests open on it. So it never moves or changes size: let go a third of the way across the button, the row glides to
+   where it rests or, open, from its Delete (`base`). It's laid under the row as its stops are (lay): red (a light
+   one, until letting go would delete: styles.css), the row's whole size, with a real button at its end, named for
+   the task (`name`), which is all of it in sight while the row rests open on it. So it never moves or changes size: let go a third of the way across the button, the row glides to
    rest open on it; sooner, back home over it, and then it goes. Past the left side's full point, its word steps to
    the middle of the row, where the row's end has just passed, and letting go there deletes it, as tapping the button
    does (`remove`, which takes the row on off the screen: sweep). Made by the swipe, it isn't in the page until then:
@@ -172,6 +172,7 @@ async function sweep(row, going, {right = false, host = row, gap = null, wait = 
   if (opened === row) opened = null;                      // it's no longer open, for a scroll or a tap elsewhere to shut
   going = Promise.resolve(going).catch(() => false);
   away.add(row); row.classList.add(right ? 'revealing' : 'swiping'); host.classList.add('sweeping');
+  if (!right) laid.get(row)?.el.classList.add('sure');    // deleted now: its red solid, tapped on its light button or not
   gap?.();
   await glide(row, right ? row.clientWidth : -row.clientWidth);
   if (wait) await going;
