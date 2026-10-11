@@ -102,3 +102,53 @@ that leave taps answered between them (part 5b).
 
 `api-bench.mjs` on the same seed, no network slowing, 50 a page: Big's open tasks one page after another 380 ms, the
 rest at once 107 ms; its 3,000 done 982 ms and 167 ms.
+
+## What every row costs, 2026-10-10
+
+`docs/design/rows-and-sheet-fixes-plan.md`, part 6, measured back to back on seed M with `up.mjs --runs` (Big: 660
+rows), through `up.mjs --at`: before (62539de) and after (HEAD). Milliseconds, the median of 3 runs.
+
+`npm run perf:rows -- list`, on Big:
+
+| On Big                                              | fast, before | fast, after | phone, before | phone, after |
+|-----------------------------------------------------|--------------|-------------|---------------|--------------|
+| A tick tapped, to the tick drawn (`tick`)           | 351          | 56          | 6,104         | 379          |
+| A finger down, before a swipe follows (`swipePress`) | 300         | 13          | 5,693         | 151          |
+| The batch clearing, the main thread (`clearMs`)     | 510          | 311         | 7,775         | 1,355        |
+| A subtask added, to its waiting row (`add1`)        | 581          | 137         | 7,643         | 1,409        |
+| The same, the main thread until it's sent (`add1Work`) | 1,634     | 397         | 27,819        | 3,114        |
+| A nudge, to the row lit (`nudge`)                   | 119          | 137         | 895           | 847          |
+
+On Errands (25 rows), on the phone: a tick 103 and 88, a subtask added 451 and 228.
+
+`scroll`, from the finger's first move to the page hearing of it (`heard`): once Big is drawn, fast 292 to 24, phone
+5,887 to 193; while its later batches draw, fast 1,176 to 730, phone 14,371 to 2,654.
+
+`run`, a run's screen left alone, then a step's row swiped and its tick tapped. On the phone profile the bench
+couldn't finish at 62539de (the page was too busy for its clock), so "before" there is the build with only the
+finger-down fix, which changes nothing on a run's screen; and "fast, after" is the build with the run's fix, as
+nothing after it changes a run's screen either:
+
+| A run's screen                                   | fast, before | fast, after | phone, before | phone, after |
+|--------------------------------------------------|--------------|-------------|---------------|--------------|
+| 60 steps: worked out, times a second (`callsPerSec`) | 47       | 1           | 11            | 0.6          |
+| 60 steps: the main thread, ms a second (`msPerSec`) | 319       | 3.5         | 998           | 51           |
+| 60 steps: between two frames of a swipe (`frame`) | 16.6        | 16.8        | 2,558         | 16.8         |
+| 60 steps: a tick tapped, to the step done (`stepTick`) | 369    | 78          | 27,459        | 305          |
+| 20 steps: the main thread, ms a second           | 150          | 3.6         | 999           | 14           |
+| 20 steps: a tick tapped, to the step done        | 135          | 81          | 10,693        | 175          |
+
+`counts`, the bindings worked out and on how many rows:
+
+| On Big                          | before            | after      |
+|---------------------------------|-------------------|------------|
+| The batch clearing after a tick | 21,094 on 688     | 7 on none  |
+| A subtask added, waiting        | 21,117 on 690     | 98 on 4    |
+| The same, sent                  | 42,205 on 690     | 163 on 4   |
+| A run of 60 steps, an idle second | 2,111 on 61     | none       |
+| Big opening                     | 27,143 on 691     | the same   |
+
+Opening a screen is what it was (`npm run perf`): Today to Big, to every row drawn, fast 1,860 to 1,519. On the phone
+it took 18,999 and 19,464 before and 20,951, 21,284 and 21,033 after: about 2 s longer in each run, at the edge of
+what runs differ by, and not looked into. What a row asks of the component as its list opens is left as measured
+(`isRunTask` 15 times a row, `cardOf` 5, `ringOf` 4, `rowMeta` twice: 9% of opening a long list at most).
