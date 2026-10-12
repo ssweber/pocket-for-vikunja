@@ -598,7 +598,7 @@ a.sec-act{text-decoration:none}
 .step-acts{display:flex;gap:10px;margin-top:16px}
 .step-acts .btn{min-height:60px}
 .step-acts .go-on{flex:1;max-width:360px}
-/* A step added during the run (from the bottom box: cap-target.html) */
+/* A step added during the run (from the box under its steps: list-box.html) */
 .step-added{font-size:14px;color:var(--muted);margin-bottom:4px}
 #run-steps .meta .added{color:var(--muted)}
 .row .step-del{margin:-1px 0;width:34px;height:34px;color:var(--danger)}
@@ -640,11 +640,15 @@ a.sec-act{text-decoration:none}
    from seatBox). Its place at the bottom stays, empty, at the height it had: tapped, the box is back. */
 .boxed{margin-bottom:var(--box-h,0px)}
 .card-rows:has(> .boxed){display:flow-root}
-/* The same in a task's sheet, its own box under the subtask nudged (seatSub, app/sheet.js): room under that row, the
+/* The same at the foot of a sheet's list, and of a checklist's steps (list-box.html; seatFoot, app/sheet.js): room under the row, the
    box over it, and its place at the foot kept, empty. */
 #d-subtasks{position:relative}
 .sub-boxed{margin-bottom:var(--sub-h,0px)}
-#d-subbox.inline{position:absolute;left:0;right:0;border-top:0}
+.foot-box.inline{position:absolute;left:0;right:0;border-top:0}
+#run-steps{position:relative}
+.list > .place-line{margin:8px 10px}
+/* A run's screen has no bar at its bottom: its box is under its steps */
+main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .sub-box-time > .draft-meta{margin:6px 2px 0}
 .sub-home{display:block;width:100%;height:62px;padding:10px;border:0;border-top:1px solid var(--line);background:transparent}
 .sub-home > span{display:block;height:100%;border:1.5px dashed var(--line);border-radius:12px}   /* a card's last row: the room stays inside the card, not under it */
@@ -654,24 +658,14 @@ a.sec-act{text-decoration:none}
 #capture.inline textarea,#capture.inline .cap-marks{padding:9px 0}
 #capture.inline .go{width:38px;height:38px;border-radius:10px}
 .box-home{width:38px;height:38px;flex:none;color:var(--muted)}
-.box-rep{width:38px;height:38px;flex:none;color:var(--accent)}
-.box-rep[disabled]{opacity:.4}
 .box-level{width:38px;height:38px;flex:none;margin-left:-10px;color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
 #cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
 #cap-home > span{display:block;height:100%;border:2px dashed var(--line);border-radius:16px}
-.cap-target{display:flex;align-items:center;gap:8px;margin:0 -6px 6px 2px;color:var(--muted);font-size:14px}
-.cap-target > .i{width:18px;height:18px;flex:none;color:var(--accent)}
-.cap-target .what{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
-.cap-target b{color:var(--ink);font-weight:650}
-.cap-target .icon-btn{width:48px;height:48px;margin:-8px 0}
 /* On a run: Repeat, the card's step again, at the line's end; its taps 48px tall, past what's drawn */
-.cap-target .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:-4px 6px -4px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
-.cap-target .rep::after{content:"";position:absolute;inset:-6px 0}
-.cap-target .rep svg.i{width:16px;height:16px;color:var(--accent)}
-.cap-target .rep[disabled]{opacity:.4}
+.foot-box .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:1px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
 /* The subtask box: the same box, in a task's sheet, quieter until it has the focus */
 .addbox.sub{padding:10px}
 .row ~ .addbox.sub{border-top:1px solid var(--line)}
@@ -869,3 +863,5 @@ body.sheet-open{overflow:hidden}
 #toast button{border:0;background:transparent;color:var(--accent-soft);font-weight:700;padding:6px 8px}
 @media (prefers-color-scheme:dark){#toast button{color:var(--accent)}}
 body.sheet-open #toasts{bottom:calc(max(env(safe-area-inset-bottom), var(--kb)) + 20px)}
+.foot-box .rep svg.i{width:16px;height:16px;color:var(--accent)}
+.foot-box .rep[disabled]{opacity:.4}

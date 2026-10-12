@@ -100,8 +100,7 @@ export default () => ({
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
   runInsert: newBox(),                          // the bottom box on a run's screen (quick add's 'ins'), apart from quick add's own text
-  runBoxOn: null,                              // the step on the card when a nudge put the box in the list there (boxSeat, quickadd.js)
-  runAdded: null,                              // where the last steps from it went, which the next go after (runAim, runs.js)
+  runBoxAt: null,                              // the step the box is under on a run's screen, or null, at the foot (runAim, runs.js; seatFoot, sheet.js)
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back

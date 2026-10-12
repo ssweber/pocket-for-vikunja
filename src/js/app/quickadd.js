@@ -41,7 +41,7 @@ export default {
   boxEl(w){
     if (w === 'sub') return document.getElementById('d-subin');
     if (w === 'under') return this.$refs.capture;
-    if (w === 'ins') return this.$refs.capture;
+    if (w === 'ins') return document.getElementById('run-in');
     if (w === 'tname') return document.getElementById('nt-name');
     if (w === 'edit') return document.getElementById('step-edit-' + this.sheet.stepEdit?.id);
     if (w.includes(':')) return document.getElementById('d-subin');
@@ -489,9 +489,9 @@ export default {
     if (!row || (run ? !t : this.leaving[id] || this.lines[id] || !this.canAim(t))) return;
     const r = row.getBoundingClientRect(), top = Math.max(0, this.$refs.header?.getBoundingClientRect().bottom || 0);
     const home = document.getElementById('cap-home'), foot = home?.offsetHeight ? home : this.$refs.captureBar;   // the box's place at the bottom
-    if (r.bottom <= top || r.top >= (foot?.getBoundingClientRect().top ?? innerHeight)) return;
+    if (r.bottom <= top || r.top >= (run ? innerHeight : foot?.getBoundingClientRect().top ?? innerHeight)) return;   // (a run's screen has no bar there)
     if ((run ? this.runView.step?.id : this.cursor?.id) !== t.id && NUDGE_TICK) haptic('tick');
-    if (run) { this.showStep(t.i); this.runBoxOn = t.id; } else this.aim(t);
+    if (run) { this.showStep(t.i); this.nudgedStep(t); } else this.aim(t);
   },
   // The task a row is under on this list, if it's there.
   listParent(t){
@@ -519,12 +519,11 @@ export default {
      task is named.) On a run's screen, the step they go after, and the card's step, which Repeat copies there (not one
      still waiting to be sent). */
   get capTarget(){
-    if (this.capW === 'ins') { const a = this.runAim; return a && {step: true, after: a.title, repeat: a.on.title, canRepeat: !a.on.pending}; }
+    if (this.capW === 'ins') return null;                              // a run's screen has its own box, under its steps (list-box.html)
     const t = this.cursorTask, p = this.cursorParent;
     return t && !this.cursor.out ? {to: p.title, after: t !== p && this.view.listView ? t.title : ''} : null;
   },
   get capPlaceholder(){
-    if (this.capW === 'ins') return this.boxInList ? 'Step' : 'Add a step, or paste a list';
     if (this.cursorTask) return this.cursor.out ? 'Task' : 'Subtask';   // in the list, its place says the rest
     if (this.capPhotos.length) return 'What\'s this photo for?';
     return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
@@ -604,9 +603,6 @@ export default {
       // level further.
       seat.inset ||= s.out ? '14px' : Math.round(parseFloat(getComputedStyle(el).paddingLeft) + (s.deeper ? parseFloat(getComputedStyle(root).getPropertyValue('--sub-in')) || 30 : 0)) + 'px';
       const r = el.getBoundingClientRect(), list = (el.closest('.list') || el).getBoundingClientRect();
-      // On a run's screen its row has no watcher of its own (watchCursor): out of sight, and not being typed in, the box
-      // is back at the bottom.
-      if (s.run && !this.boxHasFocus && (r.bottom + h < 0 || r.top > innerHeight)) { this.runBoxOn = null; return; }
       const at = [Math.round(r.bottom + scrollY), Math.round(list.left + scrollX), Math.round(list.width), seat.inset].join();
       if (at === seat.at) return;
       seat.at = at;
@@ -616,15 +612,9 @@ export default {
     step();
   },
   /* Where the box is in the list, if it is: {key, sel: what it's under, out, deeper: a level further in than that}.
-     On a project's list and Today, under the cursor's row (out a level: after its task's item). On a run's screen
-     (part 4), under the step the next goes after (runAim), from when a step's row is nudged (runBoxOn, the step then
-     on the card: nudged) until another step is on the card, which only another nudge follows. */
+     On a project's list and Today, under the cursor's row (out a level: after its task's item). (A run's screen has no
+     bar at its bottom: its box is at the foot of its steps, as a sheet's list has its own: seatFoot, app/sheet.js.) */
   get boxSeat(){
-    if (this.route.name === 'run') {
-      const a = this.runBoxOn != null ? this.runAim : null, same = x => String(this.actTask({task: x}));
-      if (!a || same(a.on.id) !== same(this.runBoxOn)) return null;
-      return {key: 'run:' + same(a.after), sel: `#run-steps > .row[data-id="${same(a.after)}"]`, run: true};
-    }
     if (!this.boxIn) return null;
     const c = this.cursor, out = !!c.out, id = String(out ? c.under ?? c.id : c.id);
     return {key: id + (out ? ':out' : ':in'), out, deeper: !c.under,
@@ -632,10 +622,10 @@ export default {
   },
   // Whether the box is in the list, on any screen; and back at the bottom, by its ×, or a tap on its place there.
   get boxInList(){ return !!this.boxSeat; },
-  boxBack(){ if (this.route.name === 'run') this.runBoxOn = null; else this.light(null); },
+  boxBack(){ this.light(null); },
   get boxBackLabel(){
     const on = this.route.name;
-    return on === 'run' ? 'Put the box back at the bottom' : on === 'today' ? 'Add a task instead' : 'Add a task to ' + (this.view.project?.title || 'this project') + ' instead';
+    return on === 'today' ? 'Add a task instead' : 'Add a task to ' + (this.view.project?.title || 'this project') + ' instead';
   },
   /* The box's level, on a project's list (inline-add-box-plan, part 2). In the list it adds subtasks at the cursor's
      row; moved out a level (the cursor's `out`), it adds a task instead, after the cursor's task and all that's under

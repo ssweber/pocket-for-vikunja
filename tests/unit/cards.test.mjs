@@ -578,21 +578,22 @@ test('a run’s own row: its ring asks to finish it on its screen, its slot says
   assert.match(app.runView.summary, /^Started by Priya at /);
 });
 
-test('a run’s bottom box aims at the card’s step; steps added go each after the last, until the card’s step changes', async () => {
-  const app = runScreen(), added = [], aim = () => { const a = app.runAim; return [a.on.title, a.after, a.title, a.before]; };
+test('a run’s box, at the foot of its steps, adds after the last; under a step, after it, and it’s then under what was added', async () => {
+  const app = runScreen(), added = [], aim = () => { const a = app.runAim; return [a.on.title, a.after, a.before]; };
   app.addStep = async f => { added.push(f); };
+  app.seatFoot = () => {};
   app.showStep(2);                                                         // C tapped, on the card
-  assert.deepEqual(aim(), ['C', 53, 'C', 54], 'after C, before D');
-  const ids = await app.addSteps([{ title: 'X' }, { title: 'Y' }]);
-  assert.deepEqual(added.map(f => [f.id, f.title, f.after, f.before]), [[ids[0], 'X', 53, 54], [ids[1], 'Y', 'pending-' + ids[0], 54]], 'a pasted list in order');
-  assert.deepEqual(aim(), ['C', 'pending-' + ids[1], 'Y', 54], 'the next goes after Y, still before D');
+  assert.deepEqual(aim(), ['C', 54, null], 'at the foot: after the last step, whatever is on the card');
+  app.runBoxAt = 52;                                                       // B nudged: the box is under it
+  assert.deepEqual(aim(), ['C', 52, 53], 'after B, before C');
+  const a = app.runAim, ids = await app.addSteps([{ title: 'X' }, { title: 'Y' }], { after: a.after, before: a.before, follow: true });
+  assert.deepEqual(added.map(f => [f.id, f.title, f.after, f.before]), [[ids[0], 'X', 52, 53], [ids[1], 'Y', 'pending-' + ids[0], 53]], 'a pasted list in order');
+  assert.equal(app.runBoxAt, 'pending-' + ids[1], 'the box is under the last of them, so the next goes after it');
   app.showStep(3);
-  assert.deepEqual(aim(), ['D', 54, 'D', null], 'D on the card: after it, at the end');
-  app.showStep(2);
-  assert.deepEqual(aim(), ['C', 53, 'C', 54], 'back on C, from C again');
+  assert.equal(app.runBoxAt, 'pending-' + ids[1], 'another step on the card: the box stays where it is');
 });
 
-test('a run’s bottom box: every step done, after the last; none on a run finished or read only', () => {
+test('a run’s box: every step done, after the last; none on a run finished or read only', () => {
   const app = runScreen();
   for (const s of app.view.run.steps) Object.assign(s, { done: true, done_at: new Date().toISOString() });
   assert.equal(app.runView.step, null, 'no step on the card');
@@ -603,19 +604,20 @@ test('a run’s bottom box: every step done, after the last; none on a run finis
   assert.equal(app.runAim, null, 'finished');
 });
 
-test('Repeat copies the card’s step where the box aims, with an Undo that puts the aim back', async () => {
+test('Repeat copies the card’s step right after it, wherever the box is, with an Undo', async () => {
   const app = runScreen(), added = [], said = [];
   app.addStep = async f => { added.push(f); };
+  app.seatFoot = () => {};
   app.showStep(2);                                                         // C tapped, on the card
   app.say = (text, o) => said.push({ text, ...o });
   app.dropStep = async () => false;                                        // still waiting: not sent
-  await app.addSteps([{ title: 'X' }]);
+  app.runBoxAt = 51;                                                       // the box under A
   await app.repeatCard();
-  assert.deepEqual([added[1].title, added[1].tpl, added[1].after, added[1].before], ['C', 'C', 'pending-' + added[0].id, 54], 'a copy of C, after X');
+  assert.deepEqual([added[0].title, added[0].tpl, added[0].after, added[0].before], ['C', 'C', 53, 54], 'a copy of C, right after C');
+  assert.equal(app.runBoxAt, 51, 'the box stays where it was');
   assert.deepEqual([said[0].text, said[0].place, said[0].action.label], ['Repeated “C”', 'cap', 'Undo']);
-  assert.equal(app.runAim.after, 'pending-' + added[1].id);
   await said[0].action.fn();
-  assert.deepEqual([app.runAim.after, app.runAim.title, app.said], ['pending-' + added[0].id, 'X', 'Not repeated: C'], 'after X again');
+  assert.equal(app.said, 'Not repeated: C');
 });
 
 /* A parent's ring (parent-tasks-plan, part 3; design rules 7 and 8): its tap never closes subtasks without asking, unless

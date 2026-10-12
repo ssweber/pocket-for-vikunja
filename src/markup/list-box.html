@@ -1,0 +1,38 @@
+<!-- The one add box at the foot of a list (inline-add-box-plan): a sheet's (sheet/sub-list.html: a task's subtasks, a
+     template's steps, New template's) and a checklist's steps on its screen (screens/run.html). `where` says which
+     ('sheet' or 'run', from the x-data around it), and footBox(where) what it is there (app/sheet.js): its box as
+     box() names it, its words, whether it's under a row, what it can add.
+
+     It's quick add's box: what it read is marked, with chips to undo it, and @ and * suggest people and labels; each
+     line is a subtask, or a step, and Enter or its button adds them. Always there, at the foot. A row nudged has it
+     under it (seatFoot), to add after that row; its place at the foot is then kept, empty, and a tap there, or the
+     box's ×, brings it back. The last row nudged changes nothing: the box is under it already.
+
+     On a checklist it has Repeat too: a fresh copy of the step on the card, right after that step, wherever the box
+     is (repeatCard, app/runs.js). -->
+<template x-for="fb in [footBox(where)].filter(Boolean)" :key="fb.w"><div class="addbox sub foot-box" :id="fb.id">
+  <form autocomplete="off" @submit.prevent="boxSend(fb.w)">
+    <div class="cap-field">
+      <div class="cap-marks" aria-hidden="true" x-html="marksHtml(fb.w)"></div>
+      <textarea :id="fb.in" x-model="box(fb.w).text" x-box.lines="fb.w" rows="1" :placeholder="fb.says" :aria-label="fb.add" enterkeyhint="send"></textarea>
+    </div>
+    <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
+      :title="rep.can ? 'A fresh copy of “' + rep.title + '”, not done, right after it' : 'It can be repeated once it\'s sent'"
+      @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg><span>Repeat</span></button></template>
+    <!-- Under a row: × takes the box back to the foot -->
+    <template x-if="fb.under"><button type="button" class="icon-btn plain box-home" :id="fb.id + '-home'" :aria-label="fb.home" @mousedown.prevent @click="footHome(where)"><svg class="i"><use href="#i-close"/></svg></button></template>
+    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-plus"/></svg></button>
+  </form>
+  <!-- A template's step: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
+  <template x-for="st in fb.steps ? [box(fb.w)] : []" :key="0"><div class="sub-box-time">
+    <template x-for="d in draftShown(draft(stepWhich).info.get('+'))" :key="0">
+      <!-- include markup/sheet/step-time.html -->
+    </template>
+  </div></template>
+  <template x-for="bw in [fb.w]" :key="bw"><div class="chips" :id="fb.id + '-chips'" :hidden="!chips(bw).length && !(box(bw).focus && !box(bw).text)">
+    <template x-if="box(bw).focus && !box(bw).text"><span class="hint" x-text="boxHint(bw)"></span></template>
+    <!-- include markup/chips.html -->
+  </div></template>
+</div></template>
+<!-- The box's place at the foot, kept empty while the box is under a row: a tap brings it back -->
+<template x-for="fb in [footBox(where)].filter(b => b?.under)" :key="0"><button type="button" class="sub-home" :id="fb.id + '-place'" :aria-label="fb.home" @click="footHome(where)"><span></span></button></template>

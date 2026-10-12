@@ -12,7 +12,7 @@
      (nudgedSub, app/sheet.js) has it under it, to add after that row; its place at the foot is then kept, empty, and
      a tap there, or the box's ×, brings it back. The last row nudged changes nothing: the box is under it already. -->
 <div class="h3"><span x-text="isStepList ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="isStepList ? subList.length || '' : subList.length ? subList.filter(s => s.done).length + '/' + subList.length : ''"></span></div>
-<div class="card" id="d-subtasks">
+<div class="card" id="d-subtasks" x-data="{where: 'sheet'}">
   <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true, step: isStepList}]" :key="0"><template x-for="t in subList" :key="t.id">
     <!-- include markup/task-row.html step -->
   </template></template>
@@ -26,28 +26,6 @@
     <!-- include markup/place-line.html -->
   </template>
   <!-- A checklist's steps are inserted on its screen, so they're marked as added to it alone -->
-  <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the checklist's screen: it's marked as added to this checklist alone.</p></template>
-  <template x-for="bw in subBoxW ? [subBoxW] : []" :key="bw"><div class="addbox sub" id="d-subbox">
-    <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
-      <div class="cap-field">
-        <div class="cap-marks" aria-hidden="true" x-html="marksHtml(bw)"></div>
-        <textarea id="d-subin" x-model="box(bw).text" x-box.lines="bw" rows="1" :placeholder="subBoxWords.box" :aria-label="subBoxWords.add" enterkeyhint="send"></textarea>
-      </div>
-      <!-- Under a row: × takes the box back to the foot -->
-      <template x-if="sheet.subAt != null"><button type="button" class="icon-btn plain box-home" id="d-sub-home" :aria-label="subBoxWords.home" @mousedown.prevent @click="subHome()"><svg class="i"><use href="#i-close"/></svg></button></template>
-      <button class="go" type="submit" :aria-label="subBoxWords.add" @mousedown.prevent :disabled="!subBoxCan"><svg class="i"><use href="#i-plus"/></svg></button>
-    </form>
-    <!-- A step's line: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
-    <template x-for="st in isStepList ? [box(bw)] : []" :key="0"><div class="sub-box-time">
-      <template x-for="d in draftShown(draft(stepWhich).info.get('+'))" :key="0">
-        <!-- include markup/sheet/step-time.html -->
-      </template>
-    </div></template>
-    <div class="chips" id="d-subchips" :hidden="!chips(bw).length && !(box(bw).focus && !box(bw).text)">
-      <template x-if="box(bw).focus && !box(bw).text"><span class="hint" id="d-subhint" x-text="boxHint(bw)"></span></template>
-      <!-- include markup/chips.html -->
-    </div>
-  </div></template>
-  <!-- The box's place at the foot, kept empty at its height while the box is under a row: a tap brings it back -->
-  <template x-if="sheet.subAt != null && subBoxW"><button type="button" class="sub-home" id="d-subhome" :aria-label="subBoxWords.home" @click="subHome()"><span></span></button></template>
+  <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box under the steps on the checklist's screen: it's marked as added to this checklist alone.</p></template>
+  <!-- include markup/list-box.html -->
 </div>

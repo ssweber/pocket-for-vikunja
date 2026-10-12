@@ -638,7 +638,7 @@ export default {
         try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
         // The box under a subtask: under the last one added from now, in its place on the list, so the next go after it.
         const last = r.ids[items.findLastIndex(x => x.under === null)];
-        if (here() && this.sheet.subAt != null && last) { this.sheet.subAt = last; this.sheet.subAfter = null; this.seatSub(); }
+        if (here() && this.sheet.subAt != null && last) { this.sheet.subAt = last; this.sheet.subAfter = null; this.seatFoot('sheet'); }
       }
       if (r.status === 'offline') {
         sync.keep();

@@ -53,9 +53,16 @@ One behaviour on every screen: a project's list, Today, a task's sheet, a checkl
 
 ## 4. A checklist's screen
 
-The user, asked: "one behavior everywhere (but add the repeat button)". At the bottom the box has its "Add a step
-after X" line and Repeat, as now. A nudge still puts the step on the card, and now also moves the box under that
-step's row. Inline, the words go and **Repeat** comes with the box.
+First: "one behavior everywhere (but add the repeat button)", built as the bottom bar with its line and Repeat, the
+box moving up on a nudge. Then, having seen it (the user, 2026-10-12): "should have the add new/repeat under the list
+of steps, and pull up on nudges, like the Task page with subtasks. No bottom bar that stays around."
+
+- The box is at the foot of the steps, the same piece as a sheet's list has (`markup/list-box.html`), and the screen
+  has no bar at its bottom. What's written goes after the last step.
+- A nudge on a step puts it on the card, as before, and the box under its row: what's written goes after it, and the
+  box is under what was written. The last step nudged changes nothing.
+- **Repeat** is in the box, and copies the step on the card right after that step, wherever the box is: it's about
+  the step you're on (the user's choice).
 
 ## 5. A template's steps
 
