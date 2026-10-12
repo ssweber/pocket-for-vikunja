@@ -1,6 +1,7 @@
 :root{
   --bg:#EEF1EF; --surface:#FFFFFF; --sunk:#E3E8E5; --ink:#17201C; --muted:#5B6863; --line:#D6DDD9;
   --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#8C9692;
+  --lit:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));      /* the row an add box is under: a faint tint */
   --overdue:#A82339; --today:#9A6414; --danger:#A82339; --danger-soft:#F3D9DD;
   /* shadows, and the shade behind a sheet: the same in dark mode, whose block below redefines any that should differ */
   --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
@@ -17,6 +18,7 @@
 @media (prefers-color-scheme:dark){:root{
   --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
   --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#66726D;
+  --lit:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));
   --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B; --danger-ink:#1A080C; --danger-soft:#45202A;
   color-scheme:dark;
 }}
@@ -201,8 +203,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.fresh{animation:fresh 1.6s ease-out}
 @keyframes fresh{0%,35%{background:var(--accent-soft)}}
 @media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
-/* the task quick add's box adds subtasks to (the cursor): a bar down its side, and a faint tint */
-.row.aimed{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
+/* The row an add box is under, lit the same on every list: a bar down its side, and a faint tint (--lit). On a
+   project's list and Today, the cursor's row (aimed); in a sheet's list and on a checklist, the row given room for the
+   box (sub-boxed: seatFoot); and a checklist's step on its card (current), which is the step a nudge puts the box
+   under, wherever the box is. */
+.row.aimed,.row.sub-boxed,.row.current{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
 /* a subtask just added from that box is lit in its turn; one that looks waiting keeps the waiting tint, with the bar */
 .row.aimed.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 /* a task whose time has just passed lights up as it moves to Overdue */
@@ -241,9 +246,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* a picture isn't dragged as an image: a row held there is held, its slide not cut off by the browser's own drag */
 .pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;-webkit-user-drag:none}
 .pic.mine .av{box-shadow:0 0 0 2px var(--accent)}
-.row.current .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--accent-soft)}
+.row.current .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--lit)}
 .badge{position:absolute;z-index:2;right:-4px;bottom:-3px;width:15px;height:15px;border-radius:50%;background:var(--accent);display:grid;place-items:center;box-shadow:0 0 0 2px var(--surface)}
-.row.current .badge{box-shadow:0 0 0 2px var(--accent-soft)}
+.row.current .badge{box-shadow:0 0 0 2px var(--lit)}
 .badge svg.i{width:10px;height:10px;stroke-width:3.4;color:var(--accent-ink)}
 .badge.skip,.badge.wait{background:var(--muted)}
 .pics .more{padding-left:3px;font-size:13px;color:var(--muted)}
@@ -251,7 +256,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.done .pic .av{opacity:.7}
 /* A done step: who did it and who had it, not tappable, so no ring for yours: the ✓ says it */
 .did .pic.mine .av{box-shadow:0 0 0 2px var(--surface)}
-.row.current .did .pic.mine .av{box-shadow:0 0 0 2px var(--accent-soft)}
+.row.current .did .pic.mine .av{box-shadow:0 0 0 2px var(--lit)}
 .did{flex:none;align-self:flex-start;margin-top:2px;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
 .ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* Rows are held, slid, swiped and moved, so a long press never selects their words (nor shows the phone's menu for
@@ -435,7 +440,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
 /* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
-.day-card.aimed > .card-head{background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
+.day-card.aimed > .card-head{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
 .card-close{display:flex;align-items:center;gap:12px;min-height:52px;margin-top:6px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
 .card-close > span{flex:1;min-width:0}
@@ -611,7 +616,6 @@ a.sec-act{text-decoration:none}
 .step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
 .step-extra .comment-form{padding:10px 0 0}
 .step-note-with{margin:6px 2px 0;font-size:14px}
-.row.current{background:var(--accent-soft)}
 .row .skipped{color:var(--muted);font-style:italic}
 .finish-card{padding:16px}
 .finish-card h3{margin:0 0 4px}
