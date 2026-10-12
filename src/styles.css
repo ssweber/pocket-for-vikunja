@@ -678,7 +678,9 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
   padding:calc(var(--box-pad) + (var(--part) - 24px) / 2) var(--box-pad) 0 var(--box-in);font-size:17px;line-height:24px;color:var(--muted);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;background:transparent}
 #capture.inline::before{display:none}
-.box-level{margin-left:-10px;color:var(--accent)}
+/* ⇤ ⇥ is on the box's first line, where a row has its tick: it says how far in the whole of what's typed is. Send
+   stays on the last, where the typing is. */
+.box-level{align-self:flex-start;margin-left:-10px;color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
