@@ -59,18 +59,22 @@ step's row. Inline, the words go and **Repeat** comes with the box.
 
 ## 5. A template's steps
 
-- **An existing template:** one box at the foot of its steps, in place of the rows with ↑ ↓ ×. Enter adds the step
-  where the box is and saves it, with the order line. A nudge on a step moves the box under it. A step is swiped
-  left to its Delete, with the question it asks now; its × stays, as the tap for it.
-- **New template:** the user chose one send at the end. A step typed in the box joins the list as a row not sent yet:
-  numbered, held to move, swiped to delete, tapped to change. **Create template** sends them together, so it still
-  works offline and the timers are checked once, before anything is made.
-- The box reads a step as now: `@`, `*`, `!` and a time in words, with its ⏱ chip, and no dates. Timers are checked
-  when a step is added and when one is moved.
-- `moveDraftRow` and the ↑ ↓ buttons go. Move up and Move down stay in a step's ⋯, with Alt+↑ ↓.
-- My call, to check with the user if it shows: the step keeps a row of its own, with the task row's gestures, and
-  isn't folded into `task-row.html`. It has a number, no tick and no progress, and each thing the shared row has to
-  ask is asked for every row of every list (development.md, rule 10).
+Settled again with the user on 2026-10-12, after the first build of it, which had a template's steps, New
+template's and a task's subtasks as three things made to look alike: "They should be 1 and the same."
+
+- **One list in three places:** a task's subtasks, a template's steps, and New template's steps are the same list
+  (`sheet/sub-list.html`), each line the task row, with one box at its foot, always there: "Add subtasks, or paste a
+  list", or "Add steps, or paste a list". Enter or its button adds what's in it, a line each.
+- **A step is a subtask's row** with its number where the tick would be: tapped to change it, held to move it,
+  swiped left to delete it. It has no ⋯ and no ×, as a subtask has none: the user chose that over a tap for
+  everything, here.
+- **New template differs in one way:** its steps are on the phone only, "virtual", until **Create template** sends
+  them all. So it still works offline, and the timers are checked once, before anything is made.
+- **A nudge on a row puts the box under it,** and its place at the foot is then kept, empty. The last row nudged
+  changes nothing: the box is under it already.
+- **Timing is left alone.** A step timed from a named step stays that way. "The step before" is the step before,
+  so a step added in between is the one counted from, as the step's line then says. Pinning it would be a footgun.
+- The box reads a step as before: `@`, `*`, `!` and a time in words, with its ⏱ chip, and no dates.
 
 ## What it bends
 
@@ -112,26 +116,29 @@ sheet aimed the bottom box before; they leave the box where it is now, so rows n
 
 ## As built (2026-10-12)
 
-Parts 1 to 6, each its own commit, with the fast checks only: the end-to-end tests, the specimen and the README's
-pictures wait for the user's look. Tried in desktop Chrome with a made-up finger (`scratchpad/inline/`), and part 1 by
-the user on their phone ("that feels pretty good").
+Parts 1 to 4, each its own commit, then the template parts built twice: first as rows of their own, then, after the
+user asked for one list, as the shared row (`ef215f6`, `9dd9a43`). The fast checks only: the end-to-end tests, the
+specimen and the README's pictures wait for the user's look. Tried in desktop Chrome with a made-up finger
+(`scratchpad/inline/`), and part 1 by the user on their phone ("that feels pretty good").
 
 - **One box, laid over room.** The box is never moved in the page: its row is given the box's height under it
   (`.boxed`), and the box is drawn over that room, where the room is being asked every frame (`seatBox`, `boxSeat`,
-  `app/quickadd.js`). So Enter keeps the focus and the keyboard. A task's sheet does the same with its own box
-  (`seatSub`, `app/sheet.js`), which is also a template's.
+  `app/quickadd.js`). So Enter keeps the focus and the keyboard. A sheet's list does the same with its box
+  (`seatSub`, `app/sheet.js`).
+- **One row, and its step parts in one copy.** A template's step is the task row with `g.step`. What only a step has
+  (its number, its box when tapped) is between `<!-- only step -->` and `<!-- /only -->`, and the build keeps it in
+  the sheet's copy of the row alone (`scripts/build.mjs`). Counted on 659 rows: 27,148 bindings as the list opens,
+  before and after; without that it was 28,466.
+- **New template's steps are rows shaped for the task row** (`newStepRow`: an id for the row, a key for how the steps
+  read together), kept in `sheet.newTpl.rows`, and changed in place: the row is what its box changes.
 - **Today gives no place.** It has no one List view, and shows a subtask only once it's sent, on its task's card: the
-  box stays where it was put, and the card opens so what was added is in sight.
+  box stays where it was put, the card opens so what was added is in sight, and a task with no date is a card too,
+  until the screen is left (`cardKept`).
 - **A new line's place is never one another task has** (`clearOf`, `order.js`). Vikunja moves two tasks with the same
   position apart, which put a task's first two subtasks in the wrong order in a new project.
-- **In New template the box is the empty row.** A nudge moves that row under the row nudged; there's no empty place
-  kept at the foot, where **Add a step** is.
-- **A template's step keeps a row of its own,** as planned; the rows written in New template are their own too.
 
 To know when trying it:
 
-- A step added under a template's step is then "the step before" for the step after it: one timed "20 minutes
-  after the step before" counts from the new step from then. Nothing says so when it's added.
-- On Today a task with no date that gets its first subtask stays a row, with a ring: Today makes a card only of what's
-  due.
 - Scrolling its row out of sight sends a box home only while it isn't being typed in.
+- Not seen on an iPhone yet: the page keeping still when a box goes home above the screen, and a box in the middle of
+  a list against the keyboard.

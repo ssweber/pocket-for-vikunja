@@ -96,7 +96,8 @@ commits, with the tests passing before and after.
    its place when it's tapped. It had a row of its own until then, so that none of this would be in every list's
    markup, and the two drifted apart. Now the parts only a step has are kept out of the other lists' copies of the
    row by the build (`<!-- only step -->`, `scripts/build.mjs`), so a long list's rows cost what they did. A run's
-   step is the row too, on the run's screen.
+   step is the row too, on the run's screen. And a sheet's list is one piece, `markup/sheet/sub-list.html`: a task's
+   subtasks, a template's steps, and New template's, which are rows on the phone only until the template is created.
 4. The colours written out in `styles.css` (its shadows and the scrim) are custom properties.
 5. Checks in `npm run lint`: `fetch()` only in `api.js`, and no colour written out of `:root` or in `markup/`. And a
    specimen page, `npm run specimen`, with the row in every state, in light and dark.
