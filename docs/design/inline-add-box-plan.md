@@ -169,3 +169,16 @@ parts above, this is how it is.
 - **The dashed place says what the box says there,** in the placeholder's ink, where the box has it, so nothing moves
   as the box lands on it.
 - **Every button in a box takes taps 44px across,** past what's drawn.
+- **One look for the box on every screen,** at rest and while it's typed in: its edge the accent, white inside, as
+  the bar has. A list's box was grey until it had the focus.
+- **A box in a list starts where the new row's tick ends,** so its words are where the title will be, and stay there
+  as they land. ⇤ ⇥ is outside it, at its left, where the tick will be, on its first line; where there's no ⇤ ⇥ that
+  place is empty. (Drawn first with the box as wide as before and the space inside it: "it looks funny indented".)
+- **Send is ↑ in every box.**
+- **The row a box is under is lit the same on every list:** a faint tint and a bar down its side. On a checklist
+  that's the step on the card, wherever the box is.
+- **The bar's place at the bottom is always the bar's height with one line.**
+- **A template's step tapped opens its box where its words were,** the same box, starting where the step's number
+  ends.
+- **What's being typed stays in sight:** fitting a box to its text no longer pulls the page down, which hid a
+  checklist's box under the keyboard from its second line.
