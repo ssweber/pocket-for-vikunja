@@ -11,6 +11,11 @@
      On a checklist it has Repeat too: a fresh copy of the step on the card, right after that step, wherever the box
      is (repeatCard, app/runs.js). -->
 <template x-for="fb in [footBox(where)].filter(Boolean)" :key="fb.w"><div class="addbox sub foot-box" :id="fb.id">
+  <!-- What was just done from it on a checklist (Repeated, with its Undo): said in the box, so it's where the box is,
+       at the foot or under a row -->
+  <template x-for="line in where === 'run' ? placeLines('cap') : []" :key="line.n">
+    <!-- include markup/place-line.html -->
+  </template>
   <form autocomplete="off" @submit.prevent="boxSend(fb.w)">
     <div class="cap-field">
       <div class="cap-marks" aria-hidden="true" x-html="marksHtml(fb.w)"></div>

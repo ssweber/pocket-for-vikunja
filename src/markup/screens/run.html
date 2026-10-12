@@ -25,11 +25,8 @@
         <template x-for="g in [runRows]" :key="0"><template x-for="t in runView.steps" :key="t.id">
           <!-- include markup/task-row.html -->
         </template></template>
-        <!-- What was just done from the box (Repeated, with its Undo), then the box: at the foot of the steps, as a
-             sheet's list has its own, with Repeat (list-box.html). The screen has no bar at its bottom. -->
-        <template x-for="line in placeLines('cap')" :key="line.n">
-          <!-- include markup/place-line.html -->
-        </template>
+        <!-- The box: at the foot of the steps, as a sheet's list has its own, with Repeat, and what was just done from it
+             said in it (list-box.html). The screen has no bar at its bottom. -->
         <!-- include markup/list-box.html -->
       </div>
 

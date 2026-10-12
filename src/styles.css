@@ -646,7 +646,7 @@ a.sec-act{text-decoration:none}
 .sub-boxed{margin-bottom:var(--sub-h,0px)}
 .foot-box.inline{position:absolute;left:0;right:0;border-top:0}
 #run-steps{position:relative}
-.list > .place-line{margin:8px 10px}
+.foot-box > .place-line{margin:0 0 8px}
 /* A run's screen has no bar at its bottom: its box is under its steps */
 main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .sub-box-time > .draft-meta{margin:6px 2px 0}
