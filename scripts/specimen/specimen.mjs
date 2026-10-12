@@ -323,7 +323,7 @@ const specBar = (spec, f = {}) => ({spec, capW: 'cap', canLevel: false, boxOut: 
   boxBackLabel: 'Add a task to Café instead', capPhotos: [], attachmentsOn: true, said: null, inset: '', place: false, before: [], after: [], g: {depth: {}}, ...f,
   capBox: blankBox(f.box), get cap(){ return this.capBox; }, box(){ return this.capBox; }, placeLines(){ return this.said ? [this.said] : []; },
   // Seated: as seatBox seats it, and the row it's under lit, as the cursor's row is.
-  init(){ this.$nextTick(() => { const bar = this.$el.querySelector('#capture'); if (bar && this.inset) { bar.classList.add('inline'); bar.style.paddingLeft = this.inset; rowOver(bar)?.classList.add('aimed'); } }); }});
+  init(){ this.$nextTick(() => { const bar = this.$el.querySelector('#capture'); if (bar && this.inset) { bar.classList.add('inline'); bar.classList.toggle('out', this.boxOut); bar.style.paddingLeft = this.inset; rowOver(bar)?.classList.add('aimed'); } }); }});
 const specFoot = (spec, f = {}) => ({spec, where: f.g?.run ? 'run' : 'sheet', said: null, time: null, before: [], after: [], g: {depth: {}, sheet: true, delete: true, reorder: true}, ...f,
   fb: {w: 'sub', id: 'd-subbox', in: 'd-subin', under: false, steps: false, can: false, repeat: null, says: 'Add subtasks, or paste a list', rest: 'Add subtasks, or paste a list', add: 'Add subtasks',
     home: 'Add after the last subtask instead', ...f.fb},

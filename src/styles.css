@@ -681,9 +681,17 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
   padding:calc(var(--box-pad) + (var(--part) - 24px) / 2) var(--box-pad) 0 var(--box-in);font-size:17px;line-height:24px;color:var(--muted);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;background:transparent}
 #capture.inline::before{display:none}
-/* ⇤ ⇥ is on the box's first line, where a row has its tick: it says how far in the whole of what's typed is. Send
-   stays on the last, where the typing is. */
-.box-level{align-self:flex-start;margin-left:-10px;color:var(--accent)}
+/* A box in a list starts where the tick of what it makes ends (--mark: a subtask's on a list or Today, else a task's
+   or a step's), so its words are where the new row's title will be, and stay there as they land. The tick's place at
+   its left is empty, or has ⇤ ⇥: outside the box, on its first line, as it says how far in the whole of what's typed
+   is (send stays on the last line, where the typing is). What's under or over the box (its chips, a step's time
+   line, what was just done) starts with it, and so does its dashed place. */
+#capture.inline{--mark:var(--sub-tick)}
+#capture.inline.out,.addbox.sub,.sub-home{--mark:var(--tick)}
+.addbox.sub,#capture.inline,.sub-home{--box-dent:calc(var(--mark) - var(--box-edge))}
+.addbox.sub > *,#capture.inline > *,.sub-home > span{margin-left:var(--box-dent)}
+.addbox form{position:relative}
+.addbox .box-level{position:absolute;left:calc((var(--mark) + var(--part)) / -2);top:var(--box-pad);color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:calc(var(--box-one) + 20px + env(safe-area-inset-bottom));padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
@@ -692,9 +700,9 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
    keep the line. Its name is its label, for a screen reader, and what it does is its title. */
 .foot-box .rep{display:grid;place-items:center;padding:0;border:0;border-radius:var(--part-r);background:var(--sunk);color:var(--accent)}
 /* The box in a list (a sheet's, a checklist's, and the bar seated under a row): the same box, closer, and coloured as
-   the bar is on every screen, at rest and while it's typed in: its edge the accent, white inside. It's as far in from
-   the list's sides as a row is: its left edge where the ticks start (a level in, the ticks of that level: seatBox), its
-   right where a row's slot ends. Its chips, a step's time line and its dashed place start there too.
+   the bar is on every screen, at rest and while it's typed in: its edge the accent, white inside. Its place is as far
+   in from the list's sides as a row is: at its left, where the ticks start (a level in, the ticks of that level:
+   seatBox), the tick's place, and then the box (--box-dent, above); its right edge where a row's slot ends.
    And it's in the middle of the place it takes, as much room over it as under it, seated under a row or at a list's
    foot: with one line that place is a row's height (--box-slot: 56px, less the rule over it where it has one), and
    with chips or a time line under it, the same room is under those. */

@@ -600,6 +600,7 @@ export default {
       if (el && h !== seat.h) { seat.h = h; root.style.setProperty('--box-h', h + 'px'); }
       room(el, s?.key);
       bar.classList.toggle('inline', !!el);
+      bar.classList.toggle('out', !!el && s.out);                        // a task's box: its tick is the bigger (styles.css, --mark)
       if (!el) { if (seat.at) { seat.at = ''; bar.style.top = bar.style.left = bar.style.width = bar.style.paddingLeft = ''; } return; }
       // As far in as what it adds: a task's inset, out a level; the row's own, a subtask's or a step's; under its task, a
       // level further.
