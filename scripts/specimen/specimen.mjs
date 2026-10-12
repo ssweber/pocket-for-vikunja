@@ -177,7 +177,7 @@ function sections(){
      date the finger has gone towards, lit; `why`: a task a hold can't move; `card`: held by its header, a card; `open`:
      let go without a move, the dates open to tap. */
   const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
-  const others = () => [task({title: 'Fix the other air con', due_date: dayAt(-1, 15), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}),
+  const others = () => [task({title: 'Fix the other fridge', due_date: dayAt(-1, 15), assignees: [me]}), task({title: 'Count the stock', percent_done: .25, assignees: [me]}),
     task({title: 'Order the cups', due_date: dayAt(1, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(3, 0)}), task({title: 'Collect the new aprons', due_date: dayAt(5, 11)})];
   const ring = (spec, now, held, more = {}) => { const rows = others(); rows.splice(more.row ?? 2, 0, held); return {spec, now, held, rows, x: 180, ...more}; };
   const milk = () => task({title: 'Pay the milk invoice', due_date: on(8, 9).toISOString(), priority: 4});
@@ -200,7 +200,7 @@ function sections(){
     ring('On a 390px screen, the last row held near its left end, the finger gone down: No date lit, though the set moved up', on(9), milk(), {row: 5, x: 44, to: 'none', wide: true}),
     ring('On a 390px screen, open to tap, held right of the middle', on(9), milk(), {open: true, x: 230, wide: true}),
   ];
-  return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other air con', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Cover John', percent_done: .25, assignees: [me]}), opening,
+  return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other fridge', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Count the stock', percent_done: .25, assignees: [me]}), opening,
     task({title: 'Order the milk', priority: 2}), closing, sign, shelves, tasting], cardSubs: [...cardSubs, ...ringSubs], parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
     // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
