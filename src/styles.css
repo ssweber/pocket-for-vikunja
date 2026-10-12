@@ -650,6 +650,9 @@ a.sec-act{text-decoration:none}
 .addbox textarea{text-overflow:ellipsis}
 .addbox textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .addbox :is(.go,.cam,.box-home,.box-level){width:var(--part);height:var(--part);flex:none}
+/* and each takes taps 44px across, past what's drawn where that's smaller: 38px in a list, 42px in the bar, and Repeat */
+.addbox :is(.go,.cam,.box-home,.box-level,.rep){position:relative}
+.addbox :is(.go,.cam,.box-home,.box-level,.rep)::after{content:"";position:absolute;inset:calc(50% - 22px)}
 .addbox .go{border-radius:var(--part-r);border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
 .addbox .go[disabled]{opacity:.35}
 /* On a project's list, above the box: the task it adds subtasks to, with × (48px) to add a task instead */
@@ -680,7 +683,7 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
 #cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
 #cap-home > span{height:100%}
-/* On a run: Repeat, the card's step again, at the line's end; its taps 48px tall, past what's drawn */
+/* On a run: Repeat, the card's step again, at the line's end */
 .foot-box .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:1px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
 /* The subtask box: the same box, in a task's sheet, quieter until it has the focus. A box in a list is as far in from
    the list's sides as a row is: its left edge where the ticks start (a level in, the ticks of that level: seatBox), its
