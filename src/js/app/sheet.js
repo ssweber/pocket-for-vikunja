@@ -523,7 +523,10 @@ export default {
   stepShown(t){
     if (!t.key) return this.templateSteps[this.stepAt(t)] || {title: t.title};
     const d = this.draft('new'), info = d.info.get(t.key), s = info && stepInfos(d.added)[info.i];
-    return s ? {...s, problem: info.problem || s.problem} : {title: t.text, text: '', problem: ''};
+    // Its title reads as a saved step's does (the user, 2026-10-12): without the @people, *labels and !priority quick add
+    // will read when it's created, but with the words of a chip tapped off (t.ignore), which stay in the title.
+    const title = text => this.stepParsed(text, t.ignore).title || text;
+    return s ? {...s, title: title(s.title), problem: info.problem || s.problem} : {title: title(t.text), text: '', problem: ''};
   },
   /* The add box at a list's foot (markup/list-box.html), by where the list is: a sheet's ('sheet': a task's subtasks, a
      template's steps, New template's) or a checklist's steps on its screen ('run'). What it is there: its box as box()

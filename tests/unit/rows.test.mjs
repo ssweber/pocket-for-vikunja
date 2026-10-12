@@ -14,6 +14,7 @@ import runs from '../../src/js/app/runs.js';
 import checklists from '../../src/js/app/checklists.js';
 import cards from '../../src/js/app/cards.js';
 import quickadd from '../../src/js/app/quickadd.js';
+import sheet from '../../src/js/app/sheet.js';
 import throwing from '../../src/js/app/throw.js';
 import { THROW_STAYS } from '../../src/js/throw.js';
 import { HOLD_MS, TEXT_FIELD } from '../../src/js/progress.js';
@@ -753,7 +754,7 @@ test('open to tap, a day picked in the phone\'s own picker moves the task there,
 /* New template's steps (app/checklists.js; sheet/sub-list.html): rows on the phone only, written through the one box
    at the list's foot, and nothing of them in Vikunja until Create template. */
 test('in New template the box\'s lines join the rows, after the row the box is under, and the box follows the last; one taken out hands the box to the row before', () => {
-  const app = component(checklists, quickadd);
+  const app = component(checklists, quickadd, sheet);
   Object.assign(app, { user: { settings: { frontend_settings: {} } }, projects: [], sheet: { kind: 'newtpl', subAt: null, stepEdit: null, newTpl: { rows: [], add: { text: '', keep: false, from: null, ignore: {} } } } });
   const box = app.sheet.newTpl.add, rows = () => app.sheet.newTpl.rows.map(r => r.text);
   box.text = 'Turn on the machine'; app.sendSteps('new');
@@ -773,4 +774,11 @@ test('in New template the box\'s lines join the rows, after the row the box is u
   // Held and moved: its place among the rows, with nothing sent.
   app.moveStep(2, -2, true);
   assert.deepEqual(rows(), ['Lock up', 'Turn on the machine', 'Wipe the tables']);
+  // A row reads as a saved step does (the user, 2026-10-12): without the !priority quick add will read when it's
+  // created, and with the words of a chip tapped off, which stay in its title.
+  box.text = 'Count the till !4'; app.sendSteps('new');
+  const till = app.sheet.newTpl.rows.find(r => r.text.startsWith('Count'));
+  assert.equal(app.stepShown(till).title, 'Count the till');
+  till.ignore = { priority: true };
+  assert.equal(app.stepShown(till).title, 'Count the till !4');
 });
