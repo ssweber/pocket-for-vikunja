@@ -96,7 +96,7 @@ export default {
      slot it had, so its title doesn't move; it can't be tapped meanwhile. */
   rowSlot(t, g){
     if (g.run) return t.done ? null : t.slot;
-    if (g.sheet) return this.subSlots[t.id] || null;
+    if (g.sheet) return g.step && this.sheet.stepEdit?.id === t.id ? null : this.subSlots[t.id] || null;   // (a step being changed: its box has the room)
     if (t.pending) return null;
     if (g.top || this.isRunTask(t)) return this.forSlot(t);
     if (this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) return comesRound(t) ? this.forSlot(t) : null;

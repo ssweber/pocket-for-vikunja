@@ -91,11 +91,12 @@ commits, with the tests passing before and after.
    and leaves them.
 2. One copy of each task on screen: `tasks`, by id (`app/tasks.js`), which every list's rows are, so a change is on all
    of a task's rows at once.
-3. One row: `markup/task-row.html` is also the subtasks in a task's sheet. A template's step keeps a row of its own:
-   its number where a task has its tick, its time and first line of notes, and quick add's box in its place when it's
-   tapped, with ↑ ↓ ×; none of that is a task's, and in the task row it would be in every list's markup. A run's step
-   keeps its own too, on the run's screen (its ›, Skip, and who did it). Both share the slot for who's doing it,
-   `markup/claim-slot.html`, with the sheet's subtasks.
+3. One row: `markup/task-row.html` is also the subtasks in a task's sheet, and, since 2026-10-12, a template's steps
+   there (`g.step`): its number where a task has its tick, its time and first line of notes, and quick add's box in
+   its place when it's tapped. It had a row of its own until then, so that none of this would be in every list's
+   markup, and the two drifted apart. Now the parts only a step has are kept out of the other lists' copies of the
+   row by the build (`<!-- only step -->`, `scripts/build.mjs`), so a long list's rows cost what they did. A run's
+   step is the row too, on the run's screen.
 4. The colours written out in `styles.css` (its shadows and the scrim) are custom properties.
 5. Checks in `npm run lint`: `fetch()` only in `api.js`, and no colour written out of `:root` or in `markup/`. And a
    specimen page, `npm run specimen`, with the row in every state, in light and dark.

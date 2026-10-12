@@ -218,6 +218,9 @@ export default {
   },
   // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
+  // A template's step, as its row has it (task-row.html, g.step): where it is among the steps, and how it reads.
+  stepAt(t){ return this.subtasks.findIndex(s => s.id === t.id); },
+  stepShown(t){ return this.templateSteps[this.stepAt(t)] || {title: t.title}; },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
   get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
   // Subtasks of the open task still waiting to be sent, for its sheet.

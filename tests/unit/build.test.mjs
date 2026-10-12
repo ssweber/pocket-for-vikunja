@@ -5,7 +5,13 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
-import { compressed } from '../../scripts/build.mjs';
+import { compressed, onlyParts } from '../../scripts/build.mjs';
+
+test('a piece\'s part for some places only is kept where it\'s included with its word, and left out everywhere else', () => {
+  const row = '<div class="row">\n  <!-- only step -->\n  <span class="n"></span>\n  <!-- /only -->\n  <button></button>\n  <!-- only other -->\n  <i></i>\n  <!-- /only -->\n</div>\n';
+  assert.equal(onlyParts(row), '<div class="row">\n  <button></button>\n</div>\n', 'included plainly: neither');
+  assert.equal(onlyParts(row, ['step']), '<div class="row">\n  <span class="n"></span>\n  <button></button>\n</div>\n', 'with its word: that part, without its markers');
+});
 
 test('the page is written as .br and .gz that decode to it, with no time or computer in the gzip header', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pocket-build-')), file = join(dir, 'index.html'), page = '<!doctype html><p>Café ✓</p>\n'.repeat(50);

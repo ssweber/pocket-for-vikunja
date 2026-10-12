@@ -544,6 +544,7 @@ a.sec-act{text-decoration:none}
 .step-in .box-chips,.nt-name .box-chips{margin-left:0}
 .nt-name{margin-bottom:14px}
 .nt-name > label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+.meta > .step-note{flex:0 0 100%;margin-top:0}
 .step-note{margin-top:3px;font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .draft-step{position:relative;border-top:1px solid var(--line);padding:10px 10px 10px 14px;background:var(--surface);transition:box-shadow .15s,transform .2s ease}
 /* One written, shown as a row (draft-steps.html): held, it lifts and moves, as a row does; swiped, its Delete is under it */

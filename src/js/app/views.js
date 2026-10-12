@@ -130,6 +130,7 @@ export default {
      yet has nothing to open. */
   tapRow(t, g){
     if (g.run) return this.showStep(t.i, true);
+    if (g.step) return this.editStep(t);
     if (t.pending) return;
     if (g.own) return this.editTitle();
     return g.sheet || g.top ? this.openTask(t.id) : this.openRow(t);
@@ -164,6 +165,11 @@ export default {
      doesn't say them (rowWhen). */
   rowMeta(t, g){
     if (g?.top) return [];
+    // A template's step: when it's due in a checklist, or what's wrong with it, and its notes' first line.
+    if (g?.step) {
+      const s = this.stepShown(t), note = this.stepNote(t);
+      return [(s.problem || s.text) && {key: 'when', cls: 'num' + (s.problem ? ' due overdue' : ''), text: s.problem || s.text}, note && {key: 'note', cls: 'step-note', text: note}].filter(Boolean);
+    }
     if (g?.own) return this.rowMeta(t, {depth: {}}).filter(m => OWN_META.includes(m.key));
     if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},

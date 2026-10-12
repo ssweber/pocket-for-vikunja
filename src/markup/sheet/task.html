@@ -77,55 +77,12 @@
       <template x-if="checklistRole !== 'tplstep'"><div class="card" id="d-subtasks">
         <!-- A subtask: the same row as in a list, as a sheet has it (g.sheet); a sheet is for managing, as a project is, so
              it's swiped to its Delete and held to move it, whatever screen the sheet is over -->
-        <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true}]" :key="0"><template x-for="t in checklistRole === 'template' ? [] : subtasks" :key="t.id">
-          <!-- include markup/task-row.html -->
+        <!-- A template's subtasks are its steps: the same row again, as a step (g.step): its number where a task has its
+             tick, when it's due in a checklist and its notes' first line under it, and, tapped, quick add's box in its
+             place. It's held to move it and swiped left to its Delete, as a subtask is (stepReorder, app/progress.js). -->
+        <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true, step: checklistRole === 'template'}]" :key="0"><template x-for="t in subtasks" :key="t.id">
+          <!-- include markup/task-row.html step -->
         </template></template>
-        <!-- A template's step has a row of its own, not the task row: its number, plain (a square box is a step you tick,
-             in a run), where a task has its tick, when it's due in
-             a run and its notes' first line under it, and, tapped, quick add's box in its place, with × and ⋯ (Move up,
-             Move down). It's moved by holding it and moving it up or down, or with Alt+↑ ↓. Who's doing it is the same
-             slot as on a subtask. -->
-        <template x-for="(st, i) in checklistRole === 'template' ? subtasks : []" :key="st.id">
-          <!-- A step being changed is saved once the focus leaves its row: its time chip and buttons are part of it -->
-          <div class="row" :class="{editing: sheet.stepEdit?.id === st.id}" :data-id="st.id"
-               @focusout="sheet.stepEdit?.id === st.id && setTimeout(() => $el.contains(document.activeElement) || saveStepEdit(i))">
-            <span class="check step-n num" aria-hidden="true" x-text="i + 1"></span>
-            <template x-if="sheet.stepEdit?.id === st.id"><div class="body step-in" x-data="{bw: 'edit', more: false}">
-              <!-- Quick add's box ('edit', x-box): @people assign the step, *labels label it, as when it was written.
-                   Its own: Escape calls the change off, after closing its ⋯ menu (`more`) if that's open (what's
-                   innermost first), and Alt+↑ and ↓ move the step. -->
-              <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + st.id" x-model="sheet.stepEdit.text" x-box="bw" :aria-label="'Change step ' + (i + 1)" enterkeyhint="done"
-                        x-init="$nextTick(() => { passFocus($el, t => { sheet.stepEdit.text += t; }, true); grow($el); })"
-                        @keydown.escape.stop="if (more) more = false; else sheet.stepEdit = null"
-                        @keydown.alt.up.prevent="moveStep(i, -1)" @keydown.alt.down.prevent="moveStep(i, 1)"></textarea></div></div>
-              <template x-for="st in [sheet.stepEdit]" :key="0"><div>
-                <template x-for="d in draftShown(stepEditDraft(i))" :key="0">
-                  <!-- include markup/sheet/step-time.html -->
-                </template>
-              </div></template>
-              <!-- include markup/sheet/box-chips.html -->
-              <!-- Under the box, so it has the row's width: its own sheet, ⋯ and ×, which keep the keyboard up -->
-              <div class="step-in-foot">
-                <button type="button" class="linkish step-notes" :id="'step-notes-' + st.id" @mousedown.prevent @click="openStep(i)">Notes and photos ›</button>
-                <span class="step-edit">
-                  <button class="icon-btn" :aria-label="'More for step: ' + st.title" :aria-expanded="String(more)" @mousedown.prevent @click="more = !more"><svg class="i"><use href="#i-more"/></svg></button>
-                  <button class="icon-btn" :aria-label="'Remove step: ' + st.title" :disabled="sheet.checklistBusy" @mousedown.prevent @click="removeStep(i)"><svg class="i"><use href="#i-close"/></svg></button>
-                </span>
-                <!-- Moving it for a keyboard or a screen reader, as holding it and moving it up or down does -->
-                <template x-if="more"><div class="menu step-menu" role="menu" @keydown.escape.stop="more = false">
-                  <button role="menuitem" :disabled="i === 0 || sheet.checklistBusy" @mousedown.prevent @click="more = false; moveStep(i, -1)">Move up</button>
-                  <button role="menuitem" :disabled="i === subtasks.length - 1 || sheet.checklistBusy" @mousedown.prevent @click="more = false; moveStep(i, 1)">Move down</button>
-                </div></template>
-              </div>
-            </div></template>
-            <button class="body" x-show="sheet.stepEdit?.id !== st.id" @click="editStep(st)"><div class="title" x-text="templateSteps[i]?.title"></div>
-              <template x-if="templateSteps[i]?.text || templateSteps[i]?.problem"><div class="meta"><span class="num" :class="{'due overdue': templateSteps[i].problem}" x-text="templateSteps[i].problem || templateSteps[i].text"></span></div></template>
-              <template x-if="stepNote(st)"><div class="step-note" x-text="stepNote(st)"></div></template></button>
-            <template x-for="slot in subSlots[st.id] && sheet.stepEdit?.id !== st.id ? [subSlots[st.id]] : []" :key="0">
-              <!-- include markup/claim-slot.html -->
-            </template>
-          </div>
-        </template>
         <!-- Subtasks still waiting to be sent; one whose line said it's done, ticked -->
         <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits, done: t.done}" :data-id="t.id">
           <button class="check" :class="{wait: t.waits}" disabled :aria-label="'Not sent yet: ' + t.title"><svg class="i"><use href="#i-check"/></svg></button>

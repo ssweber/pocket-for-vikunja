@@ -1,0 +1,20 @@
+<!-- A template's step being changed, in its row's place for its words (task-row.html, g.step; `t`, the step): quick
+     add's box ('edit', x-box), where @people assign it and *labels label it, as when it was written, with its time
+     chip and what quick add read under it, and its notes and photos' own sheet. Saved once the focus leaves its row:
+     its chips and its link are part of it, and keep the keyboard up. Escape calls the change off, and Alt+↑ and ↓ move
+     the step. It has no buttons to move or remove it: its row is held, and swiped left (stepReorder, app/progress.js). -->
+<div class="body step-in" x-data="{bw: 'edit'}" @focusout="setTimeout(() => $el.closest('.row')?.contains(document.activeElement) || saveStepEdit(stepAt(t)))">
+  <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + t.id" x-model="sheet.stepEdit.text" x-box="bw" :aria-label="'Change step ' + (stepAt(t) + 1)" enterkeyhint="done"
+            x-init="$nextTick(() => { passFocus($el, typed => { sheet.stepEdit.text += typed; }, true); grow($el); })"
+            @keydown.escape.stop="sheet.stepEdit = null"
+            @keydown.alt.up.prevent="moveStep(stepAt(t), -1)" @keydown.alt.down.prevent="moveStep(stepAt(t), 1)"></textarea></div></div>
+  <template x-for="st in [sheet.stepEdit]" :key="0"><div>
+    <template x-for="d in draftShown(stepEditDraft(stepAt(t)))" :key="0">
+      <!-- include markup/sheet/step-time.html -->
+    </template>
+  </div></template>
+  <!-- include markup/sheet/box-chips.html -->
+  <div class="step-in-foot">
+    <button type="button" class="linkish step-notes" :id="'step-notes-' + t.id" @mousedown.prevent @click="openStep(stepAt(t))">Notes and photos ›</button>
+  </div>
+</div>

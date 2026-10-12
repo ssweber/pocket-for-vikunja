@@ -5,6 +5,8 @@
 //
 // It reads src/index.html and puts into it, in place:
 //   <!-- include markup/x.html -->                 src/markup/x.html (and any includes in it, also from src/)
+//   <!-- include markup/x.html step -->            the same, with what x.html has between <!-- only step --> and
+//                                                  <!-- /only --> kept; included without the word, that's left out
 //   <link rel="stylesheet" href="styles.css">      that stylesheet from src/, minified, in a <style>
 //   <script type="module" src="js/main.js">        that script from src/ and everything it imports, as one minified
 //                                                  script, with a source map next to the page (pocket.js.map)
@@ -34,12 +36,18 @@ const inSrc = (from, path) => {
   return file.startsWith(SRC + sep) && existsSync(file) ? file : null;
 };
 
-export function include(file, seen = []){
+/* A piece's parts for some of the places it's included only: what's between <!-- only step --> and <!-- /only -->,
+   each on a line of its own, is kept where the piece is included with that word, and left out everywhere else. So one
+   row is every list's (markup/task-row.html), and what only a template's steps need isn't in every list's markup,
+   where each row would work it out (docs/development.md, rule 10). */
+export const onlyParts = (text, words = []) => text.replace(/^[ \t]*<!-- only (\S+) -->\n([\s\S]*?)^[ \t]*<!-- \/only -->\n?/gm, (_, word, part) => words.includes(word) ? part : '');
+
+export function include(file, seen = [], words = []){
   if (seen.includes(file)) throw new Error(`${relative(ROOT, file)} includes itself`);
-  return read(file).replace(/^([ \t]*)<!-- include (\S+) -->\n?/gm, (_, indent, path) => {
+  return onlyParts(read(file), words).replace(/^([ \t]*)<!-- include (\S+)((?: \S+)*) -->\n?/gm, (_, indent, path, more) => {
     const part = inSrc(join(SRC, 'index.html'), path);                         // always from src/, wherever it's written
     if (!part) throw new Error(`${relative(ROOT, file)}: no src file ${path} to include`);
-    return include(part, [...seen, file]);
+    return include(part, [...seen, file], more.split(' ').filter(Boolean));
   });
 }
 
