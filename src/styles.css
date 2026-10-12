@@ -655,7 +655,6 @@ a.sec-act{text-decoration:none}
 .addbox :is(.go,.cam,.box-level,.rep)::after{content:"";position:absolute;inset:calc(50% - 22px)}
 .addbox .go{border-radius:var(--part-r);border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
 .addbox .go[disabled]{opacity:.35}
-/* On a project's list, above the box: the task it adds subtasks to, with × (48px) to add a task instead */
 /* The add box in the list, on a project's list (seatBox, app/quickadd.js; inline-add-box-plan): the row it adds after has
    the box's height as room under it, and the box is laid over that room, as far in as what it adds (its left padding,
    from seatBox). Its place at the bottom stays, dashed, at the height it had: tapped, the box is back. */
@@ -665,7 +664,7 @@ a.sec-act{text-decoration:none}
    box over it, and its place at the foot kept, dashed. */
 #d-subtasks{position:relative}
 .sub-boxed{margin-bottom:var(--sub-h,0px)}
-.foot-box.inline{position:absolute;left:0;right:0;border-top:0}
+.foot-box.inline{position:absolute;left:0;right:0}
 #run-steps{position:relative}
 .foot-box > .place-line{margin:0 0 8px}
 /* A run's screen has no bar at its bottom: its box is under its steps */
