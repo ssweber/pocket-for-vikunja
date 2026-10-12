@@ -660,11 +660,11 @@ a.sec-act{text-decoration:none}
 .foot-box > .place-line{margin:0 0 8px}
 /* A run's screen has no bar at its bottom: its box is under its steps */
 main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
-.sub-box-time > .draft-meta{margin:6px 2px 0}
-.sub-home{display:block;width:100%;padding:10px;border:0;border-top:1px solid var(--line);background:transparent}
+.sub-box-time > .draft-meta{margin:6px 0 0}
+.sub-home{display:block;width:100%;padding:10px 14px;border:0;border-top:1px solid var(--line);background:transparent}
 /* a box's outline, dashed: as tall as the box with one line (the bar's place keeps the height the bar had) */
 :is(#cap-home,.sub-home) > span{display:block;height:calc(var(--part) + 2 * var(--box-pad) + 2 * var(--box-edge));border:var(--box-edge) dashed var(--line);border-radius:var(--box-r)}
-#capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 10px 10px 14px;background:transparent}
+#capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 14px 10px;background:transparent}
 #capture.inline::before{display:none}
 .box-home{color:var(--muted)}
 .box-level{margin-left:-10px;color:var(--accent)}
@@ -675,8 +675,10 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 #cap-home > span{height:100%}
 /* On a run: Repeat, the card's step again, at the line's end; its taps 48px tall, past what's drawn */
 .foot-box .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:1px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
-/* The subtask box: the same box, in a task's sheet, quieter until it has the focus */
-.addbox.sub{padding:10px}
+/* The subtask box: the same box, in a task's sheet, quieter until it has the focus. A box in a list is as far in from
+   the list's sides as a row is: its left edge where the ticks start (a level in, the ticks of that level: seatBox), its
+   right where a row's slot ends. Its chips, a step's time line and its dashed place start there too. */
+.addbox.sub{padding:10px 14px}
 .row ~ .addbox.sub{border-top:1px solid var(--line)}
 .addbox.sub form{border-color:var(--line);background:var(--bg)}
 .addbox.sub form:focus-within{border-color:var(--accent)}
