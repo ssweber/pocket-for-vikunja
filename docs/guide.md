@@ -86,7 +86,7 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 **Recurring.** Give the template a due date and repeat interval. It becomes a repeating Vikunja task: at its time it appears on Today for its assignees (or everyone with write access), and tapping it opens Start. Starting a checklist on the due day advances the template, and the checklist inherits the due time, so an unfinished one shows overdue. A start at 7:55 counts as the 8:00 occurrence. A start before the due day doesn't advance it. Missed occurrences aren't made up.
 
-**Changing a checklist.** The box under the steps adds a step at the end, for this checklist only. Nudge a step to make it current and move the box under it; a step added there goes after it. **Repeat** duplicates the current step, right after it. Template steps can't be removed from a checklist, only skipped.
+**Changing a checklist.** The box under the steps adds a step at the end, for this checklist only. Nudge a step to make it current and move the box under it; a step added there goes after it. **Repeat**, the ↻ button in the box, duplicates the current step, right after it. Template steps can't be removed from a checklist, only skipped.
 
 **Completion record.** Done is a ✅ reaction, skipped is ⏭️, so the web app shows "Done by Priya at 4:46 PM". Vikunja only lets users remove their own reactions, so un-ticking someone else's step asks first and leaves their reaction.
 
