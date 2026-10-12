@@ -1,7 +1,7 @@
-// The README's demo GIF and screenshots, made from the real app against the local Vikunja of `npm run dev`.
+// The README's two GIFs and the guide's screenshot, made from the real app against the local Vikunja of `npm run dev`.
 //
 //   npm run dev          in another terminal; it keeps running
-//   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-checklist.gif and the screenshots of Pocket and of Vikunja
+//   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-checklist.gif and pocket-capture.png
 //
 // The story is a small café: Alex owns it, and Priya is the shift lead who opens up. They're two users of the demo's
 // own, with made-up tasks; alex's tasks and projects are replaced on each run.
@@ -74,7 +74,7 @@ async function task(project, t, { labels = [], subtasks = [], comment, file, ass
   if (file) { const f = new FormData(); f.append('files', new Blob([file.text, new Uint8Array(file.size)], { type: 'application/pdf' }), file.name); await A('POST', `/tasks/${made.id}/attachments`, f); }
   return made;
 }
-const oatMilk = await task('Orders', { title: 'Order oat milk from Riverside Dairy', due_date: at(-2, 9), priority: 4, percent_done: .4,
+await task('Orders', { title: 'Order oat milk from Riverside Dairy', due_date: at(-2, 9), priority: 4, percent_done: .4,
   description: '<p>Two cases a week from October: set it up as a standing order.</p>' }, {
   labels: ['suppliers'], comment: '<p>We’re on the last case. Riverside’s cut-off is 2pm for next-day delivery.</p>', file: { name: 'riverside-price-list.pdf', text: '%PDF-1.4 demo', size: 184000 },
   subtasks: [['Count what’s left in the fridge', true], ['Ask about the October price', false], ['Set up the standing order', false]] });
@@ -119,56 +119,11 @@ async function phone({ scale = 2, height = 844 } = {}){
 const centre = async (page, sel) => { const b = await page.locator(sel).first().boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
 const crop = async (page, sel, pad = 4) => { const b = await page.locator(sel).boundingBox(); return { x: 0, y: Math.max(0, b.y - pad), width: 390, height: b.height + pad * 2 }; };
 
-// ---------- the screenshots ----------
+// ---------- the guide's screenshot: quick add, with what it read ----------
 {
   const { context, page } = await phone();
-  await page.screenshot({ path: out('pocket-today.png') });
-  await page.locator('.day-card:has-text("Order oat milk") .card-open').click();     // a card on Today: its title opens it
-  await page.waitForSelector('#d-comments .comment'); await page.waitForTimeout(500);
-  await page.screenshot({ path: out('pocket-task.png') });
-  await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' });
-  const box = async (text, then) => {
-    await page.fill('#in-capture', ''); await page.fill('#in-capture', text); await page.waitForTimeout(300);
-    await then?.(); await page.waitForTimeout(300);
-    return crop(page, '#capture');
-  };
-  await page.screenshot({ path: out('pocket-capture.png'), clip: await box('Order 6 bags of house blend fri at 9 +orders !3') });
-  // Handing it off: @priya, in the café, which Priya can see.
-  await page.screenshot({ path: out('pocket-assign.png'), clip: await box('Clean the milk steamer tomorrow @priya', () => page.waitForTimeout(1500)) });
-  // Something done already, written down after the fact: the x at its start adds it ticked.
-  await page.screenshot({ path: out('pocket-done-already.png'), clip: await box('x Called the plumber') });
-  await page.screenshot({ path: out('pocket-chip-undo.png'), clip: await box('Write the Sunday brunch menu', () => page.click('#cap-chips .chip[data-kind=due]')) });
-  await page.screenshot({ path: out('pocket-paste-list.png'), clip: await box('Supplier order\n• oat milk\n• paper cups\n• napkins', () => page.click('#cap-nest')) });
-  await page.screenshot({ path: out('pocket-new-project.png'), clip: await box('Get quotes for patio heaters friday +Patio') });
-  // Offline: the banner, and a task waiting to be sent.
-  await page.fill('#in-capture', '');
-  await context.setOffline(true);
-  await page.fill('#in-capture', 'Buy till receipt rolls today');
-  await page.click('#f-capture .go');
-  await page.waitForSelector('.row.pending'); await page.waitForTimeout(400);
-  const banner = await page.locator('.offline').boundingBox(), pending = await page.locator('.row.pending').boundingBox();
-  await page.screenshot({ path: out('pocket-offline.png'), clip: { x: 0, y: banner.y - 12, width: 390, height: pending.y + pending.height - banner.y + 24 } });
-  await context.close();
-}
-
-// ---------- Vikunja's own web app, for comparison: the same account and tasks, on the same screen ----------
-{
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  const page = await context.newPage();
-  await page.clock.setFixedTime(NOW);
-  await page.goto(BASE + '/login');
-  await page.fill('#username', 'alex');
-  await page.fill('#password', 'alex-password');
-  await page.keyboard.press('Enter');
-  await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 15000 });
-  await page.waitForLoadState('networkidle'); await page.waitForTimeout(800);
-  // Vikunja suggests adding it to the home screen; close that, as someone would.
-  await page.locator('text=Add this app to your home screen').locator('xpath=ancestor::*[.//button][1]').locator('button').last().click({ timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: out('vikunja-home.png') });
-  await page.goto(BASE + '/tasks/' + oatMilk.id);
-  await page.waitForLoadState('networkidle'); await page.waitForTimeout(800);
-  await page.screenshot({ path: out('vikunja-task.png') });
+  await page.fill('#in-capture', 'Order 6 bags of house blend fri at 9 +orders !3'); await page.waitForTimeout(600);
+  await page.screenshot({ path: out('pocket-capture.png'), clip: await crop(page, '#capture') });
   await context.close();
 }
 
@@ -258,7 +213,6 @@ await page.waitForSelector('#step-title:text-is("Put the croissants in the oven"
 await tap('#step-done');                                             // next in order, the grinder, due in 20m; the croissants pinned above it
 await page.waitForSelector('#step-title:text-is("Dial in the grinder")'); await page.waitForSelector('#run-timers'); await page.waitForTimeout(400);
 await film(600); hold(3600);
-await page.screenshot({ path: out('pocket-run.png') });             // a still of the run, for the README
 await gif.context.close();
 await writeGif('pocket-checklist.gif');
 await browser.close();
