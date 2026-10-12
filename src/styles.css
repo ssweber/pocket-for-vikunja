@@ -628,9 +628,9 @@ a.sec-act{text-decoration:none}
 /* One box in two sizes, each said once: the bar at the bottom, and the closer box in a list (seated under a row, or at
    a list's foot). --part is its buttons' size and its field's height with one line, so the words and the buttons share
    a centre; --box-pad the room around them, --box-edge its border, --box-r its corners, --box-in its words in from
-   its edge. */
-.addbox{--part:42px;--part-r:12px;--box-pad:4px;--box-edge:2px;--box-r:16px;--box-in:14px}
-.addbox.sub,#capture.inline{--part:38px;--part-r:10px;--box-pad:3px;--box-edge:1.5px;--box-r:12px;--box-in:12px}
+   its edge. The dashed place a box leaves (#cap-home, .sub-home) reads the same figures, so it's the box's outline. */
+.addbox,#cap-home{--part:42px;--part-r:12px;--box-pad:4px;--box-edge:2px;--box-r:16px;--box-in:14px}
+.addbox.sub,#capture.inline,.sub-home{--part:38px;--part-r:10px;--box-pad:3px;--box-edge:1.5px;--box-r:12px;--box-in:12px}
 .addbox form{display:flex;gap:8px;align-items:flex-end;background:var(--surface);border:var(--box-edge) solid var(--accent);border-radius:var(--box-r);padding:var(--box-pad) var(--box-pad) var(--box-pad) var(--box-in)}
 .addbox .cap-field{flex:1;min-width:0;position:relative}
 /* The words in a box are set as a row sets its title, 17px on a 24px line: an add box's, a template's (.draft-in) and a
@@ -650,7 +650,7 @@ a.sec-act{text-decoration:none}
    the box's height as room under it, and the box is laid over that room, as far in as what it adds (its left padding,
    from seatBox). Its place at the bottom stays, empty, at the height it had: tapped, the box is back. */
 .boxed{margin-bottom:var(--box-h,0px)}
-.card-rows:has(> .boxed){display:flow-root}
+.card-rows:has(> .boxed){display:flow-root}   /* a card's last row: the room stays inside the card, not under it */
 /* The same at the foot of a sheet's list, and of a checklist's steps (list-box.html; seatFoot, app/sheet.js): room under the row, the
    box over it, and its place at the foot kept, empty. */
 #d-subtasks{position:relative}
@@ -661,8 +661,9 @@ a.sec-act{text-decoration:none}
 /* A run's screen has no bar at its bottom: its box is under its steps */
 main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .sub-box-time > .draft-meta{margin:6px 2px 0}
-.sub-home{display:block;width:100%;height:62px;padding:10px;border:0;border-top:1px solid var(--line);background:transparent}
-.sub-home > span{display:block;height:100%;border:1.5px dashed var(--line);border-radius:12px}   /* a card's last row: the room stays inside the card, not under it */
+.sub-home{display:block;width:100%;padding:10px;border:0;border-top:1px solid var(--line);background:transparent}
+/* a box's outline, dashed: as tall as the box with one line (the bar's place keeps the height the bar had) */
+:is(#cap-home,.sub-home) > span{display:block;height:calc(var(--part) + 2 * var(--box-pad) + 2 * var(--box-edge));border:var(--box-edge) dashed var(--line);border-radius:var(--box-r)}
 #capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 10px 10px 14px;background:transparent}
 #capture.inline::before{display:none}
 .box-home{color:var(--muted)}
@@ -671,7 +672,7 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .item.boxed{margin-bottom:var(--box-h,0px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
 #cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
-#cap-home > span{display:block;height:100%;border:2px dashed var(--line);border-radius:16px}
+#cap-home > span{height:100%}
 /* On a run: Repeat, the card's step again, at the line's end; its taps 48px tall, past what's drawn */
 .foot-box .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:1px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
 /* The subtask box: the same box, in a task's sheet, quieter until it has the focus */
