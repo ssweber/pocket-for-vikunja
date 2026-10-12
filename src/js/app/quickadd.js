@@ -3,7 +3,7 @@ import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {parentIds, saved} from '../lists.js';
-import {placeAfter, placeFirst} from '../order.js';
+import {clearOf, placeAfter, placeFirst} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
@@ -17,7 +17,7 @@ const PEOPLE_AGE = 10 * 6e4;                   // who can see each project is lo
 let cursorIO = null, watched = null, stand = null;
 const inSight = new WeakMap();
 // The add box in the list (seatBox): the element given room under it, how much, and the frame that keeps asking.
-const seat = {el: null, h: 0, inset: '', raf: 0, at: ''};
+const seat = {el: null, key: '', h: 0, inset: '', raf: 0, at: ''};
 // Whether the browser holds the page still itself when something above the screen changes height (Safari doesn't).
 const ANCHORS = typeof CSS !== 'undefined' && !!CSS.supports?.('overflow-anchor', 'auto');
 
@@ -408,6 +408,7 @@ export default {
     // A step being changed: the people and labels it has, to tap off it.
     if (w === 'edit') out.push(...this.stepHasChips());
     const to = this.boxPid(w);
+    if (this.boxIn && (w === 'under' || w === 'cap') && !this.view.listView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja: what you add goes last'});
     if (to && !this.canWrite(to)) out.push({key: 'ro', cls: 'warn', text: `${this.projById.get(to)?.title || 'This project'} is shared with you to read only: it can't be added to`});
     return out;
   },
@@ -433,7 +434,7 @@ export default {
      as it does of `leaving`, so lighting another row draws those two again, not the whole list. */
   light(c){
     const was = this.cursor;
-    if (c && was && was.id === c.id && was.under === c.under && !was.wait === !c.wait) return;
+    if (c && was && was.id === c.id && was.under === c.under && !was.wait === !c.wait && !was.out === !c.out) return;
     for (const id of Object.keys(this.lit)) if (!c || String(c.id) !== id) delete this.lit[id];
     if (c) this.lit[c.id] = true;
     this.cursor = c;
@@ -457,7 +458,7 @@ export default {
     const c = this.cursor, w = c?.wait;
     if (!w) return;
     const t = tasks.find(x => x.was === w.id);
-    if (t) this.light({id: t.id, under: c.under});
+    if (t) this.light({id: t.id, under: c.under, ...(c.out && {out: true})});
     else if (!sync.all(this.user?.id).some(e => e.id === w.entry)) this.aim(this.tasks[c.under]);
   },
   // A waiting line called off (cancelPending, sending.js): the cursor on its row hands over to the task it was under; on
@@ -500,14 +501,16 @@ export default {
   get cursorTask(){
     const c = this.cursor;
     if (!c) return null;
-    if (c.wait) return this.canAim(this.tasks[c.under]) ? c.wait : null;
+    // (A task added from the box out a level, waiting: under no task, on this project's list.)
+    if (c.wait) return (c.under == null ? !!c.out && this.route.name === 'project' : this.canAim(this.tasks[c.under])) ? c.wait : null;
     const t = this.tasks[c.id];
     return this.canAim(t) ? t : null;
   },
   // The task the box's subtasks go under: the cursor's, or the cursor itself.
   get cursorParent(){ const t = this.cursorTask; return t && (this.listParent(t) || t); },
   // Which box quick add's is: adding a task, subtasks to the cursor, or on a run's screen, steps.
-  get capW(){ return this.route.name === 'run' ? 'ins' : this.cursorTask ? 'under' : 'cap'; },
+  // (Out a level, in the list still, it adds a task again: boxOut.)
+  get capW(){ return this.route.name === 'run' ? 'ins' : this.cursorTask && !this.cursor.out ? 'under' : 'cap'; },
   // Its text and the rest, as the box `capW` keeps them: a run's apart from quick add's, so neither turns up in the other.
   get capBox(){ return this.box(this.capW); },
   /* What the box adds to, said above it: the task, and, the cursor being one of its subtasks, that subtask, which they
@@ -517,11 +520,11 @@ export default {
   get capTarget(){
     if (this.capW === 'ins') { const a = this.runAim; return a && {step: true, after: a.title, repeat: a.on.title, canRepeat: !a.on.pending}; }
     const t = this.cursorTask, p = this.cursorParent;
-    return t && {to: p.title, after: t !== p && this.view.listView ? t.title : ''};
+    return t && !this.cursor.out ? {to: p.title, after: t !== p && this.view.listView ? t.title : ''} : null;
   },
   get capPlaceholder(){
     if (this.capW === 'ins') return 'Add a step, or paste a list';
-    if (this.cursorTask) return 'Subtask';                           // in the list, its place says the rest; photos wait for a task
+    if (this.cursorTask) return this.cursor.out ? 'Task' : 'Subtask';   // in the list, its place says the rest
     if (this.capPhotos.length) return 'What\'s this photo for?';
     return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
   },
@@ -541,7 +544,7 @@ export default {
     const listed = (this.view.groups.find(g => g.key === 'open')?.tasks || []).filter(x => parentIds(x).includes(p.id));
     const ids = new Set([...(p.related_tasks?.subtask || []), ...listed].map(x => x.id));
     const sibs = [...[...ids].map(id => this.positions[id] || 0), ...this.pendingTasks.filter(x => x.parent === p.id).map(at)];
-    return t !== p ? placeAfter(sibs, at(t), n) : placeFirst(sibs, n);
+    return this.clearPlaces(t !== p ? placeAfter(sibs, at(t), n) : placeFirst(sibs, n), sibs);
   },
   /* The cursor's row, as it's drawn: watched, so the box goes back to the bottom, adding a task, once it's out of sight
      (not while it's being typed in: the phone scrolls a box it opens its keyboard for, and that isn't scrolling away). A subtask
@@ -575,7 +578,9 @@ export default {
   seatBox(){
     const bar = this.$refs.captureBar, root = document.documentElement;
     if (!bar) return;
-    const id = this.capW === 'under' ? String(this.cursor.id) : null, parent = !this.cursor?.under;
+    const c = this.boxIn ? this.cursor : null, out = !!c?.out, parent = !c?.under;
+    // Out a level, it's after its task and all that's under it: the task's item in the list. Else under the cursor's row.
+    const id = !c ? null : String(out ? c.under ?? c.id : c.id), key = id === null ? '' : id + (out ? ':out' : '');
     const room = el => {
       const was = seat.el;
       if (was === el) return;
@@ -585,20 +590,20 @@ export default {
         if (above) scrollBy(0, -seat.h);
       }
       el?.classList.add('boxed');
-      seat.el = el; seat.inset = '';
+      seat.el = el; seat.inset = ''; seat.key = el ? key : '';
     };
     cancelAnimationFrame(seat.raf);
     const step = () => {
       if (id !== null) seat.raf = requestAnimationFrame(step);
-      const el = id === null ? null : seat.el?.isConnected && seat.el.closest('[data-id]')?.dataset.id === id ? seat.el
-        : document.querySelector(`#view .day-card[data-id="${id}"] > .card-head, #view .row[data-id="${id}"]`);
+      const el = id === null ? null : seat.el?.isConnected && seat.key === key ? seat.el
+        : document.querySelector(out ? `#view .item[data-id="${id}"]` : `#view .day-card[data-id="${id}"] > .card-head, #view .row[data-id="${id}"]`);
       const h = el ? bar.offsetHeight : 0;
       if (el && h !== seat.h) { seat.h = h; root.style.setProperty('--box-h', h + 'px'); }
       room(el);
       bar.classList.toggle('inline', !!el);
       if (!el) { if (seat.at) { seat.at = ''; bar.style.top = bar.style.left = bar.style.width = bar.style.paddingLeft = ''; } return; }
-      // As far in as what it adds: the row's own inset, a subtask's; under its task, a level further.
-      seat.inset ||= Math.round(parseFloat(getComputedStyle(el).paddingLeft) + (parent ? parseFloat(getComputedStyle(root).getPropertyValue('--sub-in')) || 30 : 0)) + 'px';
+      // As far in as what it adds: a task's inset, out a level; the row's own, a subtask's; under its task, a level further.
+      seat.inset ||= out ? '14px' : Math.round(parseFloat(getComputedStyle(el).paddingLeft) + (parent ? parseFloat(getComputedStyle(root).getPropertyValue('--sub-in')) || 30 : 0)) + 'px';
       const r = el.getBoundingClientRect(), list = (el.closest('.list') || el).getBoundingClientRect();
       const at = [Math.round(r.bottom + scrollY), Math.round(list.left + scrollX), Math.round(list.width), seat.inset].join();
       if (at === seat.at) return;
@@ -607,6 +612,49 @@ export default {
       bar.style.top = top + 'px'; bar.style.left = left + 'px'; bar.style.width = width + 'px'; bar.style.paddingLeft = seat.inset;
     };
     step();
+  },
+  /* The box's level, on a project's list (inline-add-box-plan, part 2). In the list it adds subtasks at the cursor's
+     row; moved out a level (the cursor's `out`), it adds a task instead, after the cursor's task and all that's under
+     it, where it's then drawn (seatBox), and is quick add's own box again (capW 'cap'), with a place to give. A task
+     added from there is the cursor in its turn, out still, so the next goes after it. Moved back in, it adds subtasks
+     to the cursor's row: not while that's a task still waiting to be sent, which can't have one yet (canIn). */
+  get boxIn(){ return this.route.name === 'project' && !!this.cursorTask; },
+  get boxOut(){ return this.boxIn && !!this.cursor.out; },
+  get canIn(){ const c = this.cursor; return !!c && !(c.wait && c.under == null); },
+  boxLevel(out){
+    const c = this.cursor;
+    if (!this.boxIn || out === !!c.out || (!out && !this.canIn)) return false;
+    this.light({...c, out});
+    return true;
+  },
+  // Tab moves the box in a level and Shift+Tab out, as in any editor: only when it can, so that with the box as far in
+  // or out as it goes the key moves the focus as usual, to the box's chips and its button.
+  boxTab(e){ if (this.boxLevel(e.shiftKey)) e.preventDefault(); },
+  /* Where the next `n` tasks from the box go, out a level, in the project's List view: after the cursor's task (the
+     one it was moved out from, or the last added from there, waiting or sent) and before the task after it; null if
+     the project has no List view. */
+  outPlaces(n){
+    const c = this.cursor, t = this.cursorTask, top = t && (c.under != null ? this.tasks[c.under] : t);
+    if (!top || !this.view.listView) return null;
+    const at = x => (x.pending ? x.position : this.positions[x.id]) || 0, pid = this.view.project?.id;
+    const open = (this.view.groups.find(g => g.key === 'open')?.tasks || []).filter(x => !this.listParent(x));
+    const sibs = [...open, ...this.pendingTasks.filter(x => !x.child && x.project_id === pid)].map(at);
+    return this.clearPlaces(placeAfter(sibs, at(top), n), sibs);
+  },
+  // Those places, none of them one a task of the view has already, waiting ones too (clearOf, order.js): still before
+  // the sibling they were all put before.
+  clearPlaces(places, sibs){
+    const taken = new Set([...Object.values(this.positions), ...this.pendingTasks.map(x => x.position)].filter(p => p > 0));
+    const end = Math.min(...sibs.filter(p => p > places.at(-1)));
+    return clearOf(places, taken, end === Infinity ? null : end);
+  },
+  // Tasks added from the box out a level (submitCapture, sending.js): the last of them is the cursor, on its waiting
+  // row, out still, as aimAdded has it for a subtask.
+  aimAddedOut(entry, i){
+    if (i < 0) return;
+    const p = entry.items[i].p, id = `pending-${entry.id}-${i}`;
+    if (p.done || p.pct >= 100) return;                                  // it leaves with the batch: the box stays where it is
+    this.light({id, under: null, out: true, wait: {id, pending: true, entry: entry.id, index: i, parent: null, title: p.title, position: p.position || 0}});
   },
   // Whether the box at the bottom, or in the list, is being typed in.
   get boxHasFocus(){ const el = this.$refs?.capture; return !!el && document.activeElement === el; },

@@ -166,7 +166,7 @@ export default () => ({
     // The row the box adds subtasks at, gone (deleted, done, off the list): the task it was under is lit (keepAim).
     this.$watch(() => !this.sheet.open && !!this.cursor && !this.cursorTask, gone => { if (gone) this.keepAim(); });
     // The box is in the list under the cursor's row, or back at the bottom (seatBox, quickadd.js).
-    this.$watch(() => this.capW === 'under' ? String(this.cursor.id) : '', () => this.seatBox());
+    this.$watch(() => this.boxIn ? this.cursor.id + (this.cursor.out ? ':out' : ':in') : '', () => this.seatBox());
     // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])

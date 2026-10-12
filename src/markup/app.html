@@ -54,7 +54,7 @@
 
   <!-- The box's place at the bottom, kept empty at its height while the box is in the list: a tap brings the box back.
        Ahead of the box, so the box is over it for the frame before it's seated. -->
-  <button type="button" id="cap-home" style="display:none" x-show="capW === 'under'" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @click="light(null)"><span></span></button>
+  <button type="button" id="cap-home" style="display:none" x-show="boxIn" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @click="light(null)"><span></span></button>
   <!-- Quick add. On a run's screen it adds steps (capW 'ins'), while the run can be written to and isn't finished -->
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists'].includes(route.name) || (route.name === 'run' && !runAim)">
     <!-- Where what was just added went, when it isn't on this screen; what couldn't be added, and why -->
@@ -67,17 +67,20 @@
       <!-- include markup/cap-target.html -->
     </template>
     <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
+      <!-- In the list on a project: the box out a level, to add a task after this one and all under it, and back in
+           (boxLevel, quickadd.js). Tab and Shift+Tab do the same, when they can (boxTab). -->
+      <template x-if="boxIn"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Add a subtask instead: move the box in a level' : 'Add a task instead: move the box out a level'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
         <!-- An add box (x-box, component.js), whichever it is now; it takes a list, so Shift+Enter breaks the line -->
-        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"></textarea>
+        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" @keydown.tab="boxTab($event)" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"></textarea>
       </div>
       <template x-if="attachmentsOn && capW === 'cap'"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
         <svg class="i"><use href="#i-camera"/></svg>
         <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
       </label></template>
       <!-- In the list: × takes the box back to the bottom, to add a task to the project. It keeps the focus where it was -->
-      <template x-if="capW === 'under'"><button type="button" class="icon-btn plain box-home" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="light(null)"><svg class="i"><use href="#i-close"/></svg></button></template>
+      <template x-if="boxIn"><button type="button" class="icon-btn plain box-home" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="light(null)"><svg class="i"><use href="#i-close"/></svg></button></template>
       <button class="go" type="submit" :aria-label="{cap: 'Add task', under: 'Add subtask', ins: 'Add step'}[capW]" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">

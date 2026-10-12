@@ -73,9 +73,14 @@ export default {
     // Parse every line now, so dates mean what they meant when typed. Each line says which line it's under. Those
     // under another keep their order in its project's List view, each after the one before (Vikunja would put each new
     // one first).
-    const items = itemsOf(this.boxItems('cap'), (k, under) => under !== null && {position: k * SPACING}), subs = items.filter(x => x.under !== null).length;
+    // From the box in the list, out a level (boxOut, quickadd.js): the lines that are tasks go where the box is, after the
+    // task it was moved out from and all that's under it, each after the one before.
+    const places = this.boxOut && first === this.view.project?.id ? this.outPlaces(itemsOf(this.boxItems('cap')).filter(x => x.under === null).length) : null;
+    let top = 0;
+    const items = itemsOf(this.boxItems('cap'), (k, under) => under !== null ? {position: k * SPACING} : places && {position: places[top++]}), subs = items.filter(x => x.under !== null).length;
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid, items, files: photos.map(fileEntry)};
+    if (this.boxOut) this.aimAddedOut(entry, items.findLastIndex(x => x.under === null));   // the box is under the last of them
     this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.cap.flat = false; this.capPhotos = [];
     if (this.cap.focus) this.$nextTick(() => this.$refs.capture.focus());   // to type the next one
     try {
@@ -138,7 +143,7 @@ export default {
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
-          made: t => { taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`}); if (i === 0) entry.parentProject = t.project_id; }});
+          made: t => { taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
         // One that arrived done, or with progress: its row shows it (placeSent).
         if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
         ids.push(item.taskId);
@@ -218,7 +223,7 @@ export default {
     this.aimSent(tasks);                         // the add box's cursor, on one of their waiting rows, goes with it (quickadd.js)
     if (this.view.loading || this.view.route !== location.hash) return;
     let placed = false;
-    for (const {child, problems, arrived, was, ...t} of tasks) {
+    for (const {child, problems, arrived, was, place, ...t} of tasks) {
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
       // It said it's done, or how far along it is: ticked on its row, or its tick showing how far. One that repeats is
@@ -226,8 +231,10 @@ export default {
       const now = arrived?.now;
       if (now) Object.assign(t, arrived.done && !now.done ? {done: true} : {done: now.done, done_at: now.done_at, percent_done: now.percent_done, updated: now.updated});
       const g = this.view.groups.find(g => g.key === key);
-      // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again.
-      if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
+      // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again: unless it was
+      // sent with a place of its own (`place`: from the box in the list, out a level), which Vikunja keeps.
+      if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent && place > 0) this.positions[t.id] = place;
+      else if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
         this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
       // A subtask was sent with its place among its siblings, which Vikunja keeps.
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;

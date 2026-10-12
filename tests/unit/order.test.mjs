@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { between, dragPlace, listViewOf, placeAfter, placeFirst, placeMove, positionOrder, siblingBlocks, SPACING } from '../../src/js/order.js';
+import { between, clearOf, dragPlace, listViewOf, placeAfter, placeFirst, placeMove, positionOrder, siblingBlocks, SPACING } from '../../src/js/order.js';
 import { nestSubtasks } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
 import tasks from '../../src/js/app/tasks.js';
@@ -61,6 +61,13 @@ test('new subtasks go after the one given, before the next, each after the one b
   assert.deepEqual(placeAfter([], null, 2), [SPACING, 2 * SPACING], 'the first subtasks');
   // One with no position is after the others: after it means after the last that has one.
   assert.deepEqual(placeAfter([100, 0, 200], 0), [200 + SPACING]);
+});
+
+test('a new line never takes a place another task of the view has: it moves half way to the place after it', () => {
+  assert.deepEqual(clearOf([150, 175], new Set([100, 200])), [150, 175], 'free: as they were');
+  assert.deepEqual(clearOf([SPACING], new Set([SPACING])), [SPACING * 1.5], 'a first subtask where a project\'s first task is: half a step on');
+  assert.deepEqual(clearOf([150, 175], new Set([150]), 200), [162.5, 175], 'half way to the next of them');
+  assert.deepEqual(clearOf([150, 175], new Set([175, 187.5]), 200), [150, 193.75], 'the last: towards what they\'re all before, until it\'s free');
 });
 
 test('subtasks added right under their task go ahead of its first, one after another; with none placed yet, as the first ones do', () => {
@@ -319,4 +326,44 @@ test('dragging: the siblings it passes the middle of move aside, and it stays wi
   assert.deepEqual(dragPlace(blocks, 2, -999), { dy: -200, shifts: [50, 50, 0], at: 0 });
   // A tall one (with subtasks) gets past a short last one.
   assert.equal(dragPlace(blocks, 1, 999).at, 2);
+});
+
+/* The box's level (inline-add-box-plan, part 2): out a level it adds a task, after the cursor's task and all under it. */
+test('the box out a level adds a task after the cursor\'s task; in again, a subtask; Tab and Shift+Tab move it only when they can', () => {
+  const { app, van, chairs } = projectList();
+  assert.equal(app.boxLevel(true), false, 'at the bottom: no level to change');
+  app.aim(chairs);
+  assert.deepEqual([app.boxIn, app.boxOut, app.capW, app.capPlaceholder], [true, false, 'under', 'Subtask']);
+  const key = shiftKey => { const e = { shiftKey, taken: false, preventDefault(){ this.taken = true; } }; app.boxTab(e); return e.taken; };
+  assert.equal(key(false), false, 'Tab, as far in as it goes: the key moves the focus');
+  assert.equal(key(true), true, 'Shift+Tab: out a level');
+  assert.deepEqual([app.boxOut, app.capW, app.capPlaceholder, app.capTarget], [true, 'cap', 'Task', null]);
+  assert.deepEqual(app.cursor, { id: 11, under: 10, out: true }, 'the cursor stays on its row');
+  assert.deepEqual(app.outPlaces(2), [1500, 1750], 'after Pack the van, before Lights');
+  assert.equal(key(true), false, 'Shift+Tab again: as far out as it goes');
+  // A task added from there is the cursor, waiting, out still: the next goes after it, and it can't have a subtask yet.
+  const strap = added('e1', 'Strap it down', 1500);
+  app.aimAddedOut(strap, 0);
+  app.pendingTasks = waiting(strap, null).map(x => ({ ...x, child: false, project_id: 1 }));
+  assert.deepEqual([app.boxOut, app.canIn, app.cursorTask.title], [true, false, 'Strap it down']);
+  assert.deepEqual(app.outPlaces(1), [1750], 'after it, before Lights');
+  assert.equal(key(false), false, 'Tab: it has no task to go under yet');
+  // Sent: its task's row, out still; then Tab moves the box in, under it.
+  const sent = app.keep({ id: 30, title: 'Strap it down', project_id: 1, done: false });
+  app.view.groups[0].tasks.push(sent); app.positions[30] = 1500; app.pendingTasks = [];
+  app.aimSent([{ id: 30, was: 'pending-e1-0' }]);
+  assert.deepEqual(app.cursor, { id: 30, under: null, out: true });
+  assert.equal(key(false), true);
+  assert.deepEqual([app.capW, app.cursorParent, app.capPlaceholder], ['under', sent, 'Subtask']);
+  app.aim(van);
+  assert.equal(app.boxOut, false, 'a nudge starts in again');
+});
+
+test('a place taken by another task of the view is stepped past: a task\'s first subtask where a project\'s first task is', () => {
+  const { app, van } = projectList();
+  app.positions = { 10: SPACING, 20: 2 * SPACING };
+  van.related_tasks = {};
+  app.view.groups[0].tasks = [van, app.tasks[20]];
+  app.aim(van);
+  assert.deepEqual(app.cursorPlaces(1), [SPACING * 1.5], 'not 65536, which the van itself has');
 });

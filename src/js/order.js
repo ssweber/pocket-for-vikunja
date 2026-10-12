@@ -51,6 +51,18 @@ export function placeFirst(sibs, n = 1){
   for (let k = 0; k < n; k++) out.push(prev = between(prev, next));
   return out;
 }
+/* Places none of which another task of the view has (`taken`, a Set of positions). Vikunja moves two tasks with the
+   same position apart, both of them, and the line added next was placed by where this one was: a new project's first
+   task is at 65536, where a task's first subtask would go too. One that's taken moves half way to the place after it:
+   the next of them, or `end`, what they're all before (null: nothing). */
+export function clearOf(places, taken, end = null){
+  const out = [...places];
+  for (let k = out.length - 1; k >= 0; k--) {
+    const next = out[k + 1] ?? end ?? out[k] + SPACING;
+    while (taken.has(out[k])) out[k] += (next - out[k]) / 2;
+  }
+  return out;
+}
 /* Siblings in their List view order (`pos`: id -> position): smaller first, and those with none (0) after the others,
    by id, as Vikunja sorts them. A task still waiting to be sent goes where its position says, if it was given one (a
    subtask added after another), else first, where Vikunja puts a new task (and placeSent puts it once it's sent), so
