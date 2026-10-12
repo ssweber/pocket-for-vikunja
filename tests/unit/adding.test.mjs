@@ -318,8 +318,8 @@ test('a first line ending with a colon is the parent of the rest in quick add, i
 });
 
 /* Subtasks from the add box on a project's list (addSubtasks, actions.js; the cursor, quickadd.js): Pack the van, with
-   Chairs under it, the box on the task. What's added is the lit row (`lit`, which each row reads by its own id), so
-   the next go after it. */
+   Chairs under it, the box on the task: right under it, so the first one added goes ahead of Chairs. What's added is
+   the lit row (`lit`, which each row reads by its own id), so the next go after it. */
 const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
@@ -347,7 +347,7 @@ test('a subtask added from the add box is the lit row at once: its waiting row, 
   assert.deepEqual(app.view.groups[0].tasks.map(x => x.id), [9, 8, 101], 'on the list, where its waiting row was');
   await add('Straps');
   assert.deepEqual(aimed(), [['102'], 'Straps']);
-  assert.ok(pos(101) > 100 && pos(102) > pos(101), 'each after the one before');
+  assert.ok(pos(101) < 100 && pos(102) > pos(101) && pos(102) < 100, 'the first ahead of Chairs, each after the one before');
   // Two typed one straight after the other, the first still on its way: the second goes after it all the same.
   const one = add('Hooks'), two = add('Tarp');
   await Promise.all([one, two]);
@@ -363,7 +363,7 @@ test('without a connection, the subtask added waits, lit, and is lit still once 
   const rows = app.pendingTasks.map(x => [x.id, x.title, x.position]);
   assert.deepEqual(aimed(), [[rows[1][0]], 'Straps'], 'the last one\'s waiting row, by the id the list gives it');
   assert.deepEqual(rows.map(r => r[1]), ['Rope', 'Straps']);
-  assert.ok(rows[0][2] > 100 && rows[1][2] > rows[0][2], 'each after the one before, while they wait');
+  assert.ok(rows[0][2] < 100 && rows[1][2] > rows[0][2] && rows[1][2] < 100, 'ahead of Chairs, each after the one before, while they wait');
   assert.deepEqual([app.cursor.wait.title, app.cursor.wait.position], [rows[1][1], rows[1][2]], 'the cursor has its row\'s words and place');
   v.trouble = () => null;
   await app.flush();
@@ -385,13 +385,13 @@ test('a pasted list with lines under them: the lit row is the last of the task\'
   assert.ok(pos(105) > pos(103), 'after Tables');
 });
 
-test('a subtask added done isn\'t lit, as it leaves with the batch: its task is, and the next goes after it all the same', async t => {
+test('a subtask added done isn\'t lit, as it leaves with the batch: its task is, and the next goes right under the task, ahead of it', async t => {
   const { app, add, aimed, pos } = underBox(t);
   await add('x Rope');
   assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 101: 'done' }]);
   await add('Straps');
   assert.deepEqual(aimed(), [['102'], 'Straps']);
-  assert.ok(pos(102) > pos(101));
+  assert.ok(pos(102) < pos(101));
 });
 
 test('a waiting subtask called off, or turned down: the light goes to its task; the line before it called off, it stays on it', async t => {
@@ -411,55 +411,46 @@ test('a waiting subtask called off, or turned down: the light goes to its task; 
   assert.equal(sync.all(1).length, 0);
 });
 
-/* A row ticked is held done where it is from the tap, before Vikunja answers (holdRow, leaving.js). The cursor on it
-   hands over to its task then, by its tick (aimAfterTick) or, ticked some other way, as it's asked (keepAim). Not
-   saved, the row is let go of, open again: the light stays where it went, as after a Restore. */
-test('the lit subtask ticked: its task is lit from the tap, the row held meanwhile; not saved, the row is open again and its task lit still', async t => {
+/* A row ticked is held done where it is from the tap, before Vikunja answers (holdRow, leaving.js). The box under it
+   stays under it meanwhile, so nothing moves: a row waiting for the batch can still be the cursor (canAim). Not saved,
+   the row is let go of, open again, the box under it still. Once the batch has cleared and the row has gone, its
+   task has the box, as it's asked (keepAim). */
+test('the lit subtask ticked: the box stays under it while it waits for the batch, saved or not; gone, its task has it', async t => {
   const { v, app, chairs, aimed } = underBox(t);
   app.aim(chairs);
   assert.deepEqual(aimed(), [['8'], 'Chairs']);
-  // Its tick, with no connection (tickRow, views.js: the save, then the aim).
   v.trouble = r => r.method === 'PATCH' ? 'offline' : null;
   let ticking = app.toggleDone(chairs, {});
-  assert.deepEqual([chairs.done, app.leaving, app.capW], [true, { 8: 'done' }, 'cap'], 'held done, the save not answered: it can\'t be the cursor');
-  app.aimAfterTick(chairs);
-  assert.deepEqual(aimed(), [['9'], '']);
+  assert.deepEqual([chairs.done, app.leaving, app.capW], [true, { 8: 'done' }, 'under'], 'held done, the save not answered: the box is under it still');
+  app.keepAim();
+  assert.deepEqual(aimed(), [['8'], 'Chairs']);
   await ticking;
   assert.deepEqual([!!chairs.done, app.leaving, app.toast.msg], [false, {}, 'Not saved: no connection'], 'let go of, open again, and its row says why');
   app.keepAim();
-  assert.deepEqual(aimed(), [['9'], ''], 'not lit again behind your back');
-  // Lit again by a touch, then done some other way than its tick (a parent's ring, say): as it's asked, while it's held.
-  app.aim(chairs);
+  assert.deepEqual(aimed(), [['8'], 'Chairs'], 'and the box where it was');
   v.trouble = () => null;
   ticking = app.toggleDone(chairs, {});
-  app.keepAim();
-  assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 8: 'done' }]);
   await ticking;
   app.keepAim();
-  assert.deepEqual([aimed(), app.leaving, v.task(8).done], [[['9'], ''], { 8: 'done' }, true], 'saved and marked: its task lit still');
+  assert.deepEqual([aimed(), app.leaving, v.task(8).done], [[['8'], 'Chairs'], { 8: 'done' }, true], 'saved and marked: under it until the batch clears');
+  delete app.leaving[8];
+  app.keepAim();
+  assert.deepEqual(aimed(), [['9'], ''], 'gone with the batch: its task has the box');
 });
 
-/* A tick always selects (tickRow, views.js). Ticked, then tapped again while the row is still held, its save not
-   answered: the tap takes it back once that has, and only then is it open again, to be the row the box adds at. */
-test('a tick taken back while its row is still held: open again, it\'s the lit row; not if another row was touched meanwhile', async t => {
+/* A tick never moves the box (tickRow, views.js): only a nudge does, or Add a subtask here (inline-add-box-plan). */
+test('a tick never moves the box: another row ticked, and ticked back, leaves it under the row it was', async t => {
   const { v, app, chairs, add, aimed } = underBox(t), g = { depth: {} };
   app.tickRow = views.tickRow;
   // What's on its way has gone and come back: the save, the mark taken back, and the save of that.
   const quiet = async () => { for (let k = 0; k < 20; k++) { const n = v.requests.length; for (let i = 0; i < 20; i++) await new Promise(ok => setImmediate(ok)); if (v.requests.length === n) return; } };
   await add('Rope');
-  app.aim(chairs);
+  assert.deepEqual(aimed(), [['101'], 'Rope']);
   app.tickRow(chairs, g, {});
-  assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 8: 'done' }], 'ticked: held done, its task lit');
+  assert.deepEqual([aimed(), app.leaving], [[['101'], 'Rope'], { 8: 'done' }], 'Chairs ticked: held done, the box under Rope still');
   app.tickRow(chairs, g, {});
-  assert.deepEqual([aimed(), chairs.done], [[['9'], ''], true], 'tapped again at once: still held, until its save is answered');
   await quiet();
-  assert.deepEqual([aimed(), !!chairs.done, !!v.task(8).done, app.leaving], [[['8'], 'Chairs'], false, false, {}], 'answered, and taken back: open, and lit');
-  // The same, and Rope touched while it's on its way: the light stays on Rope.
-  app.tickRow(chairs, g, {});
-  app.tickRow(chairs, g, {});
-  app.aim(app.tasks[101]);
-  await quiet();
-  assert.deepEqual([aimed(), !!chairs.done], [[['101'], 'Rope'], false]);
+  assert.deepEqual([aimed(), !!chairs.done, !!v.task(8).done, app.leaving], [[['101'], 'Rope'], false, false, {}], 'and taken back: the same');
 });
 
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {

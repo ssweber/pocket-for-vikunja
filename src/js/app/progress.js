@@ -426,7 +426,7 @@ export default {
         this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {}))(true);
         const setting = this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined});
         if (pct >= 100) sweep(row, setting, {right: true});     // (held where it is already: setProgress holds it)
-        if (sheet) this.sheet.dirty = true; else this.aimAfterTick(t);
+        if (sheet) this.sheet.dirty = true;
       }};
   },
   /* What a row held does, where its list allows it: on a project's list and in a task's sheet, moved up or down, its

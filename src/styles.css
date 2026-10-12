@@ -637,6 +637,20 @@ a.sec-act{text-decoration:none}
 .addbox .go{width:42px;height:42px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 .addbox .go[disabled]{opacity:.35}
 /* On a project's list, above the box: the task it adds subtasks to, with × (48px) to add a task instead */
+/* The add box in the list, on a project's list (seatBox, app/quickadd.js; inline-add-box-plan): the row it adds after has
+   the box's height as room under it, and the box is laid over that room, as far in as what it adds (its left padding,
+   from seatBox). Its place at the bottom stays, empty, at the height it had: tapped, the box is back. */
+.boxed{margin-bottom:var(--box-h,0px)}
+.card-rows:has(> .boxed){display:flow-root}   /* a card's last row: the room stays inside the card, not under it */
+#capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 10px 10px 14px;background:transparent}
+#capture.inline::before{display:none}
+#capture.inline form{border-width:1.5px;border-radius:12px;padding:2px 2px 2px 12px}
+#capture.inline textarea,#capture.inline .cap-marks{padding:9px 0}
+#capture.inline .go{width:38px;height:38px;border-radius:10px}
+.box-home{width:38px;height:38px;flex:none;color:var(--muted)}
+#cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
+#cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
+#cap-home > span{display:block;height:100%;border:2px dashed var(--line);border-radius:16px}
 .cap-target{display:flex;align-items:center;gap:8px;margin:0 -6px 6px 2px;color:var(--muted);font-size:14px}
 .cap-target > .i{width:18px;height:18px;flex:none;color:var(--accent)}
 .cap-target .what{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}

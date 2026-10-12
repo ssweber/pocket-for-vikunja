@@ -40,6 +40,17 @@ export function placeAfter(sibs, after, n = 1){
   for (let k = 0; k < n; k++) out.push(prev = between(prev, next === Infinity ? null : next));
   return out;
 }
+/* Where `n` new subtasks go ahead of all their siblings, one after another: before the first that has a position
+   (the add box sits under their task, so what it adds comes first: inline-add-box-plan, part 1). With none that
+   has one, they're placed as the last are: a position of 0 is none, and would sort after the next one added. */
+export function placeFirst(sibs, n = 1){
+  const known = sibs.filter(p => p > 0), out = [];
+  if (!known.length) return placeAfter(sibs, null, n);
+  const next = Math.min(...known);
+  let prev = null;
+  for (let k = 0; k < n; k++) out.push(prev = between(prev, next));
+  return out;
+}
 /* Siblings in their List view order (`pos`: id -> position): smaller first, and those with none (0) after the others,
    by id, as Vikunja sorts them. A task still waiting to be sent goes where its position says, if it was given one (a
    subtask added after another), else first, where Vikunja puts a new task (and placeSent puts it once it's sent), so

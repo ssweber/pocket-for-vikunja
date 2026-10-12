@@ -52,15 +52,18 @@
     <!-- include markup/screens/run.html -->
   </main>
 
+  <!-- The box's place at the bottom, kept empty at its height while the box is in the list: a tap brings the box back.
+       Ahead of the box, so the box is over it for the frame before it's seated. -->
+  <button type="button" id="cap-home" style="display:none" x-show="capW === 'under'" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @click="light(null)"><span></span></button>
   <!-- Quick add. On a run's screen it adds steps (capW 'ins'), while the run can be written to and isn't finished -->
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists'].includes(route.name) || (route.name === 'run' && !runAim)">
     <!-- Where what was just added went, when it isn't on this screen; what couldn't be added, and why -->
     <template x-for="line in placeLines('cap')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
-    <!-- On a project's list: the task it adds subtasks to, if one was touched (capW is then 'under', quickadd.js); on a
-         run's screen, the step a step goes after (runAim, runs.js) -->
-    <template x-for="target in capTarget ? [capTarget] : []" :key="0">
+    <!-- On a run's screen: the step a step goes after (runAim, runs.js). (On a project's list, adding subtasks, capW
+         'under', the box is in the list, under the row it adds after: seatBox, quickadd.js.) -->
+    <template x-for="target in capTarget?.step ? [capTarget] : []" :key="0">
       <!-- include markup/cap-target.html -->
     </template>
     <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
@@ -73,6 +76,8 @@
         <svg class="i"><use href="#i-camera"/></svg>
         <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
       </label></template>
+      <!-- In the list: × takes the box back to the bottom, to add a task to the project. It keeps the focus where it was -->
+      <template x-if="capW === 'under'"><button type="button" class="icon-btn plain box-home" id="btn-cap-target" :aria-label="'Add a task to ' + (view.project?.title || 'this project') + ' instead'" @mousedown.prevent @click="light(null)"><svg class="i"><use href="#i-close"/></svg></button></template>
       <button class="go" type="submit" :aria-label="{cap: 'Add task', under: 'Add subtask', ins: 'Add step'}[capW]" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">

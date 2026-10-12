@@ -109,8 +109,7 @@ export default {
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
   // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, the sheet's own task
-  // (sheetDone), or a task (a card's step too), which then becomes the one quick add's box adds subtasks to
-  // (aimAfterTick). On a row marked done or not done, waiting for the batch to clear, it takes that back (unmark,
+  // (sheetDone), or a task (a card's step too). It never moves the add box: only a nudge does (quickadd.js). On a row marked done or not done, waiting for the batch to clear, it takes that back (unmark,
   // leaving.js). The tap is felt (tickFeel): firmer marking it done, as a full swipe is; a step's as tickStep has it.
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
@@ -120,15 +119,10 @@ export default {
     const back = this.unmark(t.id);
     if (back) {
       if (g.sheet) return;
-      this.aimAfterTick(t);
-      // Tapped while it's still held, its save not answered (holdRow, leaving.js), it's taken back only once that has:
-      // open then, it's what the box adds to, as its tick has it, unless another row was touched meanwhile.
-      const at = this.cursor?.id;
-      if (t.done && back.then) back.then(() => { if (!t.done && this.cursor?.id === at) this.aimAfterTick(t); });
       return;
     }
     if (g.sheet) return this.toggleSubtask(t);
-    this.toggleDone(t, row); this.aimAfterTick(t);
+    this.toggleDone(t, row);
   },
   /* A row's title tapped. A step on a run's screen goes on the card (showStep); the sheet's own row's title is changed
      where it is (editTitle); a subtask in a sheet, and a run's own row atop its screen, open their task; a row in a

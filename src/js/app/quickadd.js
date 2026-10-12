@@ -3,7 +3,7 @@ import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {parentIds, saved} from '../lists.js';
-import {placeAfter} from '../order.js';
+import {placeAfter, placeFirst} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
@@ -16,6 +16,10 @@ const PEOPLE_AGE = 10 * 6e4;                   // who can see each project is lo
 // been seen, and whether each was in sight when last told.
 let cursorIO = null, watched = null, stand = null;
 const inSight = new WeakMap();
+// The add box in the list (seatBox): the element given room under it, how much, and the frame that keeps asking.
+const seat = {el: null, h: 0, inset: '', raf: 0, at: ''};
+// Whether the browser holds the page still itself when something above the screen changes height (Safari doesn't).
+const ANCHORS = typeof CSS !== 'undefined' && !!CSS.supports?.('overflow-anchor', 'auto');
 
 export default {
   /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
@@ -421,7 +425,7 @@ export default {
   // A task that can be the cursor: open, on this project's list, one you can change, and not a run, a step of one or a
   // template, which add steps their own way.
   canAim(t){
-    return !!t && this.route.name === 'project' && !t.pending && !t.done && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
+    return !!t && this.route.name === 'project' && !t.pending && (!t.done || !!this.leaving[t.id]) && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
       && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) && !this.deleting.includes(t.id) && this.onList(t);
   },
   onList(t){ return this.view.groups.some(g => g.key === 'open' && g.tasks.includes(t)); },
@@ -482,12 +486,11 @@ export default {
     const t = run ? this.runAim && this.runView.steps.find(s => String(s.id) === String(id)) : this.tasks[id];
     if (!row || (run ? !t : this.leaving[id] || this.lines[id] || !this.canAim(t))) return;
     const r = row.getBoundingClientRect(), top = Math.max(0, this.$refs.header?.getBoundingClientRect().bottom || 0);
-    if (r.bottom <= top || r.top >= (this.$refs.captureBar?.getBoundingClientRect().top ?? innerHeight)) return;
+    const home = document.getElementById('cap-home'), foot = home?.offsetHeight ? home : this.$refs.captureBar;   // the box's place at the bottom
+    if (r.bottom <= top || r.top >= (foot?.getBoundingClientRect().top ?? innerHeight)) return;
     if ((run ? this.runView.step?.id : this.cursor?.id) !== t.id && NUDGE_TICK) haptic('tick');
     if (run) this.showStep(t.i); else this.aim(t);
   },
-  // A tick or a slide: the task, still open; done, the task it's under, to add more beside it.
-  aimAfterTick(t){ this.aim(t.done ? this.listParent(t) : t); },
   // The task a row is under on this list, if it's there.
   listParent(t){
     const ids = t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
@@ -518,7 +521,7 @@ export default {
   },
   get capPlaceholder(){
     if (this.capW === 'ins') return 'Add a step, or paste a list';
-    if (this.cursorTask) return 'Add a subtask';                     // photos wait for a task: none show meanwhile
+    if (this.cursorTask) return 'Subtask';                           // in the list, its place says the rest; photos wait for a task
     if (this.capPhotos.length) return 'What\'s this photo for?';
     return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
   },
@@ -528,8 +531,8 @@ export default {
     return !c ? '' : c.step ? `Add a step after “${c.after}”` : `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}`;
   },
   /* Where the next `n` subtasks from the box go in the project's List view: right after the cursor's row, if it's a
-     subtask (the one touched, or the last added from the box, waiting or sent), else after the task's last; null if
-     the project has no List view. The task's subtasks are those Vikunja gave it, those on the list under it (one just
+     subtask (the one nudged, or the last added from the box, waiting or sent), else ahead of the task's first, as the
+     box is right under the task; null if the project has no List view. The task's subtasks are those Vikunja gave it, those on the list under it (one just
      sent) and those still waiting to be sent, so its last is the last on screen. */
   cursorPlaces(n){
     const t = this.cursorTask, p = this.cursorParent;
@@ -537,9 +540,11 @@ export default {
     const at = x => (x.pending ? x.position : this.positions[x.id]) || 0;
     const listed = (this.view.groups.find(g => g.key === 'open')?.tasks || []).filter(x => parentIds(x).includes(p.id));
     const ids = new Set([...(p.related_tasks?.subtask || []), ...listed].map(x => x.id));
-    return placeAfter([...[...ids].map(id => this.positions[id] || 0), ...this.pendingTasks.filter(x => x.parent === p.id).map(at)], t !== p ? at(t) : null, n);
+    const sibs = [...[...ids].map(id => this.positions[id] || 0), ...this.pendingTasks.filter(x => x.parent === p.id).map(at)];
+    return t !== p ? placeAfter(sibs, at(t), n) : placeFirst(sibs, n);
   },
-  /* The cursor's row, as it's drawn: watched, so the box goes back to adding a task once it's out of sight. A subtask
+  /* The cursor's row, as it's drawn: watched, so the box goes back to the bottom, adding a task, once it's out of sight
+     (not while it's being typed in: the phone scrolls a box it opens its keyboard for, and that isn't scrolling away). A subtask
      just added may be drawn where it can't be seen yet (the last of many, past the screen's edge): until it has been
      in sight once, the row that was lit before it stands in for it, so the next one typed is still a subtask, and
      scrolling that row away ends it as before. */
@@ -549,13 +554,72 @@ export default {
     cursorIO ||= new IntersectionObserver(es => {
       for (const e of es) inSight.set(e.target, e.isIntersecting);
       if (inSight.get(watched)) { const s = stand; stand = null; drop(s); }
-      else if (inSight.has(watched) && !(stand && inSight.get(stand)) && watched.dataset.id === String(app.cursor?.id)) app.light(null);
+      else if (inSight.has(watched) && !(stand && inSight.get(stand)) && watched.dataset.id === String(app.cursor?.id) && !app.boxHasFocus) app.light(null);
     });
     const was = watched;
     watched = el;
     if (was && inSight.get(was)) { const s = stand; stand = was; drop(s); } else drop(was);
     if (stand === el) stand = null;
     cursorIO.observe(el);
+  },
+
+  /* ---------- the add box in the list (inline-add-box-plan, part 1) ---------- */
+  /* While the box adds subtasks at the cursor's row, it's in the list, under that row: the row (for a task with
+     subtasks, its card's header, so what's added comes first) is given room under it, the box's height (.boxed,
+     --box-h), and the box is laid over that room, as far in as what it adds. It's the one box, never taken off the
+     page, so it keeps its text and the focus as it moves: Enter adds a line, and the box is under the new one. Its
+     place at the bottom stays, empty (#cap-home). Where the room is on the page is asked every frame while the box is
+     there: rows above it fold and leave, a row is held and moved. With no cursor the room goes, and the box is at the
+     bottom again. Room taken away above the screen moves everything on it, where the browser doesn't hold the page
+     still itself: the page is scrolled by as much in the same frame. Asked again whenever the cursor changes (core.js). */
+  seatBox(){
+    const bar = this.$refs.captureBar, root = document.documentElement;
+    if (!bar) return;
+    const id = this.capW === 'under' ? String(this.cursor.id) : null, parent = !this.cursor?.under;
+    const room = el => {
+      const was = seat.el;
+      if (was === el) return;
+      if (was) {
+        const above = was.isConnected && !ANCHORS && was.getBoundingClientRect().bottom + seat.h <= 0;
+        was.classList.remove('boxed');
+        if (above) scrollBy(0, -seat.h);
+      }
+      el?.classList.add('boxed');
+      seat.el = el; seat.inset = '';
+    };
+    cancelAnimationFrame(seat.raf);
+    const step = () => {
+      if (id !== null) seat.raf = requestAnimationFrame(step);
+      const el = id === null ? null : seat.el?.isConnected && seat.el.closest('[data-id]')?.dataset.id === id ? seat.el
+        : document.querySelector(`#view .day-card[data-id="${id}"] > .card-head, #view .row[data-id="${id}"]`);
+      const h = el ? bar.offsetHeight : 0;
+      if (el && h !== seat.h) { seat.h = h; root.style.setProperty('--box-h', h + 'px'); }
+      room(el);
+      bar.classList.toggle('inline', !!el);
+      if (!el) { if (seat.at) { seat.at = ''; bar.style.top = bar.style.left = bar.style.width = bar.style.paddingLeft = ''; } return; }
+      // As far in as what it adds: the row's own inset, a subtask's; under its task, a level further.
+      seat.inset ||= Math.round(parseFloat(getComputedStyle(el).paddingLeft) + (parent ? parseFloat(getComputedStyle(root).getPropertyValue('--sub-in')) || 30 : 0)) + 'px';
+      const r = el.getBoundingClientRect(), list = (el.closest('.list') || el).getBoundingClientRect();
+      const at = [Math.round(r.bottom + scrollY), Math.round(list.left + scrollX), Math.round(list.width), seat.inset].join();
+      if (at === seat.at) return;
+      seat.at = at;
+      const [top, left, width] = at.split(',');
+      bar.style.top = top + 'px'; bar.style.left = left + 'px'; bar.style.width = width + 'px'; bar.style.paddingLeft = seat.inset;
+    };
+    step();
+  },
+  // Whether the box at the bottom, or in the list, is being typed in.
+  get boxHasFocus(){ const el = this.$refs?.capture; return !!el && document.activeElement === el; },
+  /* "Add a subtask here", in a task's ⋯: the tap for what a nudge on its row does (design rule 3). Being meant, it
+     gives the box the focus, during the tap, as that's the only way a phone opens its keyboard for it. */
+  get canAddHere(){ return this.sheet.kind === 'task' && !!this.sheet.task && this.canAim(this.tasks[this.sheet.task.id]); },
+  addSubtaskHere(){
+    if (!this.canAddHere) return;
+    const t = this.tasks[this.sheet.task.id];
+    this.closeSheet();
+    this.aim(t);
+    this.$refs.capture.focus({preventScroll: true});
+    this.$nextTick(() => { this.seatBox(); this.$refs.captureBar.scrollIntoView({block: 'center'}); });
   },
 
   /* ---------- the words quick add read, marked in the box ---------- */

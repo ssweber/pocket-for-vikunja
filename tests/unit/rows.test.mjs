@@ -22,17 +22,17 @@ const RUN = { depth: {}, run: true, at: 0, locked: false };
 // A step as a run's screen works it out (runView, runs.js), with only what the row reads.
 const step = f => ({ id: 7, i: 0, title: 'Take the croissants out', done: false, skipped: false, slow: false, added: '', notes: [], dueText: '', late: false, slot: null, ...f });
 
-test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a task\'s, as before', () => {
+test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a task\'s, as before: none moves the add box', () => {
   const app = component(views, claims, leaving), calls = [];
   Object.assign(app, { tickStep: (s, op) => calls.push(['step', s.id, op]), toggleSubtask: t => calls.push(['sub', t.id]),
-    toggleDone: (t, row) => calls.push(['task', t.id, row]), aimAfterTick: t => calls.push(['aim', t.id]) });
+    toggleDone: (t, row) => calls.push(['task', t.id, row]), aim: t => calls.push(['aim', t.id]) });
   app.tickRow(step({}), RUN);
   app.tickRow(step({ done: true }), RUN);
   app.tickRow({ id: 3 }, { depth: {}, sheet: true });
   app.tickRow({ id: 4 }, { depth: {} }, 'row');
   app.sheetDone = () => calls.push(['sheet']);
   app.tickRow({ id: 5 }, SHEET_ROW, 'row');
-  assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['aim', 4], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
+  assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
 });
 
 /* A row's title tapped (tapRow), by where the row is: what the markup's tap asked in one long line before. */
@@ -107,7 +107,7 @@ test('a tick tapped is felt, a task\'s and a step\'s, firmer when it marks it do
   const felt = [], app = component(views, claims, leaving, runs);
   navigator.vibrate = p => felt.push(p);
   try {
-    Object.assign(app, { toggleSubtask(){}, toggleDone(){}, aimAfterTick(){}, sheetDone(){}, unlockSound(){}, runDrafts: {}, act: async () => ({}), view: { run: { at: 0 } }, markRow(){} });
+    Object.assign(app, { toggleSubtask(){}, toggleDone(){}, sheetDone(){}, unlockSound(){}, runDrafts: {}, act: async () => ({}), view: { run: { at: 0 } }, markRow(){} });
     Object.defineProperty(app, 'runView', { get: () => null });
     app.tickRow({ id: 4, done: false }, { depth: {} }, 'row');
     app.tickRow({ id: 4, done: true }, { depth: {} }, 'row');

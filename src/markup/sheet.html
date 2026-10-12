@@ -23,6 +23,8 @@
         <button role="menuitem" id="d-move-up" :disabled="!m.up" @click="moveBy(sheet.task, -1, 'own')">Move up</button>
         <button role="menuitem" id="d-move-down" :disabled="!m.down" @click="moveBy(sheet.task, 1, 'own')">Move down</button>
       </div></template>
+      <!-- On a project's list: the add box goes under its row, to add a subtask there, as a nudge on the row does -->
+      <template x-if="canAddHere"><button role="menuitem" id="d-add-here" @click="sheet.menu = false; addSubtaskHere()">Add a subtask here</button></template>
       <!-- A subtask's: out from under its task, a task of its own in its project (ownTask); not a run's step or a template's -->
       <template x-if="canOwn"><button role="menuitem" id="d-own-task" @click="sheet.menu = false; ownTask()">Turn into its own task</button></template>
       <template x-if="canEdit && checklistRole === 'candidate' && subtasks.length"><button role="menuitem" id="d-make-template" :disabled="sheet.checklistBusy" @click="sheet.menu = false; makeTemplate()">
