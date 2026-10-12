@@ -527,11 +527,10 @@ a.sec-act{text-decoration:none}
 .more-done .body{flex-direction:column;align-items:flex-start;gap:0}
 .more-done .note{margin:0;font-weight:400}
 /* A template's steps, saved or being written, look like subtasks: the step's number where a subtask has its tick, plain,
-   as the start sheet has it (a square box is a step you tick, in a run), and what's written in a box like the subtask
-   box (.addbox.sub). The ↑ ↓ × are on the rows being written only. */
+   as the start sheet has it (a square box is a step you tick, in a run), and what's written in a box coloured as every
+   add box is (.addbox): New template's name, and a step being changed. */
 .check.step-n{border-color:transparent;color:var(--muted);font-size:15px;font-weight:400}
-.step-box{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)}
-.step-box:focus-within{border-color:var(--accent)}
+.step-box{flex:1;min-width:0;border:1.5px solid var(--accent);border-radius:12px;padding:0 12px;background:var(--surface)}
 /* iOS Safari gives a textarea its own rounded corners and a shade along the top */
 .draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;padding:8px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
 .draft-in::placeholder{color:var(--muted);opacity:1}
@@ -688,7 +687,8 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 /* On a run: Repeat, the card's step again: its symbol alone, a button the size of the box's others, so the words
    keep the line. Its name is its label, for a screen reader, and what it does is its title. */
 .foot-box .rep{display:grid;place-items:center;padding:0;border:0;border-radius:var(--part-r);background:var(--sunk);color:var(--accent)}
-/* The subtask box: the same box, in a task's sheet, quieter until it has the focus. A box in a list is as far in from
+/* The box in a list (a sheet's, a checklist's, and the bar seated under a row): the same box, closer, and coloured as
+   the bar is on every screen, at rest and while it's typed in: its edge the accent, white inside. It's as far in from
    the list's sides as a row is: its left edge where the ticks start (a level in, the ticks of that level: seatBox), its
    right where a row's slot ends. Its chips, a step's time line and its dashed place start there too.
    And it's in the middle of the place it takes, as much room over it as under it, seated under a row or at a list's
@@ -696,10 +696,6 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
    with chips or a time line under it, the same room is under those. */
 .addbox.sub,#capture.inline,.sub-home{--box-slot:56px;--box-gap:calc((var(--box-slot) - var(--box-one)) / 2);padding:var(--box-gap) 14px}
 .row ~ .addbox.sub,.sub-home{border-top:1px solid var(--line);--box-slot:55px}
-.addbox.sub form{border-color:var(--line);background:var(--bg)}
-.addbox.sub form:focus-within{border-color:var(--accent)}
-/* Under a row, where a nudge has just put it, it's lit as the bar is there: its edge the accent, white inside */
-.foot-box.inline form{border-color:var(--accent);background:var(--surface)}
 #capture .cam{border-radius:var(--part-r);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #capture .cam.on{color:var(--accent);background:var(--accent-soft)}
 #capture .cam:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}

@@ -15,16 +15,13 @@
   .row.fresh,.row.came-due{animation-play-state:paused}
   /* The add boxes. The bar and the place it leaves are in the page's flow here, not fixed to its foot, and span the
      phone's width as they do there; a box seated under a row is in the flow too, between the rows, where the app
-     lays it over room given to that row (seatBox, seatFoot). A list's dashed place stays at its foot. A box that
-     has the focus (.spec-focus) is drawn as focused: nothing here can take it. */
+     lays it over room given to that row (seatBox, seatFoot). A list's dashed place stays at its foot. */
   .theme #capture,.theme #cap-home{position:relative}
-
   .theme #capture.inline,.theme .foot-box.inline{position:relative;width:auto}
   .spec-bar{margin:0 -16px}
   .spec-seated #cap-home,.spec-place #capture{display:none!important}
   .spec-list{display:flex;flex-direction:column}
   .spec-list > .sub-home{order:9}
-  .spec-focus .addbox.sub form,.spec-focus > .step-box,.spec-edit .step-box{border-color:var(--accent)}
   /* a task held on Today, its dates around the finger: on a phone's screen, 360px wide (.wide: 390), over its rows,
      not fixed to the page; the dot is the finger (.was: where it was held, once it has moved) */
   .spec-ring{position:relative;width:360px;height:344px;margin:0 -1px 16px;padding:8px;overflow:hidden;border-radius:16px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
@@ -227,7 +224,7 @@
            list), and a checklist's steps on its screen, with Repeat. Under a row, its place at the foot is kept, dashed. -->
       <template x-for="sp in specimenFeet" :key="sp.spec"><div>
         <div class="sec" x-text="sp.spec"></div>
-        <div class="spec-list" :class="{card: !g.run, list: g.run, 'spec-focus': b.focus, 'spec-edit': sheet.stepEdit}" :id="g.run ? 'run-steps' : 'd-subtasks'" x-data="specFoot(sp.spec, sp.f)">
+        <div class="spec-list" :class="{card: !g.run, list: g.run}" :id="g.run ? 'run-steps' : 'd-subtasks'" x-data="specFoot(sp.spec, sp.f)">
           <template x-for="g in [g]" :key="0"><template x-for="t in before" :key="t.id">
             <!-- include markup/task-row.html step -->
           </template></template>
@@ -241,7 +238,7 @@
            comment's (in the first sheet above, a stand-in) -->
       <template x-for="sp in specimenNames" :key="sp.spec"><div>
         <div class="sec" x-text="sp.spec"></div>
-        <div class="nt-name" :class="{'spec-focus': b.focus}" x-data="specName(sp.spec, sp.f)"><label>Name</label>
+        <div class="nt-name" x-data="specName(sp.spec, sp.f)"><label>Name</label>
           <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" x-model="b.text" x-box="bw" placeholder="e.g. Opening up"></textarea></div></div>
           <!-- include markup/sheet/box-chips.html -->
         </div>

@@ -458,7 +458,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const runList = {depth: {}, run: true, at: this.specimenAdding.at, locked: false}, runSteps = this.specimenAdding.steps;
     const runFb = {w: 'ins', id: 'run-box', in: 'run-in', says: 'Add steps, or paste a list', rest: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead', repeat: {title: this.runView.step.title, can: true}};
     this.specimenFeet = [
-      footBox('The box at the foot of a task’s subtasks, focused and empty: its edge the accent, what it reads under it', {before: subs, box: {focus: true}}),
+      footBox('The box at the foot of a task’s subtasks, focused and empty: what it reads under it', {before: subs, box: {focus: true}}),
       footBox('Typed: what it read as chips', {before: subs, fb: {can: true}, box: {text: 'Order the paint tomorrow !2', focus: true}}),
       footBox('A pasted list: its button on the last line', {before: subs, fb: {can: true}, box: {text: list3, focus: true}}),
       footBox('Under a row nudged, to add after it: its place at the foot is kept, dashed, saying what the box says there, and a tap there brings it back', {before: subs.slice(0, 1), after: subs.slice(1), fb: {under: true, says: 'Subtask'}}),
