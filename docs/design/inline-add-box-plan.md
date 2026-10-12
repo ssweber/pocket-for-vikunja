@@ -154,3 +154,18 @@ To know when trying it:
 - Scrolling its row out of sight sends a box home only while it isn't being typed in.
 - Not seen on an iPhone yet: the page keeping still when a box goes home above the screen, and a box in the middle of
   a list against the keyboard.
+
+## After the first look (2026-10-12)
+
+The boxes were measured and tightened in a pass of their own, with the user's answers. Where this differs from the
+parts above, this is how it is.
+
+- **A box in a list takes a row's place.** It's as far in from the list's sides as a row is, 56px tall with one line,
+  and in the middle of that: "it should basically always be centered vertically in whatever row spot it abides."
+- **No ×.** The line was too full: a checklist's box under a step left 103px for words on a 375px phone. The box
+  goes home by a tap on the place it left, or its row scrolled out of sight. Nothing else moved off the line:
+  "in general we shouldn't move things to the chip."
+- **Repeat is its symbol alone,** a button the size of the box's others: the word "is massive."
+- **The dashed place says what the box says there,** in the placeholder's ink, where the box has it, so nothing moves
+  as the box lands on it.
+- **Every button in a box takes taps 44px across,** past what's drawn.

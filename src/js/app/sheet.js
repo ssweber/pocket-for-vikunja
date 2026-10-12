@@ -548,7 +548,7 @@ export default {
   /* A nudge on a row of a list (watchNudges, app/progress.js) puts the list's box under that row, to add after it: in
      a sheet, sheet.subAt (subPlaces, actions.js; sendSteps and addTemplateSteps, app/checklists.js); on a checklist's
      screen, runBoxAt (runAim, app/runs.js). As a nudge does on a project's list. The box is laid over room given to
-     the row, never taken off the page, and its place at the foot stays, dashed: a tap there, the box's ×, or its row
+     the row, never taken off the page, and its place at the foot stays, dashed: a tap there, or its row
      scrolled out of sight while it isn't being typed in, and it's back. The last row nudged changes nothing: the box is
      under it already. Where the row is, is asked every frame meanwhile (seatFoot), as for the box in a list (seatBox,
      quickadd.js). */

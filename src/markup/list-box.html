@@ -5,8 +5,8 @@
 
      It's quick add's box: what it read is marked, with chips to undo it, and @ and * suggest people and labels; each
      line is a subtask, or a step, and Enter or its button adds them. Always there, at the foot. A row nudged has it
-     under it (seatFoot), to add after that row; its place at the foot is then kept, dashed, saying what the box says there, and a tap there, or the
-     box's ×, brings it back. The last row nudged changes nothing: the box is under it already.
+     under it (seatFoot), to add after that row; its place at the foot is then kept, dashed, saying what the box says there, and a tap there brings
+     it back. The last row nudged changes nothing: the box is under it already.
 
      On a checklist it has Repeat too, its symbol alone: a fresh copy of the step on the card, right after that step,
      wherever the box is (repeatCard, app/runs.js). -->
@@ -24,8 +24,6 @@
     <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
       :title="rep.can ? 'A fresh copy of “' + rep.title + '”, not done, right after it' : 'It can be repeated once it\'s sent'"
       @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
-    <!-- Under a row: × takes the box back to the foot -->
-    <template x-if="fb.under"><button type="button" class="icon-btn plain box-home" :id="fb.id + '-home'" :aria-label="fb.home" @mousedown.prevent @click="footHome(where)"><svg class="i"><use href="#i-close"/></svg></button></template>
     <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-plus"/></svg></button>
   </form>
   <!-- A template's step: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->

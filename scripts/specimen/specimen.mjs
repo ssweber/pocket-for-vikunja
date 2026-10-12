@@ -445,7 +445,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const tablesT = kidOf('Tables'), chairsT = kidOf('Chairs'), waterT = task({title: 'Water the plants'}), inList = {depth: {[tablesT.id]: 1, [chairsT.id]: 1}, delete: true, reorder: true};
     const seated = (spec, f) => barBox(spec, {g: inList, boxInList: true, capW: 'under', capPlaceholder: 'Subtask', inset: '44px', ...f});
     this.specimenSeated = [
-      seated('Seated in a project’s list under a task, a level in, where its first subtask’s tick will be: ⇤ moves it out a level, × sends it home', {canLevel: true, before: [fuelT], after: [waterT]}),
+      seated('Seated in a project’s list under a task, a level in, where its first subtask’s tick will be: ⇤ moves it out a level', {canLevel: true, before: [fuelT], after: [waterT]}),
       seated('Under a subtask, at its level: a pasted list', {canLevel: true, before: [vanT, tablesT], after: [chairsT, waterT], box: {text: list3, focus: true}}),
       seated('Out a level, after the task and all under it: a task again, so the camera is back, and ⇥ moves it in', {canLevel: true, boxOut: true, capW: 'cap', capPlaceholder: 'Task', inset: '14px', before: [vanT, tablesT, chairsT], after: [waterT]}),
       seated('Out a level, typed', {canLevel: true, boxOut: true, capW: 'cap', capPlaceholder: 'Task', inset: '14px', before: [vanT, tablesT, chairsT], after: [waterT], box: {text: 'Strap it down tomorrow', focus: true}}),
@@ -461,7 +461,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       footBox('The box at the foot of a task’s subtasks, focused and empty: its edge the accent, what it reads under it', {before: subs, box: {focus: true}}),
       footBox('Typed: what it read as chips', {before: subs, fb: {can: true}, box: {text: 'Order the paint tomorrow !2', focus: true}}),
       footBox('A pasted list: its button on the last line', {before: subs, fb: {can: true}, box: {text: list3, focus: true}}),
-      footBox('Under a row nudged, to add after it: × sends it back, and its place at the foot is kept, dashed, saying what the box says there', {before: subs.slice(0, 1), after: subs.slice(1), fb: {under: true, says: 'Subtask'}}),
+      footBox('Under a row nudged, to add after it: its place at the foot is kept, dashed, saying what the box says there, and a tap there brings it back', {before: subs.slice(0, 1), after: subs.slice(1), fb: {under: true, says: 'Subtask'}}),
       footBox('A template’s steps (New template’s are the same list): plain numbers, when each is due, its notes’ first line, and the box at their foot', {g: stepList, before: tplSteps, fb: stepFb}),
       footBox('A step being written with a time: its time line under the box, then its chips', {g: stepList, before: tplSteps, fb: {...stepFb, can: true}, box: {text: 'Lock up in 20 min !2', focus: true},
         time: {problem: '', offset: 12e5, i: 4, lost: false, from: '', choices: tplSteps.slice(0, 3).map((x, i) => ({key: 'k' + i, title: x.title})), phrase: 'in 20 min', kept: false, name: ''}}),
@@ -470,7 +470,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         sheet: {...blankSheet('task'), task: s.parent, stepEdit: {id: tplSteps[1].id, text: tplSteps[1].title, caret: 0, focus: true, ignore: {}}}}),
       footBox('A checklist’s steps on its screen: the box at their foot, with Repeat (the step on the card, again)', {g: runList, before: runSteps, fb: runFb}),
       footBox('Typed there', {g: runList, before: runSteps.slice(-3), fb: {...runFb, can: true}, box: {text: 'Sweep outside !2', focus: true}}),
-      footBox('Under a step nudged: Repeat, ×, and its button', {g: runList, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step'}}),
+      footBox('Under a step nudged: Repeat and its button', {g: runList, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step'}}),
       footBox('What Repeat just did, said in the box; and Repeat off, for a step still waiting to be sent', {g: runList, before: runSteps.slice(-2), fb: {...runFb, repeat: {title: 'Stack the trays', can: false}},
         said: {n: 2, place: 'cap', text: 'Repeated “Take the croissants out”', action: {label: 'Undo', fn(){}}}})];
     this.specimenNames = [barBox('New template’s name: quick add’s box with nothing beside it, empty'),

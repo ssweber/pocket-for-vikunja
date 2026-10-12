@@ -3586,7 +3586,7 @@ ${footName('Hooks')}`);
     await page.evaluate(() => scrollTo(0, 0));
     await drag(rowById(T.Tables.id), 30);
     await onlyLit(rowById(T.Tables.id));
-    await expect(page.locator('#btn-cap-target')).toBeVisible();
+    await expect(page.locator('#cap-home')).toBeVisible();                // the place the box left at the bottom: it's in the list
     await expect(page.locator('#sheet')).toBeHidden();
     if (await cursorId() !== T.Tables.id) throw new Error('the box went to ' + await cursorId());
     await drag(rowById(T.Chairs.id), 150, 30);

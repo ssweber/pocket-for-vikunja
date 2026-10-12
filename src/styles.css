@@ -649,10 +649,10 @@ a.sec-act{text-decoration:none}
    for it too; what's typed wraps as before.) */
 .addbox textarea{text-overflow:ellipsis}
 .addbox textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.addbox :is(.go,.cam,.box-home,.box-level,.rep){width:var(--part);height:var(--part);flex:none}
-/* and each takes taps 44px across, past what's drawn where that's smaller: 38px in a list, 42px in the bar, and Repeat */
-.addbox :is(.go,.cam,.box-home,.box-level,.rep){position:relative}
-.addbox :is(.go,.cam,.box-home,.box-level,.rep)::after{content:"";position:absolute;inset:calc(50% - 22px)}
+.addbox :is(.go,.cam,.box-level,.rep){width:var(--part);height:var(--part);flex:none}
+/* and each takes taps 44px across, past what's drawn where that's smaller: 38px in a list, 42px in the bar */
+.addbox :is(.go,.cam,.box-level,.rep){position:relative}
+.addbox :is(.go,.cam,.box-level,.rep)::after{content:"";position:absolute;inset:calc(50% - 22px)}
 .addbox .go{border-radius:var(--part-r);border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
 .addbox .go[disabled]{opacity:.35}
 /* On a project's list, above the box: the task it adds subtasks to, with × (48px) to add a task instead */
@@ -679,7 +679,6 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
   padding:calc(var(--box-pad) + (var(--part) - 24px) / 2) var(--box-pad) 0 var(--box-in);font-size:17px;line-height:24px;color:var(--muted);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;background:transparent}
 #capture.inline::before{display:none}
-.box-home{color:var(--muted)}
 .box-level{margin-left:-10px;color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}

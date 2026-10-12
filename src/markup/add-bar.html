@@ -1,6 +1,7 @@
 <!-- Quick add's box, the bar at the bottom of Today and a project's list, and the place it leaves there (app.html; the
      specimen draws it too). It's the one box (x-box): nudged, it's seated in the list under a row, as far in as what
-     it adds (seatBox, app/quickadd.js), with ⇤ ⇥ for its level on a project's list and × to send it home. -->
+     it adds (seatBox, app/quickadd.js), with ⇤ ⇥ for its level on a project's list. A tap on the place it left, or
+     its row scrolled out of sight, sends it home: it has no button of its own for that, which the line had no room for. -->
   <!-- The box's place at the bottom, kept at its height while the box is in the list, dashed, saying what the box says
        there, where the box has it: a tap brings the box back. Ahead of the box, so the box is over it for the frame
        before it's seated. -->
@@ -24,8 +25,6 @@
         <svg class="i"><use href="#i-camera"/></svg>
         <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
       </label></template>
-      <!-- In the list: × takes the box back to the bottom, to add a task to the project. It keeps the focus where it was -->
-      <template x-if="boxInList"><button type="button" class="icon-btn plain box-home" id="btn-cap-target" :aria-label="boxBackLabel" @mousedown.prevent @click="boxBack()"><svg class="i"><use href="#i-close"/></svg></button></template>
       <button class="go" type="submit" :aria-label="{cap: 'Add task', under: 'Add subtask', ins: 'Add step'}[capW]" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">

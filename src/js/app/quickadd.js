@@ -419,8 +419,8 @@ export default {
      after it: one row is lit, the one the line over the box names (capTarget), and touching a row lights that one,
      the one touched before too. `cursor` is {id, under: the task it's under on this list, or null}, with `wait` for a
      subtask not sent yet: its waiting row. A task ticked done can't be one: its parent is, if it's on the list, as it
-     is for a cursor that's gone (keepAim). The box goes back to adding a task with its ×, when the cursor's row is out
-     of sight (scrolling back doesn't bring it back), or when the screen is left. */
+     is for a cursor that's gone (keepAim). The box goes back to adding a task with a tap on its place at the bottom,
+     when the cursor's row is out of sight (scrolling back doesn't bring it back), or when the screen is left. */
   // A task that can be the cursor: open (or ticked, in its place until the batch clears), on this project's list, or on
   // Today, as a row or on a card there, one you can change, and not a run, a step of one or a template, which add steps
   // their own way.
@@ -622,7 +622,7 @@ export default {
     return {key: id + (out ? ':out' : ':in'), out, deeper: !c.under,
       sel: out ? `#view .item[data-id="${id}"]` : `#view .day-card[data-id="${id}"] > .card-head, #view .row[data-id="${id}"]`};
   },
-  // Whether the box is in the list, on any screen; and back at the bottom, by its ×, or a tap on its place there.
+  // Whether the box is in the list, on any screen; and back at the bottom, by a tap on its place there.
   get boxInList(){ return !!this.boxSeat; },
   boxBack(){ this.light(null); },
   get boxBackLabel(){
