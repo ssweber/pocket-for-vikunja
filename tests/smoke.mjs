@@ -3572,6 +3572,30 @@ ${footName('Hooks')}`);
     await expect(target).toHaveText(`Add a subtask to ${footName('Fuel')}`);
     await synced(page);
   });
+  /* A mouse nudges too (inline-add-box-plan, What moves the box): a press on a row dragged a short, slow way up or
+     down, let go, moves the box under it; the click that would follow is swallowed, so the row's sheet stays shut. A
+     long drag, however slow, is nothing, and the mouse's own tap still opens the sheet. */
+  await step('a-mouse-nudges-too', async () => {
+    const T = foot.tasks;
+    const drag = async (sel, by, steps = 8, every = 40) => {
+      const b = await steady(page.locator(sel)), x = b.x + b.width / 2, y = b.y + b.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      for (let i = 1; i <= steps; i++) { await page.mouse.move(x, y + by * i / steps); await page.waitForTimeout(every); }
+      await page.mouse.up();
+    };
+    await page.evaluate(() => scrollTo(0, 0));
+    await drag(rowById(T.Tables.id), 30);
+    await onlyLit(rowById(T.Tables.id));
+    await expect(page.locator('#btn-cap-target')).toBeVisible();
+    await expect(page.locator('#sheet')).toBeHidden();
+    if (await cursorId() !== T.Tables.id) throw new Error('the box went to ' + await cursorId());
+    await drag(rowById(T.Chairs.id), 150, 30);
+    if (await cursorId() !== T.Tables.id) throw new Error('a long drag moved the box to ' + await cursorId());
+    await page.click(rowById(T.Chairs.id) + ' > .body');
+    await page.waitForSelector('#sheet .row.own');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
   /* The lit row follows what's added, and a nudge always selects (rows-and-sheet-fixes-plan, part 3): the row touched
      before a subtask was added, nudged again, is lit again, and the line goes back to it. The lit row is never one
      that's gone: deleted, its task is lit, and the box goes back to that task's last. Moved up or down, it isn't

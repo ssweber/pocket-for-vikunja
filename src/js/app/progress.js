@@ -383,33 +383,62 @@ export default {
      row and turns into a short, slow scroll moves the add box under that row (isNudge, in progress.js beside app/, where its numbers
      are; `nudged`, app/quickadd.js: on a run, the step goes on the card); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
      scrolling: once the phone scrolls, it ends the pointer events (pointercancel), but these carry on. A hold, a swipe
-     or a second finger on the way, and it's not one; nor a touch that starts in a text field (inTextField). */
+     or a second finger on the way, and it's not one; nor a touch that starts in a text field (inTextField).
+     A mouse nudges too: a press on a row dragged the same short, slow way, read as the button is let go. The page
+     doesn't scroll under a mouse, so its pointer events carry on (the hold gives up on a move up or down: holdToSlide),
+     and the click that would follow, opening the row, is swallowed. */
   watchNudges(area, pick = null, nudged = id => this.nudged(id)){
+    // What a press on `target` nudges: a row, a card's row, or a card's heading, for its task; with `pick`, what it
+    // finds for what was pressed. Nothing in a text field.
+    const idOf = target => {
+      if (inTextField(target)) return null;
+      if (pick) return pick(target);
+      const run = this.route.name === 'run';
+      if (!run && !['project', 'today'].includes(this.route.name)) return null;
+      const row = target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || target.closest('.card-head')?.closest('.day-card');
+      return row ? (run ? row.dataset.id : +row.dataset.id) : null;
+    };
+    const press = (id, x, y, t) => ({id, x0: x, y0: y, t0: t, far: 0, moves: [{t, y}]});
+    const move = (p, y, t) => { p.far = Math.max(p.far, Math.abs(y - p.y0)); p.moves.push({t, y}); };
+    const lifted = (p, x, y, t) => isNudge({dx: x - p.x0, dy: Math.max(p.far, Math.abs(y - p.y0)), ms: t - p.t0, speed: releaseSpeed(p.moves, t, y)});
     let n = null;
     area.addEventListener('touchstart', e => {
       n = null;
-      const run = this.route.name === 'run', one = e.touches.length === 1 && !inTextField(e.target);
-      // (a row, a card's row, or a card's heading, for its task; with `pick`, what it finds for what was touched)
-      const row = one && !pick && (run || ['project', 'today'].includes(this.route.name))
-        && (e.target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || e.target.closest('.card-head')?.closest('.day-card'));
-      const id = pick ? (one ? pick(e.target) : null) : row ? (run ? row.dataset.id : +row.dataset.id) : null;
+      const id = e.touches.length === 1 ? idOf(e.target) : null;
       if (id == null) return;
-      const p = e.touches[0];
-      n = {id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
+      n = press(id, e.touches[0].clientX, e.touches[0].clientY, e.timeStamp);
     }, {passive: true});
     area.addEventListener('touchmove', e => {
       if (!n) return;
       if (sliding || e.touches.length !== 1) { n = null; return; }
-      const p = e.touches[0];
-      n.far = Math.max(n.far, Math.abs(p.clientY - n.y0)); n.moves.push({t: e.timeStamp, y: p.clientY});
+      move(n, e.touches[0].clientY, e.timeStamp);
     }, {passive: true});
     area.addEventListener('touchend', e => {
       const was = n, p = e.changedTouches[0]; n = null;
       if (!was || e.touches.length || !p) return;
-      const dy = Math.max(was.far, Math.abs(p.clientY - was.y0));
-      if (isNudge({dx: p.clientX - was.x0, dy, ms: e.timeStamp - was.t0, speed: releaseSpeed(was.moves, e.timeStamp, p.clientY)})) nudged(was.id);
+      if (lifted(was, p.clientX, p.clientY, e.timeStamp)) nudged(was.id);
     }, {passive: true});
     area.addEventListener('touchcancel', () => { n = null; }, {passive: true});
+    // The mouse: its moves and release followed on the whole window, as a drag can end off the row. (A hold or a
+    // swipe that starts on the way sets `sliding` before this sees the move: not a nudge then.)
+    let m = null;
+    area.addEventListener('pointerdown', e => {
+      m = null;
+      if (e.pointerType !== 'mouse' || e.button !== 0 || !e.isPrimary) return;
+      const id = idOf(e.target);
+      if (id != null) m = {pid: e.pointerId, ...press(id, e.clientX, e.clientY, e.timeStamp)};
+    });
+    addEventListener('pointermove', e => {
+      if (!m || e.pointerId !== m.pid) return;
+      if (sliding) { m = null; return; }
+      move(m, e.clientY, e.timeStamp);
+    });
+    addEventListener('pointerup', e => {
+      const was = m; m = null;
+      if (!was || e.pointerId !== was.pid) return;
+      if (lifted(was, e.clientX, e.clientY, e.timeStamp)) { swallow(); nudged(was.id); }
+    });
+    addEventListener('pointercancel', e => { if (m && e.pointerId === m.pid) m = null; });
   },
   /* A task's row, in a list or (sheet) a task's sheet. Swiped, its progress: not one waiting to be sent, or that can't
      be ticked, nor a run (its progress is its steps), nor a step in a run's sheet; a done one only down, opened again

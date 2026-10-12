@@ -109,6 +109,11 @@ In the code: there's one box, with one text. An element put among the rows of an
 Only a nudge, and **Add a subtask here** in a task's ⋯ (the user, 2026-10-12). A tick, a swipe and closing a task's
 sheet aimed the bottom box before; they leave the box where it is now, so rows never shift under the next tick.
 
+A mouse nudges too (the user, 2026-10-12: a keyboard and a mouse had no way to the nudge, since it was read from
+touches only): a press on a row dragged the same short, slow way, read as the button is let go, with the click
+that would open the row swallowed. The same numbers as a finger's. No standing button for it, and no dragging
+the box itself: what's chosen is a row, and pointing at the row is quicker than carrying the box to it.
+
 ## Build order
 
 1. A project's list, plainly: the box moves on a nudge and goes home on a scroll or ×. Tried on the phone before the
