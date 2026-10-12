@@ -631,7 +631,10 @@ a.sec-act{text-decoration:none}
    its edge. The dashed place a box leaves (#cap-home, .sub-home) reads the same figures, so it's the box's outline. */
 .addbox,#cap-home{--part:42px;--part-r:12px;--box-pad:4px;--box-edge:2px;--box-r:16px;--box-in:14px}
 .addbox.sub,#capture.inline,.sub-home{--part:38px;--part-r:10px;--box-pad:3px;--box-edge:1.5px;--box-r:12px;--box-in:12px}
-.addbox form{display:flex;gap:8px;align-items:flex-end;background:var(--surface);border:var(--box-edge) solid var(--accent);border-radius:var(--box-r);padding:var(--box-pad) var(--box-pad) var(--box-pad) var(--box-in)}
+/* A box's height with one line (--box-one), which its dashed place has too: a floor under the box itself, as a phone
+   may draw a 1.5px border a little thinner */
+.addbox,#cap-home,.sub-home{--box-one:calc(var(--part) + 2 * var(--box-pad) + 2 * var(--box-edge))}
+.addbox form{display:flex;gap:8px;align-items:flex-end;min-height:var(--box-one);background:var(--surface);border:var(--box-edge) solid var(--accent);border-radius:var(--box-r);padding:var(--box-pad) var(--box-pad) var(--box-pad) var(--box-in)}
 .addbox .cap-field{flex:1;min-width:0;position:relative}
 /* The words in a box are set as a row sets its title, 17px on a 24px line: an add box's, a template's (.draft-in) and a
    comment's */
@@ -665,10 +668,10 @@ a.sec-act{text-decoration:none}
 /* A run's screen has no bar at its bottom: its box is under its steps */
 main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .sub-box-time > .draft-meta{margin:6px 0 0}
-.sub-home{display:block;width:100%;padding:10px 14px;border:0;border-top:1px solid var(--line);background:transparent}
+.sub-home{display:block;width:100%;border:0;background:transparent}
 /* a box's outline, dashed: as tall as the box with one line (the bar's place keeps the height the bar had) */
-:is(#cap-home,.sub-home) > span{display:block;height:calc(var(--part) + 2 * var(--box-pad) + 2 * var(--box-edge));border:var(--box-edge) dashed var(--line);border-radius:var(--box-r)}
-#capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 14px 10px;background:transparent}
+:is(#cap-home,.sub-home) > span{display:block;height:var(--box-one);border:var(--box-edge) dashed var(--line);border-radius:var(--box-r)}
+#capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;background:transparent}
 #capture.inline::before{display:none}
 .box-home{color:var(--muted)}
 .box-level{margin-left:-10px;color:var(--accent)}
@@ -681,9 +684,12 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .foot-box .rep{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;margin:1px 0;padding:0 14px;border:0;border-radius:999px;background:var(--sunk);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
 /* The subtask box: the same box, in a task's sheet, quieter until it has the focus. A box in a list is as far in from
    the list's sides as a row is: its left edge where the ticks start (a level in, the ticks of that level: seatBox), its
-   right where a row's slot ends. Its chips, a step's time line and its dashed place start there too. */
-.addbox.sub{padding:10px 14px}
-.row ~ .addbox.sub{border-top:1px solid var(--line)}
+   right where a row's slot ends. Its chips, a step's time line and its dashed place start there too.
+   And it's in the middle of the place it takes, as much room over it as under it, seated under a row or at a list's
+   foot: with one line that place is a row's height (--box-slot: 56px, less the rule over it where it has one), and
+   with chips or a time line under it, the same room is under those. */
+.addbox.sub,#capture.inline,.sub-home{--box-slot:56px;--box-gap:calc((var(--box-slot) - var(--box-one)) / 2);padding:var(--box-gap) 14px}
+.row ~ .addbox.sub,.sub-home{border-top:1px solid var(--line);--box-slot:55px}
 .addbox.sub form{border-color:var(--line);background:var(--bg)}
 .addbox.sub form:focus-within{border-color:var(--accent)}
 #capture .cam{border-radius:var(--part-r);display:grid;place-items:center;color:var(--muted);cursor:pointer}
