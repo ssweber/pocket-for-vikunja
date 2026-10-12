@@ -200,7 +200,7 @@ export default () => ({
       bottom.observe(this.$refs.captureBar); bottom.observe(home);
       // Turning the phone, or the keyboard opening or closing, changes the boxes' width: each fits its text again (notes being
       // changed too, however long), and quick add's highlights stay over the words they mark.
-      const refit = () => { for (const id of ['in-capture', 'd-subin', 'd-desc-in']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
+      const refit = () => { for (const id of ['in-capture', 'd-subin', 'run-in', 'd-desc-in']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
       (window.visualViewport || window).addEventListener('resize', refit);
       addEventListener('orientationchange', () => setTimeout(refit, 300));
       /* The keyboard covers the bottom of the page without making it shorter (Chrome on Android and Safari on iPhone

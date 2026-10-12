@@ -5,6 +5,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { directives } from '../../src/js/component.js';
+import { grow } from '../../src/js/util.js';
 
 // The directives, as Alpine is given them; `ticks`: what waits for the next tick; `effects`: each effect, to run again;
 // `gone()`: the element taken off the page, as Alpine does it: what each directive asked to have cleaned up, and of
@@ -148,6 +149,22 @@ test('starting an @username or a *label loads what to suggest; once typing pause
   a.gone();
   c.mock.timers.tick(500);
   assert.deepEqual([app.checked, a.running.size], [['cap', 'under'], 0]);
+});
+
+test('a text box fitted to its text leaves the page where it was: measured at its least height, the page ends sooner, and is pulled down', t => {
+  // The page, 600px past its screen, scrolled to its end; a box of three lines at its foot, 48px taller than with one.
+  const page = { y: 600, end: 600 }, el = textarea(), tall = 86;
+  const was = Object.fromEntries(['scrollY', 'scrollX', 'scrollTo'].map(k => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
+  t.after(() => { for (const [k, d] of Object.entries(was)) if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; });
+  Object.defineProperty(globalThis, 'scrollY', { get: () => page.y, configurable: true });
+  Object.defineProperty(globalThis, 'scrollX', { get: () => 0, configurable: true });
+  Object.defineProperty(globalThis, 'scrollTo', { value: (x, y) => { page.y = Math.min(y, page.end); }, configurable: true, writable: true });
+  // As a browser does it: with the box at its least height the page is 48px shorter, and no further down than its end.
+  el.style = { set height(h){ page.end = h === 'auto' ? 600 - 48 : 600; page.y = Math.min(page.y, page.end); this.h = h; }, get height(){ return this.h; } };
+  Object.assign(el, { scrollHeight: tall - 2, offsetHeight: tall, clientHeight: tall - 2 });
+  grow(el);
+  assert.equal(el.style.height, tall + 'px');
+  assert.equal(page.y, 600, 'the page is where it was, at its end');
 });
 
 test('x-grow keeps any other text box as tall as its text, fitted again when what it\'s given changes', () => {

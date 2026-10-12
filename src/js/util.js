@@ -23,12 +23,15 @@ export const PRIOS = [{n:0,label:'No priority'},{n:1,label:'Low'},{n:2,label:'Me
 /* Fit a text box to its text: as tall as what's in it and its borders, which scrollHeight leaves out, so nothing is
    left to scroll inside it. A hidden box measures 0, so leave its height alone until it can be measured. It's measured
    at its least height first, which, for long notes in a sheet, is far shorter: the sheet would lose its place (its
-   end pulled up past where it was scrolled to), so it's put back where it was. */
+   end pulled up past where it was scrolled to), so it's put back where it was. The page is too, for a box in the
+   page: a checklist's, at the foot of its steps, is where the page ends, so each letter typed past its first line
+   pulled the page down by the lines after it, and what was being typed went under the keyboard (in Safari, which
+   doesn't hold the page still itself). */
 export const grow = ta => {
-  const sc = ta.closest('#sheet .scroll'), top = sc?.scrollTop;
+  const sc = ta.closest('#sheet .scroll'), top = sc ? sc.scrollTop : typeof scrollY === 'number' ? scrollY : null;
   ta.style.height = 'auto';
   if (ta.scrollHeight) ta.style.height = ta.scrollHeight + ta.offsetHeight - ta.clientHeight + 'px';
-  if (sc && sc.scrollTop !== top) sc.scrollTop = top;
+  if (sc) { if (sc.scrollTop !== top) sc.scrollTop = top; } else if (top !== null && scrollY !== top) scrollTo(scrollX, top);
 };
 export const cache = new Map();                       // task id -> latest task from the server
 /* What was being written and not sent yet, kept on the phone so closing Pocket doesn't lose it: 'comment:<task id>',
