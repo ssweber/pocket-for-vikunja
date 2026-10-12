@@ -103,6 +103,7 @@ test('the cursor on a task: subtasks go ahead of its first, as the box is right 
   assert.deepEqual(app.capTarget, { to: 'Pack the van', after: '' });
   assert.deepEqual(app.lit, { 10: true }, 'its row is the one lit');
   assert.equal(app.capPlaceholder, 'Subtask');
+  assert.equal(app.capHomeSays, 'Add a task to Move', 'the place it left at the bottom says what the box says there');
   assert.deepEqual(app.cursorPlaces(2), [50, 75], 'ahead of Load chairs, one after the other');
   app.aim(chairs);
   assert.equal(app.cursorParent, van);

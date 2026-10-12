@@ -9,7 +9,7 @@
 
      The box is quick add's: what it read is marked, with chips to undo it, and @ and * suggest people and labels;
      each line is a subtask, or a step, and Enter or its button adds them. It's at the foot, always there. A row nudged
-     (nudgedSub, app/sheet.js) has it under it, to add after that row; its place at the foot is then kept, empty, and
+     (nudgedSub, app/sheet.js) has it under it, to add after that row; its place at the foot is then kept, dashed, and
      a tap there, or the box's ×, brings it back. The last row nudged changes nothing: the box is under it already. -->
 <div class="h3"><span x-text="isStepList ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="isStepList ? subList.length || '' : subList.length ? subList.filter(s => s.done).length + '/' + subList.length : ''"></span></div>
 <div class="card" id="d-subtasks" x-data="{where: 'sheet'}">

@@ -1,9 +1,10 @@
 <!-- Quick add's box, the bar at the bottom of Today and a project's list, and the place it leaves there (app.html; the
      specimen draws it too). It's the one box (x-box): nudged, it's seated in the list under a row, as far in as what
      it adds (seatBox, app/quickadd.js), with ⇤ ⇥ for its level on a project's list and × to send it home. -->
-  <!-- The box's place at the bottom, kept empty at its height while the box is in the list: a tap brings the box back.
-       Ahead of the box, so the box is over it for the frame before it's seated. -->
-  <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span></span></button>
+  <!-- The box's place at the bottom, kept at its height while the box is in the list, dashed, saying what the box says
+       there, where the box has it: a tap brings the box back. Ahead of the box, so the box is over it for the frame
+       before it's seated. -->
+  <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span x-text="capHomeSays"></span></button>
   <!-- Quick add. (Not on a run's screen: its steps have their own box, under them: screens/run.html.) -->
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
     <!-- Where what was just added went, when it isn't on this screen; what couldn't be added, and why -->

@@ -528,26 +528,27 @@ export default {
   /* The add box at a list's foot (markup/list-box.html), by where the list is: a sheet's ('sheet': a task's subtasks, a
      template's steps, New template's) or a checklist's steps on its screen ('run'). What it is there: its box as box()
      names it, its ids, what it says, whether it's under a row, whether its button adds anything, and, on a checklist,
-     the step Repeat would copy. Null where there's none (a checklist finished, or shared to read only). */
+     the step Repeat would copy. `rest` is what it says at the foot: under a row, what its place there says meanwhile.
+     Null where there's none (a checklist finished, or shared to read only). */
   footBox(where){
     if (where === 'run') {
       const a = this.runAim;
       if (!a) return null;
       const under = this.runBoxAt != null;
+      const rest = 'Add steps, or paste a list';
       return {w: 'ins', id: 'run-box', in: 'run-in', under, steps: false, can: this.boxParsedLines('ins').some(p => p.title), repeat: {title: a.on.title, can: !a.on.pending},
-        says: under ? 'Step' : 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead'};
+        says: under ? 'Step' : rest, rest, add: 'Add steps', home: 'Add after the last step instead'};
     }
     const w = this.subBoxW;
     if (!w) return null;
-    const steps = this.isStepList, under = this.sheet.subAt != null;
-    return {w, id: 'd-subbox', in: 'd-subin', under, steps, can: this.subBoxCan, repeat: null,
-      says: under ? (steps ? 'Step' : 'Subtask') : steps ? 'Add steps, or paste a list' : 'Add subtasks, or paste a list',
+    const steps = this.isStepList, under = this.sheet.subAt != null, rest = steps ? 'Add steps, or paste a list' : 'Add subtasks, or paste a list';
+    return {w, id: 'd-subbox', in: 'd-subin', under, steps, can: this.subBoxCan, repeat: null, says: under ? (steps ? 'Step' : 'Subtask') : rest, rest,
       add: steps ? 'Add steps' : 'Add subtasks', home: steps ? 'Add after the last step instead' : 'Add after the last subtask instead'};
   },
   /* A nudge on a row of a list (watchNudges, app/progress.js) puts the list's box under that row, to add after it: in
      a sheet, sheet.subAt (subPlaces, actions.js; sendSteps and addTemplateSteps, app/checklists.js); on a checklist's
      screen, runBoxAt (runAim, app/runs.js). As a nudge does on a project's list. The box is laid over room given to
-     the row, never taken off the page, and its place at the foot stays, empty: a tap there, the box's ×, or its row
+     the row, never taken off the page, and its place at the foot stays, dashed: a tap there, the box's ×, or its row
      scrolled out of sight while it isn't being typed in, and it's back. The last row nudged changes nothing: the box is
      under it already. Where the row is, is asked every frame meanwhile (seatFoot), as for the box in a list (seatBox,
      quickadd.js). */

@@ -523,8 +523,10 @@ export default {
     const t = this.cursorTask, p = this.cursorParent;
     return t && !this.cursor.out ? {to: p.title, after: t !== p && this.view.listView ? t.title : ''} : null;
   },
-  get capPlaceholder(){
-    if (this.cursorTask) return this.cursor.out ? 'Task' : 'Subtask';   // in the list, its place says the rest
+  get capPlaceholder(){ return this.cursorTask ? (this.cursor.out ? 'Task' : 'Subtask') : this.capHomeSays; },   // in the list, its place says the rest
+  // What the box says at the bottom, empty. While it's in the list, the dashed place it left there says the same, where
+  // the box has it, so a tap there is known for what it brings back, and nothing moves as the box lands.
+  get capHomeSays(){
     if (this.capPhotos.length) return 'What\'s this photo for?';
     return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
   },
@@ -571,7 +573,7 @@ export default {
      subtasks, its card's header, so what's added comes first) is given room under it, the box's height (.boxed,
      --box-h), and the box is laid over that room, as far in as what it adds. It's the one box, never taken off the
      page, so it keeps its text and the focus as it moves: Enter adds a line, and the box is under the new one. Its
-     place at the bottom stays, empty (#cap-home). Where the room is on the page is asked every frame while the box is
+     place at the bottom stays, dashed, saying what the box says there (#cap-home). Where the room is on the page is asked every frame while the box is
      there: rows above it fold and leave, a row is held and moved. With no cursor the room goes, and the box is at the
      bottom again. Room taken away above the screen moves everything on it, where the browser doesn't hold the page
      still itself: the page is scrolled by as much in the same frame. Asked again whenever the cursor changes (core.js). */

@@ -5,7 +5,7 @@
 
      It's quick add's box: what it read is marked, with chips to undo it, and @ and * suggest people and labels; each
      line is a subtask, or a step, and Enter or its button adds them. Always there, at the foot. A row nudged has it
-     under it (seatFoot), to add after that row; its place at the foot is then kept, empty, and a tap there, or the
+     under it (seatFoot), to add after that row; its place at the foot is then kept, dashed, saying what the box says there, and a tap there, or the
      box's ×, brings it back. The last row nudged changes nothing: the box is under it already.
 
      On a checklist it has Repeat too, its symbol alone: a fresh copy of the step on the card, right after that step,
@@ -39,5 +39,6 @@
     <!-- include markup/chips.html -->
   </div></template>
 </div></template>
-<!-- The box's place at the foot, kept empty while the box is under a row: a tap brings it back -->
-<template x-for="fb in [footBox(where)].filter(b => b?.under)" :key="0"><button type="button" class="sub-home" :id="fb.id + '-place'" :aria-label="fb.home" @click="footHome(where)"><span></span></button></template>
+<!-- The box's place at the foot, kept while the box is under a row, dashed, saying what the box says there: a tap brings
+     it back -->
+<template x-for="fb in [footBox(where)].filter(b => b?.under)" :key="0"><button type="button" class="sub-home" :id="fb.id + '-place'" :aria-label="fb.home" @click="footHome(where)"><span x-text="fb.rest"></span></button></template>

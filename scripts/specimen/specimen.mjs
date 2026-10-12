@@ -317,12 +317,13 @@ function runSteps(){
    specFoot: the box at a list's foot. `fb`: what footBox() says of it in the app (under a row, its words, Repeat);
    `time`: a step's time line under it; `said`: what was just done from it. */
 const blankBox = f => ({text: '', caret: 0, focus: false, busy: false, ignore: {}, remind: false, ...f});
-const specBar = (spec, f = {}) => ({spec, capW: 'cap', canLevel: false, boxOut: false, canIn: true, boxInList: false, capTarget: null, capPlaceholder: 'Add a task to Café',
+const specBar = (spec, f = {}) => ({spec, capW: 'cap', canLevel: false, boxOut: false, canIn: true, boxInList: false, capTarget: null, capPlaceholder: 'Add a task to Café', capHomeSays: 'Add a task to Café',
   boxBackLabel: 'Add a task to Café instead', capPhotos: [], attachmentsOn: true, said: null, inset: '', place: false, before: [], after: [], g: {depth: {}}, ...f,
   capBox: blankBox(f.box), get cap(){ return this.capBox; }, box(){ return this.capBox; }, placeLines(){ return this.said ? [this.said] : []; },
   init(){ this.$nextTick(() => { const bar = this.$el.querySelector('#capture'); if (bar && this.inset) { bar.classList.add('inline'); bar.style.paddingLeft = this.inset; } }); }});
 const specFoot = (spec, f = {}) => ({spec, where: f.g?.run ? 'run' : 'sheet', said: null, time: null, before: [], after: [], g: {depth: {}, sheet: true, delete: true, reorder: true}, ...f,
-  fb: {w: 'sub', id: 'd-subbox', in: 'd-subin', under: false, steps: false, can: false, repeat: null, says: 'Add subtasks, or paste a list', add: 'Add subtasks', home: 'Add after the last subtask instead', ...f.fb},
+  fb: {w: 'sub', id: 'd-subbox', in: 'd-subin', under: false, steps: false, can: false, repeat: null, says: 'Add subtasks, or paste a list', rest: 'Add subtasks, or paste a list', add: 'Add subtasks',
+    home: 'Add after the last subtask instead', ...f.fb},
   b: blankBox(f.box), footBox(){ return this.fb; }, box(w){ return w === 'edit' && this.sheet.stepEdit || this.b; }, placeLines(){ return this.said ? [this.said] : []; },
   // A step's time line, and a template's steps as rows: their numbers, when each is due, its notes' first line.
   draft(){ return {info: new Map([['+', this.time]])}; }, draftShown(d){ return d ? [d] : []; }, stepEditDraft(){ return this.time; }, passFocus(){},
@@ -439,7 +440,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       barBox('A pasted list: three lines, the button on the last', {box: {text: list3, focus: true}}),
       barBox('With a photo: the camera lit, the photo a chip', {capPhotos: [{name: 'receipt.jpg'}], capPlaceholder: 'What’s this photo for?'}),
       barBox('Where what was just added went, over it', {said: {n: 1, place: 'cap', text: 'Added to Head office, due Friday', action: {label: 'Open', fn(){}}}}),
-      barBox('The place it leaves at the bottom while it’s in the list: dashed, at its height; a tap brings it back', {place: true, boxInList: true})];
+      barBox('The place it leaves at the bottom while it’s in the list: dashed, at its height, saying what the box says there; a tap brings it back', {place: true, boxInList: true})];
     const fuelT = task({title: 'Buy fuel'}), vanT = task({title: 'Pack the van'}), kidOf = title => task({title, related_tasks: {parenttask: [{id: vanT.id}]}});
     const tablesT = kidOf('Tables'), chairsT = kidOf('Chairs'), waterT = task({title: 'Water the plants'}), inList = {depth: {[tablesT.id]: 1, [chairsT.id]: 1}, delete: true, reorder: true};
     const seated = (spec, f) => barBox(spec, {g: inList, boxInList: true, capW: 'under', capPlaceholder: 'Subtask', inset: '44px', ...f});
@@ -453,14 +454,14 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const tplSteps = [tplStep('Turn on the espresso machine', 'Named “machine”'), tplStep('Put the croissants in', 'Named “oven”'),
       tplStep('Take the croissants out', 'Due 18m after “oven”', 'Top shelf first: it runs hot.'), tplStep('Unlock the door', 'Due 30m after “machine”')];
     const stepList = {depth: {}, sheet: true, delete: true, reorder: true, step: true};
-    const stepFb = {w: 'add:+', steps: true, says: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead'};
+    const stepFb = {w: 'add:+', steps: true, says: 'Add steps, or paste a list', rest: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead'};
     const runList = {depth: {}, run: true, at: this.specimenAdding.at, locked: false}, runSteps = this.specimenAdding.steps;
-    const runFb = {w: 'ins', id: 'run-box', in: 'run-in', says: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead', repeat: {title: this.runView.step.title, can: true}};
+    const runFb = {w: 'ins', id: 'run-box', in: 'run-in', says: 'Add steps, or paste a list', rest: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead', repeat: {title: this.runView.step.title, can: true}};
     this.specimenFeet = [
       footBox('The box at the foot of a task’s subtasks, focused and empty: its edge the accent, what it reads under it', {before: subs, box: {focus: true}}),
       footBox('Typed: what it read as chips', {before: subs, fb: {can: true}, box: {text: 'Order the paint tomorrow !2', focus: true}}),
       footBox('A pasted list: its button on the last line', {before: subs, fb: {can: true}, box: {text: list3, focus: true}}),
-      footBox('Under a row nudged, to add after it: × sends it back, and its place at the foot is kept, dashed', {before: subs.slice(0, 1), after: subs.slice(1), fb: {under: true, says: 'Subtask'}}),
+      footBox('Under a row nudged, to add after it: × sends it back, and its place at the foot is kept, dashed, saying what the box says there', {before: subs.slice(0, 1), after: subs.slice(1), fb: {under: true, says: 'Subtask'}}),
       footBox('A template’s steps (New template’s are the same list): plain numbers, when each is due, its notes’ first line, and the box at their foot', {g: stepList, before: tplSteps, fb: stepFb}),
       footBox('A step being written with a time: its time line under the box, then its chips', {g: stepList, before: tplSteps, fb: {...stepFb, can: true}, box: {text: 'Lock up in 20 min !2', focus: true},
         time: {problem: '', offset: 12e5, i: 4, lost: false, from: '', choices: tplSteps.slice(0, 3).map((x, i) => ({key: 'k' + i, title: x.title})), phrase: 'in 20 min', kept: false, name: ''}}),

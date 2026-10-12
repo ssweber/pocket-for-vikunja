@@ -10,6 +10,7 @@ import sending from '../../src/js/app/sending.js';
 import leaving from '../../src/js/app/leaving.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import views from '../../src/js/app/views.js';
+import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { sync } from '../../src/js/sync.js';
@@ -458,6 +459,18 @@ test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a 
   app.runInsert.text = 'x Wipe the counter\n[x] Mop\nLock up';
   assert.deepEqual(app.chips('ins').map(c => [c.text, c.kind]), [['1 line ticked off already: left out', undefined], ['2 steps', undefined]]);
   assert.deepEqual(linesOf(app, 'ins'), [['x Wipe the counter', false], ['Lock up', false]]);
+});
+
+/* A list's box (footBox, app/sheet.js): at the foot it says what it takes; under a row, what one line makes, and the
+   place it left at the foot says what the box says there, for a task's subtasks, a template's steps and a checklist's. */
+test('a list\'s box under a row says what a line makes, and its place at the foot says what the box says there', () => {
+  const box = (of, where = 'sheet') => { const b = sheetPart.footBox.call({ subBoxCan: false, boxParsedLines: () => [], ...of }, where); return [b.under, b.says, b.rest]; };
+  assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: null } }), [false, 'Add subtasks, or paste a list', 'Add subtasks, or paste a list']);
+  assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: 8 } }), [true, 'Subtask', 'Add subtasks, or paste a list']);
+  assert.deepEqual(box({ subBoxW: 'add:+', isStepList: true, sheet: { subAt: 8 } }), [true, 'Step', 'Add steps, or paste a list']);
+  const on = { title: 'Mop the floor', pending: false };
+  assert.deepEqual(box({ runAim: { on }, runBoxAt: null }, 'run'), [false, 'Add steps, or paste a list', 'Add steps, or paste a list']);
+  assert.deepEqual(box({ runAim: { on }, runBoxAt: 52 }, 'run'), [true, 'Step', 'Add steps, or paste a list']);
 });
 
 /* The sheet's own box under a subtask (nudgedSub, app/sheet.js; inline-add-box-plan, part 3): where its lines go. */
