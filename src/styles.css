@@ -655,6 +655,8 @@ a.sec-act{text-decoration:none}
 #capture.inline textarea,#capture.inline .cap-marks{padding:9px 0}
 #capture.inline .go{width:38px;height:38px;border-radius:10px}
 .box-home{width:38px;height:38px;flex:none;color:var(--muted)}
+.box-rep{width:38px;height:38px;flex:none;color:var(--accent)}
+.box-rep[disabled]{opacity:.4}
 .box-level{width:38px;height:38px;flex:none;margin-left:-10px;color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}

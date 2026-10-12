@@ -97,6 +97,7 @@ export default () => ({
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
   runInsert: newBox(),                          // the bottom box on a run's screen (quick add's 'ins'), apart from quick add's own text
+  runBoxOn: null,                              // the step on the card when a nudge put the box in the list there (boxSeat, quickadd.js)
   runAdded: null,                              // where the last steps from it went, which the next go after (runAim, runs.js)
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
@@ -166,7 +167,7 @@ export default () => ({
     // The row the box adds subtasks at, gone (deleted, done, off the list): the task it was under is lit (keepAim).
     this.$watch(() => !this.sheet.open && !!this.cursor && !this.cursorTask, gone => { if (gone) this.keepAim(); });
     // The box is in the list under the cursor's row, or back at the bottom (seatBox, quickadd.js).
-    this.$watch(() => this.boxIn ? this.cursor.id + (this.cursor.out ? ':out' : ':in') : '', () => this.seatBox());
+    this.$watch(() => this.boxSeat?.key || '', () => this.seatBox());
     // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])
