@@ -19,7 +19,7 @@ const inSight = new WeakMap();
 // The add box in the list (seatBox): the element given room under it, how much, and the frame that keeps asking.
 const seat = {el: null, key: '', h: 0, inset: '', raf: 0, at: ''};
 // Whether the browser holds the page still itself when something above the screen changes height (Safari doesn't).
-const ANCHORS = typeof CSS !== 'undefined' && !!CSS.supports?.('overflow-anchor', 'auto');
+export const ANCHORS = typeof CSS !== 'undefined' && !!CSS.supports?.('overflow-anchor', 'auto');
 
 export default {
   /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom

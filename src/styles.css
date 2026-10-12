@@ -641,7 +641,14 @@ a.sec-act{text-decoration:none}
    the box's height as room under it, and the box is laid over that room, as far in as what it adds (its left padding,
    from seatBox). Its place at the bottom stays, empty, at the height it had: tapped, the box is back. */
 .boxed{margin-bottom:var(--box-h,0px)}
-.card-rows:has(> .boxed){display:flow-root}   /* a card's last row: the room stays inside the card, not under it */
+.card-rows:has(> .boxed){display:flow-root}
+/* The same in a task's sheet, its own box under the subtask nudged (seatSub, app/sheet.js): room under that row, the
+   box over it, and its place at the foot kept, empty. */
+#d-subtasks{position:relative}
+.sub-boxed{margin-bottom:var(--sub-h,0px)}
+#d-subbox.inline{position:absolute;left:0;right:0;border-top:0}
+.sub-home{display:block;width:100%;height:var(--sub-h,58px);padding:10px;border:0;border-top:1px solid var(--line);background:transparent}
+.sub-home > span{display:block;height:100%;border:1.5px dashed var(--line);border-radius:12px}   /* a card's last row: the room stays inside the card, not under it */
 #capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 10px 10px 14px;background:transparent}
 #capture.inline::before{display:none}
 #capture.inline form{border-width:1.5px;border-radius:12px;padding:2px 2px 2px 12px}

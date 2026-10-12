@@ -375,23 +375,26 @@ export default {
       return card ? this.cardGesture(card, s) : s;
     });
     this.watchNudges(document.getElementById('view'));
+    // In a task's sheet: a subtask's row nudged has the sheet's own box under it (nudgedSub, app/sheet.js).
+    this.watchNudges(document.getElementById('sheet'), target => this.sheet.kind === 'task' ? target.closest('#d-subtasks > .row[data-id]')?.dataset.id ?? null : null, id => this.nudgedSub(id));
   },
   /* A nudge (motion-and-rows-plan.md, part 7): on a project's list, on Today, or a run's steps, a touch that starts on a
      row and turns into a short, slow scroll moves the add box under that row (isNudge, in progress.js beside app/, where its numbers
      are; `nudged`, app/quickadd.js: on a run, the step goes on the card); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
      scrolling: once the phone scrolls, it ends the pointer events (pointercancel), but these carry on. A hold, a swipe
      or a second finger on the way, and it's not one; nor a touch that starts in a text field (inTextField). */
-  watchNudges(area){
+  watchNudges(area, pick = null, nudged = id => this.nudged(id)){
     let n = null;
     area.addEventListener('touchstart', e => {
       n = null;
-      const run = this.route.name === 'run';
-      // (a row, a card's row, or a card's heading, for its task)
-      const row = e.touches.length === 1 && (run || ['project', 'today'].includes(this.route.name)) && !inTextField(e.target)
+      const run = this.route.name === 'run', one = e.touches.length === 1 && !inTextField(e.target);
+      // (a row, a card's row, or a card's heading, for its task; with `pick`, what it finds for what was touched)
+      const row = one && !pick && (run || ['project', 'today'].includes(this.route.name))
         && (e.target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || e.target.closest('.card-head')?.closest('.day-card'));
-      if (!row) return;
+      const id = pick ? (one ? pick(e.target) : null) : row ? (run ? row.dataset.id : +row.dataset.id) : null;
+      if (id == null) return;
       const p = e.touches[0];
-      n = {id: run ? row.dataset.id : +row.dataset.id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
+      n = {id, x0: p.clientX, y0: p.clientY, t0: e.timeStamp, far: 0, moves: [{t: e.timeStamp, y: p.clientY}]};
     }, {passive: true});
     area.addEventListener('touchmove', e => {
       if (!n) return;
@@ -403,7 +406,7 @@ export default {
       const was = n, p = e.changedTouches[0]; n = null;
       if (!was || e.touches.length || !p) return;
       const dy = Math.max(was.far, Math.abs(p.clientY - was.y0));
-      if (isNudge({dx: p.clientX - was.x0, dy, ms: e.timeStamp - was.t0, speed: releaseSpeed(was.moves, e.timeStamp, p.clientY)})) this.nudged(was.id);
+      if (isNudge({dx: p.clientX - was.x0, dy, ms: e.timeStamp - was.t0, speed: releaseSpeed(was.moves, e.timeStamp, p.clientY)})) nudged(was.id);
     }, {passive: true});
     area.addEventListener('touchcancel', () => { n = null; }, {passive: true});
   },

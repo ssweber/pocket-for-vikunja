@@ -12,8 +12,12 @@ import {fileEntry, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
+import {ANCHORS} from './quickadd.js';
+import {haptic} from '../haptics.js';
 
 export let pendingSaves = 0;
+// The sheet's subtask box under a subtask (seatSub): the row given room under it, how much, where, and the frame that asks.
+const subSeat = {el: null, h: 0, top: '', raf: 0, missed: 0};
 // Notes written and not saved yet, kept on the phone: {text, base: what the notes said when the editing began}. An older
 // Pocket kept the text only.
 const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
@@ -491,5 +495,52 @@ export default {
       Object.assign(document.createElement('a'), {href: url, download: a.file?.name || 'attachment'}).click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { w?.close(); this.say('Couldn\'t open: ' + e.message, {place: ['sheet:files', 'step'], cls: 'failed'}); }
+  },
+  /* ---------- the sheet's subtask box, under a subtask (inline-add-box-plan, part 3) ---------- */
+  /* A nudge on a subtask's row in a task's sheet (watchNudges, app/progress.js) puts the sheet's own box under that
+     row, to add subtasks after it (sheet.subAt; subPlaces, actions.js), as a nudge does on a project's list. The box
+     is laid over room given to the row, never taken off the page, and its place at the foot stays, empty (#d-subhome):
+     a tap there, the box's ×, or its row scrolled out of sight while it isn't being typed in, and it's back. Where
+     the row is, is asked every frame meanwhile (seatSub), as for the box in a list (seatBox, quickadd.js). */
+  nudgedSub(id){
+    const s = this.subtasks.find(x => String(x.id) === String(id));
+    if (!s || s.done || !this.canEdit || !document.getElementById('d-subbox')) return;
+    if (String(this.sheet.subAt) !== String(s.id)) haptic('tick');
+    this.sheet.subAt = s.id; this.sheet.subAfter = null;
+    this.seatSub();
+  },
+  subHome(){ this.sheet.subAt = null; this.sheet.subAfter = null; this.seatSub(); },
+  seatSub(){
+    cancelAnimationFrame(subSeat.raf);
+    const room = el => {
+      const was = subSeat.el;
+      if (was === el) return;
+      if (was) {
+        const sc = document.getElementById('sheet-body');
+        const above = was.isConnected && !ANCHORS && !!sc && was.getBoundingClientRect().bottom + subSeat.h <= sc.getBoundingClientRect().top;
+        was.classList.remove('sub-boxed');
+        if (above) sc.scrollTop -= subSeat.h;
+      }
+      el?.classList.add('sub-boxed');
+      subSeat.el = el;
+    };
+    const step = () => {
+      const box = document.getElementById('d-subbox'), at = this.sheet.open ? this.sheet.subAt : null;
+      const el = at != null && box ? document.querySelector(`#d-subtasks > .row[data-id="${at}"]`) : null;
+      // Its row isn't drawn: one just added is a frame or two away; gone for a second, the box is back at the foot.
+      if (at != null && box && !el && ++subSeat.missed < 60) { subSeat.raf = requestAnimationFrame(step); return; }
+      subSeat.missed = 0;
+      if (at != null && box && !el) { this.sheet.subAt = null; this.sheet.subAfter = null; }
+      room(el);
+      box?.classList.toggle('inline', !!el);
+      if (!el) { if (box) box.style.top = ''; subSeat.top = ''; return; }
+      const h = box.offsetHeight, top = el.offsetTop + el.offsetHeight + 'px';
+      if (h !== subSeat.h) { subSeat.h = h; box.parentElement.style.setProperty('--sub-h', h + 'px'); }
+      if (top !== subSeat.top) { subSeat.top = top; box.style.top = top; }
+      const r = el.getBoundingClientRect(), sc = document.getElementById('sheet-body').getBoundingClientRect();
+      if ((r.bottom + h < sc.top || r.top > sc.bottom) && document.activeElement?.id !== 'd-subin') return this.subHome();
+      subSeat.raf = requestAnimationFrame(step);
+    };
+    step();
   },
 };

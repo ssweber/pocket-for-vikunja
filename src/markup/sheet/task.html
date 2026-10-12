@@ -142,8 +142,10 @@
           <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
             <div class="cap-field">
               <div class="cap-marks" aria-hidden="true" x-html="marksHtml('sub')"></div>
-              <textarea id="d-subin" x-model="sheet.sub.text" x-box.lines="bw" rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks" enterkeyhint="send"></textarea>
+              <textarea id="d-subin" x-model="sheet.sub.text" x-box.lines="bw" rows="1" :placeholder="sheet.subAt != null ? 'Subtask' : 'Add subtasks, or paste a list'" aria-label="Add subtasks" enterkeyhint="send"></textarea>
             </div>
+            <!-- Under a subtask (a nudge on its row: nudgedSub, sheet.js): × takes the box back to the foot -->
+            <template x-if="sheet.subAt != null"><button type="button" class="icon-btn plain box-home" id="d-sub-home" aria-label="Add after the last subtask instead" @mousedown.prevent @click="subHome()"><svg class="i"><use href="#i-close"/></svg></button></template>
             <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="!boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
           </form>
           <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text)">
@@ -151,6 +153,8 @@
             <!-- include markup/chips.html -->
           </div>
         </div></template>
+        <!-- The box's place at the foot, kept empty at its height while the box is under a subtask: a tap brings it back -->
+        <template x-if="sheet.subAt != null && checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><button type="button" class="sub-home" id="d-subhome" aria-label="Add after the last subtask instead" @click="subHome()"><span></span></button></template>
         <!-- Under a template: new steps a row each, with their times, added together -->
         <template x-if="checklistRole === 'template'"><div id="add-steps" x-data="{which: 'add'}">
           <!-- include markup/sheet/draft-steps.html -->

@@ -459,3 +459,18 @@ test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a 
   assert.deepEqual(app.chips('ins').map(c => [c.text, c.kind]), [['1 line ticked off already: left out', undefined], ['2 steps', undefined]]);
   assert.deepEqual(linesOf(app, 'ins'), [['x Wipe the counter', false], ['Lock up', false]]);
 });
+
+/* The sheet's own box under a subtask (nudgedSub, app/sheet.js; inline-add-box-plan, part 3): where its lines go. */
+test('the sheet\'s box under a subtask: the next go after it, each after the one before while they wait; at the foot, after the last', t => {
+  const { app, chairs } = underBox(t);
+  const straps = app.keep({ id: 7, title: 'Straps', project_id: 5 });
+  Object.defineProperty(app, 'subtasks', { value: [chairs, straps], configurable: true });
+  app.positions = { 8: 100, 7: 200 };
+  app.sheet = { subView: 3, subAt: null, subAfter: null };
+  assert.deepEqual(app.subPlaces(1), [200 + 65536], 'at the foot: after the last');
+  app.sheet.subAt = 8;
+  assert.deepEqual(app.subPlaces(2), [150, 175], 'under Chairs: after it, before Straps');
+  assert.deepEqual(app.subPlaces(1), [187.5], 'the next, the first two still on their way: after them');
+  app.sheet = { subView: null, subAt: 8, subAfter: null };
+  assert.equal(app.subPlaces(1), null, 'their order not read yet: no place to give');
+});

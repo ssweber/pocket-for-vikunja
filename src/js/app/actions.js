@@ -586,11 +586,23 @@ export default {
      template's steps are added with addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show
      on their rows, with no message unless there's a problem: one added by mistake is deleted from its row, which has
      an Undo. */
+  /* Where the next `n` subtasks from the sheet's box go in the project's List view: after the subtask the box is under
+     (sheet.subAt: nudgedSub, app/sheet.js), or the last added from there, still on its way (sheet.subAfter); with the
+     box at the foot, after the last. null where their order isn't known yet. Never a place another task has
+     (clearPlaces, quickadd.js). */
+  subPlaces(n){
+    const s = this.sheet;
+    if (!s.subView && this.subtasks.length) return null;
+    const sibs = this.subtasks.map(x => this.positions[x.id] || 0), under = s.subAt != null;
+    const places = this.clearPlaces(placeAfter(sibs, under ? s.subAfter ?? this.positions[s.subAt] ?? null : null, n), sibs);
+    if (under) s.subAfter = places.at(-1);
+    return places;
+  },
   async addSubtasks(w = 'sub'){
     const foot = w === 'under', today = foot && this.route.name === 'today', parent = this.boxParent(w), b = this.box(w), parsed = this.boxParsedLines(w);
     if (!parent || !parsed.some(p => p.title)) return;
     const n = parsed.filter(p => p.title).length;
-    const at = foot ? this.cursorPlaces(n) : this.sheet.subView || !this.subtasks.length ? placeAfter(this.subtasks.map(s => this.positions[s.id] || 0), null, n) : null;
+    const at = foot ? this.cursorPlaces(n) : this.subPlaces(n);
     const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
@@ -624,6 +636,9 @@ export default {
       } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;
         try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
+        // The box under a subtask: under the last one added from now, in its place on the list, so the next go after it.
+        const last = r.ids[items.findLastIndex(x => x.under === null)];
+        if (here() && this.sheet.subAt != null && last) { this.sheet.subAt = last; this.sheet.subAfter = null; this.seatSub(); }
       }
       if (r.status === 'offline') {
         sync.keep();
