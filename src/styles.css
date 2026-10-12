@@ -533,12 +533,12 @@ a.sec-act{text-decoration:none}
 .step-box{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)}
 .step-box:focus-within{border-color:var(--accent)}
 /* iOS Safari gives a textarea its own rounded corners and a shade along the top */
-.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;font-size:17px;line-height:1.3;padding:9px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
+.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;padding:8px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
 .draft-in::placeholder{color:var(--muted);opacity:1}
 /* Quick add's marks behind the words of a template's box, as in .addbox */
 .step-box .cap-field{position:relative}
 .step-box .draft-in{position:relative;white-space:pre-wrap;overflow-wrap:break-word}
-.step-box .cap-marks{position:absolute;inset:0;font-size:17px;line-height:1.3;padding:9px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
+.step-box .cap-marks{position:absolute;inset:0;padding:8px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
 .step-box .cap-marks mark{color:transparent;background:var(--accent-soft)}
 .box-chips{margin:6px 0 0 38px}
 .step-in .box-chips,.nt-name .box-chips{margin-left:0}
@@ -625,14 +625,25 @@ a.sec-act{text-decoration:none}
 /* ---------- capture bar ---------- */
 #capture{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);background:var(--bg)}
 #capture::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
-.addbox form{display:flex;gap:8px;align-items:flex-end;background:var(--surface);border:2px solid var(--accent);border-radius:16px;padding:4px 4px 4px 14px}
+/* One box in two sizes, each said once: the bar at the bottom, and the closer box in a list (seated under a row, or at
+   a list's foot). --part is its buttons' size and its field's height with one line, so the words and the buttons share
+   a centre; --box-pad the room around them, --box-edge its border, --box-r its corners, --box-in its words in from
+   its edge. */
+.addbox{--part:42px;--part-r:12px;--box-pad:4px;--box-edge:2px;--box-r:16px;--box-in:14px}
+.addbox.sub,#capture.inline{--part:38px;--part-r:10px;--box-pad:3px;--box-edge:1.5px;--box-r:12px;--box-in:12px}
+.addbox form{display:flex;gap:8px;align-items:flex-end;background:var(--surface);border:var(--box-edge) solid var(--accent);border-radius:var(--box-r);padding:var(--box-pad) var(--box-pad) var(--box-pad) var(--box-in)}
 .addbox .cap-field{flex:1;min-width:0;position:relative}
-.addbox textarea{position:relative;display:block;width:100%;border:0;outline:0;background:transparent;font-size:17px;line-height:1.35;padding:10px 0;resize:none;max-height:35vh;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;scrollbar-width:none}
+/* The words in a box are set as a row sets its title, 17px on a 24px line: an add box's, a template's (.draft-in) and a
+   comment's */
+.addbox textarea,.addbox .cap-marks,.draft-in,.step-box .cap-marks,.comment-form textarea{font-size:17px;line-height:24px}
+.addbox textarea,.addbox .cap-marks{padding:calc((var(--part) - 24px) / 2) 0}
+.addbox textarea{position:relative;display:block;width:100%;border:0;outline:0;background:transparent;resize:none;max-height:35vh;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;scrollbar-width:none}
 /* The words an add box read: the same text, laid out the same way behind the box, with only the marks showing */
-.addbox .cap-marks{position:absolute;inset:0;font-size:17px;line-height:1.35;padding:10px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
+.addbox .cap-marks{position:absolute;inset:0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
 .addbox .cap-marks mark{color:transparent;background:var(--accent-soft)}
 .addbox textarea::placeholder{color:var(--muted)}
-.addbox .go{width:42px;height:42px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.addbox :is(.go,.cam,.box-home,.box-level){width:var(--part);height:var(--part);flex:none}
+.addbox .go{border-radius:var(--part-r);border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
 .addbox .go[disabled]{opacity:.35}
 /* On a project's list, above the box: the task it adds subtasks to, with × (48px) to add a task instead */
 /* The add box in the list, on a project's list (seatBox, app/quickadd.js; inline-add-box-plan): the row it adds after has
@@ -654,11 +665,8 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .sub-home > span{display:block;height:100%;border:1.5px dashed var(--line);border-radius:12px}   /* a card's last row: the room stays inside the card, not under it */
 #capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;padding:2px 10px 10px 14px;background:transparent}
 #capture.inline::before{display:none}
-#capture.inline form{border-width:1.5px;border-radius:12px;padding:2px 2px 2px 12px}
-#capture.inline textarea,#capture.inline .cap-marks{padding:9px 0}
-#capture.inline .go{width:38px;height:38px;border-radius:10px}
-.box-home{width:38px;height:38px;flex:none;color:var(--muted)}
-.box-level{width:38px;height:38px;flex:none;margin-left:-10px;color:var(--accent)}
+.box-home{color:var(--muted)}
+.box-level{margin-left:-10px;color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
@@ -669,11 +677,9 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 /* The subtask box: the same box, in a task's sheet, quieter until it has the focus */
 .addbox.sub{padding:10px}
 .row ~ .addbox.sub{border-top:1px solid var(--line)}
-.addbox.sub form{border:1.5px solid var(--line);border-radius:12px;padding:2px 2px 2px 12px;background:var(--bg)}
+.addbox.sub form{border-color:var(--line);background:var(--bg)}
 .addbox.sub form:focus-within{border-color:var(--accent)}
-.addbox.sub textarea,.addbox.sub .cap-marks{padding:9px 0}
-.addbox.sub .go{width:38px;height:38px;border-radius:10px}
-#capture .cam{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;color:var(--muted);cursor:pointer}
+#capture .cam{border-radius:var(--part-r);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #capture .cam.on{color:var(--accent);background:var(--accent-soft)}
 #capture .cam:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
 .chip.photo{cursor:pointer}
@@ -824,7 +830,8 @@ body.sheet-open{overflow:hidden}
 .comment-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
 .comment-form{border-top:0} .comment ~ .comment-form,.row ~ .comment-form{border-top:1px solid var(--line)}
 .linkish{border:0;background:transparent;padding:0;color:var(--accent);font-size:17px;text-align:left}
-.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:17px;resize:none;min-height:42px;max-height:35vh;outline:0}
+/* as tall as its button with one line, its words on the button's centre */
+.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:calc((48px - 3px - 24px) / 2) 10px;background:var(--bg);resize:none;min-height:48px;max-height:35vh;outline:0}
 .comment-form .go{align-self:flex-end}
 .comment-form textarea:focus{border-color:var(--accent)}
 .att{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left}
