@@ -498,13 +498,16 @@ export default {
   },
   /* ---------- the sheet's subtask box, under a subtask (inline-add-box-plan, part 3) ---------- */
   /* A nudge on a subtask's row in a task's sheet (watchNudges, app/progress.js) puts the sheet's own box under that
-     row, to add subtasks after it (sheet.subAt; subPlaces, actions.js), as a nudge does on a project's list. The box
+     row, to add subtasks after it (sheet.subAt; subPlaces, actions.js), as a nudge does on a project's list; in a
+     template's sheet, the box its steps are written in, to add steps after that step (addTemplateSteps). The box
      is laid over room given to the row, never taken off the page, and its place at the foot stays, empty (#d-subhome):
      a tap there, the box's ×, or its row scrolled out of sight while it isn't being typed in, and it's back. Where
      the row is, is asked every frame meanwhile (seatSub), as for the box in a list (seatBox, quickadd.js). */
   nudgedSub(id){
     const s = this.subtasks.find(x => String(x.id) === String(id));
-    if (!s || s.done || !this.canEdit || !document.getElementById('d-subbox')) return;
+    // (A template's steps are done tasks; its box is the one its steps are written in, #add-steps.)
+    const tpl = this.checklistRole === 'template';
+    if (!s || (s.done && !tpl) || !this.canEdit || this.sheet.stepEdit || !document.getElementById(tpl ? 'add-steps' : 'd-subbox')) return;
     if (String(this.sheet.subAt) !== String(s.id)) haptic('tick');
     this.sheet.subAt = s.id; this.sheet.subAfter = null;
     this.seatSub();
@@ -525,7 +528,7 @@ export default {
       subSeat.el = el;
     };
     const step = () => {
-      const box = document.getElementById('d-subbox'), at = this.sheet.open ? this.sheet.subAt : null;
+      const box = document.getElementById('d-subbox') || document.getElementById('add-steps'), at = this.sheet.open ? this.sheet.subAt : null;
       const el = at != null && box ? document.querySelector(`#d-subtasks > .row[data-id="${at}"]`) : null;
       // Its row isn't drawn: one just added is a frame or two away; gone for a second, the box is back at the foot.
       if (at != null && box && !el && ++subSeat.missed < 60) { subSeat.raf = requestAnimationFrame(step); return; }
@@ -538,7 +541,7 @@ export default {
       if (h !== subSeat.h) { subSeat.h = h; box.parentElement.style.setProperty('--sub-h', h + 'px'); }
       if (top !== subSeat.top) { subSeat.top = top; box.style.top = top; }
       const r = el.getBoundingClientRect(), sc = document.getElementById('sheet-body').getBoundingClientRect();
-      if ((r.bottom + h < sc.top || r.top > sc.bottom) && document.activeElement?.id !== 'd-subin') return this.subHome();
+      if ((r.bottom + h < sc.top || r.top > sc.bottom) && !box.contains(document.activeElement)) return this.subHome();
       subSeat.raf = requestAnimationFrame(step);
     };
     step();

@@ -28,7 +28,7 @@
       <!-- In a checklist project: make the task a template, start a run from it, or go to the run it's part of -->
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
         <template x-if="checklistRole === 'template'"><div>
-          <p>A template: every checklist started from it gets its own copy of these steps. Tap a step to change or remove it, or to add notes and photos to it. Hold a step, then move it up or down, to move it.</p>
+          <p>A template: every checklist started from it gets its own copy of these steps. Tap a step to change it, or to add notes and photos to it. Hold a step, then move it up or down, to move it; swipe it left to delete it.</p>
           <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a checklist</button>
         </div></template>
         <template x-if="checklistRole === 'tplstep'"><div>
@@ -154,15 +154,11 @@
           </div>
         </div></template>
         <!-- The box's place at the foot, kept empty at its height while the box is under a subtask: a tap brings it back -->
-        <template x-if="sheet.subAt != null && checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><button type="button" class="sub-home" id="d-subhome" aria-label="Add after the last subtask instead" @click="subHome()"><span></span></button></template>
-        <!-- Under a template: new steps a row each, with their times, added together -->
-        <template x-if="checklistRole === 'template'"><div id="add-steps" x-data="{which: 'add'}">
+        <template x-if="sheet.subAt != null && checklistRole !== 'run' && canEdit"><button type="button" class="sub-home" id="d-subhome" :aria-label="checklistRole === 'template' ? 'Add after the last step instead' : 'Add after the last subtask instead'" @click="subHome()"><span></span></button></template>
+        <!-- Under a template: the one box its steps are written in, at the foot, or under the step nudged (seatSub, sheet.js):
+             Enter, or its button, adds the step at once. A pasted list is a row a line, added together. -->
+        <template x-if="checklistRole === 'template' && canEdit"><div id="add-steps" x-data="{which: 'add'}" x-init="ensureAddRow()">
           <!-- include markup/sheet/draft-steps.html -->
-          <button type="button" class="draft-add" id="add-add-step" @click="addDraftRow('add')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
-          <template x-if="sheet.addRows.some(r => r.text.trim())"><div style="padding:0 14px 14px">
-            <button class="btn block" id="add-steps-go" :disabled="sheet.subBusy || draft('add').problem" @click="addTemplateSteps()"
-                    x-text="sheet.subBusy ? 'Adding…' : 'Add ' + draft('add').added.length + (draft('add').added.length === 1 ? ' step' : ' steps')"></button>
-          </div></template>
         </div></template>
       </div></template>
 

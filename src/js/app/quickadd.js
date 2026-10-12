@@ -322,12 +322,14 @@ export default {
   refreshPeople(){ return !this.people || Date.now() - peopleAt > PEOPLE_AGE ? this.loadPeople(true).catch(() => {}) : null; },
 
   /* Enter in an add box: while @ or * is being typed and something's suggested, the suggestion on top; else send. In a
-     template's boxes: the name goes on to the first step, a step being written to the next row, a step changed is done. */
+     template's boxes: the name goes on to the first step, a step being written in New template to the next row, the
+     box under a template adds its step, a step changed is done. */
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
     if (w === 'tname') document.getElementById('new-step-0')?.focus();
     else if (w === 'edit') this.boxEl(w)?.blur();
+    else if (w.startsWith('add:')) this.addTemplateSteps();
     else if (w.includes(':')) { const [which, key] = w.split(':'); this.addDraftRow(which, this.draftRows(which).findIndex(r => r.key === key) + 1); }
     else this.boxSend(w);
   },

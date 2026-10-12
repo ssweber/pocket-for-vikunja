@@ -11,7 +11,7 @@
       <div class="h3">Steps</div>
       <div class="card" id="new-steps" x-data="{which: 'new'}">
           <!-- include markup/sheet/draft-steps.html -->
-          <button type="button" class="draft-add" id="new-add-step" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
+          <button type="button" class="draft-add" id="new-add-step" x-show="draftRows('new').at(-1)?.text.trim()" @click="addDraftRow('new')"><svg class="i"><use href="#i-plus"/></svg>Add a step</button>
       </div>
       <p class="note">“@priya” assigns a step. “in 20 min” sets it due 20 minutes after the previous step is done. To count from a different step, select it in the ⏱ chip.</p>
       <p class="note">To make it recurring, open the template after creating it and set a due date and Repeats.</p>

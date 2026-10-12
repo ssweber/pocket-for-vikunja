@@ -1,5 +1,6 @@
 // Checklists, their projects and templates, and writing steps.
-import {andList, cache, store, taskDrafts, TZ} from '../util.js';
+import {andList, cache, grow, store, taskDrafts, TZ} from '../util.js';
+import {haptic} from '../haptics.js';
 import {allPages, api, items, NetError, patchTask, why} from '../api.js';
 import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
@@ -329,7 +330,24 @@ export default {
   /* ---------- writing steps: under New template, and under a template ---------- */
   // The rows being written ('new': the New template sheet, 'add': under a template), and how they read.
   draftRows(which){ return which === 'new' ? this.sheet.newTpl?.rows || [] : this.sheet.addRows; },
-  draft(which){ return draftSteps(this.draftRows(which), which === 'new' ? [] : this.subtasks.map(s => ({key: 'task:' + s.id, text: s.title})), this.stepWordsOnly); },
+  // (Under a template with its box under a step, sheet.subAt, what's written goes after that step: read as such.)
+  draft(which){
+    const at = which === 'new' || this.sheet.subAt == null ? -1 : this.subtasks.findIndex(s => s.id === this.sheet.subAt);
+    const before = which === 'new' ? [] : (at < 0 ? this.subtasks : this.subtasks.slice(0, at + 1)).map(s => ({key: 'task:' + s.id, text: s.title}));
+    return draftSteps(this.draftRows(which), before, this.stepWordsOnly);
+  },
+  // In New template, a row written and not being typed in is shown as a row, its words, not a box (draft-steps.html).
+  draftIsRow(st, which){ return which === 'new' && !st.focus && !!st.text.trim(); },
+  // Such a row tapped: its box again, with the focus, the keyboard opened during the tap as for a new row (keepFocus).
+  editDraftRow(which, key){
+    const rows = this.draftRows(which), r = rows.find(x => x.key === key);
+    if (!r) return;
+    this.keepFocus();
+    r.focus = true;
+    this.$nextTick(() => { const el = document.getElementById(`${which}-step-${rows.indexOf(r)}`); if (el) grow(el); this.passFocus(el, t => { r.text += t; }, true); });
+  },
+  // Under a template, the one box at the foot: there from when its sheet opens, empty.
+  ensureAddRow(){ if (!this.sheet.addRows.length) this.sheet.addRows.push({key: randomId(), text: '', keep: false, from: null}); },
   // A step's words without what quick add reads in them (@people, *labels, !priority): what it's named and picked by.
   get stepWordsOnly(){ return t => this.stepParsed(t).title || t; },
   // The rows being written that will be sent, each with the chips tapped off in it.
@@ -338,7 +356,10 @@ export default {
     // A phone only opens its keyboard for a field focused during the tap, and the new row is there only after it: an
     // unseen field takes the focus now, so the keyboard opens, and passes it on.
     this.keepFocus();
-    const rows = this.draftRows(which), k = at ?? rows.length, key = randomId();
+    const rows = this.draftRows(which);
+    // Added at the foot (Add a step): an empty row left further up, by a nudge, goes.
+    if (at === undefined) for (let i = rows.length - 1; i >= 0; i--) if (!rows[i].text.trim()) rows.splice(i, 1);
+    const k = at ?? rows.length, key = randomId();
     rows.splice(k, 0, {key, text: '', keep: false, from: null});
     this.$nextTick(() => this.passFocus(document.getElementById(`${which}-step-${k}`), t => { const r = rows.find(x => x.key === key); if (r) r.text = t + r.text; }));
   },
@@ -353,13 +374,23 @@ export default {
     el.focus();
     if (typed) { const at = atEnd ? el.value.length : typed.length; el.setSelectionRange(at, at); }
   },
-  /* A row's ↑, ↓ and × leave the focus where it was (@mousedown.prevent), so the keyboard stays up. A row moved takes
-     the focus off its box all the same: it's given back once the row has moved, as moveStep does. */
-  moveDraftRow(which, k, dir){
-    const rows = this.draftRows(which), j = k + dir, box = document.activeElement;
-    if (j < 0 || j >= rows.length) return;
-    [rows[k], rows[j]] = [rows[j], rows[k]];
+  /* A row moved to the place `to` among the rows: held and moved up or down (draftGesture, app/progress.js), or by its
+     ⋯ or Alt+↑ ↓ while it's typed in. Those leave the focus where it was (@mousedown.prevent), so the keyboard stays
+     up; a row moved takes the focus off its box all the same: it's given back once the row has moved, as moveStep does. */
+  placeDraftRow(which, k, to){
+    const rows = this.draftRows(which), box = document.activeElement;
+    if (to < 0 || to >= rows.length || to === k || !rows[k]) return;
+    rows.splice(to, 0, rows.splice(k, 1)[0]);
     if (box?.classList.contains('draft-in')) setTimeout(() => box.isConnected && box.focus({preventScroll: true}));
+  },
+  /* In New template, a written row nudged (watchNudges, app/progress.js): the empty row, the one to write the next step
+     in, is under it, as the add box is under a row nudged in a list. It doesn't take the focus. */
+  nudgedDraft(key){
+    const rows = this.draftRows('new'), was = rows.findIndex(r => !r.text.trim());
+    const row = was >= 0 ? rows.splice(was, 1)[0] : {key: randomId(), text: '', keep: false, from: null};
+    const at = rows.findIndex(r => r.key === key) + 1;
+    rows.splice(at || rows.length, 0, row);
+    if (at !== was) haptic('tick');
   },
   // The row being typed in, removed, takes its box with it: the unseen field holds the focus meanwhile, as when a row is
   // added, and the box that's in its place then (the last, if it was the last) has it.
@@ -426,10 +457,16 @@ export default {
     // Each row keeps how far it got, so Add after a cut-off finds a step whose reply was lost instead of adding it again.
     const rows = this.sheet.addRows.filter(x => x.text.trim()), jobs = jobsFor(rows.map(x => x.job), d.added);
     rows.forEach((x, k) => { x.job = jobs[k]; });
+    const under = this.sheet.subAt, typing = document.activeElement?.classList.contains('draft-in');
     try {
       for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
       Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
       for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
+      // The box under a step (sheet.subAt): they go after it, in the template's order line, in the order Vikunja has now.
+      if (under != null && r.ids.length) await patiently(() => this.saveTask(t.id, null, now => {
+        const ids = stepsOf(now).map(s => s.id).filter(id => !r.ids.includes(id)), k = ids.indexOf(under);
+        return k < 0 ? null : {description: withOrder(now.description, [...ids.slice(0, k + 1), ...r.ids, ...ids.slice(k + 1)])};
+      })).catch(e => r.problems.push('not put in their place: ' + e.message));
     } catch (e) { r.error = e; }
     /* A step made but not put under the template, Vikunja having turned that down: deleted, so it isn't left as a task of
        its own (on someone's Today, if it has their @name). Add makes it again. Without a connection it stays, for Add to
@@ -444,7 +481,12 @@ export default {
         this.sheet.addRows = rows.slice(r.ids.length).map(x => made.has(x.from) ? {...x, from: made.get(x.from)} : x);
         const tt = this.sheet.task;
         tt.related_tasks = {...tt.related_tasks, subtask: [...this.subtasks, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]};
-      } else this.sheet.addRows = [];
+      } else {
+        // Added: the box is empty again, with the focus if it had it, and, under a step, under the last one added.
+        this.sheet.addRows = [];
+        if (under != null && this.sheet.subAt === under && r.ids.length) this.sheet.subAt = r.ids.at(-1);
+        if (typing) this.addDraftRow('add'); else this.ensureAddRow();
+      }
       this.sheet.dirty = true;
       try { const full = await this.readTask(t.id); if (full) { cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } } catch {}
     }

@@ -71,13 +71,13 @@ test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks
   const app = component(quickadd), calls = [], focused = [];
   Object.assign(app, { user: { settings: { frontend_settings: { quick_add_magic_mode: 'disabled' } } }, cap: { text: '' },   // no @ or * to suggest for
     submitCapture: () => calls.push('task'), insertStep: () => calls.push('steps'), addSubtasks: w => calls.push('subtasks ' + w),
-    addDraftRow: (which, at) => calls.push(`row ${which} ${at}`), draftRows: () => [{ key: 'a' }, { key: 'b' }], sheet: { stepEdit: { id: 3 } } });
+    addDraftRow: (which, at) => calls.push(`row ${which} ${at}`), addTemplateSteps: () => calls.push('add steps'), draftRows: () => [{ key: 'a' }, { key: 'b' }], sheet: { stepEdit: { id: 3 } } });
   document.getElementById = id => ({ focus: () => focused.push(id), blur: () => focused.push('blur ' + id) });
   try {
     for (const w of ['cap', 'ins', 'under', 'sub']) app.boxSend(w);
     assert.deepEqual(calls.splice(0), ['task', 'steps', 'subtasks under', 'subtasks sub'], 'its button');
     for (const w of ['cap', 'ins', 'under', 'sub', 'tname', 'edit', 'new:b', 'add:a']) app.boxEnter(w);
-    assert.deepEqual(calls, ['task', 'steps', 'subtasks under', 'subtasks sub', 'row new 2', 'row add 1'], 'Enter: the same, and a step being written opens the next row');
+    assert.deepEqual(calls, ['task', 'steps', 'subtasks under', 'subtasks sub', 'row new 2', 'add steps'], 'Enter: the same; a step being written in New template opens the next row, and the box under a template adds its step');
     assert.deepEqual(focused, ['new-step-0', 'blur step-edit-3'], 'a template\'s name goes on to its first step; a step being changed is left, which saves it');
   } finally { delete document.getElementById; }
 });
