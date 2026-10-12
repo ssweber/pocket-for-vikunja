@@ -67,15 +67,18 @@ async function step(name, fn){
   const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
   try { await fn(); console.log('PASS', name + secs()); }
   catch (e) {
-    failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/checklists-fail-${name}.png` }).catch(() => {});
+    failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n').slice(0, process.env.VERBOSE ? 8 : 1).join(' · ')); await page.screenshot({ path: `${OUT}/checklists-fail-${name}.png` }).catch(() => {});
     await context.setOffline(false); await page.unrouteAll();                // so one failure doesn't take the rest down with it
   }
 }
 const signIn = (p, token) => signInAt(p, APP, token);
 // A card on Today (a run with steps still open), by its name.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
-// A run's name on its card on Today: without the day it was started ("Line 4 · run 1 · Oct 8": "Line 4 · run 1").
-const dayless = t => t.split(' · ').slice(0, -1).join(' · ');
+// A run's name on its card on Today, and its row under Checklists: without the day it was started ("Line 4 · Oct 8 · #1":
+// "Line 4 · #1"; dayless, checklists.js).
+const dayless = t => t.split(' · ').filter((_, i) => i !== 1).join(' · ');
+// How a run is titled as it's started (runTitle, sync.js): the template, the day, and its name or its number.
+const RUN_TITLE = (template, name = '#\\d+') => new RegExp(`^${template} · \\w{3} \\d{1,2} · ${name}$`);
 const toast = text => toastOn(page, text), toastGone = () => toastGoneOn(page);
 // A message in its place (lines.js): "checklists", "step", "sheet:subtasks"…
 const said = (where, text) => placeSays(page, where, text);
@@ -90,15 +93,19 @@ const WRITTEN = ['Check the guards at 3pm', 'First article check 2 hours later',
 const STEPS = ['Check the guards at 3pm {#check-the-guards}', 'Warm up the press T#30m', 'First article check T#2h:check-the-guards'];
 const GUARDS = '“Check the guards at 3pm”';
 const tplRow = `.cl-tpl:has(.title:text-is("${TEMPLATE}"))`;
-// A template's step shows its ↑ ↓ × once it's tapped: the button on the nth step, which is tapped first if it isn't open.
-// A step's button, once it's tapped open: its × (Remove step), or Move up and Move down, in its ⋯.
-const stepButton = async (n, label) => {
+// A template's step tapped opens quick add's box in its words' place (sheet/step-edit.html), where Alt+↑ and ↓ move it a
+// place, as holding it does. It has no × and no ⋯ (inline-add-box-plan, part 5): a step is swiped left to remove it.
+// The nth step's box, opened if it isn't.
+const stepBox = async n => {
   const row = `#d-subtasks .row:nth-of-type(${n})`;
-  if (!await page.$(`${row} .step-edit`)) await page.click(`${row} > button.body`);
-  if (!/^Move/.test(label)) return `${row} [aria-label^="${label}"]`;
-  if (!await page.$(`${row} .step-menu`)) await page.click(`${row} [aria-label^="More for step"]`);
-  return `${row} .step-menu button:has-text("${label}")`;
+  if (!await page.$(`${row} .step-in`)) await page.click(`${row} > button.body`);
+  await page.waitForSelector(`${row} .step-in textarea`);
+  return `${row} .step-in textarea`;
 };
+// Swiped left all the way: removed, the question it asks answered yes (the dialog above).
+const removeStep = n => swipeRow(page, `#d-subtasks .row:nth-of-type(${n})`, 'delete');
+// A move saved, or refused: the sheet is no longer busy with its steps.
+const stepsSettled = () => page.waitForFunction(() => !Alpine.$data(document.body).sheet.checklistBusy);
 // Hold a step's row, move it up or down past the first few pixels (so it's a move), on to the middle of step `to`'s
 // row, and let go there.
 async function dragStep(n, to){
@@ -111,8 +118,8 @@ async function dragStep(n, to){
   await page.mouse.move(x, y, { steps: 10 });
   await page.mouse.up();
 }
-// Tapped, and the step closed again after, as tapping elsewhere would.
-const tapStep = async (n, label) => { await page.click(await stepButton(n, label)); await page.press('#d-subtasks .step-box textarea', 'Escape'); };
+// Moved a place by the key in its box, and the step closed again after, as tapping elsewhere would.
+const tapStep = async (n, label) => { await page.press(await stepBox(n), label === 'Move up' ? 'Alt+ArrowUp' : 'Alt+ArrowDown'); await page.press('#d-subtasks .step-in textarea', 'Escape'); };
 let project, template, me, other, otherToken;
 const runs = [];                                 // run ids, in the order started
 
@@ -192,27 +199,34 @@ try {
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');   // the sheet's own focus, before typing
     await page.fill('#nt-name', TEMPLATE);
-    await page.press('#nt-name', 'Enter');
-    // A row each, Enter for the next; a time in words gets a chip.
-    const next = () => page.waitForFunction(() => document.activeElement?.classList.contains('draft-in') && !document.activeElement.value);
-    for (const [i, text] of WRITTEN.entries()) { await next(); await page.keyboard.type(text); if (i < WRITTEN.length - 1) await page.keyboard.press('Enter'); }
-    const row = i => page.locator('#new-steps > .draft-step').nth(i);
-    await row(1).locator('.draft-time:has-text("2h after")').waitFor();
-    // First article check counts from the guards; moved down, it still does.
-    await row(1).locator('select').selectOption({ label: 'Check the guards at 3pm' });
-    await row(1).locator('[aria-label^="Move down"]').click();
-    if (await row(2).locator('.draft-in').inputValue() !== WRITTEN[1]) throw new Error('not moved down');
-    if (await row(2).locator('select option:checked').textContent() !== 'Check the guards at 3pm') throw new Error('counts from ' + await row(2).locator('select option:checked').textContent());
-    await row(0).locator('.draft-meta:has-text("Named “check-the-guards”")').waitFor();
+    await page.press('#nt-name', 'Enter');                                   // on to its steps: the box at the foot of the list
+    // Its steps are written in that box, a row each on Enter, the box empty and focused for the next; a time in words
+    // gets a chip under the box, with the step it counts from to pick.
+    await page.waitForFunction(() => document.activeElement?.id === 'd-subin' && !document.activeElement.value);
+    const row = i => page.locator('#d-subtasks > .row').nth(i), chip = page.locator('#d-subbox .draft-time');
+    await page.keyboard.type(WRITTEN[0]); await page.keyboard.press('Enter');
+    await expect(row(0).locator('.title')).toHaveText('Check the guards at 3pm');
+    await page.keyboard.type(WRITTEN[1]);
+    await expect(chip).toContainText('2h after');
+    // First article check counts from the guards; moved down (Alt+↓ in its box, as holding it does), it still does.
+    await chip.locator('select').selectOption({ label: 'Check the guards at 3pm' });
+    await page.keyboard.press('Enter');
+    await expect(row(1).locator('.meta')).toHaveText(`Due 2h after ${GUARDS}`);
+    await page.keyboard.type(WRITTEN[2]); await page.keyboard.press('Enter');
+    await expect(page.locator('#d-subtasks > .row')).toHaveCount(3);
+    await tapStep(2, 'Move down');
+    await expect(row(2).locator('.title')).toHaveText('First article check');
+    await expect(row(2).locator('.meta')).toHaveText(`Due 2h after ${GUARDS}`);
+    await expect(row(0).locator('.meta')).toHaveText('Named “check-the-guards”');
     // The reply to its second step is lost: Make template again carries on with the same template, adding nothing twice.
     let posts = 0;
     const loseStep = async r => { if (r.request().method() !== 'POST' || ++posts !== 3) return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
     await page.route(`**/api/v2/projects/${project.id}/tasks`, loseStep);
     await page.click('#nt-create');
-    await said('sheet:top', 'Tap Make template again');
+    await said('sheet:top', 'Tap Create template again');
     await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
     await page.click('#nt-create');
-    await said('checklists', `Made ${TEMPLATE}`);
+    await said('checklists', `Created ${TEMPLATE}`);
     const named = async title => (await api('/tasks?q=' + encodeURIComponent(title))).items.filter(t => t.title === title && t.project_id === project.id).length;
     // Its title says it's a template wherever Vikunja shows it; Pocket shows its name (tplRow).
     for (const title of [`TEMPLATE: ${TEMPLATE}`, ...STEPS]) if (await named(title) !== 1) throw new Error(`${await named(title)} tasks “${title}”`);
@@ -240,7 +254,7 @@ try {
     await page.click(`${tplRow} .body`);
     await page.waitForSelector('#d-start');
     if (await page.inputValue('#d-title') !== TEMPLATE) throw new Error('its sheet is titled ' + await page.inputValue('#d-title'));
-    const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent + '|' + (e.querySelector('.meta')?.textContent || '')));
+    const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent.trim() + '|' + (e.querySelector('.meta')?.textContent || '').trim()));
     if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “check-the-guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
       throw new Error('sheet shows ' + JSON.stringify(shown));
     // Its steps are numbered plainly, as the start sheet has them: a square box is a step you tick, in a run. Its sheet
@@ -250,7 +264,7 @@ try {
     await expect(n).toHaveText('1');
     await expect(n).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('#d-comments')).toHaveCount(0);
-    await expect(page.locator('#d-template-label')).toHaveText('Its runs get its labels, all but “template”, which is what makes it a template.');
+    await expect(page.locator('#d-template-label')).toHaveText('Checklists started from it get its labels, all but “template”, which is what makes it a template.');
     for (const id of ['#d-desc', '#d-due', '#d-repeat', '#d-assignees']) await expect(page.locator(id)).toBeVisible();
   });
 
@@ -261,38 +275,37 @@ try {
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');   // the sheet's own focus, before typing
     await page.fill('#nt-name', 'Not made');
-    const row = i => page.locator('#new-steps > .draft-step').nth(i);
-    await row(0).locator('.draft-in').fill('Put the roast in');
-    await page.click('#new-add-step');
-    await row(1).locator('.draft-in').fill('Baste in 20 min');
-    await row(1).locator('select').selectOption({ label: 'Put the roast in' });
-    await row(0).locator('[aria-label^="Remove"]').click();
-    await row(0).locator('.draft-meta .bad:has-text("pick one")').waitFor();
-    if (await page.isEnabled('#nt-create')) throw new Error('can be made');
-    await row(0).locator('select').selectOption({ label: 'the start' });
+    await page.press('#nt-name', 'Enter');
+    const row = i => page.locator('#d-subtasks > .row').nth(i), box = '#d-subin', rows = page.locator('#d-subtasks > .row');
+    await page.fill(box, 'Put the roast in'); await page.press(box, 'Enter');
+    await page.fill(box, 'Baste in 20 min');
+    await page.locator('#d-subbox .draft-time select').selectOption({ label: 'Put the roast in' });
+    await page.press(box, 'Enter');
+    await expect(rows).toHaveCount(2);
+    await removeStep(1);                                                      // swiped left: a row never sent just goes
+    await expect(rows).toHaveCount(1);
+    // The step that counted from it counts from the step before again (inline-add-box-plan, part 5): here, the start.
+    await expect(row(0).locator('.meta')).toHaveText('Due 20m after the start');
     await page.waitForSelector('#nt-create:not([disabled])');
-    /* A step being written keeps the keyboard up when its ↑, ↓ or × is tapped, as a step being changed does
-       (rows-and-sheet-fixes-plan, part 5): the box being typed in keeps the focus, through its own row's move too; and
-       its own row removed, the box in its place has it. */
+    /* A step being changed keeps the keyboard up through its own row's move (rows-and-sheet-fixes-plan, part 5): its
+       box keeps the focus, with its words, as Alt+↑ ↓ move the row. */
     const typing = () => page.evaluate(() => document.activeElement?.classList.contains('draft-in') ? document.activeElement.value : document.activeElement?.tagName);
     const types = async (what, value) => { await page.waitForTimeout(200); if (await typing() !== value) throw new Error(`${what}: the focus is on ${await typing()}`); };
-    await page.click('#new-add-step');
-    await row(1).locator('.draft-in').fill('Rest it');
-    await page.click('#new-add-step');
-    await row(2).locator('.draft-in').fill('Carve it');
-    await row(0).locator('.draft-in').focus();
-    await row(1).locator('[aria-label^="Move down"]').click();
-    await types('another row moved down', 'Baste in 20 min');
-    await row(0).locator('[aria-label^="Move down"]').click();
-    if (await row(1).locator('.draft-in').inputValue() !== 'Baste in 20 min') throw new Error('not moved down');
-    await types('its own row moved down', 'Baste in 20 min');
-    await row(1).locator('[aria-label^="Move up"]').click();
-    await types('its own row moved up', 'Baste in 20 min');
-    await row(2).locator('[aria-label^="Remove"]').click();
-    await types('another row removed', 'Baste in 20 min');
-    await row(0).locator('[aria-label^="Remove"]').click();
-    await types('its own row removed', 'Carve it');
-    await expect(page.locator('#new-steps > .draft-step')).toHaveCount(1);
+    for (const text of ['Rest it', 'Carve it']) { await page.fill(box, text); await page.press(box, 'Enter'); }
+    await expect(rows).toHaveCount(3);                                        // Baste, Rest, Carve
+    await page.press(await stepBox(2), 'Alt+ArrowDown');
+    await expect(row(2).locator('.title')).toHaveText('Rest it');
+    await types('its own row moved down', 'Rest it');
+    await page.press('#d-subtasks .step-in textarea', 'Alt+ArrowUp');
+    await expect(row(1).locator('.title')).toHaveText('Rest it');
+    await types('its own row moved up', 'Rest it');
+    await page.press('#d-subtasks .step-in textarea', 'Escape');
+    await removeStep(3);
+    await expect(rows).toHaveCount(2);
+    // Every row taken out, and the name: nothing is kept for the next New template (openNewTemplate keeps what's written).
+    await removeStep(1); await removeStep(1);
+    await expect(rows).toHaveCount(0);
+    await page.fill('#nt-name', '');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click(`${tplRow} .body`);                                    // back to the template's sheet
@@ -311,20 +324,14 @@ try {
     if (JSON.stringify(stepOrder(t.description)) !== JSON.stringify([links[0], links[2], links[1]])) throw new Error('description: ' + t.description);
     if (JSON.stringify(t.related_tasks.subtask.map(s => s.id).sort((a, b) => a - b)) !== JSON.stringify(links)) throw new Error('the steps were linked again');
     if (/pocket:order/.test(await page.textContent('#d-desc'))) throw new Error('the notes show the order line');
-    // Tapped open, a step has no ↑ ↓ any more: its ⋯ has Move up and Move down.
+    // Tapped open, a step is its box, with no × and no ⋯: it's swiped left to remove it, and Alt+↑ ↓ move it.
     await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
-    await expect(page.locator('#d-subtasks .row:nth-of-type(1) [aria-label^="Remove step"]')).toBeVisible();
-    await expect(page.locator('#d-subtasks [aria-label^="Move up"], #d-subtasks [aria-label^="Move down"]')).toHaveCount(0);
-    /* Escape closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the step's ⋯ menu, then the step being
-       changed, each leaving the template's sheet open; and its name being changed is called off, as a task's title is,
-       not saved with the sheet closing. */
-    const open = page.locator('#sheet.show'), box = page.locator('#d-subtasks .step-box textarea'), menu = page.locator('#d-subtasks .step-menu');
-    await page.click('#d-subtasks .row:nth-of-type(1) [aria-label^="More for step"]');
-    await expect(menu).toBeVisible();
+    const open = page.locator('#sheet.show'), box = page.locator('#d-subtasks .step-in textarea');
     await expect(box).toBeFocused();
-    await page.keyboard.press('Escape');
-    await expect(menu).toHaveCount(0);
-    await expect(box).toBeFocused();
+    await expect(page.locator('#d-subtasks [aria-label^="Remove step"], #d-subtasks [aria-label^="More for step"], #d-subtasks [aria-label^="Move up"], #d-subtasks [aria-label^="Move down"]')).toHaveCount(0);
+    /* Escape closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the step being changed, leaving the
+       template's sheet open; and its name being changed is called off, as a task's title is, not saved with the sheet
+       closing. */
     await page.keyboard.press('Escape');
     await expect(box).toHaveCount(0);
     await page.focus('#d-title');
@@ -349,11 +356,11 @@ try {
     await page.unrouteAll(); await online(); await toastGone();
     if ((await subtasks(template.id)).map(s => s.title)[1] !== STEPS[2]) throw new Error('moved in Vikunja anyway');
     // Above the step it counts from: refused, before anything is sent.
-    await page.waitForSelector(await stepButton(2, 'Move up') + ':not([disabled])');
+    await stepsSettled();
     await tapStep(2, 'Move up');
     await said('sheet:subtasks', 'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step');
     if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('moved anyway');
-    await page.waitForSelector(await stepButton(2, 'Move down') + ':not([disabled])');
+    await stepsSettled();
     await tapStep(2, 'Move down');
     await until('the step never moved back', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
@@ -363,14 +370,14 @@ try {
     await toastGone().catch(() => {});
     await tapStep(2, 'Move down');
     await until('the move never reached Vikunja', async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2]);
-    await page.waitForSelector(await stepButton(3, 'Move up') + ':not([disabled])');   // done saving
+    await stepsSettled();   // done saving
     await page.unroute(`**/api/v2/tasks/${template.id}`, loseReply);
     if (await page.$('.place-line:has-text("Not moved")')) throw new Error('it says it wasn\'t moved');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
     await tapStep(3, 'Move up');
     await until('the step never moved back again', async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS));
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
-    await page.waitForSelector(await stepButton(2, 'Move up') + ':not([disabled])');
+    await stepsSettled();
     // A move, or notes, saved here change only their part of what Vikunja has when they're sent: notes and a move saved
     // elsewhere (on the web, another phone) since the sheet opened stay.
     const ids = (await subtasks(template.id)).map(s => s.id), was = (await api('/tasks/' + template.id)).description;
@@ -414,7 +421,7 @@ try {
   await step('start-a-run', async () => {
     first = await startRun();
     const run = await api('/tasks/' + first.id), steps = await Promise.all((await subtasks(first.id)).map(s => api('/tasks/' + s.id)));
-    if (!new RegExp(`^${TEMPLATE} · run \\d+ · `).test(run.title)) throw new Error('title: ' + run.title);
+    if (!RUN_TITLE(TEMPLATE).test(run.title)) throw new Error('title: ' + run.title);
     if (run.done || run.labels?.some(l => l.title === 'template')) throw new Error(`done ${run.done}, labels ${JSON.stringify(run.labels?.map(l => l.title))}`);
     if (JSON.stringify(run.assignees?.map(u => u.id)) !== JSON.stringify([me.id])) throw new Error('assignees ' + JSON.stringify(run.assignees?.map(u => u.username)));
     if (run.related_tasks?.copiedfrom?.[0]?.id !== template.id) throw new Error('not linked to its template');
@@ -590,9 +597,9 @@ try {
     await page.locator('#step-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#step-extra .comment:has-text("Looks good")');
     await expect(page.locator('#run-steps .row:nth-of-type(3) .note-mark')).toHaveAttribute('aria-label', 'A comment');   // its row says it has one
-    await expect(page.locator('#run .h3:has-text("Comments on this run")')).toBeVisible();
-    await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment for this run, and the next');
-    await page.getByRole('textbox', { name: 'Comment on this run' }).fill('Line 2 ran slow today');
+    await expect(page.locator('#run .h3:has-text("Comments on this checklist")')).toBeVisible();
+    await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment for this checklist, and the next');
+    await page.getByRole('textbox', { name: 'Comment on this checklist' }).fill('Line 2 ran slow today');
     await page.locator('#run-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#run-notes .comment:has-text("Line 2 ran slow today")');
     const step3 = await task((await runStep(first.id, 2)).id), run = await task(first.id);
@@ -802,7 +809,7 @@ try {
     await page.click('nav.tabs a[data-tab=today]');
     // A card: the run's name and who it's for, over its next step, with that step's countdown; its steps aren't rows of
     // their own.
-    const card = page.locator(cardOf(`${TEMPLATE} · run`));
+    const card = page.locator(cardOf(`${TEMPLATE} · #`));
     await expect(card.locator('.card-head .sr')).toContainText('For you', { timeout: 15000 });
     // Its heading reads as a task card's: its name, without the day it was started, and with no due date, nothing at
     // the right.
@@ -810,12 +817,12 @@ try {
     await expect(card.locator('.card-head .due')).toHaveCount(0);
     await expect(card.locator('.step-line .title > span:not(.sr)')).toHaveText('First article check');
     await expect(card.locator('.step-line .when .due')).toHaveText(/^in \d+[hm]( \d+m)?$/);
-    await expect(card.locator('.step-line > .check')).toHaveCSS('border-radius', '7px');   // a step's box: square
+    await expect(card.locator('.step-line > .check')).toHaveCSS('border-radius', '6px');   // a step's box: square (a card's row has the smaller tick)
     await expect(page.locator('.item > .row .title:has-text("First article check")')).toHaveCount(0);
   });
 
   await step('today-run-has-no-tick-and-a-step-tick-says-who', async () => {
-    const runCard = cardOf(`${TEMPLATE} · run`);
+    const runCard = cardOf(`${TEMPLATE} · #`);
     await page.waitForSelector(`${runCard} > .card-head`, { timeout: 15000 });
     // A parent (parent-tasks-plan, part 3): its ring, not a tick, here and on its project's list, where it's an open card
     // with its open steps.
@@ -847,7 +854,7 @@ try {
     await page.waitForSelector('#d-subtasks .row');
     // A run's sheet has its Comments (its screen's "Comments on this run"); a step is added on its screen.
     await expect(page.locator('#d-comments')).toBeVisible();
-    await expect(page.locator('#d-run-steps-note')).toHaveText("To add a step, use the box at the bottom of the run's screen: it's marked as added during the run.");
+    await expect(page.locator('#d-run-steps-note')).toHaveText("To add a step, use the box under the steps on the checklist's screen: it's marked as added to this checklist alone.");
     await page.click('#d-subtasks .row:nth-of-type(2) .body');
     await page.waitForSelector('#d-assignees');
     if (await page.$('#d-repeat')) throw new Error('Repeats on a run\'s step');
@@ -862,17 +869,18 @@ try {
     // A run's card has its ring, its count of steps done (skipped too) inside it, 2 of 3, its arc the worked-out figure,
     // 67%; its top row its one open step, so no More; its name opens the run's screen, not its sheet; Back comes back to
     // Today.
-    const runCard = cardOf(`${TEMPLATE} · run`), ring = page.locator(`${runCard} > .card-head > .ring`);
+    const runCard = cardOf(`${TEMPLATE} · #`), ring = page.locator(`${runCard} > .card-head > .ring`);
     await page.waitForSelector(runCard, { timeout: 15000 });
     await expect(ring.locator('.n')).toHaveText('2/3');
     await expect.poll(() => ring.evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--ring')) * 100))).toBe(67);
     await expect(page.locator(`${runCard} .card-more`)).toHaveCount(0);
     await expect(page.locator(`${runCard} .step-line .title > span:not(.sr)`)).toHaveText('First article check');
-    // Its header, then its top row, a plain row a level in, its tick under the header's title; no priority, so no bars.
+    // Its header, then its top row, a plain row a level in, its tick 10px before the header's title (a subtask's tick is
+    // smaller and less far in since the 2026-10-11 tightening round); no priority, so no bars.
     const stack = await page.$eval(runCard, el => ['.card-head', '.step-line'].map(s => { const r = el.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; }));
     if (!(stack[0][1] <= stack[1][0] + 0.5)) throw new Error('its top row is not under its header: ' + JSON.stringify(stack));
     const under = await page.$eval(runCard, el => el.querySelector('.step-line > .check').getBoundingClientRect().left - el.querySelector('.card-title').getBoundingClientRect().left);
-    if (Math.abs(under) > 0.5) throw new Error("its top row's tick is not under its header's title: " + under);
+    if (Math.abs(under + 10) > 0.5) throw new Error("its top row's tick is not 10px before its header's title: " + under);
     await expect(page.locator(`${runCard} .card-head .bars`)).toHaveCount(0);
     await page.click(`${runCard} > .card-head .card-open`);
     await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
@@ -909,12 +917,12 @@ try {
     try {
       await signIn(p, otherToken);
       await p.waitForSelector(cardOf(dayless(run.title)), { timeout: 15000 });
-      const mine = dayless((await api('/tasks/' + first.id)).title);
-      await p.waitForSelector(`${cardOf(mine)} .step-line .title:has-text("Check the guards at 3pm")`, { timeout: 15000 }).catch(() => { throw new Error("their claimed step's run isn't on their Today, opened on it"); });
+      const mine = (await api('/tasks/' + first.id)).title;
+      await p.waitForSelector(`${cardOf(dayless(mine))} .step-line .title:has-text("Check the guards at 3pm")`, { timeout: 15000 }).catch(() => { throw new Error("their claimed step's run isn't on their Today, opened on it"); });
       // Your run's last step is due, and isn't theirs: not a row of its own there.
       if (await p.$('.item > .row .title:has-text("First article check")')) throw new Error('their Today: ' + JSON.stringify(await rows()));
       await p.click('nav.tabs a[data-tab=checklists]');
-      await p.waitForSelector(`.cl-run .title:has-text("${mine}")`, { timeout: 15000 });
+      await p.waitForSelector(`.cl-run .title:has-text("${mine}")`, { timeout: 15000 });   // under Checklists, with its day
       await p.waitForSelector(`.cl-run .title:has-text("${run.title}")`, { timeout: 20000 }).catch(() => { throw new Error("their run isn't under Checklists"); });
     } catch (e) {
       await p.screenshot({ path: `${OUT}/checklists-fail-other.png` });
@@ -984,17 +992,18 @@ try {
   };
 
   await step('name-a-run-then-delete-it', async () => {
-    // The name typed at the start takes the place of "run 3"; ⋯ → Delete run removes it and its steps.
+    // The name typed at the start takes the place of "#3"; ⋯ → Delete removes it and its steps.
     await openStart();
-    if (!new RegExp(`Called “${TEMPLATE} · run \\d+ · `).test(await page.textContent('#start-title'))) throw new Error('shows ' + await page.textContent('#start-title'));
+    const called = async () => (await page.textContent('#start-title')).match(/Called “([^”]*)”/)?.[1] || await page.textContent('#start-title');
+    if (!RUN_TITLE(TEMPLATE).test(await called())) throw new Error('shows ' + await page.textContent('#start-title'));
     await page.fill('#start-name', 'Night shift');
-    if (!(await page.textContent('#start-title')).includes(`Called “${TEMPLATE} · Night shift · `)) throw new Error('shows ' + await page.textContent('#start-title'));
+    if (!RUN_TITLE(TEMPLATE, 'Night shift').test(await called())) throw new Error('shows ' + await page.textContent('#start-title'));
     await page.click('#start-go');
     await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
     const id = +(await page.evaluate(() => location.hash)).split('/').pop();
     await page.waitForSelector('#step-title', { timeout: 15000 });
     const run = await api('/tasks/' + id), steps = (run.related_tasks?.subtask || []).map(s => s.id);
-    if (!run.title.startsWith(`${TEMPLATE} · Night shift · `)) throw new Error('title: ' + run.title);
+    if (!RUN_TITLE(TEMPLATE, 'Night shift').test(run.title)) throw new Error('title: ' + run.title);
     if (steps.length !== 3) throw new Error('steps: ' + steps.length);
     // ⋯: the name between the template's and the day, and who it's for.
     await toastGone();
@@ -1002,7 +1011,7 @@ try {
     if (await page.inputValue('#r-name') !== 'Night shift') throw new Error('name: ' + await page.inputValue('#r-name'));
     await page.fill('#r-name', 'Day shift');
     await page.press('#r-name', 'Enter');
-    await until('never renamed', async () => (await api('/tasks/' + id)).title.startsWith(`${TEMPLATE} · Day shift · `));
+    await until('never renamed', async () => RUN_TITLE(TEMPLATE, 'Day shift').test((await api('/tasks/' + id)).title));
     if (other) {
       // For them as well, then for them only.
       const forIds = async () => JSON.stringify((await api('/tasks/' + id)).assignees?.map(u => u.id).sort((a, b) => a - b));
@@ -1025,9 +1034,9 @@ try {
     await page.waitForSelector('#step-title', { timeout: 15000 });
     await toastGone();
     await page.click('#btn-run-more');
-    await expect(page.locator('#r-delete + .note')).toHaveText(/^Deletes the run and its \d+ steps, with their comments and photos, for everyone\.$/);
+    await expect(page.locator('#r-delete + .note')).toHaveText(/^Deletes the checklist and its \d+ steps, with their comments and photos, for everyone\.$/);
     await page.click('#r-delete');
-    await toast('Run deleted');
+    await toast('Checklist deleted');
     await expect(page).toHaveURL(/#\/checklists$/, { timeout: 15000 });
     await synced(page);
     const gone = async tid => { const r = await fetch(SERVER + '/api/v2/tasks/' + tid, { headers: { Authorization: 'Bearer ' + TOKEN } }); return r.status === 404 || r.status === 403; };
@@ -1064,7 +1073,7 @@ try {
       if (open.n !== open.titles.length) throw new Error(`Open says ${open.n}, with ${open.titles.length} listed: ${open.titles.join(' | ')}`);
       await toastGone().catch(() => {});
       await ring.click();
-      await expect(page.locator('#complete h2')).toHaveText('Finish this run with 3 steps not done?');
+      await expect(page.locator('#complete h2')).toHaveText('Finish this checklist with 3 steps not done?');
       await expect(page.locator('#complete-note')).toHaveText(`“${dayless(title)}” is finished, and its 3 steps not done stay that way: ${want[0]}, ${want[1]} and ${want[2]}.`);
       await expect(page.locator('#complete-open-run')).toBeVisible();
       await page.click('#complete-yes');
@@ -1152,7 +1161,7 @@ try {
     await context.setOffline(true);
     await page.click('#start-go');
     await said('checklists', 'starts as soon as Pocket reaches Vikunja');
-    const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} · Never")`;
+    const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} ·"):has-text("· Never")`;   // "Starting Startup · Oct 12 · Never"
     await page.waitForSelector(`${waiting}:has-text("For you")`);
     await page.click(`${waiting} button[aria-label^="Don't start"]`);
     await page.waitForSelector(waiting, { state: 'detached' });
@@ -1178,7 +1187,7 @@ try {
     await said('checklists', 'starts as soon as Pocket reaches Vikunja');
     await until('the copy never reached Vikunja', async () => await copies() === before + 1);
     await context.setOffline(true);
-    const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} · Called off")`;
+    const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} ·"):has-text("· Called off")`;
     await page.click(`${waiting} button[aria-label^="Don't start"]`);
     await page.waitForSelector(waiting, { state: 'detached' });
     await page.unroute('**/api/v2/tasks/*/duplicate', lose);
@@ -1280,27 +1289,35 @@ try {
     // it, the next after that one, and Repeat adds a fresh copy of the card's step there. Neither changes the template.
     const { id } = await startRun(), tplSteps = (await subtasks(template.id)).length;
     const titles = async () => (await subtasks(id)).map(s => s.title).join(' | ');
-    const box = '#in-capture', what = page.locator('#cap-target .what'), go = '#f-capture .go';
+    // The box is at the foot of the steps (the screen has no bar at its bottom: inline-add-box-plan, part 4), and what's
+    // written there goes after the last step; nudged under a step, after that step. `what` is the step on the card,
+    // which Repeat copies.
+    const box = '#run-in', what = page.locator('#step-title'), go = '#run-box form .go';
     const add = async text => { await page.fill(box, text); await page.press(box, 'Enter'); };
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
-    // No › on the rows, their ticks at their left edge: the box is at the bottom, aimed at the card's step, and + is off
-    // while it's empty.
+    // No › on the rows, their ticks at their left edge: the box at the foot, and ↑ off while it's empty.
     const [rowBox, tickBox] = await Promise.all(['', ' > .check'].map(s => page.locator('#run-steps .row:nth-of-type(1)' + s).boundingBox()));
     if (tickBox.x - rowBox.x > 24) throw new Error(`the tick is ${tickBox.x - rowBox.x}px in from the row's edge`);
-    await expect(what).toHaveText('Add a step after “Warm up the press”');
-    await expect(page.locator(box)).toHaveAttribute('placeholder', 'Add a step, or paste a list');
-    await expect(page.locator(box)).toHaveAttribute('aria-label', 'New step after “Warm up the press”');
-    if (!await page.isDisabled(go)) throw new Error('+ works with nothing in the box');
-    // A done step's row puts it on the card, and the box aims there.
+    await expect(page.locator('#run-box')).not.toHaveClass(/\binline\b/);
+    await expect(page.locator(box)).toHaveAttribute('placeholder', 'Add steps, or paste a list');
+    await expect(page.locator(box)).toHaveAttribute('aria-label', 'Add steps');
+    if (!await page.isDisabled(go)) throw new Error('↑ works with nothing in the box');
+    // A done step's row tapped puts it on the card; the box stays at the foot. Nudged, the box is under its row, to add
+    // after it: its place at the foot stays, dashed.
     await page.click('#run-steps .row:nth-of-type(1) .body');
-    await expect(what).toHaveText('Add a step after “Check the guards at 3pm”');
+    await expect(what).toHaveText('Check the guards at 3pm');
+    await expect(page.locator('#run-box')).not.toHaveClass(/\binline\b/);
+    await touchDrag('#run-steps .row:nth-of-type(1)', 30);
+    await expect(page.locator('#run-box')).toHaveClass(/\binline\b/);
+    await expect(page.locator(box)).toHaveAttribute('placeholder', 'Step');
+    await expect(page.locator('#run-box-place')).toBeVisible();
     await add('Wipe the oil off the floor');
-    // In its place at once; the box empty, focused, and aimed after it, for the next.
+    // In its place at once, right after the step nudged; the box empty, focused, and under what was written, for the next.
     await page.waitForSelector('#run-steps .row:nth-of-type(2):has-text("Wipe the oil off the floor")');
-    await expect(what).toHaveText('Add a step after “Wipe the oil off the floor”');
     await expect(page.locator(box)).toHaveValue('');
     await expect(page.locator(box)).toBeFocused();
+    await expect(page.locator('#run-box')).toHaveClass(/\binline\b/);
     await expect(page.locator('#step-title')).toHaveText('Check the guards at 3pm');                // the card stays
     await until('not inserted before Warm up the press', async () => await titles() === 'Check the guards at 3pm | Wipe the oil off the floor | Warm up the press | First article check');
     const inserted = await api('/tasks/' + (await runStep(id, 1)).id);
@@ -1313,8 +1330,9 @@ try {
     await page.click('#run-steps .row:nth-of-type(1) .body');
     await page.getByRole('button', { name: 'Repeat “Check the guards at 3pm”' }).click();
     await page.waitForSelector('#run-steps .row:nth-of-type(2):has-text("Check the guards at 3pm")');
-    await expect(what).toHaveText('Add a step after “Check the guards at 3pm”');
-    await expect(placeLine(page, 'cap')).toContainText('Repeated “Check the guards at 3pm”');
+    await expect(what).toHaveText('Check the guards at 3pm');
+    const runLine = page.locator('#run-box .place-line');                  // said in the box (the bar at the bottom, hidden here, has a copy)
+    await expect(runLine).toContainText('Repeated “Check the guards at 3pm”');
     await until('not repeated after the first step', async () => await titles() === 'Check the guards at 3pm | Check the guards at 3pm | Wipe the oil off the floor | Warm up the press | First article check');
     const [orig, copy] = await Promise.all([0, 1].map(async i => task((await runStep(id, i)).id)));
     if (copy.done || copy.reactions?.['✅']?.length || copy.related_tasks?.copiedfrom?.[0]?.id === orig.id) throw new Error('the copy has the first one\'s history');
@@ -1324,13 +1342,13 @@ try {
     await toastGone().catch(() => {});
     await page.getByRole('button', { name: 'Repeat “Check the guards at 3pm”' }).click();
     await page.waitForSelector('#run-steps .row:nth-of-type(3):has-text("Check the guards at 3pm")');
-    await placeLine(page, 'cap').getByRole('button', { name: 'Undo' }).click();
+    await runLine.getByRole('button', { name: 'Undo' }).click();
     await page.waitForSelector('#run-steps .row:nth-of-type(3):has-text("Wipe the oil off the floor")', { timeout: 15000 });
     await until('the repeat undone is still there', async () => (await titles()).split('Check the guards at 3pm').length === 3);
-    await expect(what).toHaveText('Add a step after “Check the guards at 3pm”');
+    await expect(what).toHaveText('Check the guards at 3pm');
     // A step put on the card starts again from it.
     await page.click('#run-steps .row:nth-of-type(3) .body');
-    await expect(what).toHaveText('Add a step after “Wipe the oil off the floor”');
+    await expect(what).toHaveText('Wipe the oil off the floor');
     // Its order stays after a reload, each marked.
     await page.reload();
     await page.waitForSelector('#run-steps .row:nth-of-type(2) .meta .added span:text-is("Repeated")', { timeout: 15000 });
@@ -1360,7 +1378,7 @@ try {
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
     await page.route('**/api/v2/projects/*/tasks', lose);
     await page.click('#run-steps .row:nth-of-type(1) .body');
-    await expect(what).toHaveText('Add a step after “Check the guards at 3pm”');
+    await expect(what).toHaveText('Check the guards at 3pm');
     await add('Sweep up');
     await online();
     await until('never inserted after its reply was lost', async () => (await titles()).includes('Sweep up'));
@@ -1368,11 +1386,10 @@ try {
     if ((await titles()).split('Sweep up').length !== 2) throw new Error('inserted twice: ' + await titles());
     // Offline: shown in its place, after the one before it, waiting, and ticked meanwhile; both reach Vikunja once it's
     // back. (What's added goes where the box aims, not on the card: tapped, it is.)
-    await page.waitForSelector('#run-steps .row:nth-of-type(2):has-text("Sweep up")', { timeout: 15000 });
-    await expect(what).toHaveText('Add a step after “Sweep up”');
+    await page.waitForSelector('#run-steps .row:has-text("Sweep up")', { timeout: 15000 });   // after the last step: the box is at the foot
     await context.setOffline(true);
     await add('Offline step');
-    await page.waitForSelector('#run-steps .row:nth-of-type(3):has-text("Offline step")');
+    await page.waitForSelector('#run-steps .row:has-text("Offline step")');
     await page.click('#run-steps .row:has-text("Offline step") > .body');
     await page.waitForSelector('#step-added:text-is("Inserted · waiting to send")');
     await page.click('#step-done');
@@ -1392,13 +1409,12 @@ try {
     await context.setOffline(true);
     await add('Not after all');
     await page.waitForSelector('#run-steps .row:has-text("Not after all")');
-    await expect(what).toHaveText('Add a step after “Not after all”');
     await page.waitForSelector('#btn-refresh.waits', { timeout: 5000 });
     await page.click('#btn-refresh');
     await page.click('#outbox-rows .ob-row:has-text("Not after all") .ob-drop');
     await page.waitForSelector('#run-steps .row:has-text("Not after all")', { state: 'detached' });
     await page.click('#btn-sheet-close');
-    await expect(what).toHaveText(`Add a step after “${await page.textContent('#step-title')}”`);
+    await expect(page.locator('#run-box')).not.toHaveClass(/\binline\b/);  // the box is at the foot, as it was
     await context.setOffline(false);
     await online();
     await synced(page);                                                      // nothing left waiting: the step called off too
@@ -1407,28 +1423,28 @@ try {
     // Quick add, as in the subtask box: its chips and marks, no date (a step's time is its template's), and a pasted
     // list is a step a line, in order.
     await page.fill(box, 'Mop up !3 tomorrow');
-    await page.waitForSelector('#cap-chips .chip:has-text("Priority 3")');
-    await page.waitForSelector('#capture .cap-marks mark[data-kind="priority"]', { state: 'attached' });
-    if (await page.$('#cap-chips .chip[data-kind="due"]')) throw new Error('a date was read');
+    await page.waitForSelector('#run-box-chips .chip:has-text("Priority 3")');
+    await page.waitForSelector('#run-box .cap-marks mark[data-kind="priority"]', { state: 'attached' });
+    if (await page.$('#run-box-chips .chip[data-kind="due"]')) throw new Error('a date was read');
     await page.fill(box, 'Mop up !3 tomorrow\nRinse the mop');
-    await page.waitForSelector('#cap-chips .chip:has-text("2 steps")');
+    await page.waitForSelector('#run-box-chips .chip:has-text("2 steps")');
     await page.press(box, 'Enter');
     await until('the pasted steps were never inserted', async () => (await titles()).includes('Mop up tomorrow | Rinse the mop'));
     const mop = (await subtasks(id)).find(s => s.title === 'Mop up tomorrow');
     if ((await api('/tasks/' + mop.id)).priority !== 3) throw new Error('its priority was not read');
-    // A nudge on a step's row (a short, slow scroll that starts on it) puts it on the card, as a tap does, so the box
-    // aims there; a longer one is only a scroll.
-    const row = n => `#run-steps .row:nth-of-type(${n})`;
-    await page.locator(row(2)).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-    await touchDrag(row(2), 30);
-    await expect(page.locator('#step-title')).toHaveText('Sweep up');
-    await expect(page.locator(row(2))).toHaveClass(/current/);
-    await expect(what).toHaveText('Add a step after “Sweep up”');
-    await touchDrag(row(1), 150, 30);                                        // further than a row: a scroll
-    await expect(page.locator(row(2))).toHaveClass(/current/);
-    await touchDrag(row(1), 30);
-    await expect(page.locator(row(1))).toHaveClass(/current/);
-    await expect(what).toHaveText('Add a step after “Check the guards at 3pm”');
+    // A nudge on a step's row (a short, slow scroll that starts on it) puts it on the card, as a tap does, and the box
+    // under its row; a longer one is only a scroll.
+    const rowOf = t => `#run-steps .row:has-text("${t}") >> nth=0`, sweep = rowOf('Sweep up'), guards = rowOf('Check the guards at 3pm');   // (the guards step was repeated: its first row)
+    await page.locator(sweep).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await touchDrag(sweep, 30);
+    await expect(what).toHaveText('Sweep up');
+    await expect(page.locator(sweep)).toHaveClass(/current/);
+    await expect(page.locator('#run-box')).toHaveClass(/\binline\b/);
+    await touchDrag(guards, 150, 30);                                        // further than a row: a scroll
+    await expect(page.locator(sweep)).toHaveClass(/current/);
+    await touchDrag(guards, 30);
+    await expect(page.locator(guards)).toHaveClass(/current/);
+    await expect(what).toHaveText('Check the guards at 3pm');
   });
 
   await step('add-a-step-after-the-last', async () => {
@@ -1437,9 +1453,9 @@ try {
     for (const t of ['Warm up the press', 'First article check']) { await page.click('#step-done'); await page.waitForSelector(`#step-title:text-is("${t}")`); }
     await page.click('#step-done');
     await page.waitForSelector('#finish-card');
-    await expect(page.locator('#cap-target .what')).toHaveText('Add a step after “First article check”');
-    await page.fill('#in-capture', 'Lock the back door');
-    await page.press('#in-capture', 'Enter');
+    await expect(page.locator('#run-in')).toHaveAttribute('placeholder', 'Add steps, or paste a list');
+    await page.fill('#run-in', 'Lock the back door');
+    await page.press('#run-in', 'Enter');
     await page.waitForSelector('#step-title:text-is("Lock the back door")', { timeout: 15000 });
     await until('not added at the end', async () => (await subtasks(id)).map(s => s.title).pop() === 'Lock the back door');
   });
@@ -1452,9 +1468,9 @@ try {
     await page.click('#step-done');
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
     await page.click('#run-steps .row:nth-of-type(3) .body');
-    await expect(page.locator('#cap-target .what')).toHaveText('Add a step after “First article check”');
-    await page.fill('#in-capture', 'Sweep the floor');
-    await page.press('#in-capture', 'Enter');
+    await expect(page.locator('#step-title')).toHaveText('First article check');
+    await page.fill('#run-in', 'Sweep the floor');
+    await page.press('#run-in', 'Enter');
     await until('the step was never added', async () => (await subtasks(id)).length === 4);
     await until('the times were never set', async () => (await Promise.all((await subtasks(id)).slice(1, 3).map(s => task(s.id)))).every(t => !t.due_date.startsWith('0001')));
     await synced(page);
@@ -1513,12 +1529,12 @@ try {
     await expect.poll(pie).toBe('0');
     // With the bottom box focused, a step's row still swipes, and the box stays aimed at the card's step.
     await toastGone().catch(() => {});
-    await page.focus('#in-capture');
+    await page.focus('#run-in');
     await slide(50, 0);
     await expect(page.locator('#said')).toHaveText('Progress of Warm up the press set to 50%');
     await until('its progress never reached Vikunja with the box focused', async () => Math.round((await api('/tasks/' + step2)).percent_done * 100) === 50);
-    await expect(page.locator('#cap-target .what')).toHaveText('Add a step after “Check the guards at 3pm”');
-    await page.locator('#in-capture').blur();
+    await expect(page.locator('#step-title')).toHaveText('Check the guards at 3pm');
+    await page.locator('#run-in').blur();
     await toastGone().catch(() => {});
     // Offline, Waiting to send says what it is.
     await context.setOffline(true);
@@ -1555,11 +1571,9 @@ try {
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');   // the sheet's own focus, before typing
     await page.fill('#nt-name', `Words ${stamp}`);
-    await page.fill('#new-step-0', 'Start the hydraulics');
-    await page.press('#new-step-0', 'Enter');
-    await page.fill('#new-step-1', 'Wipe the bed');
-    await page.press('#new-step-1', 'Enter');
-    await page.fill('#new-step-2', 'Check the oil 30 minutes after Start the hydraulics');
+    await page.press('#nt-name', 'Enter');
+    for (const text of ['Start the hydraulics', 'Wipe the bed', 'Check the oil 30 minutes after Start the hydraulics']) { await page.fill('#d-subin', text); await page.press('#d-subin', 'Enter'); }
+    await expect(page.locator('#d-subtasks > .row')).toHaveCount(3);
     await page.click('#nt-create');
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 });
     let tpl;
@@ -1611,7 +1625,7 @@ try {
     if ((await api('/tasks/' + a.id)).title !== 'Stir T#2m') throw new Error('changed anyway');
     // A step's notes and photos, in its own sheet: its name without its time, no tick or due date, and back again.
     await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
-    if (await page.$$eval('#d-subtasks .step-edit', els => els.length) !== 1) throw new Error('buttons on more than the step tapped');
+    if (await page.$$eval('#d-subtasks .step-in', els => els.length) !== 1) throw new Error('a box on more than the step tapped');
     await page.click(`#step-notes-${a.id}`);
     await page.waitForSelector('#d-step-title:text-is("Stir")');
     await page.waitForSelector('#d-step-when:has-text("Step 1 of 2")');
@@ -1622,8 +1636,8 @@ try {
     await page.click('#d-desc-save');
     await until('the notes never reached the step', async () => /long spoon/.test((await api('/tasks/' + a.id)).description || ''));
     await page.click('#d-open-template');
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(1) .step-note:text-is("Use the long spoon.")', { timeout: 10000 });
-    await page.click(await stepButton(2, 'Remove step'));
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(1) .step-note:has-text("Use the long spoon.")', { timeout: 10000 });
+    await removeStep(2);
     await until('the step was never removed', async () => (await subtasks(tpl.id)).length === 1);
     await page.click('#d-more');
     await page.waitForSelector('#d-delete:text-is("Delete template and its 1 step")', { timeout: 10000 });
@@ -1660,12 +1674,12 @@ try {
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');
     // Empty, each box says what it reads: in the name, @user is who its runs are for.
-    await page.waitForSelector('.nt-name .box-chips .hint:has-text("who its runs are for")');
-    /* One add box (rows-and-sheet-fixes-plan, part 5): a template's boxes hold one line each, so Shift+Enter is Enter
-       there (the name goes on to the first step, a step to the next row, a step being changed is saved), and each is
-       as tall as its words, with nothing to scroll inside it. */
+    await page.waitForSelector('.nt-name .box-chips .hint:has-text("who its checklists are for")');
+    /* One add box (rows-and-sheet-fixes-plan, part 5): the name holds one line, so Shift+Enter is Enter there (it goes
+       on to the steps' box), and a step being changed is saved by it; the steps' box takes a list, as every list's box
+       does, so Shift+Enter breaks the line there. Each is as tall as its words, with nothing to scroll inside it. */
     const size = sel => page.$eval(sel, ta => ({ tall: ta.clientHeight, inside: ta.scrollHeight - ta.clientHeight })), LONG = 'a great many words, '.repeat(9);
-    for (const sel of ['#nt-name', '#new-step-0']) {
+    for (const sel of ['#nt-name', '#d-subin']) {
       await page.fill(sel, '');
       const one = await size(sel);
       await page.fill(sel, LONG);
@@ -1676,7 +1690,7 @@ try {
     }
     await page.fill('#nt-name', 'One line');
     await page.press('#nt-name', 'Shift+Enter');
-    await page.waitForFunction(() => document.activeElement?.id === 'new-step-0');
+    await page.waitForFunction(() => document.activeElement?.id === 'd-subin');
     expect(await page.inputValue('#nt-name'), 'Shift+Enter in a template\'s name').toBe('One line');
     await page.fill('#nt-name', '');
     await page.focus('#nt-name');
@@ -1686,27 +1700,30 @@ try {
     await page.fill('#nt-name', '');
     await page.keyboard.type(other ? `${name} @${OTHER}` : `${name} !2`);
     await page.waitForSelector(`.nt-name .box-chips .chip:has-text("${other ? '@' + OTHER : 'Priority 2'}")`);
-    await page.focus('#new-step-0');
-    await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .hint:has-text("who does it")');
+    await page.focus('#d-subin');
+    await page.waitForSelector('#d-subbox-chips .hint:has-text("who does it")');
     // A step being written looks up its @people as every add box does: no such person, and a chip says so before
     // it's made, the name left unmarked.
     await page.keyboard.type(`Sweep up @nobody${stamp}`);
-    await expect(page.locator('#new-steps .draft-step:nth-of-type(1) .box-chips .chip.warn')).toHaveText(`No user @nobody${stamp}`);
-    await expect(page.locator('#new-steps .draft-step:nth-of-type(1) .cap-marks mark')).toHaveCount(0);
-    await page.fill('#new-step-0', 'Unlock the door !3');
-    await page.waitForSelector('#new-steps .draft-step:nth-of-type(1) .box-chips .chip:has-text("Priority 3")');
-    await page.press('#new-step-0', 'Enter');
-    await page.waitForFunction(() => document.activeElement?.id === 'new-step-1');
+    await expect(page.locator('#d-subbox-chips .chip.warn')).toHaveText(`No user @nobody${stamp}`);
+    await expect(page.locator('#d-subbox .cap-marks mark')).toHaveCount(0);
+    await page.fill('#d-subin', 'Unlock the door !3');
+    await page.waitForSelector('#d-subbox-chips .chip:has-text("Priority 3")');
+    await page.press('#d-subin', 'Enter');
+    await expect(page.locator('#d-subtasks > .row:nth-of-type(1) .title')).toHaveText('Unlock the door');   // its row reads as a saved step's
+    await page.waitForFunction(() => document.activeElement?.id === 'd-subin' && !document.activeElement.value);
     // Typed straight away, as a fast typist does: no letter is lost while the new row appears.
     await page.keyboard.type(`Turn the sign 5 min later${other ? ' @' + OTHER : ''}`);
-    await page.waitForSelector('#new-steps .draft-step:nth-of-type(2) .cap-marks mark[data-kind="due"]:text-is("5 min later")', { state: 'attached' });
-    const second = await page.inputValue('#new-step-1');
-    await page.press('#new-step-1', 'Shift+Enter');                        // as Enter: the next row, and no line break
-    await page.waitForFunction(() => document.activeElement?.id === 'new-step-2');
-    expect(await page.inputValue('#new-step-1'), 'Shift+Enter in a step being written').toBe(second);
+    await page.waitForSelector('#d-subbox .cap-marks mark[data-kind="due"]:text-is("5 min later")', { state: 'attached' });
+    const second = await page.inputValue('#d-subin');
+    await page.press('#d-subin', 'Shift+Enter');                           // a line break, as in any list's box
+    expect(await page.inputValue('#d-subin'), 'Shift+Enter in a step being written').toBe(second + '\n');
+    await page.keyboard.press('Backspace');
+    await page.press('#d-subin', 'Enter');
+    await expect(page.locator('#d-subtasks > .row')).toHaveCount(2);
     await page.keyboard.type('Count the till !4');                       // its priority tapped off: "!4" stays in its name
-    await page.click('#new-steps .draft-step:nth-of-type(3) .box-chips .chip:has-text("Priority 4")');
-    await page.click('#nt-create');
+    await page.click('#d-subbox-chips .chip:has-text("Priority 4")');
+    await page.click('#nt-create');                                       // what's still in the box is a step too
     await page.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 });
     let tpl;
     await until('the template never appeared', async () => (tpl = ((await api(`/projects/${project.id}/tasks?filter=${encodeURIComponent('done = true')}`)).items || []).find(t => t.title === `TEMPLATE: ${name}`)));
@@ -1760,56 +1777,58 @@ try {
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.click(`${tplRow} .body`, { timeout: 15000 });
     await page.waitForSelector('#d-start');
-    const row = i => page.locator('#add-steps > .draft-step').nth(i);
-    // Counting from a name no step has: not added.
-    await page.click('#add-add-step');
-    await page.waitForFunction(() => document.activeElement?.id === 'add-step-0', null, { timeout: 5000 });   // ready to type in
-    await row(0).locator('.draft-in').fill('Pull a sample T#5m:nope');
-    await row(0).locator('.draft-meta .bad:has-text("no step is named “nope”")').waitFor();
-    if (await page.isEnabled('#add-steps-go')) throw new Error('can be added');
+    // Steps are added under a template from the box at the foot of its list, sent on Enter (inline-add-box-plan, part
+    // 5). Counting from a name no step has: not added, and ↑ is off.
+    const box = '#d-subin', go = '#d-subbox form .go', chip = page.locator('#d-subbox .draft-time');
+    await page.fill(box, 'Pull a sample T#5m:nope');
+    await page.locator('#d-subbox .draft-meta .bad:has-text("no step is named “nope”")').waitFor();
+    if (await page.isEnabled(go)) throw new Error('can be added');
     // Its chip is still there, to pick a step it can count from.
-    await row(0).locator('select').selectOption({ label: 'Warm up the press' });
-    await page.waitForSelector('#add-steps-go:not([disabled])');
-    // A pasted list becomes a row a line; one counts from a step already there, which gets a name.
-    await row(0).locator('.draft-in').fill('');
-    await row(0).locator('.draft-in').evaluate(el => { const dt = new DataTransfer(); dt.setData('text/plain', 'Pull a sample in 5 min\nLog the weights'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
-    await row(1).locator('.draft-in').waitFor();
-    await row(0).locator('select').selectOption({ label: 'Warm up the press' });
-    // The reply to the first is lost: Add again finds it, rather than leaving a stray copy as a to-do.
+    await chip.locator('select').selectOption({ label: 'Warm up the press' });
+    await page.waitForSelector(go + ':not([disabled])');
+    // A time in words after a step already there, which gets a name. The reply to it is lost: what wasn't added is back
+    // in the box, and Enter again finds it, rather than leaving a stray copy as a to-do.
+    await page.fill(box, 'Pull a sample 5 min after Warm up the press');
+    await expect(chip).toContainText('5m after');
     let posts = 0;
     const loseStep = async r => { if (r.request().method() !== 'POST' || ++posts !== 1) return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
     await page.route(`**/api/v2/projects/${project.id}/tasks`, loseStep);
     await toastGone().catch(() => {});
-    await page.click('#add-steps-go:has-text("Add 2 steps")');
-    await said('sheet:subtasks', 'Added 0 of 2');
+    await page.press(box, 'Enter');
+    await said('sheet:subtasks', 'Added 0 of 1');
     await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await expect(page.locator(box)).toHaveValue('Pull a sample 5 min after Warm up the press');
     // Vikunja on SQLite busy for a moment ("database is locked") as a step is put under the template: tried again.
     let locked = 0;
     const lock = r => r.request().method() === 'POST' && ++locked === 1 ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' }) : r.fallback();
     await page.route('**/api/v2/tasks/*/relations', lock);
     await toastGone().catch(() => {});
-    await page.click('#add-steps-go:has-text("Add 2 steps")');
-    await until('the steps were never added', async () => (await subtasks(template.id)).length === 5);
+    await page.press(box, 'Enter');
+    await until('the step was never added', async () => (await subtasks(template.id)).length === 4);
     await page.unroute('**/api/v2/tasks/*/relations', lock);
     if (!locked) throw new Error('no step was put under the template');
     if (await page.isVisible('.place-line:has-text("Added")')) throw new Error('it said: ' + await page.textContent('.place-line'));
     const sample = (await api('/tasks?q=' + encodeURIComponent('Pull a sample'))).items.filter(t => t.project_id === project.id);
     if (sample.length !== 1) throw new Error(`${sample.length} tasks “Pull a sample”`);
+    await expect(page.locator(box)).toHaveValue('');
+    await page.fill(box, 'Log the weights');
+    await page.press(box, 'Enter');
+    await until('the second step was never added', async () => (await subtasks(template.id)).length === 5);
     const titles = (await subtasks(template.id)).map(s => s.title);
     const want = [STEPS[0], 'Warm up the press T#30m {#warm-up}', STEPS[2], 'Pull a sample T#5m:warm-up', 'Log the weights'];
     if (JSON.stringify(titles) !== JSON.stringify(want)) throw new Error('steps: ' + titles.join(' | '));
     if (!(await subtasks(template.id)).every(s => s.done)) throw new Error('a new step isn\'t done');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(4) .meta:has-text("Due 5m after “Warm up the press”")');
-    // Still busy after a few tries: the step made isn't left behind as a task of its own.
+    // Still busy after a few tries: the step made isn't left behind as a task of its own, and its line stays in the box.
     const stray = `Stray step ${stamp}`, busy = r => r.request().method() === 'POST' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' }) : r.fallback();
-    await page.click('#add-add-step');
-    await row(0).locator('.draft-in').fill(stray);
+    await page.fill(box, stray);
     await page.route('**/api/v2/tasks/*/relations', busy);
-    await page.click('#add-steps-go:has-text("Add 1 step")');
+    await page.press(box, 'Enter');
     await said('sheet:subtasks', 'Added 0 of 1');
     await page.unroute('**/api/v2/tasks/*/relations', busy);
     await until('the step was left as a task of its own', async () => !(await api('/tasks?q=' + encodeURIComponent(stray))).items.some(t => t.title === stray));
-    await row(0).locator('button[aria-label^="Remove"]').click();
+    await expect(page.locator(box)).toHaveValue(stray);
+    await page.fill(box, '');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -1887,7 +1906,7 @@ try {
     const id = (((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).find(t => !before.has(t.id)) || {}).id;
     const run = await api('/tasks/' + id), tpl = await api('/tasks/' + daily.id);
     // The run: named without "TEMPLATE: ", due when the template was, for its assignees, with nothing that repeats or reminds.
-    if (!run.title.startsWith(`${DAILY} · run `)) throw new Error('run title: ' + run.title);
+    if (!RUN_TITLE(DAILY).test(run.title)) throw new Error('run title: ' + run.title);
     if (!sameTime(run.due_date, due.toISOString())) throw new Error('run due ' + run.due_date);
     if (run.repeat_after || run.repeat_mode || (run.reminders || []).length) throw new Error(`run repeats ${run.repeat_after}/${run.repeat_mode}, reminders ${run.reminders?.length}`);
     if (run.labels?.some(l => l.title === 'template') || run.done) throw new Error('the run is a template, or done');
@@ -1907,7 +1926,7 @@ try {
     const later = minute(Date.now() + 3 * 864e5);
     await setDaily({ due_date: later.toISOString() });
     const { run, tpl, note } = await startDaily();
-    if (!/is next due .*: this run doesn't move it on/.test(note)) throw new Error('note: ' + note);
+    if (!/is next due .*: this checklist doesn't move it on/.test(note)) throw new Error('note: ' + note);
     if (tpl.done || !sameTime(tpl.due_date, later.toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
     if (run.due_date && !run.due_date.startsWith('0001')) throw new Error('run due ' + run.due_date);
   });
@@ -1994,7 +2013,7 @@ try {
     await page.waitForSelector('#d-subtasks .row');
     await page.click('#d-more');
     await page.click('#d-make-template');
-    await said('sheet:top', 'Made a checklist template that comes round');
+    await said('sheet:top', 'Template created. ');                        // the template has a due date, so the message goes on to say when it appears on Today and what starting it does
     await until('never made a template', async () => { const x = await api('/tasks/' + t.id); return x.labels?.some(l => l.title === 'template') && x.title === `TEMPLATE: Weekly clean ${stamp}`; });
     const x = await api('/tasks/' + t.id);
     if (x.done || !sameTime(x.due_date, due.toISOString()) || x.repeat_after !== 604800) throw new Error(`done ${x.done}, due ${x.due_date}, repeats ${x.repeat_after}`);

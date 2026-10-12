@@ -44,7 +44,7 @@ let failed = 0;
 async function step(name, fn){
   const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
   try { await fn(); console.log('PASS', name + secs()); }
-  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {}); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n').slice(0, process.env.VERBOSE ? 8 : 1).join(' · ')); await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {}); }
 }
 const capture = async text => { await page.fill('#in-capture', text); await page.click('#f-capture .go'); };
 // A task added offline sits in the normal list, tinted, until it's sent.
@@ -310,7 +310,7 @@ try {
     await page.fill('#d-cin', T('comment'));
     await page.click('#d-cform button');
     await page.waitForSelector(`#d-comments .comment.waiting:has-text("${T('comment')}"):has-text("Waiting for a connection")`);
-    if (!(await page.textContent('.offline')).includes('Ticking off or changing tasks needs a connection, except on a run')) throw new Error('banner: ' + await page.textContent('.offline'));
+    if (!(await page.textContent('.offline')).includes('Ticking off or changing tasks needs a connection, except on a checklist')) throw new Error('banner: ' + await page.textContent('.offline'));
     await context.setOffline(false);
     await online();
     await page.waitForSelector(`#d-comments .comment:not(.waiting):has-text("${T('comment')}")`, { timeout: 20000 });
@@ -322,31 +322,34 @@ try {
   });
 
   await step('a-subtask-from-the-add-box-waits-offline', async () => {
-    // On its project's list, the add box adds subtasks to the task whose sheet was opened: offline, one waits under it,
-    // on its card (a task with an open subtask is a stacked card there, open). The light follows it: its waiting row
-    // is the one row lit, named by the line over the box, and still is once it's sent.
+    // On its project's list, the add box adds subtasks to the task it was moved under ("Add a subtask here" in its ⋯,
+    // the tap for a nudge): offline, one waits under it, on its card (a task with an open subtask is a stacked card
+    // there, open). The light follows it: its waiting row is the one row lit, and still is once it's sent.
     const [g] = await byTitle(T('G'));
     await page.evaluate(id => { location.hash = '#/project/' + id; }, g.project_id);
     const card = page.locator(`#view .day-card[data-id="${g.id}"]`);
     await card.evaluate(el => el.scrollIntoView({ block: 'center' }), null, { timeout: 15000 });
     await card.locator('> .card-head .card-open').click();
     await page.waitForSelector('#sheet .row.own');
-    await page.click('#btn-sheet-close');
+    await page.click('#d-more');
+    await page.click('#d-add-here');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}`);
+    await expect(page.locator('#in-capture')).toHaveAttribute('aria-label', `New subtask of ${T('G')}`);
+    await expect(page.locator('#cap-home')).toBeVisible();                     // the box is in the list: its place at the bottom shows
     await expect(card).toHaveClass(/\baimed\b/);
     await context.setOffline(true);
     await page.fill('#in-capture', T('G2'));
     await page.press('#in-capture', 'Enter');
-    // Waiting, under it, after its other subtask; nothing said, and the box keeps the focus.
+    // Waiting, under it, first (the box under a task adds its first subtask: inline-add-box-plan, part 1), before its
+    // other subtask; nothing said, and the box keeps the focus.
     const waiting = card.locator(`.card-rows > .row.pending:has-text("${T('G2')}")`);
     await expect(waiting).toBeVisible();
     await expect(waiting).toHaveClass(/\baimed\b/);
     await expect(page.locator('#view .aimed')).toHaveCount(1);                 // the card's own header is dark
-    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}, after ${T('G2')}`);
+    await expect(page.locator('#in-capture')).toHaveAttribute('aria-label', `New subtask of ${T('G')}`);
     const order = await page.locator('#view :is(.card-title, .row .title)').evaluateAll(els => els.map(el => el.textContent || ''));
     const at = order.findIndex(t => t.includes(T('G')) && !t.includes(T('G1')) && !t.includes(T('G2')));
-    if (!order[at + 1]?.includes(T('G1')) || !order[at + 2]?.includes(T('G2'))) throw new Error('rows: ' + order.slice(at, at + 3).join(' | '));
+    if (!order[at + 1]?.includes(T('G2')) || !order[at + 2]?.includes(T('G1'))) throw new Error('rows: ' + order.slice(at, at + 3).join(' | '));
     if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
     await expect(page.locator('.place-line[data-place="cap"]')).toHaveCount(0);
     await context.setOffline(false);
@@ -354,7 +357,7 @@ try {
     await expect(page.locator(`#view .row:not(.pending):has-text("${T('G2')}")`)).toBeVisible({ timeout: 20000 });
     await expect(page.locator(`#view .row:not(.pending):has-text("${T('G2')}")`)).toHaveClass(/\baimed\b/);
     await expect(page.locator('#view .aimed')).toHaveCount(1);
-    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${T('G')}, after ${T('G2')}`);
+    await expect(page.locator('#in-capture')).toHaveAttribute('aria-label', `New subtask of ${T('G')}`);
     await synced(page);
     const subs = (await (await api('/tasks/' + g.id)).json()).related_tasks?.subtask || [];
     if (subs.filter(s => s.title === T('G2')).length !== 1) throw new Error('subtasks: ' + subs.map(s => s.title).join(' | '));

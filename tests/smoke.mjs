@@ -50,7 +50,7 @@ const errors = [];
 const later = async ms => { await page.clock.fastForward(Math.max(0, Math.round(ms))); await page.clock.setSystemTime(Date.now()); };
 // A token without some permission gets 401s, which Pocket handles; the browser still logs them, so they're left out here,
 // with the reply a test cuts off on purpose.
-page.on('console', m => m.type() === 'error' && !/status of 401|ERR_CONNECTION_RESET/.test(m.text()) && errors.push(m.text()));
+page.on('console', m => m.type() === 'error' && !/status of 401|ERR_CONNECTION_RESET/.test(m.text()) && errors.push(m.text() + (m.location()?.url ? ' at ' + m.location().url : '')));
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
@@ -58,7 +58,7 @@ let failed = 0;
 async function step(name, fn){
   const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
   try { await fn(); console.log('PASS', name + secs()); }
-  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/fail-${name}.png` }); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n').slice(0, process.env.VERBOSE ? 8 : 1).join(' · ')); await page.screenshot({ path: `${OUT}/fail-${name}.png` }); }
 }
 
 const stamp = Date.now();
@@ -605,7 +605,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 2, null, { timeout: 10000 });
     const names = await page.$$eval('#d-subtasks .row .title', els => els.map(e => e.textContent));
     if (!names.some(n => n === `Pocket smoke sub B ${stamp}`)) throw new Error('markers not stripped: ' + names.join(' | '));
-    if (!await page.isVisible('#d-subform .go use[href="#i-plus"]')) throw new Error('the add button is not a +');
+    if (!await page.isVisible('#d-subbox form .go use[href="#i-up"]')) throw new Error('the add button is not ↑, as every box has it');
     await page.fill('#d-subin', `Pocket smoke sub C ${stamp}`);
     await page.press('#d-subin', 'Enter');
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 3, null, { timeout: 15000 });
@@ -616,22 +616,22 @@ try {
   await step('subtask-box-reads-like-quick-add', async () => {
     // The same marks and chips as quick add; a chip tapped off keeps its words in the title.
     await page.fill('#d-subin', `Pocket smoke sub D tomorrow !2 ${stamp}`);
-    await page.waitForSelector('#d-subchips .chip[data-kind=due]');
-    await page.waitForSelector('#d-subchips .chip[data-kind=priority]:has-text("Priority 2")');
+    await page.waitForSelector('#d-subbox-chips .chip[data-kind=due]');
+    await page.waitForSelector('#d-subbox-chips .chip[data-kind=priority]:has-text("Priority 2")');
     const marks = await page.$$eval('#d-subbox .cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
     if (JSON.stringify(marks) !== JSON.stringify(['due:tomorrow', 'priority:!2'])) throw new Error('marks: ' + JSON.stringify(marks));
-    await page.click('#d-subchips .chip[data-kind=due]');
-    await page.waitForSelector('#d-subchips .chip.off[data-kind=due]');
-    await page.click('#d-subform .go');
+    await page.click('#d-subbox-chips .chip[data-kind=due]');
+    await page.waitForSelector('#d-subbox-chips .chip.off[data-kind=due]');
+    await page.click('#d-subbox form .go');
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 4, null, { timeout: 15000 });
-    if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error('the box lost the focus after the + was tapped');
+    if (await page.evaluate(() => document.activeElement?.id) !== 'd-subin') throw new Error('the box lost the focus after ↑ was tapped');
     // A subtask stays in its task's project: +project isn't read, or offered in the hint, and stays in the title.
-    await page.waitForSelector('#d-subhint');
-    if ((await page.textContent('#d-subhint')).includes('project')) throw new Error('hint: ' + await page.textContent('#d-subhint'));
+    await page.waitForSelector('#d-subbox-chips .hint');
+    if ((await page.textContent('#d-subbox-chips .hint')).includes('project')) throw new Error('hint: ' + await page.textContent('#d-subbox-chips .hint'));
     await page.fill('#d-subin', `Pocket smoke sub E +Elsewhere ${stamp}`);
     await page.waitForTimeout(300);
-    if (await page.$('#d-subchips .chip[data-kind=project], #d-subchips .chip[data-kind=new-project]')) throw new Error('+project was read in a subtask');
-    await page.waitForSelector('#d-subchips .chip.quiet:has-text("stays as words")');            // and says so
+    if (await page.$('#d-subbox-chips .chip[data-kind=project], #d-subbox-chips .chip[data-kind=new-project]')) throw new Error('+project was read in a subtask');
+    await page.waitForSelector('#d-subbox-chips .chip.quiet:has-text("stays as words")');            // and says so
     await page.fill('#d-subin', '');
     const t = ((await (await api('/tasks?q=' + encodeURIComponent('sub D'))).json()).items || []).find(x => x.title.includes('sub D tomorrow') && x.title.endsWith(String(stamp)));
     if (!t || t.priority !== 2 || (t.due_date && !t.due_date.startsWith('0001'))) throw new Error('saved as ' + JSON.stringify(t && { title: t.title, priority: t.priority, due: t.due_date }));
@@ -783,12 +783,13 @@ try {
     await expect(ring.locator('.n')).toHaveText('4/4');
     await synced(page);
     if ((await read()).done) throw new Error('the last subtask done closed the parent');
-    // A subtask added (the add box, aimed at it by opening its sheet): Close goes, the ring drops back.
+    // A subtask added (the add box moved under it by "Add a subtask here" in its ⋯): Close goes, the ring drops back.
     await page.click(`${head} > .card-open`);
     await expect(ownTitle()).toHaveText(parentTitle);
-    await page.click('#btn-sheet-close');
+    await page.click('#d-more');
+    await page.click('#d-add-here');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    await expect(page.locator('#cap-target')).toHaveText(`Add a subtask to ${parentTitle}`);
+    await expect(page.locator('#in-capture')).toHaveAttribute('aria-label', `New subtask of ${parentTitle}`);
     const late = `Pocket smoke sub late ${stamp}`;
     await page.fill('#in-capture', late);
     await page.press('#in-capture', 'Enter');
@@ -912,7 +913,7 @@ try {
     try {
       await toastGone();
       await refreshToday();
-      for (const [id, chips, counts] of [['in-capture', '#cap-chips', '2 tasks'], ['d-subin', '#d-subchips', '2 subtasks']]) {
+      for (const [id, chips, counts] of [['in-capture', '#cap-chips', '2 tasks'], ['d-subin', '#d-subbox-chips', '2 subtasks']]) {
         if (id === 'd-subin') await page.click(`${rowOf(p.title)} > .body`, { timeout: 15000 });
         await page.focus('#' + id);
         await page.keyboard.type(a);
@@ -1095,9 +1096,9 @@ try {
     await page.click(opener(t.title));
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     await page.fill('#d-subin', `${sub('A')}\n  ${sub('A1')}\n    x ${sub('A2')}\n${sub('B')}`);
-    await expect(page.locator('#d-subchips .chip', { hasText: '4 subtasks' })).toBeVisible();
-    await expect(page.locator('#d-subchips .chip[data-kind=done]')).toHaveText('1 arrives done');
-    await page.click('#d-subform .go');
+    await expect(page.locator('#d-subbox-chips .chip', { hasText: '4 subtasks' })).toBeVisible();
+    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 arrives done');
+    await page.click('#d-subbox form .go');
     // Its own two; the others are under the first of them.
     const rows = page.locator('#d-subtasks .row:not(.pending) .title');
     await expect(rows).toHaveCount(2, { timeout: 15000 });
@@ -1561,11 +1562,14 @@ try {
       await page.waitForSelector(head, { timeout: 15000 });
       const lies = await page.locator(head).evaluate(h => {
         const mid = el => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; }, r = h.getBoundingClientRect();
-        return { h: r.height, ring: mid(h.querySelector(':scope > .ring')) - mid(h), title: mid(h.querySelector('.card-title')) - mid(h), bars: !!h.querySelector('.bars'),
+        // (Its line is centred in the 44px strip its title's tap takes; the header itself is 38px, so its first row is
+        // closer under it: the 2026-10-11 tightening round.)
+        const strip = mid(h.querySelector('.card-open'));
+        return { h: r.height, ring: mid(h.querySelector(':scope > .ring')) - strip, title: mid(h.querySelector('.card-title')) - strip, bars: !!h.querySelector('.bars'),
           tap: h.querySelector('.card-open').getBoundingClientRect().height,
           dot: [h.querySelector('.card-open > .dot')].filter(Boolean).map(d => ({ off: mid(d) - mid(h.querySelector('.due')), after: d.getBoundingClientRect().left - h.querySelector('.due').getBoundingClientRect().right, end: r.right - d.getBoundingClientRect().right }))[0] };
       });
-      if (lies.h !== 44 || Math.abs(lies.ring) > .5 || Math.abs(lies.title) > .5 || lies.tap !== 44 || !lies.bars) throw new Error('its header\'s line isn\'t centred in its strip: ' + JSON.stringify(lies));
+      if (lies.h !== 38 || Math.abs(lies.ring) > .5 || Math.abs(lies.title) > .5 || lies.tap !== 44 || !lies.bars) throw new Error('its header\'s line isn\'t centred in its strip: ' + JSON.stringify(lies));
       if (!lies.dot || Math.abs(lies.dot.off) > 1.5 || lies.dot.after < 4 || lies.dot.end < 12) throw new Error('its project\'s dot isn\'t on its time\'s line, after it and clear of the strip\'s end: ' + JSON.stringify(lies));
       await swipeRow(page, head, 'back', { one: true, check: async () => {
         await expect(uncovered(page)).toHaveClass(/\bhead\b/);
@@ -1574,7 +1578,8 @@ try {
           return { over: b.top - a.top, under: a.bottom - b.bottom, h: a.height };
         });
         if (under.inside || under.off > .5) throw new Error('what its header uncovers isn\'t laid under it: ' + JSON.stringify(under));
-        if (ring.h !== 44 || ring.over < 4 || Math.abs(ring.over - ring.under) > .5) throw new Error('the ring its swipe uncovers isn\'t centred in its strip, clear of its edges: ' + JSON.stringify(ring));
+        // (Centred in the 44px strip from the header's top, which the 38px header is the top of.)
+        if (ring.h !== 38 || ring.over < 4 || Math.abs((ring.over + ring.h - ring.under) / 2 - 22) > .5) throw new Error('the ring its swipe uncovers isn\'t centred in its strip, clear of its edges: ' + JSON.stringify(ring));
       } });
       await expect(uncovered(page)).toHaveCount(0);
     } finally { for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
@@ -3344,7 +3349,7 @@ try {
     await expect(page.locator('#sheet .row.own')).toHaveClass(/\bdone\b/);
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    await expect(page.locator('#cap-target')).toHaveCount(0);                   // the add box adds a task, not to it
+    await expect(page.locator('#cap-home')).toBeHidden();                      // the add box is at the bottom, adding a task, not to it
     // Its ring opens it again, where it is, with its subtasks on it, and out of Done.
     const count = +(await page.getByRole('button', { name: /^Done \(/ }).textContent()).match(/\d+/)[0];
     await expect(echoCard().locator('.card-head > .ring')).toHaveAttribute('aria-label', `Mark not done: Echo ${stamp}`);
@@ -3359,13 +3364,19 @@ try {
     if (JSON.stringify(await doneIn('Echo', 'echo one', 'echo two')) !== '[false,false,false]') throw new Error('done in Vikunja: ' + await doneIn('Echo', 'echo one', 'echo two'));
   });
 
-  /* On a project's list, quick add's box adds a task to the project, until a task is touched (its sheet opened, ticked):
-     then it adds subtasks to that task, after its last, or after the subtask touched, each after the one before. The
-     row it adds at is lit, the one the line over the box names, and no other: a subtask added is lit in its turn. */
+  /* On a project's list, quick add's box adds a task to the project, until it's moved under a task (a nudge on its row,
+     or "Add a subtask here" in its ⋯: inline-add-box-plan): then it's in the list, under that row, and adds subtasks
+     to the task, after its last, or after the subtask it's under, each after the one before. The row it adds at is
+     lit, and no other: a subtask added is lit in its turn. A tick, a swipe or a sheet closing leave the box where it
+     is. */
   const foot = { project: null, view: null, tasks: {} };
   const footRows = () => listed(page.locator('#view .list').first());
   const footName = n => `${n} ${stamp}`;
-  const box = page.locator('#in-capture'), target = page.locator('#cap-target');
+  const box = page.locator('#in-capture'), home = page.locator('#cap-home');
+  // Where the box is: in the list, adding subtasks to `to` (its label and its placeholder say so, and the place it left
+  // at the bottom shows, dashed), under the row lit (onlyLit); or at the bottom, adding a task.
+  const boxUnder = async to => { await expect(box).toHaveAttribute('aria-label', `New subtask of ${to}`); await expect(box).toHaveAttribute('placeholder', 'Subtask'); await expect(home).toBeVisible(); };
+  const boxHome = async () => { await expect(home).toBeHidden(); await expect(box).toHaveAttribute('aria-label', 'New task'); };
   const footPositions = async () => Object.fromEntries((await (await api(`/projects/${foot.project.id}/views/${foot.view}/tasks?expand=subtasks`)).json()).items
     .map(t => [t.title.replace(` ${stamp}`, ''), t])); // by name: {position, related_tasks}
   // A task on the list, a row or a card (a task with open subtasks, lit up as a row is while the box adds to it), and
@@ -3381,11 +3392,15 @@ try {
     await page.route('**/api/v2/projects/*/tasks', hold);
     return async () => { send(); await page.unroute('**/api/v2/projects/*/tasks', hold); };
   };
-  const openAndClose = async id => {
+  // The box moved under the task `id` by "Add a subtask here" in its sheet's ⋯, which closes the sheet; the focus that
+  // gives it is then taken off it, so a scroll can send the box home as it does while nothing is being typed.
+  const addHere = async id => {
     await page.click(`:is(${rowById(id)} > .body, #view .day-card[data-id="${id}"] > .card-head .card-open)`);
     await page.waitForSelector('#sheet .row.own');
-    await page.click('#btn-sheet-close');
+    await page.click('#d-more');
+    await page.click('#d-add-here');
     await page.waitForSelector('#sheet', { state: 'hidden' });
+    await box.blur();
   };
   await step('the-add-box-adds-subtasks-to-the-task-touched', async () => {
     foot.project = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeFoot${stamp}` }) })).json();
@@ -3403,16 +3418,16 @@ try {
     await expect.poll(footRows, { timeout: 15000 }).toEqual(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Lights'].map(footName));
     // Nothing touched yet: a task for the project.
     await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
-    await expect(target).toHaveCount(0);
-    // Its sheet opened and closed: the box names it, and its row is lit up.
-    await openAndClose(T.Van.id);
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await boxHome();
+    // Moved under it: the box says it, its row is lit up, and a screen reader hears it.
+    await addHere(T.Van.id);
+    await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
-    await expect(page.getByRole('textbox', { name: `New subtask of ${footName('Van')}` })).toBeVisible();
     await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
-    // Two typed with Enter: the box keeps the focus, and they go after its last subtask, in the order typed. The light
-    // follows each: the first, its answer held back, is lit on its waiting row at once, the task's own header dark, and
-    // the line names it; sent, it's the same row lit.
+    // Two typed with Enter: the box keeps the focus. Under the task, the box adds its first subtask (inline-add-box-plan,
+    // part 1), so the first goes before Chairs, and the second after the first, in the order typed. The light follows
+    // each: the first, its answer held back, is lit on its waiting row at once, the task's own header dark; sent, it's
+    // the same row lit.
     await box.click();
     await box.fill(footName('Rope'));
     const send = await holdAdds();
@@ -3420,45 +3435,45 @@ try {
       await box.press('Enter');
       await expect(box).toHaveValue('');
       await onlyLit(subRow('Rope', true));
-      await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Rope')}`);
+      await boxUnder(footName('Van'));
     } finally { await send(); }
     await onlyLit(subRow('Rope'));
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Rope')}`);
+    await boxUnder(footName('Van'));
     await box.fill(footName('Straps'));
     await box.press('Enter');
-    await expect.poll(footRows).toEqual(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Subtask: Rope', 'Subtask: Straps', 'Lights'].map(footName));
+    await expect.poll(footRows).toEqual(['Van', 'Subtask: Rope', 'Subtask: Straps', 'Subtask: Chairs', 'Subtask: Tables', 'Lights'].map(footName));
     if (await page.evaluate(() => document.activeElement?.id) !== 'in-capture') throw new Error('the box lost the focus');
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Straps')}`);
+    await boxUnder(footName('Van'));
     await onlyLit(subRow('Straps'));
     await noToast(page);
     await synced(page);
     const p = await footPositions();
     for (const s of ['Rope', 'Straps']) if (!p[s].related_tasks?.parenttask?.some(x => x.id === T.Van.id)) throw new Error(s + ' is not under Van');
-    if (!(p.Tables.position < p.Rope.position && p.Rope.position < p.Straps.position)) throw new Error('positions: ' + ['Tables', 'Rope', 'Straps'].map(s => p[s].position));
+    if (!(p.Rope.position < p.Straps.position && p.Straps.position < p.Chairs.position)) throw new Error('positions: ' + ['Rope', 'Straps', 'Chairs'].map(s => p[s].position));
     foot.tasks.Rope = p.Rope; foot.tasks.Straps = p.Straps;
     await page.reload();
-    await expect.poll(footRows, { timeout: 15000 }).toEqual(['Van', 'Subtask: Chairs', 'Subtask: Tables', 'Subtask: Rope', 'Subtask: Straps', 'Lights'].map(footName));
-    await expect(target).toHaveCount(0);                                      // a reload starts afresh
+    await expect.poll(footRows, { timeout: 15000 }).toEqual(['Van', 'Subtask: Rope', 'Subtask: Straps', 'Subtask: Chairs', 'Subtask: Tables', 'Lights'].map(footName));
+    await boxHome();                                      // a reload starts afresh
   });
   await step('the-add-box-adds-right-after-a-subtask-touched', async () => {
     const T = foot.tasks;
-    await openAndClose(T.Chairs.id);
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Chairs')}`);
+    await addHere(T.Chairs.id);
+    await boxUnder(footName('Van'));
     await onlyLit(rowById(T.Chairs.id));
     // A pasted list is several subtasks, and the next one goes after them: its last is the row lit.
     await box.fill(`${footName('Ladder')}
 ${footName('Hooks')}`);
     await expect(page.locator('#cap-chips')).toContainText('2 subtasks');
     await box.press('Enter');
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Hooks')}`);
+    await boxUnder(footName('Van'));
     await onlyLit(subRow('Hooks'));
     await box.fill(`${footName('Tarp')} +Elsewhere`);                            // +project stays in its title
     await expect(page.locator('#cap-chips')).toContainText('+project stays as words: a subtask goes in its task\'s project');
     await box.press('Enter');
-    const want = [footName('Van'), ...['Chairs', 'Ladder', 'Hooks'].map(n => 'Subtask: ' + footName(n)), `Subtask: Tarp ${stamp} +Elsewhere`,
-      ...['Tables', 'Rope', 'Straps'].map(n => 'Subtask: ' + footName(n)), footName('Lights')];
+    const want = [footName('Van'), ...['Rope', 'Straps', 'Chairs', 'Ladder', 'Hooks'].map(n => 'Subtask: ' + footName(n)), `Subtask: Tarp ${stamp} +Elsewhere`,
+      'Subtask: ' + footName('Tables'), footName('Lights')];
     await expect.poll(footRows).toEqual(want);
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after Tarp ${stamp} +Elsewhere`);
+    await boxUnder(footName('Van'));
     await onlyLit(subRow('Tarp'));
     await synced(page);
     const p = await footPositions(), tarp = Object.keys(p).find(k => k.startsWith('Tarp'));
@@ -3467,16 +3482,19 @@ ${footName('Hooks')}`);
     if (p[tarp].project_id !== foot.project.id) throw new Error('the subtask went to another project');
     await page.reload();
     await expect.poll(async () => (await footRows()).length, { timeout: 15000 }).toBe(want.length);
-    await expect.poll(async () => (await footRows())[4]).toBe(`Subtask: Tarp ${stamp} +Elsewhere`);
+    await expect.poll(async () => (await footRows())[6]).toBe(`Subtask: Tarp ${stamp} +Elsewhere`);
   });
-  await step('the-add-boxs-x-goes-back-to-adding-a-task', async () => {
+  await step('the-add-boxs-place-at-the-bottom-brings-it-back-to-adding-a-task', async () => {
     const T = foot.tasks;
-    await openAndClose(T.Van.id);
-    const x = page.getByRole('button', { name: `Add a task to PocketSmokeFoot${stamp} instead` });
-    const size = await x.boundingBox();
-    if (size.width < 48 || size.height < 48) throw new Error('× is ' + size.width + '×' + size.height);
-    await x.click();
-    await expect(target).toHaveCount(0);
+    await addHere(T.Van.id);
+    // The dashed place the box left at the bottom says what the box says there, and a tap on it brings the box home
+    // (the box has no × of its own: inline-add-box-plan, After the first look).
+    const place = page.getByRole('button', { name: `Add a task to PocketSmokeFoot${stamp} instead` });
+    await expect(place).toHaveText(`Add a task to PocketSmokeFoot${stamp}`);
+    const size = await place.boundingBox();
+    if (size.height < 44) throw new Error('the place is ' + size.width + '×' + size.height);
+    await place.click();
+    await boxHome();
     await expect(page.locator(itemById(T.Van.id))).not.toHaveClass(/aimed/);
     await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
     await box.fill(footName('Fuel'));
@@ -3486,57 +3504,60 @@ ${footName('Hooks')}`);
     const p = await footPositions();
     if (p.Fuel?.related_tasks?.parenttask?.length) throw new Error('Fuel was added as a subtask');
   });
-  await step('a-tick-moves-what-the-add-box-adds-to', async () => {
+  await step('a-tick-leaves-the-add-box-where-it-is', async () => {
     const T = foot.tasks;
-    // A subtask ticked done: its parent, to add more beside it. Ticked open again: the subtask itself.
+    // The box under Van: a subtask ticked done, and open again, moves it nowhere, so rows never shift under the next tick.
+    await addHere(T.Van.id);
     await page.getByRole('button', { name: 'Mark done: ' + footName('Rope'), exact: true }).click();
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
-    await expect(page.locator(itemById(T.Van.id))).toHaveClass(/aimed/);
+    await boxUnder(footName('Van'));
+    await onlyLit(itemById(T.Van.id));
     await page.getByRole('button', { name: 'Mark not done: ' + footName('Rope'), exact: true }).click();
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Rope')}`);
-    await expect(page.locator(rowById(T.Rope.id))).toHaveClass(/aimed/);
+    await boxUnder(footName('Van'));
+    await onlyLit(itemById(T.Van.id));
     await synced(page);
+    await home.click();
+    await boxHome();
   });
   await step('the-add-box-forgets-a-task-scrolled-away-or-left', async () => {
     const T = foot.tasks;
-    await openAndClose(T.Lights.id);
-    await expect(target).toHaveText(`Add a subtask to ${footName('Lights')}`);
+    await addHere(T.Lights.id);
+    await boxUnder(footName('Lights'));
     // Scrolled off the screen: a task again, and scrolling back doesn't bring it back.
     await page.evaluate(() => { document.getElementById('view').style.paddingBottom = '3000px'; });
     await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
-    await expect(target).toHaveCount(0);
+    await boxHome();
     await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
     await page.evaluate(() => scrollTo(0, 0));
     await expect(page.locator(rowById(T.Lights.id))).toBeInViewport();
-    await expect(target).toHaveCount(0);
+    await boxHome();
     await page.evaluate(() => { document.getElementById('view').style.paddingBottom = ''; });
     // Another screen, and back: a task again.
-    await openAndClose(T.Lights.id);
-    await expect(target).toHaveCount(1);
+    await addHere(T.Lights.id);
+    await expect(home).toBeVisible();
     await page.click('nav.tabs a[data-tab=today]');
     await expect(box).toHaveAttribute('placeholder', 'Add a task');
     await page.goBack();
     await expect.poll(async () => (await footRows()).length, { timeout: 15000 }).toBeGreaterThan(0);
-    await expect(target).toHaveCount(0);
+    await boxHome();
     await expect(box).toHaveAttribute('placeholder', `Add a task to PocketSmokeFoot${stamp}`);
   });
-  /* A nudge (an experiment): a finger on a row that turns into a short, slow scroll aims the add box at it; a long or
-     fast one, a hold, a tap (which opens the sheet, aiming as it closes), a row done or read only, and Today don't. The
+  /* A nudge: a finger on a row that turns into a short, slow scroll moves the add box under it; a long or fast one, a
+     hold, a tap (which opens the sheet, and closing it leaves the box where it is), a row done or read only don't. The
      finger is Chrome's own touch input (`finger`, helpers.mjs), so the page scrolls under it as on a phone. Each one
      goes down from the top of the list, where the page can't scroll, so no row moves out of sight meanwhile. */
   const cursorId = () => page.evaluate(() => Alpine.$data(document.body).cursor?.id ?? null);
   await step('a-nudge-aims-the-add-box', async () => {
     const T = foot.tasks, Fuel = rowOf(footName('Fuel')), Hooks = rowOf(footName('Hooks'));
     await page.evaluate(() => scrollTo(0, 0));
-    await expect(target).toHaveCount(0);
+    await boxHome();
     // Down 40px, slowly: the row it started on is the target, lit up, and a screen reader hears it.
     await touchDrag(`#view .day-card[data-id="${T.Van.id}"] > .card-head`, 40);
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await boxUnder(footName('Van'));
     await expect(page.locator(itemById(T.Van.id))).toHaveClass(/aimed/);
     await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
     // On a subtask: after it, under its task.
     await touchDrag(rowById(T.Tables.id), 30);
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Tables')}`);
+    await boxUnder(footName('Van'));
     // Further than a row, however slowly; or fast: a scroll, and the target stays.
     await touchDrag(rowById(T.Chairs.id), 150, 30);
     await touchDrag(Fuel, 50, 2, 8);
@@ -3544,32 +3565,34 @@ ${footName('Hooks')}`);
     await touchDrag(rowById(T.Chairs.id), 0, 0, 0, 700);
     await expect(page.locator('#sheet')).toBeHidden();
     if (await cursorId() !== T.Tables.id) throw new Error('the target moved to ' + await cursorId());
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Tables')}`);
-    // A row ticked done (its tick aims at its task) and a project read only: a nudge leaves the target as it is.
+    await boxUnder(footName('Van'));
+    // A row ticked done leaves the box where it is, and a nudge on it while it leaves moves nothing; ticked open again,
+    // the box is still where it was. The project made read only, nothing in it can have the box: it goes home, a
+    // nudge on a row brings it to none, and it isn't back once the project can be changed again.
     await page.getByRole('button', { name: 'Mark done: ' + footName('Hooks'), exact: true }).click();
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}`);
+    await boxUnder(footName('Van'));
+    await onlyLit(rowById(T.Tables.id));
     await touchDrag(Hooks, 30);
-    if (await cursorId() !== T.Van.id) throw new Error('the target moved to ' + await cursorId());
-    // Ticked open again, it's the target (its tick). The project made read only, nothing in it can be one: the target
-    // goes, a nudge on a row brings none, and it isn't back once the project can be changed again.
+    if (await cursorId() !== T.Tables.id) throw new Error('the target moved to ' + await cursorId());
     await page.getByRole('button', { name: 'Mark not done: ' + footName('Hooks'), exact: true }).click();
-    await expect(target).toHaveText(`Add a subtask to ${footName('Van')}, after ${footName('Hooks')}`);
-    await onlyLit(Hooks);
+    await boxUnder(footName('Van'));
+    await onlyLit(rowById(T.Tables.id));
     await page.evaluate(id => { Alpine.$data(document.body).perms[id] = 0; }, foot.project.id);
     try {
-      await expect(target).toHaveCount(0);
+      await boxHome();
       await touchDrag(Fuel, 30);
       if (await cursorId() !== null) throw new Error('a row read only is the target: ' + await cursorId());
     } finally { await page.evaluate(id => { delete Alpine.$data(document.body).perms[id]; }, foot.project.id); }
-    await expect(target).toHaveCount(0);
+    await boxHome();
     await expect(page.locator('#view .aimed')).toHaveCount(0);
-    // A tap, by a finger too, still opens the sheet, which aims as it closes.
+    // A tap, by a finger too, still opens the sheet; closed, it leaves the box where it is, at the bottom.
     const b = await steady(page.locator(Fuel + ' > .body'));
     await touch('touchStart', b.x + b.width / 2, b.y + b.height / 2); await touch('touchEnd', 0, 0);
     await page.waitForSelector('#sheet .row.own');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
-    await expect(target).toHaveText(`Add a subtask to ${footName('Fuel')}`);
+    await boxHome();
+    await expect(page.locator('#view .aimed')).toHaveCount(0);
     await synced(page);
   });
   /* A mouse nudges too (inline-add-box-plan, What moves the box): a press on a row dragged a short, slow way up or
@@ -3601,72 +3624,88 @@ ${footName('Hooks')}`);
      that's gone: deleted, its task is lit, and the box goes back to that task's last. Moved up or down, it isn't
      gone: it stays lit. */
   await step('a-nudge-selects-the-row-touched-before-and-a-lit-row-gone-hands-over-to-its-task', async () => {
-    const T = foot.tasks, head = `#view .day-card[data-id="${T.Van.id}"] > .card-head`, van = `Add a subtask to ${footName('Van')}`;
+    const T = foot.tasks, head = `#view .day-card[data-id="${T.Van.id}"] > .card-head`;
     await page.evaluate(() => scrollTo(0, 0));
     await touchDrag(head, 40);
-    await expect(target).toHaveText(van);
+    await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
     await box.fill(footName('Cones'));
     await box.press('Enter');
     await onlyLit(subRow('Cones'));
-    await expect(target).toHaveText(`${van}, after ${footName('Cones')}`);
+    await boxUnder(footName('Van'));
     await synced(page);
     // The header nudged again, the row touched before: it's the one lit, and the line names the task alone.
     await touchDrag(head, 40);
-    await expect(target).toHaveText(van);
+    await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
-    await expect(page.locator('#said')).toHaveText(van);
-    // What's added then goes after its last, which is Cones.
+    await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
+    // What's added then goes first again, before Cones, which went first before Rope.
     await box.fill(footName('Flags'));
     await box.press('Enter');
     await onlyLit(subRow('Flags'));
     await synced(page);
     let p = await footPositions();
-    if (!(p.Straps.position < p.Cones.position && p.Cones.position < p.Flags.position)) throw new Error('positions: ' + ['Straps', 'Cones', 'Flags'].map(s => p[s].position));
+    if (!(p.Flags.position < p.Cones.position && p.Cones.position < p.Rope.position)) throw new Error('positions: ' + ['Flags', 'Cones', 'Rope'].map(s => p[s].position));
     // The lit row deleted: its task is lit, the line back to it. Restored, it isn't lit again behind your back.
     await swipeRow(page, subRow('Flags'), 'delete');
     await expect(page.locator(subRow('Flags'))).toHaveClass(/\bdeleted\b/);
-    await expect(target).toHaveText(van);
+    await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
     await page.locator(subRow('Flags')).getByRole('button', { name: 'Restore ' + footName('Flags') }).click();
     await expect(page.locator(subRow('Flags'))).not.toHaveClass(/\bdeleted\b/);
-    await expect(target).toHaveText(van);
+    await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
     await synced(page);
-    // Its own tick, then moved up a place (Alt+↑, as holding it and moving it does): lit by the tick, and still after the move.
+    // Its own tick, done and open again, moves the box nowhere: its task stays lit.
     await page.getByRole('button', { name: 'Mark done: ' + footName('Flags'), exact: true }).click();
     await onlyLit(itemById(T.Van.id));
     await synced(page);                                                         // marked, not only held: its tick takes the mark back
     await page.getByRole('button', { name: 'Mark not done: ' + footName('Flags'), exact: true }).click();
-    await expect(target).toHaveText(`${van}, after ${footName('Flags')}`);
+    await boxUnder(footName('Van'));
+    await onlyLit(itemById(T.Van.id));
+    // Nudged, then moved down a place (Alt+↓, as holding it and moving it does): still lit after the move.
+    await touchDrag(subRow('Flags'), 30);
     await onlyLit(subRow('Flags'));
     await synced(page);
     await page.locator(subRow('Flags') + ' > .body').focus();
-    await page.keyboard.press('Alt+ArrowUp');
-    await expect(target).toHaveText(`${van}, after ${footName('Flags')}`);
+    await page.keyboard.press('Alt+ArrowDown');
+    await boxUnder(footName('Van'));
     await onlyLit(subRow('Flags'));
     await synced(page);
     p = await footPositions();
-    if (!(p.Flags.position < p.Cones.position)) throw new Error('Flags didn\'t move up: ' + ['Cones', 'Flags'].map(s => p[s].position));
+    if (!(p.Cones.position < p.Flags.position)) throw new Error('Flags didn\'t move down: ' + ['Cones', 'Flags'].map(s => p[s].position));
     // A subtask that arrives done leaves with the batch, so it isn't lit: its task is.
     await box.fill('x ' + footName('Bolts'));
     await box.press('Enter');
     await expect(page.getByRole('button', { name: 'Mark not done: ' + footName('Bolts'), exact: true })).toBeVisible();
-    await expect(target).toHaveText(van);
+    await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
     await synced(page);
   });
-  await step('a-nudge-on-today-does-nothing', async () => {
-    const d = await make(`Pocket smoke nudge ${stamp}`, { due_date: todayAt(23) });
+  /* On Today the box adds a task until a row is nudged: then it's under that row, adding the task's first subtask, and
+     the task is a card with it, kept in sight until the screen is left (inline-add-box-plan, part 3). A tap on its
+     place at the bottom brings it home. */
+  await step('a-nudge-on-today-moves-the-add-box-under-the-row-to-add-a-subtask-there', async () => {
+    const d = await make(`Pocket smoke nudge ${stamp}`, { due_date: todayAt(23) }), subTitle = `Pocket smoke nudge sub ${stamp}`;
+    let sub = null;
     try {
       await refreshToday();
       await expect(page.locator(rowOf(d.title))).toBeVisible({ timeout: 15000 });
       await page.locator(rowOf(d.title)).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       await touchDrag(rowOf(d.title), 30);
       await expect(page.locator('#sheet')).toBeHidden();
-      if (await cursorId() !== null) throw new Error('Today has a target: ' + await cursorId());
-      await expect(target).toHaveCount(0);
-    } finally { await api('/tasks/' + d.id, { method: 'DELETE' }); }
+      if (await cursorId() !== d.id) throw new Error('the box went under ' + await cursorId());
+      await boxUnder(d.title);
+      await expect(page.locator(rowOf(d.title))).toHaveClass(/\baimed\b/);
+      await box.fill(subTitle);
+      await box.press('Enter');
+      await expect(page.locator(`${cardOf(d.title)} .card-rows > .row .title:has-text("${subTitle}")`)).toBeVisible({ timeout: 15000 });
+      await synced(page);
+      sub = ((await (await api('/tasks?q=' + encodeURIComponent(subTitle))).json()).items || []).find(t => t.title === subTitle);
+      if (!sub?.related_tasks?.parenttask?.some(p => p.id === d.id)) throw new Error('not a subtask of the row nudged: ' + JSON.stringify(sub?.related_tasks));
+      await home.click();
+      await boxHome();
+    } finally { for (const t of [sub, d]) if (t) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
   let vanCopy = '', vanId = 0, projectCopy = '';  // the task's Markdown copy, the task, and its project's copy, for the step that pastes them back
@@ -3907,7 +3946,9 @@ ${footName('Hooks')}`);
         await expect(p24.locator(`${cardOf(P.title)} .card-head .due`)).toHaveText(theirs, { timeout: 15000 });
         await expect(p24.locator(`${stepLine(P.title)} .when .due`)).toHaveText(await clock(p24, 22));
       } finally { await other.close(); }
-      if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 46 || await line.evaluate(el => el.offsetHeight) > 57) throw new Error('its heading or its top row is more than one line');
+      // (A card's row has its title on two lines at most, since the 2026-10-11 tightening round.)
+      if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 46) throw new Error('its heading is more than one line');
+      if (await line.evaluate(el => el.offsetHeight) > 82) throw new Error('its top row is more than two lines: ' + await line.evaluate(el => el.offsetHeight));
       // Its top row, indented one level: its tick under the header's title, as a subtask's under its parent (a row's
       // tick sits 14px in); a plain row, each zone 48px across at least over its full height: the tick (the whole
       // gutter to its title), the title, who's on it.
@@ -3916,7 +3957,8 @@ ${footName('Hooks')}`);
         const r = el.getBoundingClientRect();
         const name = (x, y) => { const b = document.elementFromPoint(x, r.top + y)?.closest('button'); return b?.matches('.check') ? 'tick' : b?.matches('.body') ? 'title' : b?.matches('.claim') ? 'slot' : String(b?.className); };
         const body = el.querySelector(':scope > .body').getBoundingClientRect(), slot = el.querySelector(':scope > .claim').getBoundingClientRect();
-        const want = { tick: [r.left + 1, body.left - 1], title: [body.left + 1, slot.left - 1], slot: [slot.left + 1, r.right - 1] }, top = 2;
+        // (The header's 44px tap strip reaches 6px into the row, which starts right under the 38px header: so from 7px down.)
+        const want = { tick: [r.left + 1, body.left - 1], title: [body.left + 1, slot.left - 1], slot: [slot.left + 1, r.right - 1] }, top = 7;
         const wrong = [];
         for (const [k, [x0, x1]] of Object.entries(want)) for (const x of [x0, (x0 + x1) / 2, x1]) for (const y of [top, r.height / 2, r.height - 2]) if (name(x, y) !== k) wrong.push(`${k} at ${Math.round(x - r.left)},${Math.round(y)}: ${name(x, y)}`);
         const head = el.closest('.day-card').querySelector('.card-title').getBoundingClientRect();
@@ -3932,7 +3974,9 @@ ${footName('Hooks')}`);
       for (const s of slots) if (s.min !== '74px' || s.before !== '8px' || s.width < 74 || s.width > 84) throw new Error('Today\'s slot isn\'t 74px, with 8px before it: ' + JSON.stringify(slots));
       if (slots[0].when === null || slots[0].when !== slots[1].when) throw new Error('a card\'s row\'s time and a plain row\'s dot don\'t end in one line: ' + JSON.stringify(slots));
       const rowTick = await page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`).evaluate(el => el.querySelector(':scope > .check').getBoundingClientRect().left - el.getBoundingClientRect().left);
-      if (Math.abs(zones.under) > 0.5 || zones.tick <= rowTick + 20) throw new Error(`its top row's tick isn't under the header's title, a level in: ${JSON.stringify(zones)}, a row's at ${rowTick}`);
+      // (The tick sits 10px before the header's title: a subtask's tick is smaller and less far in since the 2026-10-11
+      // tightening round.)
+      if (Math.abs(zones.under + 10) > 0.5 || zones.tick <= rowTick + 20) throw new Error(`its top row's tick isn't 10px before the header's title, a level in: ${JSON.stringify(zones)}, a row's at ${rowTick}`);
       // More, a slim tab hanging under its top row, ⌄ in it: its tap from the row's foot, 48px down to the next thing
       // listed, never the row's. Opened in place, every open subtask in the same order, the
       // top one first; then a plain ⌃ with no tab, "Show less", collapses it again.
