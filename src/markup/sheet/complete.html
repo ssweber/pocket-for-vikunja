@@ -8,6 +8,6 @@
       <div class="d-title"><h2 x-text="sheet.complete.ask.head"></h2></div>
       <p class="note complete-note" id="complete-note" x-text="sheet.complete.ask.body"></p>
       <button class="btn block" id="complete-yes" @click="confirmComplete()" x-text="sheet.complete.ask.yes"></button>
-      <template x-if="sheet.complete.run && !sheet.complete.screen"><button class="btn ghost block" id="complete-open-run" style="margin-top:10px" @click="openRun(sheet.complete.id)">Open the run</button></template>
+      <template x-if="sheet.complete.run && !sheet.complete.screen"><button class="btn ghost block" id="complete-open-run" style="margin-top:10px" @click="openRun(sheet.complete.id)">Open the checklist</button></template>
       <button class="btn ghost block" id="complete-no" style="margin-top:10px" @click="cancelComplete()">Cancel</button>
     </div></template>

@@ -65,7 +65,7 @@ test('undated, made today: a subtask of yours brings its task’s card, opened o
   assert.deepEqual(rows.map(r => [r.t.id, r.key]), [[5, 'nodate']], 'yours, with no date; someone else’s, and one with a date, aren’t');
 });
 
-test('runs: yours in progress is a card under Checklist runs, one with no open step a row there; a step you’re on in someone else’s brings theirs', () => {
+test('runs: yours in progress is a card under Checklists, one with no open step a row there; a step you’re on in someone else’s brings theirs', () => {
   const run = task(20, { related_tasks: subs([21, true], [22]) }), done = task(30, { related_tasks: subs([31, true]) });
   const { rows, cards } = todayItems({ mine: [run, done], claimed: [task(41, { assignees: [me], related_tasks: under(40, 9) })] }, me, t => [20, 30, 40].includes(t.id));
   assert.deepEqual(rows.map(r => [r.t.id, r.key]), [[30, 'runs']]);
@@ -170,7 +170,7 @@ test('a card’s heading: its priority’s bars as its row shows them, only when
   const when = dueInfo(urgent.due_date);
   assert.equal(h.said, `1 of 4 subtasks done, 25%, ${when.cls === 'overdue' ? 'Late: ' : 'Due '}${when.label}, ${row.label}, Café`, 'when, in words, its priority as its row says it, and its project');
   Object.assign(app, { isRunTask: t => t.id === 10, forText: t => t.assignees.length ? 'For you' : '' });
-  assert.equal(app.cardHead(urgent).said.split(', ').pop(), 'Checklist run', 'a run’s for no one: what it is, instead of its project');
+  assert.equal(app.cardHead(urgent).said.split(', ').pop(), 'Checklist', 'a run’s for no one: what it is, instead of its project');
   assert.equal(app.cardHead({ ...urgent, assignees: [me] }).said.split(', ').pop(), 'For you', 'or who it’s for');
 });
 
@@ -411,11 +411,12 @@ test('a run’s card has a heading like a task’s: its name without the day it 
   const { app } = today();
   app.route = { name: 'today' };
   const made = new Date(2026, 9, 8, 7, 30), day = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  const run = task(30, { title: `Opening up · run 2 · ${day(made)}`, created: made.toISOString(), project_id: 5 });
+  const run = task(30, { title: `Opening up · ${day(made)} · #2`, created: made.toISOString(), project_id: 5 });
   app.isRunTask = t => t.id === 30;
-  assert.equal(app.cardHead(run).title, 'Opening up · run 2');
-  assert.equal(app.cardHead({ ...run, title: `Opening up · Saturday · ${day(new Date(2026, 9, 6))}` }).title, 'Opening up · Saturday', 'started offline, made in Vikunja later');
-  assert.equal(app.cardHead({ ...run, title: `Opening up · run 2 · ${day(new Date(2026, 8, 20))}` }).title, `Opening up · run 2 · ${day(new Date(2026, 8, 20))}`, 'not a day it was started: kept');
+  assert.equal(app.cardHead(run).title, 'Opening up · #2');
+  assert.equal(app.cardHead({ ...run, title: `Opening up · ${day(new Date(2026, 9, 6))} · Saturday` }).title, 'Opening up · Saturday', 'started offline, made in Vikunja later');
+  assert.equal(app.cardHead({ ...run, title: `Opening up · ${day(new Date(2026, 8, 20))} · #2` }).title, `Opening up · ${day(new Date(2026, 8, 20))} · #2`, 'not a day it was started: kept');
+  assert.equal(app.cardHead({ ...run, title: `Opening up · run 2 · ${day(made)}` }).title, 'Opening up · run 2', 'one started when the day came last: read where it is');
   assert.equal(app.cardHead({ ...run, title: 'Opening up' }).title, 'Opening up', 'a name of its own: kept whole');
   assert.equal(app.cardHead({ ...run, created: NONE }).title, run.title, 'not made yet: kept whole');
   assert.equal(app.cardHead(task(31, { title: `Pack the van · front · ${day(made)}`, created: made.toISOString() })).title, `Pack the van · front · ${day(made)}`, 'a task’s title as it is');
@@ -564,9 +565,9 @@ test('a run’s own row: its ring asks to finish it on its screen, its slot says
   assert.deepEqual(app.rowMeta(app.runOwn, RUN_ROW), [], 'nothing under its name');
   assert.equal(app.rowSlot(app.runOwn, RUN_ROW).label, 'For you');
   r.tap();
-  assert.deepEqual([app.sheet.kind, app.sheet.complete.screen, app.sheet.complete.ask.head], ['complete', true, 'Finish this run with 3 steps not done?']);
+  assert.deepEqual([app.sheet.kind, app.sheet.complete.screen, app.sheet.complete.ask.head], ['complete', true, 'Finish this checklist with 3 steps not done?']);
   await app.confirmComplete();
-  assert.deepEqual(calls, ['close', 'finish'], 'confirmed: finished as Finish run does');
+  assert.deepEqual(calls, ['close', 'finish'], 'confirmed: finished as Finish checklist does');
   assert.match(app.runView.summary, /^Started by you at .+ · 1 of 4 done · 3 not done$/, 'in the summary, which shows once every step is done');
   for (const s of app.view.run.steps) s.done = true;
   assert.match(app.runView.summary, /^Started by you at .+ · 4 of 4 done$/);
@@ -702,7 +703,7 @@ test('a run’s ring with steps not done asks first, and finishing it leaves the
   const kids = [kid(11), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
   app.isRunTask = t => t.id === 10;
   await app.ringTap(app.tasks[10], ROW);
-  assert.deepEqual([app.sheet.kind, app.sheet.complete.run, app.sheet.complete.n], ['complete', true, 1], 'Finish this run with 1 step not done?');
+  assert.deepEqual([app.sheet.kind, app.sheet.complete.run, app.sheet.complete.n], ['complete', true, 1], 'Finish this checklist with 1 step not done?');
   assert.equal(app.ringOf(app.tasks[10]).label, 'Finish “Pack the van”, with 1 step not done');
   app.isRunTask = () => false;
   app.tasks[10].done = true;

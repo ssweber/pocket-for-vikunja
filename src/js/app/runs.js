@@ -5,7 +5,7 @@ import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, comesRound, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, comesRound, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
@@ -63,7 +63,7 @@ export default {
   // Who a run is for: any number of people, at least one.
   toggleFor(st, u){
     const on = st.forIds.includes(u.id);
-    if (on && st.forIds.length === 1) { this.say('A run is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
+    if (on && st.forIds.length === 1) { this.say('A checklist is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
     st.forIds = on ? st.forIds.filter(id => id !== u.id) : [...st.forIds, u.id];
   },
   /* The due date a start ticks: a template that comes round and is due by the end of today. Started at 7:55, it's the
@@ -75,7 +75,7 @@ export default {
     if (!t || !comesRound(t)) return '';
     const due = new Date(t.due_date), today = +startOfDay(due) === +startOfDay();
     const at = d => d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
-    if (!this.tickOf(t)) return `${t.title} is next due ${at(due)}: this run doesn't move it on.`;
+    if (!this.tickOf(t)) return `${t.title} is next due ${at(due)}: this checklist doesn't move it on.`;
     const one = today ? `the ${due.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})} one` : `the one due ${at(due)}`;
     const next = vikunjaNext(t);
     if (next === null) return `This is ${one}: starting it marks ${t.title} done, and it doesn't come round again.`;
@@ -194,14 +194,14 @@ export default {
     }
     return null;
   },
-  /* A run's ⋯: its name, the part between the template's name and the day ("Startup · Night shift · Oct 5"), and who
-     it's for, picked as when it was started. */
+  /* A run's ⋯: its name, the part after the template's name and the day ("Startup · Oct 5 · Night shift"; between them,
+     in one started before the day came second: runParts), and who it's for, picked as when it was started. */
   async openRunOptions(){
     const run = this.view.run?.run;
     if (!run) return;
     this.openSheet('runopts');
-    const parts = run.title.split(' · '), named = parts.length >= 3;
-    this.sheet.runEdit = {prefix: named ? parts[0] : '', day: named ? parts[parts.length - 1] : '', name: named ? parts.slice(1, -1).join(' · ') : run.title,
+    const p = runParts(run.title, run.created, true), name = p ? p.name : run.title;
+    this.sheet.runEdit = {prefix: p ? p.template : '', day: p ? p.day : '', old: !!p?.old, name, was: name,
       forIds: (run.assignees || []).map(u => u.id), people: []};
     const edit = this.sheet.runEdit;
     try {
@@ -211,10 +211,10 @@ export default {
   },
   async saveRunName(){
     const e = this.sheet.runEdit, run = this.view.run?.run, name = e?.name.trim();
-    if (!run || !name) { if (e) e.name = run.title.split(' · ').slice(1, -1).join(' · ') || run.title; return; }
-    const title = e.prefix ? [e.prefix, name, e.day].join(' · ') : name;
+    if (!run || !name) { if (e) e.name = e.was; return; }
+    const title = !e.prefix ? name : (e.old ? [e.prefix, name, e.day] : [e.prefix, e.day, name]).join(' · ');
     if (title === run.title) return;
-    try { const t = await this.saveTask(run.id, {title}); run.title = t.title; this.saveRun(); this.say('Renamed', {place: 'sheet:top'}); }
+    try { const t = await this.saveTask(run.id, {title}); run.title = t.title; e.was = name; this.saveRun(); this.say('Renamed', {place: 'sheet:top'}); }
     catch (err) { this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   // Someone added to or taken off who the run is for: at least one stays.
@@ -222,7 +222,7 @@ export default {
     const e = this.sheet.runEdit, run = this.view.run?.run;
     if (!run) return;
     const was = e.forIds, on = was.includes(u.id);
-    if (on && was.length === 1) { this.say('A run is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
+    if (on && was.length === 1) { this.say('A checklist is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
     const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
@@ -255,7 +255,7 @@ export default {
         const ids = new Set([id, ...(t.related_tasks?.subtask || []).map(s => s.id)]);
         await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && (e.run === id || ids.has(e.task))) await sync.remove(e.id); });
         this.refreshPending();
-        this.notify(deleted ? 'Run deleted' : 'Run removed');
+        this.notify(deleted ? 'Checklist deleted' : 'Checklist removed');
       }
       if (this.route.name === 'run' && this.route.id === id) this.leaveRun(); else if (!quiet) this.render();
     } catch (e) { if (!quiet) this.say('Not removed: ' + e.message, {place: ['sheet:top', 'run'], cls: 'failed'}); }
@@ -265,7 +265,7 @@ export default {
   // A run, with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
     const run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
-    if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a checklist run. Open it from its project instead.');
+    if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a started checklist. Open it from its project instead.');
     /* Last time's notes are read alongside its steps, and shown with them if they come in time (LAST_WAIT), or as kept
        from the last time it was opened: a step's are on its card, above the steps, so arriving after the run is on
        screen they'd push the steps down under a finger. Later than that, they're held back from the card on screen
@@ -306,7 +306,7 @@ export default {
       const full = await allComments(await api(`/tasks/${prev.id}?expand=comments`));
       const steps = await inBatches(stepsOf(full), 4, async s => allComments(await api(`/tasks/${s.id}?expand=comments`)));
       // Each with the template step it was on (tpl), so it shows on that step's card this time too.
-      const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The run', tpl: null})),
+      const notes = [...(full.comments || []).map(c => ({...noteOf(c), step: 'The checklist', tpl: null})),
         ...steps.flatMap(s => (s.comments || []).map(c => ({...noteOf(c), step: parseStep(s.title).title + (addedText(s.description) ? ` (${addedText(s.description).toLowerCase()})` : ''),
           tpl: addedText(s.description) ? null : plainStep(s).tpl})))];
       return {id: prev.id, title: prev.title, notes};
@@ -474,7 +474,7 @@ export default {
     store.del('saved.run.' + id); saved.set('runs.recent', (saved.get('runs.recent') || []).filter(x => x !== id));
     if (this.view.run?.run.id === id) this.view.run = null;
     this.leaveRun();
-    this.notify('That run isn\'t there any more.');
+    this.notify('That checklist isn\'t there any more.');
   },
   // Where Back goes, by name: from a run, the screen before it; from a project, the list it was opened from.
   get backName(){
@@ -648,7 +648,7 @@ export default {
       }
       // "Not done" made offline on a step of a run someone finished meanwhile: not sent, so the run stays as they left it.
       if (a.op === 'undone' && a.run && a.task !== a.run && !a.stage && (await api('/tasks/' + a.run)).done)
-        throw Object.assign(new ApiError(409, 'the run was finished meanwhile, so the step stays done'), {drop: true});
+        throw Object.assign(new ApiError(409, 'the checklist was finished meanwhile, so the step stays done'), {drop: true});
       while (a.stage < stages.length) {
         const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
         if (stages[a.stage] === 'note' && out?.id) comment = out;
@@ -694,7 +694,7 @@ export default {
   actWhat(a){
     const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '';
     return {note: 'A comment' + on, doneNote: 'A tick and its comment' + on, skip: 'A skip' + on,
-      done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the run', reopen: 'Reopening the run',
+      done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the checklist', reopen: 'Reopening the checklist',
       claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it'),
       position: 'Moving' + (title ? ` “${title}”` : ' a task'),
       delete: 'Deleting' + (title ? ` “${parseStep(title).title}”` : ' a task')}[a.op] || 'Something done offline';
@@ -857,7 +857,7 @@ export default {
     }
   },
   // The question before a step added during the run is deleted, from its × or its row's Delete: whether to.
-  askDeleteStep(s){ return !!s?.added && !s.done && confirm(`Delete “${s.title}”? It was added during this run: the template's steps stay as they are.`); },
+  askDeleteStep(s){ return !!s?.added && !s.done && confirm(`Delete “${s.title}”? It was added to this checklist alone: the template's steps stay as they are.`); },
   /* Delete a step inserted or repeated during the run, until it's done: it was likely a mistake. One still waiting to
      be sent isn't sent, nor is anything done on it. A step from the template can't be taken out: it's skipped. `undo`:
      Repeat's Undo, which asks nothing and says nothing more. `asked`: the question was asked already, before its row
@@ -894,7 +894,7 @@ export default {
     });
     if (tried) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
-    if (!quiet) this.say(gone ? 'It was sent already: delete it on the run if it isn\'t needed.'
+    if (!quiet) this.say(gone ? 'It was sent already: delete it on the checklist if it isn\'t needed.'
       : tried && this.pending.some(e => e.id === id) ? 'Not inserted. What reached Vikunja of it is taken out once Pocket reaches it.' : 'Not sent.', {place: ['sheet:top', 'step']});
     if (this.route.name === 'run') this.render();
     return gone;

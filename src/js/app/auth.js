@@ -114,7 +114,7 @@ export default {
       const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`;
       const runs =mine.filter(e => e.kind === 'run' || e.kind === 'act').length, n = tasks.length + files.length + runs;
       const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file'),
-        runs && (runs === 1 ? 'a change to a run' : runs + ' changes to runs')].filter(Boolean).join(' and ');
+        runs && (runs === 1 ? 'a change to a checklist' : runs + ' changes to checklists')].filter(Boolean).join(' and ');
       if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and drop ${n === 1 ? 'it' : 'them'}?`)) return;
       sync.drop(e => e.user === me);
       this.pending = []; this.failed = []; this.keyWaiting();

@@ -88,7 +88,7 @@ export default {
     if (r.name === 'checklists') return {kicker: '', title: 'Checklists'};
     if (r.name === 'run') {
       const run = this.view.run?.run;
-      return {kicker: this.projById.get(run?.project_id)?.title || '', title: run?.title || 'Run'};
+      return {kicker: this.projById.get(run?.project_id)?.title || '', title: run?.title || 'Checklist'};
     }
     if (r.name === 'project') {
       const p = this.view.project; if (!p) return {kicker: '', title: 'Project'};

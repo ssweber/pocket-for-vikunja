@@ -88,7 +88,7 @@ export default {
     const t = quoted(a.label || this.actTitle(a.task) || 'it'), part = a.stage > 0;
     return {done: part ? `${t} stays marked done in Vikunja, without the rest.` : `${t} stays not done in Vikunja.`,
       undone: part ? `${t} stays not done in Vikunja, without the rest.` : `${t} stays done in Vikunja.`,
-      finish: 'The run stays open in Vikunja.', reopen: 'The run stays finished in Vikunja.',
+      finish: 'The checklist stays open in Vikunja.', reopen: 'The checklist stays finished in Vikunja.',
       claim: `${t} stays without you on it.`, unclaim: `You stay on ${t}.`, progress: `${t} keeps the progress it has in Vikunja.`,
       note: 'The comment isn\'t posted: its words go back where you wrote them.', delete: `${t} stays in Vikunja.`, position: `${t} stays where it was in Vikunja's list.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
   },

@@ -104,7 +104,7 @@ export function repeatWords(t){
   if (!s) return '';
   const n = s % 86400 === 0 ? [s / 86400, 'day'] : s % 3600 === 0 ? [s / 3600, 'hour'] : [Math.round(s / 60), 'minute'];
   const every = n[0] === 1 ? 'every ' + n[1] : n[1] === 'day' && n[0] % 7 === 0 ? `every ${n[0] / 7 === 1 ? '' : n[0] / 7 + ' '}week${n[0] / 7 === 1 ? '' : 's'}` : `every ${n[0]} ${n[1]}s`;
-  return t.repeat_mode === 2 ? every + ' after a run starts' : every;
+  return t.repeat_mode === 2 ? every + ' after a checklist starts' : every;
 }
 /* Where Vikunja moves a template when it's ticked: by at least one beat, and every so often (mode 0) on to the first
    time after now; every month one month only (so one left for months is still late); from the day it's done, the
@@ -366,14 +366,29 @@ export async function inBatches(list, n, fn){
 }
 const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
 export const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
-/* A run's name without the day it was started, its last part ("Opening up · run 2 · Oct 8": "Opening up · run 2"), for
-   its card on Today, whose heading has when it's due at the right, as a task's has. Only the day as a start writes it
-   (runTitle), the day Vikunja made it or up to a week before (a start made offline): any other name stays whole. */
+/* A run's title in its parts, as a start writes it (runTitle): its template's name, the day, and its own name, a number
+   or what was typed ("Opening up · Oct 8 · #2"). One started before the day came second has its name in the middle
+   ("Opening up · run 2 · Oct 8": `old`), and is read where it is. Only the day a start would write counts: the day
+   Vikunja made it or up to a week before (a start made offline). With `guess`, for a title to change, one with no such
+   day is taken by its look: a number last, the day before it; else the day last, as titles had it.
+   {template, day, name, old}, or null for any other title. */
+export function runParts(title, created, guess = false){
+  const parts = (title || '').split(' · '), at = Date.parse(created), days = new Set(), last = parts.length - 1;
+  if (last < 2) return null;
+  if (at > 0) for (let i = 0; i < 8; i++) days.add(new Date(at - i * 864e5).toLocaleDateString([], {month: 'short', day: 'numeric'}));
+  let i = parts.findIndex((p, k) => k > 0 && k < last && days.has(p));
+  if (i < 0 && !days.has(parts[last])) {
+    if (!guess) return null;
+    if (/^#\d+$/.test(parts[last])) i = last - 1;
+  }
+  return i > 0 ? {template: parts.slice(0, i).join(' · '), day: parts[i], name: parts.slice(i + 1).join(' · '), old: false}
+    : {template: parts[0], day: parts[last], name: parts.slice(1, -1).join(' · '), old: true};
+}
+/* A run's name without the day it was started ("Opening up · Oct 8 · #2": "Opening up · #2"), for its card on Today,
+   whose heading has when it's due at the right, as a task's has. Any other name stays whole. */
 export function runWithoutDay(title, created){
-  const parts = (title || '').split(' · '), at = Date.parse(created);
-  if (parts.length < 3 || !(at > 0)) return title;
-  for (let i = 0; i < 8; i++) if (new Date(at - i * 864e5).toLocaleDateString([], {month: 'short', day: 'numeric'}) === parts.at(-1)) return parts.slice(0, -1).join(' · ');
-  return title;
+  const p = runParts(title, created);
+  return p ? p.template + ' · ' + p.name : title;
 }
 // What a run's screen keeps of a run and its steps, also saved for opening it offline.
 export const plainRun = t => ({id: t.id, title: t.title, done: t.done, project_id: t.project_id, assignees: t.assignees || [], created_by: t.created_by || null,

@@ -3,7 +3,8 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { durText, inOrder, isRun, isRunStepTask, placeBefore, plainStep, problemText, stepFrom, stepInfos, stepProblems, stepsOf, stepWords, parseStep } from '../../src/js/checklists.js';
+import { durText, inOrder, isRun, isRunStepTask, placeBefore, plainStep, problemText, runParts, runWithoutDay, stepFrom, stepInfos, stepProblems, stepsOf, stepWords, parseStep } from '../../src/js/checklists.js';
+import { runTitle } from '../../src/js/sync.js';
 
 const ids = list => list.map(s => s.id);
 
@@ -69,6 +70,25 @@ test('a run, and a run\'s step, by their links', () => {
   assert.equal(isRun({ done: false, related_tasks: { copiedfrom: [{ id: 1 }], parenttask: [{ id: 2 }] } }), false, 'a step');
   assert.equal(isRunStepTask({ related_tasks: { parenttask: [{ id: 2 }], copiedfrom: [{ id: 1 }] } }), true);
   assert.equal(isRunStepTask({ related_tasks: { parenttask: [{ id: 2 }] } }), false, 'a subtask of any other task');
+});
+
+test('a run\'s title is its template\'s name, the day, then its number or the name typed; one with the day last is read where it is', () => {
+  const made = new Date(2026, 9, 8, 7, 30), created = made.toISOString(), day = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  assert.equal(runTitle('Opening up', '#3', made), `Opening up · ${day(made)} · #3`);
+  assert.equal(runTitle('Opening up', 'Saturday', made), `Opening up · ${day(made)} · Saturday`);
+  assert.deepEqual(runParts(`Opening up · ${day(made)} · #3`, created), { template: 'Opening up', day: day(made), name: '#3', old: false });
+  assert.deepEqual(runParts(`Bar · late · ${day(made)} · Night · shift`, created), { template: 'Bar · late', day: day(made), name: 'Night · shift', old: false }, 'a dot in a name stays in it');
+  assert.deepEqual(runParts(`Opening up · run 3 · ${day(made)}`, created), { template: 'Opening up', day: day(made), name: 'run 3', old: true }, 'started when the day came last');
+  assert.deepEqual(runParts(`Opening up · ${day(new Date(2026, 9, 5))} · Saturday`, created)?.name, 'Saturday', 'started offline, made in Vikunja days later');
+  const other = day(new Date(2026, 8, 20));
+  assert.equal(runParts(`Opening up · ${other} · #3`, created), null, 'not a day it was started: not taken apart');
+  assert.equal(runParts('Opening up', created), null);
+  assert.equal(runParts(`Opening up · ${day(made)}`, created), null);
+  assert.deepEqual(runParts(`Opening up · ${other} · #3`, created, true), { template: 'Opening up', day: other, name: '#3', old: false }, 'to change its name: by its look, a number last');
+  assert.deepEqual(runParts(`Opening up · Nights · ${other}`, created, true), { template: 'Opening up', day: other, name: 'Nights', old: true }, 'else as titles had it, the day last');
+  assert.equal(runWithoutDay(`Opening up · ${day(made)} · #3`, created), 'Opening up · #3');
+  assert.equal(runWithoutDay(`Opening up · run 3 · ${day(made)}`, created), 'Opening up · run 3');
+  assert.equal(runWithoutDay('Stocktake · back room', created), 'Stocktake · back room', 'any other name stays whole');
 });
 
 test('what a run\'s screen keeps of a step: its title in the template, from what it was copied from', () => {

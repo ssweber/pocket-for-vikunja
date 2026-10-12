@@ -18,7 +18,7 @@
           <button class="btn block" id="p-use-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, true)">Use for checklists</button>
         </div></template>
         <template x-if="isChecklistProject(sheet.project)"><div>
-          <p>This project is for checklists: its templates and runs are under Checklists.</p>
+          <p>This project is for checklists: its templates, and the checklists started from them, are under Checklists.</p>
           <a class="btn ghost block" href="#/checklists" style="text-decoration:none;margin-bottom:10px">Go to Checklists</a>
           <template x-if="sheet.projEdit.perm >= 2 && startedHidden[sheet.project.id]"><button type="button" class="btn ghost block" id="p-show-started" style="margin-bottom:10px"
             @click="hideGettingStarted(sheet.project.id, false); go('#/checklists')">Show Getting started again</button></template>
@@ -28,7 +28,7 @@
       <!-- Sharing is done in Vikunja's web app: its share page, for whoever can share -->
       <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-share-card">
         <template x-if="sheet.projEdit.perm >= 2"><div>
-          <p>Sharing it is done in Vikunja's web app. Pick <b>Read &amp; write</b> for anyone who'll tick its tasks or run its checklists.</p>
+          <p>Sharing it is done in Vikunja's web app. Pick <b>Read &amp; write</b> for anyone who'll tick its tasks or work through its checklists.</p>
           <a class="btn ghost block" id="p-share" :href="shareUrl(sheet.project.id)" target="_blank" rel="noopener" style="text-decoration:none">Share it in Vikunja ↗</a>
         </div></template>
         <template x-if="sheet.projEdit.perm < 2"><p style="margin:0">Only its owner, or someone it's shared with as admin, can share it, in Vikunja's web app.</p></template>
@@ -37,7 +37,7 @@
         <button class="btn ghost block" id="p-archive" @click="archiveProject()">Archive project</button>
         <template x-if="sheet.projEdit.perm >= 2"><button class="btn danger block" id="p-delete" style="margin-top:10px" @click="deleteProject()"
           x-text="sheet.projEdit.tasks === null ? 'Delete project' : 'Delete project and its ' + sheet.projEdit.tasks + (sheet.projEdit.tasks === 1 ? ' task' : ' tasks')"></button></template>
-        <template x-if="sheet.projEdit.perm >= 2 && isChecklistProject(sheet.project) && sheet.projEdit.tasks"><p class="note" id="p-delete-note">Its tasks are its checklists' templates and runs, with each one's steps.</p></template>
+        <template x-if="sheet.projEdit.perm >= 2 && isChecklistProject(sheet.project) && sheet.projEdit.tasks"><p class="note" id="p-delete-note">Its tasks are its templates and checklists, with each one's steps.</p></template>
         <template x-if="sheet.projEdit.perm < 2"><p class="note">Only the project's owner, or someone it's shared with as admin, can delete it.</p></template>
       </div></template>
     </div></template>
@@ -53,20 +53,20 @@
         <a id="r-open-vikunja" :href="vikunjaUrl('run')" target="_blank" rel="noopener">Open in Vikunja ↗</a>
       </div>
       <template x-if="sheet.runEdit"><div>
-        <label class="field"><span x-text="sheet.runEdit.prefix ? 'This run\'s own name, between the template\'s and the day' : 'Name'"></span>
+        <label class="field"><span x-text="!sheet.runEdit.prefix ? 'Name' : 'This checklist\'s own name, ' + (sheet.runEdit.old ? 'between' : 'after') + ' the template\'s and the day'"></span>
           <input id="r-name" x-model="sheet.runEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="saveRunName()"></label>
         <div class="h3">For</div>
-        <div class="card who-pick" id="r-for" role="group" aria-label="Who the run is for">
+        <div class="card who-pick" id="r-for" role="group" aria-label="Who the checklist is for">
           <template x-if="!sheet.runEdit.people.length"><span class="note">Loading…</span></template>
           <template x-for="u in sheet.runEdit.people" :key="u.id"><button type="button" class="chip toggle" :data-user="u.username" :aria-pressed="String(sheet.runEdit.forIds.includes(u.id))"
             @click="setRunFor(u)" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
         </div>
       </div></template>
-      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.run.run.id)">Reopen run, back under In progress</button></template>
+      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.run.run.id)">Reopen checklist, back under In progress</button></template>
       <div class="card cl-card" style="margin-top:14px">
-        <p>The run is a task in Vikunja, with its steps as subtasks.</p>
+        <p>The checklist is a task in Vikunja, with its steps as subtasks.</p>
         <button class="btn ghost block" id="r-open-task" @click="openTask(view.run.run.id)">Open as a task</button>
       </div>
-      <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(view.run.run)">Delete run</button>
-        <p class="note" x-text="'Deletes the run and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their comments and photos, for everyone.'"></p></div>
+      <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(view.run.run)">Delete checklist</button>
+        <p class="note" x-text="'Deletes the checklist and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their comments and photos, for everyone.'"></p></div>
     </div></template>

@@ -110,5 +110,5 @@ export function throwDate(due, value, now = new Date()){
 export const dateValue = (due, now = new Date()) => { const d = isSet(due) ? new Date(due) : now, p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 
 // Why a task held on Today can't be moved, said with its dates all dimmed: as Move all to today leaves them.
-export const THROW_STAYS = {repeats: 'It repeats: tick it to move on to its next date.', checklist: 'A checklist comes round by itself: start it to move on.',
-  run: 'A checklist run keeps the dates it was started with.'};
+export const THROW_STAYS = {repeats: 'It repeats: tick it to move on to its next date.', checklist: 'A template comes round by itself: start it to move on.',
+  run: 'A checklist keeps the dates it was started with.'};

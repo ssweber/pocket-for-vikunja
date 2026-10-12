@@ -265,7 +265,7 @@ async function duplicate(from, rec, save, title){
   try { return (await api(`/tasks/${from}/duplicate`, {method: 'POST'})).duplicated_task; }
   catch (e) { rec.triedUntil = Date.now(); await save(); throw e; }
 }
-export const runTitle = (template, name, day) => `${template} · ${name} · ${day.toLocaleDateString([], {month: 'short', day: 'numeric'})}`;
+export const runTitle = (template, name, day) => `${template} · ${day.toLocaleDateString([], {month: 'short', day: 'numeric'})} · ${name}`;
 export const RUN_STEPS = [
   {name: 'run', done: j => !!j.runId, async run(j, c){
     const t = (j.tried && await app.findCopy(j.template.id, j, j.at, c.taken, j.id, null)) || await duplicate(j.template.id, j, c.save, (await api('/tasks/' + j.template.id)).title);
@@ -274,15 +274,15 @@ export const RUN_STEPS = [
     // saying it's a run, so it still is if its template is deleted.
     j.desc = withRunMark(notesOnly(t.description));
   }},
-  // Named after its template, the name typed when it was started or else which run of it this is, and the day:
-  // "Startup · Night shift · Oct 3", or "Startup · run 3 · Oct 3". Without a due date of its own (its steps have theirs),
+  // Named after its template, the day, and the name typed when it was started or else which one of its template's
+  // this is: "Startup · Oct 3 · Night shift", or "Startup · Oct 3 · #3". Without a due date of its own (its steps have theirs),
   // except the time its template was due, when this start ticks it (tick), so a run left open shows on Today. Nothing
   // that repeats or reminds: those are the template's, and the copy has them.
   {name: 'name', done: j => !!j.named, async run(j){
     let name = j.name;
     if (!name) {
       const runs = ((await api('/tasks/' + j.template.id)).related_tasks?.copiedto || []).map(x => x.id).sort((a, b) => a - b);
-      name = 'run ' + (runs.indexOf(j.runId) + 1 || runs.length);
+      name = '#' + (runs.indexOf(j.runId) + 1 || runs.length);
     }
     j.title = runTitle(j.template.title, name, new Date(j.at));
     await patchTask(j.runId, {title: j.title, done: false, due_date: j.tick || ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], ...j.desc && {description: j.desc}});

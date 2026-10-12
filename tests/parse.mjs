@@ -544,7 +544,7 @@ if (!same(runOrder, [[3, 9], [9, 3], [9, 12, 3, 20]])) { failed++; console.log(`
 if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9], [3, 20, 9, 12], [3, 9, 12, 20]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
 if (!same(addeds, ['Inserted', 'Repeated', '', '<p>Mind the hot plate</p>'])) { failed++; console.log(`FAIL steps added during a run: ${JSON.stringify(addeds)}`); }
 const roundsWant = [true, true, false, false, false, false, false, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
-  'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a run starts', '',
+  'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a checklist starts', '',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z', null];
 if (!same(rounds, roundsWant)) { failed++; console.log(`FAIL templates that come round: ${JSON.stringify(rounds)}`); }

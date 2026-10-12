@@ -660,7 +660,7 @@ export default {
     let tree;
     try { tree = await this.taskTree(t.id); } catch (e) { this.say('Not deleted: ' + e.message, {place: 'sheet:top', cls: 'failed'}); return; }
     const n = tree.length - 1;
-    if (!confirm(`Delete the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Runs already started keep theirs.` : '?') + ' This can\'t be undone here.')) return;
+    if (!confirm(`Delete the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Checklists already started keep theirs.` : '?') + ' This can\'t be undone here.')) return;
     await shared.saveChain;
     try {
       await this.deleteTree(tree);

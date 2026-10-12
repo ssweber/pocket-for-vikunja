@@ -71,8 +71,8 @@ function sections(){
   const dayAt = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
   const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), priority: 3, related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
-  const opening = task({title: `Opening up · run 2 · ${day}`, created: now.toISOString(), project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
-  const closing = task({title: `Closing up · run 5 · ${day}`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, priya], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
+  const opening = task({title: `Opening up · ${day} · #2`, created: now.toISOString(), project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
+  const closing = task({title: `Closing up · ${day} · #5`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, priya], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
   const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 12}))}});
   /* A card whose rows have the most at their right (rows-and-sheet-fixes-plan, part 4), opened: a priority and a time
@@ -106,7 +106,7 @@ function sections(){
   const launch = task({title: 'Plan the launch party', related_tasks: {subtask: [{id: 761}, {id: 762, done: true}, {id: 763}, {id: 764}]}});
   const plain = task({title: 'Water the plants'});
   const staff = task({title: 'Plan the staff party', done: true, related_tasks: {subtask: [{id: 771}]}});
-  const closing2 = task({title: `Closing up · run 6 · ${day}`, created: now.toISOString(), project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 896}], subtask: [{id: 781, done: true}, {id: 782}, {id: 783}]}});
+  const closing2 = task({title: `Closing up · ${day} · #6`, created: now.toISOString(), project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 896}], subtask: [{id: 781, done: true}, {id: 782}, {id: 783}]}});
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(17, 0, 0, 0);
   const projectSubs = [kid(761, {under: launch.id, title: 'Book the band', assignees: [priya]}),
     kid(763, {under: launch.id, title: 'Order the cake', percent_done: .5, related_tasks: {parenttask: [{id: launch.id}], subtask: [{id: 765}]}}),
@@ -366,7 +366,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const top = this.view.run.run;
     this.specimenRunTops = [{spec: 'For you', run: {...top, id: ++n, assignees: [me]}},
       {spec: 'Swiped right part way, still held (it springs back, as a parent’s header does): what it uncovers stays between Back and ⋯', run: {...top, id: ++n, assignees: [me]}, reveal: .3},
-      {spec: 'For you and Priya, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Front counter and the till · Oct 7'}},
+      {spec: 'For you and Priya, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Oct 7 · Front counter and the till'}},
       {spec: 'On a project only you can see: no slot', run: {...top, id: ++n, project_id: 5, assignees: [me]}}];
     // Today's cards: their subtasks in the store, the van's opened by its footer's More.
     for (const x of s.cardSubs) this.keep(x);

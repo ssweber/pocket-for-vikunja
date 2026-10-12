@@ -171,7 +171,7 @@ test('the question a parent’s ring asks names what goes with it in a sentence:
   assert.equal(completeAsk({title: 'Pack the van', names: ['A', 'B', 'C', 'D', 'E'], stay: 1}).body,
     'Its 5 open subtasks will be marked done too: A, B, C and 2 more. The one that repeats stays as it is.');
   assert.deepEqual(completeAsk({title: 'Closing up', run: true, names: ['Mop', 'Lock up']}),
-    {head: 'Finish this run with 2 steps not done?', body: '“Closing up” is finished, and its 2 steps not done stay that way: Mop and Lock up.', yes: 'Finish run'});
+    {head: 'Finish this checklist with 2 steps not done?', body: '“Closing up” is finished, and its 2 steps not done stay that way: Mop and Lock up.', yes: 'Finish checklist'});
   assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, '“Closing up” is finished, and its step not done stays that way: Mop.');
 });
 

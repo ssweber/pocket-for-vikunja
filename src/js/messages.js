@@ -102,7 +102,7 @@ export function namesText(names, most = 3){
    not done (`names`) left that way. Named in a sentence, not listed, so they aren't taken for boxes to pick from. */
 export function completeAsk({title, run = false, names = [], stay = 0}){
   const n = names.length, which = namesText(names);
-  if (run) return {head: `Finish this run with ${plural(n, 'step')} not done?`, yes: 'Finish run',
+  if (run) return {head: `Finish this checklist with ${plural(n, 'step')} not done?`, yes: 'Finish checklist',
     body: `“${title}” is finished, and ${n === 1 ? 'its step not done stays' : `its ${n} steps not done stay`} that way: ${which}.`};
   const stays = !stay ? '' : stay === 1 ? 'The one that repeats stays as it is.' : `The ${stay} that repeat stay as they are.`;
   const goes = !n ? '' : n === 1 ? `Its open subtask will be marked done too: ${which}.` : `Its ${n} open subtasks will be marked done too: ${which}.`;

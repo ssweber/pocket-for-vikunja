@@ -26,8 +26,8 @@
               <div class="t"><div class="title" x-text="t.title"></div><div class="meta num"><span x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></span><template x-if="scheduleText(t)"><span class="cl-when" x-text="scheduleText(t)"></span></template></div></div></button>
             <template x-if="canWrite(cl.project.id)"><button class="btn cl-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button></template>
           </div></template>
-          <template x-if="!cl.templates.length"><p class="cl-hint">No templates here yet: a template is the checklist each run is copied from.</p></template>
-          <template x-if="!canWrite(cl.project.id)"><p class="cl-hint">Shared with you to read only: you can see its runs, but not start or work on them.</p></template>
+          <template x-if="!cl.templates.length"><p class="cl-hint">No templates here yet: a template is what each checklist is started from.</p></template>
+          <template x-if="!canWrite(cl.project.id)"><p class="cl-hint">Shared with you to read only: you can see its checklists, but not start or work on them.</p></template>
           <div class="row cl-new" x-show="canWrite(cl.project.id)"><button class="body" @click="openNewTemplate(cl.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>
         </div>
         <template x-if="cl.runs.length || startingIn(cl.project.id).length"><div>

@@ -178,7 +178,7 @@ export default {
   cardHead(t, g){
     const run = this.isRunTask(t), when = dueInfo(t.due_date), p = this.projById.get(t.project_id);
     const said = [t.done && 'Done, with subtasks still open', this.ringOf(t)?.said, when && (when.cls === 'overdue' ? 'Late: ' : 'Due ') + when.label, t.priority && 'Priority: ' + PRIOS[t.priority].label,
-      run ? ((t.assignees || []).length ? this.forText(t) : 'Checklist run') : this.route.name !== 'project' && p?.title];
+      run ? ((t.assignees || []).length ? this.forText(t) : 'Checklist') : this.route.name !== 'project' && p?.title];
     return {title: run ? runWithoutDay(t.title, t.created) : this.rowTitle(t), prio: t.priority || 0,
       due: shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'}),
       color: p && this.route.name !== 'project' ? colorOf(p.hex_color) : null, said: said.filter(Boolean).join(', ')};

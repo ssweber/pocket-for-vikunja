@@ -145,7 +145,7 @@ export default {
       this.setProjects(this.projects.map(x => x.id === p.id ? next : x)); saved.set('projects', this.projects);
       if (this.view.project?.id === p.id) this.view.project = next;
       if (this.sheet.project?.id === p.id) this.sheet.project = next;
-      this.say(on ? 'Now for checklists. Its templates and runs are under Checklists.' : 'No longer for checklists', {place: 'sheet:top'});
+      this.say(on ? 'Now for checklists. Its templates and checklists are under Checklists.' : 'No longer for checklists', {place: 'sheet:top'});
     } catch (e) { this.say('Not changed: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
@@ -177,7 +177,7 @@ export default {
     const r = await this.createLines(steps, {parent: t, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
     if (r.error) throw r.error;
     await patiently(() => api(`/tasks/${r.ids[0]}/assignees`, {method: 'POST', body: {user_id: this.user.id}})).catch(() => {});
-    await patiently(() => patchTask(r.ids[2], {description: '<p>Due 18 minutes after the croissants go in. Notes and photos on a step show on it in every run.</p>'})).catch(() => {});
+    await patiently(() => patchTask(r.ids[2], {description: '<p>Due 18 minutes after the croissants go in. Notes and photos on a step show on it in every checklist.</p>'})).catch(() => {});
     await this.markTemplate(t, r.ids);
   },
   // Getting started, on Checklists: for a project's owner (or admin: they can share it), until they hide it.
@@ -233,8 +233,8 @@ export default {
     if (t.done || !isSet(t.due_date)) return repeats(t) ? `Give it a date to have it come round ${repeatWords(t)}, on Today. Until then, start it from Checklists.`
       : 'Without a date, start it from Checklists whenever it\'s needed. Give it one to have it show on Today then.';
     const on = onText(new Date(t.due_date));
-    return repeats(t) ? `It shows on Today ${on}, then ${repeatWords(t)}. Starting a run moves it on to the next time.`
-      : `It shows on Today ${on}, just once: starting a run ends it. Pick Repeats to have it come round.`;
+    return repeats(t) ? `It shows on Today ${on}, then ${repeatWords(t)}. Starting a checklist moves it on to the next time.`
+      : `It shows on Today ${on}, just once: starting a checklist ends it. Pick Repeats to have it come round.`;
   },
   // Whether a template that's due shows on your Today: for its assignees, or, with none, for anyone who can start it.
   templateFor(t){
@@ -306,8 +306,8 @@ export default {
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
-      this.say(!comesRound(full) ? 'Made a checklist template. Start runs from it here or under Checklists.'
-        : `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a run `
+      this.say(!comesRound(full) ? 'Made a checklist template. Start checklists from it here or under Checklists.'
+        : `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a checklist `
           + (repeats(full) ? 'moves it on to the next time.' : 'ends it, as it doesn\'t repeat.'), {place: 'sheet:top'});
     } catch (e) { this.say('Not made a template: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
@@ -411,7 +411,7 @@ export default {
       nt.made = true; taskDrafts.delete('newtpl:' + nt.project.id);
       if (this.sheet.newTpl === nt) this.closeSheet(true);
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
-      this.say(`Made ${shown}. Start a run of it here.`, {place: 'checklists'});
+      this.say(`Made ${shown}. Start a checklist from it here.`, {place: 'checklists'});
     } catch (e) {
       nt.busy = false;
       this.say(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${shown}”.` : 'Not made: ' + why(e), {place: 'sheet:top', cls: 'failed'});
@@ -555,7 +555,7 @@ export default {
     const rest = this.subtasks.filter((_, k) => k !== i).map(s => s.title), problems = stepProblems(rest);
     // Said by their number on screen, before the step comes out.
     if (problems.length > stepProblems(this.subtasks.map(s => s.title)).length) { this.say('Not removed: ' + problemText(problems.map(p => ({...p, i: p.i >= i ? p.i + 1 : p.i}))), {place: 'sheet:subtasks', cls: 'failed'}); return; }
-    if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Runs already started keep it.`)) return;
+    if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Checklists already started keep it.`)) return;
     this.sheet.checklistBusy = true;
     try {
       // Gone already, or a reply lost on the way back: removed all the same if Vikunja no longer has it.

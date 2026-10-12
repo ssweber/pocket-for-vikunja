@@ -28,14 +28,14 @@
       <!-- In a checklist project: make the task a template, start a run from it, or go to the run it's part of -->
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
         <template x-if="checklistRole === 'template'"><div>
-          <p>A template: every run gets its own copy of these steps. Tap a step to change or remove it, or to add notes and photos to it. Hold a step, then move it up or down, to move it.</p>
-          <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a run</button>
+          <p>A template: every checklist started from it gets its own copy of these steps. Tap a step to change or remove it, or to add notes and photos to it. Hold a step, then move it up or down, to move it.</p>
+          <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a checklist</button>
         </div></template>
         <template x-if="checklistRole === 'tplstep'"><div>
-          <p>A step of a template: every run gets its own copy of it, with these notes. Its name and when it's due are changed in the template.</p>
+          <p>A step of a template: every checklist started from it gets its own copy of it, with these notes. Its name and when it's due are changed in the template.</p>
           <button class="btn ghost block" id="d-open-template" @click="openTask(parentTask.id)">Back to the template</button>
         </div></template>
-        <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="checklistRole === 'run' ? openRun(sheet.task.id) : openRun(parentTask.id, sheet.task.id)">Open the run</button></template>
+        <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="checklistRole === 'run' ? openRun(sheet.task.id) : openRun(parentTask.id, sheet.task.id)">Open the checklist</button></template>
       </div></template>
 
       <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Shared with you to read only: you can see this task, but not change it.</p></template>
@@ -137,7 +137,7 @@
         </template>
         <!-- The same box as quick add: what it read is marked, with chips to undo it, and @ and * suggest people and labels -->
         <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
-        <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the run's screen: it's marked as added during the run.</p></template>
+        <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the checklist's screen: it's marked as added to this checklist alone.</p></template>
         <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox" x-data="{bw: 'sub'}">
           <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
             <div class="cap-field">
@@ -195,7 +195,7 @@
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Labels</span><span class="v">
           <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
-          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">Its runs get its labels, all but “template”, which is what makes it a template.</span></template>
+          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">Checklists started from it get its labels, all but “template”, which is what makes it a template.</span></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" data-tap @click="toggleLabelPicker()">Add</button></template>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Assigned</span><span class="v" id="d-assignees">

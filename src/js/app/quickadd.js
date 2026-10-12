@@ -128,14 +128,14 @@ export default {
   },
   // Whether a box is one of a template's steps: being written ('new:', 'add:') or changed ('edit').
   isStepBox(w){ return w === 'edit' || /^(new|add):/.test(w); },
-  /* What a box reads, under it while it's empty. In a template's name, @user is who its runs are for; in a step, who
+  /* What a box reads, under it while it's empty. In a template's name, @user is who its checklists are for; in a step, who
      does it, and a time after the step before is when it's due. A subtask box doesn't read +project, nor dates in a
      checklist project, where a subtask may become a step. */
   boxHint(w){
     const p = this.prefixes;
     if (!p) return 'Quick add shortcuts are turned off in your Vikunja settings';
     const tags = `${p.label}label  !1–5`;
-    if (w === 'tname') return `${p.assignee}user: who its runs are for  ${tags} · when it comes round is set in its sheet`;
+    if (w === 'tname') return `${p.assignee}user: who its checklists are for  ${tags} · when it comes round is set in its sheet`;
     if (w === 'ins') return `${p.assignee}user: who does it  ${tags} · a pasted list is a step a line`;
     if (this.isStepBox(w)) return `${p.assignee}user: who does it  ${tags} · “in 20 min”: due that long after the step before`;
     const base = this.boxBase(w), dates = base.due ? 'dates stay as words in a checklist project' : 'tomorrow · fri at 2 · Oct 12 · every week';
@@ -150,7 +150,7 @@ export default {
     const ph = this.isStepBox(w) && readStepPhrase(line), rest = ph ? line.slice(0, ph.index) + line.slice(ph.index + ph.length) : line;
     const raw = parseCapture(rest, this.projects, {...this.parseOpts, ignore: {}});
     if (base.due && (raw.due || raw.repeat)) out.push({key: 'ign-d', cls: 'quiet', text: w === 'tname' ? 'Dates stay in its name: when it comes round is set in its sheet'
-      : w === 'ins' ? 'Dates stay as words: a step added to a run has no time' : this.isSubBox(w) ? 'Dates stay as words here: a subtask in a checklist project may become a step'
+      : w === 'ins' ? 'Dates stay as words: a step added to a checklist has no time' : this.isSubBox(w) ? 'Dates stay as words here: a subtask in a checklist project may become a step'
       : 'Dates stay as words: a step is due a time after the one before, like “in 20 min”'});
     if (base.project && (raw.project || raw.projectMiss)) out.push({key: 'ign-p', cls: 'quiet', text: this.isSubBox(w) ? `${this.prefixes.project}project stays as words: a subtask goes in its task's project`
       : `${this.prefixes.project}project stays as words: a checklist's steps are in its project`});
