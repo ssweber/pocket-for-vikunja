@@ -641,7 +641,11 @@ a.sec-act{text-decoration:none}
 /* The words an add box read: the same text, laid out the same way behind the box, with only the marks showing */
 .addbox .cap-marks{position:absolute;inset:0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
 .addbox .cap-marks mark{color:transparent;background:var(--accent-soft)}
-.addbox textarea::placeholder{color:var(--muted)}
+/* What a box says while it's empty stays on one line, cut short with "…": the field is as tall as its words, and words
+   that wrapped made the box two lines tall before anything was typed. (Chrome draws the "…" only when the field asks
+   for it too; what's typed wraps as before.) */
+.addbox textarea{text-overflow:ellipsis}
+.addbox textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .addbox :is(.go,.cam,.box-home,.box-level){width:var(--part);height:var(--part);flex:none}
 .addbox .go{border-radius:var(--part-r);border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
 .addbox .go[disabled]{opacity:.35}
