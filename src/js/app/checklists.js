@@ -162,7 +162,7 @@ export default {
       let made = true;
       try { await this.addExample(p); } catch { made = false; }
       this.go('#/checklists');
-      this.say(made ? 'Set up Checklists, with an example template to try.' : 'Set up Checklists, but the example template couldn\'t be made: write one with New template.', {place: 'checklists', cls: made ? '' : 'failed'});
+      this.say(made ? 'Set up Checklists, with an example template to try.' : 'Set up Checklists, but the example template couldn\'t be created: add one with New template.', {place: 'checklists', cls: made ? '' : 'failed'});
     } catch (e) { this.say(e instanceof NetError ? 'Setting up checklists needs a connection to Vikunja.' : 'Not set up: ' + e.message, {place: 'setup', cls: 'failed'}); }
     finally { this.settingUp = false; }
   },
@@ -173,7 +173,7 @@ export default {
     const made = await this.createLines([title], {pid: p.id, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
     if (made.error) throw made.error;
     const t = {id: made.ids[0], title, project_id: p.id, labels: [], due_date: null};
-    await patiently(() => patchTask(t.id, {description: '<p>An example to try: tap Start, tick its steps off, then change it into a checklist of your own, or delete it from its ⋯.</p>'}));
+    await patiently(() => patchTask(t.id, {description: '<p>An example to try: tap Start and tick its steps off. Then edit it into a template of your own, or delete it from its ⋯.</p>'}));
     const r = await this.createLines(steps, {parent: t, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
     if (r.error) throw r.error;
     await patiently(() => api(`/tasks/${r.ids[0]}/assignees`, {method: 'POST', body: {user_id: this.user.id}})).catch(() => {});
@@ -299,17 +299,17 @@ export default {
     const t = this.sheet.task;
     if (!t || this.sheet.checklistBusy) return;
     const problems = stepProblems(this.subtasks.map(s => s.title));
-    if (problems.length) { this.say('Not made a template: ' + problemText(problems), {place: 'sheet:top', cls: 'failed'}); return; }
+    if (problems.length) { this.say('Template not created: ' + problemText(problems), {place: 'sheet:top', cls: 'failed'}); return; }
     this.sheet.checklistBusy = true;
     try {
       await this.markTemplate(t, this.subtasks.filter(s => !s.done).map(s => s.id));
       const full = await api('/tasks/' + t.id);
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
-      this.say(!comesRound(full) ? 'Made a checklist template. Start checklists from it here or under Checklists.'
-        : `Made a checklist template that comes round. ${this.scheduleText(full)}: it shows on Today then, and starting a checklist `
-          + (repeats(full) ? 'moves it on to the next time.' : 'ends it, as it doesn\'t repeat.'), {place: 'sheet:top'});
-    } catch (e) { this.say('Not made a template: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
+      this.say(!comesRound(full) ? 'Template created. Start it here or under Checklists.'
+        : `Template created. ${this.scheduleText(full)}: it appears on Today then, and starting it `
+          + (repeats(full) ? 'advances it to the next occurrence.' : 'ends it, as it doesn\'t repeat.'), {place: 'sheet:top'});
+    } catch (e) { this.say('Template not created: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
   async markTemplate(t, stepIds){
@@ -411,10 +411,10 @@ export default {
       nt.made = true; taskDrafts.delete('newtpl:' + nt.project.id);
       if (this.sheet.newTpl === nt) this.closeSheet(true);
       if (this.route.name === 'checklists') this.render(); else this.go('#/checklists');
-      this.say(`Made ${shown}. Start a checklist from it here.`, {place: 'checklists'});
+      this.say(`Created ${shown}. Start it here.`, {place: 'checklists'});
     } catch (e) {
       nt.busy = false;
-      this.say(t ? `Not finished: ${why(e)}. Tap Make template again to finish “${shown}”.` : 'Not made: ' + why(e), {place: 'sheet:top', cls: 'failed'});
+      this.say(t ? `Not finished: ${why(e)}. Tap Create template again to finish “${shown}”.` : 'Not created: ' + why(e), {place: 'sheet:top', cls: 'failed'});
     }
   },
   // Steps added under a template: made, marked done like the rest, and any step they count from given its name.

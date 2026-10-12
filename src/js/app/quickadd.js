@@ -135,9 +135,9 @@ export default {
     const p = this.prefixes;
     if (!p) return 'Quick add shortcuts are turned off in your Vikunja settings';
     const tags = `${p.label}label  !1–5`;
-    if (w === 'tname') return `${p.assignee}user: who its checklists are for  ${tags} · when it comes round is set in its sheet`;
+    if (w === 'tname') return `${p.assignee}user: who its checklists are for  ${tags} · a due date and Repeats are set after creating it`;
     if (w === 'ins') return `${p.assignee}user: who does it  ${tags} · a pasted list is a step a line`;
-    if (this.isStepBox(w)) return `${p.assignee}user: who does it  ${tags} · “in 20 min”: due that long after the step before`;
+    if (this.isStepBox(w)) return `${p.assignee}user: who does it  ${tags} · “in 20 min”: due 20 minutes after the previous step`;
     const base = this.boxBase(w), dates = base.due ? 'dates stay as words in a checklist project' : 'tomorrow · fri at 2 · Oct 12 · every week';
     return `${base.project ? '' : p.project + 'project  '}${p.label}label  ${p.assignee}user  !1–5  ${dates} · tap a chip to undo it`;
   },
@@ -149,7 +149,7 @@ export default {
     if (!base.due && !base.project) return out;
     const ph = this.isStepBox(w) && readStepPhrase(line), rest = ph ? line.slice(0, ph.index) + line.slice(ph.index + ph.length) : line;
     const raw = parseCapture(rest, this.projects, {...this.parseOpts, ignore: {}});
-    if (base.due && (raw.due || raw.repeat)) out.push({key: 'ign-d', cls: 'quiet', text: w === 'tname' ? 'Dates stay in its name: when it comes round is set in its sheet'
+    if (base.due && (raw.due || raw.repeat)) out.push({key: 'ign-d', cls: 'quiet', text: w === 'tname' ? 'Dates stay in its name: a due date and Repeats are set after creating it'
       : w === 'ins' ? 'Dates stay as words: a step added to a checklist has no time' : this.isSubBox(w) ? 'Dates stay as words here: a subtask in a checklist project may become a step'
       : 'Dates stay as words: a step is due a time after the one before, like “in 20 min”'});
     if (base.project && (raw.project || raw.projectMiss)) out.push({key: 'ign-p', cls: 'quiet', text: this.isSubBox(w) ? `${this.prefixes.project}project stays as words: a subtask goes in its task's project`

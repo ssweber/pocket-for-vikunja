@@ -5,7 +5,7 @@
 <template x-for="(st, k) in draftRows(which)" :key="st.key"><div class="draft-step" x-data="{bw: which + ':' + st.key}">
   <div class="draft-line">
     <template x-for="d in [draft(which).info.get(st.key)]" :key="0"><span class="check step-n num" aria-hidden="true" x-text="d ? d.i + 1 : ''"></span></template>
-    <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml(bw)"></div><textarea class="draft-in" rows="1" :id="which + '-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'A step, like “Take the croissants out in 18 min”'" :aria-label="'Step ' + (k + 1)"
+    <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml(bw)"></div><textarea class="draft-in" rows="1" :id="which + '-step-' + k" x-model="st.text" :placeholder="k ? 'Next step' : 'e.g. Take the croissants out in 18 min'" :aria-label="'Step ' + (k + 1)"
            enterkeyhint="next" x-box="bw" @paste="pasteDraft(which, $event, k)"></textarea></div></div>
     <button type="button" class="icon-btn" :aria-label="'Move up: ' + (st.text || 'step ' + (k + 1))" :disabled="k === 0" @mousedown.prevent @click="moveDraftRow(which, k, -1)"><svg class="i"><use href="#i-up"/></svg></button>
     <button type="button" class="icon-btn" :aria-label="'Move down: ' + (st.text || 'step ' + (k + 1))" :disabled="k === draftRows(which).length - 1" @mousedown.prevent @click="moveDraftRow(which, k, 1)"><svg class="i"><use href="#i-down"/></svg></button>
