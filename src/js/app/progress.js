@@ -314,8 +314,9 @@ export default {
       if (g.mode === 'wait') {
         const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
         if (Math.hypot(dx, dy) <= SWIPE_PX) { g.x = e.clientX; g.y = e.clientY; return; }
-        // More sideways than not, but not clearly (SWIPE_SLOPE): not decided yet, until it is, or the page scrolls.
-        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) <= Math.abs(dy) * SWIPE_SLOPE) { g.moved = true; return; }
+        // More sideways than not, but not clearly (SWIPE_SLOPE): not decided yet, until it is, or the page scrolls. Moved
+        // this far, though, the finger isn't holding still: the hold is off, so a pause here doesn't lift the row.
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) <= Math.abs(dy) * SWIPE_SLOPE) { clearTimeout(g.timer); g.moved = true; return; }
         const way = swipeStarts(dx, dy, g.x0, innerWidth, !!s.swipe?.base) && wayOf(s, dx);
         // Not a swipe it can take: a sideways move does nothing, not even open the task where a mouse lets go; up or
         // down is a scroll.

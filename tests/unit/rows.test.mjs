@@ -260,6 +260,30 @@ test('a finger down on a row doesn\'t search a long list, nor draw the rest of o
   for (const fn of win.pointerup) fn({ pointerId: 1 });                     // let go, so nothing is held for the tests after
 });
 
+/* A finger moved past SWIPE_PX is scrolling or swiping, not holding still: no hold comes of a pause after that, even
+   one moved more sideways than not but not clearly so (SWIPE_SLOPE), which holdToSlide leaves undecided. Within
+   SWIPE_PX a thumb may wobble, and the hold still comes. */
+test('a finger moved past the swipe threshold on a slant, then held still, lifts nothing; one that only wobbles is held', c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = component(progress), felt = [], on = {}, win = {}, area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
+  const row = { dataset: { id: '2' }, clientWidth: 360, closest: () => null, classList: { add(){}, remove(){} } };
+  document.addEventListener = () => {}; globalThis.addEventListener = (type, fn) => { (win[type] ||= []).push(fn); }; globalThis.getSelection = () => null; navigator.vibrate = p => felt.push(p);
+  c.after(() => { delete document.addEventListener; delete globalThis.addEventListener; delete globalThis.getSelection; delete navigator.vibrate; });
+  app.holdToSlide(area, () => ({ el: row, reorder: { start(){}, move(){}, end(){} } }));
+  const finger = (type, e) => { for (const fn of (type === 'pointerdown' ? on : win)[type] || []) fn({ isPrimary: true, pointerType: 'touch', pointerId: 1, target: { closest: () => null }, preventDefault(){}, ...e }); };
+  c.after(() => finger('pointerup', {}));                                   // let go, so nothing is held for the tests after
+  finger('pointerdown', { clientX: 100, clientY: 100 });
+  finger('pointermove', { clientX: 109, clientY: 108 });                   // 12px, past SWIPE_PX; sideways by 9 to 8, short of SWIPE_SLOPE
+  c.mock.timers.tick(HOLD_MS);
+  assert.deepEqual(felt, [], 'moved that far on a slant, then still: no hold');
+  finger('pointerup', {});
+  finger('pointerdown', { clientX: 100, clientY: 100 });
+  finger('pointermove', { clientX: 104, clientY: 104 });                   // under SWIPE_PX: a wobble
+  c.mock.timers.tick(HOLD_MS);
+  assert.deepEqual(felt, [12], 'a wobble within the threshold, then still: the hold is felt');
+  finger('pointerup', {});
+});
+
 /* A run's step is swiped as a task's row is (parent-tasks-plan, part 1): its progress either way, a done one down, and
    past 0% only a step inserted or repeated during the run, not done, has a Delete; a template's step stops at 0%. */
 test('a run\'s step: swiped for its progress as a task is; only one inserted during the run goes on into a Delete', () => {
