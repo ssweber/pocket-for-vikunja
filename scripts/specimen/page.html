@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pocket · the task row in every state</title>
+<title>Pocket · the task row and the add box in every state</title>
 <link rel="stylesheet" href="styles.css">
 <style>
   /* The page around the rows: light and dark side by side, each a phone's width */
@@ -13,8 +13,17 @@
   .theme h1{font-size:20px;margin:16px 0 0}
   /* a row lit up stays lit, to be looked at */
   .row.fresh,.row.came-due{animation-play-state:paused}
-  /* the bottom box, as it sits under a run's steps, not fixed to the page's foot */
-  .spec-box{margin-top:16px}
+  /* The add boxes. The bar and the place it leaves are in the page's flow here, not fixed to its foot, and span the
+     phone's width as they do there; a box seated under a row is in the flow too, between the rows, where the app
+     lays it over room given to that row (seatBox, seatFoot). A list's dashed place stays at its foot. A box that
+     has the focus (.spec-focus) is drawn as focused: nothing here can take it. */
+  .theme #capture,.theme #cap-home{position:relative}
+  .theme #capture.inline,.theme .foot-box.inline{position:relative;width:auto}
+  .spec-bar{margin:0 -16px}
+  .spec-seated #cap-home,.spec-place #capture{display:none!important}
+  .spec-list{display:flex;flex-direction:column}
+  .spec-list > .sub-home{order:9}
+  .spec-focus .addbox.sub form,.spec-focus > .step-box,.spec-edit .step-box{border-color:var(--accent)}
   /* a task held on Today, its dates around the finger: on a phone's screen, 360px wide (.wide: 390), over its rows,
      not fixed to the page; the dot is the finger (.was: where it was held, once it has moved) */
   .spec-ring{position:relative;width:360px;height:344px;margin:0 -1px 16px;padding:8px;overflow:hidden;border-radius:16px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
@@ -57,12 +66,11 @@
           <!-- The subtasks: the real rows, as the sheet has them (g.sheet); the add box under them, a stand-in -->
           <template x-if="sheet.parts.includes('subtasks')"><div>
             <div class="h3"><span>Subtasks</span><span class="n num" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
-            <div class="card" id="d-subtasks">
+            <div class="card" id="d-subtasks" x-data="specFoot('at rest')">
               <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true}]" :key="0"><template x-for="t in subtasks" :key="t.id">
                 <!-- include markup/task-row.html -->
               </template></template>
-              <div class="addbox sub"><form><div class="cap-field"><textarea rows="1" placeholder="Add subtasks, or paste a list" aria-label="Add subtasks"></textarea></div>
-                <button class="go" type="button" disabled aria-label="Add subtasks"><svg class="i"><use href="#i-plus"/></svg></button></form></div>
+              <!-- include markup/list-box.html -->
             </div>
           </div></template>
           <!-- Stand-in: Comments -->
@@ -191,40 +199,52 @@
           <button class="icon-btn plain" aria-label="Run options"><svg class="i"><use href="#i-more"/></svg></button>
         </div>
       </div></template>
-      <!-- A run's screen adding steps from the bottom box (app.html, capW 'ins'): the step on its card lit, two steps
-           added after it, one after the other, a third waiting to send, and the line above the box naming the last,
-           with Repeat (cap-target.html) -->
-      <div class="sec">A run’s screen, adding steps from the bottom box: two after the step on its card, a third waiting to send, the line naming the last</div>
-      <template x-for="g in [{depth: {}, run: true, at: specimenAdding.at, locked: false}]" :key="0"><div class="list">
-        <template x-for="t in specimenAdding.steps" :key="t.id">
-          <!-- include markup/task-row.html -->
-        </template>
+      <!-- The add box in every state (inline-add-box-plan). Each is the app's own markup, given what it reads by the
+           x-data around it (specimen.mjs: specBar, specFoot), so what it read is marked and its chips are worked out as
+           the app's are. Nothing here can be typed in or take the focus: a focused box is one told it has it. -->
+      <!-- Quick add's bar at the bottom (add-bar.html), and the dashed place it leaves while it's in the list -->
+      <template x-for="sp in specimenBars" :key="sp.spec"><div>
+        <div class="sec" x-text="sp.spec"></div>
+        <div class="spec-bar" :class="{'spec-place': place}" x-data="specBar(sp.spec, sp.f)">
+          <!-- include markup/add-bar.html -->
+        </div>
       </div></template>
-      <div class="addbox spec-box">
-        <template x-for="target in [specimenAdding.target]" :key="0">
-          <!-- include markup/cap-target.html -->
-        </template>
-        <form><div class="cap-field"><textarea rows="1" placeholder="Add a step, or paste a list" aria-label="New step"></textarea></div>
-          <button class="go" type="button" disabled aria-label="Add step"><svg class="i"><use href="#i-up"/></svg></button></form>
-      </div>
-      <!-- Above quick add's box on a project's list (cap-target.html): adding subtasks to the task touched last, after its
-           last subtask, and after the subtask touched; and on a run's screen, the step a step goes after, with Repeat -->
-      <div class="sec">Above the add box: what it adds subtasks to; on a run, the step a step goes after, Repeat off for a step waiting to send</div>
-      <template x-for="target in specimenTargets" :key="target.after">
-        <!-- include markup/cap-target.html -->
-      </template>
-      <!-- A template's steps in its sheet (sheet/task.html, the rows under a template, at rest): numbered plainly, as the
-           start sheet has them, since a square box is a step you tick, in a run; when each is due, and its notes' first
-           line. A copy of that row's markup, which is part of the sheet's own. -->
-      <div class="sec">A template’s steps in its sheet: plain numbers, as on the start sheet (a square box is a step you tick, in a run)</div>
-      <div class="card">
-        <template x-for="(st, i) in specimenTemplate" :key="i"><div class="row">
-          <span class="check step-n num" aria-hidden="true" x-text="i + 1"></span>
-          <button class="body"><div class="title" x-text="st.title"></div>
-            <template x-if="st.text"><div class="meta"><span class="num" x-text="st.text"></span></div></template>
-            <template x-if="st.note"><div class="step-note" x-text="st.note"></div></template></button>
-        </div></template>
-      </div>
+      <!-- The same bar seated in a list under a row, as far in as what it adds: the rows before it, the bar, the rows after -->
+      <template x-for="sp in specimenSeated" :key="sp.spec"><div>
+        <div class="sec" x-text="sp.spec"></div>
+        <div class="list spec-seated" x-data="specBar(sp.spec, sp.f)">
+          <template x-for="g in [g]" :key="0"><template x-for="t in before" :key="t.id">
+            <!-- include markup/task-row.html -->
+          </template></template>
+          <!-- include markup/add-bar.html -->
+          <template x-for="g in [g]" :key="1"><template x-for="t in after" :key="t.id">
+            <!-- include markup/task-row.html -->
+          </template></template>
+        </div>
+      </div></template>
+      <!-- The box at a list's foot (list-box.html): a task's subtasks, a template's steps (New template's are the same
+           list), and a checklist's steps on its screen, with Repeat. Under a row, its place at the foot is kept, dashed. -->
+      <template x-for="sp in specimenFeet" :key="sp.spec"><div>
+        <div class="sec" x-text="sp.spec"></div>
+        <div class="spec-list" :class="{card: !g.run, list: g.run, 'spec-focus': b.focus, 'spec-edit': sheet.stepEdit}" :id="g.run ? 'run-steps' : 'd-subtasks'" x-data="specFoot(sp.spec, sp.f)">
+          <template x-for="g in [g]" :key="0"><template x-for="t in before" :key="t.id">
+            <!-- include markup/task-row.html step -->
+          </template></template>
+          <!-- include markup/list-box.html -->
+          <template x-for="g in [g]" :key="1"><template x-for="t in after" :key="t.id">
+            <!-- include markup/task-row.html step -->
+          </template></template>
+        </div>
+      </div></template>
+      <!-- Its relatives, which share the field: New template's name (a copy of sheet/new-template.html's box), and a
+           comment's (in the first sheet above, a stand-in) -->
+      <template x-for="sp in specimenNames" :key="sp.spec"><div>
+        <div class="sec" x-text="sp.spec"></div>
+        <div class="nt-name" :class="{'spec-focus': b.focus}" x-data="specName(sp.spec, sp.f)"><label>Name</label>
+          <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" x-model="b.text" x-box="bw" placeholder="e.g. Opening up"></textarea></div></div>
+          <!-- include markup/sheet/box-chips.html -->
+        </div>
+      </div></template>
       <div class="sec">A message in its place: under Overdue, by the add box, in a sheet, on a run's step</div>
       <template x-for="line in specimenLines" :key="line.key">
         <!-- include markup/place-line.html -->

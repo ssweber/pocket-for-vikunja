@@ -1264,6 +1264,10 @@
     </div></template>
   </main>
 
+  <!-- Quick add's box at the bottom, and the place it leaves there while it's in the list -->
+<!-- Quick add's box, the bar at the bottom of Today and a project's list, and the place it leaves there (app.html; the
+     specimen draws it too). It's the one box (x-box): nudged, it's seated in the list under a row, as far in as what
+     it adds (seatBox, app/quickadd.js), with ⇤ ⇥ for its level on a project's list and × to send it home. -->
   <!-- The box's place at the bottom, kept empty at its height while the box is in the list: a tap brings the box back.
        Ahead of the box, so the box is over it for the frame before it's seated. -->
   <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span></span></button>

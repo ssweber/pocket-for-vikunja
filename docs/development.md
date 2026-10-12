@@ -262,10 +262,10 @@ guide follow the same café. Run it after changing how Pocket looks.
 
 ## The specimen
 
-`npm run specimen` makes `specimen/index.html`: the task row, the stacked card, a parent's ring, the sheet and a
-run's screen in every state, in light and dark side by side. It uses the real stylesheet and Pocket's own component,
-given made-up tasks (`scripts/specimen/`), and needs no server. A new state of a row gets its place there. It's for
-development only: git ignores it, and nothing in `pocket/app/` refers to it.
+`npm run specimen` makes `specimen/index.html`: the task row, the stacked card, a parent's ring, the sheet, a run's
+screen and the add boxes in every state, in light and dark side by side. It uses the real stylesheet and Pocket's own
+component, given made-up tasks (`scripts/specimen/`), and needs no server. A new state of a row or a box gets its
+place there. It's for development only: git ignores it, and nothing in `pocket/app/` refers to it.
 
 ## Upgrading the libraries
 

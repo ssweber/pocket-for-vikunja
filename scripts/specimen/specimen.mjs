@@ -308,13 +308,35 @@ function runSteps(){
   return list;
 }
 
+/* An add box as the page gives it to the app's own markup (add-bar.html, list-box.html): what that markup reads, by
+   the x-data around it, in place of the component's own, so every state shows at once. The component's methods still
+   work out its marks, chips and hint from the box they're handed here (box()). Each is made afresh for the element
+   it's the x-data of (Alpine keeps its own things on that object), from what its state is listed with: {spec, f}.
+   specBar: quick add's bar. `inset`: seated in a list, that far in, as seatBox seats it; `place`: only the dashed place
+   it leaves; `before` and `after`: the rows around it, in a list `g`.
+   specFoot: the box at a list's foot. `fb`: what footBox() says of it in the app (under a row, its words, Repeat);
+   `time`: a step's time line under it; `said`: what was just done from it. */
+const blankBox = f => ({text: '', caret: 0, focus: false, busy: false, ignore: {}, remind: false, ...f});
+const specBar = (spec, f = {}) => ({spec, capW: 'cap', canLevel: false, boxOut: false, canIn: true, boxInList: false, capTarget: null, capPlaceholder: 'Add a task to Café',
+  boxBackLabel: 'Add a task to Café instead', capPhotos: [], attachmentsOn: true, said: null, inset: '', place: false, before: [], after: [], g: {depth: {}}, ...f,
+  capBox: blankBox(f.box), get cap(){ return this.capBox; }, box(){ return this.capBox; }, placeLines(){ return this.said ? [this.said] : []; },
+  init(){ this.$nextTick(() => { const bar = this.$el.querySelector('#capture'); if (bar && this.inset) { bar.classList.add('inline'); bar.style.paddingLeft = this.inset; } }); }});
+const specFoot = (spec, f = {}) => ({spec, where: f.g?.run ? 'run' : 'sheet', said: null, time: null, before: [], after: [], g: {depth: {}, sheet: true, delete: true, reorder: true}, ...f,
+  fb: {w: 'sub', id: 'd-subbox', in: 'd-subin', under: false, steps: false, can: false, repeat: null, says: 'Add subtasks, or paste a list', add: 'Add subtasks', home: 'Add after the last subtask instead', ...f.fb},
+  b: blankBox(f.box), footBox(){ return this.fb; }, box(w){ return w === 'edit' && this.sheet.stepEdit || this.b; }, placeLines(){ return this.said ? [this.said] : []; },
+  // A step's time line, and a template's steps as rows: their numbers, when each is due, its notes' first line.
+  draft(){ return {info: new Map([['+', this.time]])}; }, draftShown(d){ return d ? [d] : []; }, stepEditDraft(){ return this.time; }, passFocus(){},
+  stepNo(t){ return [...this.before, ...this.after].findIndex(x => x.id === t.id) + 1; }, stepAt(t){ return this.stepNo(t) - 1; },
+  stepShown(t){ return {title: t.title, text: t.when || '', problem: ''}; }, stepNote(t){ return t.note || ''; },
+  init(){ this.$nextTick(() => { if (this.fb.under) this.$el.querySelector('.foot-box')?.classList.add('inline'); }); }});
+const specName = (spec, f = {}) => ({spec, bw: 'tname', b: blankBox(f.box), box(){ return this.b; }});
+
 document.addEventListener('alpine:init', () => directives(Alpine));
 document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   const c = pocket();
-  c.specimenTemplate = [{title: 'Turn on the espresso machine', text: 'Named “machine”'}, {title: 'Put the croissants in', text: 'Named “oven”'},
-    {title: 'Take the croissants out', text: 'Due 18m after “oven”', note: 'Top shelf first: it runs hot.'}, {title: 'Unlock the door', text: 'Due 30m after “machine”'}];
   c.specimenSheets = [];
-  c.specimen = []; c.specimenCards = []; c.specimenEnds = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenRunTops = []; c.specimenAdding = {steps: [], at: null, target: {}};
+  c.specimen = []; c.specimenCards = []; c.specimenEnds = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenRunTops = []; c.specimenAdding = {steps: [], at: null};
+  c.specimenBars = []; c.specimenSeated = []; c.specimenFeet = []; c.specimenNames = [];
   // A message in its place (lines.js: sayAt), each as the app shows it.
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
@@ -322,9 +344,6 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     {key: 3, place: 'sheet:top', text: 'Not saved: no connection', cls: 'failed', action: {label: 'Try again', fn(){}}},
     {key: 4, place: 'sheet:subtasks', text: 'Closed Deep clean + 3 subtasks', action: undo},
     {key: 5, place: 'step', text: 'Done: Take the croissants out', action: undo}];
-  // And on a run's screen: the step a step goes after, with Repeat (off for a step still waiting to be sent).
-  c.specimenTargets = [{to: 'Pack the van', after: ''}, {to: 'Pack the van', after: 'Load chairs'},
-    {step: true, after: 'Unlock the door', repeat: 'Unlock the door', canRepeat: true}, {step: true, after: 'Check the milk', repeat: 'Check the milk', canRepeat: false}];
   // A list of done tasks' row for more (more-row.html), from its specimen: the made-up figures it's given.
   c.moreOf = function(key){ return key && this.specimen.find(g => g.key === key)?.more || null; };
   // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.
@@ -352,15 +371,15 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {reveal: .4}};
     steps[5] = {...steps[5], state: {swiped: true}};                 // inserted during the run: it has a Delete
-    /* Steps added from the bottom box, one after another, after the step on the card: two sent, the third waiting to
-       be sent, and the line above the box naming it (runAim). */
+    /* Steps added from the box under a checklist's steps, one after another, after the step on the card: two sent, the
+       third waiting to be sent. */
     const mk = title => ({...s.steps[5], id: ++n, title, comments: [], assignees: []});
     const inRow = [...s.steps.slice(0, 5), mk('Fill the water jug'), mk('Wipe the counter'), ...s.steps.slice(5)];
     this.pending.push({kind: 'step', id: 'specimen-step', run: run.id, title: 'Stack the trays', before: s.steps[5].id, after: inRow[6].id, at: new Date().toISOString(), tpl: null, from: null, items: [], files: []});
     this.slow.push('specimen-step');
     this.view.run = {run, steps: inRow, at: 4, last: null};
     // (from the step before the card's to the run's next steps; other ids, so the states above stay on their own rows)
-    this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4, target: {step: true, after: 'Stack the trays', repeat: this.runView.step.title, canRepeat: true}};
+    this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4};
     /* A run's screen's top (app.html): its own row between Back and ⋯ (RUN_ROW), its ring the screen's (runRing, the run
        above), who it's for in its slot: you; you and Priya; on a project only you can see, no slot. */
     const top = this.view.run.run;
@@ -409,6 +428,52 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       // (other ids, so the states above stay on their own rows)
       {title: 'The same steps in a run finished, or shared with you to read only', depth: {}, run: true, at: null, locked: true,
         tasks: finished.map(x => ({...x, id: x.id + 1000}))}];
+    /* The add boxes (inline-add-box-plan), each state its own: quick add's bar at the bottom; the bar seated in a
+       project's list, a level in under a task and under a subtask, and out a level, and on Today; the box at a
+       list's foot, for a task's subtasks, a template's steps and a checklist's; and New template's name. */
+    const barBox = (spec, f = {}) => ({spec, f}), footBox = barBox;
+    const list3 = 'Buy milk\nBuy the oat milk too, for Priya\nWipe the fridge shelves';
+    this.specimenBars = [barBox('The add box, the bar at the bottom of Today and a project’s list: empty'),
+      barBox('Focused and empty: what it reads, under it', {box: {focus: true}}),
+      barBox('Typed, with what it read as chips, and marked in its words', {box: {text: 'Buy milk tomorrow !3 *front', focus: true}}),
+      barBox('A pasted list: three lines, the button on the last', {box: {text: list3, focus: true}}),
+      barBox('With a photo: the camera lit, the photo a chip', {capPhotos: [{name: 'receipt.jpg'}], capPlaceholder: 'What’s this photo for?'}),
+      barBox('Where what was just added went, over it', {said: {n: 1, place: 'cap', text: 'Added to Head office, due Friday', action: {label: 'Open', fn(){}}}}),
+      barBox('The place it leaves at the bottom while it’s in the list: dashed, at its height; a tap brings it back', {place: true, boxInList: true})];
+    const fuelT = task({title: 'Buy fuel'}), vanT = task({title: 'Pack the van'}), kidOf = title => task({title, related_tasks: {parenttask: [{id: vanT.id}]}});
+    const tablesT = kidOf('Tables'), chairsT = kidOf('Chairs'), waterT = task({title: 'Water the plants'}), inList = {depth: {[tablesT.id]: 1, [chairsT.id]: 1}, delete: true, reorder: true};
+    const seated = (spec, f) => barBox(spec, {g: inList, boxInList: true, capW: 'under', capPlaceholder: 'Subtask', inset: '44px', ...f});
+    this.specimenSeated = [
+      seated('Seated in a project’s list under a task, a level in, where its first subtask’s tick will be: ⇤ moves it out a level, × sends it home', {canLevel: true, before: [fuelT], after: [waterT]}),
+      seated('Under a subtask, at its level: a pasted list', {canLevel: true, before: [vanT, tablesT], after: [chairsT, waterT], box: {text: list3, focus: true}}),
+      seated('Out a level, after the task and all under it: a task again, so the camera is back, and ⇥ moves it in', {canLevel: true, boxOut: true, capW: 'cap', capPlaceholder: 'Task', inset: '14px', before: [vanT, tablesT, chairsT], after: [waterT]}),
+      seated('Out a level, typed', {canLevel: true, boxOut: true, capW: 'cap', capPlaceholder: 'Task', inset: '14px', before: [vanT, tablesT, chairsT], after: [waterT], box: {text: 'Strap it down tomorrow', focus: true}}),
+      seated('On Today, which adds subtasks only: no ⇤', {before: [fuelT], after: [waterT]})];
+    const tplStep = (title, when = '', note = '') => ({...task({title, done: true}), when, note});
+    const tplSteps = [tplStep('Turn on the espresso machine', 'Named “machine”'), tplStep('Put the croissants in', 'Named “oven”'),
+      tplStep('Take the croissants out', 'Due 18m after “oven”', 'Top shelf first: it runs hot.'), tplStep('Unlock the door', 'Due 30m after “machine”')];
+    const stepList = {depth: {}, sheet: true, delete: true, reorder: true, step: true};
+    const stepFb = {w: 'add:+', steps: true, says: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead'};
+    const runList = {depth: {}, run: true, at: this.specimenAdding.at, locked: false}, runSteps = this.specimenAdding.steps;
+    const runFb = {w: 'ins', id: 'run-box', in: 'run-in', says: 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead', repeat: {title: this.runView.step.title, can: true}};
+    this.specimenFeet = [
+      footBox('The box at the foot of a task’s subtasks, focused and empty: its edge the accent, what it reads under it', {before: subs, box: {focus: true}}),
+      footBox('Typed: what it read as chips', {before: subs, fb: {can: true}, box: {text: 'Order the paint tomorrow !2', focus: true}}),
+      footBox('A pasted list: its button on the last line', {before: subs, fb: {can: true}, box: {text: list3, focus: true}}),
+      footBox('Under a row nudged, to add after it: × sends it back, and its place at the foot is kept, dashed', {before: subs.slice(0, 1), after: subs.slice(1), fb: {under: true, says: 'Subtask'}}),
+      footBox('A template’s steps (New template’s are the same list): plain numbers, when each is due, its notes’ first line, and the box at their foot', {g: stepList, before: tplSteps, fb: stepFb}),
+      footBox('A step being written with a time: its time line under the box, then its chips', {g: stepList, before: tplSteps, fb: {...stepFb, can: true}, box: {text: 'Lock up in 20 min !2', focus: true},
+        time: {problem: '', offset: 12e5, i: 4, lost: false, from: '', choices: tplSteps.slice(0, 3).map((x, i) => ({key: 'k' + i, title: x.title})), phrase: 'in 20 min', kept: false, name: ''}}),
+      footBox('Under a step nudged', {g: stepList, before: tplSteps.slice(0, 2), after: tplSteps.slice(2), fb: {...stepFb, under: true, says: 'Step'}}),
+      footBox('A step tapped: quick add’s box in its words’ place, and its notes’ link', {g: stepList, before: tplSteps, fb: stepFb, chips(){ return []; },
+        sheet: {...blankSheet('task'), task: s.parent, stepEdit: {id: tplSteps[1].id, text: tplSteps[1].title, caret: 0, focus: true, ignore: {}}}}),
+      footBox('A checklist’s steps on its screen: the box at their foot, with Repeat (the step on the card, again)', {g: runList, before: runSteps, fb: runFb}),
+      footBox('Typed there', {g: runList, before: runSteps.slice(-3), fb: {...runFb, can: true}, box: {text: 'Sweep outside !2', focus: true}}),
+      footBox('Under a step nudged: Repeat, ×, and its button', {g: runList, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step'}}),
+      footBox('What Repeat just did, said in the box; and Repeat off, for a step still waiting to be sent', {g: runList, before: runSteps.slice(-2), fb: {...runFb, repeat: {title: 'Stack the trays', can: false}},
+        said: {n: 2, place: 'cap', text: 'Repeated “Take the croissants out”', action: {label: 'Undo', fn(){}}}})];
+    this.specimenNames = [barBox('New template’s name: quick add’s box with nothing beside it, empty'),
+      barBox('Typed, focused, with its priority as a chip', {box: {text: 'Opening up !2', focus: true}})];
     // The states a finger makes, put on the rows as the app does.
     const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
     for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', action: {label: 'Undo', fn(){}}, ...t.state.line};
@@ -478,4 +543,4 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   c.watchCard = () => {};                                  // an opened card stays open, off the screen too
   return c;
 }));
-Object.assign(window, globals);
+Object.assign(window, globals, {specBar, specFoot, specName});
