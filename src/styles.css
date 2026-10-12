@@ -131,7 +131,8 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec{positi
 /* a subtask, under its parent: its tick smaller, a step in for each task it's under, and the line between them starts
    there too, as does the fill while its progress is set (--row-inset, read by each) */
 .row.sub{--tick:var(--sub-tick);--row-inset:calc(14px + var(--depth) * var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
-.row.sub > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
+/* the line between subtasks starts at their ticks: a list's, and a card's rows after its first, which its header is over */
+.row.sub > .body::before,.card-rows > .row:not(:first-of-type) > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
 /* a row's title takes taps over the row's full height, and up to its edge when there's nothing after it. Its first line
    is placed from the top, centred 28px down, on its tick's line, whatever's under it (a button would centre it all) */
@@ -207,7 +208,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    project's list and Today, the cursor's row (aimed); in a sheet's list and on a checklist, the row given room for the
    box (sub-boxed: seatFoot); and a checklist's step on its card (current), which is the step a nudge puts the box
    under, wherever the box is. */
-.row.aimed,.row.sub-boxed,.row.current{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
+.row.aimed,.row.sub-boxed,.row.current,.day-card.aimed > .card-head{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
 /* a subtask just added from that box is lit in its turn; one that looks waiting keeps the waiting tint, with the bar */
 .row.aimed.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 /* a task whose time has just passed lights up as it moves to Overdue */
@@ -439,8 +440,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-open > .dot{flex:none;margin:0;position:relative;top:-1px}
 /* done, over subtasks still open (a project's list): its title struck through, as a done row's is */
 .day-card.done .card-title{color:var(--muted);text-decoration:line-through}
-/* the task quick add's box adds subtasks to (the cursor), as a row is lit up: a bar down its heading's side, a faint tint */
-.day-card.aimed > .card-head{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
+/* (the task quick add's box adds subtasks to is lit on its heading, as a row is: .row.aimed, with the rows) */
 /* every subtask done: no rows, but it says so, with Close, a chip at the right as Restore is, where its rows' slots are */
 .card-close{display:flex;align-items:center;gap:12px;min-height:52px;margin-top:6px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
 .card-close > span{flex:1;min-width:0}
@@ -468,7 +468,6 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 /* its rows, one level in, as a subtask under its parent (.row.sub: its smaller tick, its step in), the lines between
    them starting at the ticks, the tick's tap still the whole gutter and the swipe's space the whole row */
 .card-rows > .row{--tick:var(--sub-tick);--row-inset:calc(14px + var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
-.card-rows > .row:not(:first-of-type) > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
 .day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
 .day-card.lined > :not(.row-line){display:none}
 .day-card.fresh{animation:fresh 1.6s ease-out}
@@ -543,7 +542,6 @@ a.sec-act{text-decoration:none}
 .step-box .cap-field{position:relative}
 .step-box .draft-in{position:relative;white-space:pre-wrap;overflow-wrap:break-word}
 .step-box .cap-marks{position:absolute;inset:0;padding:10px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
-.step-box .cap-marks mark{color:transparent;background:var(--accent-soft)}
 .box-chips{margin:6px 0 0 38px}
 .step-in .box-chips,.nt-name .box-chips{margin-left:0}
 .nt-name{margin-bottom:14px}
@@ -625,7 +623,8 @@ a.sec-act{text-decoration:none}
 
 /* ---------- capture bar ---------- */
 #capture{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);background:var(--bg)}
-#capture::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
+/* the list fades out above the bar, and above the place the bar leaves (#cap-home) */
+#capture::before,#cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
 /* One box in two sizes, each said once: the bar at the bottom, and the closer box in a list (seated under a row, or at
    a list's foot). --part is its buttons' size and its field's height with one line, so the words and the buttons share
    a centre; --box-pad the room around them, --box-edge its border, --box-r its corners, --box-in its words in from
@@ -642,9 +641,10 @@ a.sec-act{text-decoration:none}
 .addbox textarea,.addbox .cap-marks,.draft-in,.step-box .cap-marks,.comment-form textarea{font-size:17px;line-height:24px}
 .addbox textarea,.addbox .cap-marks{padding:calc((var(--part) - 24px) / 2) 0}
 .addbox textarea{position:relative;display:block;width:100%;border:0;outline:0;background:transparent;resize:none;max-height:35vh;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;scrollbar-width:none}
-/* The words an add box read: the same text, laid out the same way behind the box, with only the marks showing */
+/* The words an add box read: the same text, laid out the same way behind the box, with only the marks showing (in a
+   step's box too, .step-box) */
 .addbox .cap-marks{position:absolute;inset:0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
-.addbox .cap-marks mark{color:transparent;background:var(--accent-soft)}
+.cap-marks mark{color:transparent;background:var(--accent-soft)}
 /* What a box says while it's empty stays on one line, cut short with "…": the field is as tall as its words, and words
    that wrapped made the box two lines tall before anything was typed. (Chrome draws the "…" only when the field asks
    for it too; what's typed wraps as before.) */
@@ -693,7 +693,6 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}
 #cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:calc(var(--box-one) + 20px + env(safe-area-inset-bottom));padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
-#cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
 /* On a run: Repeat, the card's step again: its symbol alone, a button the size of the box's others, so the words
    keep the line. Its name is its label, for a screen reader, and what it does is its title. */
 .foot-box .rep{display:grid;place-items:center;padding:0;border:0;border-radius:var(--part-r);background:var(--sunk);color:var(--accent)}
