@@ -1,7 +1,7 @@
 # The add box goes where the new line will go
 
 From the user's note of 2026-10-12 (written in a chat without the code), checked against the code, with the user's
-answers of the same day. Not built. `rows-and-sheet-fixes-plan.md`'s **How to work** applies: a part is built with the
+answers of the same day: nothing in it is left open. Not built. `rows-and-sheet-fixes-plan.md`'s **How to work** applies: a part is built with the
 fast checks, tried by the user on their phone, and only then given its end-to-end tests.
 
 ## What's there now
@@ -40,7 +40,10 @@ One behaviour on every screen: a project's list, Today, a task's sheet, a checkl
 
 - A ⇤ at the box's left edge moves it out a level: it's then after the nudged task and its subtasks, and adds a task
   there. ⇥ moves it back in.
-- Today and a task's sheet add subtasks only, and a template's and a checklist's steps are one level: no ⇤ there.
+- On a keyboard, Tab is ⇥ and Shift+Tab is ⇤, as in any editor (the user, 2026-10-12). The key is taken only when it
+  can move the box: with the box as far in or out as it goes, it moves the focus as usual, to the chips and Send.
+- Today and a task's sheet add subtasks only, and a template's and a checklist's steps are one level: no ⇤ there, and
+  Tab always moves the focus.
 
 ## 3. Today
 
@@ -90,12 +93,10 @@ Two things the note takes for granted, to try before the rest is built on them:
 In the code: there's one box, with one text. An element put among the rows of an `x-for` is moved by Alpine
 (Gotchas), and a row may ask only about itself, by its id, as it does of `lit`.
 
-## Still to settle with the user
+## What moves the box
 
-1. **Tab and Shift-Tab** are the note's keys for ⇥ and ⇤. Tab is how a keyboard gets from the box to its chips and
-   its Send. I'd use Alt+→ and Alt+←, beside Alt+↑ ↓, which move a row.
-2. **A tick, a swipe and closing a sheet aim the box now.** If they moved it too, rows would shift under a second
-   tick. I'd have only a nudge, and **Add a subtask here**, move it.
+Only a nudge, and **Add a subtask here** in a task's ⋯ (the user, 2026-10-12). A tick, a swipe and closing a task's
+sheet aimed the bottom box before; they leave the box where it is now, so rows never shift under the next tick.
 
 ## Build order
 
