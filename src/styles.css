@@ -657,7 +657,7 @@ a.sec-act{text-decoration:none}
 .addbox .go[disabled]{opacity:.35}
 /* The add box in the list, on a project's list (seatBox, app/quickadd.js; inline-add-box-plan): the row it adds after has
    the box's height as room under it, and the box is laid over that room, as far in as what it adds (its left padding,
-   from seatBox). Its place at the bottom stays, dashed, at the height it had: tapped, the box is back. */
+   from seatBox). Its place at the bottom stays, dashed, at the bar's height with one line: tapped, the box is back. */
 .boxed{margin-bottom:var(--box-h,0px)}
 .card-rows:has(> .boxed){display:flow-root}   /* a card's last row: the room stays inside the card, not under it */
 /* The same at the foot of a sheet's list, and of a checklist's steps (list-box.html; seatFoot, app/sheet.js): room under the row, the
@@ -671,7 +671,7 @@ a.sec-act{text-decoration:none}
 main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .sub-box-time > .draft-meta{margin:6px 0 0}
 .sub-home{display:block;width:100%;border:0;background:transparent}
-/* a box's outline, dashed: as tall as the box with one line (the bar's place keeps the height the bar had). In it,
+/* a box's outline, dashed: as tall as the box with one line, whatever the box was showing as it left. In it,
    what the box says there while it's empty, in the same ink, on the box's first line and as far in as the box has
    its words, so they don't move as the box lands on them; cut short with "…" as the box's are */
 :is(#cap-home,.sub-home) > span{display:block;height:var(--box-one);border:var(--box-edge) dashed var(--line);border-radius:var(--box-r);
@@ -683,9 +683,8 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .box-level{align-self:flex-start;margin-left:-10px;color:var(--accent)}
 .box-level[disabled]{opacity:.35}
 .item.boxed{margin-bottom:var(--box-h,0px)}
-#cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:var(--cap-h);padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
+#cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:calc(var(--box-one) + 20px + env(safe-area-inset-bottom));padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
 #cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
-#cap-home > span{height:100%}
 /* On a run: Repeat, the card's step again: its symbol alone, a button the size of the box's others, so the words
    keep the line. Its name is its label, for a screen reader, and what it does is its title. */
 .foot-box .rep{display:grid;place-items:center;padding:0;border:0;border-radius:var(--part-r);background:var(--sunk);color:var(--accent)}
