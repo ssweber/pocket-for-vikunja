@@ -1,6 +1,5 @@
 // Checklists, their projects and templates, and writing steps.
-import {andList, cache, grow, store, taskDrafts, TZ} from '../util.js';
-import {haptic} from '../haptics.js';
+import {andList, cache, store, taskDrafts, TZ} from '../util.js';
 import {allPages, api, items, NetError, patchTask, why} from '../api.js';
 import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
@@ -10,7 +9,7 @@ import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
-import {newBox} from './core.js';
+import {newBox, newStepBox} from './core.js';
 
 // Templates as last loaded, kept for starting a run without a connection: id -> {id, title, project_id, related_tasks},
 // with the steps in order, and when it comes round and who for.
@@ -327,41 +326,62 @@ export default {
     await patiently(() => patchTask(t.id, {done: !isSet(t.due_date), ...t.title && {title: templateTitle(t.title)}}));
   },
 
-  /* ---------- writing steps: under New template, and under a template ---------- */
-  // The rows being written ('new': the New template sheet, 'add': under a template), and how they read.
+  /* ---------- writing steps: in New template, and under a template ---------- */
+  /* A template's steps are its sheet's list, as a task's subtasks are (sheet/sub-list.html; inline-add-box-plan): the
+     task row for each, then the one box at the foot, which each line typed or pasted leaves as a step (`which`: 'new',
+     New template's box, or 'add', the one under a template). Under a template the steps are added at once
+     (addTemplateSteps). In New template nothing is in Vikunja until Create template: what's written joins the rows
+     over the box, each on the phone only ({id, key, text, keep, from, ignore}), and is drawn, changed, moved and taken
+     out as a template's step is, by the same row. A row nudged has the box under it (sheet.subAt: nudgedSub,
+     app/sheet.js), and what's written next goes after it. */
+  // New template's rows written; under a template, those on their way to Vikunja.
   draftRows(which){ return which === 'new' ? this.sheet.newTpl?.rows || [] : this.sheet.addRows; },
-  // (Under a template with its box under a step, sheet.subAt, what's written goes after that step: read as such.)
+  // The box, a row as the written ones are, its key '+': so a single line in it reads as a step does, with its time chip.
+  stepBox(which){ return (which === 'new' ? this.sheet.newTpl?.add : this.sheet.addBox) || {text: ''}; },
+  get stepWhich(){ return this.sheet.kind === 'newtpl' ? 'new' : 'add'; },
+  /* The rows as they'd be saved, in order: those written, and the box's line where the box is, while it's one line (a
+     pasted list is read once it's added). Under a template, with steps on their way, only those. */
+  draftAll(which){
+    const rows = this.draftRows(which), b = this.stepBox(which), text = (b.text || '').trim();
+    if (!text || text.includes('\n') || (which === 'add' && rows.length)) return rows;
+    const at = which === 'new' ? rows.findIndex(r => r.id === this.sheet.subAt) : -1;
+    return at < 0 ? [...rows, b] : [...rows.slice(0, at + 1), b, ...rows.slice(at + 1)];
+  },
+  // How they read (draftSteps). (Under a template with its box under a step, sheet.subAt, they go after that step.)
   draft(which){
     const at = which === 'new' || this.sheet.subAt == null ? -1 : this.subtasks.findIndex(s => s.id === this.sheet.subAt);
     const before = which === 'new' ? [] : (at < 0 ? this.subtasks : this.subtasks.slice(0, at + 1)).map(s => ({key: 'task:' + s.id, text: s.title}));
-    return draftSteps(this.draftRows(which), before, this.stepWordsOnly);
+    return draftSteps(this.draftAll(which), before, this.stepWordsOnly);
   },
-  // In New template, a row written and not being typed in is shown as a row, its words, not a box (draft-steps.html).
-  draftIsRow(st, which){ return which === 'new' && !st.focus && !!st.text.trim(); },
-  // Such a row tapped: its box again, with the focus, the keyboard opened during the tap as for a new row (keepFocus).
-  editDraftRow(which, key){
-    const rows = this.draftRows(which), r = rows.find(x => x.key === key);
-    if (!r) return;
-    this.keepFocus();
-    r.focus = true;
-    this.$nextTick(() => { const el = document.getElementById(`${which}-step-${rows.indexOf(r)}`); if (el) grow(el); this.passFocus(el, t => { r.text += t; }, true); });
-  },
-  // Under a template, the one box at the foot: there from when its sheet opens, empty.
-  ensureAddRow(){ if (!this.sheet.addRows.length) this.sheet.addRows.push({key: randomId(), text: '', keep: false, from: null}); },
   // A step's words without what quick add reads in them (@people, *labels, !priority): what it's named and picked by.
   get stepWordsOnly(){ return t => this.stepParsed(t).title || t; },
-  // The rows being written that will be sent, each with the chips tapped off in it.
+  // The rows that will be sent, each with the chips tapped off in it.
   draftIgnores(which){ return this.draftRows(which).filter(r => r.text.trim()).map(r => r.ignore || {}); },
-  addDraftRow(which, at){
-    // A phone only opens its keyboard for a field focused during the tap, and the new row is there only after it: an
-    // unseen field takes the focus now, so the keyboard opens, and passes it on.
-    this.keepFocus();
-    const rows = this.draftRows(which);
-    // Added at the foot (Add a step): an empty row left further up, by a nudge, goes.
-    if (at === undefined) for (let i = rows.length - 1; i >= 0; i--) if (!rows[i].text.trim()) rows.splice(i, 1);
-    const k = at ?? rows.length, key = randomId();
-    rows.splice(k, 0, {key, text: '', keep: false, from: null});
-    this.$nextTick(() => this.passFocus(document.getElementById(`${which}-step-${k}`), t => { const r = rows.find(x => x.key === key); if (r) r.text = t + r.text; }));
+  // A row written in New template: a step, on the phone only, shaped for the task row (its id) and for draftSteps (its key).
+  newStepRow(text, more = {}){ const key = randomId(); return {id: 'new-' + key, key, text, keep: false, from: null, ignore: {}, ...more}; },
+  /* The box's lines, added (Enter, or its button): a step a line. One line keeps what was picked for it in the box (its
+     time chip, the chips tapped off). In New template they join the rows, after the row the box is under, or last, and
+     the box is under the last of them; under a template they're sent (addTemplateSteps), unless the line has
+     something wrong with it, which its chip says. The box stays, empty, with the focus it had. */
+  sendSteps(which){
+    const b = this.stepBox(which), lines = captureLines(b.text || '');
+    if (!lines.length || (which === 'add' && this.sheet.subBusy)) return;
+    const one = lines.length === 1, was = {text: b.text, keep: b.keep, from: b.from, ignore: b.ignore};
+    const made = lines.map(text => this.newStepRow(text, one ? {keep: !!b.keep, from: b.from ?? null, ignore: b.ignore || {}} : {}));
+    Object.assign(b, {text: '', keep: false, from: null, ignore: {}});
+    if (which === 'add') {
+      // A line sent before, and cut off: it carries on from where it got to (its job), adding nothing twice.
+      for (const r of made) r.job = b.jobs?.find(j => j.text === r.text)?.job;
+      this.sheet.addRows = made;
+      if (this.draft('add').problem) { this.sheet.addRows = []; Object.assign(b, was); return; }
+      b.jobs = null;
+      return this.addTemplateSteps();
+    }
+    const rows = this.draftRows('new'), at = rows.findIndex(r => r.id === this.sheet.subAt);
+    // A row that counts from the box's line counts from the row it is now.
+    for (const r of rows) if (r.from === '+') r.from = one ? made[0].key : null;
+    rows.splice(at < 0 ? rows.length : at + 1, 0, ...made);
+    if (at >= 0) this.sheet.subAt = made.at(-1).id;
   },
   /* The unseen field that holds the focus while a box appears, so the phone's keyboard stays open; then the box gets it,
      with anything typed meanwhile (a fast typist's first letters), which would otherwise be lost. */
@@ -374,57 +394,39 @@ export default {
     el.focus();
     if (typed) { const at = atEnd ? el.value.length : typed.length; el.setSelectionRange(at, at); }
   },
-  /* A row moved to the place `to` among the rows: held and moved up or down (draftGesture, app/progress.js), or by its
-     ⋯ or Alt+↑ ↓ while it's typed in. Those leave the focus where it was (@mousedown.prevent), so the keyboard stays
-     up; a row moved takes the focus off its box all the same: it's given back once the row has moved, as moveStep does. */
+  /* A row written in New template moved to the place `to` among the rows: held and moved up or down, or by Alt+↑ ↓
+     while it's being changed, which takes the focus off its box: it's given back once the row has moved (moveStep). */
   placeDraftRow(which, k, to){
     const rows = this.draftRows(which), box = document.activeElement;
     if (to < 0 || to >= rows.length || to === k || !rows[k]) return;
     rows.splice(to, 0, rows.splice(k, 1)[0]);
     if (box?.classList.contains('draft-in')) setTimeout(() => box.isConnected && box.focus({preventScroll: true}));
   },
-  /* In New template, a written row nudged (watchNudges, app/progress.js): the empty row, the one to write the next step
-     in, is under it, as the add box is under a row nudged in a list. It doesn't take the focus. */
-  nudgedDraft(key){
-    const rows = this.draftRows('new'), was = rows.findIndex(r => !r.text.trim());
-    const row = was >= 0 ? rows.splice(was, 1)[0] : {key: randomId(), text: '', keep: false, from: null};
-    const at = rows.findIndex(r => r.key === key) + 1;
-    rows.splice(at || rows.length, 0, row);
-    if (at !== was) haptic('tick');
-  },
-  // The row being typed in, removed, takes its box with it: the unseen field holds the focus meanwhile, as when a row is
-  // added, and the box that's in its place then (the last, if it was the last) has it.
+  // One taken out (swiped to its Delete, or left empty): the box, if it was under it, is under the row before, or at the
+  // foot; a row that counted from it counts from the step before it again. It was never sent: there's nothing to undo.
   dropDraftRow(which, k){
-    const rows = this.draftRows(which), typing = document.activeElement?.id === `${which}-step-${k}`;
-    rows.splice(k, 1);
-    if (which === 'new' && !rows.length) this.addDraftRow('new');
-    else if (typing && rows.length) {
-      const r = rows[Math.min(k, rows.length - 1)];
-      this.keepFocus();
-      this.$nextTick(() => this.passFocus(document.getElementById(`${which}-step-${rows.indexOf(r)}`), t => { r.text += t; }, true));
-    }
-  },
-  // A list pasted into a row: a row a line, in place of the row if it was empty.
-  pasteDraft(which, e, k){
-    const lines = captureLines(e.clipboardData?.getData('text') || '');
-    if (lines.length < 2) return;
-    e.preventDefault();
-    const rows = this.draftRows(which), empty = !rows[k].text.trim();
-    rows.splice(empty ? k : k + 1, empty ? 1 : 0, ...lines.map(text => ({key: randomId(), text, keep: false, from: null})));
+    const rows = this.draftRows(which), [gone] = rows.splice(k, 1);
+    if (!gone) return;
+    if (this.sheet.stepEdit?.key === gone.key) this.sheet.stepEdit = null;
+    if (which === 'new' && this.sheet.subAt === gone.id) this.sheet.subAt = rows[k - 1]?.id ?? null;
+    for (const r of rows) if (r.from === gone.key) r.from = null;
   },
   openNewTemplate(p){
     this.openSheet('newtpl');
     const kept = taskDrafts.get('newtpl:' + p.id);                          // written before, and not made yet
-    // The name is written in quick add's box ('tname'), and each step in one of its own.
+    // The name is written in quick add's box ('tname'), and its steps in the box at their foot ('new:+').
     this.sheet.newTpl = {project: {id: p.id, title: p.title}, box: {...newBox(), text: kept?.name || ''},
-      rows: kept?.rows?.length ? kept.rows.map(r => ({...r, focus: false})) : [{key: randomId(), text: '', keep: false, from: null}], busy: false};
+      rows: (kept?.rows || []).filter(r => r.text?.trim()).map(r => this.newStepRow(r.text, {keep: !!r.keep, from: null, ignore: r.ignore || {}})),
+      add: {...newStepBox(), text: kept?.add || ''}, busy: false};
     this.$nextTick(() => document.getElementById('nt-name')?.focus());
   },
   /* A template in one go: the task, its steps under it, then made a template. Cut off half way, the task stays in the
      project with the steps made so far: tapping Make again carries on with that one (nt.jobs), and Use as checklist
      template on it finishes it too. */
   async createTemplate(){
-    const nt = this.sheet.newTpl, name = nt?.box.text.trim(), d = nt && this.draft('new');
+    const nt = this.sheet.newTpl;
+    if (nt && !nt.busy && (nt.add.text || '').trim()) this.sendSteps('new');      // what's still in the box is a step too
+    const name = nt?.box.text.trim(), d = nt && this.draft('new');
     if (!name || !d.added.length || d.problem || nt.busy) return;
     const shown = templateName(this.stepParsed(name, nt.box.ignore).title);   // without @people and *labels
     nt.busy = true;
@@ -457,7 +459,7 @@ export default {
     // Each row keeps how far it got, so Add after a cut-off finds a step whose reply was lost instead of adding it again.
     const rows = this.sheet.addRows.filter(x => x.text.trim()), jobs = jobsFor(rows.map(x => x.job), d.added);
     rows.forEach((x, k) => { x.job = jobs[k]; });
-    const under = this.sheet.subAt, typing = document.activeElement?.classList.contains('draft-in');
+    const under = this.sheet.subAt;
     try {
       for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
       Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
@@ -477,15 +479,16 @@ export default {
     if (this.sheet.task?.id === t.id) {
       this.sheet.subBusy = false;
       if (r.error) {
-        const rows = this.sheet.addRows.filter(x => x.text.trim()), made = new Map(rows.slice(0, r.ids.length).map((x, k) => [x.key, 'task:' + r.ids[k]]));
-        this.sheet.addRows = rows.slice(r.ids.length).map(x => made.has(x.from) ? {...x, from: made.get(x.from)} : x);
+        // What wasn't added goes back in the box, each line with how far it got (its job), for the next try to carry on with.
+        const left = this.sheet.addRows.filter(x => x.text.trim()).slice(r.ids.length), b = this.stepBox('add');
+        b.text = [...left.map(x => x.text), b.text].filter(x => x?.trim()).join('\n'); b.jobs = left.map(x => ({text: x.text, job: x.job}));
+        this.sheet.addRows = [];
         const tt = this.sheet.task;
         tt.related_tasks = {...tt.related_tasks, subtask: [...this.subtasks, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]};
       } else {
-        // Added: the box is empty again, with the focus if it had it, and, under a step, under the last one added.
+        // Added: under a step, the box is under the last one added.
         this.sheet.addRows = [];
         if (under != null && this.sheet.subAt === under && r.ids.length) this.sheet.subAt = r.ids.at(-1);
-        if (typing) this.addDraftRow('add'); else this.ensureAddRow();
       }
       this.sheet.dirty = true;
       try { const full = await this.readTask(t.id); if (full) { cache.set(full.id, full); if (this.sheet.task?.id === full.id) this.showTask(full); } } catch {}
@@ -500,16 +503,17 @@ export default {
   // The first line of a step's notes, under it in its template.
   stepNote(st){ return htmlToText(notesOnly(st.description)).trim().split('\n')[0]; },
   // Change a template's step in place: written as a row in New template, a time in words read as T#, with its chip.
-  // Its field is there only after the tap, so an unseen one takes the focus now to open the keyboard, as in addDraftRow.
+  // Its field is there only after the tap, so an unseen one takes the focus now to open the keyboard (keepFocus).
   editStep(st){
-    const e = this.sheet.stepEdit, k = e ? this.subtasks.findIndex(s => s.id === e.id) : -1;
+    const e = this.sheet.stepEdit, k = e ? this.subList.findIndex(s => s.id === e.id) : -1;
     if (k >= 0 && e.id !== st.id) this.saveStepEdit(k);                       // one still open, its box no longer focused
     this.keepFocus();
     // Words quick add would read that are still in its title were kept as words when it was written (a chip tapped
     // off): changed, it reads them the same way, not as a priority or a person after all.
-    const text = stepWords(st.title, this.subtasks.map(s => s.title)), kept = this.stepParsed(text);
+    const text = st.key ? st.text : stepWords(st.title, this.subtasks.map(s => s.title)), kept = this.stepParsed(text);
     const ignore = Object.fromEntries([['assignees', kept.assignees.length], ['labels', kept.labels.length], ['priority', kept.priority]].filter(([, n]) => n).map(([k]) => [k, true]));
-    this.sheet.stepEdit = {id: st.id, text, keep: false, from: null, ignore};
+    // One written in New template (it has a `key`) is changed as it is: its row is what the box changes.
+    this.sheet.stepEdit = st.key ? st : {id: st.id, text, keep: false, from: null, ignore};
     // Its box takes the focus as it appears (x-init); if a redraw beat that to it, once it's there.
     setTimeout(() => {
       const el = document.getElementById('step-edit-' + st.id);
@@ -521,6 +525,7 @@ export default {
   stepEditDraft(i){
     const e = this.sheet.stepEdit;
     if (!e?.text.trim()) return null;
+    if (e.key) return this.draft('new').info.get(e.key) || null;                // New template's: read with the rows there
     const before = this.subtasks.slice(0, i).map(s => ({key: 'task:' + s.id, text: s.title}));
     const d = draftSteps([{key: 'edit', text: e.text, keep: e.keep, from: e.from}], before, this.stepWordsOnly), info = d.info.get('edit');
     const titles = this.subtasks.map((s, k) => k === i ? info.saved : d.renames.find(r => r.key === 'task:' + s.id)?.title ?? s.title);
@@ -538,6 +543,8 @@ export default {
   },
   async saveStepEdit(i){
     const e = this.sheet.stepEdit, st = this.subtasks[i];
+    // One written in New template: its row has what was typed already. Left empty, it goes.
+    if (e?.key) { this.sheet.stepEdit = null; if (!e.text.trim()) this.dropDraftRow('new', this.draftRows('new').findIndex(r => r.key === e.key)); return; }
     if (!e || !st || st.id !== e.id) return;
     const d = this.stepEditDraft(i), drops = Object.keys(e.drop || {}).filter(k => e.drop[k]);
     const todo = d ? this.subtasks.map((s, k) => ({s, was: s.title, title: d.titles[k]})).filter(x => x.title !== x.was) : [];
@@ -592,6 +599,7 @@ export default {
   },
   // Take a step out of a template. Runs started already keep their copy of it.
   async removeStep(i){
+    if (this.sheet.kind === 'newtpl') return this.dropDraftRow('new', i);       // never sent: it just goes
     const t = this.sheet.task, st = this.subtasks[i];
     if (!t || !st || this.sheet.checklistBusy) return;
     const rest = this.subtasks.filter((_, k) => k !== i).map(s => s.title), problems = stepProblems(rest);
@@ -619,6 +627,7 @@ export default {
      under on screen, or first), and only the order line changes, so notes and moves saved elsewhere since the sheet
      opened stay. */
   async moveStep(i, dir, dragged = false){
+    if (this.sheet.kind === 'newtpl') return this.placeDraftRow('new', i, i + dir);   // on the phone only: its place among the rows
     const t = this.sheet.task, st = this.subtasks[i], to = i + dir, rest = this.subtasks.filter((_, k) => k !== i);
     if (!t || !st || this.sheet.checklistBusy || to < 0 || to >= this.subtasks.length || !dir) return;
     const after = to > 0 ? rest[to - 1].id : null;

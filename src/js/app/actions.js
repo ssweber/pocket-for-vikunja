@@ -631,7 +631,7 @@ export default {
         // screen is left (resetCards); a task that had no subtask is a card from now, read again.
         this.readTask(parent.id).then(t => {
           if (t) { cache.set(t.id, t); this.keep(t); }
-          if (today && this.route.name === 'today') { this.cardOpen[parent.id] = true; this.render(); }
+          if (today && this.route.name === 'today') { this.cardKept[parent.id] = true; this.cardOpen[parent.id] = true; this.render(); }
         }).catch(() => {});
       } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;

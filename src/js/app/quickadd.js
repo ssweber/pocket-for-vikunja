@@ -35,7 +35,7 @@ export default {
     if (w === 'tname') return this.sheet.newTpl?.box || {text: ''};
     if (w === 'edit') return this.sheet.stepEdit || {text: ''};
     const [which, key] = w.split(':');
-    if (key) return this.draftRows(which).find(r => r.key === key) || {text: ''};
+    if (key) return this.stepBox(which);                              // 'new:+', 'add:+': the box a template's steps are written in
     return this.cap;
   },
   boxEl(w){
@@ -44,8 +44,7 @@ export default {
     if (w === 'ins') return this.$refs.capture;
     if (w === 'tname') return document.getElementById('nt-name');
     if (w === 'edit') return document.getElementById('step-edit-' + this.sheet.stepEdit?.id);
-    const [which, key] = w.split(':');
-    if (key) return document.getElementById(`${which}-step-${this.draftRows(which).findIndex(r => r.key === key)}`);
+    if (w.includes(':')) return document.getElementById('d-subin');
     return this.$refs.capture;
   },
   /* What a box never reads: a subtask stays in its task's project, so "+Garden" stays in its title; and in a checklist
@@ -322,20 +321,17 @@ export default {
   refreshPeople(){ return !this.people || Date.now() - peopleAt > PEOPLE_AGE ? this.loadPeople(true).catch(() => {}) : null; },
 
   /* Enter in an add box: while @ or * is being typed and something's suggested, the suggestion on top; else send. In a
-     template's boxes: the name goes on to the first step, a step being written in New template to the next row, the
-     box under a template adds its step, a step changed is done. */
+     template's boxes: the name goes on to the box its steps are written in, and a step changed is done. */
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
-    if (w === 'tname') document.getElementById('new-step-0')?.focus();
+    if (w === 'tname') document.getElementById('d-subin')?.focus();
     else if (w === 'edit') this.boxEl(w)?.blur();
-    else if (w.startsWith('add:')) this.addTemplateSteps();
-    else if (w.includes(':')) { const [which, key] = w.split(':'); this.addDraftRow(which, this.draftRows(which).findIndex(r => r.key === key) + 1); }
     else this.boxSend(w);
   },
   // What a box sends, by Enter or its button: quick add's a task, a run's box steps after the card's, a subtask box
-  // (the sheet's, or quick add's while it adds to the task touched) subtasks.
-  boxSend(w){ return w === 'cap' ? this.submitCapture() : w === 'ins' ? this.insertStep() : this.addSubtasks(w); },
+  // (the sheet's, or quick add's while it adds to the task touched) subtasks, a template's box steps (sendSteps).
+  boxSend(w){ return w === 'cap' ? this.submitCapture() : w === 'ins' ? this.insertStep() : w.includes(':') ? this.sendSteps(w.split(':')[0]) : this.addSubtasks(w); },
   // A template's step, or its name, as quick add reads it, without the chips tapped off: its time is its own.
   stepParsed(text, ignore){ return parseCapture(text || '', this.projects, {...this.parseOpts, ignore: {...STEP_IGNORE, ...ignore}}); },
   // Whether what's sent from a box gets a reminder at its due time: one line, with a time, and the 🔔 chip on.
@@ -715,7 +711,7 @@ export default {
       for (const m of parsed[k]?.marks || []) if (!(m.kind === 'assignees' && stays(m.name))) out.push({...m, start: m.start + l.at, end: m.end + l.at});
     });
     // A step's time, read on its own ("in 20 min"), marked like the rest, unless its chip was tapped off.
-    const ph = this.isStepBox(w) && !this.box(w).keep && readStepPhrase(this.box(w).text);
+    const ph = this.isStepBox(w) && !this.box(w).keep && !this.box(w).text.includes('\n') && readStepPhrase(this.box(w).text);
     if (ph) out.push({kind: 'due', start: ph.index, end: ph.index + ph.length});
     return out.sort((a, b) => a.start - b.start);
   },

@@ -14,7 +14,8 @@
     </template>
   </div></template>
   <!-- include markup/sheet/box-chips.html -->
-  <div class="step-in-foot">
+  <!-- (Not one written in New template: it has no notes until the template is created.) -->
+  <template x-if="!t.key"><div class="step-in-foot">
     <button type="button" class="linkish step-notes" :id="'step-notes-' + t.id" @mousedown.prevent @click="openStep(stepAt(t))">Notes and photos ›</button>
-  </div>
+  </div></template>
 </div>

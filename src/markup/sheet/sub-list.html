@@ -1,0 +1,53 @@
+<!-- A sheet's list, and the one box at its foot: a task's subtasks, a template's steps, and, in New template, the steps
+     written so far, which are on the phone only until Create template sends them (inline-add-box-plan). One piece for
+     all three, so they can't drift apart: `subList` is its rows, `isStepList` whether they're steps, `subBoxW` its box.
+
+     Each is the task row, as a sheet has it (g.sheet): a sheet is for managing, as a project is, so a row is swiped
+     to its Delete and held to move it, whatever screen the sheet is over. A step (g.step) is the same row with its
+     number where a task has its tick, when it's due in a checklist and its notes' first line under it, and, tapped,
+     quick add's box in its place (step-edit.html).
+
+     The box is quick add's: what it read is marked, with chips to undo it, and @ and * suggest people and labels;
+     each line is a subtask, or a step, and Enter or its button adds them. It's at the foot, always there. A row nudged
+     (nudgedSub, app/sheet.js) has it under it, to add after that row; its place at the foot is then kept, empty, and
+     a tap there, or the box's ×, brings it back. The last row nudged changes nothing: the box is under it already. -->
+<div class="h3"><span x-text="isStepList ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="isStepList ? subList.length || '' : subList.length ? subList.filter(s => s.done).length + '/' + subList.length : ''"></span></div>
+<div class="card" id="d-subtasks">
+  <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true, step: isStepList}]" :key="0"><template x-for="t in subList" :key="t.id">
+    <!-- include markup/task-row.html step -->
+  </template></template>
+  <!-- Subtasks still waiting to be sent; one whose line said it's done, ticked -->
+  <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits, done: t.done}" :data-id="t.id">
+    <button class="check" :class="{wait: t.waits}" disabled :aria-label="'Not sent yet: ' + t.title"><svg class="i"><use href="#i-check"/></svg></button>
+    <div class="body"><div class="title"><span class="sr">Not sent yet: </span><span x-text="t.title"></span></div><div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div></div>
+    <button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button>
+  </div></template>
+  <template x-for="line in placeLines('sheet:subtasks')" :key="line.n">
+    <!-- include markup/place-line.html -->
+  </template>
+  <!-- A checklist's steps are inserted on its screen, so they're marked as added to it alone -->
+  <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the checklist's screen: it's marked as added to this checklist alone.</p></template>
+  <template x-for="bw in subBoxW ? [subBoxW] : []" :key="bw"><div class="addbox sub" id="d-subbox">
+    <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
+      <div class="cap-field">
+        <div class="cap-marks" aria-hidden="true" x-html="marksHtml(bw)"></div>
+        <textarea id="d-subin" x-model="box(bw).text" x-box.lines="bw" rows="1" :placeholder="subBoxWords.box" :aria-label="subBoxWords.add" enterkeyhint="send"></textarea>
+      </div>
+      <!-- Under a row: × takes the box back to the foot -->
+      <template x-if="sheet.subAt != null"><button type="button" class="icon-btn plain box-home" id="d-sub-home" :aria-label="subBoxWords.home" @mousedown.prevent @click="subHome()"><svg class="i"><use href="#i-close"/></svg></button></template>
+      <button class="go" type="submit" :aria-label="subBoxWords.add" @mousedown.prevent :disabled="!subBoxCan"><svg class="i"><use href="#i-plus"/></svg></button>
+    </form>
+    <!-- A step's line: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
+    <template x-for="st in isStepList ? [box(bw)] : []" :key="0"><div class="sub-box-time">
+      <template x-for="d in draftShown(draft(stepWhich).info.get('+'))" :key="0">
+        <!-- include markup/sheet/step-time.html -->
+      </template>
+    </div></template>
+    <div class="chips" id="d-subchips" :hidden="!chips(bw).length && !(box(bw).focus && !box(bw).text)">
+      <template x-if="box(bw).focus && !box(bw).text"><span class="hint" id="d-subhint" x-text="boxHint(bw)"></span></template>
+      <!-- include markup/chips.html -->
+    </div>
+  </div></template>
+  <!-- The box's place at the foot, kept empty at its height while the box is under a row: a tap brings it back -->
+  <template x-if="sheet.subAt != null && subBoxW"><button type="button" class="sub-home" id="d-subhome" :aria-label="subBoxWords.home" @click="subHome()"><span></span></button></template>
+</div>

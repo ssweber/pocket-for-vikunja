@@ -128,7 +128,7 @@ export default {
     // Notes that couldn't be saved (offline, say): back in the editor, to save again.
     const desc = notesDraft(id);
     if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc.text, descBase: desc.base, descUnsaved: true});
-    this.sheet.addRows = (taskDrafts.get('addsteps:' + id) || []).map(r => ({...r, focus: false}));
+    this.sheet.addBox.text = (taskDrafts.get('addsteps:' + id) || []).map(r => r.text).filter(x => x?.trim()).join('\n');   // steps written under a template, not added yet
     const mine = this.sheet, cached = cache.get(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
@@ -218,9 +218,6 @@ export default {
   },
   // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
-  // A template's step, as its row has it (task-row.html, g.step): where it is among the steps, and how it reads.
-  stepAt(t){ return this.subtasks.findIndex(s => s.id === t.id); },
-  stepShown(t){ return this.templateSteps[this.stepAt(t)] || {title: t.title}; },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
   get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
   // Subtasks of the open task still waiting to be sent, for its sheet.
@@ -499,20 +496,53 @@ export default {
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { w?.close(); this.say('Couldn\'t open: ' + e.message, {place: ['sheet:files', 'step'], cls: 'failed'}); }
   },
-  /* ---------- the sheet's subtask box, under a subtask (inline-add-box-plan, part 3) ---------- */
-  /* A nudge on a subtask's row in a task's sheet (watchNudges, app/progress.js) puts the sheet's own box under that
-     row, to add subtasks after it (sheet.subAt; subPlaces, actions.js), as a nudge does on a project's list; in a
-     template's sheet, the box its steps are written in, to add steps after that step (addTemplateSteps). The box
-     is laid over room given to the row, never taken off the page, and its place at the foot stays, empty (#d-subhome):
-     a tap there, the box's ×, or its row scrolled out of sight while it isn't being typed in, and it's back. Where
-     the row is, is asked every frame meanwhile (seatSub), as for the box in a list (seatBox, quickadd.js). */
+  /* ---------- the sheet's list, and its box under a row (inline-add-box-plan) ---------- */
+  /* The sheet's list (sheet/sub-list.html): the open task's subtasks, a template's steps, or, in New template, the steps
+     written so far, which aren't in Vikunja yet (app/checklists.js). One list, drawn by the task row, with one box at
+     its foot (`subBoxW`, as box() names it: a task's 'sub', a template's 'add:+', New template's 'new:+'). */
+  get subList(){ return this.sheet.kind === 'newtpl' ? this.sheet.newTpl?.rows || [] : this.sheet.kind === 'task' ? this.subtasks : []; },
+  get isStepList(){ return this.sheet.kind === 'newtpl' || this.checklistRole === 'template'; },
+  get subBoxW(){
+    if (this.sheet.kind === 'newtpl') return 'new:+';
+    if (this.sheet.kind !== 'task' || !this.canEdit || this.checklistRole === 'run') return '';
+    return this.checklistRole === 'template' ? 'add:+' : 'sub';
+  },
+  // What the box says: what it adds, in its place at the foot, or under a row; and what takes it back there.
+  get subBoxWords(){
+    const steps = this.isStepList, under = this.sheet.subAt != null;
+    return steps ? {box: under ? 'Step' : 'Add steps, or paste a list', add: 'Add steps', home: 'Add after the last step instead'}
+      : {box: under ? 'Subtask' : 'Add subtasks, or paste a list', add: 'Add subtasks', home: 'Add after the last subtask instead'};
+  },
+  // Whether its button adds anything: a subtask's line with a title; a step's, with nothing wrong in it, and none on its way.
+  get subBoxCan(){
+    const w = this.subBoxW;
+    if (!w) return false;
+    if (w === 'sub') return this.boxParsedLines('sub').some(p => p.title);
+    return !this.sheet.subBusy && !!(this.box(w).text || '').trim() && !this.draft(this.stepWhich).info.get('+')?.problem;
+  },
+  /* A step, as its row has it (task-row.html, g.step): where it is among the steps, its number, and how it reads. One
+     written in New template (it has a `key`) reads as the rows there do together (draft), the box's own line counted
+     where the box is. */
+  stepAt(t){ return this.subList.findIndex(s => s.id === t.id); },
+  stepNo(t){ return (t.key ? this.draft('new').info.get(t.key)?.i ?? this.stepAt(t) : this.stepAt(t)) + 1; },
+  stepShown(t){
+    if (!t.key) return this.templateSteps[this.stepAt(t)] || {title: t.title};
+    const d = this.draft('new'), info = d.info.get(t.key), s = info && stepInfos(d.added)[info.i];
+    return s ? {...s, problem: info.problem || s.problem} : {title: t.text, text: '', problem: ''};
+  },
+  /* A nudge on a row of the list (watchNudges, app/progress.js) puts the box under that row, to add after it
+     (sheet.subAt; subPlaces, actions.js; sendSteps and addTemplateSteps, app/checklists.js), as a nudge does on a
+     project's list. The box is laid over room given to the row, never taken off the page, and its place at the foot
+     stays, empty (#d-subhome): a tap there, the box's ×, or its row scrolled out of sight while it isn't being typed
+     in, and it's back. The last row nudged changes nothing: the box is under it already. Where the row is, is asked
+     every frame meanwhile (seatSub), as for the box in a list (seatBox, quickadd.js). */
   nudgedSub(id){
-    const s = this.subtasks.find(x => String(x.id) === String(id));
-    // (A template's steps are done tasks; its box is the one its steps are written in, #add-steps.)
-    const tpl = this.checklistRole === 'template';
-    if (!s || (s.done && !tpl) || !this.canEdit || this.sheet.stepEdit || !document.getElementById(tpl ? 'add-steps' : 'd-subbox')) return;
-    if (String(this.sheet.subAt) !== String(s.id)) haptic('tick');
-    this.sheet.subAt = s.id; this.sheet.subAfter = null;
+    const s = this.subList.find(x => String(x.id) === String(id));
+    // (A template's steps are done tasks. Not while a step is being changed: its box is in the way.)
+    if (!s || (s.done && !this.isStepList) || !this.subBoxW || this.sheet.stepEdit) return;
+    const rows = [...document.querySelectorAll('#d-subtasks > .row[data-id]')], at = rows.at(-1)?.dataset.id === String(s.id) ? null : s.id;
+    if (String(this.sheet.subAt ?? '') !== String(at ?? '')) haptic('tick');
+    this.sheet.subAt = at; this.sheet.subAfter = null;
     this.seatSub();
   },
   subHome(){ this.sheet.subAt = null; this.sheet.subAfter = null; this.seatSub(); },
@@ -530,20 +560,25 @@ export default {
       el?.classList.add('sub-boxed');
       subSeat.el = el;
     };
+    // A row after it in the list: with none, the box under it is the box at the foot.
+    const later = el => { for (let n = el.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.row[data-id]')) return true; return false; };
     const step = () => {
-      const box = document.getElementById('d-subbox') || document.getElementById('add-steps'), at = this.sheet.open ? this.sheet.subAt : null;
-      const el = at != null && box ? document.querySelector(`#d-subtasks > .row[data-id="${at}"]`) : null;
+      const box = document.getElementById('d-subbox'), at = this.sheet.open && box ? this.sheet.subAt : null;
+      const el = at != null ? document.querySelector(`#d-subtasks > .row[data-id="${at}"]`) : null;
       // Its row isn't drawn: one just added is a frame or two away; gone for a second, the box is back at the foot.
-      if (at != null && box && !el && ++subSeat.missed < 60) { subSeat.raf = requestAnimationFrame(step); return; }
+      if (at != null && !el && ++subSeat.missed < 60) { subSeat.raf = requestAnimationFrame(step); return; }
       subSeat.missed = 0;
-      if (at != null && box && !el) { this.sheet.subAt = null; this.sheet.subAfter = null; }
-      room(el);
-      box?.classList.toggle('inline', !!el);
-      if (!el) { if (box) box.style.top = ''; subSeat.top = ''; return; }
-      const h = box.offsetHeight, top = el.offsetTop + el.offsetHeight + 'px';
+      // Its row gone, or the last now (the one just added at the end, or the rows after it deleted): at the foot.
+      const home = at != null && (!el || !later(el));
+      if (home) { this.sheet.subAt = null; this.sheet.subAfter = null; }
+      const under = home ? null : el;
+      room(under);
+      box?.classList.toggle('inline', !!under);
+      if (!under) { if (box) box.style.top = ''; subSeat.top = ''; return; }
+      const h = box.offsetHeight, top = under.offsetTop + under.offsetHeight + 'px';
       if (h !== subSeat.h) { subSeat.h = h; box.parentElement.style.setProperty('--sub-h', h + 'px'); }
       if (top !== subSeat.top) { subSeat.top = top; box.style.top = top; }
-      const r = el.getBoundingClientRect(), sc = document.getElementById('sheet-body').getBoundingClientRect();
+      const r = under.getBoundingClientRect(), sc = document.getElementById('sheet-body').getBoundingClientRect();
       if ((r.bottom + h < sc.top || r.top > sc.bottom) && !box.contains(document.activeElement)) return this.subHome();
       subSeat.raf = requestAnimationFrame(step);
     };

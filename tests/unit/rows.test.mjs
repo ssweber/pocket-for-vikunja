@@ -67,18 +67,18 @@ test('a ring tapped: a run\'s own tap atop its screen; in a sheet, with no row; 
 
 /* Enter in an add box, and its button (boxEnter, boxSend): each box's own send, which the add box's form asked in a
    line of its own before. */
-test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks; a template\'s boxes go on to the next instead', () => {
+test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks, a template\'s steps; a template\'s name goes on to its steps\' box', () => {
   const app = component(quickadd), calls = [], focused = [];
   Object.assign(app, { user: { settings: { frontend_settings: { quick_add_magic_mode: 'disabled' } } }, cap: { text: '' },   // no @ or * to suggest for
     submitCapture: () => calls.push('task'), insertStep: () => calls.push('steps'), addSubtasks: w => calls.push('subtasks ' + w),
-    addDraftRow: (which, at) => calls.push(`row ${which} ${at}`), addTemplateSteps: () => calls.push('add steps'), draftRows: () => [{ key: 'a' }, { key: 'b' }], sheet: { stepEdit: { id: 3 } } });
+    sendSteps: which => calls.push('steps ' + which), stepBox: () => ({ text: '' }), sheet: { stepEdit: { id: 3 } } });
   document.getElementById = id => ({ focus: () => focused.push(id), blur: () => focused.push('blur ' + id) });
   try {
-    for (const w of ['cap', 'ins', 'under', 'sub']) app.boxSend(w);
-    assert.deepEqual(calls.splice(0), ['task', 'steps', 'subtasks under', 'subtasks sub'], 'its button');
-    for (const w of ['cap', 'ins', 'under', 'sub', 'tname', 'edit', 'new:b', 'add:a']) app.boxEnter(w);
-    assert.deepEqual(calls, ['task', 'steps', 'subtasks under', 'subtasks sub', 'row new 2', 'add steps'], 'Enter: the same; a step being written in New template opens the next row, and the box under a template adds its step');
-    assert.deepEqual(focused, ['new-step-0', 'blur step-edit-3'], 'a template\'s name goes on to its first step; a step being changed is left, which saves it');
+    for (const w of ['cap', 'ins', 'under', 'sub', 'new:+', 'add:+']) app.boxSend(w);
+    assert.deepEqual(calls.splice(0), ['task', 'steps', 'subtasks under', 'subtasks sub', 'steps new', 'steps add'], 'its button');
+    for (const w of ['cap', 'ins', 'under', 'sub', 'tname', 'edit', 'new:+', 'add:+']) app.boxEnter(w);
+    assert.deepEqual(calls, ['task', 'steps', 'subtasks under', 'subtasks sub', 'steps new', 'steps add'], 'Enter: the same');
+    assert.deepEqual(focused, ['d-subin', 'blur step-edit-3'], 'a template\'s name goes on to the box its steps are written in; a step being changed is left, which saves it');
   } finally { delete document.getElementById; }
 });
 
@@ -724,4 +724,29 @@ test('open to tap, a day picked in the phone\'s own picker moves the task there,
   assert.equal(h.moved.length, 1, 'a day gone by: nothing');
   h.touch(); h.up(); h.pickDay('2026-10-08');
   assert.deepEqual(h.moved.at(-1), [1, 'Tomorrow', oct(8, 9)], 'tomorrow, picked: said as Tomorrow');
+});
+
+/* New template's steps (app/checklists.js; sheet/sub-list.html): rows on the phone only, written through the one box
+   at the list's foot, and nothing of them in Vikunja until Create template. */
+test('in New template the box\'s lines join the rows, after the row the box is under, and the box follows the last; one taken out hands the box to the row before', () => {
+  const app = component(checklists, quickadd);
+  Object.assign(app, { user: { settings: { frontend_settings: {} } }, projects: [], sheet: { kind: 'newtpl', subAt: null, stepEdit: null, newTpl: { rows: [], add: { text: '', keep: false, from: null, ignore: {} } } } });
+  const box = app.sheet.newTpl.add, rows = () => app.sheet.newTpl.rows.map(r => r.text);
+  box.text = 'Turn on the machine'; app.sendSteps('new');
+  box.text = 'Wipe the tables\nLock up'; app.sendSteps('new');
+  assert.deepEqual([rows(), box.text, app.sheet.subAt], [['Turn on the machine', 'Wipe the tables', 'Lock up'], '', null], 'at the foot: after the last, a pasted list a row a line');
+  assert.ok(app.sheet.newTpl.rows.every(r => r.id === 'new-' + r.key), 'each shaped for the task row, by its id, and for its reading, by its key');
+  // The box under the first row: what's written goes after it, and the box is under what was written.
+  app.sheet.subAt = app.sheet.newTpl.rows[0].id;
+  box.text = 'Fill the grinder'; app.sendSteps('new');
+  assert.deepEqual(rows(), ['Turn on the machine', 'Fill the grinder', 'Wipe the tables', 'Lock up']);
+  assert.equal(app.sheet.subAt, app.sheet.newTpl.rows[1].id, 'under the one just written');
+  box.text = '   '; app.sendSteps('new');
+  assert.equal(rows().length, 4, 'nothing typed: nothing added');
+  // Taken out, by a swipe: the box, which was under it, is under the row before; the first taken out, at the foot.
+  app.removeStep(1);
+  assert.deepEqual([rows(), app.sheet.subAt], [['Turn on the machine', 'Wipe the tables', 'Lock up'], app.sheet.newTpl.rows[0].id]);
+  // Held and moved: its place among the rows, with nothing sent.
+  app.moveStep(2, -2, true);
+  assert.deepEqual(rows(), ['Lock up', 'Turn on the machine', 'Wipe the tables']);
 });

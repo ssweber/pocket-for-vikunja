@@ -72,51 +72,9 @@
       </div></template>
       <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
 
-      <!-- A template's subtasks are its steps: in order, with when each is due in a run; tapped, changed, moved or removed -->
-      <template x-if="checklistRole !== 'tplstep'"><div class="h3"><span x-text="checklistRole === 'template' ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="checklistRole === 'template' ? subtasks.length || '' : subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div></template>
-      <template x-if="checklistRole !== 'tplstep'"><div class="card" id="d-subtasks">
-        <!-- A subtask: the same row as in a list, as a sheet has it (g.sheet); a sheet is for managing, as a project is, so
-             it's swiped to its Delete and held to move it, whatever screen the sheet is over -->
-        <!-- A template's subtasks are its steps: the same row again, as a step (g.step): its number where a task has its
-             tick, when it's due in a checklist and its notes' first line under it, and, tapped, quick add's box in its
-             place. It's held to move it and swiped left to its Delete, as a subtask is (stepReorder, app/progress.js). -->
-        <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true, step: checklistRole === 'template'}]" :key="0"><template x-for="t in subtasks" :key="t.id">
-          <!-- include markup/task-row.html step -->
-        </template></template>
-        <!-- Subtasks still waiting to be sent; one whose line said it's done, ticked -->
-        <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits, done: t.done}" :data-id="t.id">
-          <button class="check" :class="{wait: t.waits}" disabled :aria-label="'Not sent yet: ' + t.title"><svg class="i"><use href="#i-check"/></svg></button>
-          <div class="body"><div class="title"><span class="sr">Not sent yet: </span><span x-text="t.title"></span></div><div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div></div>
-          <button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button>
-        </div></template>
-        <template x-for="line in placeLines('sheet:subtasks')" :key="line.n">
-          <!-- include markup/place-line.html -->
-        </template>
-        <!-- The same box as quick add: what it read is marked, with chips to undo it, and @ and * suggest people and labels -->
-        <!-- A run's steps are inserted on its screen, so they're marked as added during the run -->
-        <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">To add a step, use the box at the bottom of the checklist's screen: it's marked as added to this checklist alone.</p></template>
-        <template x-if="checklistRole !== 'template' && checklistRole !== 'run' && canEdit"><div class="addbox sub" id="d-subbox" x-data="{bw: 'sub'}">
-          <form id="d-subform" autocomplete="off" @submit.prevent="boxSend(bw)">
-            <div class="cap-field">
-              <div class="cap-marks" aria-hidden="true" x-html="marksHtml('sub')"></div>
-              <textarea id="d-subin" x-model="sheet.sub.text" x-box.lines="bw" rows="1" :placeholder="sheet.subAt != null ? 'Subtask' : 'Add subtasks, or paste a list'" aria-label="Add subtasks" enterkeyhint="send"></textarea>
-            </div>
-            <!-- Under a subtask (a nudge on its row: nudgedSub, sheet.js): × takes the box back to the foot -->
-            <template x-if="sheet.subAt != null"><button type="button" class="icon-btn plain box-home" id="d-sub-home" aria-label="Add after the last subtask instead" @mousedown.prevent @click="subHome()"><svg class="i"><use href="#i-close"/></svg></button></template>
-            <button class="go" type="submit" aria-label="Add subtasks" @mousedown.prevent :disabled="!boxParsedLines('sub').some(p => p.title)"><svg class="i"><use href="#i-plus"/></svg></button>
-          </form>
-          <div class="chips" id="d-subchips" :hidden="!chips('sub').length && !(sheet.sub.focus && !sheet.sub.text)">
-            <template x-if="sheet.sub.focus && !sheet.sub.text"><span class="hint" id="d-subhint" x-text="boxHint('sub')"></span></template>
-            <!-- include markup/chips.html -->
-          </div>
-        </div></template>
-        <!-- The box's place at the foot, kept empty at its height while the box is under a subtask: a tap brings it back -->
-        <template x-if="sheet.subAt != null && checklistRole !== 'run' && canEdit"><button type="button" class="sub-home" id="d-subhome" :aria-label="checklistRole === 'template' ? 'Add after the last step instead' : 'Add after the last subtask instead'" @click="subHome()"><span></span></button></template>
-        <!-- Under a template: the one box its steps are written in, at the foot, or under the step nudged (seatSub, sheet.js):
-             Enter, or its button, adds the step at once. A pasted list is a row a line, added together. -->
-        <template x-if="checklistRole === 'template' && canEdit"><div id="add-steps" x-data="{which: 'add'}" x-init="ensureAddRow()">
-          <!-- include markup/sheet/draft-steps.html -->
-        </div></template>
+      <!-- Its subtasks, or a template's steps, and the box that adds them: the sheet's list (sheet/sub-list.html) -->
+      <template x-if="checklistRole !== 'tplstep'"><div>
+        <!-- include markup/sheet/sub-list.html -->
       </div></template>
 
       <!-- Not on a template or its step: a run is a copy of them made by Vikunja, which copies their notes, photos,

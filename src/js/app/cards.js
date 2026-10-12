@@ -36,7 +36,8 @@ export default {
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     let steps = all.filter(s => !done(s) || this.leaving[s.id]);
     if (!steps.length) return all.length ? this.closingCard(t, g, run, all) : null;
-    if (kind === 'today' && !this.view.cards?.[t.id]) return null;
+    // (One given a subtask from Today's box is a card until the screen is left, whatever its date: what was added is in sight.)
+    if (kind === 'today' && !this.view.cards?.[t.id] && !this.cardKept[t.id]) return null;
     // A run's top row is its next step, by its own rule, then the rest in its order; a task's, the most urgent.
     if (run) { const k = runTop(steps, this.cardPage[t.id], this.runPick(all, done)); steps = [steps[k], ...steps.filter((_, i) => i !== k)]; }
     else steps = [...steps].sort(urgentFirst(this.rowNow(), positionOrder(this.positions)));
@@ -187,7 +188,7 @@ export default {
   // there (runTop). (A task's top row is the most urgent, which a tick doesn't change.)
   pinCard(c){ if (c?.step) this.cardPage[c.id] = c.step.id; },
   // Leaving the screen: every card back on its next step, and collapsed.
-  resetCards(){ this.cardPage = {}; this.cardOpen = {}; shownStep.clear(); },
+  resetCards(){ this.cardPage = {}; this.cardOpen = {}; this.cardKept = {}; shownStep.clear(); },
   /* Its footer's More tapped: the card opens in place, every open subtask listed, the rows below pushed down by that tap. It's
      watched (watchCard) to collapse again once it's off the screen. */
   openCard(c){ this.cardOpen[c.id] = true; },

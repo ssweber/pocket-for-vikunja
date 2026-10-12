@@ -375,13 +375,9 @@ export default {
       return card ? this.cardGesture(card, s) : s;
     });
     this.watchNudges(document.getElementById('view'));
-    // In a task's sheet: a subtask's row nudged has the sheet's own box under it (nudgedSub, app/sheet.js).
-    this.watchNudges(document.getElementById('sheet'), target => {
-      if (this.sheet.kind === 'task') return target.closest('#d-subtasks > .row[data-id]')?.dataset.id ?? null;
-      // In New template: a written row nudged has the empty row under it (nudgedDraft, app/checklists.js).
-      const key = this.sheet.kind === 'newtpl' && target.closest('#new-steps > .draft-step.shown')?.dataset.key;
-      return key ? 'draft:' + key : null;
-    }, id => String(id).startsWith('draft:') ? this.nudgedDraft(String(id).slice(6)) : this.nudgedSub(id));
+    // In a sheet's list (a task's subtasks, a template's steps, New template's): a row nudged has the list's box under it
+    // (nudgedSub, app/sheet.js).
+    this.watchNudges(document.getElementById('sheet'), target => target.closest('#d-subtasks > .row[data-id]')?.dataset.id ?? null, id => this.nudgedSub(id));
   },
   /* A nudge (motion-and-rows-plan.md, part 7): on a project's list, on Today, or a run's steps, a touch that starts on a
      row and turns into a short, slow scroll moves the add box under that row (isNudge, in progress.js beside app/, where its numbers
@@ -517,24 +513,15 @@ export default {
     let d = null;
     return {held: () => this.drawAll(), start: y => (d = drag())?.start(y), move: (dy, y) => d?.move(dy, y), end: commit => d?.end(commit)};
   },
-  // A template's step held and moved up or down: its place in the template's order line (moveStep). Not while a step
-  // is being changed, or the template is saving.
+  // A step held and moved up or down, a template's or one written in New template: its place in the template's order
+  // line, or among the rows written (moveStep). Not while a step is being changed, or the template is saving.
   stepReorder(row, target){
-    const i = this.subtasks.findIndex(s => String(s.id) === row.dataset.id);
-    if (i < 0 || !this.canEdit || this.sheet.stepEdit || this.sheet.checklistBusy || target.closest('button:not(.body)')) return null;
-    const blocks = this.subtasks.map(s => [...row.parentElement.querySelectorAll(`:scope > .row[data-id="${s.id}"]`)]);
-    const reorder = this.subtasks.length > 1 && !blocks.some(b => !b.length) ? dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true)) : null;
+    const steps = this.subList, i = steps.findIndex(s => String(s.id) === row.dataset.id), can = this.sheet.kind === 'newtpl' || this.canEdit;
+    if (i < 0 || !can || this.sheet.stepEdit || this.sheet.checklistBusy || target.closest('button:not(.body)')) return null;
+    const blocks = steps.map(s => [...row.parentElement.querySelectorAll(`:scope > .row[data-id="${s.id}"]`)]);
+    const reorder = steps.length > 1 && !blocks.some(b => !b.length) ? dragOf(blocks, i, this.$refs.sheet.querySelector('.scroll'), to => this.moveStep(i, to - i, true)) : null;
     // Swiped left, its Delete: it asks as the step's × does (removeStep), and said no to, the row shuts again.
     return {el: row, reorder, swipe: swipeOf(row, async () => { await this.removeStep(i); if (row.isConnected) shut(); }, row.querySelector('.title')?.textContent || 'this step')};
-  },
-  /* A step written in New template, shown as a row (draft-steps.html): held and moved up or down among the rows, and
-     swiped left, its Delete, which takes it out at once: it was never sent. */
-  draftGesture(row, target){
-    const box = row.parentElement, which = box.id === 'new-steps' ? 'new' : 'add', rows = this.draftRows(which), k = rows.findIndex(r => r.key === row.dataset.key);
-    if (k < 0 || target.closest('button:not(.body)')) return null;
-    const blocks = rows.map(r => [...box.querySelectorAll(`:scope > .draft-step[data-key="${r.key}"]`)]);
-    const reorder = rows.length > 1 && !blocks.some(b => !b.length) ? dragOf(blocks, k, this.$refs.sheet.querySelector('.scroll'), to => this.placeDraftRow(which, k, to)) : null;
-    return {el: row, reorder, swipe: swipeOf(row, () => { shut(); this.dropDraftRow(which, k); }, rows[k].text)};
   },
   /* A row's Delete, tapped once it's swiped open (a tick felt then: swipeOf), or a full swipe let go (felt as it passed
      half): the row goes on off the screen, leaving a gap at its height with Restore (sweep, removeTask). A task with
@@ -585,11 +572,9 @@ export default {
     this.holdToSlide(this.$refs.sheet, target => {
       const own = target.closest('.row.own');
       if (own) return this.sheetRowGesture(own);
-      const written = target.closest('.draft-step.shown');
-      if (written) return this.draftGesture(written, target);
       const row = target.closest('#d-subtasks > .row[data-id]:not(.pending)');
       if (!row) return null;
-      if (this.checklistRole === 'template') return this.stepReorder(row, target);
+      if (this.isStepList) return this.stepReorder(row, target);
       const st = this.subtasks.find(s => String(s.id) === row.dataset.id);
       return st ? this.rowGesture(st, row, true) : null;
     });

@@ -48,7 +48,7 @@
        in a checklist. Only in the sheet's copy of this row (included with "step": scripts/build.mjs), as is its box
        below, so no other list's rows have them to work out. -->
   <!-- only step -->
-  <template x-if="g.step"><span class="check step-n num" aria-hidden="true" x-text="stepAt(t) + 1"></span></template>
+  <template x-if="g.step"><span class="check step-n num" aria-hidden="true" x-text="stepNo(t)"></span></template>
   <!-- /only -->
   <template x-if="!g.top && !g.step && (g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
   <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->

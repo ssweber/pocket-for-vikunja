@@ -13,9 +13,11 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 // pasted list goes under its first line, whether the 🔔 chip is on, whether it's sending, and how many lots of subtasks
 // from it are on their way (addSubtasks).
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, flat: false, remind: false, busy: false, adding: 0});
+// The box a template's steps are written in: a row, as the steps written are, its key '+' (stepBox, app/checklists.js).
+export const newStepBox = () => ({...newBox(), key: '+', keep: false, from: null});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
+  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], addBox: newStepBox(), newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
   lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
 
 export default () => ({
@@ -78,6 +80,7 @@ export default () => ({
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
+  cardKept: {},                                // a task's id -> true: a card on Today from when a subtask was added to it there, until the screen is left
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // a task or step whose progress is being slid, which you'll be doing: its id -> true (claimOnSlide)
   // What's waiting to be sent for each task, by its id, for a row to ask about its own (keyWaiting, sending.js): its
@@ -176,8 +179,8 @@ export default () => ({
       const t = this.sheet.task;
       if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== this.notesText(t).trim() ? {text: v, base: this.sheet.descBase} : null);
     });
-    this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.box.text, rows: nt.rows}); });
-    this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addRows, rows => { if (rows) taskDrafts.set('addsteps:' + this.sheet.task.id, rows.some(r => r.text.trim()) ? rows : null); });
+    this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.box.text, rows: nt.rows.map(r => ({text: r.text, keep: r.keep, ignore: r.ignore})), add: nt.add.text}); });
+    this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addBox.text, text => { if (text !== false) taskDrafts.set('addsteps:' + this.sheet.task.id, text.trim() ? [{text}] : null); });
     // Search once typing pauses.
     let searchTimer;
     this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });
