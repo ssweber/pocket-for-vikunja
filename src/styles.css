@@ -698,6 +698,8 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .row ~ .addbox.sub,.sub-home{border-top:1px solid var(--line);--box-slot:55px}
 .addbox.sub form{border-color:var(--line);background:var(--bg)}
 .addbox.sub form:focus-within{border-color:var(--accent)}
+/* Under a row, where a nudge has just put it, it's lit as the bar is there: its edge the accent, white inside */
+.foot-box.inline form{border-color:var(--accent);background:var(--surface)}
 #capture .cam{border-radius:var(--part-r);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #capture .cam.on{color:var(--accent);background:var(--accent-soft)}
 #capture .cam:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
