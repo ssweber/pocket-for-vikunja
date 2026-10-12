@@ -1196,7 +1196,7 @@
     <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
       :title="rep.can ? 'A fresh copy of “' + rep.title + '”, not done, right after it' : 'It can be repeated once it\'s sent'"
       @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
-    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-plus"/></svg></button>
+    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-up"/></svg></button>
   </form>
   <!-- A template's step: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
   <template x-for="st in fb.steps ? [box(fb.w)] : []" :key="0"><div class="sub-box-time">
@@ -1846,7 +1846,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
     <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
       :title="rep.can ? 'A fresh copy of “' + rep.title + '”, not done, right after it' : 'It can be repeated once it\'s sent'"
       @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
-    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-plus"/></svg></button>
+    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-up"/></svg></button>
   </form>
   <!-- A template's step: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
   <template x-for="st in fb.steps ? [box(fb.w)] : []" :key="0"><div class="sub-box-time">
@@ -2332,7 +2332,7 @@ Save to replace them with yours, or Cancel to keep them.</p></template>
     <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
       :title="rep.can ? 'A fresh copy of “' + rep.title + '”, not done, right after it' : 'It can be repeated once it\'s sent'"
       @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
-    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-plus"/></svg></button>
+    <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-up"/></svg></button>
   </form>
   <!-- A template's step: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
   <template x-for="st in fb.steps ? [box(fb.w)] : []" :key="0"><div class="sub-box-time">
