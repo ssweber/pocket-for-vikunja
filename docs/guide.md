@@ -57,7 +57,7 @@ Behavior you might not expect:
 - **A task with progress takes two swipes to delete:** the first swipe lowers it to 0%.
 - **Ticked and deleted tasks stay in place for three seconds**, then leave together. Until then, un-ticking and **Restore** work. A tick reaches Vikunja at once; a delete is sent only when the row leaves.
 - **Moving a task on Today:** hold it until it lifts. **Today** is left, **Tomorrow** right, **Next week** above, **No date** below, always in the same places. Release without moving to tap one, or **Pick a date…**.
-- **The bottom box on a project's list switches to adding subtasks** after you touch a task (tick, swipe, open, or press and scroll slightly). It says which task. Tap **×** to go back to adding tasks.
+- **Nudging a row moves the add box under it.** A nudge is a press and a slight scroll. Under a task the box adds that task's first subtask; under a subtask it adds the next one. On a project's list, **⇤** moves the box out a level to add a task there instead, and **⇥** moves it back in (Tab and Shift+Tab on a keyboard). **×**, a tap on the empty slot at the bottom, or scrolling the row away sends the box back. **Add a subtask here** in a task's **⋯** does the same as a nudge. Nudging works on a project's list, on Today, in a task's sheet, on a checklist, and on a template's steps.
 - **The subtask box doesn't read `+project`.** A subtask stays in its parent's project. In a checklist project it doesn't read dates either, since subtasks there may become template steps.
 - **Copy as a Markdown list** round-trips: pasted into Pocket's add box, it recreates the tasks. Notes, comments, and attachments aren't included.
 - **Every swipe and hold has an equivalent in the ⋯ menu**, for keyboard and screen-reader use.
@@ -80,13 +80,13 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 **Setup.** Under Projects, **Set up checklists** creates a project with an example template, or mark an existing project with **Use for checklists** in its **⋯**. Share it in Vikunja's web app with **Read & write**. Vikunja defaults to *Read only*, which lets people see checklists but not tick steps.
 
-**Templates.** Steps are parsed like quick add (`@priya`, `*front`, `!3`) except dates; step timing is separate (see **Timed steps**). **Notes and photos** under a step are copied into every checklist, as are the template's own notes, attachments, labels, and assignees. An existing task with subtasks becomes a template via **Use as checklist template**.
+**Templates.** Steps are parsed like quick add (`@priya`, `*front`, `!3`) except dates; step timing is separate (see **Timed steps**). Tap a step to edit it, hold it to reorder, and swipe it left to delete. **Notes and photos** under a step are copied into every checklist, as are the template's own notes, attachments, labels, and assignees. An existing task with subtasks becomes a template via **Use as checklist template**.
 
 **Checklists.** A checklist can be started offline. Entering a name on start, such as "Saturday", replaces the number in its title. A comment typed on a step is posted with **Done** or recorded as the reason with **Skip**. **Last time** shows comments from the previous completed checklist. To finish early, tap the checklist's ring; remaining steps stay incomplete.
 
 **Recurring.** Give the template a due date and repeat interval. It becomes a repeating Vikunja task: at its time it appears on Today for its assignees (or everyone with write access), and tapping it opens Start. Starting a checklist on the due day advances the template, and the checklist inherits the due time, so an unfinished one shows overdue. A start at 7:55 counts as the 8:00 occurrence. A start before the due day doesn't advance it. Missed occurrences aren't made up.
 
-**Changing a checklist.** The bottom box inserts a step after the current one, for this checklist only. **Repeat** duplicates the current step. Template steps can't be removed from a checklist, only skipped.
+**Changing a checklist.** The bottom box inserts a step after the current one, for this checklist only. Nudge a step to make it current and move the box under it. **Repeat** duplicates the current step. Template steps can't be removed from a checklist, only skipped.
 
 **Completion record.** Done is a ✅ reaction, skipped is ⏭️, so the web app shows "Done by Priya at 4:46 PM". Vikunja only lets users remove their own reactions, so un-ticking someone else's step asks first and leaves their reaction.
 

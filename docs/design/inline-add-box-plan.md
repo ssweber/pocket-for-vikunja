@@ -109,3 +109,29 @@ sheet aimed the bottom box before; they leave the box where it is now, so rows n
 6. New template's rows.
 7. After the user's look: the end-to-end tests (the old "Add a subtask to…" line and the ↑ ↓ buttons among them), the
    guide's lines on the bottom box, the specimen, and the README's pictures.
+
+## As built (2026-10-12)
+
+Parts 1 to 6, each its own commit, with the fast checks only: the end-to-end tests, the specimen and the README's
+pictures wait for the user's look. Tried in desktop Chrome with a made-up finger (`scratchpad/inline/`), and part 1 by
+the user on their phone ("that feels pretty good").
+
+- **One box, laid over room.** The box is never moved in the page: its row is given the box's height under it
+  (`.boxed`), and the box is drawn over that room, where the room is being asked every frame (`seatBox`, `boxSeat`,
+  `app/quickadd.js`). So Enter keeps the focus and the keyboard. A task's sheet does the same with its own box
+  (`seatSub`, `app/sheet.js`), which is also a template's.
+- **Today gives no place.** It has no one List view, and shows a subtask only once it's sent, on its task's card: the
+  box stays where it was put, and the card opens so what was added is in sight.
+- **A new line's place is never one another task has** (`clearOf`, `order.js`). Vikunja moves two tasks with the same
+  position apart, which put a task's first two subtasks in the wrong order in a new project.
+- **In New template the box is the empty row.** A nudge moves that row under the row nudged; there's no empty place
+  kept at the foot, where **Add a step** is.
+- **A template's step keeps a row of its own,** as planned; the rows written in New template are their own too.
+
+To know when trying it:
+
+- A step added under a template's step is then "the step before" for the step after it: one timed "20 minutes
+  after the step before" counts from the new step from then. Nothing says so when it's added.
+- On Today a task with no date that gets its first subtask stays a row, with a ring: Today makes a card only of what's
+  due.
+- Scrolling its row out of sight sends a box home only while it isn't being typed in.
