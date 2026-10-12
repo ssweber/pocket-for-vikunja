@@ -69,7 +69,7 @@
     <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
       <!-- In the list on a project: the box out a level, to add a task after this one and all under it, and back in
            (boxLevel, quickadd.js). Tab and Shift+Tab do the same, when they can (boxTab). -->
-      <template x-if="boxIn"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Add a subtask instead: move the box in a level' : 'Add a task instead: move the box out a level'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
+      <template x-if="canLevel"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Add a subtask instead: move the box in a level' : 'Add a task instead: move the box out a level'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
         <!-- An add box (x-box, component.js), whichever it is now; it takes a list, so Shift+Enter breaks the line -->

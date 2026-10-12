@@ -587,7 +587,7 @@ export default {
      on their rows, with no message unless there's a problem: one added by mistake is deleted from its row, which has
      an Undo. */
   async addSubtasks(w = 'sub'){
-    const foot = w === 'under', parent = this.boxParent(w), b = this.box(w), parsed = this.boxParsedLines(w);
+    const foot = w === 'under', today = foot && this.route.name === 'today', parent = this.boxParent(w), b = this.box(w), parsed = this.boxParsedLines(w);
     if (!parent || !parsed.some(p => p.title)) return;
     const n = parsed.filter(p => p.title).length;
     const at = foot ? this.cursorPlaces(n) : this.sheet.subView || !this.subtasks.length ? placeAfter(this.subtasks.map(s => this.positions[s.id] || 0), null, n) : null;
@@ -596,7 +596,8 @@ export default {
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
     // From the add box, the light follows what's added, and the next go after it: the last that's the task's own
     // subtask, not one under it (aimAdded, quickadd.js).
-    if (foot) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
+    // (Not on Today, which shows a subtask only once it's sent, on its task's card: the box stays where it is.)
+    if (foot && !today) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
     const here = () => foot || this.sheet.task?.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
     // The next can be sent while this one is on its way (the outbox sends them in turn): `adding` counts them.
     b.adding++; b.text = '';
@@ -614,7 +615,12 @@ export default {
       if (r.ids?.length && foot) {
         this.flash(r.ids);
         // Its row's count of subtasks, with these.
-        this.readTask(parent.id).then(t => { if (t) { cache.set(t.id, t); this.keep(t); } }).catch(() => {});
+        // On Today its card opens, so what was added is in sight, whatever its place among the others, until the
+        // screen is left (resetCards); a task that had no subtask is a card from now, read again.
+        this.readTask(parent.id).then(t => {
+          if (t) { cache.set(t.id, t); this.keep(t); }
+          if (today && this.route.name === 'today') { this.cardOpen[parent.id] = true; this.render(); }
+        }).catch(() => {});
       } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;
         try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
@@ -622,7 +628,7 @@ export default {
       if (r.status === 'offline') {
         sync.keep();
         // From the add box, their rows say they're waiting.
-        if (!foot || !kept) this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {place, cls: kept ? '' : 'failed'});
+        if (!foot || !kept || today) this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {place, cls: kept ? '' : 'failed'});
       } else if (r.status === 'error') {
         if (here()) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');      // keep what wasn't added
         this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {place, cls: 'failed'});

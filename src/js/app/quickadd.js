@@ -408,7 +408,7 @@ export default {
     // A step being changed: the people and labels it has, to tap off it.
     if (w === 'edit') out.push(...this.stepHasChips());
     const to = this.boxPid(w);
-    if (this.boxIn && (w === 'under' || w === 'cap') && !this.view.listView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja: what you add goes last'});
+    if (this.canLevel && (w === 'under' || w === 'cap') && !this.view.listView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja: what you add goes last'});
     if (to && !this.canWrite(to)) out.push({key: 'ro', cls: 'warn', text: `${this.projById.get(to)?.title || 'This project'} is shared with you to read only: it can't be added to`});
     return out;
   },
@@ -423,13 +423,16 @@ export default {
      subtask not sent yet: its waiting row. A task ticked done can't be one: its parent is, if it's on the list, as it
      is for a cursor that's gone (keepAim). The box goes back to adding a task with its ×, when the cursor's row is out
      of sight (scrolling back doesn't bring it back), or when the screen is left. */
-  // A task that can be the cursor: open, on this project's list, one you can change, and not a run, a step of one or a
-  // template, which add steps their own way.
+  // A task that can be the cursor: open (or ticked, in its place until the batch clears), on this project's list, or on
+  // Today, as a row or on a card there, one you can change, and not a run, a step of one or a template, which add steps
+  // their own way.
   canAim(t){
-    return !!t && this.route.name === 'project' && !t.pending && (!t.done || !!this.leaving[t.id]) && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
-      && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) && !this.deleting.includes(t.id) && this.onList(t);
+    const on = this.route.name;
+    return !!t && (on === 'project' || on === 'today') && !t.pending && (!t.done || !!this.leaving[t.id]) && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
+      && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) && !this.deleting.includes(t.id) && (this.onList(t) || (on === 'today' && !!this.listParent(t)));
   },
-  onList(t){ return this.view.groups.some(g => g.key === 'open' && g.tasks.includes(t)); },
+  // In the screen's list as a row or a card of its own: a project's open tasks, any of Today's groups.
+  onList(t){ const today = this.route.name === 'today'; return this.view.groups.some(g => (today || g.key === 'open') && g.tasks.includes(t)); },
   /* The cursor set, or none (null). `lit` says it to its row alone (the row's id -> true): a row asks only about itself,
      as it does of `leaving`, so lighting another row draws those two again, not the whole list. */
   light(c){
@@ -618,12 +621,14 @@ export default {
      it, where it's then drawn (seatBox), and is quick add's own box again (capW 'cap'), with a place to give. A task
      added from there is the cursor in its turn, out still, so the next goes after it. Moved back in, it adds subtasks
      to the cursor's row: not while that's a task still waiting to be sent, which can't have one yet (canIn). */
-  get boxIn(){ return this.route.name === 'project' && !!this.cursorTask; },
+  get boxIn(){ return ['project', 'today'].includes(this.route.name) && !!this.cursorTask; },
+  // Only a project's list has two levels: Today adds subtasks only (part 3).
+  get canLevel(){ return this.boxIn && this.route.name === 'project'; },
   get boxOut(){ return this.boxIn && !!this.cursor.out; },
   get canIn(){ const c = this.cursor; return !!c && !(c.wait && c.under == null); },
   boxLevel(out){
     const c = this.cursor;
-    if (!this.boxIn || out === !!c.out || (!out && !this.canIn)) return false;
+    if (!this.canLevel || out === !!c.out || (!out && !this.canIn)) return false;
     this.light({...c, out});
     return true;
   },

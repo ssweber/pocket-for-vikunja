@@ -376,8 +376,8 @@ export default {
     });
     this.watchNudges(document.getElementById('view'));
   },
-  /* A nudge (motion-and-rows-plan.md, part 7): on a project's list, or a run's steps, a touch that starts on a row and
-     turns into a short, slow scroll aims the add box at that row (isNudge, in progress.js beside app/, where its numbers
+  /* A nudge (motion-and-rows-plan.md, part 7): on a project's list, on Today, or a run's steps, a touch that starts on a
+     row and turns into a short, slow scroll moves the add box under that row (isNudge, in progress.js beside app/, where its numbers
      are; `nudged`, app/quickadd.js: on a run, the step goes on the card); a fling is only a scroll. Followed by touch events, passive, so it never stops the page
      scrolling: once the phone scrolls, it ends the pointer events (pointercancel), but these carry on. A hold, a swipe
      or a second finger on the way, and it's not one; nor a touch that starts in a text field (inTextField). */
@@ -387,7 +387,7 @@ export default {
       n = null;
       const run = this.route.name === 'run';
       // (a row, a card's row, or a card's heading, for its task)
-      const row = e.touches.length === 1 && (run || this.route.name === 'project') && !inTextField(e.target)
+      const row = e.touches.length === 1 && (run || ['project', 'today'].includes(this.route.name)) && !inTextField(e.target)
         && (e.target.closest('.card-rows > .row, .item > .row, .list:not(.tree) > .row') || e.target.closest('.card-head')?.closest('.day-card'));
       if (!row) return;
       const p = e.touches[0];

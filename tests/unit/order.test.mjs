@@ -280,11 +280,24 @@ test('the lit row out of sight: a task again; one just added past the screen\'s 
   } finally { delete globalThis.IntersectionObserver; delete globalThis.window; }
 });
 
-test('only a task on this project\'s open list that you can change can be the cursor', () => {
-  const { app, van } = projectList();
-  app.route = { name: 'today' };
+test('only a task on this project\'s open list that you can change can be the cursor; on Today, a row of any group, or a card\'s', () => {
+  const { app, van, chairs } = projectList();
+  app.route = { name: 'search' };
   app.aim(van);
-  assert.equal(app.cursor, null, 'not on Today');
+  assert.equal(app.cursor, null, 'not in search');
+  // Today: its groups have the task (a card, with its subtasks on it, not rows of their own), and the box only adds subtasks.
+  app.route = { name: 'today' };
+  const list = app.view;
+  app.view = { groups: [{ key: 'overdue', tasks: [] }, { key: 'today', tasks: [van] }], listView: null };
+  app.aim(van);
+  assert.deepEqual([app.cursor, app.capW, app.boxIn, app.canLevel], [{ id: 10, under: null }, 'under', true, false]);
+  assert.equal(app.boxLevel(true), false, 'no level out on Today');
+  assert.equal(app.cursorPlaces(1), null, 'nor a place to give: Today has no one List view');
+  app.aim(chairs);
+  assert.deepEqual([app.cursor, app.cursorParent], [{ id: 11, under: 10 }, van], 'a card\'s row: under its task');
+  app.aim(app.tasks[20]);
+  assert.equal(app.cursor, null, 'a task Today doesn\'t show');
+  app.view = list;
   app.route = { name: 'project', id: 1 };
   app.canWrite = () => false;
   app.aim(van);
