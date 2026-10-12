@@ -533,16 +533,16 @@ a.sec-act{text-decoration:none}
 .more-done .note{margin:0;font-weight:400}
 /* A template's steps, saved or being written, look like subtasks: the step's number where a subtask has its tick, plain,
    as the start sheet has it (a square box is a step you tick, in a run), and what's written in a box coloured as every
-   add box is (.addbox): New template's name, and a step being changed. */
+   add box is (.addbox), and as tall as a list's with one line: New template's name, and a step being changed. */
 .check.step-n{border-color:transparent;color:var(--muted);font-size:15px;font-weight:400}
 .step-box{flex:1;min-width:0;border:1.5px solid var(--accent);border-radius:12px;padding:0 12px;background:var(--surface)}
 /* iOS Safari gives a textarea its own rounded corners and a shade along the top */
-.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;padding:8px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
+.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;padding:10px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
 .draft-in::placeholder{color:var(--muted);opacity:1}
 /* Quick add's marks behind the words of a template's box, as in .addbox */
 .step-box .cap-field{position:relative}
 .step-box .draft-in{position:relative;white-space:pre-wrap;overflow-wrap:break-word}
-.step-box .cap-marks{position:absolute;inset:0;padding:8px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
+.step-box .cap-marks{position:absolute;inset:0;padding:10px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
 .step-box .cap-marks mark{color:transparent;background:var(--accent-soft)}
 .box-chips{margin:6px 0 0 38px}
 .step-in .box-chips,.nt-name .box-chips{margin-left:0}
@@ -550,15 +550,13 @@ a.sec-act{text-decoration:none}
 .nt-name > label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
 .meta > .step-note{flex:0 0 100%;margin-top:0}
 .step-note{margin-top:3px;font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.draft-line{display:flex;align-items:flex-start;gap:4px}
-.draft-line .check,.row.editing .check{margin:8px 8px 0 0}
-.draft-line .step-box{margin-right:4px}
-.draft-line .icon-btn,.step-edit .icon-btn{width:36px;height:36px;margin-top:3px;background:var(--sunk)}
-.draft-line .icon-btn[disabled],.step-edit .icon-btn[disabled]{opacity:.35}
-.row .step-in{padding:0}
-.step-edit{display:flex;gap:4px;align-self:flex-start}
+/* A step tapped: its box opens where its words were. The box is a list's box with nothing beside it, 47px, drawn round
+   the words: it starts where the step's number ends (the row's 12px gap and its own 1.5px edge back from the title's
+   column), and takes 7.5px over and under of the row's own room, so the words stay on their line and a step of one
+   line stays a row's height (8.5px under: a row's line over it is 1px of its 56px). What's under the box (its time
+   line, its chips, its notes' link) starts with it. */
+.row .step-in{padding:0;margin:-7.5px 0 -8.5px -13.5px}
 .step-in-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;position:relative}
-.step-in-foot .step-edit .icon-btn{margin-top:0}
 .step-notes{display:inline-block;margin-top:6px;padding:4px 0;font-size:15px;font-weight:650}
 .draft-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 0 38px;font-size:14px;color:var(--muted)}
 .step-in .draft-meta{margin-left:0}
