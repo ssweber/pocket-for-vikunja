@@ -111,12 +111,13 @@ export default {
   get hiddenRows(){ return new Set(this.deleting.filter(id => !this.leaving[id])); },
 
   /* ---------- a place ---------- */
-  // Where a place's line is kept: a sheet's in the sheet, so it goes with it; in a sheet that isn't a task's, at its top.
+  // Where a place's line is kept: a sheet's in the sheet, so it goes with it; in a sheet that isn't a task's, at its top,
+  // but New template has the list of steps, with its place (sub-list.html), so a line for it is there, not at the top too.
   placeOf(place){
     if (!place.startsWith('sheet:')) return SCREEN[place]?.(this) ? {store: this.places, key: place} : null;
     if (!this.sheet.open) return null;
-    const key = place.slice(6);
-    return {store: this.sheet.lines, key: this.sheet.kind === 'task' && TASK_SHEET.includes(key) ? key : 'top'};
+    const key = place.slice(6), kind = this.sheet.kind;
+    return {store: this.sheet.lines, key: (kind === 'task' && TASK_SHEET.includes(key)) || (kind === 'newtpl' && key === 'subtasks') ? key : 'top'};
   },
   /* A line at `place` ("overdue", "cap", "sheet:notes"…): {text, action, ms (null: until the screen or the sheet is
      left), gone}. Returns false if the place isn't on screen. */

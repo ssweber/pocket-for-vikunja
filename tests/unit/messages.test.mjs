@@ -128,6 +128,11 @@ test('a sheet\'s messages are in it, under what each is about, and go with it', 
   const proj = app('projects', { ...blankSheet('project'), open: true });
   proj.say('Renamed', { place: 'sheet:notes' });
   assert.deepEqual(Object.keys(proj.sheet.lines), ['top']);
+  // New template has the list of steps, with its place: a line for it is there, and one for the top isn't drawn there too.
+  const tpl = app('checklists', { ...blankSheet('newtpl'), open: true });
+  tpl.say('Not finished', { place: 'sheet:top', cls: 'failed' });
+  tpl.say('Not moved', { place: 'sheet:subtasks', cls: 'failed' });
+  assert.deepEqual([tpl.placeLines('sheet:top').map(l => l.text), tpl.placeLines('sheet:subtasks').map(l => l.text)], [['Not finished'], ['Not moved']]);
   // Closed, there's no sheet to say it in.
   const closed = app('today');
   assert.equal(closed.say('Renamed', { place: 'sheet:top' }), 'toast');
