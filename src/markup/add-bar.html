@@ -2,9 +2,9 @@
      specimen draws it too). It's the one box (x-box): nudged, it's seated in the list under a row, as far in as what
      it adds (seatBox, app/quickadd.js), with ⇤ ⇥ for its level on a project's list. A tap on the place it left, or
      its row scrolled out of sight, sends it home: it has no button of its own for that, which the line had no room for. -->
-  <!-- The box's place at the bottom, kept at its height while the box is in the list, dashed, saying what the box says
-       there, where the box has it: a tap brings the box back. Ahead of the box, so the box is over it for the frame
-       before it's seated. -->
+  <!-- The box's place at the bottom while the box is in the list: the bar's height with one line, dashed, saying what
+       the box says there, where the box has it. A tap brings the box back. Ahead of the box, so the box is over it for
+       the frame before it's seated. -->
   <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span x-text="capHomeSays"></span></button>
   <!-- Quick add. (Not on a run's screen: its steps have their own box, under them: screens/run.html.) -->
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">

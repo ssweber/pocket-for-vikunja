@@ -191,9 +191,13 @@ export default () => ({
       this.initProgressDrag();
       this.initSheetProgress();
       this.initHeader();
-      // Keep the list's bottom padding in step with the capture bar as it grows.
-      // (Not while the box is in the list, seatBox: its place at the bottom keeps the height it had.)
-      new ResizeObserver(() => { const bar = this.$refs.captureBar; if (!bar.classList.contains('inline')) document.documentElement.style.setProperty('--cap-h', bar.offsetHeight + 'px'); }).observe(this.$refs.captureBar);
+      // Keep the list's bottom padding in step with the capture bar as it grows; and, while the box is in the list
+      // (seatBox), with the place it left at the bottom, which is the bar's height with one line, once that's drawn.
+      const home = document.getElementById('cap-home'), bottom = new ResizeObserver(() => {
+        const bar = this.$refs.captureBar, h = bar.classList.contains('inline') ? home.offsetHeight || null : bar.offsetHeight;
+        if (h !== null) document.documentElement.style.setProperty('--cap-h', h + 'px');
+      });
+      bottom.observe(this.$refs.captureBar); bottom.observe(home);
       // Turning the phone, or the keyboard opening or closing, changes the boxes' width: each fits its text again (notes being
       // changed too, however long), and quick add's highlights stay over the words they mark.
       const refit = () => { for (const id of ['in-capture', 'd-subin', 'd-desc-in']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
