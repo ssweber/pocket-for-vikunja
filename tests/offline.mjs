@@ -120,7 +120,7 @@ try {
   await step('task-added-offline-waits', async () => {
     await capture(`${T('A')} tomorrow`);
     await page.waitForSelector(pendingRow(T('A')));                           // in Next 7 days, where the task belongs
-    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    if (await page.isVisible('#toast.show')) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg'));
   });
 
   await step('pasted-list-offline-waits', async () => {
@@ -137,7 +137,7 @@ try {
     await page.click(`${pendingRow(T('X'))} button[aria-label^="Cancel"]`);
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
     // The task's text returns to the add box so the user can change it or add it again, and a message tells them.
-    if (await page.inputValue('#in-capture') !== `${T('X')} tomorrow`) throw new Error('box: ' + await page.inputValue('#in-capture'));
+    if (await page.inputValue('#in-capture') !== `${T('X')} tomorrow`) throw new Error('the add box holds: ' + await page.inputValue('#in-capture'));
     await placeSays(page, 'cap', 'Cancelled. It\'s back in the box.');
     await page.fill('#in-capture', '');
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
@@ -153,11 +153,11 @@ try {
     await page.waitForSelector('#outbox-status:has-text("No connection")');
     for (const text of [`New task: ${T('A')}`, `New task: ${T('P')}`, `Subtask of “${T('P')}”: ${T('P1')}`, `New task: ${T('Y')}`])
       await page.waitForSelector(`#outbox-rows .ob-row:has-text("${text}")`);
-    if (await page.textContent('#outbox-count') !== String(await page.locator('#outbox-rows .ob-row').count())) throw new Error('the count isn\'t the rows');
+    if (await page.textContent('#outbox-count') !== String(await page.locator('#outbox-rows .ob-row').count())) throw new Error('the outbox count differs from the number of rows');
     await page.click(`#outbox-rows .ob-row:has-text("${T('Y')}") .ob-drop`);
     await page.waitForSelector(`#outbox-rows .ob-row:has-text("${T('Y')}")`, { state: 'detached' });
     await page.click('#btn-sheet-close');
-    if (await page.inputValue('#in-capture') !== `${T('Y')} tomorrow`) throw new Error('box: ' + await page.inputValue('#in-capture'));
+    if (await page.inputValue('#in-capture') !== `${T('Y')} tomorrow`) throw new Error('the add box holds: ' + await page.inputValue('#in-capture'));
     await page.fill('#in-capture', '');
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
   });
@@ -165,7 +165,7 @@ try {
   await step('undated-task-offline-shows-in-added-today', async () => {
     await capture(T('U'));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
-    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    if (await page.isVisible('#toast.show')) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg'));
   });
 
   await step('photo-added-offline-waits', async () => {
@@ -195,7 +195,7 @@ try {
     const parent = (await byTitle(T('P')))[0];
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
-    if (await page.isVisible('.offline')) throw new Error('still says offline');
+    if (await page.isVisible('.offline')) throw new Error('the offline banner is still shown');
     // The photo stayed on the phone across the reload and was then uploaded.
     if ((await attached('F')).join() !== 'offline.png') throw new Error('the photo added offline never reached the task');
     await expect(page.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveClass(/waits/);   // nothing is waiting
@@ -213,7 +213,7 @@ try {
     // disappear before the test can see it.
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('D')}"))`, { timeout: 20000 });
-    if (await page.isVisible(pendingRow(T('D')))) throw new Error('still shown as waiting');
+    if (await page.isVisible(pendingRow(T('D')))) throw new Error('the task is still shown as waiting');
     const copies = (await byTitle(T('D'))).length;
     if (copies !== 1) throw new Error(`${copies} copies`);
     await page.unroute('**/api/v2/projects/*/tasks');
@@ -263,7 +263,7 @@ try {
     await page.route('**/api/v2/tasks/*/attachments', answer);
     await page.setInputFiles('#d-file', photo('busy.png'));
     await page.waitForSelector('#d-attachments .att.uploading:has-text("busy.png"):has-text("Vikunja had a problem with it. Trying again.")');
-    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    if (await page.isVisible('#toast.show')) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg'));
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("busy.png")');
     await page.unroute('**/api/v2/tasks/*/attachments', answer);
@@ -275,7 +275,7 @@ try {
     await page.waitForSelector('#d-attachments .att.uploading:has-text("keep.png"):has-text("Waiting for a connection")');
     await page.click('#d-attachments .att.uploading:has-text("drop.png") button[aria-label^="Don"]');
     await page.waitForSelector('#d-attachments .att:has-text("drop.png")', { state: 'detached' });
-    if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    if (await page.isVisible('#toast.show')) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg'));
     await context.setOffline(false);
     await page.waitForSelector('#d-attachments button.att:has-text("keep.png")');
     const names = await attached('G');
@@ -463,7 +463,7 @@ try {
     const [parent] = await byTitle(T('K'));
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
-    if ((await page.textContent('#toast-msg')).includes("couldn't")) throw new Error('toast: ' + await page.textContent('#toast-msg'));
+    if ((await page.textContent('#toast-msg')).includes("couldn't")) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg'));
     await page.unroute('**/api/v2/tasks/*/relations', lose);
   });
 
@@ -485,8 +485,8 @@ try {
     await online();
     await synced(page);
     const subs = async t => ((await (await api('/tasks/' + (await byTitle(t))[0]?.id)).json()).related_tasks?.subtask || []).map(s => [s.title, s.done]).sort();
-    if (JSON.stringify(await subs(T('H1'))) !== JSON.stringify([[T('H1a'), false], [T('H1b'), true]])) throw new Error('under the first heading: ' + JSON.stringify(await subs(T('H1'))));
-    if (JSON.stringify(await subs(T('H2'))) !== JSON.stringify([[T('H2a'), false]])) throw new Error('under the second: ' + JSON.stringify(await subs(T('H2'))));
+    if (JSON.stringify(await subs(T('H1'))) !== JSON.stringify([[T('H1a'), false], [T('H1b'), true]])) throw new Error('subtasks of the first heading: ' + JSON.stringify(await subs(T('H1'))));
+    if (JSON.stringify(await subs(T('H2'))) !== JSON.stringify([[T('H2a'), false]])) throw new Error('subtasks of the second heading: ' + JSON.stringify(await subs(T('H2'))));
   });
 
   await step('waiting-work-from-an-older-pocket-moves-over', async () => {
@@ -500,7 +500,7 @@ try {
     }, [T('O'), home]);
     await page.reload();
     await page.waitForSelector(pendingRow(T('O')), { timeout: 15000 });
-    if (await page.evaluate(() => localStorage.getItem('pocket.outbox'))) throw new Error('still in localStorage');
+    if (await page.evaluate(() => localStorage.getItem('pocket.outbox'))) throw new Error('the outbox is still in localStorage');
     await context.setOffline(false);
     await page.waitForSelector(pendingRow(T('O')), { state: 'detached', timeout: 20000 });
     if ((await byTitle(T('O'))).length !== 1) throw new Error((await byTitle(T('O'))).length + ' copies');
@@ -535,7 +535,7 @@ try {
     await page.click('#btn-signout');
     await page.waitForSelector('#login:not([hidden])');
     const left = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('pocket.saved.') || k === 'pocket.outbox'));
-    if (left.length) throw new Error('still stored: ' + left.join(', '));
+    if (left.length) throw new Error('these are still stored: ' + left.join(', '));
     const count = name => page.evaluate(n => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction(n).objectStore(n).count(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }), name);
     if (await count('files')) throw new Error(`${await count('files')} waiting photos still stored`);
     if (await count('outbox')) throw new Error(`${await count('outbox')} waiting tasks still stored`);

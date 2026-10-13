@@ -75,7 +75,7 @@ try {
     };
     await vikunja.evaluate(t => localStorage.setItem('token', t), other);     // from the other tab, as signing in there would
     await pocket.waitForTimeout(1500);
-    if (await who() !== '@' + USER) throw new Error('switched before it knew');
+    if (await who() !== '@' + USER) throw new Error('Pocket switched user before it knew who was signed in');
     // A task added now must not be created as the other user. It waits until Pocket knows whose session it is, then is created as the original user.
     const title = `Pocket session capture ${Date.now()}`;
     const find = async t => ((await (await fetch(SERVER + '/api/v2/tasks?q=' + encodeURIComponent(title), { headers: { Authorization: 'Bearer ' + t } })).json()).items || []).filter(x => x.title === title);
@@ -86,14 +86,14 @@ try {
     cut = false;
     await pocket.evaluate(() => window.dispatchEvent(new Event('online')));   // the next attempt to send checks the account again
     for (let i = 0; i < 30 && await who() !== '@' + process.env.OTHER_USER; i++) await pocket.waitForTimeout(500);
-    if (await who() !== '@' + process.env.OTHER_USER) throw new Error('still shows ' + await who());
+    if (await who() !== '@' + process.env.OTHER_USER) throw new Error('Pocket still shows ' + await who());
     await pocket.unroute(whoami);
     await vikunja.evaluate(t => localStorage.setItem('token', t), mine);      // switch back for the later steps
     for (let i = 0; i < 30 && await who() !== '@' + USER; i++) await pocket.waitForTimeout(500);
-    if (await who() !== '@' + USER) throw new Error('didn\'t switch back: ' + await who());
+    if (await who() !== '@' + USER) throw new Error('Pocket did not switch back: ' + await who());
     for (let i = 0; i < 30 && !(await find(mine)).length; i++) await pocket.waitForTimeout(500);
     const added = await find(mine);
-    if (added.length !== 1 || added[0].created_by?.username !== USER) throw new Error('added: ' + JSON.stringify(added.map(t => t.created_by?.username)));
+    if (added.length !== 1 || added[0].created_by?.username !== USER) throw new Error('the task was created by: ' + JSON.stringify(added.map(t => t.created_by?.username)));
     await fetch(SERVER + '/api/v2/tasks/' + added[0].id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + mine } });
   });
 
@@ -123,13 +123,13 @@ try {
     await pocket.evaluate(() => localStorage.setItem('pocket.drafts', JSON.stringify({ ...JSON.parse(localStorage.getItem('pocket.drafts') || '{}'), 'comment:1': 'Half a comment' })));
     await vikunja.evaluate(() => localStorage.removeItem('token'));             // this is what Vikunja's logout does in the browser
     await pocket.waitForSelector('#login:not([hidden])', { timeout: 10000 });   // Pocket notices on its 2-second check
-    if (!(await pocket.textContent('#login-err')).includes('signed out in Vikunja')) throw new Error('no message');
+    if (!(await pocket.textContent('#login-err')).includes('signed out in Vikunja')) throw new Error('the sign-in screen shows no signed-out message');
     if (!await pocket.isVisible('#f-pass')) throw new Error('the sign-in screen opened on API token, not Password');
     // After signing in again as the same user, the text that was being written is still there.
     await vikunjaSignIn();
     await pocketInApp();
     const kept = await pocket.evaluate(() => JSON.parse(localStorage.getItem('pocket.drafts') || '{}')['comment:1']);
-    if (kept !== 'Half a comment') throw new Error('what was being written was dropped: ' + kept);
+    if (kept !== 'Half a comment') throw new Error('the text being written was dropped: ' + kept);
   });
 
   await fresh();

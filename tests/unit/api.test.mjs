@@ -25,22 +25,22 @@ function list(n, { max = 50, fail = 0 } = {}){
 }
 const ids = n => Array.from({ length: n }, (_, k) => k + 1);
 
-test('a list is read to its end in order, page 1 first and then the rest at once, past the 40 pages it used to stop at', async () => {
+test('a list is read to its end in order, with page 1 first and the other pages at once, past the old limit of 40 pages', async () => {
   component(); const v = list(2210);
   assert.deepEqual((await allPages('/tasks?filter=done+%3D+true')).map(t => t.id), ids(2210));
   assert.equal(v.asked.length, 45);
-  assert.deepEqual(v.asked[0], [1, 50], '50 to a page when /info doesn\'t say');
-  assert.equal(v.most, 44, 'pages 2 to 45 asked for together');
+  assert.deepEqual(v.asked[0], [1, 50], 'the page size is 50 when /info does not give one');
+  assert.equal(v.most, 44, 'pages 2 to 45 are requested together');
 });
 
-test('as many to a page as Vikunja says it gives', async () => {
+test('a list uses the page size that Vikunja says it allows', async () => {
   const app = component(); app.info = { max_items_per_page: 500 };
   const v = list(1200, { max: 500 });
   assert.deepEqual((await allPages('/projects')).map(t => t.id), ids(1200));
   assert.deepEqual(v.asked.map(([p, per]) => p + '/' + per).sort(), ['1/500', '2/500', '3/500']);
 });
 
-test('one page, or none, is one request', async () => {
+test('a list of one page, or an empty list, takes one request', async () => {
   component(); let v = list(12);
   assert.equal((await allPages('/labels')).length, 12);
   assert.equal(v.asked.length, 1);
@@ -56,30 +56,30 @@ test('a page that fails fails the whole read', async () => {
 
 /* partOf reads one slice of a list, such as a project's Done list shown 100 at a time. It requests the fewest pages
    that cover the slice, all at once, and also returns the total number of items. */
-test('a part of a list is read at once, in as few pages as Vikunja gives that many to, with how many it has in all', async () => {
+test('a part of a list is read at once in as few pages as possible, together with the total number of items', async () => {
   const app = component(); let v = list(3000);
   let part = await partOf('/projects/2/tasks?filter=done+%3D+true', 0, 100);
   assert.deepEqual(part.items.map(t => t.id), ids(100));
   assert.equal(part.total, 3000);
-  assert.deepEqual(v.asked.sort(), [[1, 50], [2, 50]], '50 to a page: two pages, asked for together');
+  assert.deepEqual(v.asked.sort(), [[1, 50], [2, 50]], 'with 50 to a page, two pages are requested together');
   assert.equal(v.most, 2);
   v = list(3000);
   part = await partOf('/tasks', 100, 100);
-  assert.deepEqual(part.items.map(t => t.id), ids(200).slice(100), 'the next 100');
+  assert.deepEqual(part.items.map(t => t.id), ids(200).slice(100), 'the next part holds the next 100 items');
   assert.deepEqual(v.asked.sort(), [[3, 50], [4, 50]]);
 
   app.info = { max_items_per_page: 500 }; v = list(3000, { max: 500 });
   part = await partOf('/tasks', 200, 100);
   assert.deepEqual(part.items.map(t => t.id), ids(300).slice(200));
-  assert.deepEqual(v.asked, [[3, 100]], 'one page of 100, when Vikunja gives that many');
+  assert.deepEqual(v.asked, [[3, 100]], 'when Vikunja allows 100 to a page, one page of 100 is requested');
 
   app.info = { max_items_per_page: 30 }; v = list(3000, { max: 30 });
   part = await partOf('/tasks', 100, 100);
-  assert.deepEqual(part.items.map(t => t.id), ids(200).slice(100), 'pages that don’t fall on the part: only its items');
+  assert.deepEqual(part.items.map(t => t.id), ids(200).slice(100), 'when pages do not line up with the part, only the part\'s items are returned');
   assert.deepEqual(v.asked.map(([p]) => p).sort((a, b) => a - b), [4, 5, 6, 7]);
 
   app.info = {}; list(130);
-  assert.deepEqual((await partOf('/tasks', 100, 100)).items.map(t => t.id), ids(130).slice(100), 'its end: what’s left');
+  assert.deepEqual((await partOf('/tasks', 100, 100)).items.map(t => t.id), ids(130).slice(100), 'a part at the end of the list holds the items that remain');
   list(130);
-  assert.deepEqual(await partOf('/tasks', 200, 100), { items: [], total: 130 }, 'past its end: none');
+  assert.deepEqual(await partOf('/tasks', 200, 100), { items: [], total: 130 }, 'a part past the end of the list holds no items');
 });

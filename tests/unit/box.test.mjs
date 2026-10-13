@@ -40,7 +40,7 @@ const component = () => {
 };
 const key = (key, more = {}) => ({ key, shiftKey: false, isComposing: false, prevented: false, preventDefault(){ this.prevented = true; }, ...more });
 
-test('Alt arrows move a list box and leave a step editor to its own keys', () => {
+test('Alt arrows move a list box and do not affect a step editor', () => {
   const app = component(), a = alpine(app), list = textarea(), editor = textarea(), moved = [], levels = [];
   app.boxMove = (w, dir) => { moved.push([w, dir]); return true; };
   app.boxLevel = out => { levels.push(out); return true; };
@@ -58,54 +58,54 @@ test('Alt arrows move a list box and leave a step editor to its own keys', () =>
   assert.equal(moved.length, 2); assert.equal(levels.length, 2);
   app.boxLevel = () => false;
   const limit = key('ArrowLeft', {altKey: true}); list.fire('keydown', limit);
-  assert.equal(limit.prevented, true, 'a level limit must not trigger browser Back');
+  assert.equal(limit.prevented, true, 'reaching the level limit must not trigger the browser\'s Back');
   const e = key('ArrowUp', {altKey: true, ctrlKey: true}); list.fire('keydown', e); assert.equal(e.prevented, false);
   assert.deepEqual(app.entered, []);
 });
 
-test('the markup\'s own directives are x-style, x-grow and x-box', () => {
+test('the directives the markup uses are x-style, x-grow and x-box', () => {
   assert.deepEqual(alpine(component()).names, ['style', 'grow', 'box']);
 });
 
-test('an add box keeps where its cursor is, scrolls its marks with it, and is as tall as its text', () => {
+test('an add box tracks its cursor position, scrolls its highlights with it, and is as tall as its text', () => {
   const app = component(), a = alpine(app), el = textarea();
   a.on('box', el, 'capW', ['lines']);
   for (const [type, at] of [['input', 3], ['click', 1], ['keyup', 7]]) { el.selectionStart = at; el.fire(type); assert.equal(app.boxes.cap.caret, at, type); }
   el.scrollTop = 24; el.fire('scroll');
-  assert.equal(el.previousElementSibling.scrollTop, 24, 'the marks behind its words');
-  assert.equal(a.ticks.length, 1, 'fitted once, as it\'s drawn, on the next tick');
+  assert.equal(el.previousElementSibling.scrollTop, 24, 'the marks behind the text scroll with the box');
+  assert.equal(a.ticks.length, 1, 'the height is fitted once on the next tick, when the box is drawn');
   a.ticks.shift()();
-  assert.equal(el.style.height, '62px', 'as tall as its text and its borders');
+  assert.equal(el.style.height, '62px', 'the box is as tall as its text and its borders');
   a.effects[0]();
-  assert.equal(a.ticks.length, 1, 'and again when its text changes');
+  assert.equal(a.ticks.length, 1, 'the height is fitted again when the text changes');
 });
 
-test('Enter sends an add box, not while a word is being composed; Shift+Enter breaks the line only in a box that takes a list', () => {
+test('Enter sends an add box except while a word is being composed, and Shift+Enter breaks the line only in a list box', () => {
   const app = component(), a = alpine(app), list = textarea(), line = textarea();
   a.on('box', list, 'capW', ['lines']);
   a.on('box', line, "'tname'");
   const press = (el, more) => { const e = key('Enter', more); el.fire('keydown', e); return e.prevented; };
-  assert.deepEqual([press(list), app.entered], [true, ['cap']], 'Enter: sent, and no line break');
-  assert.deepEqual([press(list, { shiftKey: true }), app.entered], [false, ['cap']], 'Shift+Enter in a box that takes a list: the line breaks, nothing sent');
-  assert.deepEqual([press(list, { isComposing: true }), app.entered], [false, ['cap']], 'an Enter that picks a word being composed is the keyboard\'s');
-  assert.deepEqual([press(line), press(line, { shiftKey: true }), app.entered], [true, true, ['cap', 'tname', 'tname']], 'a box that holds one line: Shift+Enter is Enter');
+  assert.deepEqual([press(list), app.entered], [true, ['cap']], 'Enter sends the box and adds no line break');
+  assert.deepEqual([press(list, { shiftKey: true }), app.entered], [false, ['cap']], 'Shift+Enter in a list box breaks the line and sends nothing');
+  assert.deepEqual([press(list, { isComposing: true }), app.entered], [false, ['cap']], 'an Enter that picks a word being composed is left to the keyboard');
+  assert.deepEqual([press(line), press(line, { shiftKey: true }), app.entered], [true, true, ['cap', 'tname', 'tname']], 'in a box that holds one line, Shift+Enter works as Enter');
   assert.equal(press(line, { isComposing: true, shiftKey: true }), false);
   const other = key('a'); list.fire('keydown', other);
-  assert.deepEqual([other.prevented, app.entered.length], [false, 3], 'any other key is the box\'s');
+  assert.deepEqual([other.prevented, app.entered.length], [false, 3], 'any other key is left to the box');
   // Enter goes to whichever box the name points at now. On a checklist's screen, quick add's box is the checklist's box.
   app.names.capW = 'ins';
   press(list);
   assert.equal(app.entered.at(-1), 'ins');
 });
 
-test('a box says it has the focus, and that it lost it only a moment later, of the box it was then; taken off the page, it listens no more', c => {
+test('a box reports that it has the focus, reports losing it after a short delay, and stops listening when removed from the page', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(), a = alpine(app), el = textarea(), name = textarea();
   a.on('box', el, 'capW', ['lines']);
   a.on('box', name, "'tname'");
   try {
     el.fire('focus');
-    assert.deepEqual([app.boxes.cap.focus, app.loaded], [true, []], 'nothing is loaded for being focused');
+    assert.deepEqual([app.boxes.cap.focus, app.loaded], [true, []], 'focusing the box loads nothing');
     // The user taps a chip, which gives the focus back to the box. The box never reports that it lost the focus.
     el.fire('blur');
     document.activeElement = el;
@@ -114,7 +114,7 @@ test('a box says it has the focus, and that it lost it only a moment later, of t
     // The user leaves the box and the focus does not come back.
     el.fire('blur');
     document.activeElement = null;
-    assert.equal(app.boxes.cap.focus, true, 'not yet');
+    assert.equal(app.boxes.cap.focus, true, 'the box does not report losing the focus yet');
     c.mock.timers.tick(150);
     assert.equal(app.boxes.cap.focus, false);
     // The user leaves the box, and a moment later the name `capW` points at the checklist's box. The box that was left
@@ -126,7 +126,7 @@ test('a box says it has the focus, and that it lost it only a moment later, of t
     c.mock.timers.tick(150);
     assert.deepEqual([app.boxes.cap.focus, app.boxes.ins.focus], [false, true]);
     name.fire('focus');
-    assert.deepEqual([app.boxes.tname.focus, app.loaded], [true, []], 'a template\'s name: the same');
+    assert.deepEqual([app.boxes.tname.focus, app.loaded], [true, []], 'a template\'s name box behaves the same way');
     // The box is removed from the page while it has the focus (for example, a step edit is cancelled). The browser blurs
     // it on the way out, when nothing around it says which box it was. By then it must not listen any more, just as an
     // @event listener would not.
@@ -142,12 +142,12 @@ test('a box says it has the focus, and that it lost it only a moment later, of t
    suggestions. When typing pauses, the box looks up its @usernames, again each time they change or the project they
    would go to changes. The test runs the effects by hand, as Alpine does when the data they read changes. The second
    effect created is the suggestions and the third is the look-up. */
-test('starting an @username or a *label loads what to suggest; once typing pauses, a box\'s @usernames are looked up, once for each change', c => {
+test('starting an @username or a *label loads suggestions, and a pause in typing looks up the @usernames once per change', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(), a = alpine(app), el = textarea();
   a.on('box', el, 'capW', ['lines']);
   const [, suggest, look] = a.effects;
-  assert.deepEqual([app.loaded, app.checked], [[], []], 'an empty box: nothing loaded, nothing looked up');
+  assert.deepEqual([app.loaded, app.checked], [[], []], 'an empty box loads nothing and looks nothing up');
   app.token = { kind: 'label' }; suggest();
   app.token = { kind: 'assignee' }; suggest();
   app.token = null; suggest();
@@ -156,7 +156,7 @@ test('starting an @username or a *label loads what to suggest; once typing pause
   c.mock.timers.tick(400);
   app.query = '1|bob|priya'; look();                       // still typing, so the wait restarts
   c.mock.timers.tick(400);
-  assert.deepEqual(app.checked, [], 'not while typing goes on');
+  assert.deepEqual(app.checked, [], 'no look-up happens while typing continues');
   c.mock.timers.tick(100);
   assert.deepEqual(app.checked, ['cap']);
   look(); look();                                          // nothing changed, so no second look-up
@@ -167,7 +167,7 @@ test('starting an @username or a *label loads what to suggest; once typing pause
   assert.deepEqual(app.checked, ['cap', 'under']);
   app.query = ''; look();
   c.mock.timers.tick(500);
-  assert.deepEqual(app.checked, ['cap', 'under'], 'emptied: nothing to look up');
+  assert.deepEqual(app.checked, ['cap', 'under'], 'an emptied box has nothing to look up');
   // Removing the box from the page while a look-up waits cancels the look-up and stops every effect of the box. An
   // effect left running would ask about a box that is no longer on the page, the next time anything changed.
   app.query = '7|sam'; look();
@@ -177,7 +177,7 @@ test('starting an @username or a *label loads what to suggest; once typing pause
   assert.deepEqual([app.checked, a.running.size], [['cap', 'under'], 0]);
 });
 
-test('a text box fitted to its text leaves the page where it was: measured at its least height, the page ends sooner, and is pulled down', t => {
+test('fitting a text box to its text keeps the page scrolled where it was, even though measuring shortens the page', t => {
   // The page extends 600px past the screen and is scrolled to its end. It ends with a box of three lines, which is 48px taller than the box with one line.
   const page = { y: 600, end: 600 }, el = textarea(), tall = 86;
   const was = Object.fromEntries(['scrollY', 'scrollX', 'scrollTo'].map(k => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
@@ -190,10 +190,10 @@ test('a text box fitted to its text leaves the page where it was: measured at it
   Object.assign(el, { scrollHeight: tall - 2, offsetHeight: tall, clientHeight: tall - 2 });
   grow(el);
   assert.equal(el.style.height, tall + 'px');
-  assert.equal(page.y, 600, 'the page is where it was, at its end');
+  assert.equal(page.y, 600, 'the page is scrolled to where it was, at its end');
 });
 
-test('x-grow keeps any other text box as tall as its text, fitted again when what it\'s given changes', () => {
+test('x-grow keeps any other text box as tall as its text, and fits it again when its text changes', () => {
   const app = component(), a = alpine(app), el = textarea();
   app.names['sheet.commentDraft'] = 'A comment';
   a.on('grow', el, 'sheet.commentDraft');

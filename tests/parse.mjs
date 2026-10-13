@@ -65,15 +65,15 @@ add({ text: '""', title: '', date: null });
 // Pocket's own rule: quotes around the start of the text mark it as the title, and the text after them is parsed as
 // usual. A copied Markdown list quotes a title this way when quick add would otherwise parse words in it (share.js).
 const held = why => ({ pocket: true, why });
-add({ text: '"Lunch friday" @sam 2026-10-16', title: 'Lunch friday @sam', assignees: ['sam'], date: '2026-10-16', marked: ['assignees:@sam', 'due:2026-10-16'], ...held('the title read as typed, the words after it as usual') });
-add({ text: '"Call Bob tomorrow" tomorrow !2 *calls', title: 'Call Bob tomorrow', date: '2021-6-25', priority: 2, labels: ['calls'], ...held('the same word inside and after') });
-add({ text: '\'Say "hi" friday\' every week', title: 'Say "hi" friday', repeat: { after: 604800, mode: 0 }, ...held('single quotes, for a title with a " in it') });
-add({ text: '"Tables (50%)" (25%)', title: 'Tables (50%)', pct: 25, ...held('a figure after the quotes is its progress') });
-add({ text: '"x-ray" the pipe friday', title: 'x-ray the pipe', date: '2021-6-25', ...held('the quotes end where a space follows: the rest is read') });
-add({ text: '"Paint !2"coats !3', title: '"Paint !2"coats', priority: 3, ...held('with no space after them they hold nothing') });
-add({ text: '"task today" +user @label', mode: 'todoist', title: 'task today +user', date: null, assignees: ['user'], labels: ['label'], ...held('with Todoist\'s prefixes') });
-add({ text: '"Lunch friday" @sam', mode: 'disabled', title: '"Lunch friday" @sam', date: null, assignees: [], ...held('quick add turned off: as typed') });
-add({ text: '" Lunch  friday " !3', title: 'Lunch  friday', priority: 3, date: null, ...held('as typed inside, but for the spaces at its ends') });
+add({ text: '"Lunch friday" @sam 2026-10-16', title: 'Lunch friday @sam', assignees: ['sam'], date: '2026-10-16', marked: ['assignees:@sam', 'due:2026-10-16'], ...held('the quoted text is the title, and the text after it is parsed as usual') });
+add({ text: '"Call Bob tomorrow" tomorrow !2 *calls', title: 'Call Bob tomorrow', date: '2021-6-25', priority: 2, labels: ['calls'], ...held('a date word inside the quotes stays in the title, and the same word after them is parsed') });
+add({ text: '\'Say "hi" friday\' every week', title: 'Say "hi" friday', repeat: { after: 604800, mode: 0 }, ...held('single quotes let a title contain a double quote') });
+add({ text: '"Tables (50%)" (25%)', title: 'Tables (50%)', pct: 25, ...held('a percentage after the quotes is the progress') });
+add({ text: '"x-ray" the pipe friday', title: 'x-ray the pipe', date: '2021-6-25', ...held('the closing quote is followed by a space, and the text after it is parsed') });
+add({ text: '"Paint !2"coats !3', title: '"Paint !2"coats', priority: 3, ...held('quotes with no space after the closing quote do not make a title') });
+add({ text: '"task today" +user @label', mode: 'todoist', title: 'task today +user', date: null, assignees: ['user'], labels: ['label'], ...held('quoted titles also work with Todoist\'s prefixes') });
+add({ text: '"Lunch friday" @sam', mode: 'disabled', title: '"Lunch friday" @sam', date: null, assignees: [], ...held('with quick add turned off, the text stays as typed') });
+add({ text: '" Lunch  friday " !3', title: 'Lunch  friday', priority: 3, date: null, ...held('the title keeps the spaces inside the quotes and drops the ones at its ends') });
 
 // ---------- default due time ----------
 add({ text: 'plan this tomorrow', now: new Date(2026, 7, 4, 9, 15), dueTime: '14:30', date: '2026-8-5', time: '14:30' });
@@ -134,7 +134,7 @@ for (const [d, n] of Object.entries(DAYS)) for (const w of [d, d[0].toUpperCase(
 
 // ---------- written dates ----------
 // Vikunja leaves a date like "21st June" in the past if it has already passed this year. Pocket always picks the next one.
-const NEXT_YEAR = { pocket: true, why: 'the next one, not a date that has passed' };
+const NEXT_YEAR = { pocket: true, why: 'a date that has passed this year means the next year, not the past' };
 const written = {
   '06/08/2021': '2021-6-8', '6/7/21': '2021-6-7', '27/07/2021,': null, '2021/07/06': '2021-7-6', '2021-07-06': '2021-7-6',
   '27 jan': '2022-1-27', '27/1': '2022-1-27', '27/01': '2022-1-27', '16/12': '2021-12-16', '01/27': '2022-1-27', '1/27': '2022-1-27',
@@ -208,7 +208,7 @@ const repeats = {
 };
 const MORNING = new Date(2021, 5, 24, 10, 0);
 for (const [t, r] of Object.entries(repeats)) {
-  const repeat = typeof r === 'number' ? { after: r, mode: 0 } : r, extra = typeof r === 'number' ? {} : { pocket: true, why: 'monthly on the same day, not every 30 days' };
+  const repeat = typeof r === 'number' ? { after: r, mode: 0 } : r, extra = typeof r === 'number' ? {} : { pocket: true, why: 'monthly repeats on the same day of the month, not every 30 days' };
   add({ text: `Lorem Ipsum ${t}`, title: 'Lorem Ipsum', repeat, ...extra });
   add({ text: `Lorem Ipsum ${t} at 11:42`, now: MORNING, title: 'Lorem Ipsum', repeat, date: ymd(MORNING), time: '11:42', ...extra });
 }
@@ -217,130 +217,130 @@ for (const w of ['annually', 'biannually', 'semiannually', 'biennially', 'daily'
 
 // ---------- Pocket's own additions ----------
 const extra = why => ({ pocket: true, why });
-add({ text: 'Team sync every monday at 10', title: 'Team sync', repeat: { after: W, mode: 0 }, date: plus(4), time: '10:0', ...extra('"every monday"') });
-add({ text: 'Water plants every 3 days', title: 'Water plants', repeat: { after: 3 * D, mode: 0 }, date: ymd(REF), ...extra('a repeat without a date starts at the next due time') });
-add({ text: 'Pay rent before the 17th', title: 'Pay rent', date: '2021-7-17', marked: ['due:before the 17th'], ...extra('"the 17th" anywhere; the word before a date goes with it') });
-add({ text: 'Report due the 17th', title: 'Report due', date: '2021-7-17', ...extra('"the 17th" anywhere') });
-add({ text: 'Call Bob in May', title: 'Call Bob', date: '2022-5-1', marked: ['due:in May'], ...extra('a bare month after "in"') });
-add({ text: 'Finish slides by Friday', title: 'Finish slides', date: plus(1), ...extra('the word before a date goes with it') });
-add({ text: 'Plan March madness pool', title: 'Plan March madness pool', date: null, ...extra('a bare month needs in/by/on/before/until') });
-add({ text: 'Now what', title: 'Now what', date: null, ...extra('"now" alone is not a date') });
-add({ text: 'Team sync for 2 hours', title: 'Team sync for 2 hours', date: null, ...extra('"for ..." is a duration') });
-add({ text: 'Order 3/4 inch screws', title: 'Order 3/4 inch screws', date: null, ...extra('numeric dates only at the ends') });
-add({ text: 'Pay rent tomorrow', ignore: { due: true }, title: 'Pay rent tomorrow', date: null, marked: [], ...extra('a tapped-off chip keeps its words') });
+add({ text: 'Team sync every monday at 10', title: 'Team sync', repeat: { after: W, mode: 0 }, date: plus(4), time: '10:0', ...extra('"every monday" is a weekly repeat starting on the next Monday') });
+add({ text: 'Water plants every 3 days', title: 'Water plants', repeat: { after: 3 * D, mode: 0 }, date: ymd(REF), ...extra('a repeat with no date sets the due date to today') });
+add({ text: 'Pay rent before the 17th', title: 'Pay rent', date: '2021-7-17', marked: ['due:before the 17th'], ...extra('"the 17th" is a date anywhere in the text, and the word before a date is part of it') });
+add({ text: 'Report due the 17th', title: 'Report due', date: '2021-7-17', ...extra('"the 17th" is a date anywhere in the text') });
+add({ text: 'Call Bob in May', title: 'Call Bob', date: '2022-5-1', marked: ['due:in May'], ...extra('a month name after "in" is a date') });
+add({ text: 'Finish slides by Friday', title: 'Finish slides', date: plus(1), ...extra('the word before a date is part of the date') });
+add({ text: 'Plan March madness pool', title: 'Plan March madness pool', date: null, ...extra('a month name is a date only after in, by, on, before or until') });
+add({ text: 'Now what', title: 'Now what', date: null, ...extra('the word "now" is not a date') });
+add({ text: 'Team sync for 2 hours', title: 'Team sync for 2 hours', date: null, ...extra('"for 2 hours" is a duration, not a date') });
+add({ text: 'Order 3/4 inch screws', title: 'Order 3/4 inch screws', date: null, ...extra('a numeric date is read only at the start or end of the text') });
+add({ text: 'Pay rent tomorrow', ignore: { due: true }, title: 'Pay rent tomorrow', date: null, marked: [], ...extra('turning off a chip keeps its text in the title') });
 add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem Ipsum @ann', date: '2021-12-21', time: '15:0', labels: ['calls'], assignees: ['ann'], project: 'project', priority: 2,
-  marked: ['due:dec 21 at 3pm', 'assignees:@ann', 'labels:*calls', 'project:+project', 'priority:!2'], ...extra('everything at once') });
+  marked: ['due:dec 21 at 3pm', 'assignees:@ann', 'labels:*calls', 'project:+project', 'priority:!2'], ...extra('a date, person, label, project and priority are all parsed in one line') });
 add({ text: 'Team sync every monday @ 10', title: 'Team sync', repeat: { after: W, mode: 0 }, time: '10:0', marked: ['repeat:every monday', 'due:@ 10'],
-  ...extra('each phrase is marked where it was typed, even "@ 10"') });
+  ...extra('each phrase is marked where it was typed, including "@ 10"') });
 // A bare hour is read as daytime. 1 to 7 means afternoon or evening, where Vikunja reads "at 5" as 5 AM. Times written
 // with am, pm or a full hour like 05:00 are read as written.
-add({ text: 'Call Ana at 5', title: 'Call Ana', date: '2021-6-24', time: '17:0', ...extra('a bare 5 is 5 PM: today, as it’s still to come') });
-add({ text: 'Call Ana at 9', title: 'Call Ana', date: '2021-6-25', time: '9:0', ...extra('a bare 9 is the morning: the next one') });
-add({ text: 'Call Ana tomorrow at 5:30', title: 'Call Ana', date: '2021-6-25', time: '17:30', ...extra('5:30 is the afternoon too') });
-add({ text: 'Call Ana at 5am', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"am" is as written') });
-add({ text: 'Call Ana at 05:00', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"05:00" is as written') });
+add({ text: 'Call Ana at 5', title: 'Call Ana', date: '2021-6-24', time: '17:0', ...extra('a bare 5 means 5 PM, and the date is today because 5 PM has not passed') });
+add({ text: 'Call Ana at 9', title: 'Call Ana', date: '2021-6-25', time: '9:0', ...extra('a bare 9 means 9 AM, and the date is tomorrow because 9 AM has passed') });
+add({ text: 'Call Ana tomorrow at 5:30', title: 'Call Ana', date: '2021-6-25', time: '17:30', ...extra('a bare 5:30 also means the afternoon') });
+add({ text: 'Call Ana at 5am', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('an explicit "am" is kept') });
+add({ text: 'Call Ana at 05:00', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('a 24-hour time such as "05:00" is kept') });
 // A repeat that Vikunja can't store stays in the title as text, and no part of it is parsed as anything else.
-add({ text: 'Water lawn every other day', title: 'Water lawn', repeat: { after: 2 * D, mode: 0 }, ...extra('"every other day" is every 2 days') });
-add({ text: 'Standup every weekday at 9', title: 'Standup every weekday', repeat: null, date: '2021-6-25', time: '9:0', ...extra('weekdays only can’t repeat in Vikunja') });
-add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursday', repeat: null, date: null, ...extra('two days a week can’t repeat in Vikunja') });
+add({ text: 'Water lawn every other day', title: 'Water lawn', repeat: { after: 2 * D, mode: 0 }, ...extra('"every other day" means every 2 days') });
+add({ text: 'Standup every weekday at 9', title: 'Standup every weekday', repeat: null, date: '2021-6-25', time: '9:0', ...extra('Vikunja cannot repeat on weekdays only, so no repeat is set') });
+add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursday', repeat: null, date: null, ...extra('Vikunja cannot repeat on two days a week, so no repeat is set') });
 
 // A percentage at the end of a line is the task's progress in every mode. Vikunja's quick add has no syntax for it.
-add({ text: 'Tables (50%)', title: 'Tables', pct: 50, marked: ['progress:(50%)'], ...extra('a figure at the end is its progress') });
-add({ text: 'Tables 50%', title: 'Tables', pct: 50, marked: ['progress:50%'], ...extra('without brackets too') });
-add({ text: 'Tables (50%) @sam', title: 'Tables @sam', pct: 50, assignees: ['sam'], ...extra('people may follow it: they stay in the title until they’re assigned') });
-add({ text: 'Tables 50% tomorrow *hire !2', title: 'Tables', pct: 50, date: plus(1), labels: ['hire'], priority: 2, ...extra('the end of the line, once its other words are read') });
-add({ text: 'Tables (100%)', title: 'Tables', pct: 100, ...extra('100% is done') });
-add({ text: 'Discount 50% on mugs', title: 'Discount 50% on mugs', pct: 0, ...extra('a figure in the middle is a word') });
-add({ text: 'Tables (150%)', title: 'Tables (150%)', pct: 0, ...extra('past 100% it isn’t progress') });
-add({ text: 'Growth 0%', title: 'Growth 0%', pct: 0, ...extra('nor is 0%') });
-add({ text: '50%', title: '50%', pct: 0, ...extra('a figure alone is a title') });
-add({ text: 'Tables (50%)', ignore: { progress: true }, title: 'Tables (50%)', pct: 0, marked: [], ...extra('its chip tapped off keeps its words') });
-add({ text: 'Fill to 50%', ignore: { due: true, repeat: true, project: true, progress: true }, title: 'Fill to 50%', pct: 0, ...extra('a step has no progress to arrive with') });
-add({ text: 'Tables (50%)', mode: 'disabled', title: 'Tables', pct: 50, ...extra('read with quick add turned off too') });
-add({ text: 'Tables (50%) @sam', mode: 'disabled', title: 'Tables (50%) @sam', pct: 0, assignees: [], ...extra('where @sam is a word, so the figure isn’t at the end') });
-add({ text: 'Tables (50%) +sam @hire', mode: 'todoist', title: 'Tables +sam', pct: 50, assignees: ['sam'], labels: ['hire'], ...extra('with Todoist’s prefixes') });
+add({ text: 'Tables (50%)', title: 'Tables', pct: 50, marked: ['progress:(50%)'], ...extra('a percentage at the end is the progress') });
+add({ text: 'Tables 50%', title: 'Tables', pct: 50, marked: ['progress:50%'], ...extra('a percentage without brackets is the progress too') });
+add({ text: 'Tables (50%) @sam', title: 'Tables @sam', pct: 50, assignees: ['sam'], ...extra('a person may follow the percentage, and stays in the title until assigned') });
+add({ text: 'Tables 50% tomorrow *hire !2', title: 'Tables', pct: 50, date: plus(1), labels: ['hire'], priority: 2, ...extra('the percentage counts as the end of the text once the other phrases are parsed') });
+add({ text: 'Tables (100%)', title: 'Tables', pct: 100, ...extra('100% means the task is done') });
+add({ text: 'Discount 50% on mugs', title: 'Discount 50% on mugs', pct: 0, ...extra('a percentage in the middle of the text is part of the title') });
+add({ text: 'Tables (150%)', title: 'Tables (150%)', pct: 0, ...extra('a percentage above 100% is not progress') });
+add({ text: 'Growth 0%', title: 'Growth 0%', pct: 0, ...extra('0% is not progress') });
+add({ text: '50%', title: '50%', pct: 0, ...extra('a percentage alone is the title') });
+add({ text: 'Tables (50%)', ignore: { progress: true }, title: 'Tables (50%)', pct: 0, marked: [], ...extra('turning off the progress chip keeps its text in the title') });
+add({ text: 'Fill to 50%', ignore: { due: true, repeat: true, project: true, progress: true }, title: 'Fill to 50%', pct: 0, ...extra('a step cannot start with a progress percentage') });
+add({ text: 'Tables (50%)', mode: 'disabled', title: 'Tables', pct: 50, ...extra('the percentage is parsed with quick add turned off too') });
+add({ text: 'Tables (50%) @sam', mode: 'disabled', title: 'Tables (50%) @sam', pct: 0, assignees: [], ...extra('with quick add off, @sam is plain text, so the percentage is not at the end') });
+add({ text: 'Tables (50%) +sam @hire', mode: 'todoist', title: 'Tables +sam', pct: 50, assignees: ['sam'], labels: ['hire'], ...extra('the percentage works with Todoist’s prefixes') });
 
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
 // captureLines reads a checklist's add box and a template's steps. A ticked line is left out there, because a step
 // is completed by doing it.
-addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk'], 'iOS Notes checklist: a line ticked off already is left out');
-addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols');
-addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
-addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents');
-addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
-addList('x Call Sam\nX Call Priya\n[x] Eggs\nMilk', ['x Call Sam', 'X Call Priya', 'Milk'], 'in a step\'s box an x is a word, a capital X too, and a ticked line is left out');
+addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk'], 'an iOS Notes checklist leaves out lines that are already ticked');
+addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols are removed');
+addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbers in front of lines are removed');
+addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item'], 'quote marks, blank lines and indents are removed');
+addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker is removed only when a space follows it');
+addList('x Call Sam\nX Call Priya\n[x] Eggs\nMilk', ['x Call Sam', 'X Call Priya', 'Milk'], 'in the steps box, a leading x or X is plain text, and a ticked line is left out');
 
 // ---------- quick add and the subtask boxes: a line marked as done is created as done ----------
 // readList(text, opts) returns each line as [its text, whether it is done].
 const reads = [];
 const addRead = (text, lines, why, opts = {}) => reads.push({ text, lines, why, opts });
 for (const m of ['x ', 'x - ', 'x- ', 'X ', 'X - ', 'X- ', '[x] ', '- [x] ', '* [X] ', '☑ ', '☒ ', '> - [x] ', '1. [✓] ', '  - [x]'])
-  addRead(m + 'Call Sam', [['Call Sam', true]], `"${m}" at its start: it arrives done`);
-addRead('x-ray the pipe', [['x-ray the pipe', false]], 'no space after the x: it\'s a word');
-addRead('X-ray the pipe', [['X-ray the pipe', false]], 'nor after a capital X');
-addRead('X marks the spot', [['marks the spot', true]], 'a capital X and a space say done too: a phone starts a line with a capital');
-addRead('X marks the spot', [['X marks the spot', false]], 'its chip tapped: the title as typed', { done: false });
-addRead('- x marks the spot', [['x marks the spot', false]], 'an x after a bullet is a word');
+  addRead(m + 'Call Sam', [['Call Sam', true]], `"${m}" at the start marks the task done`);
+addRead('x-ray the pipe', [['x-ray the pipe', false]], 'an x with no space after it is part of the word');
+addRead('X-ray the pipe', [['X-ray the pipe', false]], 'a capital X with no space after it is part of the word');
+addRead('X marks the spot', [['marks the spot', true]], 'a capital X and a space mark the task done, because a phone capitalises the first letter of a line');
+addRead('X marks the spot', [['X marks the spot', false]], 'turning off the done chip keeps the title as typed', { done: false });
+addRead('- x marks the spot', [['x marks the spot', false]], 'an x after a bullet is plain text');
 addRead('x', [['x', false]], 'an x alone is a title');
-addRead('X', [['X', false]], 'and a capital X alone');
-addRead('[ ] Milk\n- [ ] Bread\n* [ ] Jam\n- [] Tea\n☐ Rice\n✓ Salt', ['Milk', 'Bread', 'Jam', 'Tea', 'Rice', 'Salt'].map(t => [t, false]), 'an empty checkbox means open, and is taken off');
-addRead('Groceries\n- [x] Eggs\n\n- [ ] Milk\nx Bread', [['Groceries', false], ['Eggs', true], ['Milk', false], ['Bread', true]], 'in a list, each line that says so');
-addRead('Groceries\n- [x] Eggs\n- [ ] Milk\nx Bread', [['Groceries', false], ['Milk', false]], 'the list\'s chip tapped: those lines are left out', { done: false });
-addRead('x Call Sam', [['x Call Sam', false]], 'one line, its chip tapped: the marker\'s words stay in the title', { done: false });
-addRead('- [x] Call Sam', [['[x] Call Sam', false]], 'and a checkbox\'s, without its bullet', { done: false });
+addRead('X', [['X', false]], 'a capital X alone is a title');
+addRead('[ ] Milk\n- [ ] Bread\n* [ ] Jam\n- [] Tea\n☐ Rice\n✓ Salt', ['Milk', 'Bread', 'Jam', 'Tea', 'Rice', 'Salt'].map(t => [t, false]), 'an empty checkbox marks the task open and is removed from the title');
+addRead('Groceries\n- [x] Eggs\n\n- [ ] Milk\nx Bread', [['Groceries', false], ['Eggs', true], ['Milk', false], ['Bread', true]], 'in a list, each line with a done marker is done');
+addRead('Groceries\n- [x] Eggs\n- [ ] Milk\nx Bread', [['Groceries', false], ['Milk', false]], 'turning off the list\'s done chip leaves out the done lines', { done: false });
+addRead('x Call Sam', [['x Call Sam', false]], 'with one line and its chip off, the marker stays in the title', { done: false });
+addRead('- [x] Call Sam', [['[x] Call Sam', false]], 'with the chip off, a checkbox stays in the title but its bullet is removed', { done: false });
 
 // ---------- parents in a pasted list ----------
 // addNest(text, the text of each line, the index of each line's parent among the lines (or null), why, options,
 // whether the first line is a parent as the list is written)
 const addNest = (text, titles, under, why, opts = {}, first = under.includes(0)) => reads.push({ text, lines: titles.map(t => Array.isArray(t) ? t : [t, false]), under, first, why, opts });
 // A heading is a task, and the lines under it, up to the next heading, are its subtasks.
-addNest('## Pack the van\n- Load chairs\n- Tables\n\n## Set the hall\nLights', ['Pack the van', 'Load chairs', 'Tables', 'Set the hall', 'Lights'], [null, 0, 0, null, 3], 'two headings, each over its lines');
-addNest('### Pack the van\n- Load chairs', ['Pack the van', 'Load chairs'], [null, 0], 'a heading with more #s is one too');
-addNest('## A\n### B\nb1\n## C\nc1', ['A', 'B', 'b1', 'C', 'c1'], [null, 0, 1, null, 3], 'a heading with more #s is under the one before it with fewer');
-addNest('## Pack the van', ['Pack the van'], [null], 'a heading alone is a task, without its #s');
-addNest('## [x] Pack the van\n- [x] Load chairs', [['Pack the van', true], ['Load chairs', true]], [null, 0], 'a heading can say it\'s done');
-addNest('To do first\n## Pack the van\n- Load chairs', ['To do first', 'Pack the van', 'Load chairs'], [null, null, 1], 'a line before the first heading is a task of its own');
-addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
-addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, 0, 0, 2], '↳ Under first line tapped on: the first line over every line with no parent', { nest: true });
-addNest('Pack the van\n- Load chairs\n- Tables', ['Pack the van', 'Load chairs', 'Tables'], [null, 0, 0], 'a list with no markers, ↳ Under first line on', { nest: true }, false);
-addNest('## A\n## [x] B\nb1\n### C\nc1', ['A', 'b1', 'C', 'c1'], [null, null, null, 2], 'a done heading left out: its lines are no longer under one', { done: false });
-addNest('#project task\n#5 on the list', ['#project task', '#5 on the list'], [null, null], 'a # with no space after it is a word (Todoist\'s #project)');
+addNest('## Pack the van\n- Load chairs\n- Tables\n\n## Set the hall\nLights', ['Pack the van', 'Load chairs', 'Tables', 'Set the hall', 'Lights'], [null, 0, 0, null, 3], 'each heading is a task, with the lines under it as its subtasks');
+addNest('### Pack the van\n- Load chairs', ['Pack the van', 'Load chairs'], [null, 0], 'a heading with more # characters is also a heading');
+addNest('## A\n### B\nb1\n## C\nc1', ['A', 'B', 'b1', 'C', 'c1'], [null, 0, 1, null, 3], 'a heading with more # characters is under the previous heading with fewer');
+addNest('## Pack the van', ['Pack the van'], [null], 'a single heading is a task, without the # characters');
+addNest('## [x] Pack the van\n- [x] Load chairs', [['Pack the van', true], ['Load chairs', true]], [null, 0], 'a heading can be marked done');
+addNest('To do first\n## Pack the van\n- Load chairs', ['To do first', 'Pack the van', 'Load chairs'], [null, null, 1], 'a line before the first heading is a separate task');
+addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], 'with ↳ Under first line off, every line is a separate task', { flat: true }, true);
+addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, 0, 0, 2], 'with ↳ Under first line on, the first line is the parent of every line with no parent', { nest: true });
+addNest('Pack the van\n- Load chairs\n- Tables', ['Pack the van', 'Load chairs', 'Tables'], [null, 0, 0], 'with ↳ Under first line on, a list with no markers goes under its first line', { nest: true }, false);
+addNest('## A\n## [x] B\nb1\n### C\nc1', ['A', 'b1', 'C', 'c1'], [null, null, null, 2], 'when done lines are left out, the lines of a done heading have no parent', { done: false });
+addNest('#project task\n#5 on the list', ['#project task', '#5 on the list'], [null, null], 'a # with no space after it is plain text, such as Todoist\'s #project');
 // Indentation works as in Vikunja's web app. A line indented more than the line above it is a subtask of that line, to any depth.
-addNest('Pack the van\n  Load chairs\n    Stack them\n  Tables\nSet the hall\n\tLights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'spaces or a tab, to any depth');
-addNest('- Pack the van\n   - [x] Load chairs\n      * Stack them\n - Tables', ['Pack the van', ['Load chairs', true], 'Stack them', 'Tables'], [null, 0, 1, 0], 'any width: only more than the line above counts');
-addNest('    Pack the van\n    Tables\n  Lights\n      Cables', ['Pack the van', 'Tables', 'Lights', 'Cables'], [null, null, null, 2], 'a list indented as a whole, and a line indented less, start again at the top');
-addNest('## Pack the van\n  - Load chairs\n    - Stack them\n  - Tables\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'under a heading, an indented line is under the line above it');
-addNest('Pack the van\n  - [x] Load chairs\n      Stack them\n  Tables', ['Pack the van', 'Stack them', 'Tables'], [null, 0, 0], 'a done line left out: the line under it goes under what it was under', { done: false });
-addNest('Pack the van\n  Load chairs\nSet the hall\n  Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
-addNest('Order cups\nPack the van\n  Load chairs', ['Order cups', 'Pack the van', 'Load chairs'], [null, 0, 1], '↳ Under first line tapped on, the first line not a parent as written: over the lines with no parent', { nest: true }, false);
-addList('Wipe down\n  Counter\n    Under it', ['Wipe down', 'Counter', 'Under it'], 'in a step\'s box indenting isn\'t read');
+addNest('Pack the van\n  Load chairs\n    Stack them\n  Tables\nSet the hall\n\tLights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'indenting with spaces or a tab nests lines to any depth');
+addNest('- Pack the van\n   - [x] Load chairs\n      * Stack them\n - Tables', ['Pack the van', ['Load chairs', true], 'Stack them', 'Tables'], [null, 0, 1, 0], 'any indent width works, and a line nests when it is indented more than the line above');
+addNest('    Pack the van\n    Tables\n  Lights\n      Cables', ['Pack the van', 'Tables', 'Lights', 'Cables'], [null, null, null, 2], 'a list indented as a whole starts at the top level, and so does a line indented less than the first');
+addNest('## Pack the van\n  - Load chairs\n    - Stack them\n  - Tables\n## Set the hall\n- Lights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'under a heading, an indented line is a subtask of the line above it');
+addNest('Pack the van\n  - [x] Load chairs\n      Stack them\n  Tables', ['Pack the van', 'Stack them', 'Tables'], [null, 0, 0], 'when a done line is left out, its subtask moves up to the done line\'s parent', { done: false });
+addNest('Pack the van\n  Load chairs\nSet the hall\n  Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], 'with ↳ Under first line off, every line is a separate task', { flat: true }, true);
+addNest('Order cups\nPack the van\n  Load chairs', ['Order cups', 'Pack the van', 'Load chairs'], [null, 0, 1], 'with ↳ Under first line on and no parent in the text, the first line is the parent of the lines with no parent', { nest: true }, false);
+addList('Wipe down\n  Counter\n    Under it', ['Wipe down', 'Counter', 'Under it'], 'in the steps box, indenting does not nest lines');
 // A line with one # is the name of the whole list, as at the start of a project's copy. It is left out.
-addNest('# Café · 12 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables', ['Order milk', 'Pack the van', 'Tables'], [null, null, 1], 'a list\'s name, with one #, is left out', { names: ['Café · 12 open · 5 done'] });
-addNest('# Friday\n## Pack the van\n- Tables\n# [x] Saturday\n- Lights', ['Pack the van', 'Tables', 'Lights'], [null, 0, null], 'each of them, and nothing is under one', { names: ['Friday', '[x] Saturday'] });
-addNest('# of chairs we need', ['# of chairs we need'], [null], 'alone in the box, it names no list: a title as typed', { names: [] });
-addList('# Opening\n- Unlock', ['# Opening', 'Unlock'], 'in a step\'s box a # is words');
+addNest('# Café · 12 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables', ['Order milk', 'Pack the van', 'Tables'], [null, null, 1], 'a line starting with one # is a list name and is left out of the tasks', { names: ['Café · 12 open · 5 done'] });
+addNest('# Friday\n## Pack the van\n- Tables\n# [x] Saturday\n- Lights', ['Pack the van', 'Tables', 'Lights'], [null, 0, null], 'every line starting with one # is a list name, and no task goes under it', { names: ['Friday', '[x] Saturday'] });
+addNest('# of chairs we need', ['# of chairs we need'], [null], 'a line starting with # alone in the box is a title, not a list name', { names: [] });
+addList('# Opening\n- Unlock', ['# Opening', 'Unlock'], 'in the steps box, a leading # is plain text');
 // In quick add's box only, a first line ending with a colon is the parent of the other lines, and the colon is removed.
-addNest('Groceries:\n- milk\n- eggs', ['Groceries', 'milk', 'eggs'], [null, 0, 0], 'a first line ending with a colon', { colon: true });
-addNest('Groceries tomorrow: \nDairy\n  milk\nBread', ['Groceries tomorrow', 'Dairy', 'milk', 'Bread'], [null, 0, 1, 0], 'over the lines with no parent of their own', { colon: true });
-addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], '↳ Under first line tapped off: tasks of their own, the colon staying in its title', { colon: true, flat: true }, true);
-addNest('Groceries:', ['Groceries:'], [null], 'one line: as typed', { colon: true });
-addNest('Note: buy milk\neggs:', ['Note: buy milk', 'eggs:'], [null, null], 'only the first line, and only at its end', { colon: true });
-addNest('Groceries:\n- [x] milk', ['Groceries:'], [null], 'with its only line left out, it\'s one task, as typed', { colon: true, done: false });
-addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], 'a subtask box doesn\'t read it');
-addList('## Wipe down\n- Counter', ['## Wipe down', 'Counter'], 'in a step\'s box a heading is words');
+addNest('Groceries:\n- milk\n- eggs', ['Groceries', 'milk', 'eggs'], [null, 0, 0], 'a first line ending with a colon is the parent of the lines under it', { colon: true });
+addNest('Groceries tomorrow: \nDairy\n  milk\nBread', ['Groceries tomorrow', 'Dairy', 'milk', 'Bread'], [null, 0, 1, 0], 'a first line ending with a colon is the parent of every line with no parent', { colon: true });
+addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], 'with ↳ Under first line off, the lines are separate tasks and the colon stays in the title', { colon: true, flat: true }, true);
+addNest('Groceries:', ['Groceries:'], [null], 'a single line ending with a colon stays as typed', { colon: true });
+addNest('Note: buy milk\neggs:', ['Note: buy milk', 'eggs:'], [null, null], 'only a colon at the end of the first line makes a parent', { colon: true });
+addNest('Groceries:\n- [x] milk', ['Groceries:'], [null], 'when its only line is left out, the first line stays as typed, as a single task', { colon: true, done: false });
+addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], 'the subtask box does not treat a colon line as a parent');
+addList('## Wipe down\n- Counter', ['## Wipe down', 'Counter'], 'in the steps box, a heading is plain text');
 
 // ---------- checklist steps ----------
 // A step's T#20m, T#40m:roast and {#roast} stay in the title for parseStep. Quick add never parses them as a date or time.
-add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its words; T#30m is read by parseStep' });
+add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its text, and parseStep reads T#30m' });
 add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
-add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
-add({ text: 'pay rent Oct 5', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2026-10-5', pocket: true, why: 'today\'s date is today, typed after noon too' });
-add({ text: 'pay rent oct 7 at 10am', now: new Date(2026, 9, 7, 11, 0), title: 'pay rent', date: '2026-10-7', time: '10:0', pocket: true, why: 'today\'s date with a time gone is today' });
-add({ text: 'pay rent Oct 4', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2027-10-4', pocket: true, why: 'yesterday\'s date is next year\'s' });
-add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'a step\'s words inside a quoted label stay in the label' });
-add({ text: 'Task *"batch T#20m"', title: 'Task', labels: ['batch T#20m'], pocket: true, why: 'and a T# time ends before the quote' });
+add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'T#40m:roast is not a time of day either' });
+add({ text: 'pay rent Oct 5', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2026-10-5', pocket: true, why: 'a date that is today stays today, also when typed after noon' });
+add({ text: 'pay rent oct 7 at 10am', now: new Date(2026, 9, 7, 11, 0), title: 'pay rent', date: '2026-10-7', time: '10:0', pocket: true, why: 'a date that is today stays today when its time has passed' });
+add({ text: 'pay rent Oct 4', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2027-10-4', pocket: true, why: 'yesterday\'s date means the same date next year' });
+add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'step text inside a quoted label stays in the label' });
+add({ text: 'Task *"batch T#20m"', title: 'Task', labels: ['batch T#20m'], pocket: true, why: 'a T# time before the closing quote stays in the label' });
 // Adding a step's token after the text must not change how the text is parsed: [text, token, mode].
 const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:roast'], ['01.02 Lorem Ipsum', 'T#1h30m'],
   ['Lorem Ipsum 01.02', '{#roast}'], ['Order resin 2026-10-12', 'T#3d'], ['Baste the roast at 5pm', 'T#40m:roast'], ['Roast in tomorrow', '{#roast}'],

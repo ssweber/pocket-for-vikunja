@@ -144,8 +144,8 @@ const run = (code, seed) => {
   return log;
 };
 
-test('updates run in the same order as in Alpine\'s own scheduler', () => {
-  assert.ok(PATCHED.includes('Pocket:'), 'the patch is there');
+test('the patched scheduler runs updates in the same order as Alpine\'s own scheduler', () => {
+  assert.ok(PATCHED.includes('Pocket:'), 'the scheduler patch is present');
   let ran = 0;
   for (let seed = 1; seed <= 300; seed++) {
     const want = run(OWN, seed);
@@ -187,65 +187,65 @@ const xfor = (expression, key) => {
 };
 const drawn = (x, list, what) => {
   const rows = x.rows();
-  assert.equal(rows.length, list.length, what + ': as many rows');
+  assert.equal(rows.length, list.length, what + ': the number of rows matches the list');
   rows.forEach((el, i) => { assert.equal(el.scope.t, list[i], `${what}: row ${i}'s item`); if ('i' in el.scope) assert.equal(el.scope.i, i, `${what}: row ${i}'s index`); });
 };
 
-test('x-for keyed by a path into the item: each row with its item, wherever it moved; keys read off the item', () => {
-  assert.ok(XFOR.includes('Pocket:'), 'the patch is there');
+test('x-for keyed by a path into the item keeps each row with its item, wherever the item moves', () => {
+  assert.ok(XFOR.includes('Pocket:'), 'the x-for patch is present');
   const a = { id: 1 }, b = { id: 2 }, c = { id: 3 }, d = { id: 4 }, x = xfor('(t, i) in items', 't.id');
-  x.set([a, b]); drawn(x, [a, b], 'first');
+  x.set([a, b]); drawn(x, [a, b], 'the first draw');
   const first = x.rows()[0];
-  x.set([a, b, c]); drawn(x, [a, b, c], 'one added at the end');
-  assert.equal(x.rows()[0], first, 'the rows already drawn are kept');
-  x.set([b, a, c]); drawn(x, [b, a, c], 'the same objects, moved');
+  x.set([a, b, c]); drawn(x, [a, b, c], 'an item added at the end');
+  assert.equal(x.rows()[0], first, 'rows that are already drawn are kept');
+  x.set([b, a, c]); drawn(x, [b, a, c], 'the same objects in a new order');
   const b2 = { id: 2 };
-  x.set([b2, a, c]); drawn(x, [b2, a, c], 'another object at the same place, with the same key');
-  x.set([a, c]); drawn(x, [a, c], 'one taken off the front');
-  x.set([d, a, c]); drawn(x, [d, a, c], 'one put at the front');
-  x.set([d, a, c].slice()); drawn(x, [d, a, c], 'the same, in a new list');
-  x.set([]); drawn(x, [], 'none');
-  assert.equal(x.state.keyRuns, 0, 'no key worked out in Alpine\'s scope');
+  x.set([b2, a, c]); drawn(x, [b2, a, c], 'a different object at the same index with the same key');
+  x.set([a, c]); drawn(x, [a, c], 'the first item removed');
+  x.set([d, a, c]); drawn(x, [d, a, c], 'an item added at the front');
+  x.set([d, a, c].slice()); drawn(x, [d, a, c], 'the same items in a new array');
+  x.set([]); drawn(x, [], 'an empty list');
+  assert.equal(x.state.keyRuns, 0, 'no key is evaluated in Alpine\'s scope');
 });
 
-test('x-for keyed any other way, or with the list named, works out every key as Alpine does', () => {
+test('x-for keyed any other way, or with the list named, evaluates every key as Alpine does', () => {
   const a = { id: 1 }, b = { id: 2 };
   for (const [expression, key] of [['t in items', 't.id + 0'], ['(t, i, all) in items', 't.id']]) {
     const x = xfor(expression, key);
     x.set([a, b]); x.set([b, a]); drawn(x, [b, a], expression + ' by ' + key);
-    assert.equal(x.state.keyRuns, 4, expression + ' by ' + key + ': each key, each time');
+    assert.equal(x.state.keyRuns, 4, expression + ' by ' + key + ': every key is evaluated on every render');
   }
 });
 
 /* memo (util.js) works a value out once per change to the data it reads. It uses the reactivity in Pocket's copy of
    Alpine (reactive.mjs) and sets a scheduler on its effect, which Alpine's public API doesn't offer. An Alpine upgrade
    that moves that code fails here. */
-test('a memo is worked out once per change to what it reads, at once after a change, and tells what read it to read it again', c => {
+test('a memo is recalculated once per change to the data it reads, and tells whatever read it to read it again', c => {
   const { Alpine, flush } = watching(c);
   const data = Alpine.reactive({ steps: [{ id: 1, done: false }, { id: 2, done: false }], other: 0 }), self = { data };
   let worked = 0, drawn = 0, seen = null;
   const open = memo(function(){ worked++; return { n: this.data.steps.filter(s => !s.done).length }; });
   const first = open.call(self);
   assert.deepEqual([first.n, worked], [2, 1]);
-  assert.equal(open.call(self), first, 'read again with nothing changed: the same object');
+  assert.equal(open.call(self), first, 'reading again with nothing changed returns the same object');
   data.other++;
-  assert.deepEqual([open.call(self), worked], [first, 1], 'something it doesn\'t read changed: still the same, not worked out again');
+  assert.deepEqual([open.call(self), worked], [first, 1], 'a change to data the memo does not read leaves the same object and does not recalculate');
   // An effect that renders the value runs once, then again only after the value goes stale.
   Alpine.effect(() => { drawn++; seen = open.call(self).n; });
   assert.deepEqual([drawn, seen, worked], [1, 2, 1]);
   data.steps[0].done = true;                                                // a change deep inside the data the memo read
-  assert.deepEqual([open.call(self).n, worked], [1, 2], 'read straight after a change, before Alpine has run anything: worked out afresh');
-  assert.equal(drawn, 1, 'what showed it hasn\'t run yet');
+  assert.deepEqual([open.call(self).n, worked], [1, 2], 'reading straight after a change, before Alpine has run anything, recalculates');
+  assert.equal(drawn, 1, 'the effect that shows the value has not run yet');
   flush();
-  assert.deepEqual([drawn, seen, worked], [2, 1, 2], 'then it runs, once, and the value isn\'t worked out a third time');
+  assert.deepEqual([drawn, seen, worked], [2, 1, 2], 'the effect then runs once, and the value is not recalculated a third time');
   data.steps[1].done = true; data.steps.push({ id: 3, done: false }); data.steps[2].done = true;
   flush();
-  assert.deepEqual([drawn, seen, worked], [3, 0, 3], 'three changes before anything read it: worked out once');
+  assert.deepEqual([drawn, seen, worked], [3, 0, 3], 'three changes before anything reads the memo cause one recalculation');
   flush();
-  assert.equal(drawn, 3, 'and nothing left to run');
+  assert.equal(drawn, 3, 'no effect is left to run');
 });
 
-test('a memo whose working out throws is worked out again the next time it\'s read', c => {
+test('a memo whose calculation throws is calculated again the next time it is read', c => {
   watching(c);
   let n = 0;
   const m = memo(() => { if (!n++) throw new Error('not yet'); return n; });
@@ -254,7 +254,7 @@ test('a memo whose working out throws is worked out again the next time it\'s re
   assert.equal(m(), 2);
 });
 
-test('without Alpine (the unit tests), a memo is worked out each time it\'s read', () => {
+test('without Alpine, as in the unit tests, a memo is calculated every time it is read', () => {
   let n = 0;
   const m = memo(() => ++n);
   assert.deepEqual([m(), m()], [1, 2]);

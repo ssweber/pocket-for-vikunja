@@ -95,7 +95,7 @@ try {
     updatedBefore = (await get(a.steps[1])).updated;
     await wait(1100);                                                         // so a change to "updated" would show
     tick0 = await patch(a.steps[0], { done: true });
-    await until('no due dates were set', async () => isSet((await get(a.steps[3])).due_date));
+    await until('Take the roast out never got a due date', async () => isSet((await get(a.steps[3])).due_date));
     const d = await dues(a), mins = d.map(x => after(x, tick0.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
     // Only due_date and the reminder at it change. The task's last changed time ("updated") must not.
@@ -109,7 +109,7 @@ try {
 
   await step('the-other-run-is-untouched', async () => {
     const d = await dues(b);
-    if (d.some(isSet)) throw new Error('run B: ' + JSON.stringify(d));
+    if (d.some(isSet)) throw new Error('the other checklist got due dates: ' + JSON.stringify(d));
   });
 
   await step('fan-out-steps-dont-shift-each-other', async () => {
@@ -124,7 +124,7 @@ try {
   await step('a-late-step-counts-from-when-it-was-done', async () => {
     // Take the roast out is due an hour after the roast goes in. It is done now, which is early. Carve counts from now, not from that due date.
     const done = await patch(a.steps[3], { done: true });
-    await until('Carve got no due date', async () => isSet((await get(a.steps[4])).due_date));
+    await until('Carve never got a due date', async () => isSet((await get(a.steps[4])).due_date));
     const m = after((await get(a.steps[4])).due_date, done.done_at);
     if (m !== 10) throw new Error(`Carve is due ${m} minutes after the roast came out`);
     if (isSet((await get(a.steps[5])).due_date)) throw new Error('Wash up, without a time, got a due date');
@@ -140,18 +140,18 @@ try {
     await api(`/tasks/${a.steps[3]}/assignees`, { method: 'POST', body: { user_id: me.id } }).catch(() => {});
     await wait(1500);
     const due = (await get(a.steps[4])).due_date;
-    if (new Date(due).getTime() !== new Date(mine).getTime()) throw new Error('Carve is due ' + due);
+    if (new Date(due).getTime() !== new Date(mine).getTime()) throw new Error('Carve\'s due date changed to ' + due);
   });
 
   await step('undo-leaves-done-steps-and-a-new-tick-sets-them-again', async () => {
     const before = await dues(a);
     await patch(a.steps[0], { done: false });                                  // the steps that count from it are already done
     await wait(1500);
-    if (JSON.stringify(await dues(a)) !== JSON.stringify(before)) throw new Error('undoing changed due dates');
+    if (JSON.stringify(await dues(a)) !== JSON.stringify(before)) throw new Error('unticking a step changed due dates');
     await patch(a.steps[1], { done: false });                                 // Peel the potatoes is not done any more, so its due date can change
     await wait(1100);
     const again = await patch(a.steps[0], { done: true });
-    await until('Peel the potatoes never moved', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
+    await until('Peel the potatoes never counted from the new tick', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
     const d = await dues(a);
     if (d[2] !== before[2] || d[3] !== before[3]) throw new Error('done steps were changed: ' + JSON.stringify([before[2], d[2], before[3], d[3]]));
   });
@@ -160,9 +160,9 @@ try {
     // Peel the potatoes is not done and waits for the roast to go in. When the roast step is unticked, Peel the potatoes
     // has no due date until the roast step is done again, and its reminder has no time, so it can't fire.
     await patch(a.steps[0], { done: false });
-    await until('Peel the potatoes kept its due date', async () => !isSet((await get(a.steps[1])).due_date));
+    await until('Peel the potatoes still has its due date', async () => !isSet((await get(a.steps[1])).due_date));
     const peel = await get(a.steps[1]);
-    if ((peel.reminders || []).some(r => isSet(r.reminder))) throw new Error('its reminder is still set: ' + JSON.stringify(peel.reminders));
+    if ((peel.reminders || []).some(r => isSet(r.reminder))) throw new Error('Peel the potatoes still has a reminder time: ' + JSON.stringify(peel.reminders));
     const again = await patch(a.steps[0], { done: true });
     await until('Peel the potatoes never got a due date again', async () => after((await get(a.steps[1])).due_date, again.done_at) === 20);
   });
@@ -172,7 +172,7 @@ try {
     await wait(1100);
     const t = await api('/tasks/' + b.steps[0], { v: 'v1' });
     const done = await api('/tasks/' + b.steps[0], { method: 'POST', v: 'v1', body: { ...t, done: true } });   // as Vikunja's web app saves a task
-    await until('no due dates were set', async () => isSet((await get(b.steps[3])).due_date));
+    await until('Take the roast out never got a due date', async () => isSet((await get(b.steps[3])).due_date));
     const mins = (await dues(b)).map(x => after(x, done.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, null, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
   });
@@ -180,7 +180,7 @@ try {
     // Pocket copies a checklist's steps in the template's order and displays them by id, whatever order Vikunja links them in.
     const c = await startRun(template.id, tplSteps, label.id, { backwards: true, old: true });   // also a checklist started before checklists stored their step lines
     const done = await patch(c.steps[0], { done: true });
-    await until('no due dates were set', async () => isSet((await get(c.steps[3])).due_date));
+    await until('Take the roast out never got a due date', async () => isSet((await get(c.steps[3])).due_date));
     const mins = (await dues(c)).map(x => after(x, done.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
   });
@@ -195,7 +195,7 @@ try {
     await api(`/tasks/${tplSteps[1]}/relations`, { method: 'POST', body: { other_task_id: y.id, relation_kind: 'copiedto' } });   // Peel the potatoes T#20m
     await patch(x.id, { done: true });
     await wait(1500);
-    if (isSet((await get(y.id)).due_date)) throw new Error('got a due date: ' + (await get(y.id)).due_date);
+    if (isSet((await get(y.id)).due_date)) throw new Error('a step of a task that is not a checklist got a due date: ' + (await get(y.id)).due_date);
   });
   // A started checklist's order line, as Pocket writes it when the checklist starts and when a step is inserted.
   const setOrder = async (run, ids) => patch(run, { description: `<p>pocket:run</p><p>pocket:order ${ids.join(' ')}</p>` });
@@ -241,9 +241,9 @@ try {
     const copy = await patch(again, { done: true });
     await until('Peel the potatoes never counted from the copy', async () => after((await get(s[1])).due_date, copy.done_at) === 20);
     if (after((await get(s[2])).due_date, copy.done_at) !== 40) throw new Error('Baste the roast didn\'t count from the copy');
-    if (isSet((await get(again)).due_date)) throw new Error('the copy got a time of its own');
+    if (isSet((await get(again)).due_date)) throw new Error('the copy got a due date');
     await patch(again, { done: false });
-    await until('Peel the potatoes never went back to the first', async () => after((await get(s[1])).due_date, first.done_at) === 20);
+    await until('Peel the potatoes never counted from the first step again', async () => after((await get(s[1])).due_date, first.done_at) === 20);
   });
   await step('a-run-keeps-its-times-when-its-template-changes', async () => {
     // The checklist is started. Then the template's "Peel the potatoes" is given another time, "Baste the roast" is
@@ -252,7 +252,7 @@ try {
     await patch(tplSteps[1], { title: 'Peel the potatoes T#50m' });
     for (const id of [tplSteps[2], template.id]) await api('/tasks/' + id, { method: 'DELETE' });
     const done = await patch(d.steps[0], { done: true });
-    await until('no due dates were set', async () => isSet((await get(d.steps[3])).due_date));
+    await until('Take the roast out never got a due date', async () => isSet((await get(d.steps[3])).due_date));
     const mins = (await dues(d)).map(x => after(x, done.done_at));
     if (JSON.stringify(mins) !== JSON.stringify([null, 20, 40, 60, null, null])) throw new Error('minutes after the tick: ' + JSON.stringify(mins));
   });

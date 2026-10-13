@@ -40,15 +40,15 @@ const send = async (app, e) => { await sync.add(e, []); app.refreshPending(); re
 const sent = v => v.requests.filter(r => r.method !== 'GET').map(r => [r.method, r.path, r.body]);
 const group = (app, key) => app.view.groups.find(g => g.key === key).tasks;
 
-test('a line that says it\'s done is made as any task, then marked done as a tick marks it', async t => {
+test('a line marked as done is created like any task and then marked done, as a tick does', async t => {
   const v = fakeVikunja(), app = adding(t);
   const r = await send(app, entry([line('Call Sam', { done: true }), line('Call Jo')]));
   assert.deepEqual(sent(v), [['POST', '/projects/5/tasks', { title: 'Call Sam' }], ['PATCH', '/tasks/101', { done: true }], ['POST', '/projects/5/tasks', { title: 'Call Jo' }]]);
   assert.deepEqual([r.status, v.task(101).done, v.task(102).done], ['sent', true, false]);
-  assert.equal(sync.all(1).length, 0, 'nothing left waiting');
+  assert.equal(sync.all(1).length, 0, 'nothing is left waiting');
 });
 
-test('while it waits, a line that says it\'s done is on its list ticked', async t => {
+test('while it waits, a line marked as done shows ticked on its list', async t => {
   const v = fakeVikunja(), app = adding(t);
   v.trouble = () => 'offline';
   const r = await send(app, entry([line('Call Sam', { done: true }), line('Call Jo')]));
@@ -58,56 +58,56 @@ test('while it waits, a line that says it\'s done is on its list ticked', async 
   await sync.remove(sync.all(1)[0].id);
 });
 
-test('a task that arrived done shows ticked on its row and leaves with the batch; its tick meanwhile opens it again', async t => {
+test('a task that arrives done shows ticked and leaves with the batch, and tapping its tick before then opens it again', async t => {
   const v = fakeVikunja(), app = adding(t);
   const r = await send(app, entry([line('Call Sam', { done: true })]));
   app.placeSent(r.tasks);
-  assert.deepEqual(group(app, 'nodate').map(x => [x.title, x.done]), [['Call Sam', true]], 'ticked, where a task added goes');
-  assert.deepEqual([app.leaving, app.said], [{ 101: 'done' }, 'Done: Call Sam'], 'marked, as a tick marks it');
+  assert.deepEqual(group(app, 'nodate').map(x => [x.title, x.done]), [['Call Sam', true]], 'the task shows ticked, where an added task goes');
+  assert.deepEqual([app.leaving, app.said], [{ 101: 'done' }, 'Done: Call Sam'], 'the task is marked, as a tick marks it');
   t.mock.timers.tick(2999);
-  assert.equal(group(app, 'nodate').length, 1, 'not before 3 seconds');
+  assert.equal(group(app, 'nodate').length, 1, 'the batch does not clear before 3 seconds');
   await app.clearBatch(true);
-  assert.deepEqual(group(app, 'nodate'), [], 'gone with the batch');
+  assert.deepEqual(group(app, 'nodate'), [], 'the task leaves with the batch');
   // Another task, opened again by its tick before the batch clears.
   const again = await send(app, entry([line('Call Jo', { done: true })]));
   app.placeSent(again.tasks);
   await app.unmark(102);
   assert.deepEqual([v.task(102).done, app.tasks[102].done, app.leaving], [false, false, {}]);
   await app.clearBatch(true);
-  assert.deepEqual(group(app, 'nodate').map(x => x.title), ['Call Jo'], 'it stays');
+  assert.deepEqual(group(app, 'nodate').map(x => x.title), ['Call Jo'], 'the reopened task stays');
 });
 
-test('one that repeats moves on to its next date, as a tick moves it, and a lost reply doesn\'t tick it twice', async t => {
+test('a repeating task moves on to its next date as a tick does, and a lost reply does not tick it twice', async t => {
   const v = fakeVikunja(), app = adding(t), due = new Date(Date.now() + 36e5).toISOString();
   const e = entry([line('Water the plants', { done: true, due, repeat: { after: DAY, mode: 0 } })]);
   v.trouble = r => r.method === 'PATCH' ? 'lost' : null;
-  assert.equal((await send(app, e)).status, 'offline', 'kept, to try again');
+  assert.equal((await send(app, e)).status, 'offline', 'the entry is kept to try again');
   v.trouble = () => null;
   const r = await app.sendEntry(e.id);
-  assert.equal(sent(v).filter(([m]) => m === 'PATCH').length, 1, 'ticked once: Vikunja\'s copy said it got there');
+  assert.equal(sent(v).filter(([m]) => m === 'PATCH').length, 1, 'the task is ticked once, because Vikunja\'s copy shows the first tick arrived');
   assert.equal(Date.parse(v.task(101).due_date) - Date.parse(due), DAY * 1000);
   assert.equal(v.task(101).done, false);
   assert.equal(r.status, 'sent');
 });
 
-test('a repeating task that arrived done shows ticked with the date it was given, then open at its next', async t => {
+test('a repeating task that arrives done shows ticked with its given date, then opens at its next date', async t => {
   const v = fakeVikunja(), app = adding(t), due = new Date(Date.now() + 36e5).toISOString();
   const r = await send(app, entry([line('Water the plants', { done: true, due, repeat: { after: DAY, mode: 0 } })]));
   app.placeSent(r.tasks);
   const row = app.tasks[101];
   assert.deepEqual([row.done, row.due_date, app.leaving[101]], [true, due, 'done']);
   await app.clearBatch(true);
-  assert.deepEqual([row.done, row.due_date], [false, v.task(101).due_date], 'open again, at its next date');
-  assert.ok(app.view.groups.some(g => g.tasks.includes(row)), 'still on Today: its next date is within the week');
+  assert.deepEqual([row.done, row.due_date], [false, v.task(101).due_date], 'the task is open again at its next date');
+  assert.ok(app.view.groups.some(g => g.tasks.includes(row)), 'the task is still on Today, because its next date is within the week');
 });
 
-test('a line\'s progress is written once it\'s made, as a swipe would set it, and shows in its row\'s tick; 100% is done', async t => {
+test('a line\'s progress is written once the task is created, as a swipe sets it, and 100% means done', async t => {
   const v = fakeVikunja(), app = adding(t);
   const e = entry([line('Tables', { pct: 50 }), line('Chairs', { pct: 100 })]);
   v.trouble = () => 'offline';
   await send(app, e);
   app.refreshPending();
-  assert.deepEqual(app.pendingTasks.map(x => [x.title, x.percent_done, x.done]), [['Tables', 0.5, false], ['Chairs', 1, true]], 'while they wait, too');
+  assert.deepEqual(app.pendingTasks.map(x => [x.title, x.percent_done, x.done]), [['Tables', 0.5, false], ['Chairs', 1, true]], 'the progress also shows while the tasks wait');
   v.trouble = () => null;
   v.requests.length = 0;
   const r = await app.sendEntry(e.id);
@@ -115,18 +115,18 @@ test('a line\'s progress is written once it\'s made, as a swipe would set it, an
     ['POST', '/projects/5/tasks', { title: 'Chairs' }], ['PATCH', '/tasks/102', { done: true }]]);
   app.placeSent(r.tasks);
   assert.deepEqual(group(app, 'nodate').map(x => [x.title, x.percent_done, x.done]).sort(), [['Chairs', 0, true], ['Tables', 0.5, false]]);
-  assert.deepEqual(app.leaving, { 102: 'done' }, 'only the one that\'s done leaves with the batch');
+  assert.deepEqual(app.leaving, { 102: 'done' }, 'only the done task leaves with the batch');
 });
 
-test('a line over lines that arrived done or with progress has the figure they give it, written once they\'re in', async t => {
+test('a parent line gets the progress calculated from subtask lines that arrive done or with progress, written once they are created', async t => {
   const v = fakeVikunja(), app = adding(t);
   await send(app, entry([line('Pack the van'), line('Load chairs', { done: true }, 0), line('Tables', {}, 0)]));
   await app.saveTask(101, null, () => null);
-  assert.deepEqual([v.task(101).percent_done, v.task(102).done, v.task(103).done], [0.5, true, false], 'one of two done');
+  assert.deepEqual([v.task(101).percent_done, v.task(102).done, v.task(103).done], [0.5, true, false], 'one of two subtasks is done');
   assert.deepEqual(v.task(101).related_tasks.subtask.map(s => s.id), [102, 103]);
   await send(app, entry([line('Set the hall'), line('Tables', { pct: 50 }, 0), line('Lights', {}, 0)]));
   await app.saveTask(104, null, () => null);
-  assert.equal(v.task(104).percent_done, 0.25, 'one at 50% of two');
+  assert.equal(v.task(104).percent_done, 0.25, 'one subtask at 50% of two gives 25%');
   // With no subtask done, the parent's progress is 0, as Vikunja made it, so nothing is written.
   v.requests.length = 0;
   await send(app, entry([line('Order cups'), line('Small', {}, 0), line('Large', {}, 0)]));
@@ -134,7 +134,7 @@ test('a line over lines that arrived done or with progress has the figure they g
 });
 
 const links = v => v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]);
-test('a list with several parents, and subtasks of subtasks: each line is made under the line it says, in order', async t => {
+test('a list with several parents and nested subtasks creates each line under the line it names, in order', async t => {
   const v = fakeVikunja(), app = adding(t);
   // The lines are "## Pack the van", "Load chairs", "  Stack them" (done), "## Set the hall", "Tables (50%)"
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', { done: true }, 1), line('Set the hall'), line('Tables', { pct: 50 }, 3)]);
@@ -142,7 +142,7 @@ test('a list with several parents, and subtasks of subtasks: each line is made u
   await send(app, e);
   app.refreshPending();
   assert.deepEqual(app.pendingTasks.map(x => [x.id, x.parent, x.child]), [[`pending-${e.id}-0`, null, false], [`pending-${e.id}-1`, `pending-${e.id}-0`, true],
-    [`pending-${e.id}-2`, `pending-${e.id}-1`, true], [`pending-${e.id}-3`, null, false], [`pending-${e.id}-4`, `pending-${e.id}-3`, true]], 'while they wait: each row under its line\'s row, their ids in item order');
+    [`pending-${e.id}-2`, `pending-${e.id}-1`, true], [`pending-${e.id}-3`, null, false], [`pending-${e.id}-4`, `pending-${e.id}-3`, true]], 'while the lines wait, each row is under its parent line\'s row, with ids in item order');
   v.trouble = () => null;
   v.requests.length = 0;
   const r = await app.sendEntry(e.id);
@@ -156,23 +156,23 @@ test('a list with several parents, and subtasks of subtasks: each line is made u
     [['/tasks/105', 0.5], ['/tasks/104', 0.5], ['/tasks/102', 1], ['/tasks/101', 1]]);
 });
 
-test('an entry kept from before lines said which line they\'re under still sends: its first line over the rest, or all tasks of their own', async t => {
+test('an entry saved before lines recorded their parent line still sends, with the first line as parent or every line as its own task', async t => {
   const v = fakeVikunja(), app = adding(t);
   const r = await send(app, entry([oldLine('Pack the van'), oldLine('Load chairs'), oldLine('Tables')], { nest: true }));
   assert.deepEqual(links(v), [[101, 102], [101, 103]]);
   assert.deepEqual(r.tasks.map(x => x.parent), [null, 101, 101]);
   await send(app, entry([oldLine('Order cups'), oldLine('Order lids')]));
-  assert.equal(links(v).length, 2, 'no more links: tasks of their own');
+  assert.equal(links(v).length, 2, 'no more links are made, because the lines are separate tasks');
   // An entry the older Pocket half sent: its first line was made, and the project it went to is kept on the entry.
   const half = entry([{ ...oldLine('Set the hall'), taskId: 101, projectId: 5, done: true }, oldLine('Lights')], { nest: true, parentProject: 5 });
   await send(app, half);
-  assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100], 'the rest carries on under it');
+  assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100], 'the remaining lines are created under the first task');
   // Subtasks added from a task's sheet (`parent`) are kept without `under`, and go under that task.
   await send(app, entry([oldLine('Sound check')], { parent: { id: 101, project_id: 5, title: 'Pack the van' } }));
   assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100]);
 });
 
-test('a waiting line cancelled: the lines under it go under what it was under, and it says so', async t => {
+test('cancelling a waiting line moves the lines under it to its parent, and a message says so', async t => {
   const v = fakeVikunja(), app = adding(t);
   Object.assign(app, { cap: { text: '' } });
   v.trouble = () => 'offline';
@@ -185,7 +185,7 @@ test('a waiting line cancelled: the lines under it go under what it was under, a
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Pack the van', null], ['Stack them', 0], ['Tables', 0]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 1 line under it is now under “Pack the van”.');
   assert.equal(app.cap.text, 'Load chairs');
-  assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van. The lines under it become their own tasks.', 'two still wait under the first');
+  assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van. The lines under it become their own tasks.', 'the label still counts two lines waiting under the first');
   await app.cancelPending(e.id, 0);
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Stack them', null], ['Tables', null]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now their own tasks.');
@@ -213,7 +213,7 @@ const marksOf = (app, w) => app.marks(w).map(m => m.kind + ':' + app.box(w).text
 const linesOf = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.done]);
 const tap = (app, w, text) => app.tapChip(w, app.chips(w).find(c => c.text.includes(text)));
 
-test('one line that says it\'s done: a Done chip, its marker marked; tapped off, the marker\'s words stay in the title', () => {
+test('a line marked as done shows a Done chip and a marked marker, and tapping the chip off keeps the marker in the title', () => {
   const app = boxes();
   app.cap.text = 'x Call Sam !2';
   assert.deepEqual(chipsOf(app, 'cap'), ['Done', 'Café', 'Priority 2']);
@@ -224,7 +224,7 @@ test('one line that says it\'s done: a Done chip, its marker marked; tapped off,
   assert.deepEqual(marksOf(app, 'cap'), ['priority:!2']);
   assert.deepEqual(linesOf(app, 'cap'), [['x Call Sam', false]]);
   tap(app, 'cap', 'Done');
-  assert.deepEqual(linesOf(app, 'cap'), [['Call Sam', true]], 'tapped again: read again');
+  assert.deepEqual(linesOf(app, 'cap'), [['Call Sam', true]], 'tapping the chip again reads the marker again');
   // A capital X, which a phone's keyboard puts at the start of a line, gives the same chip. Tapped off, the title stays as typed.
   app.cap.text = 'X Call Sam';
   assert.deepEqual([chipsOf(app, 'cap')[0], marksOf(app, 'cap'), linesOf(app, 'cap')], ['Done', ['done:X'], [['Call Sam', true]]]);
@@ -238,7 +238,7 @@ test('one line that says it\'s done: a Done chip, its marker marked; tapped off,
   assert.deepEqual(app.boxParsedLines('cap').map(p => [p.title, p.done, p.pct]), [['Call Sam tomorrow', true, 50]]);
 });
 
-test('a list with lines that say they\'re done: one chip counts them; tapped, they\'re left out, and tapped again they\'re back', () => {
+test('a list with lines marked as done shows one chip that counts them, and tapping it leaves them out or adds them back', () => {
   const app = boxes();
   app.cap.text = 'Groceries\n- [x] Eggs\n- [ ] Milk tomorrow\nx Bread';
   assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
@@ -257,18 +257,18 @@ test('a list with lines that say they\'re done: one chip counts them; tapped, th
 });
 
 const under = (app, w) => app.boxParsedLines(w).map(p => p.under);
-test('a pasted list with headings: each a task over its lines, the chip counting them; ↳ Under first line shows on, and tapped off makes them all tasks', () => {
+test('a pasted list with headings makes each heading a task with its lines as subtasks, and ↳ Under first line turns that off', () => {
   const app = boxes();
   app.cap.text = '## Pack the van (38%)\n- Load chairs\n- [x] Tables\n## Set the hall\n- Lights (50%)';
   assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '2 tasks + 3 subtasks', 'Café']);
   assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3]);
-  assert.deepEqual(app.boxParsedLines('cap').map(p => [p.title, p.pct]), [['Pack the van', 0], ['Load chairs', 0], ['Tables', 0], ['Set the hall', 0], ['Lights', 50]], 'a parent\'s figure is dropped');
+  assert.deepEqual(app.boxParsedLines('cap').map(p => [p.title, p.pct]), [['Pack the van', 0], ['Load chairs', 0], ['Tables', 0], ['Set the hall', 0], ['Lights', 50]], 'a parent\'s percentage is dropped');
   assert.equal(app.nestOn, true, 'the first line is a parent as the list is written');
   app.tapNest();
   assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null, null, null]]);
   assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '5 tasks', 'Café']);
   app.tapNest();
-  assert.deepEqual([app.nestOn, under(app, 'cap')], [true, [null, 0, 0, null, 3]], 'tapped again: as written');
+  assert.deepEqual([app.nestOn, under(app, 'cap')], [true, [null, 0, 0, null, 3]], 'tapping again restores the list as written');
   // A list with no markers does not nest until the user taps ↳ Under first line.
   app.cap = newBox();
   app.cap.text = 'Pack the van\nLoad chairs\nTables';
@@ -279,37 +279,37 @@ test('a pasted list with headings: each a task over its lines, the chip counting
   assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null]]);
 });
 
-test('in a subtask box, a heading\'s lines go under it, and it goes under the open task', () => {
+test('in a subtask box, a heading\'s lines go under the heading, and the heading goes under the open task', () => {
   const app = boxes();
   app.sheet.sub.text = '## Chairs\n- Stack them\n- [x] Count them\nTables';
   assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '4 subtasks']);
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['x Count them', 0], ['Tables', 0]]);
 });
 
-test('a pasted list with indented lines: each under the line above it that\'s indented less, the chip counting them', () => {
+test('a pasted list with indented lines puts each under the nearest line above it that is indented less', () => {
   const app = boxes();
   app.cap.text = 'Pack the van (38%)\n  Load chairs (50%)\n    Stack them\n  Tables\nSet the hall';
   assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks + 3 subtasks', 'Café']);
   assert.deepEqual(under(app, 'cap'), [null, 0, 1, 0, null]);
-  assert.deepEqual(app.boxParsedLines('cap').map(p => p.pct), [0, 0, 0, 0, 0], 'a figure on a line with lines under it is dropped');
+  assert.deepEqual(app.boxParsedLines('cap').map(p => p.pct), [0, 0, 0, 0, 0], 'a percentage on a line with lines under it is dropped');
   assert.equal(app.nestOn, true);
   // In a subtask box, a line goes under the line above it, which goes under the open task.
   app.sheet.sub.text = 'Chairs\n  Stack them\nTables';
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['Tables', null]]);
 });
 
-test('a project\'s copy pasted: its heading, one #, is the list\'s name, left out, and a chip says so', () => {
+test('a pasted copy of a project treats its # heading as the list\'s name, leaves it out, and shows a chip saying so', () => {
   const app = boxes();
   app.cap.text = '# Café · 3 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables (50%)';
   assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name, so it is left out', '2 tasks + 1 subtask', 'Café']);
   assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under, x.p.pct]), [['Order milk', null, 0], ['Pack the van', null, 0], ['Tables', 1, 50]]);
-  assert.equal(app.nestOn, false, 'the first line that\'s a task isn\'t a parent');
+  assert.equal(app.nestOn, false, 'the first task line is not a parent');
   // Alone in the box, a # line names no list. It is a task, as typed.
   app.cap.text = '# of chairs we need';
   assert.deepEqual([chipsOf(app, 'cap'), linesOf(app, 'cap')], [['Café'], [['# of chairs we need', false]]]);
 });
 
-test('a first line ending with a colon is the parent of the rest in quick add, its colon taken off; ↳ Under first line tapped off keeps it', () => {
+test('in quick add, a first line ending with a colon is the parent of the other lines without its colon, unless ↳ Under first line is off', () => {
   const app = boxes();
   app.cap.text = 'Groceries:\nmilk\n- [x] eggs';
   assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 will be added as done', '1 task + 2 subtasks', 'Café'], true]);
@@ -342,18 +342,18 @@ const underBox = t => {
   return { v, app, van, chairs, add, aimed, pos: id => v.task(id).position };
 };
 
-test('a subtask added from the add box is the lit row at once: its waiting row, then its task\'s, and the next goes after it', async t => {
+test('a subtask added from the add box is highlighted at once, first as a waiting row and then as its task, and the next goes after it', async t => {
   const { v, app, add, aimed, pos } = underBox(t);
   const rope = add('Rope');
   const waits = Object.keys(app.lit)[0];
-  assert.deepEqual(aimed(), [[waits], 'Rope'], 'before it\'s kept, or sent: the task\'s own row is dark');
-  assert.deepEqual(app.pendingTasks.map(x => x.id), [waits], 'and its waiting row is on the list already, to be the one lit');
+  assert.deepEqual(aimed(), [[waits], 'Rope'], 'before the subtask is kept or sent, the waiting row is highlighted and not the task\'s own row');
+  assert.deepEqual(app.pendingTasks.map(x => x.id), [waits], 'the waiting row is already on the list, so it can be highlighted');
   await rope;
-  assert.deepEqual(aimed(), [['101'], 'Rope'], 'sent: the same row, now Vikunja\'s task');
-  assert.deepEqual(app.view.groups[0].tasks.map(x => x.id), [9, 8, 101], 'on the list, where its waiting row was');
+  assert.deepEqual(aimed(), [['101'], 'Rope'], 'once sent, the same row is highlighted, now as Vikunja\'s task');
+  assert.deepEqual(app.view.groups[0].tasks.map(x => x.id), [9, 8, 101], 'the task is on the list where its waiting row was');
   await add('Straps');
   assert.deepEqual(aimed(), [['102'], 'Straps']);
-  assert.ok(pos(101) < 100 && pos(102) > pos(101) && pos(102) < 100, 'the first ahead of Chairs, each after the one before');
+  assert.ok(pos(101) < 100 && pos(102) > pos(101) && pos(102) < 100, 'the first subtask goes ahead of Chairs, and each later one goes after the one before');
   // Two lines typed one right after the other, with the first still being sent. The second still goes after the first.
   const one = add('Hooks'), two = add('Tarp');
   await Promise.all([one, two]);
@@ -361,16 +361,16 @@ test('a subtask added from the add box is the lit row at once: its waiting row, 
   assert.ok(pos(103) > pos(102) && pos(104) > pos(103));
 });
 
-test('without a connection, the subtask added waits, lit, and is lit still once it\'s sent later', async t => {
+test('offline, an added subtask waits highlighted, and is still highlighted once it is sent later', async t => {
   const { v, app, add, aimed, pos } = underBox(t);
   v.trouble = () => 'offline';
   await add('Rope');
   await add('Straps');
   const rows = app.pendingTasks.map(x => [x.id, x.title, x.position]);
-  assert.deepEqual(aimed(), [[rows[1][0]], 'Straps'], 'the last one\'s waiting row, by the id the list gives it');
+  assert.deepEqual(aimed(), [[rows[1][0]], 'Straps'], 'the last subtask\'s waiting row is highlighted, by the id the list gives it');
   assert.deepEqual(rows.map(r => r[1]), ['Rope', 'Straps']);
-  assert.ok(rows[0][2] < 100 && rows[1][2] > rows[0][2] && rows[1][2] < 100, 'ahead of Chairs, each after the one before, while they wait');
-  assert.deepEqual([app.cursor.wait.title, app.cursor.wait.position], [rows[1][1], rows[1][2]], 'the cursor has its row\'s words and place');
+  assert.ok(rows[0][2] < 100 && rows[1][2] > rows[0][2] && rows[1][2] < 100, 'while they wait, the subtasks are ahead of Chairs, each after the one before');
+  assert.deepEqual([app.cursor.wait.title, app.cursor.wait.position], [rows[1][1], rows[1][2]], 'the cursor has its row\'s title and position');
   v.trouble = () => null;
   await app.flush();
   assert.deepEqual(aimed(), [['102'], 'Straps']);
@@ -378,20 +378,20 @@ test('without a connection, the subtask added waits, lit, and is lit still once 
   assert.equal(sync.all(1).length, 0);
 });
 
-test('a pasted list with lines under them: the lit row is the last of the task\'s own, and the next go after it', async t => {
+test('after a pasted list with nested lines, the last direct subtask is highlighted and the next subtasks go after it', async t => {
   const { v, app, add, aimed, pos } = underBox(t);
   const sent = add('Ladder\n  Check the feet\nTables\n  Fold the legs');
-  assert.match(Object.keys(app.lit)[0], /^pending-[0-9a-f]+-2$/, 'Tables, not Fold the legs under it');
+  assert.match(Object.keys(app.lit)[0], /^pending-[0-9a-f]+-2$/, 'Tables is highlighted, not Fold the legs under it');
   await sent;
   assert.deepEqual(aimed(), [['103'], 'Tables']);
   assert.deepEqual(v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]), [[9, 101], [101, 102], [9, 103], [103, 104]]);
-  assert.equal(app.positions[103], pos(103), 'at its place in the list, which the next go after');
-  assert.ok(pos(101) < pos(102) && pos(102) < pos(103) && pos(103) < pos(104), 'each after the one before');
+  assert.equal(app.positions[103], pos(103), 'the task has its position in the list, which the next subtasks go after');
+  assert.ok(pos(101) < pos(102) && pos(102) < pos(103) && pos(103) < pos(104), 'each task goes after the one before');
   await add('Rope');
   assert.ok(pos(105) > pos(103), 'after Tables');
 });
 
-test('a subtask added done isn\'t lit, as it leaves with the batch: its task is, and the next goes right under the task, ahead of it', async t => {
+test('a subtask added as done is not highlighted because it leaves with the batch, so its task is, and the next goes under the task', async t => {
   const { app, add, aimed, pos } = underBox(t);
   await add('x Rope');
   assert.deepEqual([aimed(), app.leaving], [[['9'], ''], { 101: 'done' }]);
@@ -400,16 +400,16 @@ test('a subtask added done isn\'t lit, as it leaves with the batch: its task is,
   assert.ok(pos(102) < pos(101));
 });
 
-test('a waiting subtask called off, or turned down: the light goes to its task; the line before it called off, it stays on it', async t => {
+test('cancelling or refusing a waiting subtask moves the highlight to its task', async t => {
   const { v, app, add, aimed } = underBox(t);
   v.trouble = () => 'offline';
   await add('Rope\nStraps');
   const e = sync.all(1)[0].id;
   assert.deepEqual(aimed(), [[`pending-${e}-1`], 'Straps']);
   await app.cancelPending(e, 0);
-  assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[[`pending-${e}-0`], 'Straps'], [[`pending-${e}-0`, 'Straps']]], 'the same line, lit, a place sooner');
+  assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[[`pending-${e}-0`], 'Straps'], [[`pending-${e}-0`, 'Straps']]], 'cancelling the first line keeps the highlight on the same line, now one position earlier');
   await app.cancelPending(e, 0);
-  assert.deepEqual([aimed(), app.toast.msg], [[['9'], ''], 'Cancelled.'], 'called off: its task is lit');
+  assert.deepEqual([aimed(), app.toast.msg], [[['9'], ''], 'Cancelled.'], 'cancelling the highlighted line highlights its task');
   // If Vikunja refuses, the text goes back in the box with the reason, and the task is highlighted.
   v.trouble = r => r.method === 'POST' ? 400 : null;
   await add('Straps');
@@ -421,31 +421,31 @@ test('a waiting subtask called off, or turned down: the light goes to its task; 
    it stays under it meanwhile, so nothing moves. A row waiting for the batch can still be the cursor (canAim). If the
    save fails, the row is released and open again, with the box still under it. Once the batch has cleared and the row
    has left the list, keepAim gives the box to its task. */
-test('the lit subtask ticked: the box stays under it while it waits for the batch, saved or not; gone, its task has it', async t => {
+test('ticking the highlighted subtask keeps the box under it while it waits for the batch, and moves the box to its task once it leaves', async t => {
   const { v, app, chairs, aimed } = underBox(t);
   app.aim(chairs);
   assert.deepEqual(aimed(), [['8'], 'Chairs']);
   v.trouble = r => r.method === 'PATCH' ? 'offline' : null;
   let ticking = app.toggleDone(chairs, {});
-  assert.deepEqual([chairs.done, app.leaving, app.capW], [true, { 8: 'done' }, 'under'], 'held done, the save not answered: the box is under it still');
+  assert.deepEqual([chairs.done, app.leaving, app.capW], [true, { 8: 'done' }, 'under'], 'the row is held done before the save is answered, and the box is still under it');
   app.keepAim();
   assert.deepEqual(aimed(), [['8'], 'Chairs']);
   await ticking;
-  assert.deepEqual([!!chairs.done, app.leaving, app.toast.msg], [false, {}, 'Not saved: no connection'], 'let go of, open again, and its row says why');
+  assert.deepEqual([!!chairs.done, app.leaving, app.toast.msg], [false, {}, 'Not saved: no connection'], 'the row is released and open again, and shows why');
   app.keepAim();
-  assert.deepEqual(aimed(), [['8'], 'Chairs'], 'and the box where it was');
+  assert.deepEqual(aimed(), [['8'], 'Chairs'], 'the box stays where it was');
   v.trouble = () => null;
   ticking = app.toggleDone(chairs, {});
   await ticking;
   app.keepAim();
-  assert.deepEqual([aimed(), app.leaving, v.task(8).done], [[['8'], 'Chairs'], { 8: 'done' }, true], 'saved and marked: under it until the batch clears');
+  assert.deepEqual([aimed(), app.leaving, v.task(8).done], [[['8'], 'Chairs'], { 8: 'done' }, true], 'once saved and marked, the box stays under the row until the batch clears');
   delete app.leaving[8];
   app.keepAim();
-  assert.deepEqual(aimed(), [['9'], ''], 'gone with the batch: its task has the box');
+  assert.deepEqual(aimed(), [['9'], ''], 'once the row leaves with the batch, its task has the box');
 });
 
 /* Ticking a row never moves the box (tickRow, views.js). Only a nudge does, or Add a subtask here. */
-test('a tick never moves the box: another row ticked, and ticked back, leaves it under the row it was', async t => {
+test('ticking never moves the box, so ticking another row and ticking it back leaves the box where it was', async t => {
   const { v, app, chairs, add, aimed } = underBox(t), g = { depth: {} };
   app.tickRow = views.tickRow;
   // Wait until nothing is still on its way: the save, taking the mark back, and the save of that.
@@ -453,13 +453,13 @@ test('a tick never moves the box: another row ticked, and ticked back, leaves it
   await add('Rope');
   assert.deepEqual(aimed(), [['101'], 'Rope']);
   app.tickRow(chairs, g, {});
-  assert.deepEqual([aimed(), app.leaving], [[['101'], 'Rope'], { 8: 'done' }], 'Chairs ticked: held done, the box under Rope still');
+  assert.deepEqual([aimed(), app.leaving], [[['101'], 'Rope'], { 8: 'done' }], 'after ticking Chairs, the row is held done and the box is still under Rope');
   app.tickRow(chairs, g, {});
   await quiet();
-  assert.deepEqual([aimed(), !!chairs.done, !!v.task(8).done, app.leaving], [[['101'], 'Rope'], false, false, {}], 'and taken back: the same');
+  assert.deepEqual([aimed(), !!chairs.done, !!v.task(8).done, app.leaving], [[['101'], 'Rope'], false, false, {}], 'after ticking it back, the box is still under Rope');
 });
 
-test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {
+test('a checklist\'s add box leaves out a ticked line without a chip to tap, and treats an x as a word', () => {
   const app = boxes();
   app.runInsert.text = 'x Wipe the counter\n[x] Mop\nLock up';
   assert.deepEqual(app.chips('ins').map(c => [c.text, c.kind]), [['1 line is already ticked, so it is left out', undefined], ['2 steps', undefined]]);
@@ -469,7 +469,7 @@ test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a 
 /* A list's box (footBox, app/sheet.js). At the bottom of the list its label says what the box takes. Under a row, the
    label says what one line makes, and `rest` is the label the box has at the bottom. This holds for a task's subtasks,
    a template's steps and a checklist's steps. */
-test('a list\'s box under a row says what a line makes, and its place at the foot says what the box says there', () => {
+test('a list\'s add box under a row is labelled with what one line makes, and at the bottom with what the box takes', () => {
   const box = (of, where = 'sheet') => { const b = sheetPart.footBox.call({ subBoxCan: false, boxParsedLines: () => [], ...of }, where); return [b.under, b.says, b.rest]; };
   assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: null } }), [false, 'Add subtasks, or paste a list', 'Add subtasks, or paste a list']);
   assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: 8 } }), [true, 'Subtask', 'Add subtasks, or paste a list']);
@@ -480,16 +480,16 @@ test('a list\'s box under a row says what a line makes, and its place at the foo
 });
 
 /* The sheet's own box under a subtask (nudgedSub, app/sheet.js) decides where its lines go. */
-test('the sheet\'s box under a subtask: the next go after it, each after the one before while they wait; at the foot, after the last', t => {
+test('the sheet\'s box under a subtask puts new subtasks after it, each after the one before, and at the bottom puts them after the last', t => {
   const { app, chairs } = underBox(t);
   const straps = app.keep({ id: 7, title: 'Straps', project_id: 5 });
   Object.defineProperty(app, 'subtasks', { value: [chairs, straps], configurable: true });
   app.positions = { 8: 100, 7: 200 };
   app.sheet = { subView: 3, subAt: null, subAfter: null };
-  assert.deepEqual(app.subPlaces(1), [200 + 65536], 'at the foot: after the last');
+  assert.deepEqual(app.subPlaces(1), [200 + 65536], 'at the bottom, the position is after the last subtask');
   app.sheet.subAt = 8;
-  assert.deepEqual(app.subPlaces(2), [150, 175], 'under Chairs: after it, before Straps');
-  assert.deepEqual(app.subPlaces(1), [187.5], 'the next, the first two still on their way: after them');
+  assert.deepEqual(app.subPlaces(2), [150, 175], 'under Chairs, the positions are after Chairs and before Straps');
+  assert.deepEqual(app.subPlaces(1), [187.5], 'the next subtask, while the first two are still on their way, goes after them');
   app.sheet = { subView: null, subAt: 8, subAfter: null };
-  assert.equal(app.subPlaces(1), null, 'their order not read yet: no place to give');
+  assert.equal(app.subPlaces(1), null, 'when the order is not read yet, there is no position to give');
 });

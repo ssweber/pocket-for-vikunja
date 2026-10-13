@@ -27,7 +27,7 @@ globalThis.chrono = await import('../../pocket/app/' + readdirSync(new URL('../.
 const van = { kind: 'task', ...item('Pack the van', { pct: 60 }), items: [
   item('Load chairs', { done: true }), item('Tables', { pct: 50 }), item('Sound system', { people: [priya] }), item('Lights')] };
 
-test('the bar: five segments, one once begun, the fifth only when all done', () => {
+test('the bar has five segments, the first fills once work begins, and the fifth fills only when all is done', () => {
   assert.equal(bar(0), '▱▱▱▱▱');
   assert.equal(bar(3), '▰▱▱▱▱');
   assert.equal(bar(50), '▰▰▰▱▱');
@@ -36,30 +36,30 @@ test('the bar: five segments, one once begun, the fifth only when all done', () 
   assert.equal(bar(100), '▰▰▰▰▰');
 });
 
-test('a person by the first word of their name, else their username', () => {
+test('a person is shown by the first word of their name, or by their username if they have no name', () => {
   assert.equal(firstName(priya), 'Priya');
   assert.equal(firstName(sam), 'sam');
   assert.equal(firstName({ username: 'al', name: '  Alex  Kim ' }), 'Alex');
   assert.equal(firstName(null), '');
 });
 
-test('a task as a text, as agreed', () => {
+test('a task is shared as plain text with a bar, a mark for each subtask and the people assigned', () => {
   assert.equal(text(van), ['Pack the van  ▰▰▰▱▱ 60%', '✓ Load chairs', '◐ Tables 50%', '○ Sound system · Priya', '○ Lights'].join('\n'));
 });
 
-test('progress: its own, else its subtasks done of all of them, else none', () => {
-  assert.deepEqual(progress(item('a', { pct: 40, items: [item('b', { done: true })] })), { pct: 40, words: '40%' }, 'its own comes first');
+test('progress is the task\'s own percentage, else the share of its subtasks that are done, else none', () => {
+  assert.deepEqual(progress(item('a', { pct: 40, items: [item('b', { done: true })] })), { pct: 40, words: '40%' }, 'the task\'s own percentage comes first');
   const parent = item('Pack the van', { items: [item('a', { done: true }), item('b'), item('c'), item('d')] });
   assert.deepEqual(progress(parent), { pct: 25, words: '1 of 4 done' });
   assert.equal(text({ kind: 'task', ...parent }).split('\n')[0], 'Pack the van  ▰▱▱▱▱ 1 of 4 done');
   assert.deepEqual(progress(item('x', { done: true })), { pct: 100, words: 'done' });
-  assert.deepEqual(progress(item('x', { done: true, pct: 40 })), { pct: 100, words: 'done' }, 'done is all of it, whatever was set');
-  assert.equal(text({ kind: 'task', ...item('Order milk') }), 'Order milk', 'nothing to show: no bar');
+  assert.deepEqual(progress(item('x', { done: true, pct: 40 })), { pct: 100, words: 'done' }, 'a done task is 100%, whatever percentage was set');
+  assert.equal(text({ kind: 'task', ...item('Order milk') }), 'Order milk', 'a task with no progress has no bar');
   // A project's task lists only its open subtasks, but its progress counts all of its subtasks (`subs`).
   assert.deepEqual(progress(item('x', { items: [item('a')], subs: { done: 3, total: 4 } })), { pct: 75, words: '3 of 4 done' });
 });
 
-test('subtasks of a subtask, two spaces further in at each level', () => {
+test('subtasks of a subtask are indented two more spaces at each level', () => {
   const doc = { kind: 'task', ...item('Event'), items: [
     item('Stage', { items: [item('Lights', { done: true }), item('Cables', { items: [item('Long one', { pct: 25 })] })] }), item('Food')] };
   assert.equal(text(doc), ['Event  ▱▱▱▱▱ 0 of 2 done', '◐ Stage (1 of 2 done)', '  ✓ Lights', '  ○ Cables (0 of 1 done)', '    ◐ Long one 25%', '○ Food'].join('\n'));
@@ -67,7 +67,7 @@ test('subtasks of a subtask, two spaces further in at each level', () => {
   assert.equal(md(doc), ['## Event', '- [ ] Stage', '  - [x] Lights', '  - [ ] Cables', '    - [ ] Long one (25%)', '- [ ] Food'].join('\n'));
 });
 
-test('who\'s on it: several by their names, each once; due dates in a few words', () => {
+test('assigned people are listed once each by name, and due dates are written in a few words', () => {
   const doc = { kind: 'task', ...item('Opening', { due: on(9, 17), people: [priya, sam] }), items: [
     item('Chairs', { people: [priya, sam, { username: 'priya2', name: 'Priya' }] }), item('Float', { due: on(7, 18) }), item('Keys', { due: on(8) }),
     item('Sign', { due: on(20) }), item('Bins', { due: on(5) }), item('Mop', { due: on(6), done: true })] };
@@ -75,10 +75,10 @@ test('who\'s on it: several by their names, each once; due dates in a few words'
     `○ Sign · due ${date(20)}`, `○ Bins · overdue since ${day(5)}`, '✓ Mop'].join('\n'));
   assert.equal(dueWords(on(6), NOW), 'overdue since yesterday');
   assert.equal(dueWords('0001-01-01T00:00:00Z', NOW), '');
-  assert.match(dueWords(new Date(2027, 0, 5).toISOString(), NOW), /2027/, 'another year says which');
+  assert.match(dueWords(new Date(2027, 0, 5).toISOString(), NOW), /2027/, 'a date in another year shows the year');
 });
 
-test('a long list collapses what\'s done into one line, where the first of them was', () => {
+test('a long list collapses its done tasks into one line, at the position of the first done task', () => {
   const done = n => Array.from({ length: n }, (_, i) => item('Done ' + (i + 1), { done: true }));
   const open = n => Array.from({ length: n }, (_, i) => item('Open ' + (i + 1)));
   const long = { kind: 'task', ...item('Inventory'), items: [item('First'), ...done(7), ...open(4)] };
@@ -90,7 +90,7 @@ test('a long list collapses what\'s done into one line, where the first of them 
   assert.equal(md(long).split('\n').filter(l => l.startsWith('- [x]')).length, 7);
 });
 
-test('a run: who did each step, who skipped one, who\'s on the rest', () => {
+test('a checklist shows who did each step, who skipped one, and who is assigned to the rest', () => {
   const run = { kind: 'run', ...item('Startup · Oct 7'), items: [
     item('Check the guards', { done: true, by: [priya] }), item('Warm up the press', { done: true, skipped: true, by: [sam] }),
     item('First article check', { pct: 50, people: [jo] }), item('Sweep up', { people: [priya, jo] })] };
@@ -102,7 +102,7 @@ test('a run: who did each step, who skipped one, who\'s on the rest', () => {
   assert.deepEqual(text(many).split('\n').slice(0, 2), ['Close · Oct 7  ▰▰▰▱▱ 6 of 11 done · 1 skipped', '✓ 6 done, 1 skipped · Priya, sam, Jo']);
 });
 
-test('a project: its counts, its open tasks with a bar where there\'s progress, subtasks under them, what\'s done counted', () => {
+test('a project shows its counts, its open tasks with a bar where there is progress, and a count of done tasks', () => {
   const doc = { kind: 'project', title: 'Café', open: 6, doneCount: 5, items: [
     item('Order milk', { due: on(9) }),
     { ...item('Pack the van', { pct: 60, people: [priya] }), items: [item('Tables', { pct: 50 }), item('Sound system', { people: [sam] })], subs: { done: 1, total: 3 } },
@@ -113,7 +113,7 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
   // The copy starts with one heading that has the project's name and counts. Pasting leaves the heading out. The open tasks follow in quick add's syntax.
   assert.equal(md(doc), ['# Café · 6 open · 5 done', '- [ ] Order milk 2026-10-09 at 00:00', '- [ ] Pack the van @priya', '  - [ ] Tables (50%)',
     '  - [ ] Sound system @sam', '- [ ] Deep clean', '  - [ ] Fridge', '- [x] Old menu', '  - [ ] Reprint'].join('\n'));
-  assert.deepEqual(pasted(md(doc)), doc.items.map(same), 'pasted into quick add, it makes the same tasks, the heading left out');
+  assert.deepEqual(pasted(md(doc)), doc.items.map(same), 'pasted into quick add, the copy makes the same tasks and leaves out the heading');
   assert.deepEqual(readList(md(doc)).names, ['Café · 6 open · 5 done']);
   assert.equal(md({ kind: 'project', title: 'Empty', open: 0, doneCount: 0, items: [] }), '# Empty · 0 open');
   assert.equal(text({ kind: 'project', title: 'Empty', open: 0, doneCount: 0, items: [] }), 'Empty  0 open');
@@ -131,33 +131,33 @@ test('a project: its counts, its open tasks with a bar where there\'s progress, 
 const packed = { kind: 'task', ...item('Pack the van', { pct: 60, due: on(16, 12), people: [priya], priority: 3 }), items: [
   item('Load chairs', { done: true }), item('Tables', { pct: 50, items: [item('Legs')] }), item('Lights', { pct: 50 }),
   item('Sound system', { people: [sam], labels: ['hire'], repeat: { after: 604800, mode: 0 }, due: new Date(2026, 9, 15, 15, 30).toISOString() })] };
-test('the van as a Markdown list, in quick add\'s words: the task a heading, each subtask a line, its date last', () => {
+test('a task is copied as a Markdown list in quick add\'s syntax, with a heading, a line per subtask and the date last', () => {
   assert.equal(md(packed), ['## Pack the van @priya !3 2026-10-16', '- [x] Load chairs', '- [ ] Tables', '  - [ ] Legs', '- [ ] Lights (50%)',
     '- [ ] Sound system @sam *hire every week 2026-10-15 at 15:30'].join('\n'));
-  assert.equal(md({ kind: 'task', ...item('Order milk', { pct: 25 }) }), '## Order milk (25%)', 'with no subtasks, its own progress');
-  assert.equal(md({ kind: 'task', ...item('Order milk', { done: true, pct: 25 }) }), '## [x] Order milk', 'a done task says so');
+  assert.equal(md({ kind: 'task', ...item('Order milk', { pct: 25 }) }), '## Order milk (25%)', 'a task with no subtasks shows its own progress');
+  assert.equal(md({ kind: 'task', ...item('Order milk', { done: true, pct: 25 }) }), '## [x] Order milk', 'a done task is marked [x]');
   assert.equal(md(van), ['## Pack the van', '- [x] Load chairs', '- [ ] Tables (50%)', '- [ ] Sound system @priya', '- [ ] Lights'].join('\n'));
 });
 
-test('the copy\'s words: the user\'s own prefixes, a name with a space quoted, and none with quick add turned off', () => {
+test('the copy uses the user\'s prefixes, quotes a name with a space, and uses none when quick add is turned off', () => {
   const doc = { kind: 'task', ...item('Call the hire shop', { people: [priya, sam, priya], priority: 5, labels: ['call back', 'hire'], due: on(16, 12) }), items: [item('Ask for a quote', { pct: 50, people: [sam] })] };
   assert.equal(md(doc), '## Call the hire shop @priya @sam !5 *"call back" *hire 2026-10-16\n- [ ] Ask for a quote (50%) @sam');
   assert.equal(md(doc, { mode: 'todoist' }), '## Call the hire shop +priya +sam !5 @"call back" @hire 2026-10-16\n- [ ] Ask for a quote (50%) +sam');
-  assert.equal(md(doc, { mode: 'disabled' }), '## Call the hire shop\n- [ ] Ask for a quote (50%)', 'only what\'s read whichever mode is set');
-  assert.equal(md({ kind: 'task', ...item('x', { priority: 9 }) }), '## x', 'a priority Vikunja doesn\'t have isn\'t written');
+  assert.equal(md(doc, { mode: 'disabled' }), '## Call the hire shop\n- [ ] Ask for a quote (50%)', 'only the title is written when quick add is turned off');
+  assert.equal(md({ kind: 'task', ...item('x', { priority: 9 }) }), '## x', 'a priority that Vikunja does not have is not written');
 });
 
-test('a due date in numbers with its year, its time only when it isn\'t the default due time', () => {
+test('a due date is written in numbers with its year, and with its time only when it is not the default due time', () => {
   assert.equal(dueStamp(on(16, 12)), '2026-10-16');
-  assert.equal(dueStamp(new Date(2026, 9, 5, 15, 30).toISOString()), '2026-10-05 at 15:30', 'overdue or not');
-  assert.equal(dueStamp(new Date(2027, 0, 3, 5, 5).toISOString()), '2027-01-03 at 05:05', 'two digits, so "at 05:05" isn\'t read as the afternoon\'s');
-  assert.equal(dueStamp(new Date(2026, 9, 16, 9, 0).toISOString(), '9:00'), '2026-10-16', 'the user\'s own default due time');
+  assert.equal(dueStamp(new Date(2026, 9, 5, 15, 30).toISOString()), '2026-10-05 at 15:30', 'the same format applies whether or not the date is overdue');
+  assert.equal(dueStamp(new Date(2027, 0, 3, 5, 5).toISOString()), '2027-01-03 at 05:05', 'the time has two digits, so "at 05:05" is not read as the afternoon');
+  assert.equal(dueStamp(new Date(2026, 9, 16, 9, 0).toISOString(), '9:00'), '2026-10-16', 'the user\'s default due time leaves out the time');
   assert.equal(dueStamp(on(16, 12), '09:00'), '2026-10-16 at 12:00');
   assert.equal(dueStamp('0001-01-01T00:00:00Z'), '');
   assert.equal(dueStamp(null), '');
 });
 
-test('a repeat in quick add\'s words, which read back as the same repeat', () => {
+test('a repeat is written in quick add\'s syntax and reads back as the same repeat', () => {
   const H = 3600, D = 86400;
   const cases = [[{ mode: 1 }, 'every month'], [{ after: D, mode: 0 }, 'every day'], [{ after: 3 * D, mode: 0 }, 'every 3 days'], [{ after: 7 * D, mode: 0 }, 'every week'],
     [{ after: 14 * D, mode: 0 }, 'every 2 weeks'], [{ after: 30 * D, mode: 0 }, 'every 30 days'], [{ after: 365 * D, mode: 0 }, 'every year'], [{ after: 730 * D, mode: 0 }, 'every 2 years'],
@@ -165,10 +165,10 @@ test('a repeat in quick add\'s words, which read back as the same repeat', () =>
   for (const [r, words] of cases) {
     assert.equal(repeatPhrase(r), words);
     const back = parseCapture('Water the plants ' + words, [], { now: NOW }).repeat;
-    assert.deepEqual([back.after, back.mode], [r.after || 0, r.mode], words + ' read back');
+    assert.deepEqual([back.after, back.mode], [r.after || 0, r.mode], words + ' reads back as the same repeat');
   }
   assert.equal(repeatPhrase({ after: 0, mode: 0 }), '');
-  assert.equal(repeatPhrase({ after: 5400, mode: 0 }), '', 'an hour and a half has no words');
+  assert.equal(repeatPhrase({ after: 5400, mode: 0 }), '', 'an hour and a half has no repeat text');
   assert.equal(repeatPhrase(undefined), '');
 });
 
@@ -192,7 +192,7 @@ function pasted(text, { mode = 'vikunja', dueTime = '12:00' } = {}){
 const same = it => ({ title: it.title, done: !!it.done, pct: it.done || (it.items || []).length || it.subs?.total ? 0 : it.pct || 0, due: it.due || null, people: [...new Set((it.people || []).map(u => u.username))],
   priority: it.priority || 0, labels: it.labels || [], repeat: it.repeat || NO_REPEAT, items: (it.items || []).map(same) });
 
-test('a task\'s copy pasted into quick add makes the same tasks: done or not, nested, with their people, labels, priority, dates, repeats and progress', () => {
+test('a task\'s copy pasted into quick add makes the same tasks, with their nesting, people, labels, dates and progress', () => {
   assert.deepEqual(pasted(md(packed)), [same(packed)]);
   assert.deepEqual(pasted(md(van)), [same(van)]);
   // The same check in Todoist mode, which uses different prefixes, and with a different default due time.
@@ -203,21 +203,21 @@ test('a task\'s copy pasted into quick add makes the same tasks: done or not, ne
   assert.deepEqual(pasted(md(deep)), [same(deep)]);
   const one = { kind: 'task', ...item('Order milk', { pct: 75, due: new Date(2025, 0, 2, 8, 5).toISOString(), repeat: { mode: 1, after: 0 }, labels: ['call back'] }) };
   assert.equal(md(one), '## Order milk (75%) *"call back" every month 2025-01-02 at 08:05');
-  assert.deepEqual(pasted(md(one)), [same(one)], 'a date long past comes back as that date');
+  assert.deepEqual(pasted(md(one)), [same(one)], 'a date long past reads back as that date');
 });
 
 /* A title that contains text quick add would read as a date, person, label or similar is put in quotes, so quick add
    doesn't read it that way. Only titles that need quotes get them, and most titles don't. */
-test('a title quick add would read words in is quoted, with \' when it has a " in it; any other is written as it is', () => {
+test('a title that quick add would read as syntax is quoted, with single quotes if it contains a ", and any other title is not', () => {
   const line = (title, more = {}, opts) => md({ kind: 'task', ...item('Event'), items: [item(title, more)] }, opts).split('\n')[1];
   const head = (title, more = {}) => md({ kind: 'task', ...item(title, more), items: [item('a')] }).split('\n')[0];
-  assert.equal(line('Lunch friday', { people: [sam], due: on(16, 12) }), '- [ ] "Lunch friday" @sam 2026-10-16', 'a day');
-  assert.equal(line('Lunch with the team'), '- [ ] Lunch with the team', 'nothing to read: no quotes');
+  assert.equal(line('Lunch friday', { people: [sam], due: on(16, 12) }), '- [ ] "Lunch friday" @sam 2026-10-16', 'a title containing a day is quoted');
+  assert.equal(line('Lunch with the team'), '- [ ] Lunch with the team', 'a title with nothing to read has no quotes');
   assert.equal(line('Call "Bob" tomorrow'), '- [ ] \'Call "Bob" tomorrow\'');
-  assert.equal(line('"Hamlet" rehearsal'), '- [ ] \'"Hamlet" rehearsal\'', 'quotes at its start would hold only that word');
+  assert.equal(line('"Hamlet" rehearsal'), '- [ ] \'"Hamlet" rehearsal\'', 'double quotes at the start of a title would hold only that word, so single quotes are used');
   assert.equal(line('Don\'t forget the keys'), '- [ ] Don\'t forget the keys');
-  assert.equal(line('Ask @sam about the *hire'), '- [ ] "Ask @sam about the *hire"', 'a person and a label');
-  assert.equal(line('Discount 50%'), '- [ ] "Discount 50%"', 'a figure at its end');
+  assert.equal(line('Ask @sam about the *hire'), '- [ ] "Ask @sam about the *hire"', 'a title containing a person and a label is quoted');
+  assert.equal(line('Discount 50%'), '- [ ] "Discount 50%"', 'a title ending in a percentage is quoted');
   assert.equal(line('Order 50% more cups'), '- [ ] Order 50% more cups');
   assert.equal(line('Standup every week'), '- [ ] "Standup every week"');
   assert.equal(line('Paint !2 coats'), '- [ ] "Paint !2 coats"');
@@ -227,18 +227,18 @@ test('a title quick add would read words in is quoted, with \' when it has a " i
   // The user's prefix settings decide what is read. #3 is a project only in Todoist mode.
   assert.equal(line('Use #3 screws'), '- [ ] Use #3 screws');
   assert.equal(line('Use #3 screws', {}, { mode: 'todoist' }), '- [ ] "Use #3 screws"');
-  assert.equal(line('Lunch friday', {}, { mode: 'disabled' }), '- [ ] Lunch friday', 'with quick add turned off, nothing would be read');
+  assert.equal(line('Lunch friday', {}, { mode: 'disabled' }), '- [ ] Lunch friday', 'with quick add turned off, nothing is read, so no quotes');
   // After the bullet and checkbox, the start of a line is plain text. The start of a heading can mark the task as done, or be read as the first line of a list.
   assert.equal(line('x marks the spot'), '- [ ] x marks the spot');
   assert.equal(head('x marks the spot'), '## "x marks the spot"');
-  assert.equal(head('X marks the spot'), '## "X marks the spot"', 'a capital X says done too');
+  assert.equal(head('X marks the spot'), '## "X marks the spot"', 'a capital X also marks a task done');
   assert.equal(head('- [x] a box in its name'), '## "- [x] a box in its name"');
-  assert.equal(head('Groceries:'), '## "Groceries:"', 'a first line\'s colon would make it a parent, and be taken off');
+  assert.equal(head('Groceries:'), '## "Groceries:"', 'a colon at the end of a first line would make it a parent and be removed');
   assert.equal(line('Groceries:'), '- [ ] Groceries:');
   assert.equal(head('Pack the van'), '## Pack the van');
 });
 
-test('a copy with titles that had to be quoted comes back the same', () => {
+test('a copy with quoted titles reads back as the same tasks', () => {
   const titles = ['Lunch friday', 'Call "Bob" tomorrow', '"Hamlet" rehearsal', 'Don\'t forget the keys', 'Ask @sam about the *hire', 'Discount 50%', 'Standup every week', 'Paint !2 coats',
     'Sign in', 'x marks the spot', '2026-10-16', 'Pay rent by the 17th', 'Order 3/4 inch screws', '+Garden shed', 'Tables (50%)'];
   const doc = { kind: 'task', ...item('x marks the spot:', { people: [priya], priority: 2 }), items: titles.map((t, i) => item(t, { people: i % 2 ? [sam] : [], due: i % 3 ? on(16, 12) : null,
@@ -249,13 +249,13 @@ test('a copy with titles that had to be quoted comes back the same', () => {
 
 /* A parent's progress is the percentage its ring shows. That is the average of its subtasks' progress, and a done
    subtask counts as 100%. The bar has one segment per subtask, filled for each subtask that is done. */
-test('a parent: its ring\'s worked-out figure, and a bar of a segment per subtask, filled for each done', () => {
+test('a parent shows its ring\'s percentage, and a bar with a segment per subtask, filled for each done subtask', () => {
   const doc = { kind: 'task', ...item('A test task', { due: on(7, 18), people: [sam], ring: { pct: 13, done: 0, total: 4 } }), items: [
     item('One subtask', { pct: 50, due: on(7, 18), people: [sam] }), item('Another'), item('And another'), item('And another')] };
   assert.equal(text(doc), ['A test task  ▱▱▱▱ 13% · due today · sam', '◐ One subtask 50% · due today · sam', '○ Another', '○ And another', '○ And another'].join('\n'));
-  assert.equal(md(doc).split('\n')[0], '## A test task @sam 2026-10-07 at 18:00', 'the copy leaves a parent\'s figure out: it\'s worked out again');
+  assert.equal(md(doc).split('\n')[0], '## A test task @sam 2026-10-07 at 18:00', 'the copy leaves out a parent\'s percentage, because it is calculated again');
   assert.equal(bar(60, { pct: 60, done: 2, total: 3 }), '▰▰▱');
-  assert.deepEqual(progress(item('x', { pct: 40, ring: { pct: 70, done: 1, total: 2 } })).pct, 70, 'the ring\'s, not a figure of its own');
+  assert.deepEqual(progress(item('x', { pct: 40, ring: { pct: 70, done: 1, total: 2 } })).pct, 70, 'the ring\'s percentage is used, not the task\'s own');
   // A checklist counts skipped steps as done in its ring, and the text reports them separately.
   const run = { kind: 'run', ...item('Close'), ring: { pct: 67, done: 2, total: 3 }, items: [item('a', { done: true }), item('b', { done: true, skipped: true }), item('c')] };
   assert.equal(text(run).split('\n')[0], 'Close  ▰▰▱ 67% · 1 skipped');
@@ -271,7 +271,7 @@ const shared = () => {
   Object.assign(app, { user: { id: 1 }, pending: [], slow: [], perms: {}, positions: {}, projects: [], checklistIds: new Set(), hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), runNow: Date.now(), actTask: a => a.task });
   return app;
 };
-test('the text shared from a task\'s sheet matches its ring: the percent and a segment per subtask, each done filled', () => {
+test('the text shared from a task\'s sheet matches its ring, with a segment per subtask and each done one filled', () => {
   const app = shared();
   const sub = (id, f = {}) => ({ id, title: 'Sub ' + id, done: false, percent_done: 0, due_date: NONE, project_id: 5, assignees: [], related_tasks: {}, ...f });
   const subs = [sub(2, { percent_done: .5 }), sub(3), sub(4, { done: true }), sub(5, { percent_done: .25 })];
@@ -287,7 +287,7 @@ test('the text shared from a task\'s sheet matches its ring: the percent and a s
   assert.equal(shareText(app.shareDoc('task'), NOW).split('\n')[2], `◐ Sub 3 ${app.ringOf(subs[1]).pct}%`);
 });
 
-test('the text shared from a run\'s screen matches its ring, a tick waiting to be sent counted as its ring counts it', () => {
+test('the text shared from a checklist\'s screen matches its ring, counting a tick waiting to be sent as the ring does', () => {
   const app = shared(), now = Date.now();
   const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
     project_id: 5, assignees: [], attachments: [], reactions: {}, comments: [], related_tasks: {}, ...f });

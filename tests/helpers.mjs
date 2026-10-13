@@ -47,7 +47,7 @@ export const placeSays = (page, where, text, timeout = 20000) => expect(placeLin
 // A message line that replaces a row, found by its text.
 export const rowLine = (page, text) => page.locator('.row-line', { hasText: text });
 // Fails if a toast (the message at the bottom of the screen) is showing.
-export const noToast = async page => { if (await page.locator('#toast.show').count()) throw new Error('the toast said: ' + await page.textContent('#toast-msg')); };
+export const noToast = async page => { if (await page.locator('#toast.show').count()) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg')); };
 // Waits for a toast with this text. A hidden toast keeps its text and is only transparent, so only a showing toast counts.
 export const toast = (page, text, timeout = 20000) => expect(page.locator('#toast.show #toast-msg')).toContainText(text, { timeout, ignoreCase: true });
 // Hides the showing toast now, as its timer would, so the next toast is a new one. The test doesn't advance the page's
@@ -66,7 +66,7 @@ export async function steady(locator, timeout = 5000){
     if (box && was && Math.abs(box.x - was.x) < 0.5 && Math.abs(box.y - was.y) < 0.5) return box;
     was = box;
   }
-  throw new Error('it never stopped moving');
+  throw new Error('the element never stopped moving');
 }
 
 /* Real touch input on `page`, sent through Chrome. The page scrolls as it does on a phone, and the phone's touch
@@ -180,7 +180,7 @@ export async function swipeRow(page, sel, to, { start = 0, one = false, check = 
     const r = swipeAt({ start, dx: right ? d : -d, x, width, screen, del: true, one, side: right ? 'right' : 'left' });
     if (wants(r)) band.push(d); else if (band.length) break;
   }
-  if (!band.length) throw new Error(`no swipe of ${sel} from ${start}% does ${to}`);
+  if (!band.length) throw new Error(`no swipe distance on ${sel} from ${start}% ends at ${to}`);
   const full = to === 'delete' || to >= 100 || (to === 0 && start > 0), dx = full ? band[0] + 16 : band[Math.floor(band.length / 2)];
   if (finger) {
     const x1 = x + (right ? dx : -dx), t0 = Date.now();

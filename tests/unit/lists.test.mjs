@@ -15,7 +15,7 @@ import lines from '../../src/js/app/lines.js';
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z';                        // Vikunja's "no date"
 
-test('soonest first: dated by date, then undated by priority, then newest', () => {
+test('soonest first sorts dated tasks by date, then undated tasks by priority, then newest', () => {
   const list = [
     { id: 1, due_date: NONE, priority: 0 },
     { id: 2, due_date: '2026-10-09T09:00:00Z' },
@@ -24,13 +24,13 @@ test('soonest first: dated by date, then undated by priority, then newest', () =
     { id: 5, due_date: null, priority: 0 },
   ];
   assert.deepEqual(ids(soonestFirst(list)), [4, 2, 3, 5, 1]);
-  assert.deepEqual(ids(list), [1, 2, 3, 4, 5], 'the list given is left as it was');
+  assert.deepEqual(ids(list), [1, 2, 3, 4, 5], 'the list passed in is not changed');
 });
 
 const parentOf = (id, ...parents) => ({ id, related_tasks: { parenttask: parents.map(p => ({ id: p })) } });
 const withSubs = (id, ...subs) => ({ id, related_tasks: { subtask: subs.map(s => ({ id: s })) } });
 
-test('each subtask straight after its parent, in the parent\'s order, with its depth', () => {
+test('each subtask comes straight after its parent, in the parent\'s order, with its depth', () => {
   const list = [parentOf(4, 1), withSubs(1, 3, 4), parentOf(5, 4), parentOf(3, 1), { id: 2 }];
   list[0].related_tasks.subtask = [{ id: 5 }];
   const { tasks, depth } = nestSubtasks(list);
@@ -38,18 +38,18 @@ test('each subtask straight after its parent, in the parent\'s order, with its d
   assert.deepEqual(depth, { 1: 0, 3: 1, 4: 1, 5: 2, 2: 0 });
 });
 
-test('a subtask whose parent isn\'t in the list stays where it was, at the top', () => {
+test('a subtask whose parent is not in the list stays where it was, at the top level', () => {
   const { tasks, depth } = nestSubtasks([{ id: 1 }, parentOf(2, 99), { id: 3 }]);
   assert.deepEqual(ids(tasks), [1, 2, 3]);
   assert.equal(depth[2], 0);
 });
 
-test('a done parent with open subtasks is found, and shown over them, not left out with them at the top', () => {
+test('a done parent with open subtasks is found and shown above them, so they do not sit at the top level', () => {
   const sub = (id, parent, more = {}) => ({ id, done: false, related_tasks: { parenttask: [{ id: parent, done: true, project_id: 1 }] }, ...more });
   // This is what a project's List view returns. It has the open tasks and their subtasks, including done subtasks such as task 8, which is done and under task 6.
   const view = [{ id: 1 }, sub(2, 9), sub(3, 9), sub(4, 7, { related_tasks: { parenttask: [{ id: 7, done: true, project_id: 2 }] } }),
     { id: 6, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, done: true, related_tasks: { parenttask: [{ id: 6, done: false, project_id: 1 }] } }, sub(5, 8)];
-  assert.deepEqual(doneParentIds(view, 1), [9, 8], 'not a parent in another project; one the view gave, under an open task, too');
+  assert.deepEqual(doneParentIds(view, 1), [9, 8], 'a parent in another project is skipped, and a done parent the view returned under an open task is included');
   const head = { id: 9, done: true, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } };
   const { tasks, depth } = nestSubtasks([...view.filter(t => !t.done), head, view[5]]);
   assert.deepEqual(ids(tasks), [1, 4, 6, 8, 5, 9, 2, 3]);
@@ -69,41 +69,41 @@ test('tasks that are each other\'s subtasks are each shown once', () => {
   assert.deepEqual(ids(tasks).sort(), [1, 2]);
 });
 
-test('a template\'s steps go in their order: by id, with no order line', () => {
+test('a template\'s steps are sorted by id when it has no order line', () => {
   const tpl = { id: 1, labels: [{ title: 'template' }], description: '', related_tasks: { subtask: [{ id: 9 }, { id: 3 }] } };
   const { tasks } = nestSubtasks([tpl, parentOf(9, 1), parentOf(3, 1)]);
   assert.deepEqual(ids(tasks), [1, 3, 9]);
 });
 
-test('the key a list is saved under, for opening it offline', () => {
+test('a list is saved under a key so it can open offline', () => {
   assert.equal(viewKey({ name: 'project', id: 7, showDone: false }), 'project.7.open');
   assert.equal(viewKey({ name: 'project', id: 7, showDone: true }), 'project.7.done');
   assert.equal(viewKey({ name: 'run', id: 12 }), 'run.12');
   assert.equal(viewKey({ name: 'today' }), 'today');
 });
 
-test('Today\'s groups, in order, each new', () => {
+test('Today\'s groups come in a fixed order, and each call returns new lists', () => {
   assert.deepEqual(todayGroups().map(g => g.key), ['overdue', 'today', 'runs', 'nodate', 'week']);
   assert.notEqual(todayGroups()[0].tasks, todayGroups()[0].tasks);
 });
 
-test('Today’s groups in their order, a task not sent yet already in its place', () => {
+test('Today\'s groups sort their tasks, and a task waiting to be sent is already in position', () => {
   const at = h => `2026-10-07T${String(h).padStart(2, '0')}:00:00Z`;
   const overdue = [{ id: 1, priority: 0, due_date: at(8) }, { id: 2, priority: 3, due_date: at(9) }, { id: 3, priority: 0, due_date: at(7) }];
-  assert.deepEqual(ids(overdue.sort(todayOrder().overdue)), [2, 3, 1], 'the most urgent, then the longest overdue');
+  assert.deepEqual(ids(overdue.sort(todayOrder().overdue)), [2, 3, 1], 'overdue tasks sort by priority, then by how long they have been overdue');
   const today = [{ id: 4, due_date: at(15) }, { id: 'pending-a', pending: true, due_date: at(12) }, { id: 5, due_date: at(10) }];
-  assert.deepEqual(ids(today.sort(todayOrder().today)), [5, 'pending-a', 4], 'soonest first');
+  assert.deepEqual(ids(today.sort(todayOrder().today)), [5, 'pending-a', 4], 'tasks due today sort soonest first');
   const added = [{ id: 6, created: at(9) }, { id: 7, created: at(11) }, { id: 'pending-b', pending: true }];
-  assert.deepEqual(ids(added.sort(todayOrder().nodate)), ['pending-b', 7, 6], 'newest first, one not sent yet before them');
+  assert.deepEqual(ids(added.sort(todayOrder().nodate)), ['pending-b', 7, 6], 'tasks with no date sort newest first, and a task waiting to be sent comes before them');
 });
 
-test('a card goes in Today’s order by what brought it, a row by its own dates', () => {
+test('Today sorts a card by the subtask that put it there, and a row by its own dates', () => {
   const at = h => `2026-10-07T${String(h).padStart(2, '0')}:00:00Z`;
   const cards = { 8: { when: at(9), made: null }, 9: { when: null, made: at(12) } }, by = todayAt(cards), order = todayOrder(by);
   const today = [{ id: 4, due_date: at(10) }, { id: 8, due_date: at(20) }];
-  assert.deepEqual(ids(today.sort(order.today)), [8, 4], 'a card due later itself, but brought by a subtask due at 9');
+  assert.deepEqual(ids(today.sort(order.today)), [8, 4], 'a card due later itself sorts first, because a subtask due at 9 put it on Today');
   const added = [{ id: 6, created: at(11) }, { id: 9, created: at(1) }];
-  assert.deepEqual(ids(added.sort(order.nodate)), [9, 6], 'a card made long ago, brought by a subtask of yours made at 12');
+  assert.deepEqual(ids(added.sort(order.nodate)), [9, 6], 'a card made long ago sorts first, because a subtask made at 12 put it on Today');
   assert.equal(by({ id: 4, due_date: at(10) }).due_date, at(10));
 });
 
@@ -112,7 +112,7 @@ test('a card goes in Today’s order by what brought it, a row by its own dates'
    from Checklists, or by "TEMPLATE:" in its title. A template that is due again stays in the list. A project's Done
    list also leaves out the steps of a checklist. A project's open list shows a checklist in progress as a card with its
    open steps on it, and leaves out the steps of a finished checklist. */
-test('templates marked done and their steps are left out, and in a project’s Done a run’s steps; anything else stays', () => {
+test('templates marked done and their steps are left out of project lists and search, and anything else stays', () => {
   const app = component(checklists, runs), tpl = { title: 'template' }, DUE = '2026-10-09T09:00:00Z';
   app.checklistIds = new Set([2]);
   localStorage.setItem('pocket.saved.templates', JSON.stringify({ 40: { id: 40, title: 'Old one' } }));
@@ -127,55 +127,55 @@ test('templates marked done and their steps are left out, and in a project’s D
     t(70), t(71, { related_tasks: under(70, 'Task 70') }),                                  // a task and its subtask
     t(80, { project_id: 1, labels: [tpl] }), t(81, { project_id: 1, related_tasks: under(80, 'TEMPLATE: Not here') }),   // a project that isn't for checklists
   ];
-  assert.deepEqual(ids(app.withoutTemplates(list)), [50, 60, 61, 70, 71, 80, 81], 'search: a run’s steps stay');
-  assert.deepEqual(ids(app.withoutTemplates(list, true)), [50, 60, 70, 71, 80, 81], 'a project’s Done: its steps are on its screen');
+  assert.deepEqual(ids(app.withoutTemplates(list)), [50, 60, 61, 70, 71, 80, 81], 'search keeps a checklist\'s steps');
+  assert.deepEqual(ids(app.withoutTemplates(list, true)), [50, 60, 70, 71, 80, 81], 'a project\'s Done list leaves out a checklist\'s steps, because they show on the checklist\'s own screen');
   const open = [t(60, { done: false, related_tasks: { copiedfrom: [{ id: 30 }] } }), t(61, { done: false, related_tasks: { ...under(60, 'Opening up · run 1'), copiedfrom: [{ id: 31 }] } }),
     t(62, { done: false, related_tasks: { ...under(65, 'Opening up · run 0'), copiedfrom: [{ id: 31 }] } }), t(70, { done: false })];
   app.isRunTask = x => [60, 65].includes(x.id); app.stepRun = x => x.related_tasks.parenttask?.[0]?.id ?? null;
-  assert.deepEqual(ids(app.onProjectList(open)), [60, 61, 70], 'a project’s open list: a run in progress with its steps, a card; not a finished run’s step');
+  assert.deepEqual(ids(app.onProjectList(open)), [60, 61, 70], 'a project\'s open list shows a checklist in progress as a card with its steps, and leaves out the step of a finished checklist');
   app.checklistIds = new Set();
-  assert.equal(app.withoutTemplates(list), list, 'no project for checklists: nothing to look at');
+  assert.equal(app.withoutTemplates(list), list, 'with no project for checklists, the list is returned unchanged');
   localStorage.removeItem('pocket.saved.templates');
 });
 
 /* A project's copy saved on the phone keeps the count of its Done section, not the tasks in it. Those load when the
    user opens Done. When the copy is shown, Done is open only if it is open now, not if it was open when the copy was
    saved. */
-test('a project\'s kept copy has Done\'s count, not its tasks, and opens Done only if it\'s open now', () => {
+test('a project\'s saved copy keeps the Done count but not its tasks, and opens Done only if it is open now', () => {
   const open = { key: 'open', tasks: [{ id: 1 }] }, done = { key: 'done', fold: true, open: true, loaded: true, count: 2, tasks: [{ id: 8 }, { id: 9 }] };
   assert.deepEqual(keptGroups([open, done]), [open, { ...done, tasks: [], loaded: false, loading: false }]);
-  assert.equal(done.tasks.length, 2, 'the groups on screen are left as they are');
+  assert.equal(done.tasks.length, 2, 'the groups on screen are not changed');
   const app = component(views, tasks);
   Object.assign(app, { projById: new Map([[5, { id: 5, title: 'Big' }]]), positions: {}, view: { groups: [] } });
   const copy = { groups: [open, done], project: { id: 5 }, at: new Date().toISOString() };
   app.showSaved({ name: 'project', id: 5 }, copy);
-  assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length]), [['open', undefined, 1], ['done', false, 0]], 'closed since: closed, none drawn');
+  assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length]), [['open', undefined, 1], ['done', false, 0]], 'Done was closed since the copy was saved, so it is closed and draws no tasks');
   localStorage.setItem('pocket.done.open', JSON.stringify({ 5: true }));
   app.showSaved({ name: 'project', id: 5 }, { ...copy, groups: [open, { ...done, open: false }] });
-  assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length, g.loaded]), [['open', undefined, 1, undefined], ['done', true, 0, false]], 'open now: open, loaded afresh');
+  assert.deepEqual(app.view.groups.map(g => [g.key, g.open, g.tasks.length, g.loaded]), [['open', undefined, 1, undefined], ['done', true, 0, false]], 'Done is open now, so it is open and loads again');
   localStorage.removeItem('pocket.done.open');
 });
 
 /* A long screen is rendered in batches. The first rows render at once, then the rest render down the lists in order,
    one batch per frame, each batch sized to about a frame's work. Scrolling near the end of the rendered rows renders
    the rest. */
-test('a list draws the rows of the screen’s first rows that are its own', () => {
+test('a list draws only those of the screen\'s first rows that belong to it', () => {
   const list = [1, 2, 3, 4, 5];
   assert.deepEqual(drawnOf(list, 0, 3), [1, 2, 3]);
-  assert.deepEqual(drawnOf(list, 4, 6), [1, 2], 'a list further down: what’s left of them');
-  assert.deepEqual(drawnOf(list, 10, 6), [], 'none left');
-  assert.equal(drawnOf(list, 2, Infinity), list, 'all of it: the list itself');
+  assert.deepEqual(drawnOf(list, 4, 6), [1, 2], 'a list further down draws the rows that remain');
+  assert.deepEqual(drawnOf(list, 10, 6), [], 'no rows remain');
+  assert.equal(drawnOf(list, 2, Infinity), list, 'drawing everything returns the list itself');
 });
 
-test('a batch is about its time’s work: more rows when it took less, fewer when more, a few at least', () => {
-  assert.equal(nextBatch(20, 20, 40), 40, 'twice as fast as wanted: twice the rows, no more');
-  assert.equal(nextBatch(20, 1, 40), 40, 'nothing to it: no more than twice');
+test('the next batch is sized to the time available, with more rows when the last batch was quick and a few at least', () => {
+  assert.equal(nextBatch(20, 20, 40), 40, 'a batch twice as fast as wanted doubles the rows');
+  assert.equal(nextBatch(20, 1, 40), 40, 'the rows never more than double');
   assert.equal(nextBatch(20, 80, 40), 10);
-  assert.equal(nextBatch(20, 1000, 40), 4, 'a slow phone still draws a few a frame');
-  assert.equal(nextBatch(40, 500, 1000), 80, 'a second’s work: more rows, no more than twice');
+  assert.equal(nextBatch(20, 1000, 40), 4, 'a slow phone still draws a few rows a frame');
+  assert.equal(nextBatch(40, 500, 1000), 80, 'a batch sized to a second still never more than doubles');
 });
 
-test('the first few screens are drawn a frame’s work at a time, the rest about a second’s', () => {
+test('the first few screens are drawn in frame-sized batches, and the rest in batches of about a second', () => {
   assert.equal(NEAR_ROWS, 3 * FIRST_ROWS);
   assert.equal(batchMs(FIRST_ROWS), FRAME_MS);
   assert.equal(batchMs(NEAR_ROWS - 1), FRAME_MS);
@@ -183,7 +183,7 @@ test('the first few screens are drawn a frame’s work at a time, the rest about
   assert.ok(FRAME_MS <= 50 && LATER_MS >= 500);
 });
 
-test('a screen draws its first rows, the rest a batch a frame, then everything', async () => {
+test('a screen draws its first rows at once, then one batch a frame, then everything', async () => {
   const frames = [], listening = new Map();
   Object.assign(globalThis, { requestAnimationFrame: f => frames.push(f), scrollY: 0, innerHeight: 800,
     addEventListener: (k, f) => listening.set(k, f), removeEventListener: k => listening.delete(k) });
@@ -192,58 +192,58 @@ test('a screen draws its first rows, the rest a batch a frame, then everything',
   const app = component(views);
   Object.assign(app, { drawTo: Infinity, drawing: false, view: { loading: false, groups: [{ key: 'a', tasks: Array.from({ length: 30 }) }, { key: 'b', tasks: Array.from({ length: 200 }) }] } });
   app.drawFrom(0);
-  assert.equal(app.drawTo, FIRST_ROWS, 'its first rows at once');
-  assert.equal(app.drawing, true, 'busy meanwhile');
+  assert.equal(app.drawTo, FIRST_ROWS, 'the first rows are drawn at once');
+  assert.equal(app.drawing, true, 'the screen is busy drawing meanwhile');
   await frame();
-  assert.equal(app.drawTo, FIRST_ROWS, 'nothing more until they’re painted');
+  assert.equal(app.drawTo, FIRST_ROWS, 'no more rows are drawn until the first rows are painted');
   const seen = [];
   while (app.drawing && seen.length < 100) { await frame(); seen.push(app.drawTo); }
-  assert.ok(seen.length > 2 && seen.slice(0, -1).every((x, i) => !i || x > seen[i - 1]), 'more each frame: ' + seen);
-  assert.equal(app.drawTo, Infinity, 'then everything, and anything added later at once');
-  assert.equal(listening.has('scroll'), false, 'no longer watching the scroll');
+  assert.ok(seen.length > 2 && seen.slice(0, -1).every((x, i) => !i || x > seen[i - 1]), 'each frame draws more rows: ' + seen);
+  assert.equal(app.drawTo, Infinity, 'then everything is drawn, and anything added later is drawn at once');
+  assert.equal(listening.has('scroll'), false, 'the screen stops listening for scrolls');
 
   app.drawFrom(0); await frame(); await frame();
   assert.ok(app.drawTo < 230 && listening.has('scroll'));
   globalThis.scrollY = 3500; listening.get('scroll')();
-  assert.equal(app.drawTo, Infinity, 'scrolled within a screen of the end of what’s drawn: the rest at once');
+  assert.equal(app.drawTo, Infinity, 'scrolling to within a screen of the last drawn row draws the rest at once');
   assert.equal(app.drawing, false);
   await frame();
-  assert.equal(app.drawTo, Infinity, 'the batches stopped');
+  assert.equal(app.drawTo, Infinity, 'the batches stop');
   globalThis.scrollY = 0;
 });
 
-test('a list worked out again as it was is the same object, so its rows have nothing to do', () => {
+test('a list recalculated with the same content is the same object, so its rows do not update', () => {
   const t = id => ({ id }), a = t(1), b = t(2), c = t(3);
   const g = { key: 'open', title: 'Open', tasks: [a, b], depth: { 1: 0, 2: 1 }, kids: new Map([[1, [b]]]), before: 0, delete: true };
   assert.equal(sameGroup(g, { ...g, tasks: [a, b], depth: { 1: 0, 2: 1 }, kids: new Map([[1, [b]]]) }), true);
-  assert.equal(sameGroup(g, { ...g, tasks: [a, c] }), false, 'another task');
-  assert.equal(sameGroup(g, { ...g, tasks: [b, a] }), false, 'in another order');
-  assert.equal(sameGroup(g, { ...g, depth: { 1: 0, 2: 0 } }), false, 'not under it now');
+  assert.equal(sameGroup(g, { ...g, tasks: [a, c] }), false, 'a different task makes it a different group');
+  assert.equal(sameGroup(g, { ...g, tasks: [b, a] }), false, 'a different order makes it a different group');
+  assert.equal(sameGroup(g, { ...g, depth: { 1: 0, 2: 0 } }), false, 'a subtask that is no longer under its parent makes it a different group');
   assert.equal(sameGroup(g, { ...g, kids: new Map([[1, [b, c]]]) }), false);
-  assert.equal(sameGroup(g, { ...g, before: 4 }), false, 'further down the screen');
-  assert.equal(sameGroup(g, { ...g, open: true }), false, 'a field more');
+  assert.equal(sameGroup(g, { ...g, before: 4 }), false, 'a group further down the screen is a different group');
+  assert.equal(sameGroup(g, { ...g, open: true }), false, 'an extra field makes it a different group');
   assert.equal(sameGroup(undefined, g), false);
 
   const app = component(views, sending, lines);
   Object.assign(app, { route: { name: 'search' }, pending: [], deleting: [], positions: {}, cardOf: () => null,
     view: { groups: [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [c] }] } });
   const [open, done] = app.listGroups;
-  assert.deepEqual([open.before, done.before], [0, 2], 'how many rows are above each');
+  assert.deepEqual([open.before, done.before], [0, 2], 'the number of rows above each group');
   app.view.groups = [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [] }];
   const again = app.listGroups;
-  assert.equal(again[0], open, 'loaded again, unchanged: the same');
-  assert.notEqual(again[1], done, 'changed: a new one');
+  assert.equal(again[0], open, 'a group loaded again without changes is the same object');
+  assert.notEqual(again[1], done, 'a changed group is a new object');
 });
 
-test('the other screens aren’t loaded in the background while a screen’s rows are still being drawn', async () => {
+test('other screens are not preloaded in the background while a screen\'s rows are still being drawn', async () => {
   const app = component(views);
   let asked = 0, loaded = 0;
   Object.assign(app, { drawing: true, user: { id: 1 }, schedulePreload(){ asked++; }, refreshPeople: async () => { loaded++; }, preloads: () => [] });
   await app.preload();
-  assert.deepEqual([asked, loaded], [1, 0], 'asked again later, nothing loaded');
+  assert.deepEqual([asked, loaded], [1, 0], 'the preload is scheduled for later and nothing is loaded');
   app.drawing = false;
   await app.preload();
-  assert.equal(loaded, 1, 'once they’re drawn');
+  assert.equal(loaded, 1, 'the other screens load once the rows are drawn');
 });
 
 /* A list of done tasks is shown a part at a time. A project's Done shows its latest 100 tasks, its heading counts all
@@ -265,18 +265,18 @@ function doneApp(route){
   return app;
 }
 
-test('a project\'s Done shows its latest 100, counts them all, and a row shows 100 done earlier', async () => {
+test('a project\'s Done shows its latest 100 tasks, counts all of them, and has a row that loads 100 earlier ones', async () => {
   const v = doneVikunja(250), app = doneApp({ name: 'project', id: 5 });
   const g = app.doneGroup(null, 250, true);
   app.view.groups = [{ key: 'open', tasks: [] }, g];
   await app.loadDoneSection(g);
-  assert.deepEqual([g.tasks.length, g.tasks[0].id, g.count], [100, 1, 250], 'the most recently done first; its count all of them');
-  assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 1/50', '/projects/5/tasks 2/50'], 'one part, not the whole list');
+  assert.deepEqual([g.tasks.length, g.tasks[0].id, g.count], [100, 1, 250], 'the most recently done task is first, and the count includes all of them');
+  assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 1/50', '/projects/5/tasks 2/50'], 'only one part of the list is requested, not the whole list');
   assert.deepEqual(app.moreOf('done'), { title: 'Show 100 done earlier', note: '150 more not shown' });
 
   v.asked = [];
   await app.showMore('done');
-  assert.deepEqual(ids(g.tasks), Array.from({ length: 200 }, (_, k) => k + 1), 'the next 100 after them');
+  assert.deepEqual(ids(g.tasks), Array.from({ length: 200 }, (_, k) => k + 1), 'the next 100 tasks follow the first 100');
   assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 3/50', '/projects/5/tasks 4/50']);
   assert.deepEqual(app.moreOf('done'), { title: 'Show the last 50', note: '' });
 
@@ -284,13 +284,13 @@ test('a project\'s Done shows its latest 100, counts them all, and a row shows 1
   g.tasks.splice(5, 1); g.count--; v.done.splice(5, 1);
   v.done.unshift({ id: 900, done: true }, { id: 901, done: true });
   await app.showMore('done');
-  assert.equal(new Set(ids(g.tasks)).size, g.tasks.length, 'none twice');
+  assert.equal(new Set(ids(g.tasks)).size, g.tasks.length, 'no task appears twice');
   assert.equal(g.tasks.length, 249);
-  assert.equal(g.count, 251, 'counted as Vikunja counts them now');
-  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 2', note: '' }, 'the two done since, not yet on it');
+  assert.equal(g.count, 251, 'the count is the one Vikunja reports now');
+  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 2', note: '' }, 'the two tasks done since are not on the list yet');
 
   const kept = keptGroups([g])[0];
-  assert.deepEqual([kept.tasks.length, kept.count], [0, 251], 'the kept copy: its count, none of its tasks');
+  assert.deepEqual([kept.tasks.length, kept.count], [0, 251], 'the saved copy keeps the count and none of the tasks');
 
   // Without a connection, a message appears under the row. The row stays so the user can tap it again.
   globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
@@ -301,7 +301,7 @@ test('a project\'s Done shows its latest 100, counts them all, and a row shows 1
   assert.ok(app.moreOf('done'));
 });
 
-test('a project\'s Done read afresh shows as many as it did; a new visit, its latest 100', async () => {
+test('reloading a project\'s Done keeps as many tasks as it showed, and a new visit shows the latest 100', async () => {
   const v = doneVikunja(400), app = doneApp({ name: 'project', id: 5 });
   Object.assign(app, { pending: [], onProjectList: l => l, settle: async () => true, keepMarked: g => g, saveProject(){}, loadProjects: async () => {} });
   localStorage.setItem('pocket.done.open', JSON.stringify({ 5: true }));
@@ -310,14 +310,14 @@ test('a project\'s Done read afresh shows as many as it did; a new visit, its la
   app.view.groups = [{ key: 'open', tasks: [] }, shown];
   await app.loadProject(renderSeq, { name: 'project', id: 5 });
   const g = app.view.groups.find(x => x.key === 'done');
-  assert.deepEqual([g.tasks.length, g.count], [300, 400], 'loaded afresh: the 300 it showed');
+  assert.deepEqual([g.tasks.length, g.count], [300, 400], 'reloading shows the 300 tasks it showed before');
   app.view.groups = [];
   await app.loadProject(renderSeq, { name: 'project', id: 5 });
-  assert.equal(app.view.groups.find(x => x.key === 'done').tasks.length, 100, 'a new visit: the latest 100');
+  assert.equal(app.view.groups.find(x => x.key === 'done').tasks.length, 100, 'a new visit shows the latest 100');
   localStorage.removeItem('pocket.done.open');
 });
 
-test('search\'s done matches show 50, counted all, with a row for 50 more', async () => {
+test('done matches in search show 50 tasks, count all of them, and have a row that loads 50 more', async () => {
   const v = doneVikunja(120), app = doneApp({ name: 'search' });
   app.readCards = async () => ({ steps: [], positions: {} });
   app.keepMarked = g => g;
@@ -329,7 +329,7 @@ test('search\'s done matches show 50, counted all, with a row for 50 more', asyn
   await app.showMore('done');
   await app.showMore('done');
   assert.deepEqual(ids(g.tasks), Array.from({ length: 120 }, (_, k) => k + 1));
-  assert.equal(app.moreOf('done'), null, 'all shown: no row');
+  assert.equal(app.moreOf('done'), null, 'once all tasks are shown, there is no row');
 });
 
 /* This keeps the cost of each row low. A list's group stays one object for as long as the screen is the same
@@ -338,7 +338,7 @@ test('search\'s done matches show 50, counted all, with a row for 50 more', asyn
    reads its list's options from the object, so removing or adding a row doesn't make the unchanged rows update. The
    test uses Alpine's own reactivity (reactive.mjs). It watches everything a row might read and counts how often each
    watcher runs again. */
-test('a group as the screen draws it stays one object: a row gone or added changes its lists, and only what read something changed is asked again', c => {
+test('a group on screen stays one object, and removing or adding a row updates only what read the change', c => {
   const { Alpine, flush } = watching(c);
   const a = { id: 1 }, b = { id: 2 }, s = { id: 3, related_tasks: { parenttask: [{ id: 2 }] } }, x = { id: 4 }, n = { id: 9, related_tasks: { parenttask: [{ id: 2 }] } };
   const group = (tasks, more = {}) => ({ key: 'open', title: 'Open', cards: 'list', delete: true, reorder: true, ...nestSubtasks(tasks), before: 0, ...more });
@@ -353,47 +353,47 @@ test('a group as the screen draws it stays one object: a row gone or added chang
   watch('row 9', () => g.depth[9]);                                          // task 9 isn't in the list yet
   const once = { 'row 1': 1, 'card 2': 1, 'row 3': 1, 'the list': 1, 'row 9': 1 };
   into([a, b, s, x]);
-  assert.deepEqual(asked, once, 'worked out again, the same: nothing is asked again');
+  assert.deepEqual(asked, once, 'recalculating the same group runs no watcher again');
   into([a, b, s]);                                                           // task x is removed
-  assert.deepEqual(asked, { ...once, 'the list': 2 }, 'a row gone: the list draws, and no other row is asked');
+  assert.deepEqual(asked, { ...once, 'the list': 2 }, 'removing a row redraws the list and updates no other row');
   assert.equal(4 in Alpine.raw(g).depth, false);
   into([a, b, s, n]);                                                        // a subtask is added under task 2
-  assert.deepEqual(asked, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }, 'a subtask added: its card, the list and its own row');
+  assert.deepEqual(asked, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }, 'adding a subtask updates its card, the list and the subtask\'s own row');
   assert.deepEqual([...Alpine.raw(g.kids).get(2)], [s, n]);
   into([a, b, s, n], { before: 3 });
-  assert.deepEqual([Alpine.raw(g).before, asked], [3, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }], 'a field changed is written, and whoever read it would be asked');
+  assert.deepEqual([Alpine.raw(g).before, asked], [3, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }], 'a changed field is written, and only a watcher that read it would run again');
   into([a]);
-  assert.deepEqual([{ ...Alpine.raw(g).depth }, Alpine.raw(g.kids).size, asked['row 1']], [{ 1: 0 }, 0, 1], 'all but one gone: its depths and subtasks with them, and the row left was never asked again');
+  assert.deepEqual([{ ...Alpine.raw(g).depth }, Alpine.raw(g.kids).size, asked['row 1']], [{ 1: 0 }, 0, 1], 'removing all but one row also removes their depths and subtasks, and the remaining row never updated');
   into([a], { cards: null });
-  assert.equal(asked['row 1'], 2, 'the list\'s own options changed: every row');
+  assert.equal(asked['row 1'], 2, 'changing the list\'s options updates every row');
 });
 
-test('a group written into the one the screen keeps: what it no longer has is taken off, with no Alpine too', () => {
+test('a group written into the one the screen keeps drops the fields it no longer has, without Alpine too', () => {
   const a = { id: 1 }, g = { depth: {}, kids: new Map() };
   const first = intoGroup(g, { key: 'done', fold: true, open: true, tasks: [a], ...nestSubtasks([a]), count: 3 });
-  assert.equal(first, g, 'the same object');
+  assert.equal(first, g, 'the result is the same object');
   assert.deepEqual([g.tasks, g.depth, g.count, g.open], [[a], { 1: 0 }, 3, true]);
   const tasks = g.tasks;
   intoGroup(g, { key: 'done', fold: true, tasks: [a], ...nestSubtasks([a]) });
-  assert.deepEqual(['open' in g, 'count' in g, g.tasks === tasks], [false, false, true], 'fields gone are taken off; a list that\'s the same is the list it had');
+  assert.deepEqual(['open' in g, 'count' in g, g.tasks === tasks], [false, false, true], 'missing fields are removed, and an identical list is kept as the same array');
 });
 
 /* Rows that are highlighted for a moment (flash in app/lines.js) are stored by task id and changed one row at a time.
    The rows are highlighted when they were just added, just became due, or are new to the screen. Each row reads only
    its own entry, so highlighting one row doesn't make the others update. A single new list of ids would make every row
    on the screen search through it. */
-test('rows lit up for a moment are kept by id: lighting one asks nothing of the others, and they go dark after 2 seconds', c => {
+test('briefly highlighted rows are stored by id, so highlighting one row updates no other, and the highlight ends after 2 seconds', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const { Alpine, flush } = watching(c), app = Alpine.reactive(component(lines));
   app.flashed = { fresh: {}, due: {}, arrived: {} };
   const asked = {}, lit = () => Object.fromEntries(Object.entries(Alpine.raw(app).flashed).map(([k, v]) => [k, Object.keys(Alpine.raw(v))]));
   for (const id of [1, 2]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; return [app.flashed.fresh[id], app.flashed.arrived[id]]; });
   app.flash([1]); flush();
-  assert.deepEqual([lit(), asked], [{ fresh: ['1'], due: [], arrived: [] }, { 1: 2, 2: 1 }], 'one added: its row, not the other');
+  assert.deepEqual([lit(), asked], [{ fresh: ['1'], due: [], arrived: [] }, { 1: 2, 2: 1 }], 'adding one task updates its row and not the other');
   app.flash([2]); flush();
-  assert.deepEqual([lit().fresh, asked], [['2'], { 1: 3, 2: 2 }], 'another added: the first goes dark, the second lights');
+  assert.deepEqual([lit().fresh, asked], [['2'], { 1: 3, 2: 2 }], 'adding another task ends the first highlight and starts the second');
   app.flash([2]); app.flash([3, 4], 'arrived'); flush();
-  assert.deepEqual([lit(), asked], [{ fresh: ['2'], due: [], arrived: ['3', '4'] }, { 1: 3, 2: 2 }], 'lit again, and others new to the screen: neither row is asked');
+  assert.deepEqual([lit(), asked], [{ fresh: ['2'], due: [], arrived: ['3', '4'] }, { 1: 3, 2: 2 }], 'highlighting a row again, and rows new to the screen, updates neither row');
   c.mock.timers.tick(2000); flush();
-  assert.deepEqual([lit(), asked], [{ fresh: [], due: [], arrived: [] }, { 1: 3, 2: 3 }], '2 seconds on: dark');
+  assert.deepEqual([lit(), asked], [{ fresh: [], due: [], arrived: [] }, { 1: 3, 2: 3 }], 'after 2 seconds the highlights end');
 });

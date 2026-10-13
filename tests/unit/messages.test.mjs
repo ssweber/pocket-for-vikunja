@@ -14,30 +14,30 @@ import { component } from './fake.mjs';
 /* The row at the end of a list of done tasks that is shown a part at a time. It offers the next part and says how many
    tasks are left. When fewer than a full part are left, it offers the last of them. When none are left, there is no
    row. */
-test('the row for more done tasks says what its tap shows, and how many are left', () => {
+test('the row for more done tasks names what a tap shows and how many tasks are left', () => {
   assert.deepEqual(moreDone(2900, 100), { title: 'Show 100 done earlier', note: `${(2900).toLocaleString()} more not shown` });
   assert.deepEqual(moreDone(101, 100), { title: 'Show 100 done earlier', note: '101 more not shown' });
-  assert.deepEqual(moreDone(100, 100), { title: 'Show the last 100', note: '' }, 'a part left: the last of them');
+  assert.deepEqual(moreDone(100, 100), { title: 'Show the last 100', note: '' }, 'when exactly one part is left, the row offers the last of them');
   assert.deepEqual(moreDone(12, 100), { title: 'Show the last 12', note: '' });
   assert.deepEqual(moreDone(1, 50), { title: 'Show the last one', note: '' });
-  assert.deepEqual(moreDone(60, 50), { title: 'Show 50 done earlier', note: '60 more not shown' }, 'search: 50 at a time');
-  assert.equal(moreDone(0, 100), null, 'none left: no row');
-  assert.equal(moreDone(-3, 100), null, 'more shown than counted (done since): no row');
+  assert.deepEqual(moreDone(60, 50), { title: 'Show 50 done earlier', note: '60 more not shown' }, 'search loads 50 at a time');
+  assert.equal(moreDone(0, 100), null, 'with no tasks left, there is no row');
+  assert.equal(moreDone(-3, 100), null, 'with more tasks shown than counted, because tasks were done since, there is no row');
 });
 
-test('a change not saved says why in a few words', () => {
+test('a message for a change that was not saved gives the reason in a few words', () => {
   assert.equal(notSaved(new NetError('Failed to fetch')), 'Not saved: no connection');
   assert.equal(notSaved(new Error('Forbidden')), 'Not saved: Forbidden');
 });
 
-test('a move turned down says why, and for an API token without it, the permission it needs', () => {
+test('a rejected move gives the reason, and for an API token without permission, the permission it needs', () => {
   assert.equal(notMoved(Object.assign(new Error('Your API token doesn\'t allow this.'), { status: 403, code: 'token' })),
     'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.');
   assert.equal(notMoved(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not moved: Forbidden');
   assert.equal(notMoved(new NetError('Failed to fetch')), 'Not moved: no connection');
 });
 
-test('what a tick says: a parent that closed its open subtasks, "Closed", with how many; none, "Done:"', () => {
+test('a tick message says "Closed" with a count when a parent closed its open subtasks, and "Done:" otherwise', () => {
   assert.equal(doneText(0, 0, 'Call Jo'), 'Done: Call Jo');
   assert.equal(doneText(4, 4, 'Pack the van'), 'Closed Pack the van + 4 subtasks');
   assert.equal(doneText(1, 1, 'Pack the van'), 'Closed Pack the van + 1 subtask');
@@ -49,25 +49,25 @@ test('what a tick says: a parent that closed its open subtasks, "Closed", with h
   assert.deepEqual(doneLine(0, 0, 'Pack the van'), { text: 'Done:', title: 'Pack the van', more: '' });
 });
 
-test('a done task over its open subtasks says why it\'s on the open list', () => {
+test('a done task with open subtasks shows why it is on the open list', () => {
   assert.equal(headText(1), 'Done, but 1 subtask is still open');
   assert.equal(headText(3), 'Done, but 3 subtasks are still open');
   assert.equal(headText(0), 'Done');
 });
 
-test('where tasks just added went, said by the add box', () => {
+test('the add box says where the tasks just added went', () => {
   assert.equal(addedWhere({ n: 1, project: 'Orders' }), 'Added to Orders');
   assert.match(addedWhere({ n: 1, project: 'Orders', due: new Date(Date.now() + 30 * 864e5).toISOString() }), /^Added to Orders, due (\w+ \d+|\d+ \w+)/);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0);
-  assert.equal(addedWhere({ n: 1, project: 'Orders', due: tomorrow.toISOString() }), 'Added to Orders, due tomorrow', 'a day in words, mid-sentence');
+  assert.equal(addedWhere({ n: 1, project: 'Orders', due: tomorrow.toISOString() }), 'Added to Orders, due tomorrow', 'a due day is written as a word in the middle of the sentence');
   assert.equal(addedWhere({ n: 3, project: 'Orders' }), 'Added 3 tasks to Orders');
   assert.equal(addedWhere({ n: 3, subs: 2, project: 'Orders' }), 'Added 1 task with 2 subtasks to Orders');
-  assert.equal(addedWhere({ n: 9, subs: 7, project: 'Orders' }), 'Added 2 tasks with 7 subtasks to Orders', 'a list with several parents');
+  assert.equal(addedWhere({ n: 9, subs: 7, project: 'Orders' }), 'Added 2 tasks with 7 subtasks to Orders', 'a list with several parent tasks');
   assert.equal(addedWhere({ n: 1, project: 'Orders', photos: 2, but: ', but @sam can\'t see Orders' }), 'Added to Orders, with 2 photos, but @sam can\'t see Orders');
   assert.equal(addedWhere({ n: 2 }), 'Added 2 tasks to its project');
 });
 
-test('Move all to today says how many moved, and what stayed', () => {
+test('Move all to today reports how many tasks moved and which tasks stayed', () => {
   assert.equal(movedText(6, 0, ''), 'Moved 6 to today');
   assert.equal(movedText(1, 2, ''), 'Moved 1 to today. 2 weren\'t saved and are still overdue.');
   assert.equal(movedText(2, 0, '1 repeating task stays: tick it.'), 'Moved 2 to today. 1 repeating task stays: tick it.');
@@ -82,26 +82,26 @@ const app = (route = 'today', sheet = blankSheet('')) => {
   return a;
 };
 
-test('a message goes to its place when that is on screen, and to the toast when not', t => {
+test('a message appears at its place when that place is on screen, and in the toast when it is not', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const today = app('today'), undo = { label: 'Undo', fn(){} };
   assert.equal(today.say('Moved 6 to today', { place: 'overdue', action: undo }), 'place');
   assert.deepEqual(today.placeLines('overdue').map(l => [l.text, l.action.label]), [['Moved 6 to today', 'Undo']]);
-  assert.equal(today.said, 'Moved 6 to today. Undo is beside it.', 'a screen reader hears it');
+  assert.equal(today.said, 'Moved 6 to today. Undo is beside it.', 'a screen reader announces the message and its Undo');
   t.mock.timers.tick(5000);
-  assert.deepEqual(today.placeLines('overdue'), [], 'gone with its Undo\'s time');
+  assert.deepEqual(today.placeLines('overdue'), [], 'the message disappears when the time for its Undo ends');
 
   const search = app('search');
   assert.equal(search.say('Moved 6 to today', { place: 'overdue' }), 'toast', 'Overdue is only on Today');
   assert.equal(search.toasts[0].msg, 'Moved 6 to today');
   assert.equal(app('project').say('Added to Orders', { place: 'cap' }), 'place', 'the add box is on a project');
-  assert.equal(app('run').say('x', { place: ['sheet:files', 'step', 'run'] }), 'place', 'the first of a list on screen');
+  assert.equal(app('run').say('x', { place: ['sheet:files', 'step', 'run'] }), 'place', 'the first place in the list that is on screen is used');
 });
 
 /* In the page, anything put in the component's data comes back as Alpine's copy of it (a Proxy), never as the original
    object. This test uses a store that does the same. The timer that ends a message must remove the copy that the store
    returns. */
-test('a message in its place goes once its time is up, in a store that gives back its own copy of it, as Alpine\'s does', t => {
+test('a message disappears when its time is up, even if the store returns a copy of it, as Alpine\'s does', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const copies = new WeakMap(), copy = o => copies.get(o) || (copies.set(o, new Proxy(o, {})), copies.get(o));
   const today = app('today');
@@ -110,18 +110,18 @@ test('a message in its place goes once its time is up, in a store that gives bac
   today.sayAt('cap', { text: 'Moved to tomorrow', action: { label: 'Undo', fn(){} }, gone: () => gone++ });
   assert.equal(today.placeLines('cap').length, 1);
   t.mock.timers.tick(4999);
-  assert.equal(today.placeLines('cap').length, 1, 'there for its Undo\'s time');
+  assert.equal(today.placeLines('cap').length, 1, 'the message stays for the time of its Undo');
   t.mock.timers.tick(1);
-  assert.deepEqual([today.placeLines('cap').length, gone], [0, 1], 'then gone');
+  assert.deepEqual([today.placeLines('cap').length, gone], [0, 1], 'the message is then removed');
   today.sayAt('cap', { text: 'Not added', cls: 'failed' });
   t.mock.timers.tick(4000);
-  assert.equal(today.placeLines('cap').length, 0, 'one with nothing to tap, after its shorter time');
+  assert.equal(today.placeLines('cap').length, 0, 'a message with nothing to tap is removed after a shorter time');
   today.sayAt('cap', { text: 'Stays', ms: null });
   t.mock.timers.tick(60000);
-  assert.equal(today.placeLines('cap').length, 1, 'one that stays until the screen is left');
+  assert.equal(today.placeLines('cap').length, 1, 'a message with no time limit stays until the screen is left');
 });
 
-test('a sheet\'s messages are in it, under what each is about, and go with it', () => {
+test('a sheet\'s messages appear in the sheet, under the part each is about, and go away with the sheet', () => {
   const task = app('today', { ...blankSheet('task'), open: true, task: { id: 1 } });
   task.say('Not saved: no connection', { place: 'sheet:notes', cls: 'failed' });
   assert.equal(task.sheet.lines.notes.text, 'Not saved: no connection');
@@ -143,7 +143,7 @@ test('a sheet\'s messages are in it, under what each is about, and go with it', 
   assert.deepEqual(task.placeLines('sheet:notes'), []);
 });
 
-test('an action tapped runs once, and its line goes without calling gone', () => {
+test('a tapped action runs once, and its message is removed without calling its gone callback', () => {
   let ran = 0, gone = 0;
   const a = app('today');
   a.sayAt('overdue', { text: 'Moved 2 to today', action: { label: 'Undo', fn: () => ran++ }, gone: () => gone++ });
@@ -156,7 +156,7 @@ test('an action tapped runs once, and its line goes without calling gone', () =>
   assert.deepEqual([gone, a.placeLines('overdue').length], [1, 0]);
 });
 
-test('on a run, what\'s written on a step or the run is a comment, as Vikunja calls it, in Waiting to send and its messages', () => {
+test('on a checklist, a note on a step or the checklist is called a comment, as in Vikunja, in Waiting to send and its messages', () => {
   const a = component(outbox, runs);
   Object.assign(a, { pending: [], failed: [], view: { groups: [], run: null }, actTitle: () => 'Unlock the door' });
   assert.equal(a.actText({ op: 'note', task: 1 }), 'A comment on “Unlock the door”');
@@ -166,7 +166,7 @@ test('on a run, what\'s written on a step or the run is a comment, as Vikunja ca
   assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'Marking “Unlock the door” done, with its comment');
 });
 
-test('the question a parent’s ring asks names what goes with it in a sentence: the first three, then how many more', () => {
+test('the question a parent\'s ring asks lists the tasks that close with it, naming the first three and counting the rest', () => {
   assert.equal(namesText(['Load chairs']), 'Load chairs');
   assert.equal(namesText(['Load chairs', 'Book the hall']), 'Load chairs and Book the hall');
   assert.equal(namesText(['Load chairs', 'Book the hall', 'Wipe the tables']), 'Load chairs, Book the hall and Wipe the tables');
@@ -182,7 +182,7 @@ test('the question a parent’s ring asks names what goes with it in a sentence:
   assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, 'This step stays not done: Mop.');
 });
 
-test('a task held on Today and moved says where it went; a card kept by its subtask, why; an Undo, what couldn\'t go back', () => {
+test('moving a task held on Today names where it went, explains a card kept by its subtask, and reports what an Undo could not move back', () => {
   assert.equal(movedTo('Friday'), 'Moved to Friday');
   assert.equal(movedTo('Today'), 'Moved to today');
   assert.equal(movedTo('Mon 12'), 'Moved to Mon 12');
@@ -197,7 +197,7 @@ test('a task held on Today and moved says where it went; a card kept by its subt
 
 // Who started a checklist, shown in its history. The summary shows only the time when the checklist started today. The
 // ⋯ menu always shows the day. When the time is unknown, only the name is shown. When the name is unknown, nothing is shown.
-test('a run says who started it and when, with the day when it was another day or at the top of its ⋯', () => {
+test('a checklist shows who started it and when, with the day if it started on another day or in the ⋯ menu', () => {
   const now = new Date(2026, 9, 9, 14, 0), at = new Date(2026, 9, 9, 6, 2), before = new Date(2026, 9, 8, 6, 2);
   const time = d => d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}), full = d => d.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
   assert.equal(startedText('Priya', at.toISOString(), {now}), 'Started by Priya at ' + time(at));
@@ -207,7 +207,7 @@ test('a run says who started it and when, with the day when it was another day o
   assert.equal(startedText(null, at.toISOString(), {now}), '');
 });
 
-test('a waiting row\'s Cancel says what becomes of the lines waiting under it', () => {
+test('Cancel on a waiting row names what happens to the lines waiting under it', () => {
   assert.equal(cancelName('Pack the van'), 'Cancel Pack the van');
   assert.equal(cancelName('Pack the van', 2), 'Cancel Pack the van. The lines under it become their own tasks.');
   assert.equal(cancelName('Pack the van', 1), 'Cancel Pack the van. The line under it becomes its own task.');
@@ -215,6 +215,6 @@ test('a waiting row\'s Cancel says what becomes of the lines waiting under it', 
   assert.equal(cancelName('Load chairs', 3, 'Pack the van'), 'Cancel Load chairs. The lines under it move under “Pack the van”.');
 });
 
-test('a Markdown copy says both things it\'s for: notes, and Pocket\'s add box, where it makes the same tasks', () => {
+test('the Markdown copy message names both uses: pasting into notes, and pasting into Pocket\'s add box to make the same tasks', () => {
   assert.equal(COPIED.markdown, 'Copied as a Markdown list. Paste it into your notes, or into Pocket\'s add box to make the same tasks');
 });

@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {seatUnder} from '../../src/js/app/seat.js';
 
-test('a box waits for its form and positions a replacement form of the same height', () => {
+test('a box waits for its form and then positions a replacement form of the same height', () => {
   const frames = new Map(); let n = 0;
   globalThis.requestAnimationFrame = fn => { frames.set(++n, fn); return n; };
   globalThis.cancelAnimationFrame = id => frames.delete(id);
