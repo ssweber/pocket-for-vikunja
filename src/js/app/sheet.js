@@ -12,13 +12,10 @@ import {fileEntry, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
-import {ANCHORS} from './quickadd.js';
+import {seats, seatUnder} from './seat.js';
 import {haptic} from '../haptics.js';
 
 export let pendingSaves = 0;
-// A list's box under a row (seatFoot), a sheet's and a checklist's own: the row given room under it, how much, where,
-// and the frame that asks.
-const feet = {sheet: {el: null, h: 0, top: '', raf: 0, missed: 0}, run: {el: null, h: 0, top: '', raf: 0, missed: 0}};
 // Notes written and not saved yet, kept on the phone: {text, base: what the notes said when the editing began}. An older
 // Pocket kept the text only.
 const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
@@ -553,8 +550,8 @@ export default {
      screen, runBoxAt (runAim, app/runs.js). As a nudge does on a project's list. The box is laid over room given to
      the row, never taken off the page, and its place at the foot stays, dashed: a tap there, or its row
      scrolled out of sight while it isn't being typed in, and it's back. The last row nudged changes nothing: the box is
-     under it already. Where the row is, is asked every frame meanwhile (seatFoot), as for the box in a list (seatBox,
-     quickadd.js). */
+     under it already. Where the row is, is asked as frames go by meanwhile (seatFoot), as for the box in a list
+     (seatBox, quickadd.js): one way for both, seat.js. */
   nudgedSub(id){
     const s = this.subList.find(x => String(x.id) === String(id));
     // (A template's steps are done tasks. Not while a step is being changed: its box is in the way.)
@@ -573,45 +570,30 @@ export default {
     this.seatFoot(where);
   },
   seatFoot(where){
-    const run = where === 'run', seat = feet[where], list = run ? '#run-steps' : '#d-subtasks', boxId = run ? 'run-box' : 'd-subbox';
-    cancelAnimationFrame(seat.raf);
+    const run = where === 'run', list = run ? '#run-steps' : '#d-subtasks', boxId = run ? 'run-box' : 'd-subbox';
     // What's in sight of the list: the screen, or the sheet's own scroller.
     const sight = () => run ? {top: 0, bottom: innerHeight} : document.getElementById('sheet-body')?.getBoundingClientRect() || {top: 0, bottom: innerHeight};
-    const room = el => {
-      const was = seat.el;
-      if (was === el) return;
-      if (was) {
-        const above = was.isConnected && !ANCHORS && was.getBoundingClientRect().bottom + seat.h <= sight().top;
-        was.classList.remove('sub-boxed');
-        if (above) { if (run) scrollBy(0, -seat.h); else document.getElementById('sheet-body').scrollTop -= seat.h; }
-      }
-      el?.classList.add('sub-boxed');
-      seat.el = el;
-    };
     // A row after it in the list: with none, the box under it is the box at the foot.
     const later = el => { for (let n = el.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.row[data-id]')) return true; return false; };
     // The row it's under, as the page has it: a step added a moment ago is known by its entry until it's in Vikunja.
     const at = () => run ? (this.route.name === 'run' && this.runBoxAt != null ? this.actTask({task: this.runBoxAt}) : null) : this.sheet.open ? this.sheet.subAt : null;
-    const step = () => {
-      const box = document.getElementById(boxId), id = box ? at() : null;
-      const el = id != null ? document.querySelector(`${list} > .row[data-id="${id}"]`) : null;
-      // Its row isn't drawn: one just added is a frame or two away; gone for a second, the box is back at the foot.
-      if (id != null && !el && ++seat.missed < 60) { seat.raf = requestAnimationFrame(step); return; }
-      seat.missed = 0;
-      // Its row gone, or the last now (the one just added at the end, or the rows after it deleted): at the foot.
-      const home = id != null && (!el || !later(el));
-      if (home) { if (run) this.runBoxAt = null; else { this.sheet.subAt = null; this.sheet.subAfter = null; } }
-      const under = home ? null : el;
-      room(under);
-      box?.classList.toggle('inline', !!under);
-      if (!under) { if (box) box.style.top = ''; seat.top = ''; return; }
-      const h = box.offsetHeight, top = under.offsetTop + under.offsetHeight + 'px';
-      if (h !== seat.h) { seat.h = h; box.parentElement.style.setProperty('--sub-h', h + 'px'); }
-      if (top !== seat.top) { seat.top = top; box.style.top = top; }
-      const r = under.getBoundingClientRect(), s = sight();
-      if ((r.bottom + h < s.top || r.top > s.bottom) && !box.contains(document.activeElement)) return this.footHome(where);
-      seat.raf = requestAnimationFrame(step);
-    };
-    step();
+    const foot = () => { if (run) this.runBoxAt = null; else { this.sheet.subAt = null; this.sheet.subAfter = null; } };
+    seatUnder(seats[where], {
+      box: () => document.getElementById(boxId), cls: 'sub-boxed', prop: () => [document.getElementById(boxId).parentElement, '--sub-h'], sight,
+      // Its row not drawn: one just added is a frame or two away, waited for; gone for a second (lost), or the last now
+      // (the one just added at the end, or the rows after it deleted): at the foot.
+      row: () => {
+        const id = at();
+        if (id == null) return null;
+        const el = document.querySelector(`${list} > .row[data-id="${id}"]`);
+        if (!el) return undefined;
+        if (!later(el)) { foot(); return null; }
+        return el;
+      },
+      lost: foot, home: () => this.footHome(where),
+      place: (b, el) => el.offsetTop + el.offsetHeight + 'px',
+      apply: (b, top) => { b.style.top = top; }, unplace: b => { if (b) b.style.top = ''; },
+      scrollBack: h => { if (run) scrollBy(0, -h); else document.getElementById('sheet-body').scrollTop -= h; },
+    });
   },
 };

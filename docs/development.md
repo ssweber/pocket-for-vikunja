@@ -37,7 +37,7 @@ Each file in `src/js/` starts with a comment saying what it's for. By what you'r
 | A task held on Today, its four dates | `throw.js`, `app/throw.js` |
 | Rows ticked or deleted, leaving together | `batch.js`, `app/leaving.js` |
 | What Pocket says, and where | `messages.js`, `app/lines.js`, `app/toast.js` |
-| Quick add: reading a line, a pasted list, the add boxes | `quickadd.js`, `app/quickadd.js` |
+| Quick add: reading a line, a pasted list, the add boxes, a box under a row | `quickadd.js`, `app/quickadd.js`, `app/seat.js` |
 | What's waiting to be sent, and sending it | `sync.js`, `app/sending.js`, `app/outbox.js` |
 | Checklists: templates, runs, timed steps | `checklists.js`, `app/checklists.js`, `app/runs.js`, `app/alerts.js` |
 | A task's sheet | `app/sheet.js`, `markup/sheet/` |

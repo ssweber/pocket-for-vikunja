@@ -8,6 +8,7 @@ import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
 import {sync} from '../sync.js';
+import {seats, seatUnder} from './seat.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
 let peopleAt = 0;                              // when it last loaded, this session
@@ -16,10 +17,8 @@ const PEOPLE_AGE = 10 * 6e4;                   // who can see each project is lo
 // been seen, and whether each was in sight when last told.
 let cursorIO = null, watched = null, stand = null;
 const inSight = new WeakMap();
-// The add box in the list (seatBox): the element given room under it, how much, and the frame that keeps asking.
-const seat = {el: null, key: '', h: 0, inset: '', raf: 0, at: ''};
-// Whether the browser holds the page still itself when something above the screen changes height (Safari doesn't).
-export const ANCHORS = typeof CSS !== 'undefined' && !!CSS.supports?.('overflow-anchor', 'auto');
+// What each box's text read as, for how it is now (boxRead): which box -> {key, projects, list, first, firstAll, lines}.
+const reads = new Map();
 
 export default {
   /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
@@ -581,46 +580,35 @@ export default {
      subtasks, its card's header, so what's added comes first) is given room under it, the box's height (.boxed,
      --box-h), and the box is laid over that room, as far in as what it adds. It's the one box, never taken off the
      page, so it keeps its text and the focus as it moves: Enter adds a line, and the box is under the new one. Its
-     place at the bottom stays, dashed, saying what the box says there (#cap-home). Where the room is on the page is asked every frame while the box is
-     there: rows above it fold and leave, a row is held and moved. With no cursor the room goes, and the box is at the
-     bottom again. Room taken away above the screen moves everything on it, where the browser doesn't hold the page
-     still itself: the page is scrolled by as much in the same frame. Asked again whenever the cursor changes (core.js). */
+     place at the bottom stays, dashed, saying what the box says there (#cap-home). Where the room is on the page is
+     asked as frames go by while the box is there (seatUnder, seat.js). With no cursor the room goes, and the box is at
+     the bottom again. Asked again whenever the cursor changes (core.js). */
   seatBox(){
     const bar = this.$refs.captureBar, root = document.documentElement;
     if (!bar) return;
-    const room = (el, key) => {
-      const was = seat.el;
-      if (was === el) return;
-      if (was) {
-        const above = was.isConnected && !ANCHORS && was.getBoundingClientRect().bottom + seat.h <= 0;
-        was.classList.remove('boxed');
-        if (above) scrollBy(0, -seat.h);
-      }
-      el?.classList.add('boxed');
-      seat.el = el; seat.inset = ''; seat.key = el ? key : '';
-    };
-    cancelAnimationFrame(seat.raf);
-    const step = () => {
-      const s = this.boxSeat;
-      if (s) seat.raf = requestAnimationFrame(step);
-      const el = !s ? null : seat.el?.isConnected && seat.key === s.key ? seat.el : document.querySelector(s.sel);
-      const h = el ? bar.offsetHeight : 0;
-      if (el && h !== seat.h) { seat.h = h; root.style.setProperty('--box-h', h + 'px'); }
-      room(el, s?.key);
-      bar.classList.toggle('inline', !!el);
-      bar.classList.toggle('out', !!el && s.out);                        // a task's box: its tick is the bigger (styles.css, --mark)
-      if (!el) { if (seat.at) { seat.at = ''; bar.style.top = bar.style.left = bar.style.width = bar.style.paddingLeft = ''; } return; }
-      // As far in as what it adds: a task's inset, out a level; the row's own, a subtask's or a step's; under its task, a
-      // level further.
-      seat.inset ||= s.out ? '14px' : Math.round(parseFloat(getComputedStyle(el).paddingLeft) + (s.deeper ? parseFloat(getComputedStyle(root).getPropertyValue('--sub-in')) || 30 : 0)) + 'px';
-      const r = el.getBoundingClientRect(), list = (el.closest('.list') || el).getBoundingClientRect();
-      const at = [Math.round(r.bottom + scrollY), Math.round(list.left + scrollX), Math.round(list.width), seat.inset].join();
-      if (at === seat.at) return;
-      seat.at = at;
-      const [top, left, width] = at.split(',');
-      bar.style.top = top + 'px'; bar.style.left = left + 'px'; bar.style.width = width + 'px'; bar.style.paddingLeft = seat.inset;
-    };
-    step();
+    let key = '', inset = '';
+    seatUnder(seats.bar, {
+      box: () => bar, cls: 'boxed', prop: () => [root, '--box-h'], patience: 0, scrollBack: h => scrollBy(0, -h),
+      // The cursor's row, as boxSeat names it: the one it had, while that's still on the page and the same.
+      row: () => {
+        const s = this.boxSeat;
+        if (!s) return null;
+        const had = seats.bar.el, el = had?.isConnected && key === s.key ? had : document.querySelector(s.sel);
+        key = el ? s.key : '';
+        return el || undefined;
+      },
+      // Under the row, at the list's left and width, and as far in as what it adds: a task's inset, out a level; the
+      // row's own, a subtask's or a step's; under its task, a level further.
+      place: (b, el, changed) => {
+        const s = this.boxSeat;
+        b.classList.toggle('out', !!s?.out);                              // a task's box: its tick is the bigger (styles.css, --mark)
+        if (changed || !inset) inset = s?.out ? '14px' : Math.round(parseFloat(getComputedStyle(el).paddingLeft) + (s?.deeper ? parseFloat(getComputedStyle(root).getPropertyValue('--sub-in')) || 30 : 0)) + 'px';
+        const r = el.getBoundingClientRect(), list = (el.closest('.list') || el).getBoundingClientRect();
+        return [Math.round(r.bottom + scrollY), Math.round(list.left + scrollX), Math.round(list.width), inset].join();
+      },
+      apply: (b, at) => { const [top, left, width, pad] = at.split(','); b.style.top = top + 'px'; b.style.left = left + 'px'; b.style.width = width + 'px'; b.style.paddingLeft = pad; },
+      unplace: b => { b.classList.remove('out'); b.style.top = b.style.left = b.style.width = b.style.paddingLeft = ''; },
+    });
   },
   /* Where the box is in the list, if it is: {key, sel: what it's under, out, deeper: a level further in than that}.
      On a project's list and Today, under the cursor's row (out a level: after its task's item). (A run's screen has no
