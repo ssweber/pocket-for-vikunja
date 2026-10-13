@@ -93,8 +93,7 @@ const WRITTEN = ['Check the guards at 3pm', 'First article check 2 hours later',
 const STEPS = ['Check the guards at 3pm {#check-the-guards}', 'Warm up the press T#30m', 'First article check T#2h:check-the-guards'];
 const GUARDS = '“Check the guards at 3pm”';
 const tplRow = `.cl-tpl:has(.title:text-is("${TEMPLATE}"))`;
-// A template's step tapped opens quick add's box in its words' place (sheet/step-edit.html), where Alt+↑ and ↓ move it a
-// place, as holding it does. It has no × and no ⋯ (inline-add-box-plan, part 5): a step is swiped left to remove it.
+// Tapping a template step opens quick add's box in the row. Hold the closed row to reorder it. Swipe left to remove it.
 // The nth step's box, opened if it isn't.
 const stepBox = async n => {
   const row = `#d-subtasks .row:nth-of-type(${n})`;
@@ -118,8 +117,8 @@ async function dragStep(n, to){
   await page.mouse.move(x, y, { steps: 10 });
   await page.mouse.up();
 }
-// Moved a place by the key in its box, and the step closed again after, as tapping elsewhere would.
-const tapStep = async (n, label) => { await page.press(await stepBox(n), label === 'Move up' ? 'Alt+ArrowUp' : 'Alt+ArrowDown'); await page.press('#d-subtasks .step-in textarea', 'Escape'); };
+// Exercise relative moves against Vikunja's latest order. Dragging chooses a destination in the displayed order.
+const tapStep = (n, label) => page.evaluate(([n, dir]) => Alpine.$data(document.body).moveStep(n - 1, dir), [n, label === 'Move up' ? -1 : 1]);
 let project, template, me, other, otherToken;
 const runs = [];                                 // run ids, in the order started
 
@@ -208,7 +207,7 @@ try {
     await expect(row(0).locator('.title')).toHaveText('Check the guards at 3pm');
     await page.keyboard.type(WRITTEN[1]);
     await expect(chip).toContainText('2h after');
-    // First article check counts from the guards; moved down (Alt+↓ in its box, as holding it does), it still does.
+    // First article check still counts from the guards after moving down.
     await chip.locator('select').selectOption({ label: 'Check the guards at 3pm' });
     await page.keyboard.press('Enter');
     await expect(row(1).locator('.meta')).toHaveText(`Due 2h after ${GUARDS}`);
@@ -287,19 +286,21 @@ try {
     // The step that counted from it counts from the step before again (inline-add-box-plan, part 5): here, the start.
     await expect(row(0).locator('.meta')).toHaveText('Due 20m after the start');
     await page.waitForSelector('#nt-create:not([disabled])');
-    /* A step being changed keeps the keyboard up through its own row's move (rows-and-sheet-fixes-plan, part 5): its
-       box keeps the focus, with its words, as Alt+↑ ↓ move the row. */
+    // A step editor leaves Alt arrows alone. Dragging the closed row still changes its order.
     const typing = () => page.evaluate(() => document.activeElement?.classList.contains('draft-in') ? document.activeElement.value : document.activeElement?.tagName);
     const types = async (what, value) => { await page.waitForTimeout(200); if (await typing() !== value) throw new Error(`${what}: the focus is on ${await typing()}`); };
     for (const text of ['Rest it', 'Carve it']) { await page.fill(box, text); await page.press(box, 'Enter'); }
     await expect(rows).toHaveCount(3);                                        // Baste, Rest, Carve
     await page.press(await stepBox(2), 'Alt+ArrowDown');
-    await expect(row(2).locator('.title')).toHaveText('Rest it');
-    await types('its own row moved down', 'Rest it');
+    await types('Alt+Down in the step editor', 'Rest it');
     await page.press('#d-subtasks .step-in textarea', 'Alt+ArrowUp');
-    await expect(row(1).locator('.title')).toHaveText('Rest it');
-    await types('its own row moved up', 'Rest it');
+    await types('Alt+Up in the step editor', 'Rest it');
     await page.press('#d-subtasks .step-in textarea', 'Escape');
+    await expect(row(1).locator('.title')).toHaveText('Rest it');
+    await dragStep(2, 3);
+    await expect(row(2).locator('.title')).toHaveText('Rest it');
+    await dragStep(3, 2);
+    await expect(row(1).locator('.title')).toHaveText('Rest it');
     await removeStep(3);
     await expect(rows).toHaveCount(2);
     // Every row taken out, and the name: nothing is kept for the next New template (openNewTemplate keeps what's written).
@@ -324,7 +325,7 @@ try {
     if (JSON.stringify(stepOrder(t.description)) !== JSON.stringify([links[0], links[2], links[1]])) throw new Error('description: ' + t.description);
     if (JSON.stringify(t.related_tasks.subtask.map(s => s.id).sort((a, b) => a - b)) !== JSON.stringify(links)) throw new Error('the steps were linked again');
     if (/pocket:order/.test(await page.textContent('#d-desc'))) throw new Error('the notes show the order line');
-    // Tapped open, a step is its box, with no × and no ⋯: it's swiped left to remove it, and Alt+↑ ↓ move it.
+    // Tapping a step opens its editor. Hold the closed row to reorder it. Swipe left to remove it.
     await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
     const open = page.locator('#sheet.show'), box = page.locator('#d-subtasks .step-in textarea');
     await expect(box).toBeFocused();
@@ -593,15 +594,24 @@ try {
 
   await step('note-on-a-step-and-the-run', async () => {
     // What's written on a run is a Vikunja comment, and called one, as in a task's sheet: "Notes" are a task's own.
+    await expect(page.locator('#step-note-form button')).toBeDisabled();
+    await page.fill('#step-note', '   ');
+    await expect(page.locator('#step-note-form button')).toBeDisabled();
     await page.getByRole('textbox', { name: 'Comment on this step' }).fill('Looks good');
+    await expect(page.locator('#step-note-form button')).toBeEnabled();
     await page.locator('#step-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#step-extra .comment:has-text("Looks good")');
+    await expect(page.locator('#step-note-form button')).toBeDisabled();
     await expect(page.locator('#run-steps .row:nth-of-type(3) .note-mark')).toHaveAttribute('aria-label', 'A comment');   // its row says it has one
     await expect(page.locator('#run .h3:has-text("Comments on this checklist")')).toBeVisible();
     await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment for this checklist, and the next');
+    await expect(page.locator('#run-note-form button')).toBeDisabled();
+    await page.fill('#run-note', '   ');
+    await expect(page.locator('#run-note-form button')).toBeDisabled();
     await page.getByRole('textbox', { name: 'Comment on this checklist' }).fill('Line 2 ran slow today');
     await page.locator('#run-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#run-notes .comment:has-text("Line 2 ran slow today")');
+    await expect(page.locator('#run-note-form button')).toBeDisabled();
     const step3 = await task((await runStep(first.id, 2)).id), run = await task(first.id);
     if ((step3.comments || []).filter(c => c.comment.includes('Looks good')).length !== 1) throw new Error('step comments: ' + JSON.stringify(step3.comments?.map(c => c.comment)));
     if (!(run.comments || []).some(c => c.comment.includes('Line 2 ran slow today'))) throw new Error('no note on the run');
@@ -1312,6 +1322,13 @@ try {
     await expect(page.locator('#run-box')).toHaveClass(/\binline\b/);
     await expect(page.locator(box)).toHaveAttribute('placeholder', 'Step');
     await expect(page.locator('#run-box-place')).toBeVisible();
+    await page.fill(box, 'Draft');
+    await page.press(box, 'Alt+ArrowDown');
+    await expect(page.locator('#run-steps .row:nth-of-type(2)')).toHaveClass(/sub-boxed/);
+    await page.press(box, 'Alt+ArrowUp');
+    await expect(page.locator('#run-steps .row:nth-of-type(1)')).toHaveClass(/sub-boxed/);
+    await expect(page.locator(box)).toHaveValue('Draft');
+    await expect(page.locator(box)).toBeFocused();
     await add('Wipe the oil off the floor');
     // In its place at once, right after the step nudged; the box empty, focused, and under what was written, for the next.
     await page.waitForSelector('#run-steps .row:nth-of-type(2):has-text("Wipe the oil off the floor")');

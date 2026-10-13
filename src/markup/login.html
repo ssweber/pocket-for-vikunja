@@ -23,11 +23,11 @@
       <label class="field"><span>Username or email</span><input id="in-user" x-ref="inUser" x-model="login.user" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label class="field"><span>Password</span><input id="in-pass" x-model="login.pass" type="password" autocomplete="current-password" required></label>
       <label class="field" id="totp-field" :hidden="!login.showTotp" hidden><span>Two-factor code, if you use one</span><input id="in-totp" x-ref="inTotp" x-model="login.totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"></label>
-      <button class="btn block" type="submit" :disabled="login.busy">Sign in</button>
+      <button class="btn block" type="submit" :disabled="login.busy || !login.user.trim() || !login.pass">Sign in</button>
     </form>
     <form id="f-token" :hidden="login.method !== 'token'" @submit.prevent="submitToken()" hidden>
       <label class="field"><span>API token</span><input id="in-token" x-ref="inToken" x-model="login.token" autocapitalize="off" spellcheck="false" required placeholder="tk_…"></label>
-      <button class="btn block" type="submit" :disabled="login.busy">Connect</button>
+      <button class="btn block" type="submit" :disabled="login.busy || !login.token.trim()">Connect</button>
       <p class="note">Create one in Vikunja under Settings → API Tokens. Pick the “Task Management” preset, then also tick “User” and “Users” under Other, and “Users search” under Projects. For checklists, also tick “Reactions”, and “Update” under Projects.</p>
     </form>
   </div>

@@ -8,7 +8,7 @@ export const ANCHORS = typeof CSS !== 'undefined' && !!CSS.supports?.('overflow-
 const HOT_MS = 1000, IDLE_MS = 50;               // check every frame for HOT_MS after a change, then every IDLE_MS
 
 // Each box tracks its row (el), reserved height (h), position (at) and next check (raf or timer).
-const fresh = () => ({el: null, h: 0, at: '', raf: 0, timer: 0, missed: 0, changed: false, movedAt: 0});
+const fresh = () => ({el: null, box: null, h: 0, at: '', raf: 0, timer: 0, missed: 0, changed: false, movedAt: 0});
 export const seats = {bar: fresh(), sheet: fresh(), run: fresh()};
 
 /* Keep box `s` under the row returned by row(). A null row puts the box at the bottom. An undefined row waits up to
@@ -37,12 +37,15 @@ export function seatUnder(s, {box, row, cls, prop, place, apply, unplace, sight 
   };
   const step = () => {
     const b = box();
-    let el = b ? row() : null, waiting = false;
-    if (el === undefined) {
+    let el = row(), waiting = false;
+    // Alpine can draw the form after its row. Keep checking until both are available.
+    if (el === undefined || (!b && el !== null)) {
       if (++s.missed < patience) return next();                        // keep the previous row's spacing while rendering
       lost?.(); el = null; waiting = true;                             // release the spacing, but keep checking for the row
     } else s.missed = 0;
     room(el);
+    // A form drawn again needs its position and spacing even when its size has not changed.
+    if (b && b !== s.box) { s.box = b; s.h = 0; s.at = ''; }
     b?.classList.toggle('inline', !!el);
     if (!el) { if (s.at) { s.at = ''; unplace(b); } if (waiting) next(); return; }
     const h = b.offsetHeight;

@@ -96,7 +96,7 @@
         </template>
         <template x-if="sheet.comments && canEdit"><form class="comment-form" id="d-cform" @submit.prevent="postComment()">
           <textarea id="d-cin" rows="1" placeholder="Write a comment" aria-label="Comment" x-model="sheet.commentDraft" x-grow="sheet.commentDraft"></textarea>
-          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="!sheet.commentDraft.trim()" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
         </form></template>
       </div>
       </div></template>

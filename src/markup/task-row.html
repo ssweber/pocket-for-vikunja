@@ -31,7 +31,8 @@
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.step ? {step: true, editing: sheet.stepEdit?.id === t.id} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
-     @click.capture="tapGap(t, g, $event)">
+     @click.capture="tapGap(t, g, $event)" @contextmenu="rowMenu(t, $event)" @keydown.shift.f10="rowMenu(t, $event)"
+     @keydown.alt.up="rowBox(t, g, -1, $event)" @keydown.alt.down="rowBox(t, g, 1, $event)">
   <!-- A parent (a checklist, or an open task with subtasks) has a ring, not a tick (ring.html, rowRing) -->
   <template x-for="r in [rowRing(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/ring.html -->
@@ -45,7 +46,7 @@
   <template x-if="!g.top && !g.step && (g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
   <!-- A checklist is ticked and finished on its own screen, and a template is never ticked, so neither has a tick here -->
   <template x-if="!g.run && !g.sheet && !g.top && !canTick(t) && !rowRing(t, g)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
-  <!-- Alt+↑ and Alt+↓ move the row among its siblings where reordering is allowed, as holding it does -->
+  <!-- Alt+↑ and Alt+↓ move the add box through the rows. Holding a row reorders it. -->
   <!-- The sheet's own row: a tap on the title puts a text box in the body's place until the focus leaves it (saveTitle) -->
   <template x-if="g.own && sheet.titleEdit"><div class="body title-in"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
     x-init="$nextTick(() => { grow($el); $el.focus(); $el.setSelectionRange($el.value.length, $el.value.length); })" x-grow="sheet.title"
@@ -57,7 +58,7 @@
     <!-- include markup/sheet/step-edit.html -->
   </template>
   <!-- /only -->
-  <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g)" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
+  <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g)">
     <template x-if="g.sheet || g.run"><div class="title" x-text="g.step ? stepShown(t).title : t.title"></div></template>
     <!-- On a one-line row (g.line), what sits at the right and is read after the title (rowWhen), worked out once per
          row, like its slot -->

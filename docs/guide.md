@@ -60,7 +60,9 @@ Behaviour you might not expect:
 - **Nudging a row moves the add box under it.** A nudge is a press and a slight scroll. With a mouse, it is a short, slow drag up or down on the row. Under a task, the box adds that task's first subtask. Under a subtask, it adds the next one. On a project's list, **⇤** moves the box out a level to add a task there instead, and **⇥** moves it back in (Tab and Shift+Tab on a keyboard). Tap the dashed outline the box left behind, or scroll the row away, to send the box back. **Add a subtask here** in a task's **⋯** does the same as a nudge. Nudging works on a project's list, on Today, in a task's sheet, on a checklist, and on a template's steps. In a sheet and on a checklist the box is at the foot of the list, not in a bar at the bottom of the screen, so nudging the last row changes nothing.
 - **The subtask box doesn't read `+project`.** A subtask stays in its parent's project. In a checklist project it doesn't read dates either, because subtasks there may become template steps.
 - **Copy as a Markdown list** round-trips. Pasted into Pocket's add box, it makes the tasks again. Notes, comments and attachments aren't included.
-- **Every swipe and hold has an equivalent in the ⋯ menu**, for keyboard and screen-reader use.
+- **Every swipe and hold has an equivalent in the ⋯ menu**, for keyboard and screen-reader use. Right-click a row to open its task menu. Press Shift+F10 on a focused row to open the same menu.
+- **Press Alt+Up or Alt+Down on a task or in an add box** to move the box through the rows. The text stays in the box. Hold and drag a task to reorder it.
+- **Press Alt+Left in the project add box** to add a task at that position. Press Alt+Right to add a subtask instead.
 
 ## Assigning
 

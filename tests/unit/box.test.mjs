@@ -40,6 +40,29 @@ const component = () => {
 };
 const key = (key, more = {}) => ({ key, shiftKey: false, isComposing: false, prevented: false, preventDefault(){ this.prevented = true; }, ...more });
 
+test('Alt arrows move a list box and leave a step editor to its own keys', () => {
+  const app = component(), a = alpine(app), list = textarea(), editor = textarea(), moved = [], levels = [];
+  app.boxMove = (w, dir) => { moved.push([w, dir]); return true; };
+  app.boxLevel = out => { levels.push(out); return true; };
+  a.on('box', list, 'capW', ['lines']); a.on('box', editor, "'tname'");
+  for (const [name, dir] of [['ArrowUp', -1], ['ArrowDown', 1]]) {
+    const e = key(name, {altKey: true}); list.fire('keydown', e); assert.equal(e.prevented, true);
+    editor.fire('keydown', key(name, {altKey: true}));
+    assert.deepEqual(moved.at(-1), ['cap', dir]);
+  }
+  for (const [name, out] of [['ArrowLeft', true], ['ArrowRight', false]]) {
+    const e = key(name, {altKey: true}); list.fire('keydown', e); assert.equal(e.prevented, true);
+    editor.fire('keydown', key(name, {altKey: true})); assert.equal(levels.at(-1), out);
+    const plain = key(name); list.fire('keydown', plain); assert.equal(plain.prevented, false);
+  }
+  assert.equal(moved.length, 2); assert.equal(levels.length, 2);
+  app.boxLevel = () => false;
+  const limit = key('ArrowLeft', {altKey: true}); list.fire('keydown', limit);
+  assert.equal(limit.prevented, true, 'a level limit must not trigger browser Back');
+  const e = key('ArrowUp', {altKey: true, ctrlKey: true}); list.fire('keydown', e); assert.equal(e.prevented, false);
+  assert.deepEqual(app.entered, []);
+});
+
 test('the markup\'s own directives are x-style, x-grow and x-box', () => {
   assert.deepEqual(alpine(component()).names, ['style', 'grow', 'box']);
 });

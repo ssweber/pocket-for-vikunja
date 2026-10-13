@@ -26,7 +26,7 @@
   </header>
 
   <!-- Busy while the screen reloads, or while its rows are still being drawn a batch at a time (drawFrom, views.js) -->
-  <main id="view" :class="{bare: route.name === 'run'}" aria-live="polite" :aria-busy="view.updating || drawing ? 'true' : null">
+  <main id="view" :class="{bare: route.name === 'run', today: route.name === 'today'}" aria-live="polite" :aria-busy="view.updating || drawing ? 'true' : null">
     <!-- The title bar: Back, the project's name, and ⋯. On a checklist's screen the name's place holds the checklist's
          own row instead (RUN_ROW, task-row.html), with its ring, its name and who it's for, so the screen is no taller
          for it. Its project is named in its sheet. -->

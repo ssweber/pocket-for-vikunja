@@ -94,6 +94,38 @@ function projectList(){
 const added = (id, title, position) => ({ id, items: [{ p: { title, position }, under: null }] });
 const waiting = (e, parent) => e.items.map((x, i) => ({ id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, parent, title: x.p.title, position: x.p.position }));
 
+test('the box walks through eligible rows and keeps its level when adding top-level tasks', () => {
+  const {app, van, chairs, tables, lights} = projectList(), before = document.querySelectorAll;
+  Object.assign(app, {lines: {}, subBoxW: '', $nextTick(){}});
+  document.querySelectorAll = () => [van, chairs, tables, lights].map(t => ({dataset: {id: String(t.id)}}));
+  try {
+    app.boxMove('cap', -1); assert.equal(app.cursor.id, lights.id);
+    app.boxMove('under', 1); assert.equal(app.cursor, null);
+    lights.done = true;
+    app.boxMove('cap', -1); assert.equal(app.cursor.id, tables.id, 'skip done rows');
+    app.boxMove('under', -1); assert.equal(app.cursor.id, chairs.id);
+    app.boxLevel(true);
+    app.boxMove('cap', -1); assert.deepEqual(app.cursor, {id: van.id, under: null, out: true});
+    app.boxMove('cap', 1); assert.equal(app.cursor, null, 'skip subtasks at the outer level');
+    app.canWrite = () => false;
+    app.boxMove('cap', -1); assert.equal(app.cursor, null, 'skip read-only rows');
+  } finally { document.querySelectorAll = before; }
+});
+
+test('a sheet box skips done subtasks and stops at the first row and the foot', () => {
+  const before = document.querySelectorAll, rows = [{id: 1}, {id: 2, done: true}, {id: 3}];
+  const app = {subBoxW: 'sub', route: {name: 'project'}, sheet: {subAt: null}, subList: rows, isStepList: false, $nextTick(){},
+    nudgedSub(id){ this.sheet.subAt = id; }, footHome(){ this.sheet.subAt = null; }};
+  document.querySelectorAll = () => rows.map(t => ({dataset: {id: String(t.id)}}));
+  try {
+    const move = dir => quickadd.boxMove.call(app, 'sub', dir);
+    move(-1); assert.equal(app.sheet.subAt, '1');
+    move(-1); assert.equal(app.sheet.subAt, '1');
+    move(1); assert.equal(app.sheet.subAt, null);
+    move(1); assert.equal(app.sheet.subAt, null);
+  } finally { document.querySelectorAll = before; }
+});
+
 test('the cursor on a task: subtasks go ahead of its first, as the box is right under it; on a subtask, after it, under its parent', () => {
   const { app, van, chairs } = projectList();
   assert.equal(app.capW, 'cap');

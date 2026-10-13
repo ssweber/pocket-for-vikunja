@@ -116,9 +116,16 @@ export default {
   },
   openAccount(){ this.openSheet('account'); },
 
-  async openTask(id){
+  // Reuse the sheet's actions for a mouse or keyboard context menu. Text fields keep the browser's menu.
+  rowMenu(t, e){
+    if (inTextField(e.target) || t.pending || t.key || sliding || e.defaultPrevented) return;
+    e.preventDefault(); e.stopPropagation();
+    this.openTask(t.id, true);
+  },
+  async openTask(id, menu = false){
     const from = this.sheet.open && this.sheet.kind === 'task' ? this.sheet.task?.id : null;
     this.openSheet('task');
+    this.sheet.menu = menu;
     this.sheet.from = from;
     this.sheet.commentDraft = taskDrafts.get('comment:' + id) || '';
     this.sheet.sub.text = taskDrafts.get('sub:' + id) || '';
@@ -561,10 +568,10 @@ export default {
     const at = this.underRow('#d-subtasks', s.id);
     if (String(this.sheet.subAt ?? '') !== String(at ?? '')) haptic('tick');
     this.sheet.subAt = at; this.sheet.subAfter = null;
-    this.seatFoot('sheet');
+    this.$nextTick(() => this.seatFoot('sheet'));
   },
   // A checklist's step nudged on its screen (nudged, quickadd.js, which also puts the box on the card).
-  nudgedStep(s){ this.runBoxAt = this.underRow('#run-steps', s.id); this.seatFoot('run'); },
+  nudgedStep(s){ this.runBoxAt = this.underRow('#run-steps', s.id); this.$nextTick(() => this.seatFoot('run')); },
   // Where the box goes for a row nudged in list `sel`: under it, by id, or at the foot (null) when it is the last row.
   underRow(sel, id){ return [...document.querySelectorAll(sel + ' > .row[data-id]')].at(-1)?.dataset.id === String(id) ? null : id; },
   footHome(where){

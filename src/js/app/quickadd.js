@@ -4,7 +4,7 @@ import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {parentIds, saved} from '../lists.js';
 import {clearOf, listViewOf, placeAfter, placeFirst} from '../order.js';
-import {NUDGE_TICK} from '../progress.js';
+import {inTextField, NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
 import {sync} from '../sync.js';
@@ -608,6 +608,45 @@ export default {
   // Use Tab and Shift+Tab to change nesting only when another level is available. At either limit, keep normal
   // keyboard focus navigation.
   boxTab(e){ if (this.boxLevel(e.shiftKey)) e.preventDefault(); },
+  // A row's shortcut moves the add box and focuses its field so the next press acts on the box too.
+  rowBox(t, g, dir, e){
+    if (e.ctrlKey || e.metaKey || e.isComposing || inTextField(e.target) || g.own || g.top || g.locked) return;
+    const w = g.sheet ? this.subBoxW : g.run ? (this.runAim ? 'ins' : '') : this.capW;
+    if (!w || !this.boxMove(w, dir, t.id)) return;
+    e.preventDefault();
+    this.$nextTick(() => this.boxEl(w)?.focus({preventScroll: true}));
+  },
+  /* Walk the box through eligible rows in display order without changing task order. Keep the draft and focus.
+     At a sheet's or checklist's foot, the last row is already the box's target. */
+  boxMove(w, dir, start = null){
+    const run = w === 'ins', sheet = w === this.subBoxW, cap = ['cap', 'under'].includes(w) && ['today', 'project'].includes(this.route.name);
+    if (!run && !sheet && !cap) return false;
+    const sel = run ? '#run-steps > .row[data-id]' : sheet ? '#d-subtasks > .row[data-id]' : '#view .row[data-id], #view .card-head';
+    const out = cap && this.boxOut, done = sheet && !this.isStepList ? new Set(this.subList.filter(t => t.done).map(t => String(t.id))) : new Set();
+    const rows = [...document.querySelectorAll(sel)].filter(el => {
+      if (!cap) return !done.has(el.dataset.id);
+      const t = this.tasks[el.dataset.id || el.closest('.day-card')?.dataset.id];
+      return this.canAim(t) && !this.leaving[t.id] && !this.lines[t.id] && (!out || !this.listParent(t));
+    });
+    const id = el => el.dataset.id || el.closest('.day-card')?.dataset.id;
+    const at = (cap ? (out ? this.cursor.under ?? this.cursor.id : this.cursor?.id) : run ? this.runBoxAt : this.sheet.subAt) ?? start;
+    const i = at == null ? rows.length : rows.findIndex(el => String(at) === id(el));
+    const from = !cap && at == null ? rows.length - 1 : i < 0 ? rows.length : i;
+    const to = Math.max(0, Math.min(rows.length, from + dir)), el = rows[to];
+    if (cap) {
+      if (el) { this.aim(this.tasks[id(el)]); if (out) this.boxLevel(true); }
+      else this.boxBack();
+    } else if (!el || to === rows.length - 1) this.footHome(run ? 'run' : 'sheet');
+    else if (run) {
+      const s = this.runView.steps.find(s => String(s.id) === id(el));
+      if (s) this.nudgedStep(s);
+    } else this.nudgedSub(id(el));
+    this.$nextTick(() => {
+      if (cap) this.seatBox(); else this.seatFoot(run ? 'run' : 'sheet');
+      document.getElementById(cap ? 'capture' : run ? 'run-box' : 'd-subbox')?.scrollIntoView({block: 'nearest'});
+    });
+    return true;
+  },
   /* Place n top-level tasks after the target task and before its next sibling. Return null without a List view. */
   outPlaces(n){
     const c = this.cursor, t = this.cursorTask, top = t && (c.under != null ? this.tasks[c.under] : t);

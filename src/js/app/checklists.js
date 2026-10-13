@@ -390,7 +390,7 @@ export default {
     el.focus();
     if (typed) { const at = atEnd ? el.value.length : typed.length; el.setSelectionRange(at, at); }
   },
-  // Move a New template row to index `to`, by drag or Alt+arrows. The move takes the focus off the row's box, so it is
+  // Move a New template row to index `to`. The move takes the focus off the row's box, so it is
   // given back afterwards.
   placeDraftRow(which, k, to){
     const rows = this.draftRows(which), box = document.activeElement;
@@ -614,7 +614,7 @@ export default {
     } catch (err) { this.say('Not removed: ' + why(err), {place: 'sheet:subtasks', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
-  /* Move a template's step `dir` places up (-1) or down (1), from its menu or Alt+arrows, or as far as it was dragged
+  /* Move a template's step `dir` places up (-1) or down (1), or as far as it was dragged
      (`dragged`). The order line is rewritten with every step. Refused when the move would create a problem the
      template didn't have, such as counting from a later step; an existing problem can still be fixed. The move is
      applied to the order Vikunja has when it is sent, and only the order line changes, so notes and moves saved

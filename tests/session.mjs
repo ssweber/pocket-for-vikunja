@@ -9,6 +9,7 @@
 // OTHER_USER / OTHER_PASSWORD (a second account) to check that Pocket follows a switch to another account.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import {expect} from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const USER = process.env.VIKUNJA_USER, PASSWORD = process.env.VIKUNJA_PASSWORD;
@@ -135,8 +136,12 @@ try {
   await step('password-in-pocket-signs-in-vikunja', async () => {
     await pocket.goto(POCKET);
     await pocket.waitForSelector('#f-pass:not([hidden])', { timeout: 10000 });
+    const signIn = pocket.locator('#f-pass button[type=submit]');
+    await expect(signIn).toBeDisabled();
     await pocket.fill('#in-user', USER);
+    await expect(signIn).toBeDisabled();
     await pocket.fill('#in-pass', PASSWORD);
+    await expect(signIn).toBeEnabled();
     await pocket.click('#f-pass button[type=submit]');
     await pocketInApp();
     if (!await vikunjaSignedIn()) throw new Error('Vikunja web app is not signed in');

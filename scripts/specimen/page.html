@@ -75,7 +75,7 @@
           <template x-if="sheet.parts.includes('comments')"><div>
             <div class="h3">Comments<span class="n num" x-text="sheet.task.comment_count || ''"></span><small>stand-in</small></div>
             <div class="card">
-              <template x-if="sheet.task.comment_count"><div class="comment"><div class="who"><b>Priya</b> · <span class="num">Yesterday, 4:12 PM</span></div><div class="desc" style="padding:0">The green tin is nearly empty: I'll pick up another.</div></div></template>
+              <template x-if="sheet.task.comment_count"><div class="comment"><div class="who"><b>Jamie</b> · <span class="num">Yesterday, 4:12 PM</span></div><div class="desc" style="padding:0">The green tin is nearly empty: I'll pick up another.</div></div></template>
               <form class="comment-form"><textarea rows="1" placeholder="Write a comment" aria-label="Comment"></textarea>
                 <button class="go btn" type="button" style="width:44px;padding:0" aria-label="Post comment"><svg class="i"><use href="#i-up"/></svg></button></form>
             </div>
@@ -127,7 +127,7 @@
            task's, without the day it was started; one with one open subtask, no footer; one of 14, low priority; and one
            opened whose rows have a priority and a time before "+ me", one of them in another project, with its own dot -->
       <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
-      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list">
+      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
@@ -137,7 +137,7 @@
       <div class="sec">A heading under the list before it: after a collapsed card’s tab, after an opened card’s ⌃, after a card with no footer, and after a row: each as far under what’s drawn above it</div>
       <template x-for="(items, i) in specimenEnds" :key="i"><div>
         <div class="sec"><span x-text="['Today', 'Next 7 days', 'Later', 'No date', 'Done'][i]"></span><span class="n num" x-text="items.length || ''"></span></div>
-        <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list" x-show="items.length">
+        <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today" x-show="items.length">
           <template x-for="t in items" :key="t.id">
             <!-- include markup/list-item.html -->
           </template>
@@ -147,7 +147,7 @@
            figure and done of all inside it; every subtask done, "All subtasks done" with Close; closed, a gap with Undo;
            its header swiped right part way (it springs back), and left onto its Delete -->
       <div class="sec">A parent’s ring: one of four subtasks at 50%, 13%; two of four done; none of three; all done, waiting for Close; closed by its ring, a gap with Undo; its header swiped right part way (it springs back), and left onto its Delete</div>
-      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list">
+      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
         <template x-for="t in specimenParents" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
@@ -180,7 +180,7 @@
       </div></template>
       <!-- A run's step card (step-card.html): its title and who's on it, when it's due, Done and Skip. Where the run is,
            its steps listed under it say -->
-      <div class="sec">A run’s step card: on a step of yours, counting down, with a photo still uploading and its × not to upload it; one Priya is on, half done; one done, tapped in the list</div>
+      <div class="sec">A run’s step card: on a step of yours, counting down, with a photo still uploading and its × not to upload it; one Jamie is on, half done; one done, tapped in the list</div>
       <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
         <!-- include markup/step-card.html -->
       </div></template>

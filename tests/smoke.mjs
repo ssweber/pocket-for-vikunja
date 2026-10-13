@@ -71,6 +71,18 @@ const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 const opener = t => `:is(.row > .body:has(.title:has-text("${t}")), ${cardOf(t)} > .card-head)`;
 
 try {
+  await step('token-connect-is-disabled-until-a-token-is-entered', async () => {
+    await page.goto(APP);
+    await expect(page.locator('#auth-step')).toBeVisible();
+    const tab = page.getByRole('button', {name: 'API token', exact: true});
+    if (await tab.isVisible()) await tab.click();
+    const connect = page.getByRole('button', {name: 'Connect'});
+    await expect(connect).toBeDisabled();
+    await page.getByLabel('API token').fill('   ');
+    await expect(connect).toBeDisabled();
+    await page.getByLabel('API token').fill(TOKEN);
+    await expect(connect).toBeEnabled();
+  });
   await step('sign-in-with-a-token', () => signIn(page, APP, TOKEN));
   await page.screenshot({ path: `${OUT}/today.png` });
 
@@ -127,6 +139,22 @@ try {
     for (const name of ['index.html.br', 'index.html.gz']) if ((await get(APP + name, 'br')).status !== 404) throw new Error(name + ' is served by its name');
   });
 
+  await step('right-click-and-Shift-F10-open-the-task-menu', async () => {
+    const body = page.locator(row + ' > .body');
+    await body.click({button: 'right'});
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.locator('#d-share-text')).toBeFocused();
+    await expect(page.locator('#d-delete')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#sheet')).toBeHidden();
+    await body.focus(); await body.press('Shift+F10');
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.locator('#d-copy-md')).toBeVisible();
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await expect(page.locator('#sheet')).toBeHidden();
+  });
   await step('tick-in-list-and-tick-again', async () => {
     // Ticked, its row stays where it is, done, until the rows ticked leave together; its tick again opens it. Each tap
     // is felt (rows-and-sheet-fixes-plan, part 2; here by the phone's vibrate): firmer done, a light tick opened again.
@@ -319,9 +347,14 @@ try {
     if (!labels.includes(label)) throw new Error('label missing: ' + labels);
   });
   await step('comment', async () => {
+    await expect(page.locator('#d-cform button')).toBeDisabled();
+    await page.fill('#d-cin', '   ');
+    await expect(page.locator('#d-cform button')).toBeDisabled();
     await page.fill('#d-cin', 'smoke comment');
+    await expect(page.locator('#d-cform button')).toBeEnabled();
     await page.click('#d-cform button');
     await page.waitForSelector('.comment:has-text("smoke comment")', { timeout: 10000 });
+    await expect(page.locator('#d-cform button')).toBeDisabled();
   });
   await step('html-attachment-downloads', async () => {
     const popups = [];
@@ -1593,7 +1626,7 @@ try {
      its edges (it sat on the strip's foot, and was cut). Its project's dot, last (part 4), is on the middle of its
      time's letters, as a row's is, clear of the strip's end, and leaves the strip as tall as it was. */
   await step('a-cards-header-has-its-line-and-its-swipes-ring-centred-in-its-strip', async () => {
-    const p = await make(`Pocket smoke strip ${stamp}`, { due_date: todayAt(23), priority: 3 }), k = await make(`Pocket smoke strip kid ${stamp}`);
+    const p = await make('Strip', { due_date: todayAt(23), priority: 3 }), k = await make(`Pocket smoke strip kid ${stamp}`);
     await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
     const head = `${cardOf(p.title)} > .card-head`;
     try {
@@ -3263,7 +3296,7 @@ try {
     if (JSON.stringify(roots) !== JSON.stringify(['Alpha', 'Charlie', 'Bravo'])) throw new Error('Vikunja has ' + roots);
   });
   await step('move-up-from-the-tasks-menu', async () => {
-    // The way for a keyboard or a screen reader: the task's ⋯, Move up; and Alt+↓ on its row.
+    // The task's menu moves a task for keyboard and screen-reader users. A drag moves a subtask.
     const T = order.tasks;
     await page.click(`${rowById(T.Bravo.id)} > .body`);
     await page.click('#d-more');
@@ -3272,8 +3305,7 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Bravo', 'Charlie'].map(n => `${n} ${stamp}`));
-    await page.focus(`${rowById(T['sub one'].id)} > .body`);
-    await page.keyboard.press('Alt+ArrowDown');
+    await dragTo(rowById(T['sub one'].id), rowById(T['sub two'].id), 'bottom');
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub two', 'Subtask: sub one', 'Subtask: sub three', 'Bravo', 'Charlie'].map(n => `${n} ${stamp}`));
     await synced(page);
     const roots = (await viewOrder()).filter(t => !t.related_tasks?.parenttask?.length && !t.done).map(t => t.title.replace(` ${stamp}`, ''));
@@ -3285,10 +3317,11 @@ try {
   await step('escape-closes-what-is-innermost-first', async () => {
     const T = order.tasks, open = page.locator('#sheet.show'), menu = page.locator('#d-menu'), more = page.locator('#d-more');
     await page.click(`${rowById(T.Bravo.id)} > .body`);
-    for (const [where, focus] of [['on ⋯', null], ['nowhere', () => page.evaluate(() => document.activeElement.blur())], ['in the menu', () => page.focus('#d-share-text')]]) {
+    for (const [where, focus] of [['on ⋯', () => more.focus()], ['nowhere', () => page.evaluate(() => document.activeElement.blur())], ['in the menu', () => page.focus('#d-share-text')]]) {
       await more.click();
       await expect(menu).toBeVisible();
-      if (focus) await focus(); else await expect(more).toBeFocused();
+      await expect(page.locator('#d-share-text')).toBeFocused();
+      await focus();
       await page.keyboard.press('Escape');
       await expect(menu, `the menu is still open, the focus ${where}`).toHaveCount(0);
       await expect(more).toBeFocused();
@@ -3464,6 +3497,27 @@ try {
     await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
     await expect(page.locator('#said')).toHaveText(`Add a subtask to ${footName('Van')}`);
+    const original = await footRows(), positions = await footPositions();
+    await box.fill('Draft');
+    await page.locator(`#view .day-card[data-id="${T.Van.id}"] .card-open`).focus();
+    await page.keyboard.press('Alt+ArrowDown');
+    await onlyLit(subRow('Chairs'));
+    await expect(box).toBeFocused();
+    await page.keyboard.press('Alt+ArrowDown');
+    await onlyLit(subRow('Tables'));
+    await page.keyboard.press('Alt+ArrowUp');
+    await onlyLit(subRow('Chairs'));
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expect(box).toHaveAttribute('placeholder', 'Task');
+    await page.keyboard.press('Alt+ArrowRight');
+    await expect(box).toHaveAttribute('placeholder', 'Subtask');
+    await page.keyboard.press('Alt+ArrowUp');
+    await onlyLit(itemById(T.Van.id));
+    await expect(box).toHaveValue('Draft');
+    await expect(box).toBeFocused();
+    expect(await footRows()).toEqual(original);
+    expect(await footPositions()).toEqual(positions);
+    await box.fill('');
     // Two typed with Enter: the box keeps the focus. Under the task, the box adds its first subtask (inline-add-box-plan,
     // part 1), so the first goes before Chairs, and the second after the first, in the order typed. The light follows
     // each: the first, its answer held back, is lit on its waiting row at once, the task's own header dark; sent, it's
@@ -3703,12 +3757,11 @@ ${footName('Hooks')}`);
     await page.getByRole('button', { name: 'Mark not done: ' + footName('Flags'), exact: true }).click();
     await boxUnder(footName('Van'));
     await onlyLit(itemById(T.Van.id));
-    // Nudged, then moved down a place (Alt+↓, as holding it and moving it does): still lit after the move.
+    // Nudged, then dragged down a place: the same subtask stays lit after the move.
     await touchDrag(subRow('Flags'), 30);
     await onlyLit(subRow('Flags'));
     await synced(page);
-    await page.locator(subRow('Flags') + ' > .body').focus();
-    await page.keyboard.press('Alt+ArrowDown');
+    await dragTo(subRow('Flags'), subRow('Cones'), 'bottom');
     await boxUnder(footName('Van'));
     await onlyLit(subRow('Flags'));
     await synced(page);
@@ -3969,7 +4022,7 @@ ${footName('Hooks')}`);
   // A parent's ring: its arc, the worked-out figure (--ring), in percent.
   const ringPct = sel => page.locator(sel).evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--ring')) * 100));
   await step('a-task-with-subtasks-is-a-stacked-card-on-today', async () => {
-    const P = await make(`Pocket smoke card ${stamp}`, { due_date: todayAt(23), priority: 3 });
+    const P = await make(`Review the deliveries and restock the café before opening ${stamp}`, { due_date: todayAt(23), priority: 3 });
     const [A, B, C] = [await make(`Pocket smoke card A ${stamp}`), await make(`Pocket smoke card B ${stamp}`), await make(`Pocket smoke card C ${stamp}`, { due_date: todayAt(22) })];
     const Q = await make(`Pocket smoke card's neighbour ${stamp}`, { due_date: todayAt(23) });     // a row beside it on Today
     await under(P, [A, B, C]);
@@ -3983,6 +4036,12 @@ ${footName('Hooks')}`);
       await expect(page.locator(`div:has(> .sec.today) ${cardOf(P.title)}`)).toBeVisible({ timeout: 15000 });
       await expect(card).toHaveAttribute('role', 'group');
       await expect(card).toHaveAttribute('aria-label', P.title);
+      await expect.poll(() => card.locator('.card-title').evaluate(el => el.getBoundingClientRect().height)).toBe(48);
+      const firstLine = await card.locator('.card-head').evaluate(el => {
+        const top = el.getBoundingClientRect().top;
+        return [...el.querySelectorAll(':scope > .ring, .card-open > .due')].map(x => x.getBoundingClientRect().top - top);
+      });
+      if (firstLine.some(top => top > 12)) throw new Error('the ring or date moved below the first line');
       await expect(title).toHaveText(C.title);
       await expect(card.locator('.card-rows > .row')).toHaveCount(1);
       for (const k of [A, B, C]) await expect(page.locator(`.item > .row:has(.title:has-text("${k.title}"))`)).toHaveCount(0);
@@ -4025,7 +4084,7 @@ ${footName('Hooks')}`);
         await expect(p24.locator(`${stepLine(P.title)} .when .due`)).toHaveText(await clock(p24, 22));
       } finally { await other.close(); }
       // (A card's row has its title on two lines at most, since the 2026-10-11 tightening round.)
-      if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 46) throw new Error('its heading is more than one line');
+      if (await card.locator('.card-head').evaluate(el => el.offsetHeight) > 70) throw new Error('its heading is more than two lines');
       if (await line.evaluate(el => el.offsetHeight) > 82) throw new Error('its top row is more than two lines: ' + await line.evaluate(el => el.offsetHeight));
       // Its top row, indented one level: its tick under the header's title, as a subtask's under its parent (a row's
       // tick sits 14px in); a plain row, each zone 48px across at least over its full height: the tick (the whole

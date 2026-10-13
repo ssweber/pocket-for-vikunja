@@ -504,7 +504,7 @@ export default {
     if (this.route.name === 'project') this.render();
     if (this.sheet.subView) this.loadSubOrder(this.sheet.task);
   },
-  // One place up (-1) or down (1): the ⋯'s Move up and Move down, and Alt+↑ or ↓ on a row (orderOf's `where`).
+  // Move a task one place up (-1) or down (1) from its menu (orderOf's `where`).
   moveBy(t, dir, where){
     const o = this.orderOf(t, where), i = o ? o.sibs.findIndex(s => s.id === t.id) : -1;
     return i >= 0 ? this.reorder(t, o.sibs, i + dir, o.view) : false;

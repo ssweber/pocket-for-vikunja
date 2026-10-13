@@ -423,6 +423,12 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .card-head > .ring::after{bottom:-6px}
 .card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px -6px 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
 .card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* Today headings wrap so the parent can be read. Keep the ring and date beside the first line. */
+.today .card-open{align-items:flex-start}
+.today .card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}
+.today .card-head .due{line-height:24px}
+.today .card-head .bars{margin-top:8px}
+.today .card-open > .dot{margin-top:8px;top:0}
 .card-head .bars{flex:none;height:9px}
 .card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
 /* The project's dot, once per card (its rows leave theirs out), on the middle of the time's letters as a row's is. A

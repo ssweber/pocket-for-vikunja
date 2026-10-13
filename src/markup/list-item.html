@@ -22,7 +22,8 @@
          :class="{open: c.open, done: t.done, aimed: lit[t.id] && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh[t.id], 'came-due': flashed.due[t.id], arrived: flashed.arrived[t.id]}"
          x-effect="c.open && c.folds && watchCard($el); lit[t.id] && watchCursor($el)"
          @click.capture="tapGap(t, g, $event)">
-      <div class="card-head">
+      <div class="card-head" @contextmenu="rowMenu(t, $event)" @keydown.shift.f10="rowMenu(t, $event)"
+           @keydown.alt.up="rowBox(t, g, -1, $event)" @keydown.alt.down="rowBox(t, g, 1, $event)">
         <template x-for="r in [c.ring].filter(Boolean)" :key="0">
           <!-- include markup/ring.html -->
         </template>

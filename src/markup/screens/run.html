@@ -38,7 +38,7 @@
         </template>
         <form class="comment-form" id="run-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(view.run.run.id)">
           <textarea id="run-note" rows="1" placeholder="Comment for this checklist, and the next" aria-label="Comment on this checklist" x-model="runDrafts[view.run.run.id]" x-grow="runDrafts[view.run.run.id]"></textarea>
-          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="!(runDrafts[view.run.run.id] || '').trim()" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
         </form>
       </div>
 

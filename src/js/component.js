@@ -68,7 +68,7 @@ export const directives = Alpine => {
        or the project change.
      x-box.lines marks a box that takes a list (quick add's, a subtask box), where Shift+Enter breaks the line. In a
      one-line box (a template's name, a step), Shift+Enter is Enter.
-     Anything else a box does (a pasted list becoming rows, Escape, Alt+↑ and ↓) is in its own markup. */
+     Alt+↑ and Alt+↓ move a list's add box through its rows. Alt+← and Alt+→ change a project's box level. */
   Alpine.directive('box', (el, {expression, modifiers}, {evaluate, effect, cleanup}) => {
     const app = Alpine.$data(el), name = () => evaluate(expression), box = () => app.box(name());
     // Listeners are removed when Alpine removes the element, as with @event. A box removed while focused is blurred on
@@ -83,6 +83,14 @@ export const directives = Alpine => {
     on('focus', () => { box().focus = true; });
     on('blur', () => { const b = box(); setTimeout(() => { b.focus = document.activeElement === el; }, 150); });
     on('keydown', e => {
+      if (modifiers.includes('lines') && e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (['cap', 'under'].includes(name())) { e.preventDefault(); app.boxLevel(e.key === 'ArrowLeft'); }
+        return;
+      }
+      if (modifiers.includes('lines') && e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && ['ArrowUp', 'ArrowDown'].includes(e.key)) {
+        if (app.boxMove(name(), e.key === 'ArrowUp' ? -1 : 1)) e.preventDefault();
+        return;
+      }
       if (e.key !== 'Enter' || e.isComposing || (e.shiftKey && modifiers.includes('lines'))) return;
       e.preventDefault();
       app.boxEnter(name());

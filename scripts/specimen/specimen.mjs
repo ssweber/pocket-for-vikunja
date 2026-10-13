@@ -14,7 +14,7 @@ import {chipsEl, chipsLight, chipsOpen} from '../../src/js/app/throw.js';
 
 const ZERO = '0001-01-01T00:00:00Z', HOUR = 36e5;
 const at = ms => new Date(Date.now() + ms).toISOString();
-const me = {id: 1, username: 'alex', name: 'Alex'}, priya = {id: 2, username: 'priya', name: 'Priya'}, sam = {id: 3, username: 'sam', name: ''};
+const me = {id: 1, username: 'alex', name: 'Alex'}, jamie = {id: 2, username: 'jamie', name: 'Jamie'}, sam = {id: 3, username: 'sam', name: ''};
 const label = (id, title, hex_color) => ({id, title, hex_color});
 let n = 100;
 // A task as Vikunja gives it, with only what a row reads.
@@ -29,7 +29,7 @@ const projects = [{id: 1, title: 'Café', hex_color: '1d6b52'}, {id: 2, title: '
 function sections(){
   const top = task({title: 'Set up the new till'}), d1 = task({title: 'Unbox it', related_tasks: {parenttask: [{id: top.id}]}});
   const d2 = task({title: 'Find the receipt roll', related_tasks: {parenttask: [{id: d1.id}]}});
-  const d3 = task({title: 'Ask Priya where it went', related_tasks: {parenttask: [{id: d2.id}]}, done: true});
+  const d3 = task({title: 'Ask Jamie where it went', related_tasks: {parenttask: [{id: d2.id}]}, done: true});
   const steps = [{id: 901, title: 'Turn on the espresso machine', done: true}, {id: 902, title: 'Put the croissants in the oven', done: true},
     {id: 903, title: 'Take the croissants out', done: false}, {id: 904, title: 'Wipe down the tables', done: false}];
   const tables = task({title: 'Set out the tables', state: {drag: 70}});
@@ -48,9 +48,9 @@ function sections(){
   const tent = task({title: 'Put up the tent'}), pegs = task({title: 'Hammer in the pegs', percent_done: .5, state: {reveal: .3}, related_tasks: {parenttask: [{id: tent.id}]}});
   const poles = task({title: 'Tie down the poles', related_tasks: {parenttask: [{id: tent.id}]}, done: true, state: {swept: true}});
   const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
-  const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, priya]});
+  const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, jamie]});
   // A long run, of 16 steps: its ring, as any run's.
-  const long = task({title: 'Deep clean · Oct 5', project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 899}],
+  const long = task({title: 'Deep clean · Oct 5', project_id: 2, assignees: [jamie], related_tasks: {copiedfrom: [{id: 899}],
     subtask: Array.from({length: 16}, (_, i) => ({id: 950 + i, title: 'Step ' + (i + 1), done: i < 5}))}});
   // A step of a run you've claimed, on Today, beside a task: square and round.
   const stepRow = task({title: 'Take the croissants out', project_id: 2, assignees: [me], related_tasks: {parenttask: [{id: run.id, title: run.title}], copiedfrom: [{id: 903}]}});
@@ -72,7 +72,7 @@ function sections(){
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
   const van2 = task({title: 'Pack the van', due_date: at(5 * HOUR), priority: 3, related_tasks: {subtask: [{id: 701, done: true}, {id: 702}, {id: 703}, {id: 704}, {id: 705}]}});
   const opening = task({title: `Opening up · ${day} · #2`, created: now.toISOString(), project_id: 2, assignees: [me], related_tasks: {copiedfrom: [{id: 898}], subtask: [{id: 711, done: true}, {id: 712}, {id: 713}]}});
-  const closing = task({title: `Closing up · ${day} · #5`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, priya], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
+  const closing = task({title: `Closing up · ${day} · #5`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, jamie], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
   const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 12}))}});
   /* A card whose rows have the most at their right (rows-and-sheet-fixes-plan, part 4), opened: a priority and a time
@@ -81,8 +81,8 @@ function sections(){
   const tasting = task({title: 'Get ready for the tasting evening', due_date: dayAt(0, 18, 30), priority: 2, related_tasks: {subtask: [{id: 1401}, {id: 1402}, {id: 1403}, {id: 1404}]}});
   const cardSubs = [kid(1401, {under: tasting.id, title: 'Print the tasting notes', due_date: dayAt(0, 10, 30), priority: 3}),
     kid(1402, {under: tasting.id, title: 'Borrow glasses from next door', project_id: 4, due_date: dayAt(0, 12), priority: 1}),
-    kid(1403, {under: tasting.id, title: 'Chill the white wine', due_date: dayAt(0, 15), assignees: [priya]}), kid(1404, {under: tasting.id, title: 'Set out the tables'}),
-    kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [priya]}),
+    kid(1403, {under: tasting.id, title: 'Chill the white wine', due_date: dayAt(0, 15), assignees: [jamie]}), kid(1404, {under: tasting.id, title: 'Set out the tables'}),
+    kid(701, {under: van2.id, title: 'Load chairs', done: true}), kid(702, {under: van2.id, title: 'Load tables', assignees: [jamie]}),
     kid(703, {under: van2.id, title: 'Sound system', assignees: [me], percent_done: .5}), kid(704, {under: van2.id, title: 'Lights'}), kid(705, {under: van2.id, title: 'The extension leads'}),
     kid(711, {under: opening.id, project_id: 2, title: 'Turn on the espresso machine', done: true, related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 1}]}}),
     kid(712, {under: opening.id, project_id: 2, title: 'Take the croissants out', due_date: at(18 * 6e4), related_tasks: {parenttask: [{id: opening.id}], copiedfrom: [{id: 2}]}}),
@@ -95,7 +95,7 @@ function sections(){
   // none to do now (one-concept-plan, part 4), when it's due, short (a time today, "10:30a" where the browser writes
   // "10:30 AM", a weekday this week, a date beyond, red when late), and the project's dot.
   const today = [task({title: 'Post next week’s rota', due_date: dayAt(0, 10, 30), priority: 3}),
-    task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [priya]}),
+    task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [jamie]}),
     task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),
     task({title: 'Order the cups', due_date: dayAt(2, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(12, 0)}),
     task({title: 'Fix the till drawer', due_date: dayAt(0, 9), priority: 5, assignees: [me]})];
@@ -106,9 +106,9 @@ function sections(){
   const launch = task({title: 'Plan the launch party', related_tasks: {subtask: [{id: 761}, {id: 762, done: true}, {id: 763}, {id: 764}]}});
   const plain = task({title: 'Water the plants'});
   const staff = task({title: 'Plan the staff party', done: true, related_tasks: {subtask: [{id: 771}]}});
-  const closing2 = task({title: `Closing up · ${day} · #6`, created: now.toISOString(), project_id: 2, assignees: [priya], related_tasks: {copiedfrom: [{id: 896}], subtask: [{id: 781, done: true}, {id: 782}, {id: 783}]}});
+  const closing2 = task({title: `Closing up · ${day} · #6`, created: now.toISOString(), project_id: 2, assignees: [jamie], related_tasks: {copiedfrom: [{id: 896}], subtask: [{id: 781, done: true}, {id: 782}, {id: 783}]}});
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(17, 0, 0, 0);
-  const projectSubs = [kid(761, {under: launch.id, title: 'Book the band', assignees: [priya]}),
+  const projectSubs = [kid(761, {under: launch.id, title: 'Book the band', assignees: [jamie]}),
     kid(763, {under: launch.id, title: 'Order the cake', percent_done: .5, related_tasks: {parenttask: [{id: launch.id}], subtask: [{id: 765}]}}),
     kid(765, {under: 763, title: 'Pick a flavour'}), kid(764, {under: launch.id, title: 'Print the flyers', due_date: tomorrow.toISOString()}),
     {...task({title: 'Hang the bunting'}), id: 'pending-specimen-1', pending: true, parent: launch.id, position: 2.5, entry: 'specimen-sub', index: 0},
@@ -133,7 +133,7 @@ function sections(){
     kid(1131, {under: till.id, title: 'Unbox it', done: true}), kid(1132, {under: till.id, title: 'Plug it in', done: true}), kid(1133, {under: till.id, title: 'Test a sale', done: true}),
     kid(1141, {under: bins.id, title: 'Kitchen', done: true}), kid(1142, {under: bins.id, title: 'Yard', done: true}),
     kid(1151, {under: floor.id, title: 'Sweep first'}), kid(1152, {under: floor.id, title: 'Mop'}), kid(1161, {under: sink.id, title: 'Buy a washer'}), kid(1162, {under: sink.id, title: 'Fit it'})];
-  /* A task's sheet led by its row (parent-tasks-plan, 6b): a task at 50% with notes and two photos, Priya on it, the
+  /* A task's sheet led by its row (parent-tasks-plan, 6b): a task at 50% with notes and two photos, Jamie on it, the
      whole sheet under it; a subtask with no notes or photos, its parent in the path; a parent, its ring at 13% (one
      subtask of four at 50%), its subtasks below; the card's row swiped right from 25% to 50%, still held; its title
      tapped, a box to change it in; its notes tapped, short ones in the box at its least height and long ones in a box
@@ -141,20 +141,20 @@ function sections(){
   const photo = (id, name, size) => ({id, file: {name, size}});
   const notes = '<p>Use the green from the shed: <strong>two coats</strong>, a day apart.</p><ul><li>Sand the old paint off first</li><li>Tape round the letterbox</li></ul>';
   const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, related_tasks: {parenttask: [{id: 1200}]}}),
-    task({id: 1202, title: 'Tape the edges', assignees: [priya], related_tasks: {parenttask: [{id: 1200}]}}), task({id: 1203, title: 'First coat', due_date: dayAt(1, 0), related_tasks: {parenttask: [{id: 1200}]}}),
+    task({id: 1202, title: 'Tape the edges', assignees: [jamie], related_tasks: {parenttask: [{id: 1200}]}}), task({id: 1203, title: 'First coat', due_date: dayAt(1, 0), related_tasks: {parenttask: [{id: 1200}]}}),
     task({id: 1204, title: 'Second coat', related_tasks: {parenttask: [{id: 1200}]}})]}, description: '<p>The side facing the car park.</p>'});
   fence.id = 1200;
   const gate = task({title: 'Fix the side gate', related_tasks: {subtask: [task({id: 1301, title: 'Oil the hinges', percent_done: .5, related_tasks: {parenttask: [{id: 1300}]}}),
     task({id: 1302, title: 'Tighten the latch', related_tasks: {parenttask: [{id: 1300}]}}), task({id: 1303, title: 'Paint it', related_tasks: {parenttask: [{id: 1300}]}})]}});
   gate.id = 1300;
   const sheets = [
-    {spec: 'A task’s sheet led by its row: at 50%, with notes and two photos, Priya on it; under the card, what stays: Due and Reminders, Subtasks, Comments (stand-ins), and Details (a stand-in, but its Progress line, as the sheet has it)',
-      parts: ['due', 'subtasks', 'comments', 'details'], task: task({title: 'Repaint the front door', percent_done: .5, due_date: dayAt(1, 9), priority: 2, assignees: [priya], comment_count: 1,
+    {spec: 'A task’s sheet led by its row: at 50%, with notes and two photos, Jamie on it; under the card, what stays: Due and Reminders, Subtasks, Comments (stand-ins), and Details (a stand-in, but its Progress line, as the sheet has it)',
+      parts: ['due', 'subtasks', 'comments', 'details'], task: task({title: 'Repaint the front door', percent_done: .5, due_date: dayAt(1, 9), priority: 2, assignees: [jamie], comment_count: 1,
         labels: [label(1, 'Front', 'e07a5f')], description: notes, attachments: [photo(1, 'door-before.jpg', 2.4e6), photo(2, 'paint-tin-label.jpg', 1.1e6)]})},
     {spec: 'A subtask’s sheet with no notes or photos: its parent in the path over the card; the card is its row, “Add notes”, and “Add a photo or file”', parts: [],
       task: task({title: 'Buy masking tape', related_tasks: {parenttask: [{id: 1200, title: 'Paint the side fence'}]}})},
     {spec: 'A parent’s sheet: its ring for a tick (one subtask of four at 50%, so 13%), and its subtasks below, the real rows; no Progress line in Details, as its progress is worked out',
-      parts: ['subtasks', 'details'], subPeople: {1201: [me], 1202: [priya]}, task: fence},
+      parts: ['subtasks', 'details'], subPeople: {1201: [me], 1202: [jamie]}, task: fence},
     {spec: 'The card’s row swiped right from 25%, still held at 50%: only the row moves; its notes and photo stay', parts: [], state: {reveal: .22},
       task: task({title: 'Restock the napkins', percent_done: .25, assignees: [me], description: '<p>The big packs, from the cash and carry.</p>', attachments: [photo(3, 'shelf.jpg', 0.9e6)]})},
     {spec: 'A parent’s sheet with its subtasks swiped, still held: the first right from 50% to 75%, the last left onto its Delete; what each uncovers lies under its row, inside the card’s rounded corners',
@@ -209,7 +209,7 @@ function sections(){
     // A project no one else can see (seenBy 0): no "+ me", nor your picture; someone given it in a shared project before it was moved here, still.
     {title: 'A project only you can see: no “+ me”, nor your picture; someone given it elsewhere, before it was moved there, still shows', depth: {}, tasks: [
       task({title: 'Renew the car insurance', project_id: 5}), task({title: 'Book the dentist', project_id: 5, assignees: [me]}),
-      task({title: 'Fix the shed door', project_id: 5, assignees: [priya]})]},
+      task({title: 'Fix the shed door', project_id: 5, assignees: [jamie]})]},
     {title: 'Open, done, and waiting to send', depth: {}, tasks: [task({title: 'Order oat milk'}), task({title: 'Wipe the counters', done: true}),
       {...task({title: 'Call the plumber tomorrow'}), id: 'pending-specimen-0', pending: true, waits: true, entry: 'specimen', index: 0}]},
     // Progress is drawn in the tick (parent-tasks-plan, part 1), a quarter at a time, with no line under the row.
@@ -220,7 +220,7 @@ function sections(){
     {title: 'Due, priority, labels, people, comments', depth: {}, tasks: [
       task({title: 'Pay the milk invoice', due_date: at(-26 * HOUR), priority: 4}),
       task({title: 'Prep the specials board', due_date: at(2 * HOUR), labels: [label(1, 'Front', 'e07a5f'), label(2, 'Daily', '3d85c6')]}),
-      task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, priya], comment_count: 3, repeat_after: 86400}),
+      task({title: 'Check the fridge temperatures', due_date: at(50 * HOUR), assignees: [me, jamie], comment_count: 3, repeat_after: 86400}),
       task({title: 'Book the window cleaner', project_id: 4, priority: 2, attachments: [{id: 1}], reminders: [{reminder: at(5 * HOUR)}], assignees: [sam]})]},
     {title: 'A done task over its subtasks still open', depth: {[party.id]: 0, [cake.id]: 1, [room.id]: 1}, heads: [party.id], tasks: [party, cake, room]},
     {title: 'Checklist runs, as under Checklists, on a project’s list and in search: one row, its ring for a tick, its steps done of all inside it (past 12 steps too), who it’s for as pictures in its slot, no line under it', depth: {}, tasks: [run, long]},
@@ -248,7 +248,7 @@ function sections(){
     // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
     // a deleted row's gap with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
     {title: 'Ticked and deleted, in place: a parent with its subtask, a deleted row’s gap with Restore, a repeating task', depth: {[mover.id]: 0, [moverKid.id]: 1}, tasks: [
-      mover, moverKid, task({title: 'Return the crates', due_date: at(4 * HOUR), assignees: [priya], state: {leaving: 'deleted'}}),
+      mover, moverKid, task({title: 'Return the crates', due_date: at(4 * HOUR), assignees: [jamie], state: {leaving: 'deleted'}}),
       task({title: 'Water the plants', done: true, due_date: at(-HOUR), repeat_after: 86400, state: {leaving: 'done'}}), task({title: 'Order oat milk'})]},
     {title: 'The batch clearing: the rows ticked and deleted fold together, and the row below closes up once', depth: {}, tasks: [
       task({title: 'Sweep the yard', done: true, state: {leaving: 'done', folding: .45}}), task({title: 'Wipe the menus', state: {leaving: 'deleted', folding: .45}}),
@@ -282,7 +282,7 @@ function sections(){
   ]};
 }
 
-/* A run's steps as Vikunja gives them, with only what its screen keeps (plainStep): done by you, by Priya, skipped by
+/* A run's steps as Vikunja gives them, with only what its screen keeps (plainStep): done by you, by Jamie, skipped by
    Sam, a step with notes on you, one inserted and one repeated during the run, progress, people on them, and timed
    steps: one counting down from the step before it, one late, and one waiting on a step not done. */
 function runSteps(){
@@ -293,16 +293,16 @@ function runSteps(){
   const note = (id, author, mins, text) => ({id, author, created: at(-mins * MIN), comment: `<p>${text}</p>`});
   const list = [
     step({title: 'Turn on the espresso machine', tpl: 'Turn on the espresso machine {#machine}', ...doneBy(me, 40)}),
-    step({title: 'Grind the beans', assignees: [priya], ...doneBy(priya, 30)}),
+    step({title: 'Grind the beans', assignees: [jamie], ...doneBy(jamie, 30)}),
     step({title: 'Wipe the steam wand', done: true, done_at: at(-20 * MIN), reactions: {'⏭️': [sam]}, comments: [note(1, sam, 19, 'Skipped: no milk yet')]}),
     step({title: 'Put the croissants in', tpl: 'Put the croissants in {#oven}', ...doneBy(me, 2)}),
-    step({title: 'Take the croissants out', tpl: 'Take the croissants out T#18m:oven', assignees: [me], comments: [note(2, priya, 50, 'Use the top shelf')]}),
+    step({title: 'Take the croissants out', tpl: 'Take the croissants out T#18m:oven', assignees: [me], comments: [note(2, jamie, 50, 'Use the top shelf')]}),
     step({title: 'Check the milk', added: 'Inserted', tpl: null}),
     step({title: 'Wipe the steam wand', added: 'Repeated'}),
-    step({title: 'Restock the cups', assignees: [priya], percent_done: .5}),
+    step({title: 'Restock the cups', assignees: [jamie], percent_done: .5}),
     step({title: 'Unlock the door', tpl: 'Unlock the door T#30m:machine'}),
     step({title: 'Sweep the floor', tpl: 'Sweep the floor T#10m'}),
-    step({title: 'Count the till', assignees: [priya, sam]}),
+    step({title: 'Count the till', assignees: [jamie, sam]}),
   ];
   list[6].from = list[2].id;
   return list;
@@ -357,18 +357,18 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const s = sections(), subs = s.parent.related_tasks.subtask;
     // Who can see each project besides you (loadPeople): all shared but the last, yours alone.
     Object.assign(this, {signedIn: true, screen: 'app', user: me, route: {name: 'today'}, perms: {1: 2, 2: 2, 3: 0, 4: 1, 5: 2}, seenBy: {1: 2, 2: 2, 3: 4, 4: 1, 5: 0},
-      avatars: Object.fromEntries([me, priya, sam].map(u => [u.username, {url: '', at: Date.now()}])), labelsLoaded: true});
+      avatars: Object.fromEntries([me, jamie, sam].map(u => [u.username, {url: '', at: Date.now()}])), labelsLoaded: true});
     this.setProjects(projects);
     // A task's sheet, open on a task with subtasks, for its rows' slots: who's doing each.
-    this.sheet = {...blankSheet('task'), task: s.parent, subPeople: {801: [], 802: [me], 803: [priya], 804: [priya, sam]}};
+    this.sheet = {...blankSheet('task'), task: s.parent, subPeople: {801: [], 802: [me], 803: [jamie], 804: [jamie, sam]}};
     // A run's screen, open on its fifth step, with a tick on the last waiting to be sent: its steps are the task row
     // too (g.run), each as the screen works it out (runView).
-    const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, priya], created_by: me, comments: [], from: 900, steps: s.steps.map(x => x.id)};
+    const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, jamie], created_by: me, comments: [], from: 900, steps: s.steps.map(x => x.id)};
     this.pending = [{kind: 'act', id: 'specimen-tick', run: run.id, task: s.steps.at(-1).id, op: 'done', at: new Date().toISOString(), items: []}];
     this.slow = ['specimen-tick'];
     this.view.run = {run: {...run, done: true}, steps: s.steps, at: null, last: null};
     const finished = this.runView.steps;
-    // Its step card, on a step of yours counting down, one Priya is on, half done, and one done by Priya (tapped in the
+    // Its step card, on a step of yours counting down, one Jamie is on, half done, and one done by Jamie (tapped in the
     // list): each as runView has it then, to draw step-card.html with.
     this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
     // A photo added to the first of them, still uploading: its line on the card, with the × not to upload it after all.
@@ -386,11 +386,11 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     // (from the step before the card's to the run's next steps; other ids, so the states above stay on their own rows)
     this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4};
     /* A run's screen's top (app.html): its own row between Back and ⋯ (RUN_ROW), its ring the screen's (runRing, the run
-       above), who it's for in its slot: you; you and Priya; on a project only you can see, no slot. */
+       above), who it's for in its slot: you; you and Jamie; on a project only you can see, no slot. */
     const top = this.view.run.run;
     this.specimenRunTops = [{spec: 'For you', run: {...top, id: ++n, assignees: [me]}},
       {spec: 'Swiped right part way, still held (it springs back, as a parent’s header does): what it uncovers stays between Back and ⋯', run: {...top, id: ++n, assignees: [me]}, reveal: .3},
-      {spec: 'For you and Priya, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Oct 7 · Front counter and the till'}},
+      {spec: 'For you and Jamie, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Oct 7 · Front counter and the till'}},
       {spec: 'On a project only you can see: no slot', run: {...top, id: ++n, project_id: 5, assignees: [me]}}];
     // Today's cards: their subtasks in the store, the van's opened by its footer's More.
     for (const x of s.cardSubs) this.keep(x);
@@ -426,7 +426,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
     this.specimenProject = {...g, items: listItems(g.tasks, g.depth, t => !!this.cardOf(t, g))};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
-      {title: 'A run\'s steps on its screen: done by you, by Priya, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped right to 75%, late, waiting on another step, and a tick waiting to send',
+      {title: 'A run\'s steps on its screen: done by you, by Jamie, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped right to 75%, late, waiting on another step, and a tick waiting to send',
         depth: {}, run: true, at: 4, locked: false, tasks: steps},
       {title: 'A run’s step done by a full swipe: a gap with Undo, which unticks it, until the batch clears; then done in its place', depth: {}, run: true, at: null, locked: false,
         tasks: [{...steps[3], id: steps[3].id + 3000, state: {swept: true}}]},
@@ -437,7 +437,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
        project's list, a level in under a task and under a subtask, and out a level, and on Today; the box at a
        list's foot, for a task's subtasks, a template's steps and a checklist's; and New template's name. */
     const barBox = (spec, f = {}) => ({spec, f}), footBox = barBox;
-    const list3 = 'Buy milk\nBuy the oat milk too, for Priya\nWipe the fridge shelves';
+    const list3 = 'Buy milk\nBuy the oat milk too, for Jamie\nWipe the fridge shelves';
     this.specimenBars = [barBox('The add box, the bar at the bottom of Today and a project’s list: empty'),
       barBox('Focused and empty: what it reads, under it', {box: {focus: true}}),
       barBox('Typed, with what it read as chips, and marked in its words', {box: {text: 'Buy milk tomorrow !3 *front', focus: true}}),

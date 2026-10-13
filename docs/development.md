@@ -259,7 +259,7 @@ on every change.
 ## The README's pictures
 
 With `npm run dev` running, `npm run demo` remakes the GIFs and screenshots in `docs/screenshots/`. It drives the
-real app in a phone-sized browser with a small café's made-up tasks for two users of its own, `alex` and `priya`,
+real app in a phone-sized browser with a small café's made-up tasks for two users of its own, `alex` and `jamie`,
 and the page's clock fixed, so the dates in the pictures always match the README. Examples in the README and the
 guide use the same café. Run it after changing how Pocket looks.
 

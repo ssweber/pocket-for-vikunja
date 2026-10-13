@@ -3,7 +3,7 @@
 //   npm run dev          in another terminal; it keeps running
 //   npm run demo         writes docs/screenshots/pocket-demo.gif, pocket-checklist.gif and pocket-capture.png
 //
-// The story is a small café: Alex owns it, and Priya is the shift lead who opens up. They're two users of the demo's
+// The story is a small café: Alex owns it, and Jamie is the shift lead who opens up. They're two users of the demo's
 // own, with made-up tasks; alex's tasks and projects are replaced on each run.
 // The page's clock is fixed at Wednesday 30 September 2026, 10:05, so "Today 10:30 AM" and "2 days ago" come out the
 // same every time. BROWSER_CHANNEL=msedge|chrome as for the tests; FRAMES=<folder> also saves the GIF's frames there.
@@ -39,7 +39,7 @@ async function account(username, name){
 }
 
 // ---------- the demo's tasks ----------
-const alex = await account('alex', 'Alex Rivera'), priya = await account('priya', 'Priya Shah');
+const alex = await account('alex', 'Alex Rivera'), jamie = await account('jamie', 'Jamie Taylor');
 const A = (method, path, body) => call(method, path, body, alex.token);
 // Back to an Inbox as the default project (the café is the default by the end of a run), then everything else goes.
 const own = (await A('GET', '/projects')).items.filter(p => p.id > 0 && p.owner?.id === alex.user.id);
@@ -51,11 +51,11 @@ for (let page = (await A('GET', '/tasks?per_page=100')).items; page.length; page
 for (const l of (await A('GET', '/labels')).items) if (l.created_by?.id === alex.user.id) await A('DELETE', '/labels/' + l.id);
 await A('PATCH', '/projects/' + inbox.id, { title: 'Inbox', hex_color: '' });
 
-// The café, shared with Priya and used for checklists; the orders to suppliers, Alex's own; and home.
+// The café, shared with Jamie and used for checklists; the orders to suppliers, Alex's own; and home.
 const proj = {};
 for (const [title, hex_color] of [['Café', '1d6b52'], ['Orders', '2563eb'], ['Home', 'e07a1f']]) proj[title] = await A('POST', '/projects', { title, hex_color });
 await A('PATCH', '/projects/' + proj['Café'].id, { description: '<p>The café: opening up, closing down, and the jobs in between.</p><p>pocket:checklists</p>' });
-for (const p of ['Café', 'Orders']) await A('POST', `/projects/${proj[p].id}/users`, { username: 'priya', permission: 1 });
+for (const p of ['Café', 'Orders']) await A('POST', `/projects/${proj[p].id}/users`, { username: 'jamie', permission: 1 });
 // The café is where Alex's tasks go unless another project is named.
 await A('PATCH', '/user/settings/general', { default_project_id: proj['Café'].id });
 const label = {};
@@ -70,7 +70,7 @@ async function task(project, t, { labels = [], subtasks = [], comment, file, ass
     const s = await A('POST', `/projects/${proj[project].id}/tasks`, { title, done });
     await A('POST', `/tasks/${made.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
   }
-  if (comment) await call('POST', `/tasks/${made.id}/comments`, { comment }, priya.token);
+  if (comment) await call('POST', `/tasks/${made.id}/comments`, { comment }, jamie.token);
   if (file) { const f = new FormData(); f.append('files', new Blob([file.text, new Uint8Array(file.size)], { type: 'application/pdf' }), file.name); await A('POST', `/tasks/${made.id}/attachments`, f); }
   return made;
 }
@@ -80,9 +80,9 @@ await task('Orders', { title: 'Order oat milk from Riverside Dairy', due_date: a
   subtasks: [['Count what’s left in the fridge', true], ['Ask about the October price', false], ['Set up the standing order', false]] });
 await task('Orders', { title: 'Pay the coffee roaster’s invoice', due_date: at(1) });   // not overdue: room on the GIF's screen for one task more today
 await task('Café', { title: 'Post next week’s rota', due_date: at(0, 10, 30), priority: 3 });
-await task('Café', { title: 'Call the plumber about the dishwasher', due_date: at(0) }, { labels: ['calls'], assign: priya });   // Priya's picture on its row
+await task('Café', { title: 'Call the plumber about the dishwasher', due_date: at(0) }, { labels: ['calls'], assign: jamie });   // Jamie's picture on its row
 await task('Café', { title: 'Pick up change from the bank', due_date: at(0, 15, 30) }, { labels: ['quick'] });
-await task('Café', { title: 'Try the autumn menu with Priya', due_date: at(1, 14) });
+await task('Café', { title: 'Try the autumn menu with Jamie', due_date: at(1, 14) });
 await task('Café', { title: 'Deep-clean the espresso machine', due_date: at(2), repeat_after: 604800 });
 await task('Home', { title: 'Book the van in for a service', due_date: at(3) });
 await task('Café', { title: 'Renew the food hygiene certificate', due_date: at(4), priority: 2, reminders: [{ reminder: at(3, 9) }] });
