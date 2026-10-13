@@ -1,14 +1,15 @@
-// Sharing Vikunja's web sign-in: Pocket and Vikunja's own web app, side by side in one browser.
+// Tests that Pocket and Vikunja's web app share one sign-in when open side by side in one browser.
 //
 //   npm run test:local        (runs this against a local Vikunja with the plugin)
 //   VIKUNJA_URL=... VIKUNJA_USER=... VIKUNJA_PASSWORD=... node tests/session.mjs   (needs password sign-in)
 //
-// Checks that signing in or out on either side carries over, and that renewing the session from both sides at
-// once, which spends Vikunja's single-use refresh cookie, never signs either of them out.
-// Optional: SSO_USER / SSO_PASSWORD to also sign in through the first single sign-on provider (see scripts/dev.mjs --sso),
-// OTHER_USER / OTHER_PASSWORD (a second account) to check that Pocket follows a switch to another account.
+// Checks that signing in or out on either side carries over to the other side. It also checks that renewing the
+// session from both sides at once never signs either side out. Renewing at once spends Vikunja's single-use refresh cookie.
+// Optional: SSO_USER / SSO_PASSWORD also sign in through the first single sign-on provider (see scripts/dev.mjs --sso).
+// OTHER_USER / OTHER_PASSWORD (a second account) check that Pocket follows a switch to another account.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import {expect} from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const USER = process.env.VIKUNJA_USER, PASSWORD = process.env.VIKUNJA_PASSWORD;
@@ -20,7 +21,7 @@ await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 let failed = 0, context, vikunja, pocket;
 const errors = [];
-async function fresh(){                                   // a new browser profile: no one signed in
+async function fresh(){                                   // starts a new browser profile with no one signed in
   await context?.close();
   context = await browser.newContext();
   vikunja = await context.newPage();
@@ -28,8 +29,9 @@ async function fresh(){                                   // a new browser profi
   for (const p of [vikunja, pocket]) p.on('pageerror', e => errors.push(String(e)));
 }
 async function step(name, fn){
-  try { await fn(); console.log('PASS', name); }
-  catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); await pocket?.screenshot({ path: `${OUT}/session-fail-${name}.png` }).catch(() => {}); }
+  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // shows each step's duration so slow steps stand out
+  try { await fn(); console.log('PASS', name + secs()); }
+  catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]); await pocket?.screenshot({ path: `${OUT}/session-fail-${name}.png` }).catch(() => {}); }
 }
 const vikunjaSignedIn = async () => { await vikunja.goto(SERVER + '/'); await vikunja.waitForLoadState('networkidle'); return !new URL(vikunja.url()).pathname.startsWith('/login'); };
 async function vikunjaSignIn(){
@@ -41,7 +43,7 @@ async function vikunjaSignIn(){
 }
 const pocketInApp = () => pocket.waitForSelector('#app:not([hidden]) #view .row, #app:not([hidden]) #view .empty', { timeout: 15000 });
 const tokenValid = async t => (await fetch(SERVER + '/api/v2/user', { headers: { Authorization: 'Bearer ' + t } })).ok;
-// What a phone left overnight has: a well-formed sign-in token that expired an hour ago.
+// A phone left overnight has a well-formed sign-in token that expired an hour ago. This builds one.
 const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
 const EXPIRED = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ type: 1, id: 1, exp: Math.floor(Date.now() / 1000) - 3600 })}.expired-signature`;
 const expire = page => page.evaluate(t => localStorage.setItem('token', t), EXPIRED);
@@ -56,14 +58,14 @@ try {
   });
 
   if (process.env.OTHER_USER) await step('another-account-signing-in-is-followed', async () => {
-    // Someone else's session replaces this one without a sign-out Pocket saw, and the first check of whose it is fails.
+    // Another user's session replaces this one without Pocket seeing a sign-out, and Pocket's first check of whose session it is fails.
     const login = await fetch(SERVER + '/api/v2/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: process.env.OTHER_USER, password: process.env.OTHER_PASSWORD }) });
     const other = (await login.json()).token, mine = await pocket.evaluate(() => localStorage.getItem('token'));
     const whoami = url => url.pathname.endsWith('/api/v2/user');
     let cut = true;
     await pocket.route(whoami, r => cut ? r.abort('internetdisconnected') : r.fallback());
-    // Who the account sheet names. Switching closes the sheet, so it may already be gone when it's closed here.
+    // Returns the user named in the account sheet. Switching accounts closes the sheet, so it may already be closed when the test tries to close it.
     const who = async () => {
       await pocket.click('#btn-account');
       const name = await pocket.textContent('#sheet .prop:has(.k:text-is("User")) .v');
@@ -71,10 +73,10 @@ try {
       await pocket.waitForSelector('#sheet', { state: 'hidden' });
       return name.trim();
     };
-    await vikunja.evaluate(t => localStorage.setItem('token', t), other);     // from the other tab, as a sign-in there would
+    await vikunja.evaluate(t => localStorage.setItem('token', t), other);     // from the other tab, as signing in there would
     await pocket.waitForTimeout(1500);
-    if (await who() !== '@' + USER) throw new Error('switched before it knew');
-    // A task added now mustn't be added as the other person: it waits until Pocket knows, and goes as its own person.
+    if (await who() !== '@' + USER) throw new Error('Pocket switched user before it knew who was signed in');
+    // A task added now must not be created as the other user. It waits until Pocket knows whose session it is, then is created as the original user.
     const title = `Pocket session capture ${Date.now()}`;
     const find = async t => ((await (await fetch(SERVER + '/api/v2/tasks?q=' + encodeURIComponent(title), { headers: { Authorization: 'Bearer ' + t } })).json()).items || []).filter(x => x.title === title);
     await pocket.fill('#in-capture', title);
@@ -82,22 +84,22 @@ try {
     await pocket.waitForSelector(`.row.pending:has(.title:has-text("${title}"))`);
     if ((await find(other)).length || (await find(mine)).length) throw new Error('added before Pocket knew whose session it was');
     cut = false;
-    await pocket.evaluate(() => window.dispatchEvent(new Event('online')));   // the next try to send asks again
+    await pocket.evaluate(() => window.dispatchEvent(new Event('online')));   // the next attempt to send checks the account again
     for (let i = 0; i < 30 && await who() !== '@' + process.env.OTHER_USER; i++) await pocket.waitForTimeout(500);
-    if (await who() !== '@' + process.env.OTHER_USER) throw new Error('still shows ' + await who());
+    if (await who() !== '@' + process.env.OTHER_USER) throw new Error('Pocket still shows ' + await who());
     await pocket.unroute(whoami);
-    await vikunja.evaluate(t => localStorage.setItem('token', t), mine);      // and back, for the steps below
+    await vikunja.evaluate(t => localStorage.setItem('token', t), mine);      // switch back for the later steps
     for (let i = 0; i < 30 && await who() !== '@' + USER; i++) await pocket.waitForTimeout(500);
-    if (await who() !== '@' + USER) throw new Error('didn\'t switch back: ' + await who());
+    if (await who() !== '@' + USER) throw new Error('Pocket did not switch back: ' + await who());
     for (let i = 0; i < 30 && !(await find(mine)).length; i++) await pocket.waitForTimeout(500);
     const added = await find(mine);
-    if (added.length !== 1 || added[0].created_by?.username !== USER) throw new Error('added: ' + JSON.stringify(added.map(t => t.created_by?.username)));
+    if (added.length !== 1 || added[0].created_by?.username !== USER) throw new Error('the task was created by: ' + JSON.stringify(added.map(t => t.created_by?.username)));
     await fetch(SERVER + '/api/v2/tasks/' + added[0].id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + mine } });
   });
 
   await step('expired-token-renews-and-vikunja-stays-signed-in', async () => {
     await expire(pocket);
-    await pocket.click('#btn-refresh');                  // any request: 401, then a renewal, then the retry
+    await pocket.click('#btn-refresh');                  // any request works: it gets a 401, then the session is renewed, then the request is retried
     await pocket.waitForFunction(t => localStorage.getItem('token') !== t, EXPIRED, { timeout: 15000 });
     await pocket.waitForSelector('#btn-refresh:not([disabled])');
     if (await pocket.isVisible('#login')) throw new Error('Pocket signed out');
@@ -108,7 +110,7 @@ try {
   await step('renewing-from-both-at-once', async () => {
     for (let i = 0; i < 5; i++) {
       await expire(pocket);
-      await Promise.all([pocket.click('#btn-refresh'), vikunjaSignedIn()]);   // Vikunja renews on load too
+      await Promise.all([pocket.click('#btn-refresh'), vikunjaSignedIn()]);   // Vikunja also renews the session when it loads
       await pocket.waitForSelector('#btn-refresh:not([disabled])');
       await pocket.waitForTimeout(300);
       if (await pocket.isVisible('#login')) throw new Error(`round ${i + 1}: Pocket signed out`);
@@ -117,17 +119,29 @@ try {
   });
 
   await step('signing-out-in-vikunja-signs-out-pocket', async () => {
-    await vikunja.evaluate(() => localStorage.removeItem('token'));             // what Vikunja's logout does in the browser
-    await pocket.waitForSelector('#login:not([hidden])', { timeout: 10000 });   // after the 2-second check
-    if (!(await pocket.textContent('#login-err')).includes('signed out in Vikunja')) throw new Error('no message');
+    // Text the user is writing in Pocket, saved on the phone as it is when a sheet closes.
+    await pocket.evaluate(() => localStorage.setItem('pocket.drafts', JSON.stringify({ ...JSON.parse(localStorage.getItem('pocket.drafts') || '{}'), 'comment:1': 'Half a comment' })));
+    await vikunja.evaluate(() => localStorage.removeItem('token'));             // this is what Vikunja's logout does in the browser
+    await pocket.waitForSelector('#login:not([hidden])', { timeout: 10000 });   // Pocket notices on its 2-second check
+    if (!(await pocket.textContent('#login-err')).includes('signed out in Vikunja')) throw new Error('the sign-in screen shows no signed-out message');
+    if (!await pocket.isVisible('#f-pass')) throw new Error('the sign-in screen opened on API token, not Password');
+    // After signing in again as the same user, the text that was being written is still there.
+    await vikunjaSignIn();
+    await pocketInApp();
+    const kept = await pocket.evaluate(() => JSON.parse(localStorage.getItem('pocket.drafts') || '{}')['comment:1']);
+    if (kept !== 'Half a comment') throw new Error('the text being written was dropped: ' + kept);
   });
 
   await fresh();
   await step('password-in-pocket-signs-in-vikunja', async () => {
     await pocket.goto(POCKET);
     await pocket.waitForSelector('#f-pass:not([hidden])', { timeout: 10000 });
+    const signIn = pocket.locator('#f-pass button[type=submit]');
+    await expect(signIn).toBeDisabled();
     await pocket.fill('#in-user', USER);
+    await expect(signIn).toBeDisabled();
     await pocket.fill('#in-pass', PASSWORD);
+    await expect(signIn).toBeEnabled();
     await pocket.click('#f-pass button[type=submit]');
     await pocketInApp();
     if (!await vikunjaSignedIn()) throw new Error('Vikunja web app is not signed in');
@@ -147,11 +161,11 @@ try {
       await pocket.goto(POCKET);
       const button = await pocket.waitForSelector('#sso .sso-btn', { timeout: 10000 });
       const [tab] = await Promise.all([context.waitForEvent('page'), button.click()]);
-      // The provider's login form (the mock provider used by scripts/dev.mjs --sso asks for a username only).
+      // The provider's login form. The mock provider used by scripts/dev.mjs --sso asks only for a username.
       await tab.waitForLoadState();
       const field = await tab.$('input[name=username], input[type=text], input[type=email]');
       if (field) { await field.fill(process.env.SSO_USER); await tab.keyboard.press('Enter'); }
-      await pocketInApp();                                // Pocket picks the session up by itself
+      await pocketInApp();                                // Pocket picks up the session on its own
       if (!tab.isClosed()) throw new Error('the sign-in tab was not closed');
       if (!await vikunjaSignedIn()) throw new Error('Vikunja web app is not signed in');
     });

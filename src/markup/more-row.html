@@ -1,0 +1,6 @@
+<!-- The row at the end of a list of done tasks that loads a batch at a time, most recently done first (a project's
+     Done, search's done matches). It looks like the New project row. Tapping it loads the next batch, and the row
+     shows how many tasks are left (moreOf, views.js). While the batch loads, the row shows Loading… and
+     keeps focus. -->
+<template x-if="moreOf(g.key)"><div class="row cl-new more-done"><button type="button" class="body" :id="'more-' + g.key" :aria-busy="String(showingMore === g.key)" @click="showMore(g.key)">
+  <span class="title" x-text="showingMore === g.key ? 'Loading…' : moreOf(g.key)?.title"></span><template x-if="moreOf(g.key)?.note"><span class="note" x-text="moreOf(g.key)?.note"></span></template></button></div></template>

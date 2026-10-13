@@ -1,272 +1,177 @@
 # Pocket guide
 
-The [README](../README.md) says what Pocket is for and how to install it. This is everything else: each screen in full,
-quick add's shortcuts, checklists and timed steps, working offline, API tokens, troubleshooting, and privacy.
+Pocket's syntax, the behaviour you might not expect, and the server setup. The [README](../README.md) says what Pocket is and how to install it.
 
-The examples follow a small café: Alex owns it, and Priya is the shift lead who opens up.
-
-- [Pocket and Vikunja's web app](#pocket-and-vikunjas-web-app)
-- [Tasks](#tasks)
 - [Quick add](#quick-add)
+- [Tasks](#tasks)
 - [Assigning](#assigning)
 - [Checklists](#checklists)
 - [Timed steps](#timed-steps)
 - [Step times](#step-times)
+- [Reminders](#reminders)
 - [Offline](#offline)
-- [Signing in with an API token](#signing-in-with-an-api-token)
+- [API tokens](#api-tokens)
 - [Troubleshooting](#troubleshooting)
 - [Privacy and security](#privacy-and-security)
 
-## Pocket and Vikunja's web app
+## Quick add
 
-Vikunja's web app works on a phone, but it's built for a bigger screen. Pocket covers the day on your feet: what's due,
-adding and finishing tasks, handing them on, and checklists. Boards, project settings and sharing stay in Vikunja.
+Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/) and follows your Vikunja setting for it: Vikunja mode (below), Todoist mode (`#project`, `@label`, `+person`), or off. Parsed words are highlighted as you type, and chips show what will be saved.
 
-<table>
-  <tr>
-    <th>Vikunja's web app</th>
-    <th>Pocket</th>
-  </tr>
-  <tr>
-    <td><img src="screenshots/vikunja-home.png" width="260" alt="Vikunja's home screen on a phone"></td>
-    <td><img src="screenshots/pocket-today.png" width="260" alt="Pocket's Today screen, grouped into Overdue, Today and Next 7 days"></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/vikunja-task.png" width="260" alt="A task in Vikunja's web app on a phone"></td>
-    <td><img src="screenshots/pocket-task.png" width="260" alt="The same task in Pocket's task sheet"></td>
-  </tr>
-</table>
+<img src="screenshots/pocket-capture.png" width="320" alt="Quick add parsing 'Order 6 bags of house blend fri at 9 +orders !3'">
 
-<sub>Same account, same tasks, same phone-sized screen.</sub>
+| Syntax | Sets |
+|---|---|
+| `+orders` or `+"Café"` | Project, by full name or prefix |
+| `*suppliers` or `*"call back"` | Label, created if it doesn't exist |
+| `@user` | Assignee, by username |
+| `!1` to `!5` | Priority |
+| `today`, `tomorrow`, `fri`, `next monday`, `in 3 days`, `end of month`, `Oct 12`, `2026-10-12`, `10/12` | Due date. Numeric dates are read only at the start or end of the text, so "Table 4/5 wobbles" is left alone. |
+| `at 5`, `at 5pm`, `at 17:30` | Due time. A bare hour from 1 to 7 means afternoon or evening. Without a time, the task uses your default due time from Vikunja's settings. |
+| `every day`, `every other week`, `every month`, `weekly` | Repeat. Vikunja can't repeat on weekdays only or on specific days, so `every weekday` stays in the title and a chip says so. |
+| `(50%)` or `50%` at the end | Progress. `100%` is done. Pocket only. |
+| `x ` or `[x] ` at the start | Done already. Pocket only. A capital `X` works too. |
+
+**Undoing a parse.** Tap a chip to keep those words in the title. Wrap the whole text in quotes to turn parsing off: `"Friday night jazz poster"`. Quotes at the start hold the title and leave the rest to parse: `"Lunch friday" @user tomorrow`.
+
+**Pasting a list.** Each line becomes a task. The whole list goes to one project, the first `+project` found. Lines under a `## ` heading, lines indented more than the previous line, and lines after a first line ending in a colon (`Groceries:`) become subtasks. The **↳ Under first line** chip makes everything a subtask of the first line. Ticked lines arrive done. Tap the chip to leave them out instead.
+
+**Differences from Vikunja's parser.** The same text usually makes the same task in both. Pocket differs on purpose here:
+
+- `at 5` is 5 PM. Vikunja reads it as 5 AM.
+- `every month` repeats on the same day each month. Vikunja uses every 30 days.
+- A date means its next occurrence. In June, `2nd March` is next March.
+- `10/12` follows your phone's locale. Vikunja always reads it as US format.
+- Pocket also reads `every monday`, `every other day`, and `the 17th` anywhere in the text.
+
+**Shortcut link.** `…/#/add?text=Order+milk` opens Pocket with the text filled in, for an iOS Shortcut or a bookmark.
 
 ## Tasks
 
-- **Today** groups tasks into Overdue, Today and Next 7 days, plus **Added today, no date**, so a task added without a
-  date stays in view until tonight instead of vanishing into a project. **Move all to today** brings every overdue task
-  to today, each at the time of day it had, or the next whole hour if that time has gone today.
-- **Ticking off:** a ticked task slides away, with an Undo. Ticks in a row add up into one message, "3 done", whose Undo
-  opens them all again. A task's open subtasks are ticked off with it. A repeating task moves to its next date, and Undo
-  puts its date back. An Undo leaves alone a task that was changed elsewhere since.
-- **Progress:** hold a task, then slide sideways to set how far along it is, in steps of 10%. Sliding to 100% marks it
-  done. A checklist run's bar shows how many of its steps are done instead.
-- **The task sheet:** due date, repeat, project, priority, progress, people, labels, notes, subtasks, attachments and
-  comments. Changes save as you make them. Subtasks are added with the same box as quick add. Moving a task to another
-  project takes its subtasks along. The **⋯** at the top of the sheet deletes it, with its subtasks. Tap the project above the title to open it.
-- **Search:** the magnifier finds open and done tasks in all your projects, by words in their title or notes, or by
-  number. A ticked result moves from Open to Done.
-- **Projects:** your project tree with favorites, and the open or done tasks in each. **New project** makes one, inside
-  another if you like. A project's **⋯** renames or archives it if it's shared with you to write, and deletes it if
-  you're its admin. A project shared with you to read only shows its tasks without ticks, and says so.
-- **Signing in:** sign in once, with your usual Vikunja login, and Pocket and Vikunja's web app are both signed in on
-  that device.
-- **On the home screen**, Pocket follows the phone's light or dark mode, and the phone's Back closes an open sheet,
-  keeping what you wrote, then steps back through Pocket's screens.
-- **A shortcut link:** `…/#/add?text=Order+milk` opens Pocket with the text filled in, handy from an iOS Shortcut or a
-  bookmark.
+Behaviour you might not expect:
 
-## Quick add
-
-Quick add uses the prefixes and phrases of Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic/), and
-follows your setting for it in Vikunja: the prefixes below, Todoist-style ones (`#project`, `@label`, `+person`), or
-none. As you type, the words it reads are highlighted in the box, and chips under it show what will be saved.
-
-<img src="screenshots/pocket-capture.png" width="320" alt="Typing 'Order 6 bags of house blend fri at 9 +orders !3' highlights the words it reads, and chips show Orders, Friday 9:00 AM and Priority 3">
-
-| Type | Sets |
-|---|---|
-| `+orders` or `+"Café"` | Project: its full name or the start of it |
-| `*suppliers` or `*"call back"` | Label, created if it doesn't exist |
-| `@priya` | Person to assign, by username. Once assigned, the name leaves the title, as in Vikunja. |
-| `!1` to `!5` | Priority |
-| `today`, `tonight`, `tomorrow`, `this weekend`, `later this week`, `next week`, `next month`, `end of month` | Due date |
-| `friday` or `fri`, `next monday`, `in 3 days`, `in 2 hours` | Due date |
-| `Oct 12`, `21st June`, `2026-10-12`, `10/12`, `01.02`, `17th` | Due date. Dates in numbers only, and a bare `17th`, count only at the start or end, so "Table 4/5 wobbles" stays as it is. |
-| `at 5`, `at 5pm`, `at 17:30`, `@ 3pm` | Due time. A bare hour is daytime: `at 1` to `at 7` mean the afternoon or evening, `at 8` to `at 11` the morning. Write `am` or `pm`, or `05:00`, to say otherwise. Without a time, the task is due at your default due time from Vikunja's settings, noon unless you changed it. |
-| `every day`, `every 3 days`, `every other day`, `every two weeks`, `every month`, `daily`, `weekly`, `biannually` | Repeat. Without a date, it starts at the next due time. Vikunja can't repeat on weekdays only, or on two days a week: `every weekday` or `every monday and thursday` stay in the title, and a chip says so. |
-
-- **Suggestions:** as you type a label or a person, chips offer your labels and the people you share projects with,
-  those who can see the task's project first. Tap one to finish the word, or press Enter for the first.
-- **Read something you didn't mean?** Tap its chip and those words stay in the title. Tap again to undo. To turn it all
-  off for one task, wrap the whole text in quotes: `"Friday night jazz poster"`.
-- **Pasting a list:** with more than one line in the box, each line becomes a task, with its own dates and shortcuts.
-  Bullets, numbering and checkboxes are removed, and a line already ticked off, like `- [x] napkins`, is left out. The
-  whole list goes to one project: add `+orders` to any line. **↳ Under first line** makes the rest subtasks of the
-  first.
-- **New projects:** if a `+project` doesn't exist yet, tap **Create project** to make it.
-- **A photo:** the camera button attaches one to the new task.
-
-<table>
-  <tr>
-    <th>Tap a chip to undo it</th>
-    <th>Paste a list</th>
-    <th>Create a project</th>
-  </tr>
-  <tr>
-    <td><img src="screenshots/pocket-chip-undo.png" width="240" alt="'Write the Sunday brunch menu' with the Sunday chip tapped off and struck through"></td>
-    <td><img src="screenshots/pocket-paste-list.png" width="240" alt="A pasted supplier order with 'Under first line' turned on, showing '1 task + 3 subtasks'"></td>
-    <td><img src="screenshots/pocket-new-project.png" width="240" alt="'Get quotes for patio heaters friday +Patio' with a 'Create project Patio' chip"></td>
-  </tr>
-</table>
-
-**Where Pocket's quick add differs from Vikunja's.** The phrases come from Vikunja's own tests, so the same text mostly
-gives the same task in both apps. Pocket differs on purpose here:
-
-- A bare hour is daytime: `at 5` is 5 PM. Vikunja reads it as 5 AM.
-- `every month` repeats on the same day each month. Vikunja's quick add uses every 30 days.
-- Dates always mean the next one: in June, `2nd March` is next March.
-- `10/12` follows your phone's region, which is 12 October in most places. Vikunja always reads it US-style.
-- A pasted list goes to one project, the first `+project` in it. Vikunja reads each line on its own.
-- Pocket also understands `every monday`, `every other day` and `the 17th` anywhere in the text, and drops a word like
-  "by" or "in" along with its date.
-- Subtasks marked by indenting aren't supported; use **↳ Under first line**.
+- **Overdue** means the due time has passed, not the end of the day. A task due at midnight, which is how Vikunja's web app stores a date without a time, is overdue once that day ends.
+- **Setting progress on an unassigned task assigns it to you** in a shared project. Lowering it back to 0% keeps the assignment. Tap your avatar to remove it.
+- **Completing every subtask doesn't close the parent.** The card shows **Close** and waits. To close a parent with open subtasks, tap its ring or swipe the header fully right. With more than one open, Pocket asks first.
+- **A parent's progress is the average of its subtasks'**, and Pocket writes that figure to Vikunja.
+- **A task with progress takes two swipes to delete.** The first swipe lowers it to 0%.
+- **Ticked and deleted tasks stay in place for three seconds**, then leave together. Until then, un-ticking and **Restore** work. A tick reaches Vikunja at once. A delete is sent only when the row leaves.
+- **Moving a task on Today.** Hold it until it lifts. **Today** is left, **Tomorrow** right, **Next week** above, **No date** below, always in the same places. Let go without moving to tap one, or **Pick a date…**.
+- **Nudging a row moves the add box under it.** A nudge is a press and a slight scroll. With a mouse, it is a short, slow drag up or down on the row. Under a task, the box adds that task's first subtask. Under a subtask, it adds the next one. On a project's list, **⇤** moves the box out a level to add a task there instead, and **⇥** moves it back in (Tab and Shift+Tab on a keyboard). Tap the dashed outline the box left behind, or scroll the row away, to send the box back. **Add a subtask here** in a task's **⋯** does the same as a nudge. Nudging works on a project's list, on Today, in a task's sheet, on a checklist, and on a template's steps. In a sheet and on a checklist the box is at the foot of the list, not in a bar at the bottom of the screen, so nudging the last row changes nothing.
+- **The subtask box doesn't read `+project`.** A subtask stays in its parent's project. In a checklist project it doesn't read dates either, because subtasks there may become template steps.
+- **Copy as a Markdown list** round-trips. Pasted into Pocket's add box, it makes the tasks again. Notes, comments and attachments aren't included.
+- **Every swipe and hold has an equivalent in the ⋯ menu**, for keyboard and screen-reader use. Right-click a row to open its task menu. Press Shift+F10 on a focused row to open the same menu.
+- **Press Alt+Up or Alt+Down on a task or in an add box** to move the box through the rows. The text stays in the box. Hold and drag a task to reorder it.
+- **Press Alt+Left in the project add box** to add a task at that position. Press Alt+Right to add a subtask instead.
 
 ## Assigning
 
-`@priya` in quick add, or **Assigned → Add** in a task's sheet, gives the task to someone. They can only be given a task
-in a project they can see.
+A user can only be assigned a task in a project they can access.
 
-<img src="screenshots/pocket-assign.png" width="320" alt="'Clean the milk steamer tomorrow @priya', with chips showing Café, Tomorrow and @priya">
-
-- Without a `+project`: if your default project isn't shared with them but exactly one of your projects is, Pocket picks
-  that one and shows it as a chip; tap it to undo. Otherwise a chip says they can't see the project, before you send.
-- In the sheet, only people who can see the task's project are suggested.
-- A checklist run is for one person, picked when it's started or later from its **⋯**. Vikunja tells them about it once,
-  not once per step.
+- **`@user` without a `+project`.** If your default project isn't shared with that user but exactly one of your projects is, Pocket picks that one and shows a chip. Otherwise a chip warns before you send.
+- **+ me** appears only in shared projects. In a private project the slot is empty.
+- **Assignment never marks anything done.** Completion is recorded for whoever ticks it.
+- **A checklist's row shows who it's for.** Change that from the checklist's **⋯**. Vikunja notifies them once per checklist, not per step.
+- **To reassign a checklist step**, open the checklist's **⋯**, tap **Open as a task**, then tap the step.
 
 ## Checklists
 
-Checklists are the things done the same way again and again: opening up, closing down, a delivery check. Each start of
-one is a run, with who did each step and when. They're ordinary Vikunja projects and tasks.
+A checklist template is a procedure done repeatedly. Starting it creates a checklist, which records who completed each step and when. Templates and checklists are ordinary Vikunja tasks.
 
-<p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a run of the café's Opening up template. Once the espresso machine is on and the croissants are in, 'Dial in the grinder' and 'Take the croissants out' count down, pinned at the top."></p>
+<p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a checklist and completing two steps"></p>
 
-1. **Use a project for checklists.** Open it, tap **⋯** and choose **Use for checklists**, or tick **Use for
-   checklists** in **New project**. Everyone it's shared with gets a **Checklists** tab. Share it in Vikunja with the
-   people who'll run it, at *Write*.
-2. **Make a template.** Under Checklists, tap **New template**, name it, and write its steps, a row each: **Enter** or
-   **Add a step** starts the next one, and a pasted list becomes a row a line. Move steps up or down, then tap **Make
-   template**. In a template's sheet, tap a step to change it, or × to remove it; runs already started keep theirs.
-   A task with its steps as subtasks can also be made one, with **Use as checklist template** in its sheet's **⋯**.
-3. **Start a run.** Tap **Start** and choose who it's for: people who can work on the project. A name, like "Saturday",
-   takes the place of "run 3" in the run's name. A run can be started without a connection, from the templates last
-   seen under Checklists, and is set up once Pocket reaches Vikunja. A step assigned to someone in the template stays
-   assigned to them in every run.
-4. **Work through it.** One step at a time: **Done**, or **Skip**. A note typed on the step goes with either: **Done,
-   with the note** saves it on the step, and **Skip with the note** makes it the reason. Add a photo or a note to a step,
-   or a note to the whole run. **Last time** shows the notes from the last finished run of the same template, as a
-   handover. After the last step, **Finish run**, with an Undo.
+**Setup.** Under Projects, **Set up checklists** creates a project with an example template. Or mark an existing project with **Use for checklists** in its **⋯**. Share the project in Vikunja's web app with **Read & write**. Vikunja defaults to *Read only*, which lets people see checklists but not tick steps.
 
-- **Who did a step** is a ✅ reaction on it, or ⏭️ for a skipped one, so Vikunja's web app shows it too. A step ticked on
-  Today counts the same.
-- **Today** shows your runs, under **Checklist runs**, and their steps that are due, each with its run's name, to the
-  person who started the run and the person it's for. A run has no tick on Today: it's finished on its screen. Tapping a
-  run opens it; tapping a step opens its run on that step.
-- **The run on screen** updates by itself as teammates tick steps.
-- **A run's ⋯** changes its name and who it's for, opens it as a task, reopens a finished run, and deletes a run with its
-  steps. A run waiting to be set up can be cancelled with its ×. Finished runs are under **Finished lately**.
-- **Offline:** ticks, skips, notes and photos are sent once Pocket reaches Vikunja, in the order you did them.
-- **In Vikunja's web app**, a template is a done task labelled `template`, with its steps as done subtasks. A run is a
-  copy of it, named like "Opening up · run 3 · Oct 4", which Vikunja links to the template as "copied from". The web app
-  can't reorder steps, so reorder them in Pocket. Everyone with *Write* access can change templates there too.
+**Templates.** Steps are parsed like quick add (`@user`, `*front`, `!3`) except for dates. Step timing is separate (see **Timed steps**). Tap a step to edit it. Hold to reorder. Swipe left to delete. **Notes and photos** under a step are copied into every checklist, as are the template's own notes, attachments, labels and assignees. An existing task with subtasks becomes a template with **Use as checklist template**.
+
+**Checklists.** A checklist can be started offline. A name entered on start, such as "Saturday", replaces the number in its title. A comment typed on a step is posted with **Done**, or recorded as the reason with **Skip**. **Last time** shows the comments from the previous completed checklist. To finish early, tap the checklist's ring. The remaining steps stay incomplete.
+
+**Recurring.** Give the template a due date and a repeat interval. It becomes a repeating Vikunja task. Today lists it from a week before its due time, for its assignees (or for everyone with write access), and tapping it opens Start. Starting a checklist on or after the due day advances the template, and the checklist inherits the due time, so an unfinished one shows as overdue. A start at 7:55 counts as the 8:00 occurrence. A start before the due day doesn't advance the template. Missed occurrences aren't made up.
+
+**Changing a checklist.** The box under the steps adds a step at the end, for this checklist only. Nudge a step to move the box under it. A step added there goes after it. **Repeat**, the ↻ button in the box, duplicates the step above the box, right after it. Template steps can't be removed from a checklist, only skipped.
+
+**Completion record.** Done is a ✅ reaction and skipped is ⏭️, so the web app shows "Done by … at 4:46 PM". Vikunja only lets users remove their own reactions, so un-ticking someone else's step asks first and leaves their reaction in place.
+
+**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Pocket keeps its own records as lines in descriptions. Leave them in place. `pocket:checklists` in a project's description marks the project. `pocket:order 12 15 13` in a template's or checklist's description is the step order. Steps it doesn't list sort last. `pocket:run` marks a checklist, `pocket:step Preheat T#10m` on a step is the template step it was copied from, and `pocket:added` marks a step inserted or repeated while the checklist was running. Pocket hides any line starting with `pocket:` from the notes and keeps it when the notes are edited.
 
 ## Timed steps
 
-Write the time in the step: "Dial in the grinder **in 20 min**", "Take the croissants out **after 18 minutes**", "Restock
-the cups **20 minutes later**". A chip under the step shows what Pocket read, "⏱ 20m after the step before". To count
-from another step, pick it in the chip, or write it: "Dial in the grinder **20 minutes after Turn on the espresso
-machine**". Tap × to keep the words as they are. Words that tell what to do, like "steam **for** 2 minutes", aren't read
-as a time.
+Write the delay in the step: "Dial in the grinder **in 20 min**", "Take the croissants out **after 18 minutes**". A chip shows what was parsed. To count from a different step, select it in the chip, or write "**20 minutes after** Turn on the espresso machine". Durations that describe the action, like "steam **for** 2 minutes", aren't parsed.
 
-Pocket saves the time in the step's title in the template, written the way PLC programs write times, which is also how
-to write one in Vikunja's web app:
+Pocket stores the timer in the step's title using PLC duration syntax, which is also how to enter one in Vikunja's web app:
 
-| In the step | It's due |
+| Step title | Due |
 | --- | --- |
-| `Wipe the counters T#20m` | 20 minutes after the step before it is done. On the first step, 20 minutes after the run starts. |
-| `Put the croissants in the oven {#croissants}` | When it's next. `{#croissants}` names the step "croissants". |
+| `Wipe the counters T#20m` | 20 minutes after the previous step is done. For the first step, after the checklist starts. |
+| `Put the croissants in the oven {#croissants}` | No timer. `{#croissants}` names the step. |
 | `Take the croissants out T#18m:croissants` | 18 minutes after the step named "croissants" is done, whatever is done in between. |
 
-- Units are `d`, `h`, `m`, `s` and `ms`, and they combine: `T#1h30m`. A step without a `T#` has no due date: it's simply
-  next.
-- Picking a step to count from gives it a name made from its first words, like `{#put-the-croissants}`.
-- A time counts from an earlier step, and each name is used once. Pocket checks this as you write the steps, when you
-  move one, and when you start a run.
-- A run's steps get their titles without `T#` and `{#…}`.
-- On the run screen, a timed step says what it waits on ("Due 18m after “Put the croissants in the oven”"). Once that
-  step is done, it counts down. Countdowns for other steps are pinned above the step on screen, soonest first.
+- Units: `d`, `h`, `m`, `s`, `ms`. They combine: `T#1h30m`.
+- A timer must refer to an earlier step, and names must be unique. Pocket checks this on edit, reorder and start.
+- Checklist steps get their titles with `T#` and `{#…}` removed.
+- A step inserted during a checklist has no timer and isn't "the previous step" for the one after it. A step timed from a repeated step counts from whichever copy was done last.
 
 ## Step times
 
-Timed steps get due dates in Vikunja, and so show on Today and in Vikunja's web app, through the plugin's step times:
-`steptimes: true` in the [install's config](../README.md#install). Without it, Pocket still counts down on the run
-screen.
+With `steptimes: true` in `config.yml` (or `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`), timed steps get due dates in Vikunja, and so appear on Today, in the web app and in email reminders. Without it, Pocket still counts down on the checklist screen.
 
-What it does: when a step of a checklist run is marked done (in Pocket, in Vikunja's web app, or through the API), the
-plugin sets the due date of each step of the same run timed from it: the time it was marked done, plus that step's
-time. It writes only due dates (not even when a task was last changed), only on steps of that run that aren't done, and
-only when the date changes. It only acts on a run Pocket would make: the run, its steps and its template all in one
-project, the template labelled `template`, and each step copied from one of the template's steps. It doesn't act on
-templates, on a done step saved again, or on a step marked not done. All of it is in one function, `setStepDueDates` in
-[`pocket/main.go`](../pocket/main.go). It can also be turned on with `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`.
+When a step is marked done, the plugin sets the due date of each step in the checklist timed from it: the completion time plus the timer. Marking the step incomplete clears those due dates. The plugin writes due dates and reminders only, on incomplete steps of that checklist, only when the date changes, and doesn't update the task's modified timestamp. The logic is one function, `writeStepDueDates` in [`pocket/main.go`](../pocket/main.go).
 
-A step ticked offline counts, in Vikunja, from when the tick reaches it. Pocket counts down from when you ticked it.
+Limitations:
+
+- Vikunja's web app and CalDAV clients save the whole task from their loaded copy. Saving a step from a copy loaded before its due date was set overwrites the due date. Pocket's countdown is unaffected.
+- CalDAV clients and saved filters don't see the new due date until the step changes in some other way, because the modified timestamp isn't updated.
+- A step ticked offline is timed, in Vikunja, from when the tick reaches it. Pocket counts down from when you ticked it.
+- A tick the plugin handles more than 2 minutes after Vikunja recorded it, or during a restart, sets no due dates.
+
+## Reminders
+
+Timers sound while Pocket is open. When Pocket is closed, reminders arrive by Vikunja's email. Pocket shows no system notifications and asks for no permissions.
+
+- A countdown reaching zero chimes, once per step, and vibrates on Android. An iPhone with the silent switch on may not sound.
+- The screen stays awake while a checklist with a countdown is on screen.
+- The app icon shows the overdue count, on phones that support it.
+- Email reminders need `mailer` and `service.enableemailreminders` in Vikunja's config (Cloudron handles this), and email reminders turned on in your Vikunja settings.
+- Typing a time in quick add shows a 🔔 chip offering a reminder at that time. It's off until tapped.
+- Timed steps get a reminder at their due time, sent to whoever started the checklist and to the step's assignees. This needs step times. A step due less than a minute after its reference step gets none, because Vikunja checks reminders once a minute.
+
+Vikunja's web push, in progress in [go-vikunja/vikunja#4020](https://github.com/go-vikunja/vikunja/pull/4020), would allow phone notifications.
 
 ## Offline
 
-Pocket opens without a connection and shows your lists as they were last loaded.
+Pocket opens without a connection and shows lists as last loaded.
 
-<img src="screenshots/pocket-offline.png" width="320" alt="Pocket offline: a banner saying what's sent once back online, and 'Buy till receipt rolls' tinted under Today, waiting to be sent">
+- **Works offline:** new tasks and subtasks, comments, and checklists. Ticking or editing other tasks needs a connection.
+- **Queued items** show tinted with a dashed circle. The refresh button turns amber with a count. Tap it to see the queue, cancel items not yet started, or **Try now**.
+- **Nothing is lost.** Queued text survives closing the app and the session expiring. If Vikunja rejects an item for good, the text returns to the input. Notes changed elsewhere while you were editing aren't overwritten. Both versions are shown.
+- **iPhones don't allow background sending.** Items go out the next time Pocket is opened.
 
-- **What works offline:** new tasks and subtasks, comments, and what you do in a checklist run. A task waiting to be
-  sent has a light tint and a dashed circle; its × cancels it and puts its words back in the box. Ticking off or editing
-  other tasks needs a connection, and the offline banner says so.
-- **Nothing you write is lost:** a comment, notes, subtasks, a step's note or a new template is kept on the phone until
-  it's sent, even if Pocket is closed. Something Vikunja turns down for good says what it was, and its words go back in
-  the box.
-- **Sending:** waiting things are sent when Pocket is opened, when it comes back to the front, and when the connection
-  returns, in the order they were done, and a connection that drops halfway doesn't send anything twice. Vikunja not
-  answering within 20 seconds counts as no connection. On an iPhone, waiting things are sent the next time Pocket is
-  opened, since iPhones don't let web apps send in the background.
+## API tokens
 
-## Signing in with an API token
+Pocket accepts an API token instead of a password or single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and add:
 
-If single sign-on and passwords don't suit you, Pocket also takes an API token. In Vikunja, go to *Settings → API
-Tokens*, choose the **Task Management** preset, and also tick:
+- **User** and **Users** under *Other*, and **Users search** under *Projects*: to look up `@user` and check project access.
+- **Create**, **Update** and **Delete** under *Projects*: to create, rename, archive and delete projects, and mark them for checklists.
+- **Reactions**: to record who completed each checklist step.
 
-- **User** and **Users** under *Other*, and **Users search** under *Projects*: to find people for `@priya` and check that
-  they can see the task's project. Without **Users search**, `@priya` still works, but people aren't suggested and no
-  project is picked for them.
-- **Create**, **Update** and **Delete** under *Projects*: to create projects from quick add, to rename, archive and use
-  them for checklists, and to delete them.
-- **Reactions**: for checklists, to record who did each step.
-
-A token is kept by Pocket alone, so signing in or out of Vikunja's web app doesn't affect it.
+The preset already includes what reordering needs: **Position** under *Tasks*, and reading a project's views. A token without them shows each project's tasks in creation order and can't reorder them. Vikunja can't add permissions to an existing token, so create a new one.
 
 ## Troubleshooting
 
-- **Pocket's address shows "not found":** look for lines mentioning `pocket` or `plugin` in Vikunja's log.
+- **Pocket's URL returns "not found".** Check Vikunja's log for `pocket` or `plugin`.
   - `couldn't find app/index.html`: the files aren't at `plugins/pocket/app/`.
-  - `Failed to load yaegi plugin pocket`: the plugin didn't load, for example because a Vikunja update changed how
-    plugins work. Vikunja itself keeps running.
-  - Nothing at all: plugins aren't turned on, or Vikunja hasn't been restarted since.
-- **Stuck on Vikunja's page after single sign-on:** on the home screen, single sign-on opens in the same window and ends
-  on Vikunja's page. Close that page to come back to Pocket. In a browser, it opens a new tab that closes by itself.
-- **"Too many attempts from here":** Vikunja allows 10 sign-in attempts a minute from one address. Wait a minute.
-- **"That token didn't work":** the token has expired, or **User** under *Other* isn't ticked.
-- **"Your API token doesn't allow this":** the token is missing a permission ([see above](#signing-in-with-an-api-token)).
-  Vikunja can't add permissions to an existing token, so create a new one.
-- **"@priya can't see Inbox":** you can only assign people a project is shared with. Add a `+project` they can see, or
-  share the project with them in Vikunja.
+  - `Failed to load yaegi plugin pocket`: the plugin didn't load, possibly because a Vikunja update changed the plugin API. Vikunja keeps running.
+  - Nothing: plugins aren't enabled, or Vikunja hasn't been restarted.
+- **The log shows the old version after updating.** Vikunja reads `main.go` at startup. Restart it.
+- **"Too many attempts from here".** 10 sign-in attempts per minute per address. Wait.
+- **"That token didn't work".** The token expired, or **User** under *Other* isn't enabled.
+- **"Your API token doesn't allow this".** A permission is missing. See [API tokens](#api-tokens).
+- **"@user can't see Inbox".** Share the project with them, or add a `+project` they can access.
 
 ## Privacy and security
 
-- Pocket has no server of its own. Vikunja serves its files, and Pocket only talks to that same Vikunja.
-- Pocket uses Vikunja's own sign-in, stored in the browser where Vikunja's web app keeps it, and renews it the way
-  Vikunja does. To revoke an API token entirely, delete it in Vikunja.
-- For offline use, Pocket keeps the lists it last loaded, what's waiting to be sent, and what you're still writing, in
-  the browser on that device. Signing out removes them, and asks first if something is still waiting.
-- Notes and comments are cleaned before they're shown, and attachments other than images, PDFs and plain text are
-  downloaded instead of opened. Together, these stop content from people you share projects with from running code
-  inside Pocket, which shares its web address with Vikunja.
-- The plugin runs inside Vikunja, so read [`pocket/main.go`](../pocket/main.go) before installing it. It serves the
-  files in its `app/` folder and, with step times on, sets the due dates of checklist steps, and nothing else.
+- Pocket has no server of its own and talks only to the Vikunja that serves it.
+- It uses Vikunja's own session, stored where the web app stores it. To revoke an API token, delete it in Vikunja.
+- For offline use, Pocket stores the last-loaded lists, the send queue and in-progress text in the browser. Signing out clears them. Another account signing in on the same device never sees them. To recognize a returning session, Pocket stores a SHA-256 hash of the credential, never the credential.
+- Notes and comments are sanitized before display, and attachments other than images, PDFs and plain text are downloaded rather than opened inline. This stops a collaborator's content from running code in Pocket, which shares Vikunja's origin.
+- The plugin runs inside Vikunja. Review [`pocket/main.go`](../pocket/main.go) before installing. It serves `app/` and, with step times enabled, sets due dates on checklist steps. Nothing else.

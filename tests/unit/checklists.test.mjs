@@ -1,0 +1,101 @@
+// Checklist steps that don't need HTML (src/js/checklists.js): their order, their times, and what is shown for them.
+// tests/parse.mjs covers the parts that need a browser. Those are reading and writing Pocket's lines in a description,
+// and parsing steps as the user types them.
+import './browser.mjs';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { durText, inOrder, isRun, isRunStepTask, placeBefore, plainStep, problemText, runParts, runWithoutDay, stepFrom, stepInfos, stepProblems, stepsOf, stepWords, parseStep } from '../../src/js/checklists.js';
+import { runTitle } from '../../src/js/sync.js';
+
+const ids = list => list.map(s => s.id);
+
+test('steps follow their order line, then the other steps by id, and ids that are no longer steps are skipped', () => {
+  const steps = [{ id: 5 }, { id: 2 }, { id: 9 }, { id: 7 }];
+  assert.deepEqual(ids(inOrder(steps, [9, 44, 5])), [9, 5, 2, 7]);
+  assert.deepEqual(ids(inOrder(steps, null)), [2, 5, 7, 9]);
+  assert.deepEqual(ids(steps), [5, 2, 9, 7], 'the list passed in is not changed');
+});
+
+test('an inserted step goes before the step it was put before, else after the step above it, else at the end', () => {
+  assert.deepEqual(placeBefore([1, 2, 3], 9, 2, 1), [1, 9, 2, 3]);
+  assert.deepEqual(placeBefore([1, 3], 9, 2, 1), [1, 9, 3]);
+  assert.deepEqual(placeBefore([3], 9, 2, 1), [3, 9]);
+  assert.deepEqual(placeBefore([1, 9, 2], 9, 2, 1), [1, 9, 2], 'a step that is already in the order is not added again');
+});
+
+test('a template\'s steps are in order, and any other task\'s subtasks stay in Vikunja\'s order', () => {
+  const subtask = [{ id: 8 }, { id: 3 }];
+  assert.deepEqual(ids(stepsOf({ labels: [{ title: 'Template' }], related_tasks: { subtask } })), [3, 8]);
+  assert.deepEqual(ids(stepsOf({ related_tasks: { subtask, copiedfrom: [{ id: 1 }] } })), [3, 8], 'a checklist\'s steps are in order');
+  assert.deepEqual(ids(stepsOf({ related_tasks: { subtask } })), [8, 3]);
+  assert.deepEqual(stepsOf(null), []);
+});
+
+test('a countdown is written with its two largest units', () => {
+  assert.equal(durText(5400000), '1h 30m');
+  assert.equal(durText(90061000), '1d 1h');
+  assert.equal(durText(59000), '59s');
+  assert.equal(durText(400), '0s');
+  assert.equal(durText(0), '0s');
+});
+
+test('a timed step counts from the previous step, a named earlier step, or the start', () => {
+  const steps = ['Heat the oven {#oven}', 'Roast T#40m:oven', 'Rest T#10m', 'Plate', 'Serve T#5m:later {#later}'].map(parseStep);
+  assert.deepEqual([0, 1, 2, 3, 4].map(i => stepFrom(steps, i)), [null, 0, 1, null, null]);
+  assert.equal(stepFrom([parseStep('First T#5m')], 0), -1, 'the first step counts from the start of the checklist');
+});
+
+test('a template\'s steps are shown with when each is due, its name, and any problem', () => {
+  const shown = stepInfos(['Heat the oven T#0m {#oven}', 'Roast T#40m:oven', 'Baste T#20m:gravy', 'Plate']);
+  assert.deepEqual(shown, [
+    { title: 'Heat the oven', text: 'Due at the start · named “oven”', problem: '' },
+    { title: 'Roast', text: 'Due 40m after “Heat the oven”', problem: '' },
+    { title: 'Baste', text: '', problem: 'no step is named “gravy”' },
+    { title: 'Plate', text: '', problem: '' },
+  ]);
+  assert.equal(problemText(stepProblems(['A T#5m:b', 'B {#b}', 'C T#x'])), 'step 1, “A”: its time counts from “b”, which has to be an earlier step (and 1 more)');
+});
+
+test('a step\'s time is written in words, as Pocket shows it', () => {
+  const titles = ['Put the roast in {#roast}', 'Baste T#40m:roast', 'Peel T#1h30m', 'Lost T#5m:nobody'];
+  assert.equal(stepWords(titles[1], titles), 'Baste 40m after Put the roast in');
+  assert.equal(stepWords(titles[2], titles), 'Peel in 1h 30m');
+  assert.equal(stepWords(titles[3], titles), titles[3], 'a step that counts from a missing step is left as written');
+  assert.equal(stepWords('Plate', titles), 'Plate');
+});
+
+test('a checklist and a checklist\'s step are recognised by their links', () => {
+  assert.equal(isRun({ done: false, related_tasks: { copiedfrom: [{ id: 1 }] } }), true);
+  assert.equal(isRun({ done: true, related_tasks: { copiedfrom: [{ id: 1 }] } }), false, 'a finished checklist is not a checklist in progress');
+  assert.equal(isRun({ done: false, labels: [{ title: 'template' }], related_tasks: { copiedfrom: [{ id: 1 }] } }), false, 'a template still being set up is not a checklist');
+  assert.equal(isRun({ done: false, related_tasks: { copiedfrom: [{ id: 1 }], parenttask: [{ id: 2 }] } }), false, 'a step is not a checklist');
+  assert.equal(isRunStepTask({ related_tasks: { parenttask: [{ id: 2 }], copiedfrom: [{ id: 1 }] } }), true);
+  assert.equal(isRunStepTask({ related_tasks: { parenttask: [{ id: 2 }] } }), false, 'a subtask of any other task is not a checklist step');
+});
+
+test('a checklist\'s title is its template\'s name, the day, then its number or typed name, and a title with the day last is still read', () => {
+  const made = new Date(2026, 9, 8, 7, 30), created = made.toISOString(), day = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  assert.equal(runTitle('Opening up', '#3', made), `Opening up · ${day(made)} · #3`);
+  assert.equal(runTitle('Opening up', 'Saturday', made), `Opening up · ${day(made)} · Saturday`);
+  assert.deepEqual(runParts(`Opening up · ${day(made)} · #3`, created), { template: 'Opening up', day: day(made), name: '#3', old: false });
+  assert.deepEqual(runParts(`Bar · late · ${day(made)} · Night · shift`, created), { template: 'Bar · late', day: day(made), name: 'Night · shift', old: false }, 'a dot in a name stays in the name');
+  assert.deepEqual(runParts(`Opening up · run 3 · ${day(made)}`, created), { template: 'Opening up', day: day(made), name: 'run 3', old: true }, 'a title from when the day was written last is marked old');
+  assert.deepEqual(runParts(`Opening up · ${day(new Date(2026, 9, 5))} · Saturday`, created)?.name, 'Saturday', 'a checklist started offline and created in Vikunja days later');
+  const other = day(new Date(2026, 8, 20));
+  assert.equal(runParts(`Opening up · ${other} · #3`, created), null, 'a day other than the start day is not taken apart');
+  assert.equal(runParts('Opening up', created), null);
+  assert.equal(runParts(`Opening up · ${day(made)}`, created), null);
+  assert.deepEqual(runParts(`Opening up · ${other} · #3`, created, true), { template: 'Opening up', day: other, name: '#3', old: false }, 'when changing the name, the title is read by its look, with the number last');
+  assert.deepEqual(runParts(`Opening up · Nights · ${other}`, created, true), { template: 'Opening up', day: other, name: 'Nights', old: true }, 'otherwise the title is read as older titles were written, with the day last');
+  assert.equal(runWithoutDay(`Opening up · ${day(made)} · #3`, created), 'Opening up · #3');
+  assert.equal(runWithoutDay(`Opening up · run 3 · ${day(made)}`, created), 'Opening up · run 3');
+  assert.equal(runWithoutDay('Stocktake · back room', created), 'Stocktake · back room', 'any other name is left whole');
+});
+
+test('a checklist\'s screen keeps a step\'s title in the template, taken from the step it was copied from', () => {
+  const s = plainStep({ id: 4, title: 'Roast', done: false, related_tasks: { copiedfrom: [{ id: 2, title: 'Roast T#40m:oven' }] } });
+  assert.equal(s.tpl, 'Roast T#40m:oven');
+  assert.equal(s.from, 2);
+  assert.equal(s.added, '');
+  assert.equal(s.percent_done, 0);
+});

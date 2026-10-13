@@ -1,0 +1,39 @@
+<!-- The quick-add bar at the bottom of Today and a project's list. There is one add box (x-box). Nudging a row moves
+     the box into the list under that row, indented to match what it adds (seatBox, app/quickadd.js). On a project's
+     list the ⇤ ⇥ button changes the box's level. While the box is in the list, a dashed placeholder keeps its place at
+     the bottom. Tapping the placeholder, or scrolling the box's row out of sight, brings the box back. The box has no
+     button for that, because its line has no space for one. -->
+  <!-- The placeholder at the bottom while the box is in the list. It is one line tall, dashed, and shows the box's
+       placeholder text. It comes before the box in the markup, so the box covers it for the frame before the box is
+       placed under its row. -->
+  <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span x-text="capHomeSays"></span></button>
+  <!-- Quick add. A checklist's screen hides it, because its steps have their own box under them (screens/run.html). -->
+  <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
+    <!-- Messages from the box: where a task went when it isn't on this screen, or why it couldn't be added -->
+    <template x-for="line in placeLines('cap')" :key="line.n">
+      <!-- include markup/place-line.html -->
+    </template>
+    <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
+      <!-- On a project's list, this moves the box out a level, so it adds a task after this one and its subtasks, or
+           back in (boxLevel, quickadd.js). Tab and Shift+Tab do the same (boxTab). -->
+      <template x-if="canLevel"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Indent the add box to add a subtask' : 'Outdent the add box to add a task'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
+      <div class="cap-field">
+        <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
+        <!-- The add box (x-box, component.js). It takes a list, so Shift+Enter starts a new line. -->
+        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" @keydown.tab="boxTab($event)" :placeholder="capPlaceholder" :aria-label="capTarget ? 'New subtask of ' + capTarget.to : 'New task'" enterkeyhint="send"></textarea>
+      </div>
+      <template x-if="attachmentsOn && capW === 'cap'"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
+        <svg class="i"><use href="#i-camera"/></svg>
+        <input type="file" id="in-photo" class="sr" accept="image/*" multiple aria-label="Attach a photo to the new task" @change="addCapPhotos($event.target.files); $event.target.value = ''">
+      </label></template>
+      <button class="go" type="submit" :aria-label="{cap: 'Add task', under: 'Add subtask', ins: 'Add step'}[capW]" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
+    </form>
+    <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">
+      <template x-if="capLines.length > 1 && capW === 'cap'"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(nestOn)" @mousedown.prevent @click="tapNest()">↳ Under first line</button></template>
+      <template x-if="capBox.focus && !capBox.text"><span class="hint" x-text="boxHint(capW)"></span></template>
+      <!-- The chips for what the box read (chips.html) -->
+      <template x-for="bw in [capW]" :key="0">
+        <!-- include markup/chips.html -->
+      </template>
+    </div>
+  </div>

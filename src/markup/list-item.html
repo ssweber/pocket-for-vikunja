@@ -1,0 +1,54 @@
+<!-- One item in a list with cards (Today, search's open tasks, a project's open list), for task `t` in the list `g`.
+     A task with no open subtasks is a row (task-row.html). A task with open subtasks or steps is a stacked card
+     (cardOf, app/cards.js). The card's header is the parent's ring and title, and its open subtasks are rows under
+     it (c.g). Swiping the header right springs back, because a parent has no progress of its own. A full swipe does
+     what tapping the ring does. Swiping left shows Delete (headGesture).
+
+     A collapsed card shows its top row and a slim tab (⌄, "More") that opens it. An open card shows every open
+     subtask, with ⌃ ("Show less") to collapse it. Scrolling it off the screen collapses it too (watchCard). With one
+     open subtask, and on a project's list, there is no footer. When every subtask is done (c.closes), the rows are
+     replaced by "All subtasks done" and Close, so a card never closes without the user asking. A card ticked done
+     from its ring or Close stays until the batch clears, with its title struck through. Tapping its ring undoes it.
+     A deleted card becomes a gap with Restore (gap.html), and a message about the task shows in its place, as a
+     row's does. -->
+<div class="item" :class="itemClass(t, g)" :data-id="t.id">
+  <template x-if="!cardOf(t, g)">
+    <!-- include markup/task-row.html list -->
+  </template>
+  <!-- cardHead is calculated once per card. A screen reader reads the count, the progress and the project after the
+       title. On a project's list, holding the card moves it as it moves a row. The card is highlighted (lit,
+       quickadd.js) while the add box adds subtasks to it. -->
+  <template x-for="[c, h] in [cardOf(t, g)].filter(Boolean).map(c => [c, cardHead(t, g)])" :key="0">
+    <div class="day-card" role="group" :aria-label="h.title" :data-id="t.id" :data-gestures="rowGestures(g)"
+         :class="{open: c.open, done: t.done, aimed: lit[t.id] && capW === 'under', leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', lined: !!lines[t.id], fresh: flashed.fresh[t.id], 'came-due': flashed.due[t.id], arrived: flashed.arrived[t.id]}"
+         x-effect="c.open && c.folds && watchCard($el); lit[t.id] && watchCursor($el)"
+         @click.capture="tapGap(t, g, $event)">
+      <div class="card-head" @contextmenu="rowMenu(t, $event)" @keydown.shift.f10="rowMenu(t, $event)"
+           @keydown.alt.up="rowBox(t, g, -1, $event)" @keydown.alt.down="rowBox(t, g, 1, $event)">
+        <template x-for="r in [c.ring].filter(Boolean)" :key="0">
+          <!-- include markup/ring.html -->
+        </template>
+        <button class="card-open" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="h.said ? ', ' + h.said : ''"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template><template x-if="h.color"><i class="dot" aria-hidden="true" x-style="{background: h.color}"></i></template></button>
+      </div>
+      <!-- When every subtask is done, the card waits for Close, which does what tapping the ring does. -->
+      <template x-if="c.closes"><div class="card-close"><span x-text="c.run ? 'All steps done' : 'All subtasks done'"></span><button type="button" class="close-btn" x-show="!t.done" :disabled="!canWrite(t.project_id)" :aria-label="c.ring?.label" @click="ringTap(t, $el.closest('.day-card'))">Close</button></div></template>
+      <div class="card-rows">
+        <template x-for="[t, g] in c.rows.map(s => [s, c.g])" :key="t.id">
+          <!-- include markup/task-row.html card -->
+        </template>
+      </div>
+      <!-- The footer. A collapsed card has a slim tab under the last row, like the edge of a card stacked behind
+           it. The tab holds ⌄ ("More" to a screen reader), and tapping it opens the card. An open card has a plain ⌃ ("Show
+           less") under it. Either way the touch target is the card's width and 48px tall. It has no text, title or
+           count, because the ring shows those. -->
+      <template x-if="c.peek"><button type="button" class="card-more" aria-expanded="false" aria-label="More" @click="openCard(c)">
+        <i class="tab" aria-hidden="true"><svg class="i"><use href="#i-chev"/></svg></i></button></template>
+      <template x-if="c.open && c.folds"><button type="button" class="card-more" aria-expanded="true" aria-label="Show less" @click="foldCard(c.id)">
+        <i class="tab" aria-hidden="true"><svg class="i"><use href="#i-chev"/></svg></i></button></template>
+      <template x-for="line in lines[t.id] ? [lines[t.id]] : []" :key="0">
+        <!-- include markup/row-line.html -->
+      </template>
+      <!-- include markup/gap.html -->
+    </div>
+  </template>
+</div>

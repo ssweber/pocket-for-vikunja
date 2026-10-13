@@ -1,0 +1,900 @@
+:root{
+  --bg:#EEF1EF; --surface:#FFFFFF; --sunk:#E3E8E5; --ink:#17201C; --muted:#5B6863; --line:#D6DDD9;
+  --accent:#1D6B52; --accent-ink:#FFFFFF; --accent-soft:#D8EBE3; --accent-fill:#A9D3C1; --track:#8C9692;
+  --lit:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));      /* the tint of the row an add box sits under */
+  --overdue:#A82339; --today:#9A6414; --danger:#A82339; --danger-soft:#F3D9DD;
+  /* Shadows and the shade behind a sheet. Dark mode keeps these unless its block below says otherwise. */
+  --shadow-low:0 1px 2px rgba(0,0,0,.12); --shadow-menu:0 10px 32px rgba(0,0,0,.22);
+  --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
+  --shadow-lift:0 1px 3px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.2); --danger-ink:#FFFFFF;
+  --r-row:14px; --r-sheet:22px; --r-chip:999px;
+  --pad:16px; --cap-h:64px; --kb:0px; --kb-h:0px; --vv-h:100vh;
+  /* A tick, a step's box and a ring are all --tick wide. A row's title starts after the row's padding, the marker and
+     the gap (--title-x). A subtask's marker is smaller (--sub-tick) and indented by --sub-in, less than a marker and
+     gap, so the subtask sits close under its parent with its tick starting a little before the parent's title. */
+  --tick:28px; --title-x:calc(14px + var(--tick) + 12px); --sub-tick:24px; --sub-in:30px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0F1513; --surface:#18201D; --sunk:#111816; --ink:#E7EDEA; --muted:#93A29C; --line:#26312D;
+  --accent:#4FB08D; --accent-ink:#06120D; --accent-soft:#1B3A2F; --accent-fill:#2E6A54; --track:#66726D;
+  --lit:color-mix(in srgb,var(--accent-soft) 40%,var(--surface));
+  --overdue:#F07A8B; --today:#E0A94A; --danger:#F07A8B; --danger-ink:#1A080C; --danger-soft:#45202A;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}   /* iOS would otherwise enlarge text when the phone is turned */
+.focus-keeper{position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:17px;pointer-events:none}
+body{background:var(--bg);color:var(--ink);font:17px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:8px}
+[hidden]{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- login ---------- */
+#login{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:calc(env(safe-area-inset-top) + 32px) 24px calc(env(safe-area-inset-bottom) + 32px);max-width:440px;margin:0 auto}
+#login h1{font-size:40px;line-height:1.05;letter-spacing:-.02em;margin:0 0 8px;font-weight:800}
+#login p.lead{color:var(--muted);margin:0 0 28px}
+.field{display:block;margin-bottom:14px}
+.field span{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);outline:none;font-size:17px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:650;font-size:17px}
+.btn.block{width:100%}
+.btn.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--line)}
+.btn.danger{background:transparent;color:var(--danger);border:1.5px solid var(--line)}
+/* A disabled button is grey. A faded green still looks ready to tap in dark mode. */
+.btn[disabled]{background:var(--sunk);color:var(--muted)}
+.btn.ghost[disabled]{background:transparent;opacity:.55}
+.seg{display:flex;background:var(--sunk);border-radius:12px;padding:3px;margin-bottom:16px}
+.seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:9px;font-size:15px;color:var(--muted);font-weight:600}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-low)}
+.note{font-size:14px;color:var(--muted);margin:10px 0 0}
+.sso-btn + .sso-btn{margin-top:10px}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;margin:20px 0 16px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);border-radius:12px;padding:12px 14px;font-size:15px;margin:0 0 16px;white-space:pre-line}
+.err code{font-size:13px;background:var(--code-bg);padding:1px 4px;border-radius:4px;white-space:nowrap}
+
+/* ---------- shell ---------- */
+#app{min-height:100%}
+/* The header slides up as the list scrolls down and back as it scrolls up. The strip under the status bar
+   (#app::before) stays, so the list never shows under it. */
+header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);padding:calc(env(safe-area-inset-top) + 8px) var(--pad) 8px;display:flex;align-items:center;gap:6px;transition:transform .22s ease}
+header.top.tucked{transform:translateY(-100%)}
+/* A thin line runs under the header while a reload takes more than a second */
+header.top .behind{position:absolute;left:0;right:0;bottom:0;height:2px;overflow:hidden;pointer-events:none}
+header.top .behind::after{content:"";position:absolute;top:0;bottom:0;left:-30%;width:30%;background:var(--accent);opacity:.7;animation:behind 1.2s ease-in-out infinite}
+@keyframes behind{to{left:100%}}
+@media (prefers-reduced-motion:reduce){header.top .behind::after{animation:none;left:0;width:100%;opacity:.35}}
+#app::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:6}
+header.top > .icon-btn{width:38px;height:38px}
+/* The refresh button shows how many changes wait to be sent: amber while they wait, red once Vikunja has refused one */
+#btn-refresh{position:relative}
+#btn-refresh.waits{color:var(--today)}
+#btn-refresh.trouble{color:var(--danger)}
+#btn-refresh .count{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--today);color:var(--surface);font-size:11px;font-weight:700;line-height:18px;text-align:center}
+#btn-refresh.trouble .count{background:var(--danger)}
+/* The outbox: one row per change waiting to be sent, with Vikunja's reason under each change it refused */
+.ob-row{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+.ob-row:first-child{border-top:0}
+.ob-row .body{flex:1;min-width:0}
+.ob-row .meta{font-size:14px;color:var(--muted);margin-top:2px}
+.ob-row .why{font-size:14px;color:var(--danger);margin-top:4px}
+.ob-row .acts{display:flex;gap:14px;margin-top:8px}
+.ob-row .linkish{font-size:15px;font-weight:600}
+.ob-row .linkish.danger{color:var(--danger)}
+nav.tabs{flex:1;min-width:0;display:flex;gap:4px}
+header.top .search{display:none;flex:1;min-width:0;align-items:center;gap:8px;height:40px;padding:0 4px 0 12px;border-radius:var(--r-chip);background:var(--surface);color:var(--muted)}
+header.top.searching .search{display:flex}
+header.top.searching > nav.tabs,header.top.searching > .icon-btn{display:none}
+header.top .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;color:var(--ink);padding:0}
+header.top .search input::-webkit-search-cancel-button{-webkit-appearance:none}
+header.top .search .linkish{font-weight:600;padding:8px 10px}
+nav.tabs a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 11px;border-radius:var(--r-chip);color:var(--muted);text-decoration:none;font-size:15px;font-weight:650}
+nav.tabs a svg{width:20px;height:20px}
+nav.tabs a[aria-current=page]{background:var(--surface);color:var(--accent)}
+/* With three tabs, only the current tab shows its name, so the row fits a phone. The other names stay for screen
+   readers. */
+nav.tabs.icons{gap:2px}
+nav.tabs.icons a{padding:0 11px}
+nav.tabs.icons a[aria-current=page]{padding:0 12px 0 10px}
+nav.tabs.icons a:not([aria-current=page]) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.page-title{display:flex;align-items:center;gap:6px;margin:6px 0 0 -8px}
+.page-title .t{flex:1;min-width:0}
+.page-title .kicker{color:var(--muted);font-size:14px;font-weight:600}
+/* The same size as a section heading. The title says where the user is, so it doesn't need to be loud. */
+.page-title h2{margin:0;font-size:15px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}
+.icon-btn{width:40px;height:40px;border-radius:20px;border:0;background:var(--surface);display:grid;place-items:center;color:var(--ink);flex:none}
+.icon-btn.plain{background:transparent}
+/* While the keyboard is open, the page and a sheet's scroller get bottom padding as tall as the keyboard (--kb-h,
+   core.js). That lets a box at the bottom of a list scroll up above the keyboard. Safari does that scroll itself as
+   the caret moves. */
+main{padding:4px var(--pad) calc(var(--cap-h) + 28px + var(--kb-h))}
+
+.sec{margin:18px 0 6px;display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:15px}
+.sec .n{color:var(--muted);font-weight:600}
+.sec.overdue{color:var(--overdue)} .sec.today{color:var(--today)}
+.sec-date{margin-left:auto;color:var(--muted);font-weight:600;font-size:14px}
+.sec-act{margin-left:auto;border:0;background:transparent;color:var(--accent);font-size:14px;font-weight:650;padding:6px 2px}
+.sec-act[disabled]{opacity:.55}
+/* A heading after a list that ends in a card's footer moves up. Most of the space above it is already the footer's
+   own gap, so without this the heading would sit too far from the list. The footer keeps its 48px touch target, which
+   now overlaps the heading, so the heading ignores touches (pointer-events:none) and they reach the footer. */
+div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec{position:relative;margin-top:-10px;pointer-events:none}
+.sec > :is(button,a){pointer-events:auto}
+.list{background:var(--surface);border-radius:var(--r-row);overflow:hidden}
+.row{--row-inset:0px;display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-top:1px solid var(--line);min-height:56px;position:relative}
+.row:first-of-type{border-top:0}
+/* A subtask has a smaller tick and is indented one step per level. The line above it and the layer a swipe uncovers
+   start at the same indent (--row-inset). */
+.row.sub{--tick:var(--sub-tick);--row-inset:calc(14px + var(--depth) * var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
+/* The line between subtasks, and between a card's rows, starts at their ticks */
+.row.sub > .body::before,.card-rows > .row:not(:first-of-type) > .body::before{content:"";position:absolute;top:-1px;right:0;left:var(--row-inset);height:1px;background:var(--line);pointer-events:none}
+.row .body{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:2px 0}
+/* The title button takes taps over the row's full height, and up to the row's edge when nothing follows it. Its first
+   line stays 28px down, level with the tick, however tall the content is. A button centres its content vertically by
+   default, which would move that first line. */
+:not(.tree) > .row > button.body{align-self:stretch;margin:-12px 0;padding:16px 0 14px}
+:where(:not(.tree) > .row:not(.cl-tpl,.cl-new)) > button.body{display:flex;flex-direction:column;justify-content:flex-start}
+.row > div.body:not(.step-in){padding:4px 0 2px}
+/* A template row has no tick. Its icon and text are one line centred on the row, so the rule above leaves it out. */
+:not(.tree) > .row:is(.cl-tpl,.cl-new) > button.body{padding-top:14px}
+:not(.tree) > .row > button.body:not(:has(~ .claim,~ .icon-btn,~ .did)){margin-right:-14px;padding-right:14px}
+.row .title{font-size:17px;line-height:24px;overflow-wrap:anywhere}
+.row.done .title{color:var(--muted);text-decoration:line-through}
+/* The task's own row at the top of its sheet: its title is the sheet's heading, so it's heavier, like a card's */
+.row.own .title{font-weight:650}
+/* A one-line row (Today): the title is cut short with "…", with the due time and the project's dot at its right. A
+   card's rows leave the dot to the card's header. A screen reader hears the full text (rowWhen). */
+.row.one-line .title-line{display:flex;align-items:baseline;gap:8px}
+.row.one-line .title{position:relative;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+/* Screen-reader text stays at the start of the title, not past where the title was cut short */
+.row.one-line .title .sr,.card-open > .sr{left:0}
+/* A card's row has the least width (it is indented and has priority, time and claim slot on its right), so its title
+   may run to a second line before it is cut short. Those items stay on the first line. */
+.card-rows > .row.one-line .title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow-wrap:anywhere}
+.when{flex:none;display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);white-space:nowrap}
+.when .dot{margin:0}
+.when .bars{height:9px}                                   /* the same size as on a card's header */
+.when .due.overdue,.card-head .due.overdue{color:var(--overdue);font-weight:600}
+.when .due.today,.card-head .due.today{color:var(--today);font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:14px;line-height:19px;color:var(--muted)}
+/* A long word with no spaces (a pasted address, say) breaks rather than widening a row or a sheet */
+.meta > span,.d-path .linkish,.d-parent,.d-title h2,#sheet h3,.sec > span,.kicker,.cl .title{min-width:0;overflow-wrap:anywhere}
+.meta .due.overdue{color:var(--overdue);font-weight:600}
+.meta .due.today{color:var(--today);font-weight:600}
+/* The one-time hint to swipe right, under the first row's title. When dismissed it fades but keeps its space, so the
+   rows don't jump while the user is touching the screen. closeHint in leaving.js removes it afterwards. Its touch
+   target extends past the hint to 44px tall. */
+.slide-hint{position:relative;display:flex;align-items:center;gap:6px;width:fit-content;margin-top:6px;padding:4px 8px 4px 10px;border-radius:10px;background:var(--sunk);color:var(--muted);font-size:13px;line-height:18px;transition:opacity .25s,visibility .25s}
+.slide-hint::after{content:"";position:absolute;inset:-8px -8px -12px}
+.slide-hint svg.i{width:14px;height:14px}
+.slide-hint.gone{opacity:0;visibility:hidden}
+@media (prefers-reduced-motion:reduce){.slide-hint{transition:none}}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--muted)}
+/* Whatever its size, the tick's centre is level with the title's first line, 28px down the row */
+.check{width:var(--tick);height:var(--tick);border-radius:50%;border:2px solid var(--muted);background:transparent;flex:none;margin-top:calc(16px - var(--tick) / 2);display:grid;place-items:center;padding:0;transition:background .15s,border-color .15s}
+/* A tick's touch target is 48px. On a row it is the whole left gutter, as tall as the row, up to the title. */
+button.check{position:relative}
+button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
+.row > button.check{position:static;padding:3px}
+.row > button.check::after{inset:0 auto 0 0;width:calc(max(var(--row-inset), 14px) + var(--tick) + 12px)}
+.check svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;opacity:0}
+.row.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
+.row.done .check svg,.check.on svg{opacity:1}
+/* A checklist step has a square box and a task has a round one. Ticking a step works differently (the person who did
+   it gets a ✓ badge), so it looks different. */
+.check.sq{border-radius:7px}
+/* A subtask's tick is smaller, so its ✓ and corners are too */
+:is(.row.sub,.card-rows > .row) > .check svg{width:13px;height:13px}
+:is(.row.sub,.card-rows > .row) > .check.sq{border-radius:6px}
+.empty{text-align:center;color:var(--muted);padding:48px 12px}
+.empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
+.loading{padding:40px 0;text-align:center;color:var(--muted)}
+.offline{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
+/* A task that has waited a few seconds to be sent, or any unsent task while offline */
+.row.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
+/* A task just added is highlighted, then fades to the row's colour at that moment (none, or the add box's tint) */
+.row.fresh{animation:fresh 1.6s ease-out}
+@keyframes fresh{0%,35%{background:var(--accent-soft)}}
+@media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
+/* The row an add box sits under is highlighted the same way on every list: a bar down its side and a faint tint
+   (--lit). On a project's list and Today that is the row at the cursor (.aimed). In a sheet's list and on a checklist
+   it is the row with padding left for the box (.sub-boxed, seatFoot). */
+.row.aimed,.row.sub-boxed,.day-card.aimed > .card-head{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
+/* On a checklist the step on the card (.current) has a bold title. The add box can be under another step, so the two
+   rows must not look alike. */
+.row.current .title{font-weight:750}
+/* A highlighted row that is also waiting to be sent keeps the waiting tint, with the bar */
+.row.aimed.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
+/* A task whose due time has just passed is highlighted as it moves to Overdue */
+.row.came-due{animation:came-due 2s ease-out}
+@keyframes came-due{0%,40%{background:color-mix(in srgb,var(--overdue) 16%,transparent)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.row.came-due{animation:none;background:color-mix(in srgb,var(--overdue) 16%,var(--surface))}}
+/* A row that a refresh brought in fades in, without the highlight of a task added in Pocket */
+.row.arrived{animation:arrived .4s ease-out}
+@keyframes arrived{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.row.arrived{animation:none}}
+.check.wait{border-style:dashed;opacity:.8}
+.row.done .check.skip{background:var(--muted);border-color:var(--muted)}
+.check.no-tick{border:0;color:var(--muted)}
+.check.no-tick svg{opacity:1;stroke:currentColor;stroke-width:2;width:22px;height:22px}
+.check.no-tick.ro{border:2px dotted var(--line)}
+/* Who's doing a subtask or step, at the end of its row: "+ me" when no one is, else their pictures */
+.claim{flex:none;display:flex;align-items:center;gap:2px;min-width:48px;height:48px;margin:-10px -8px -10px 0;padding:0 6px;border:0;background:transparent;color:var(--muted);justify-content:center}
+/* When the slot is last on the row, it takes taps over the row's full height and out to the row's edge. Its content
+   stays on the title's first line. */
+.row > .claim:not(:has(~ .icon-btn)){align-self:stretch;align-items:flex-start;height:auto;min-width:66px;margin:-12px -14px -12px -12px;padding:14px 12px 0 18px}
+/* When a × follows the slot (a task waiting to be sent), the slot stays on the first line, no taller than a tick */
+.row > .claim{margin:-8px -8px -12px 0}
+/* On a one-line row (Today) the slot has a fixed width with its content against the right edge, so the times and dots
+   to its left line up down the list whether it holds "+ me" or a picture. It is as wide as "+ me" needs, plus 8px of
+   padding on the left, so the title gets the rest. Its touch target is still as tall as the row and well over 48px
+   wide. */
+.row.one-line > .claim:not(:has(~ .icon-btn)){min-width:74px;padding-left:8px;justify-content:flex-end}
+.claim[aria-disabled=true]{cursor:default}
+/* People's pictures on a row (pics.html). All are one size, at most two show, they overlap slightly, and the user's
+   own has an accent ring. On a done step, the picture of the person who did it has a ✓ on its corner. */
+.pics{display:flex;align-items:center}
+.pic{position:relative;flex:none}
+.pic + .pic{margin-left:-4px}
+.pic:has(> .badge) + .pic{margin-left:5px}                  /* a gap so the ✓ doesn't touch the next picture */
+.pic.mine{z-index:1}
+.pic .av{position:relative;width:28px;height:28px;border-radius:50%;background:var(--sunk);color:var(--ink);display:grid;place-items:center;font-size:11.5px;font-weight:700;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}   /* 11.5px is not on the type scale. It sizes the initials to fit the circle */
+/* Not draggable as an image. Otherwise holding a row on a picture would start the browser's own drag and cancel the
+   row's drag */
+.pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;-webkit-user-drag:none}
+.pic.mine .av{box-shadow:0 0 0 2px var(--accent)}
+#run-steps > .row.sub-boxed .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--lit)}
+.badge{position:absolute;z-index:2;right:-4px;bottom:-3px;width:15px;height:15px;border-radius:50%;background:var(--accent);display:grid;place-items:center;box-shadow:0 0 0 2px var(--surface)}
+#run-steps > .row.sub-boxed .badge{box-shadow:0 0 0 2px var(--lit)}
+.badge svg.i{width:10px;height:10px;stroke-width:3.4;color:var(--accent-ink)}
+.badge.skip,.badge.wait{background:var(--muted)}
+.pics .more{padding-left:3px;font-size:13px;color:var(--muted)}
+.claim .me{height:28px;padding:0 9px;border-radius:14px;border:1.5px dashed color-mix(in srgb,var(--accent) 50%,var(--line));color:var(--accent);font-size:13px;font-weight:650;line-height:25px;white-space:nowrap}
+.row.done .pic .av{opacity:.7}
+/* A done step's pictures can't be tapped, so the user's own has no ring. The ✓ already shows who did it. */
+.did .pic.mine .av{box-shadow:0 0 0 2px var(--surface)}
+#run-steps > .row.sub-boxed .did .pic.mine .av{box-shadow:0 0 0 2px var(--lit)}
+.did{flex:none;align-self:flex-start;margin-top:2px;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
+.ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
+/* Rows are held and swiped, so a long press must not select their text or open the phone's menu. A long press
+   selects the nearest selectable text, so the card and headings around a sheet's subtasks are excluded too. Text
+   typed in a row stays selectable, and notes and comments stay selectable so they can be copied. */
+.list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks,#run-steps > .row,.h3{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+:is(.row,#d-subtasks) :is(input,textarea){-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
+/* A task's progress is drawn inside its tick as a pie that fills clockwise from the top, a quarter at a time (--pct).
+   The pie leaves a gap inside the tick's border, so partly done never looks like done, which fills the whole circle
+   with a ✓. The tick changes only when the swipe is released. During the swipe, the layer under the row shows the
+   new progress (.row-prog, below). */
+.row:not(.done) > button.check{background:conic-gradient(var(--accent) calc(var(--pct,0) * 1turn),transparent 0) content-box}
+/* A parent's ring (ring.html) replaces the tick on a task with subtasks or a checklist. It is a thin arc (--ring)
+   starting at 12 o'clock on a faint track, never a quarter pie, so it isn't mistaken for the task's own tick. When
+   every subtask is done, the count turns the accent colour and waits for Close. On a row or a card's header the ring
+   is the same size and line width as a tick. Its track has the same 3:1 contrast on the card as a tick's border, so a
+   ring at 0 still reads as a circle. It sits where a tick sits and has the same touch target, the whole left gutter. */
+.ring{position:relative;flex:none;display:grid;place-items:center;width:var(--tick);height:var(--tick);padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
+.ring > *{grid-area:1/1}
+.ring .arc{width:100%;height:100%;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),var(--track) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),var(--ink) calc(100% - 1.5px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),var(--ink) calc(100% - 1.5px))}
+.ring .n{font-size:10px;font-weight:650;letter-spacing:-.03em;line-height:1}
+/* Not on the type scale, used inside a ring only. 8.5px fits five characters (12/14) */
+.ring.long .n{font-size:8.5px;letter-spacing:-.05em}
+:is(.row.sub,.card-rows > .row) > .ring.long .n{font-size:7.5px}
+.ring.full .n{color:var(--accent);font-weight:750}
+.ring:disabled{opacity:.7}
+button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
+:is(.row,.card-head) > .ring{position:static;margin:calc(16px - var(--tick) / 2) 0 0}
+:is(.row,.card-head) > .ring::after{inset:0 auto 0 0;width:calc(max(var(--row-inset,0px), 14px) + var(--tick) + 12px)}
+/* A held row lifts, and the rows it passes slide aside to make space. With reduced motion they move without
+   animating. A swipe doesn't use this transition. It moves the row by its transform alone (below). */
+.row,.card-head{transition:box-shadow .15s,transform .2s ease}
+@media (prefers-reduced-motion:reduce){.row,.card-head{transition:box-shadow .15s}}
+.row.held{z-index:2;box-shadow:var(--shadow-lift)}
+/* A dragged row, with its subtasks, follows the touch above the rows that move aside */
+.row.dragged{z-index:3;transition:box-shadow .15s;background:var(--surface)}
+/* The layer a swiped row uncovers shows what releasing would do: .row-prog for progress (revealOf) or .row-red for
+   Delete on a row at 0% swiped left (swipeOf). touch-action stops the browser from scrolling the page when the user
+   drags sideways. This selector names every element that can be swiped: a list's rows, a checklist's steps, a card, a
+   sheet's subtasks, the sheet's own row and a checklist's own row at the top of its screen. */
+.list:not(.tree) > .row,.item > .row,.day-card,#d-subtasks > .row,#d-card > .row.own,#run-own > .row{touch-action:pan-y pinch-zoom}
+/* A sheet's subtasks card clips to its rounded corners only while a row is swiped. A held row lifts over the card's
+   edge and must not be clipped, but a swiped row has a solid background and would square off the corners. */
+#d-subtasks:has(> .swiping,> .swiped,> .revealing){overflow:clip}
+/* Only the row moves during a swipe (.revealing for progress, .swiping for Delete, .swiped when resting open on
+   Delete). Its transform follows the touch and is animated once on release (slideTo and glide in app/progress.js),
+   never by a CSS transition. The layer it uncovers (.row-under) does not move. `lay` places it at the row's position,
+   as the first child of the row's offsetParent. Those boxes are listed below so that they clip the layer to their
+   rounded corners.
+
+   The row gets a solid background so the layer doesn't show through. :where keeps the specificity low, so a row
+   waiting to be sent or highlighted keeps its tint. Any highlight still fading on the row (just added, just overdue)
+   is stopped. If the release removes the row, the layer stays over the gap (.going) and fades away. */
+:where(.row,.card-head):is(.revealing,.swiping,.swiped){background-color:var(--surface);transition:none}
+:is(.row,.card-head):is(.revealing,.swiping,.swiped){animation:none}
+.list,.task-card,#d-subtasks,#run-own{position:relative}
+.row-under{position:absolute;overflow:hidden}
+.row-under.going{z-index:2;pointer-events:none}
+.row-prog{background:var(--accent-soft);pointer-events:none}
+/* The ring sits by the list's edge, where the row uncovers it first, so it is visible by the first stop. It is level
+   with the title's first line, where the tick is, not centred on a taller row. */
+.row-prog .ring{position:absolute;top:10px;width:36px;height:36px;padding:4px;border:3px solid var(--accent);border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--accent) calc(var(--ring,0) * 1turn),transparent 0) content-box}
+.row-prog[data-side=left] .ring{left:10px}
+.row-prog[data-side=right] .ring{right:10px}
+/* A card's header uncovers only its 38px strip, so its ring is smaller and sits 22px down, level with the header's
+   own ring and title */
+.row-prog.head .ring{top:7px;width:30px;height:30px;padding:3px}
+.row-prog.sq .ring{border-radius:10px}
+.row-prog .ring svg{width:18px;height:18px;stroke:var(--accent);stroke-width:3;opacity:0}
+/* At 100% (a done row swiped left, before its first stop) the ring is a done tick: filled, with its ✓ */
+.row-prog[data-pct="100"]:not(.full) .ring{background:var(--accent)}
+.row-prog[data-pct="100"]:not(.full) .ring svg{opacity:1;stroke:var(--accent-ink)}
+.row-prog.full{background:var(--accent)}
+.row-prog.full .ring{border-color:var(--accent-ink);background:var(--accent-ink)}
+.row-prog.full .ring svg{opacity:1}
+/* The Delete layer covers the whole row. Its button is at the end and as wide as the row's open position (--open,
+   DELETE_W in progress.js). The layer is light red with red text while releasing would not delete. It is solid red with
+   light text when releasing would delete, or has already deleted: when the row rests open (.open, which stays from
+   then on, so the colour changes only once), past half the row's width (.full), and after a tap on the button while
+   the row slides off (.sure, sweep in progress.js). The colour shows the outcome, as the solid green does for
+   progress. */
+.row-red{background:var(--danger-soft)}
+.row-red:is(.open,.full,.sure){background:var(--danger)}
+.row-del{position:absolute;top:0;bottom:0;right:0;width:var(--open,88px);display:flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;color:var(--danger);font-size:15px;font-weight:700}
+.row-red:is(.open,.full,.sure) > .row-del{color:var(--danger-ink)}
+.row-del:focus-visible{outline-color:currentColor;outline-offset:-6px}
+/* A deleted row keeps its position and height until the batch clears (leaving.js), so nothing moves. The gap covers the
+   row from its edge whatever its indent. It says "Deleted" and has a Restore button where the claim slot was, shaped
+   like "+ me". A row still sliding off the screen (.sweeping, sweep in app/progress.js) keeps its normal look until it
+   is gone. The gap appears when the slide ends. */
+.row.deleted:not(.sweeping) > :not(.del-gap){visibility:hidden}
+.sweeping > .del-gap{display:none}
+.del-gap{position:absolute;inset:0;z-index:1;display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--sunk);color:var(--muted);font-size:14px}
+.del-gap .what{flex:1;min-width:0}
+.del-gap > .claim.restore{align-self:stretch;height:auto;min-width:66px;margin:0;padding:0 12px 0 18px}
+.claim.restore .me{border-style:solid;border-color:var(--accent)}
+/* A list with cards (list-item.html: Today, search results, a project's open list). Each item is a row or a card,
+   with a line between items and a gap above and below a card, so it is clear where the card's rows end. A drag moves
+   an item whole, so a card moves with its rows (dragOf). An item holding a card has the class has-card, and has-tab
+   when the card has a footer (itemClass, app/cards.js). Selecting them with :has(> .day-card) made every row slow to
+   insert. */
+.item + .item{border-top:1px solid var(--line)}
+.item.has-card + .item,.item + .item.has-card{border-top:8px solid var(--bg)}
+.item{position:relative;transition:transform .2s ease}
+/* A card's gap or footer splits the list into blocks, and each block gets rounded corners like the list's ends. The
+   list's overflow rounds only its own two ends. So the corners here are drawn over the item in the page's background
+   colour: the top corners after a gap or footer, and the bottom corners before a gap. A card with a footer rounds its
+   bottom corners at its last row (.card-more::after). */
+.item:is(.item.has-card + .item,.item + .item.has-card,.item:has(+ .item.has-card),.item.has-card:not(.has-tab):has(+ .item))::before{
+  content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  background-image:var(--c-tl,none),var(--c-tr,none),var(--c-bl,none),var(--c-br,none);background-position:left top,right top,left bottom,right bottom;
+  background-size:var(--r-row) var(--r-row);background-repeat:no-repeat}
+.item.has-card + .item,.item + .item.has-card{
+  --c-tl:radial-gradient(circle at 100% 100%,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
+  --c-tr:radial-gradient(circle at 0 100%,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
+.item:has(+ .item.has-card),.item.has-card:not(.has-tab):has(+ .item){
+  --c-bl:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
+  --c-br:radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
+.item.dragged{z-index:3;transition:none;background:var(--surface)}
+/* Holding a task on Today shows four date chips around the touch (throw.js decides where they go). The screen behind
+   is not dimmed. The held row stays where it is and gets an outline (.throw-from), and the chips overlap the rows next
+   to it. A card lifts whole. Each chip shows a name over its day. It has a soft shadow and a thin edge, which keeps
+   it visible in dark mode. A chip is highlighted in the accent colour while the touch is over it. The "No date" chip
+   has a dashed border wherever it sits, so it isn't mistaken for a day. A chip that would change nothing is dimmed. If
+   the held task can't be moved, all chips are dimmed and a message says why.
+
+   If the user releases without dragging, the chips become buttons in the same positions (.open) and the screen
+   behind them is dimmed by about 8%, because a tap there only closes the chips. "Pick a date…" in the middle opens
+   the date field's picker. The field is hidden but still laid out, so the picker has somewhere to open from. */
+.throw{position:fixed;inset:0;z-index:15;pointer-events:none;-webkit-user-select:none;user-select:none}
+.throw-t{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;border:0;border-radius:16px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow-menu),0 0 0 1px color-mix(in srgb,var(--muted) 35%,transparent)}
+.throw-t b{font-size:17px;font-weight:650;line-height:1.2;white-space:nowrap}
+.throw-t span{font-size:14px;line-height:1.3;color:var(--muted);white-space:nowrap}
+.throw-t.none{border:2px dashed var(--muted);color:var(--muted)}
+.throw-t.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent-ink)}
+.throw-t.on span{color:inherit}
+/* Dimmed, but solid, so the rows behind don't show through */
+.throw-t.dim{background:color-mix(in srgb,var(--surface) 30%,var(--bg));color:color-mix(in srgb,var(--muted) 50%,var(--bg));border-color:currentColor;box-shadow:0 0 0 1px var(--line)}
+.throw-t.dim span{color:inherit}
+.throw-t.dim{cursor:default}
+.throw-t:focus-visible{border-radius:16px}
+.throw.open{pointer-events:auto;touch-action:none;background:color-mix(in srgb,var(--scrim) 20%,transparent)}
+.throw.open .throw-t:not(.dim):active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent-ink)}
+.throw.open .throw-t:not(.dim):active span{color:inherit}
+.throw-t.pick{display:none;font-size:15px;font-weight:600;line-height:1.25;text-align:center}
+.throw.open .throw-t.pick{display:flex}
+.throw-date{position:absolute;display:none;margin:0;padding:0;border:0;opacity:0;pointer-events:none}
+.throw.open .throw-date{display:block}
+.throw-why{position:absolute;width:max-content;margin:0;padding:8px 12px;transform:translate(-50%,-100%);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-menu),0 0 0 1px color-mix(in srgb,var(--muted) 35%,transparent);text-align:center;font-size:14px;font-weight:600;line-height:1.35;color:var(--ink)}
+/* The lifted row sits over its neighbours. Its outline and shadow are drawn over its content (a card's header has its
+   own background) and around the card itself, not the footer below it (.card-more's 48px). */
+:is(.row,.day-card).throw-from{z-index:2;background-color:var(--surface)}
+:is(.row,.day-card).throw-from::after{content:"";position:absolute;inset:0;z-index:3;border:2px solid var(--accent);box-shadow:var(--shadow-lift);pointer-events:none}
+.day-card.throw-from:has(> .card-more)::after{bottom:48px}
+.day-card.held{z-index:2;box-shadow:var(--shadow-lift);background:var(--surface)}
+/* The stacked card: any task with open subtasks or steps. Its title is the heading of its rows, so it's bolder. Its
+   rows use the same row markup as any other row. */
+.day-card{position:relative}
+/* The header has the parent's ring where its rows' ticks are, then the title on one line cut short with "…", then the
+   priority bars and due time on the same baseline, as on a row. The ring and the title's line centre 22px down (a 24px
+   line with 10px above it), and so does the ring a swipe uncovers (.row-prog.head). Only 4px is left below, so the
+   first row sits close under the title. That makes the header a 38px strip. Its touch target stays 44px tall and
+   reaches 6px over the first row. */
+.card-head{position:relative;z-index:1;display:flex;align-items:flex-start;gap:12px;min-height:38px;padding:0 14px;background:var(--surface)}
+.card-head > .ring{margin:8px 0 0}
+.card-head > .ring::after{bottom:-6px}
+.card-open{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;align-self:stretch;margin:0 -14px -6px 0;padding:10px 14px 10px 0;border:0;background:transparent;text-align:left;color:var(--ink)}
+.card-title{flex:1;min-width:0;font-size:17px;line-height:24px;font-weight:650;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* Today headings wrap to two lines so the parent's title can be read. The ring and date stay beside the first line. */
+.today .card-open{align-items:flex-start}
+.today .card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}
+.today .card-head .due{line-height:24px}
+.today .card-head .bars{margin-top:8px}
+.today .card-open > .dot{margin-top:8px;top:0}
+.card-head .bars{flex:none;height:9px}
+.card-head .due{flex:none;font-size:14px;color:var(--muted);white-space:nowrap}
+/* The project's dot shows once per card (its rows leave theirs out). It sits at the middle height of the time's
+   letters, as on a row. A dot has no text baseline, only its bottom edge. */
+.card-open > .dot{flex:none;margin:0;position:relative;top:-1px}
+/* A done parent with open subtasks (a project's list) has its title struck through, like a done row's */
+.day-card.done .card-title{color:var(--muted);text-decoration:line-through}
+/* When every subtask is done, the card says so and shows a Close button where its rows' claim slots were */
+.card-close{display:flex;align-items:center;gap:12px;min-height:52px;margin-top:6px;padding:0 14px 6px var(--title-x);color:var(--accent);font-size:15px;font-weight:600}
+.card-close > span{flex:1;min-width:0}
+.close-btn{flex:none;min-width:66px;height:40px;padding:0 16px;border:0;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700}
+.close-btn:disabled{background:var(--sunk);color:var(--muted)}
+.complete-note{margin:10px 0 18px;font-size:17px;color:var(--ink);overflow-wrap:anywhere}
+/* A collapsed card's footer is a slim tab below the card's last row. The tab is 12px in from each side, has rounded
+   bottom corners and a line along its top, like the edge of a card stacked behind, and shows ⌄ in the middle. An
+   expanded card has no tab, because a tab would suggest more rows are hidden. It shows a plain ⌃ in the same
+   position. The touch target is 48px tall, measured from the bottom of the last row. It takes the place of the gap a
+   card normally has above the next item, so it never reaches into a row. */
+.card-more{--tab:20px;position:relative;display:block;width:100%;height:calc(var(--tab) + 28px);margin:0;padding:0;border:0;background:var(--bg);color:var(--muted)}
+.item.has-tab + .item{border-top:0}
+.card-more > .tab{position:absolute;left:12px;right:12px;top:0;height:var(--tab);display:block}
+.card-more[aria-expanded=false] > .tab{border-radius:0 0 12px 12px;background:var(--surface);box-shadow:inset 0 1px 0 var(--line)}
+.card-more svg.i{position:absolute;left:50%;top:calc(var(--tab) / 2 - 7px);width:14px;height:14px;margin-left:-7px;stroke-width:2.4;transform:rotate(90deg)}
+.card-more[aria-expanded=true] svg.i{transform:rotate(-90deg)}
+/* A card with a footer rounds its last row's bottom corners, with the page background showing outside them, because
+   the footer is the gap under the card */
+.card-more::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:var(--r-row);pointer-events:none;
+  background:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) left top/var(--r-row) var(--r-row) no-repeat,
+    radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row)) right top/var(--r-row) var(--r-row) no-repeat}
+.day-card.deleted:not(.sweeping) > :not(.del-gap,.row-under){visibility:hidden}
+/* A card's rows are indented one level, like a subtask (.row.sub). They get a smaller tick and dividing lines that
+   start at the ticks. The tick's touch target is still the whole gutter, and a swipe still covers the whole row. */
+.card-rows > .row{--tick:var(--sub-tick);--row-inset:calc(14px + var(--sub-in));padding-left:var(--row-inset);border-top-color:transparent}
+.day-card.lined{display:flex;align-items:center;min-height:48px;padding:0 14px}
+.day-card.lined > :not(.row-line){display:none}
+.day-card.fresh{animation:fresh 1.6s ease-out}
+.day-card.came-due{animation:came-due 2s ease-out}
+.day-card.arrived{animation:arrived .4s ease-out}
+@media (prefers-reduced-motion:reduce){.day-card.fresh,.day-card.came-due,.day-card.arrived{animation:none}}
+/* A message that replaces a row's content (lines.js). The row shrinks to one line, with its action at the end. */
+.row.lined{min-height:48px;padding-top:0;padding-bottom:0;align-items:center}
+.row.lined > :not(.row-line){display:none}
+.row-line{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:48px;color:var(--muted);font-size:14px}
+.row-line .what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.line-act{flex:none;min-width:64px;height:48px;margin-right:-8px;padding:0 8px;border:0;background:transparent;color:var(--accent);font-size:15px;font-weight:700}
+/* A message that a tick or a save failed */
+.row-line.failed,.place-line.failed{color:var(--danger)}
+/* A message that does not replace a row. It appears under a heading, by the add box, in a sheet, or on a step card. */
+.place-line{display:flex;align-items:center;gap:8px;min-height:44px;margin:6px 0;padding:0 14px;border-radius:12px;background:var(--sunk);color:var(--ink);font-size:14px}
+.place-line .what{flex:1;min-width:0;padding:11px 0;overflow-wrap:anywhere}
+.place-line .line-act{height:44px}
+.place-line.failed{background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.card > .place-line{margin:8px 10px 10px}
+.cl-card > .place-line{margin:12px 0 0}
+#capture > .place-line{margin:0 0 8px;box-shadow:var(--shadow-low)}
+.step-card .place-line{margin:0 0 10px}
+.finish-card .place-line{margin:12px 0 0}
+#sheet-body > .place-line{margin:0 0 12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.tree .row{align-items:center;padding-top:14px;padding-bottom:14px}
+.tree .row .body{display:flex;align-items:center;gap:10px}
+.tree .chev{color:var(--muted)}
+.sec-fold{display:flex;align-items:center;gap:4px;border:0;background:transparent;padding:6px 0;font:inherit;color:var(--muted)}
+.sec-fold .chev{width:16px;height:16px;transition:transform .2s}
+.sec-fold[aria-expanded=true] .chev{transform:rotate(90deg)}
+.sec-note{margin:4px 2px}
+
+/* ---------- checklists ---------- */
+.cl-tpl .body{display:flex;align-items:center;gap:10px}
+.cl-tpl .body .t{flex:1;min-width:0}
+.cl-tpl .body > svg.i{flex:none}
+.cl-tpl .body .t .title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.cl-start{position:relative;flex:none;min-height:38px;padding:0 14px;font-size:15px;white-space:nowrap}
+.cl-start::after{content:"";position:absolute;inset:-5px -4px}       /* touch target 48px tall */
+.getting-started{padding:14px 16px;margin-bottom:10px}
+.getting-started h3{margin:0 0 8px;font-size:17px}
+.getting-started ol{margin:0;padding-left:20px;display:grid;gap:10px;font-size:15px;line-height:1.4}
+.getting-started .gs-act{display:block;width:fit-content;margin-top:2px;padding:4px 0;font-size:15px;font-weight:650;color:var(--accent);text-decoration:none}
+.getting-started .gs-hide{margin-top:10px;font-size:14px;color:var(--muted)}
+.setup-card p{margin:0 0 12px}
+.cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:15px;font-weight:650}
+.cl-hint{padding:14px;color:var(--muted);font-size:15px}
+a.sec-act{text-decoration:none}
+.start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
+.start-due.bad{color:var(--overdue)}
+.cl-new .body{display:flex;align-items:center;gap:10px;color:var(--accent);font-weight:650}
+/* The row at the end of a project's done tasks, which are shown a page at a time (lists.html). Its text starts at the
+   title column, with the number of tasks left under it. */
+.row.more-done{padding-left:var(--title-x)}
+.more-done .body{flex-direction:column;align-items:flex-start;gap:0}
+.more-done .note{margin:0;font-weight:400}
+/* A template's steps look like subtasks, with the step's number where a subtask has its tick. (On a checklist, a
+   square box means a step the user ticks.) A step being written sits in a box with the same colours as every add box
+   (.addbox), as tall as a list's box with one line. */
+.check.step-n{border-color:transparent;color:var(--muted);font-size:15px;font-weight:400}
+.step-box{flex:1;min-width:0;border:1.5px solid var(--accent);border-radius:12px;padding:0 12px;background:var(--surface)}
+/* iOS Safari gives a textarea its own rounded corners and a shade along the top */
+.draft-in{display:block;width:100%;border:0;border-radius:0;-webkit-appearance:none;appearance:none;background:transparent;font:inherit;padding:10px 0;outline:0;color:var(--ink);resize:none;overflow:hidden}
+.draft-in::placeholder{color:var(--muted);opacity:1}
+/* Quick add's highlights behind the text, as in .addbox */
+.step-box .cap-field{position:relative}
+.step-box .draft-in{position:relative;white-space:pre-wrap;overflow-wrap:break-word}
+.step-box .cap-marks{position:absolute;inset:0;padding:10px 0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
+.box-chips{margin:6px 0 0 38px}
+.step-in .box-chips,.nt-name .box-chips{margin-left:0}
+.nt-name{margin-bottom:14px}
+.nt-name > label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+.meta > .step-note{flex:0 0 100%;margin-top:0}
+.step-note{margin-top:3px;font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Tapping a step to edit it opens a box around its text. The box is a list's box with nothing beside it, 47px tall.
+   It starts where the step's number ends (the row's 12px gap and the box's 1.5px border, back from the title column).
+   The negative margins take 7.5px above and 8.5px below from the row's padding, so the text stays on its line and a
+   one-line step is as tall as a row (the 1px line above the row accounts for the difference). The step's time, chips
+   and notes link under the box start at the same indent. */
+.row .step-in{padding:0;margin:-7.5px 0 -8.5px -13.5px}
+.step-in-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;position:relative}
+.step-notes{display:inline-block;margin-top:6px;padding:4px 0;font-size:15px;font-weight:650}
+.draft-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 0 38px;font-size:14px;color:var(--muted)}
+.step-in .draft-meta{margin-left:0}
+.draft-meta .bad{color:var(--overdue)}
+.draft-time select{border:0;background:transparent;font:inherit;color:var(--accent);font-weight:650;max-width:13em;padding:0;text-overflow:ellipsis}
+.chip-x{display:inline-flex;border:0;background:none;padding:0 0 0 2px;color:var(--muted);cursor:pointer}
+/* A checklist's own row between Back and ⋯ (app.html, RUN_ROW). It sits on the page, not in a card, and is tighter
+   than a list's row. Its ring and the first line of its name are level with Back. The name takes two lines at most, so
+   the top of the screen is no taller than the name with "For you" under it would be. */
+.page-title.run-top{align-items:flex-start;margin-bottom:8px}
+#run-own{flex:1;min-width:0;overflow:hidden;border-radius:var(--r-row)}
+#run-own > .row{padding:4px 0;min-height:0;border:0;background:transparent}
+#run-own > .row.revealing{background:var(--bg)}                /* the row is on the page, so a swiped row takes the page's background, not a card's */
+#run-own > .row > button.body{margin:-4px 0;padding:8px 0 6px}
+#run-own > .row > .ring::after{width:calc(var(--tick) + 12px)}
+#run-own .title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#run-own > .row > .claim{margin:-4px 0;padding:6px 4px 0 8px;min-width:0}
+#run-own .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--bg)}
+#run-own .row-prog .ring{top:2px}                     /* level with the row's ring in this tighter row */
+.run-started{margin:0 0 4px}
+.timer{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 16px;background:none;border:0;font:inherit;font-size:17px;color:var(--ink);text-align:left;cursor:pointer}
+.timer + .timer{border-top:1px solid var(--line)}
+.timer .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.timer .num{flex:none;font-weight:650;color:var(--accent)}
+.timer .num.late{color:var(--overdue)}
+.step-card{padding:16px}
+.step-title-line{display:flex;align-items:flex-start;gap:8px}
+.step-title-line h3{flex:1;min-width:0}
+.step-title-line > .claim{margin:-6px -8px -6px 0}
+.step-card h3{margin:4px 0 6px;overflow-wrap:anywhere}
+.step-card .desc{padding:0;margin:8px 0 0}
+.step-due{font-size:15px;color:var(--muted)}
+.step-due.late{color:var(--overdue);font-weight:650}
+.step-who{margin-top:8px;font-size:15px;color:var(--accent);font-weight:650}
+.step-extra .comment.last .who{color:var(--today)}
+.note-mark{display:inline-flex;align-items:center;gap:3px;color:var(--muted)}
+.note-mark svg.i{width:14px;height:14px}
+.start-who{color:var(--muted);font-size:14px;white-space:nowrap}
+.step-who.waiting{color:var(--muted)}
+.step-acts{display:flex;gap:10px;margin-top:16px}
+.step-acts .btn{min-height:60px}
+.step-acts .go-on{flex:1;max-width:360px}
+.step-added{font-size:14px;color:var(--muted);margin-bottom:4px}
+#run-steps .meta .added{color:var(--muted)}
+.row .step-del{margin:-1px 0;width:34px;height:34px;color:var(--danger)}
+/* A row's × has a 48px touch target, larger than what is drawn */
+.row > .icon-btn{position:relative}
+.row > .icon-btn::after{content:"";position:absolute;inset:calc(50% - 24px)}
+/* Level with the title's first line and no taller than a tick, so the row's height doesn't change */
+.row > .icon-btn:not(.step-del){margin:-4px -8px -8px 0}
+#heading{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.step-extra{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
+.step-extra .att,.step-extra .comment{padding-left:0;padding-right:0}
+.step-extra .comment-form{padding:10px 0 0}
+.step-note-with{margin:6px 2px 0;font-size:14px}
+.row .skipped{color:var(--muted);font-style:italic}
+.finish-card{padding:16px}
+.finish-card h3{margin:0 0 4px}
+.cl-card{padding:14px}
+.cl-card p{margin:0 0 12px;color:var(--muted);font-size:15px}
+.cl-card p:last-child{margin-bottom:0}
+.who-pick{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px}
+.who-pick .chip{font-size:15px;padding:8px 14px}
+
+/* ---------- capture bar ---------- */
+#capture{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);background:var(--bg)}
+/* The list fades out above the bar, and above the dashed placeholder the bar leaves behind (#cap-home) */
+#capture::before,#cap-home::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
+/* One box in two sizes: the bar at the bottom, and the smaller box in a list (under a row, or at the bottom of the
+   list). --part is the buttons' size and the field's one-line height, so text and buttons share a centre. --box-pad is
+   the padding around them, --box-edge the border, --box-r the corner radius, --box-in the text's inset from the edge.
+   The dashed placeholder a box leaves behind (#cap-home, .sub-home) uses the same values, so it matches the box's
+   outline. */
+.addbox,#cap-home{--part:42px;--part-r:12px;--box-pad:4px;--box-edge:2px;--box-r:16px;--box-in:14px}
+.addbox.sub,#capture.inline,.sub-home{--part:38px;--part-r:10px;--box-pad:3px;--box-edge:1.5px;--box-r:12px;--box-in:12px}
+/* A box's one-line height (--box-one) is the minimum height of the box and of its dashed placeholder. A phone may draw
+   a 1.5px border slightly thinner. */
+.addbox,#cap-home,.sub-home{--box-one:calc(var(--part) + 2 * var(--box-pad) + 2 * var(--box-edge))}
+.addbox form{display:flex;gap:8px;align-items:flex-end;min-height:var(--box-one);background:var(--surface);border:var(--box-edge) solid var(--accent);border-radius:var(--box-r);padding:var(--box-pad) var(--box-pad) var(--box-pad) var(--box-in)}
+.addbox .cap-field{flex:1;min-width:0;position:relative}
+/* Text in a box is set like a row's title: 17px on a 24px line */
+.addbox textarea,.addbox .cap-marks,.draft-in,.step-box .cap-marks,.comment-form textarea{font-size:17px;line-height:24px}
+.addbox textarea,.addbox .cap-marks{padding:calc((var(--part) - 24px) / 2) 0}
+/* A box being typed in is at most about a third of the visible height (--vv-h, set in core.js from the space the
+   keyboard leaves), then it scrolls inside itself. Without the limit, the last line, where the caret is, could end up
+   under the keyboard. */
+.addbox textarea{position:relative;display:block;width:100%;border:0;outline:0;background:transparent;resize:none;max-height:calc(var(--vv-h) * .35);overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;scrollbar-width:none}
+/* The same text, laid out identically, sits behind the field with only its highlights visible (in a step's box too,
+   .step-box) */
+.addbox .cap-marks{position:absolute;inset:0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
+.cap-marks mark{color:transparent;background:var(--accent-soft)}
+/* The placeholder stays on one line, cut short with "…". The field is as tall as its text, and a wrapped placeholder
+   made the box two lines tall before anything was typed. Chrome draws the "…" only if the textarea itself also has
+   text-overflow:ellipsis. Typed text still wraps. */
+.addbox textarea{text-overflow:ellipsis}
+.addbox textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.addbox :is(.go,.cam,.box-level,.rep){width:var(--part);height:var(--part);flex:none}
+/* Each button has a 44px touch target, larger than what is drawn (38px in a list, 42px in the bar) */
+.addbox :is(.go,.cam,.box-level,.rep){position:relative}
+.addbox :is(.go,.cam,.box-level,.rep)::after{content:"";position:absolute;inset:calc(50% - 22px)}
+.addbox .go{border-radius:var(--part-r);border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
+.addbox .go[disabled]{opacity:.35}
+/* The add box under a row on a project's list (seatBox, app/quickadd.js). The row it adds after gets bottom margin as
+   tall as the box, and the box is laid over that margin, indented like the rows it adds. The box's usual position at
+   the bottom stays as a dashed placeholder at the bar's one-line height. Tapping the placeholder brings the box
+   back. */
+.boxed{margin-bottom:var(--box-h,0px)}
+.card-rows:has(> .boxed){display:flow-root}   /* Keep the last row's add-box spacing inside the card. */
+/* The same at the bottom of a sheet's list and of a checklist's steps (list-box.html; seatFoot, app/sheet.js) */
+#d-subtasks{position:relative}
+.sub-boxed{margin-bottom:var(--sub-h,0px)}
+/* The last row, nudged. The box at the bottom is already under it, so the row is only highlighted. */
+.sub-boxed.at-end{margin-bottom:0}
+.foot-box.inline{position:absolute;left:0;right:0}
+#run-steps{position:relative}
+.foot-box > .place-line{margin:0 0 8px}
+/* A checklist's screen has no bar at the bottom. Its box is under its steps. */
+main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
+.sub-box-time > .draft-meta{margin:6px 0 0}
+.sub-home{display:block;width:100%;border:0;background:transparent}
+/* A box's dashed outline is as tall as the box with one line, whatever the box showed when it left. It holds the
+   box's placeholder text in the same colour, on the box's first line and at the same inset, so the text doesn't move
+   when the box lands on it. Like the box's own placeholder, it is cut short with "…". */
+:is(#cap-home,.sub-home) > span{display:block;height:var(--box-one);border:var(--box-edge) dashed var(--line);border-radius:var(--box-r);
+  padding:calc(var(--box-pad) + (var(--part) - 24px) / 2) var(--box-pad) 0 var(--box-in);font-size:17px;line-height:24px;color:var(--muted);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#capture.inline{position:absolute;right:auto;bottom:auto;z-index:1;background:transparent}
+#capture.inline::before{display:none}
+/* A box in a list starts where the tick of the row it creates ends (--mark: a subtask's tick on a list or Today,
+   otherwise a task's or a step's). Its text then lines up with the new row's title and stays there when the row
+   lands. The space where the tick would be is empty, or holds the ⇤ ⇥ buttons outside the box on its first line,
+   because those set the indent of everything typed. (The send button stays on the last line, where the typing is.)
+   Anything above or below the box, such as its chips, a step's time line and messages, starts at the same indent.
+   So does the box's dashed placeholder. */
+#capture.inline{--mark:var(--sub-tick)}
+#capture.inline.out,.addbox.sub,.sub-home{--mark:var(--tick)}
+.addbox.sub,#capture.inline,.sub-home{--box-dent:calc(var(--mark) - var(--box-edge))}
+.addbox.sub > *,#capture.inline > *,.sub-home > span{margin-left:var(--box-dent)}
+.addbox form{position:relative}
+.addbox .box-level{position:absolute;left:calc((var(--mark) + var(--part)) / -2);top:var(--box-pad);color:var(--accent)}
+.box-level[disabled]{opacity:.35}
+.item.boxed{margin-bottom:var(--box-h,0px)}
+#cap-home{position:fixed;left:0;right:0;bottom:0;z-index:6;display:block;width:100%;height:calc(var(--box-one) + 20px + env(safe-area-inset-bottom));padding:10px var(--pad) calc(env(safe-area-inset-bottom) + 10px);border:0;background:var(--bg)}
+/* The repeat button on a checklist's box shows only its symbol, in a button the size of the box's other buttons, so
+   the text keeps its line */
+.foot-box .rep{display:grid;place-items:center;padding:0;border:0;border-radius:var(--part-r);background:var(--sunk);color:var(--accent)}
+/* The box in a list (a sheet's, a checklist's, and the bar seated under a row) is the same box as the bar, only
+   smaller. It has the same colours on every screen, at rest and while typed in: an accent border and a white inside.
+   It is inset from the list's sides as far as a row's content is. On the left that is the width of a tick
+   (--box-dent, above), and on the right it is where a row's claim slot ends. Equal padding above and below centres it
+   in the space it takes. With one line, that space is as tall as a row (--box-slot: 56px, less the 1px line above it
+   where there is one). With chips or a time line under the box, the same padding goes under those. */
+.addbox.sub,#capture.inline,.sub-home{--box-slot:56px;--box-gap:calc((var(--box-slot) - var(--box-one)) / 2);padding:var(--box-gap) 14px}
+.row ~ .addbox.sub,.sub-home{border-top:1px solid var(--line);--box-slot:55px}
+#capture .cam{border-radius:var(--part-r);display:grid;place-items:center;color:var(--muted);cursor:pointer}
+#capture .cam.on{color:var(--accent);background:var(--accent-soft)}
+#capture .cam:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
+.chip.photo{cursor:pointer}
+.chip svg.i{width:15px;height:15px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:14px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
+.chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
+.chip:not(.tap){cursor:default}
+/* .quiet marks text the box didn't recognise. .suggest is an option offered after @ or *. It is outlined, unlike a
+   chip for text the box did recognise. */
+.chip.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);white-space:normal}
+.chip.suggest{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);border:0;color:var(--ink)}
+.chip.off{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--muted);text-decoration:line-through}
+.chip.create{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent);font-weight:600}
+.chip.toggle{background:var(--sunk);color:var(--muted);font-weight:600}
+.chip.toggle[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+.chip .x{font-weight:700;opacity:.6;margin-left:2px}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
+
+
+/* ---------- sheet ---------- */
+#scrim{position:fixed;inset:0;background:var(--scrim);z-index:20;opacity:0;transition:opacity .2s}
+#scrim.show{opacity:1}
+/* A closing scrim and sheet let taps through at once, rather than catching them while they fade */
+#scrim:not(.show),#sheet:not(.show){pointer-events:none}
+#sheet{position:fixed;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 28px);z-index:21;background:var(--bg);border-radius:var(--r-sheet) var(--r-sheet) 0 0;display:flex;flex-direction:column;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:720px;margin:0 auto}
+#sheet.show{transform:none}
+@media (prefers-reduced-motion:reduce){#sheet,#scrim,header.top{transition:none}}
+#sheet .bar{position:relative;display:flex;align-items:center;gap:8px;padding:12px 12px 6px}
+#sheet .bar .bar-meta{flex:1;min-width:0}
+#sheet .bar .grab{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex}
+.bar-meta-in{display:flex;align-items:center;gap:10px;padding-left:4px}
+.task-id{color:var(--muted);font-size:14px;font-weight:650}
+/* Priority shows as five bars, filled up to the level and red from High up. The bars have equal heights, so they
+   aren't mistaken for phone signal. They are shorter than the text, so they aren't mistaken for a row of |||||. */
+.bars{display:inline-flex;gap:2px;height:11px}
+.bars i{width:4px;border-radius:1px;background:var(--line)}
+.bars.p1 i:nth-child(-n+1),.bars.p2 i:nth-child(-n+2){background:var(--ink)}
+.bars.p3 i:nth-child(-n+3),.bars.p4 i:nth-child(-n+4),.bars.p5 i{background:var(--overdue)}
+.meta .bars{height:10px;vertical-align:-1px}
+.meta .bars.p1 i:nth-child(-n+1),.meta .bars.p2 i:nth-child(-n+2){background:var(--muted)}
+.meta svg.i{width:14px;height:14px;stroke-width:2.2;vertical-align:-2px;margin-right:3px}
+#sheet .menu{position:absolute;right:12px;top:calc(100% - 2px);z-index:5;min-width:240px;max-width:calc(100% - 24px);background:var(--surface);border-radius:14px;padding:6px;box-shadow:var(--shadow-menu)}
+#sheet .menu button,#sheet .menu > a{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:0;background:none;padding:12px 14px;border-radius:10px;font-size:17px;font-weight:600;color:var(--ink);text-decoration:none}
+#sheet .menu button:hover,#sheet .menu button:focus-visible,#sheet .menu > a:hover,#sheet .menu > a:focus-visible{background:var(--sunk)}
+#sheet .menu button small{font-size:13px;font-weight:400;color:var(--muted)}
+#sheet .menu button.danger{color:var(--danger)}
+#sheet .menu button[disabled]{opacity:.4}
+#sheet .step-menu{right:0;min-width:180px}
+#sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
+/* While a sheet is open the page behind it stays put. The sheet keeps its scrolling to itself, even at its ends. */
+body.sheet-open{overflow:hidden}
+#sheet .scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:4px var(--pad) calc(env(safe-area-inset-bottom) + 32px + var(--kb-h));-webkit-overflow-scrolling:touch}
+.d-path{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;margin:2px 0 8px 2px;color:var(--muted);font-size:14px;font-weight:600}
+.d-path .dot{margin:0}
+.d-parent{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.d-parent .linkish{font-size:14px;font-weight:600}
+.d-title{display:flex;gap:12px;align-items:flex-start;margin:0 0 6px}
+.d-head{position:relative;margin:0 -8px;padding:4px 8px 2px;border-radius:var(--r-row)}
+.d-path{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+/* A task's sheet starts with one card (sheet/task-card.html). It holds the task's row, its notes under the title, and
+   its files in the same column. Each file's paperclip is level with the tick, and the lines between files start at the
+   title. The card clips to its rounded corners, so the layer a swiped row uncovers stays inside them. A template's
+   card has no row, so its notes start at the card's edge. */
+.task-card{overflow:clip}
+.task-card-notes{position:relative;padding:0 0 2px calc(var(--tick) + 12px)}
+.task-card-notes .desc{padding-top:0;padding-right:44px}
+.task-card-notes .copy-btn{position:absolute;top:-12px;right:0}
+.task-card-notes .desc-edit{margin-left:calc(-12px - var(--tick))}
+.task-card:not(:has(> .row)) .task-card-notes{padding-left:0}
+.task-card:not(:has(> .row)) .task-card-notes .desc{padding-top:14px}
+.task-card:not(:has(> .row)) .task-card-notes .copy-btn{top:0}
+.task-card:not(:has(> .row)) .task-card-notes .desc-edit{margin-left:0}
+/* The 22px paperclip is centred under the tick (14 + 3 + 11 = 28px in), and the name starts at the title column
+   (17 + 22 + 15 = 54px) */
+.task-card .att{position:relative;gap:15px;padding-left:17px;border-top:0}
+.task-card .att::before{content:"";position:absolute;top:0;right:0;left:var(--title-x);height:1px;background:var(--line)}
+/* Tapping the title opens a box in the row's body, at the title's size */
+.row > .title-in{align-self:flex-start}
+.title-in textarea{display:block;width:100%;border:0;border-radius:6px;background:transparent;font-size:17px;line-height:24px;font-weight:650;resize:none;outline:2px solid var(--accent);outline-offset:3px;padding:0}
+/* The sheet's Progress line has one chip per quarter. Tapping a chip is an alternative to swiping, and the current
+   chip is shown pressed. */
+.d-quarters{gap:6px;flex-wrap:nowrap}
+/* all four chips share one line, on a narrow phone too */
+.d-quarters .chip{flex:1 1 0;min-width:0;max-width:64px;min-height:38px;padding:5px 4px;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
+/* A sheet's title is the same size wherever it appears */
+.d-title h2,.d-title textarea,.d-step-title,.step-card h3,.finish-card h3{font-size:22px;line-height:28px;font-weight:750;letter-spacing:-.01em}
+.d-title h2{margin:0}
+.d-title textarea{flex:1;border:0;background:transparent;resize:none;outline:0;padding:0;min-height:28px}
+.d-step-title{flex:1;margin:0;overflow-wrap:anywhere}
+.d-step-when{margin:0 0 6px}
+.card{background:var(--surface);border-radius:var(--r-row);margin-bottom:14px}
+.prop{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line);min-height:52px}
+.prop:first-of-type{border-top:0}
+.prop .k{width:72px;flex:none;color:var(--muted);font-size:15px}
+.prop .v{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.prop select,.prop input[type=datetime-local]{flex:1;min-width:0;border:0;background:transparent;font-size:17px;padding:6px 0;outline:0}
+/* Hide the calendar icon to give the date more space. propTap opens the picker from anywhere on the row. */
+.prop input[type=datetime-local]::-webkit-calendar-picker-indicator{display:none}
+/* iOS gives a date input a minimum width of its own, which pushed the × onto a separate line. So the input is no
+   wider than its row allows, its value is left-aligned, and the line doesn't wrap. The date shrinks to make space for
+   the × beside it. The font size is 17px, because an iPhone zooms in on inputs below 16px. */
+.prop input[type=datetime-local]{-webkit-appearance:none;appearance:none;width:100%;min-width:0;text-align:left}
+.prop input[type=datetime-local]::-webkit-date-and-time-value{text-align:left}
+.prop .v:has(> input[type=datetime-local]){flex-wrap:nowrap}
+/* "Remind me at" goes on its own line after the reminders */
+.prop .v > .v:has(> input[type=datetime-local]){flex-basis:100%}
+/* A row takes a tap anywhere (propTap). On a row with only a select, the select is stretched over the whole row. Its
+   text stays at its original position (past the padding, the label and the gap), so the phone's own list opens
+   wherever the row is tapped. */
+.prop:has([data-tap]),.prop.sel{cursor:pointer}
+.prop.sel{position:relative}
+.prop.sel select{position:absolute;inset:0;width:100%;height:100%;padding:0 14px 0 98px}
+.prop.sel:has(select:focus-visible){box-shadow:inset 0 0 0 2px var(--accent)}
+/* Priority shows its bars and its text, with a chevron where the other selects draw theirs. Its select covers the row
+   but is transparent. */
+.prop.sel.prio select{opacity:0}
+.prop.prio .prio-chev{margin:0 -9px 0 auto;width:14px;height:14px;stroke-width:3;transform:rotate(90deg)}
+.chip.rem{cursor:default;padding-right:6px}
+.prop-note{margin:0;padding:0 14px 12px}
+.assign-pick{flex:1 1 100%;min-width:0}
+.assign-pick .chips{margin-top:6px}
+.assign-form{flex:1;min-width:120px;display:flex;gap:6px}
+.assign-form .btn{padding:6px 12px;font-size:15px}
+.assign-form input{flex:1;min-width:0;padding:6px 10px;border-radius:var(--r-chip);border:1.5px solid var(--line);background:var(--bg);font-size:15px;outline:0}
+.assign-form input:focus{border-color:var(--accent)}
+.label-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-radius:var(--r-chip);background:var(--sunk);font-size:14px;border:0}
+.label-chip .x{width:24px;height:24px;border-radius:12px;display:grid;place-items:center;color:var(--muted);border:0;background:transparent;padding:0}
+.add-label{border:1.5px dashed var(--line);background:transparent;color:var(--muted);border-radius:var(--r-chip);padding:4px 12px;font-size:14px}
+.desc{padding:14px;font-size:17px;line-height:1.5;overflow-wrap:anywhere}
+.desc :first-child{margin-top:0} .desc :last-child{margin-bottom:0}
+.desc a{color:var(--accent)}
+.desc ul[data-type=taskList]{list-style:none;padding-left:4px}
+.desc li[data-checked]::before{content:"○ ";color:var(--muted)}
+.desc li[data-checked=true]::before{content:"● ";color:var(--accent)}
+.desc li[data-checked] > div,.desc li[data-checked] p{display:inline}
+.desc .ph{color:var(--muted)}
+.desc-edit{padding:10px}
+/* As tall as its text (grow) and at least 140px, so long notes scroll with the sheet, not inside their box */
+.desc-edit textarea{width:100%;min-height:140px;border:1.5px solid var(--accent);border-radius:10px;padding:10px;background:var(--bg);font-size:17px;line-height:1.45;outline:0;resize:none}
+.row-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.h3{font-size:15px;font-weight:700;margin:22px 2px 8px;display:flex;align-items:baseline;gap:8px}
+.h3 .n{color:var(--muted);font-weight:600}
+.comment{padding:12px 14px;border-top:1px solid var(--line)}
+.comment:first-of-type{border-top:0}
+.comment .who{font-size:14px;color:var(--muted);margin-bottom:3px}
+.comment .who b{color:var(--ink);font-weight:650}
+.comment-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
+.comment-form{border-top:0} .comment ~ .comment-form,.row ~ .comment-form{border-top:1px solid var(--line)}
+.linkish{border:0;background:transparent;padding:0;color:var(--accent);font-size:17px;text-align:left}
+/* With one line, as tall as its button, with the text centred on the button */
+.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:calc((48px - 3px - 24px) / 2) 10px;background:var(--bg);resize:none;min-height:48px;max-height:calc(var(--vv-h) * .35);outline:0}
+.comment-form .go{align-self:flex-end}
+.comment-form textarea:focus{border-color:var(--accent)}
+.att{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left}
+.att:first-of-type{border-top:0}
+.att .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att .sz{color:var(--muted);font-size:13px}
+.att.uploading{color:var(--muted)}
+.att .icon-btn{margin:-10px -10px -10px -4px}
+.att.add-att{color:var(--accent);font-weight:600;cursor:pointer}
+.att.add-att:focus-within{outline:2.5px solid var(--accent);outline-offset:-2px}
+.danger-zone{margin-top:28px}
+/* The share, copy and open-in-Vikunja rows on a project's or a checklist's sheet, styled like a menu's items */
+.share-card{display:flex;flex-direction:column}
+.share-card > button,.share-card > a{display:flex;align-items:center;min-height:48px;padding:0 16px;border:0;background:none;font-size:17px;font-weight:600;color:var(--accent);text-align:left;text-decoration:none}
+.share-card > :not(:first-child){border-top:1px solid var(--line)}
+/* Copy, by the notes heading and on each comment: small and quiet, with a 48px touch target */
+.copy-btn{width:48px;height:48px;color:var(--muted)}
+.copy-btn svg.i{width:18px;height:18px}
+.h3 .copy-btn{margin:-16px -12px -16px auto;align-self:center}
+.comment{position:relative}
+.comment .who{padding-right:34px}
+.comment .copy-btn{position:absolute;top:0;right:0}
+.picker{padding:6px 0}
+.picker button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:12px 14px;text-align:left;border-top:1px solid var(--line)}
+#lp-list button:first-of-type{border-top:0}
+.picker input{margin:10px 14px;width:calc(100% - 28px);padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);outline:0}
+.saved{font-size:13px;color:var(--muted);text-align:right;min-height:18px;margin-top:-8px;margin-bottom:6px}
+.d-head > .saved{position:absolute;top:6px;right:8px;min-height:0;margin:0;padding-left:8px;background:var(--bg);pointer-events:none}
+
+/* ---------- toast ---------- */
+/* Just above the add box, or above the keyboard (--kb) when that's higher. Below the keyboard it would be hidden. */
+#toasts{position:fixed;left:50%;bottom:calc(max(var(--cap-h), var(--kb)) + 14px);transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:calc(100% - 32px);pointer-events:none}
+#toast{background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;box-shadow:var(--shadow-toast);max-width:100%}
+#toast{opacity:0;transform:translateY(20px);transition:opacity .18s,transform .18s}
+#toast.show{opacity:1;transform:none;pointer-events:auto}
+#toast button{border:0;background:transparent;color:var(--accent-soft);font-weight:700;padding:6px 8px}
+@media (prefers-color-scheme:dark){#toast button{color:var(--accent)}}
+body.sheet-open #toasts{bottom:calc(max(env(safe-area-inset-bottom), var(--kb)) + 20px)}
+.foot-box .rep[disabled]{opacity:.4}

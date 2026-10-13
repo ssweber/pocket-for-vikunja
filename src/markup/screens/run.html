@@ -1,0 +1,55 @@
+    <!-- A checklist's screen. It shows the current step, the list of steps, the checklist's comments, and the comments
+         from the last checklist started from the same template. -->
+    <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
+      <!-- "Started", with its Undo, until a step is done in the checklist -->
+      <template x-for="line in placeLines('run')" :key="line.n">
+        <!-- include markup/place-line.html -->
+      </template>
+      <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">Read only. You can follow this checklist, but not tick its steps or add comments. Ask the project's owner for write access.</p></template>
+
+      <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
+      <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
+        <h3 x-text="runView.skippedN ? 'Every step done or skipped' : 'All steps done'"></h3><p class="note" style="margin:0" x-text="runView.summary"></p>
+        <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun()">Finish checklist</button>
+      </div></template>
+
+      <!-- Countdowns running on steps other than the one on the card, so the user doesn't miss one -->
+      <template x-if="runView.timers.length"><div class="card" id="run-timers">
+        <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(s.i, true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
+      </div></template>
+
+      <!-- include markup/step-card.html -->
+
+      <div class="h3">Steps</div>
+      <div class="list" id="run-steps" x-data="{where: 'run'}">
+        <!-- Each step is the shared task row (g.run in task-row.html) -->
+        <template x-for="g in [runRows]" :key="0"><template x-for="t in runView.steps" :key="t.id">
+          <!-- include markup/task-row.html run -->
+        </template></template>
+        <!-- The add box at the bottom of the steps, with Repeat (list-box.html). This screen has no quick-add bar. -->
+        <!-- include markup/list-box.html -->
+      </div>
+
+      <div class="h3">Comments on this checklist</div>
+      <div class="card" id="run-notes">
+        <template x-for="c in runView.notes" :key="c.id">
+          <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+        </template>
+        <form class="comment-form" id="run-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(view.run.run.id)">
+          <textarea id="run-note" rows="1" placeholder="Comment, also shown next time" aria-label="Comment on this checklist" x-model="runDrafts[view.run.run.id]" x-grow="runDrafts[view.run.run.id]"></textarea>
+          <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="!(runDrafts[view.run.run.id] || '').trim()" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
+        </form>
+      </div>
+
+      <!-- The comments on the last finished checklist from this template, and on its steps, handed over to this one -->
+      <template x-if="view.run.last"><div>
+        <div class="h3">Last time<button class="n linkish" id="run-last-open" @click="openRun(view.run.last.id)" x-text="view.run.last.title"></button></div>
+        <div class="card" id="run-last">
+          <template x-if="!view.run.last.notes"><div class="loading" style="padding:16px">Loading…</div></template>
+          <template x-for="c in view.run.last.notes || []" :key="c.id">
+            <div class="comment"><div class="who"><b x-text="c.step"></b> · <span x-text="c.author"></span> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+          </template>
+          <template x-if="view.run.last.notes && !view.run.last.notes.length"><p class="note" style="padding:12px 14px;margin:0">No comments were left last time.</p></template>
+        </div>
+      </div></template>
+    </div></template>

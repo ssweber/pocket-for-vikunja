@@ -1,0 +1,48 @@
+# Publishing a release on GitHub, with a new tag like v0.1.0, attaches pocket-v0.1.0.zip to it: the pocket folder to
+# put in Vikunja's plugins folder, with the plugin's version set from the tag.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: The committed page is the build of src/
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain pocket/app)" ]; then
+            echo "::error::pocket/app/ doesn't match src/ at $TAG. Run npm run build, commit it, and release again."
+            exit 1
+          fi
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:parse
+      - name: Make the zip
+        run: |
+          VERSION="${TAG#v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::The tag $TAG isn't v and a version, like v0.1.0"
+            exit 1
+          fi
+          mkdir dist
+          cp -r pocket dist/pocket
+          sed -i -E "s/(func \(p \*Pocket\) Version\(\) string \{ return \")[^\"]*(\" \})/\1$VERSION\2/" dist/pocket/main.go
+          grep -q "return \"$VERSION\"" dist/pocket/main.go
+          (cd dist && zip -r "pocket-$TAG.zip" pocket)
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "dist/pocket-$TAG.zip" --clobber

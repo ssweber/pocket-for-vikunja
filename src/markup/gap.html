@@ -1,0 +1,5 @@
+<!-- A deleted row or card (isGap, app/leaving.js), for task `t` in the list `g`, until the batch clears it. The gap
+     keeps the row's height, so nothing moves. It shows only "Deleted" and Restore, where the claim slot was. Tapping
+     anywhere on the gap restores the task (tapGap). A done task is never a gap. It stays in its place, shown as done,
+     and tapping its tick undoes it. -->
+<template x-if="isGap(t, g)"><div class="del-gap"><span class="what">Deleted<span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore" :aria-label="'Restore ' + t.title"><span class="me">Restore</span></button></div></template>

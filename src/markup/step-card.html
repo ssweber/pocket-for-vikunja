@@ -1,0 +1,52 @@
+<!-- The card for the current step, `runView.step`, on a checklist's screen (screens/run.html). It shows the step's
+     title, who is on it, when it is due, its notes, its photos, its comments and last time's comments, and the Done
+     and Skip buttons (Not done once it is done). The list of steps under the card shows where the checklist has got
+     to. Tapping a step puts it on the card, including a done step. -->
+<template x-if="runView.step"><div class="card step-card" id="step-card" :data-id="runView.step.id">
+  <template x-for="line in placeLines('step')" :key="line.n">
+    <!-- include markup/place-line.html -->
+  </template>
+  <!-- Who is on the step, in the same slot its row has (rowSlot): "+ me", or who has it. This way no one presses Done
+       on a step someone else has without seeing that. A done step shows who did it instead (step-who). -->
+  <div class="step-title-line"><h3 id="step-title" x-text="runView.step.title"></h3><template x-for="slot in [rowSlot(runView.step, {run: true})].filter(Boolean)" :key="0">
+    <!-- include markup/claim-slot.html -->
+  </template></div>
+  <template x-if="runView.step.added"><div class="step-added" id="step-added" x-text="runView.step.added + (runView.step.slowAdd ? ' · waiting to send' : '')"></div></template>
+  <template x-if="runView.step.dueText"><div class="step-due num" :class="{late: runView.step.late}" x-text="runView.step.dueText"></div></template>
+  <template x-if="runView.step.description"><div class="desc" x-html="sanitize(runView.step.description)"></div></template>
+  <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.slow}" x-text="runView.step.whoText"></div></template>
+  <div class="step-acts" x-show="!runView.finished && canWrite(view.run.run.project_id)">
+    <!-- The buttons keep the same text while a comment is being written, so they don't change size under the user's
+         thumb. A note under the comment says the comment is sent with them. -->
+    <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" @click="tickStep(runView.step, 'done')"><svg class="i"><use href="#i-check"/></svg><span>Done</span></button></template>
+    <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" @click="tickStep(runView.step, 'skip')">Skip</button></template>
+    <template x-if="runView.step.done"><button class="btn ghost go-on" id="step-undo" @click="tickStep(runView.step, 'undone')">Not done</button></template>
+  </div>
+  <!-- Photos and Vikunja comments on this step. Without a connection, photos wait on the phone, as everywhere in
+       Pocket. Each waiting photo has a × that discards it, as for a photo waiting on a task. -->
+  <div class="step-extra" id="step-extra">
+    <template x-for="a in runView.step.attachments || []" :key="a.id">
+      <button class="att" @click="openAttachment(a, runView.step.id)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
+    </template>
+    <template x-for="f in waitingByTask.get(runView.step.id) || []" :key="f.key">
+      <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span>
+        <button class="icon-btn plain" :aria-label="'Don\'t upload ' + f.name" @click="cancelFile(f.entry, f.key)"><svg class="i"><use href="#i-close"/></svg></button></div>
+    </template>
+    <template x-if="attachmentsOn && !runView.step.pending"><label class="att add-att">
+      <svg class="i"><use href="#i-camera"/></svg><span class="nm">Add a photo</span>
+      <input type="file" id="step-file" class="sr" accept="image/*" multiple aria-label="Add a photo to this step" @change="addFiles($event.target.files, runView.step); $event.target.value = ''">
+    </label></template>
+    <template x-for="c in runView.step.notes" :key="c.id">
+      <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+    </template>
+    <form class="comment-form" id="step-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(runView.step.id)">
+      <textarea id="step-note" rows="1" placeholder="Comment on this step" aria-label="Comment on this step" x-model="runDrafts[runView.step.id]" x-grow="runDrafts[runView.step.id]"></textarea>
+      <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="!(runDrafts[runView.step.id] || '').trim()" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
+    </form>
+    <template x-if="!runView.step.done && !runView.finished && (runDrafts[runView.step.id] || '').trim()"><p class="note step-note-with" id="step-note-with">Tap Done to send this comment. Tap Skip to send it as the reason.</p></template>
+    <!-- The comments on this step last time -->
+    <template x-for="c in lastNotes(runView.step)" :key="'last' + c.id">
+      <div class="comment last"><div class="who">Last time · <b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
+    </template>
+  </div>
+</div></template>
