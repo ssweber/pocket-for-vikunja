@@ -16,14 +16,14 @@ import {pendingSaves} from './sheet.js';
 
 export let renderSeq = 0;
 let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
-const PRELOAD_AGE = 60e3;                        // a copy kept younger than this isn't loaded again in the background
+const PRELOAD_AGE = 60e3;                        // skip background reloads for copies newer than this
 // The projects whose Done section was left open, kept on the phone: project id -> true.
 const doneOpen = {
   all(){ try { return JSON.parse(store.get('done.open')) || {}; } catch { return {}; } },
   set(id, open){ const a = this.all(); if (open) a[id] = true; else delete a[id]; store.set('done.open', JSON.stringify(a)); },
 };
-/* How many a list of done tasks shown a part at a time has in all, from a part of it read (doneTasks, foundDone): what
-   Vikunja counts, less those it leaves out (`skip`, so far: templates, their steps, a run's); `was` if Vikunja didn't say. */
+/* Compute a paged Done count from Vikunja's total, minus excluded templates and steps. Use was when Vikunja
+   omitted the total. */
 const counted = (part, skip, was) => part.total == null ? was : Math.max(0, part.total - skip);
 
 export default {
@@ -32,8 +32,8 @@ export default {
     this.setProjects(list.filter(p => p.id > 0 && !p.is_archived).sort((a,b) => (a.position||0) - (b.position||0) || a.title.localeCompare(b.title)));
     saved.set('projects', this.projects);
   },
-  // Which are for checklists is worked out here, once, as every row asks it (isRunTask): each project's description is
-  // read as HTML for it. Every change to the projects comes through here, with new objects.
+  // Index checklist projects once per project change. Parsing each description as HTML on every row would slow
+  // long lists.
   setProjects(list){
     this.projects = list; this.projById = new Map(list.map(p => [p.id, p]));
     this.checklistProjects = list.filter(p => this.isChecklistProject(p)); this.checklistIds = new Set(this.checklistProjects.map(p => p.id));
@@ -57,13 +57,12 @@ export default {
     if (d && this.projById.has(d)) return d;
     return this.projects[0]?.id;
   },
-  // Lists with a task's open and done copies both on screen, where a tick moves it between them: search, and a project
-  // with its Done section.
+  // Search and project Done sections move tasks between separate Open and Done groups after a tick.
   get bothWays(){ return ['search', 'project'].includes(this.route.name); },
 
   /* ---------- views ---------- */
-  /* Go to a screen. Each is an entry in the history, remembering the one before (`from`), so the phone's Back goes back
-     through them. An open sheet's entry is replaced, so Back from there doesn't come back to the sheet. */
+  /* Give each screen a history entry and remember its predecessor. Replace an open sheet's entry so Back does not
+     reopen that sheet. */
   go(hash){
     if (hash === location.hash && !history.state?.sheet) { this.navigated(); return; }
     const from = location.hash || '#/today';
@@ -72,15 +71,15 @@ export default {
     this.navigated();
   },
   navigated(){ this.headerTucked = false; this.light(null); this.runBoxAt = null; this.resetCards(); this.foldLines(); if (!this.signedIn) return; this.closeSheet(true); this.render(); },
-  // Pocket's own Back: the phone's Back when the screen before is that one, so the history doesn't grow; else go there.
+  // Use history.back when it leads to the requested screen. Otherwise open that screen with go().
   back(to){
     if (history.state?.from !== to || history.state?.sheet === true) { this.go(to); return; }
     const closed = history.state?.sheet === 'closed';                     // past the closed sheet's entry too
     shared.onClosedSheet = false;
     history.go(closed ? -2 : -1);
   },
-  // The page's name: the tab says Today, Projects or Checklists; a project shows its name, and its parent's, above its
-  // list; a run its own, and its project's.
+  // Name the browser tab for its screen. Project and run screens show their names and parent project above the
+  // list.
   get head(){
     const r = this.route;
     if (r.name === 'projects') return {kicker: '', title: 'Projects'};
@@ -108,9 +107,8 @@ export default {
   },
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
-  // A row's tick: a step on a run's screen through the outbox (tickStep), a subtask in its sheet, the sheet's own task
-  // (sheetDone), or a task (a card's step too). It never moves the add box: only a nudge does (quickadd.js). On a row marked done or not done, waiting for the batch to clear, it takes that back (unmark,
-  // leaving.js). The tap is felt (tickFeel): firmer marking it done, as a full swipe is; a step's as tickStep has it.
+  // Send each row's tick through its task, sheet or run action. A marked row first undoes its mark. Give
+  // completion feedback once, and keep the add box where it is.
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
     haptic(tickFeel(t.done));
@@ -124,10 +122,9 @@ export default {
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row);
   },
-  /* A row's title tapped. A step on a run's screen goes on the card (showStep); the sheet's own row's title is changed
-     where it is (editTitle); a subtask in a sheet, and a run's own row atop its screen, open their task; a row in a
-     list opens what it's a row of (openRow: a run's step its run, a template that comes round its Start). One not sent
-     yet has nothing to open. */
+  /* Open the item represented by the row. Run step titles select their card, the sheet's own title edits in place,
+     and sheet subtasks open their task. List rows open tasks, runs or a repeating template's Start sheet. Pending
+     rows have no saved task to open. */
   tapRow(t, g){
     if (g.run) return this.showStep(t.i, true);
     if (g.step) return this.editStep(t);
@@ -135,34 +132,27 @@ export default {
     if (g.own) return this.editTitle();
     return g.sheet || g.top ? this.openTask(t.id) : this.openRow(t);
   },
-  /* A parent's ring tapped (ring.html; `el`, the ring). A run's atop its screen has a tap of its own (r.tap:
-     runRingTap). Else it's ringTap (app/cards.js), told where it was tapped: in a sheet, on the task's own row or a
-     subtask's, where what was closed is said with an Undo; in a list, on which card or row, which then shows it. */
+  /* Route a ring tap to the run screen's handler or ringTap with its row and sheet context. That context places
+     confirmation results and Undo where the action happened. */
   tapRing(t, r, el){
     if (r.tap) return r.tap();
     const sheet = !!el.closest('#sheet');
     return this.ringTap(t, sheet ? null : el.closest('.day-card, .row'), sheet);
   },
-  /* A row on one line (g.line: Today, and a card's rows there; motion-and-rows-plan, section 9): at its right, its
-     priority's bars, small, as on a card's heading (one-concept-plan, part 4), when it's due, short (shortDue; a run's
-     step's countdown, "in 18m", "12m late"; nothing for today with no time under the Today heading, g.key), red when
-     late, and its project's colour dot: not a card's row's, whose card's header has it once (cardHead), unless the row
-     is in another project than its card (rows-and-sheet-fixes-plan, part 4). Labels and counts are off Today (rowMeta's
-     `extra`), and all of what's under its title elsewhere (rowMeta: when, in words, priority, project or run, the task
-     it's under) is said to a screen reader instead (`said`). Worked out once per row (task-row.html). */
+  /* Build compact metadata for a one-line row. Show priority, a short due date or countdown, and the project dot
+     only when the card heading does not already show it. Leave labels and counts off Today, and put the fuller
+     metadata in said for screen readers. Compute this once per row. */
   rowWhen(t, g){
     const meta = this.rowMeta(t, g), left = meta.find(m => m.key === 'due')?.countdown, p = this.projById.get(t.project_id);
     const due = left ? {text: left.text, cls: left.late ? 'overdue' : 'today'} : shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'});
     const said = meta.filter(m => !m.extra).map(m => m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text).filter(Boolean);
     return {prio: t.priority || 0, due, color: p && g?.card?.project !== t.project_id ? colorOf(p.hex_color) : null, said: said.join(', ')};
   },
-  // Now, for a row's countdown and when it's due: on Today, its minute (groupedAt), which redraws it once a minute.
+  // Use Today's grouping minute for due text so its rows redraw only once a minute.
   rowNow(){ return this.route.name === 'today' && this.groupedAt || Date.now(); },
-  /* What's under a row's title. A subtask in its parent's sheet (g.sheet) has its due date only, as yet. The sheet's own
-     row (g.own) only when it's due and how soon (OWN_META): its project, run or parent are in the path over it, and its
-     labels and counts in the sheet under it. A run's own row atop its screen (g.top), nothing: who it's for is its slot. A step on a run's screen (g.run): Inserted or Repeated, its comments, and,
-     not done, its countdown or when it's due. Labels and counts are `extra`: a row on one line leaves them out, and
-     doesn't say them (rowWhen). */
+  /* Build metadata for each row context. Sheet subtasks show due dates, while the sheet's own row omits details
+     already shown elsewhere in the sheet. A run's top row uses its assignee slot. Run steps show insertion
+     history, comments and timing. One-line rows omit extra labels and counts. */
   rowMeta(t, g){
     if (g?.top) return [];
     // A template's step: when it's due in a checklist, or what's wrong with it, and its notes' first line.
@@ -183,24 +173,22 @@ export default {
     else if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
-    /* A template that comes round: what tapping it does (starting it moves it on only once it's due today), its project,
-       so two projects' "Opening up" can be told apart, instead of its label and steps. Who it's for is its slot's
-       pictures, as a run's are (forSlot). */
+    /* Show a repeating template's Start action and project instead of labels and counts, so matching names in
+       different projects are clear. The slot shows who its runs are for. */
     if (comesRound(t) && this.checklistIds.has(t.project_id)) {
       out.push({key: 'tpl', text: !this.canWrite(t.project_id) ? 'Checklist' : this.tickOf(t) ? 'Checklist: tap to start' : 'Checklist, for then'});
       const tp = this.projById.get(t.project_id);
       if (tp && this.route.name !== 'project') out.push({key: 'p', color: colorOf(tp.hex_color), text: tp.title});
       return out;
     }
-    // (A card's step has its run or task on the card, over it, and its project on the card's header: only one in another
-    // project than its card says its own.)
+    // Avoid repeating the card's project on its step rows, except when a step belongs to another project.
     const p = (!card || card.project !== t.project_id) && (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
-    // A step of a run on Today or in search: which run, instead of the project (the run's), so two runs' steps can be
-    // told apart. (In a project's list, it's under its run already.)
+    // Name the run on Today and search step rows to distinguish matching step names. Project lists already show
+    // the run above them.
     const run = !card && (this.route.name === 'today' || this.route.name === 'search') && this.stepRun(t) && t.related_tasks.parenttask[0];
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
-    // A subtask with its parent not above it here (not due this week, say, or done): the parent's name, to know it by.
+    // Name an absent parent so an isolated subtask can be identified.
     const up = !card && !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true});
@@ -209,8 +197,8 @@ export default {
     const subs = t.related_tasks?.subtask || [];
     if (subs.length && !this.isRunTask(t) && !this.rowRing(t, g || {})) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments', extra: true});
-    // Photos and files still uploading count too, so a photo added with a task shows on its row straight away. (Said on
-    // one line while some wait: that's not a count, it's work still to send.)
+    // Include pending uploads in file counts immediately. Describe waiting files as work still to send instead of
+    // a single total.
     const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waiting.files[t.id] || 0;
     if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : ''), extra: !waiting});
     // (Not a run's step's: its reminder is Pocket's own, for the countdown it shows.)
@@ -218,8 +206,8 @@ export default {
     return out;
   },
 
-  // `kept`: only the copy kept of a new screen, if it has one, and nothing loaded: boot, opening before Vikunja has said
-  // who's signed in. Resolves to whether it showed one.
+  // With kept, show only a cached screen before the signed-in account is known. Return whether a cached screen was
+  // shown.
   async render({kept = false} = {}){
     let r = currentRoute();
     // A link to a project's done tasks, from before they were a section of its list: the list, with the section open.
@@ -231,16 +219,14 @@ export default {
       this.cap.text = r.text; this.$nextTick(() => this.$refs.capture.focus());
       return;
     }
-    // The same screen drawn again keeps the route it has. (A new one, though it says the same, asks everything that
-    // reads it to be worked out again: every row asks which screen it's on, and a screen is drawn again after each
-    // thing sent, each refresh and each time Pocket comes back to the front.)
+    // Keep the same route object when refreshing a screen. Every row reads it, so replacing an unchanged route
+    // would recompute the whole list after every send or refresh.
     if (JSON.stringify(raw(this.route)) !== JSON.stringify(r)) this.route = r;
     if (r.name !== 'run') this.runFrom = location.hash || '#/today';
     if (r.name !== 'run' && r.name !== 'project') this.projectFrom = location.hash || '#/today';
     const seq = ++renderSeq;
-    /* A new screen opens at once with the copy kept of it, loaded afresh behind it and changed in place (settle); with
-       none, it says Loading. The same screen is refreshed in place. Either way, a load that takes over a second says so,
-       with a thin line under the header (view.behind), not over what's on screen. */
+    /* Open from the cached screen immediately and refresh its rows in place. Without a copy, show Loading. Report
+       loads taking over a second under the header so the message does not cover the rows. */
     const fresh = this.view.route !== location.hash;
     if (fresh) {
       const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
@@ -267,8 +253,7 @@ export default {
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
       if (e instanceof NetError) {
-        // Keep what's on screen (the copy kept of it, say), the banner saying we're offline; Today placed again for the
-        // time now (after midnight, say).
+        // Keep visible rows after a failed load and show the offline banner. Regroup Today for the current date.
         if (!this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
         const s = saved.get(viewKey(r));                 // a run's, which isn't shown before it's loaded
         if (s) { this.showSaved(r, s); return; }
@@ -283,13 +268,10 @@ export default {
       if (seq === renderSeq) { clearTimeout(behindTimer); this.view.updating = this.view.behind = false; }
     }
   },
-  /* ---------- drawing a long screen (performance-plan, part 5) ---------- */
-  /* A screen's rows from row `n` on, drawn a few at a time: FIRST_ROWS at once, then, after that's painted, a batch a
-     frame, each a frame's work for the first few screens and then about a second's (batchMs, nextBatch), down the
-     screen's lists in order (drawn, listGroups' `before`), until every row is drawn. Meanwhile the screen counts as busy (#view[aria-busy], app.html), so the tests wait for it.
-     Scrolling to within a screen of the end of what's drawn draws the rest at once, so the end of what's drawn is never
-     taken for the end of the list; and so does holding a row to move it (reorderOf, once the hold is felt), which
-     needs all its siblings. */
+  /* ---------- drawing a long screen ---------- */
+  /* Draw FIRST_ROWS immediately, then add batches after the first paint. Adjust batch size from measured rendering
+     time. Keep aria-busy set until all rows are drawn. Draw the rest when scrolling near the end or starting a
+     reorder, so a partial list cannot look complete or omit siblings needed for a move. */
   drawFrom(n){
     this.drawTo = Math.min(this.drawTo, n + FIRST_ROWS);
     if (this.drawing) return;
@@ -304,7 +286,7 @@ export default {
         if (this.drawTo >= this.view.groups.reduce((k, g) => k + g.tasks.length, 0)) return this.drawAll();
         if (took !== null) rows = nextBatch(rows, took, batchMs(this.drawTo - n));
         this.drawTo += rows;
-        // How long the batch took to draw: Alpine draws it straight after this, before anything queued after it.
+        // Measure the batch after Alpine renders it but before later queued work runs.
         const t0 = performance.now(); took = null; queueMicrotask(() => { took = performance.now() - t0; });
       }
       requestAnimationFrame(step);
@@ -314,19 +296,18 @@ export default {
   },
   // Every row drawn: the rest of a screen being drawn a batch at a time, and anything added later, at once.
   drawAll(){ drawSeq++; this.drawTo = Infinity; this.drawing = false; removeEventListener('scroll', nearEnd); nearEnd = null; },
-  /* What list `g` (listGroups) draws of its rows or cards, so far. The list as it is, not as Alpine watches it: x-for
-     going over a watched list reads each item through Alpine, for each batch, every row drawn so far. */
+  /* Return the rows or cards drawn so far from an unwatched list. Otherwise x-for would read every drawn item
+     through Alpine again for every batch. */
   drawn(g){ return drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo); },
-  /* The copy of a screen kept on the phone, to show while it loads: Today, a project and Checklists, as last loaded (or
-     loaded in the background: preload), and only ever this account's. */
+  /* Cache Today, projects and Checklists for opening while they reload, including background loads. Keep copies
+     separate for each account. */
   savedView(r){
     if (!['today', 'project', 'checklists'].includes(r.name) || !this.user || saved.get('user')?.id !== this.user.id) return null;
     const s = saved.get(viewKey(r));
     return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
   },
-  // A copy kept of screen `r`, on screen: its tasks the ones on screen already, where those are as new (keptRows); Today's
-  // cards with their steps. A project's Done is open only if it's open now, not as it was when the copy was kept (and
-  // has no tasks till it's loaded: keptGroups).
+  // Restore cached groups with current task objects when they are as new. Keep the project's current Done toggle,
+  // and load Done tasks separately because the cache keeps only their count.
   showSaved(r, s){
     this.keptRows(s.steps || []);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
@@ -339,12 +320,9 @@ export default {
     if (r.name === 'today') this.regroupToday();
   },
   /* ---------- the other tabs, loaded in the background ---------- */
-  /* Once a screen has loaded, the copies kept of Today, the project opened last (or the first favourite) and Checklists
-     are loaded afresh behind it, one at a time, when the phone has nothing else to do: switching to one then shows a
-     fresh copy at once; first, who can see each project, now and then (refreshPeople). Only reads: nothing is changed
-     in Vikunja, nor on the screen. Not without a connection, nor on one the phone says is slow or to be sparing with
-     (Save-Data), nor a copy kept less than a minute ago; and not while the screen's rows are still being drawn (drawFrom),
-     which it would only slow. */
+  /* Refresh cached Today, the last project or first favourite, and Checklists in the background when the phone is
+     idle. Load project access first when needed. Read without changing Vikunja or visible rows. Skip offline, slow
+     or Save-Data connections, fresh copies and screens still drawing their rows. */
   schedulePreload(){
     clearTimeout(preloadTimer);
     const idle = window.requestIdleCallback || (f => setTimeout(f));
@@ -365,8 +343,7 @@ export default {
       }
     } finally { preloading = false; }
   },
-  // What's loaded in the background: {hash: its screen, key: its copy's (viewKey), load: its copy}. Each row is a task as
-  // Vikunja has it (`t => t`): the tasks on screen aren't touched.
+  // Describe a background load as {hash, key, load}. Keep Vikunja's task objects separate from those on screen.
   preloads(){
     const out = [{hash: '#/today', key: 'today', load: async () => this.todayFrom(await this.readToday(), t => t)}];
     const p = this.projById.get(saved.get('project.last')) || this.favorites[0];
@@ -378,10 +355,8 @@ export default {
     if (this.checklistProjects.length) out.push({hash: '#/checklists', key: 'checklists', load: async () => ({checklists: await this.readChecklists(t => t)})});
     return out;
   },
-  /* Lists loaded afresh, over what's on screen (`ids`: their tasks): the rows no longer in them fold away first, as a
-     tick's do, rather than vanish from under a finger, and the rows new to the screen fade in, softly, unlike one just
-     added. Rows marked done or deleted stay, for the batch (keepMarked). Resolves to whether this load (`seq`) is still
-     the one to show. */
+  /* Collapse rows removed by a refresh and fade in new rows. Keep marked rows in place until their batch clears.
+     Return whether this load is still current. */
   async settle(ids, seq){
     if (this.view.loading) return seq === renderSeq;
     const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
@@ -393,11 +368,8 @@ export default {
     if (arrived.length) this.flash(arrived, 'arrived');
     return true;
   },
-  /* Rows marked done or deleted, waiting for the batch to clear (leaving.js), or held as that from the tap, before
-     Vikunja has answered (holdRow), stay where they were through a load of their list, though Vikunja's no longer has
-     them (a task done): they go with the batch. On Today, whose groups
-     are by date, so does one Vikunja now has in another group: a repeating task ticked, or added done, is open again
-     at its next date, and moves there when its mark goes (its row shown done meanwhile: keep, tasks.js). */
+  /* Keep marked and held rows through list refreshes until their batch clears. On Today, also keep their previous
+     groups when repeating tasks have advanced to a new date in Vikunja. */
   keepMarked(groups){
     const now = new Map(groups.flatMap(g => g.tasks.map(t => [t.id, g]))), today = this.route.name === 'today';
     for (const old of this.view.groups) old.tasks.forEach((t, i) => {
@@ -418,8 +390,7 @@ export default {
     Object.assign(this.view, {cards, groups: this.keepMarked(groups)});
     saved.set('today', {groups, cards, steps, positions, at: new Date().toISOString()});
   },
-  /* What Today shows, from Vikunja: its rows and its cards (todayItems), with each card's task and open subtasks
-     (readCards), not yet in their groups. */
+  /* Load Today's tasks and cards with their open subtasks before assigning date groups. */
   async readToday(){
     const end = addDays(startOfDay(), 8);
     const t0 = startOfDay();
@@ -435,9 +406,8 @@ export default {
     const read = cards.size ? await this.readCards(cards, [...tasks, ...added, ...mine, ...claimed, ...open]) : {parents: [], steps: [], positions: {}};
     return {rows, cards, ...read};
   },
-  /* Today's groups of those, each task's row given by `own`: the one on screen, or (preload) Vikunja's as it is. A card
-     goes where what brought it says (cardGroup); one whose task can't be read shows what brought it as rows instead.
-     Returns {groups, cards: by task id, as the screen keeps them, steps, positions}. */
+  /* Group Today's tasks using own for either visible or background task objects. Place cards by what brought them
+     onto Today, or use their original rows if the parent cannot be read. Return {groups, cards, steps, positions}. */
   todayFrom({rows, cards, parents, steps, positions}, own){
     const groups = todayGroups(), at = Object.fromEntries(groups.map(g => [g.key, g])), dated = [], shown = {}, seen = new Set();
     const put = (t, key) => { if (seen.has(t.id)) return; seen.add(t.id); if (key === 'dated') dated.push(own(t)); else at[key].tasks.push(own(t)); };
@@ -451,9 +421,8 @@ export default {
     this.placeDated(groups, dated, shown);
     return {groups, cards: shown, steps: steps.map(own), positions};
   },
-  /* A project's open tasks, in the order of its List view in Vikunja (order.js), each subtask under its parent in its
-     own order; its done tasks in a section of their own below, counted, and loaded once it's opened. A project with no
-     List view, or one Pocket can't read, is in the order its tasks were made, and can't be reordered. */
+  /* Load open project tasks in List view order with subtasks under each parent. Count Done separately and load its
+     rows when opened. Without a readable List view, use creation order and disable reordering. */
   async loadProject(seq, r){
     if (!this.projById.has(r.id)) await this.loadProjects();
     const p = this.projById.get(r.id), open = p && doneOpen.all()[p.id];
@@ -464,7 +433,8 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of [...d.tasks, ...d.read]) cache.set(t.id, t);
     const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.keep(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
-    // Done's tasks over a copy that kept only its count (keptGroups) come as Done's do when it's opened, not faded in as new.
+    // Animate Done rows as an opened section when replacing a count-only cache, rather than fading them in as new
+    // tasks.
     const shown = this.view.groups.find(g => g.key === 'done'), quiet = g => g.key === 'done' && shown && !shown.loaded;
     if (!await this.settle(groups.flatMap(g => quiet(g) ? [] : g.tasks.map(t => t.id)), seq)) return;
     Object.assign(this.positions, d.positions);
@@ -474,17 +444,16 @@ export default {
     this.saveProject();
     if (open && !d.finished) this.loadDoneSection(this.view.groups[1]);
   },
-  /* A project's lists from Vikunja, its tasks as Vikunja has them: {project, listView, tasks: what the view gave, read: the
-     heads read besides, list: its open list, heads, positions, count: of its done tasks, finished: the latest `withDone` of
-     those (doneTasks), if asked}. */
+  /* Read project tasks, missing parent headings, positions and Done counts from Vikunja. Include up to withDone
+     completed tasks when requested. */
   async readProject(p, withDone){
     const q = {filter_timezone: TZ, expand: 'comment_count'}, id = p.id;
-    /* Its done tasks, counted by Vikunja. Not in a project for checklists: there, most are templates' and runs' steps,
-       which its Done leaves out (withoutTemplates), so it's counted once it's loaded. */
+    /* Use Vikunja's Done count outside checklist projects. Checklist projects need their tasks loaded first to
+       exclude template and run steps. */
     const count = this.checklistIds.has(id) ? null : api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', per_page: 1})).then(d => d?.total ?? null, () => null);
     const done = withDone ? this.doneTasks(p, 0, withDone).catch(() => null) : null;
     let lv = listViewOf(p), tasks = null;
-    // Its List view, as last loaded: gone, or not one Pocket can read, the project's views are looked up again, once.
+    // Look up project views again once if the cached List view was removed or cannot be read.
     for (let tries = 0; lv && !tasks && tries < 2; tries++) {
       try { tasks = await allPages(`/projects/${p.id}/views/${lv.id}/tasks?expand=subtasks&` + new URLSearchParams(q)); }
       catch (e) {
@@ -494,10 +463,9 @@ export default {
       }
     }
     if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})); }
-    /* A done parent with subtasks still open is shown over them, a card with its heading struck through (doneParentIds):
-       as the view gave it, under an open task, or else read, all of them in one request; not read, as its subtasks name
-       it. A run in progress is a card, its open steps on it (parent-tasks-plan, part 2); a finished one's steps aren't
-       on the list, so a run finished with steps not done is in Done, not over them. */
+    /* Show a completed parent above its remaining open subtasks, reading missing parents in one request. Active
+       runs also show their steps as cards. Finished runs belong in Done and leave their unfinished steps off the
+       open list. */
     const shown = this.onProjectList(tasks), headIds = doneParentIds(shown, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
     const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).catch(() => []) : [];
     const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
@@ -507,8 +475,8 @@ export default {
     const list = [...shown.filter(t => !t.done), ...heads], positions = {};
     if (lv) {
       for (const t of tasks) positions[t.id] = t.position || 0;
-      // A head the view didn't give has no position Pocket can read (the view leaves out what's done): it goes where
-      // its first open subtask is, where Vikunja's web app shows that subtask.
+      // Place a missing parent heading at its first open subtask because completed parents have no readable
+      // position in the view.
       for (const h of heads.filter(h => !given.has(h.id))) {
         const at = Math.min(...list.filter(t => !t.done && (t.related_tasks?.parenttask || []).some(x => x.id === h.id)).map(t => positions[t.id] || Infinity));
         positions[h.id] = at < Infinity ? at : 0;
@@ -518,17 +486,15 @@ export default {
     }
     return {project: p, listView: lv?.id || null, tasks, read, list, heads: headIds, positions, count: n, finished};
   },
-  /* The Done section: `part` loaded (doneTasks; or null, not yet), `count` from Vikunja (null if it didn't say), each
-     task's row given by `own` (as for Today). It shows the latest DONE_PART, and its count all of them; a row at its end
-     shows DONE_PART more (moreOf). */
+  /* Build the Done section from a loaded part and total count, using own for row objects. Show the latest
+     DONE_PART and offer another part at the end. */
   doneGroup(part, count, open, own = t => this.keep(t)){
     return {key: 'done', cls: 'done-sec', title: 'Done', fold: true, open: !!open, loading: false, loaded: !!part, per: DONE_PART, skip: part?.skip || 0,
       count: part ? counted(part, part.skip, count) : count, tasks: (part?.tasks || []).map(own)};
   },
-  /* `n` of a project's done tasks, the most recently done first, from the `from`th on (performance-plan, part 9):
-     {tasks, total: how many Vikunja counts, skip: how many of those read it left out}. Not templates, nor their steps
-     or a run's (withoutTemplates): in a project for checklists, where most are, every one is read and those left out
-     first, so the parts and the count are of what Done shows. */
+  /* Load n completed tasks from index from, newest first, returning {tasks, total, skip}. Exclude templates and
+     template or run steps before paging. Read all tasks in checklist projects so their pages and counts include
+     only eligible Done rows. */
   async doneTasks(p, from = 0, n = DONE_PART){
     const path = `/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'});
     if (this.checklistIds.has(p.id)) {
@@ -561,15 +527,15 @@ export default {
     } catch (e) { g.open = false; this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'done', cls: 'failed'}); }
     finally { g.loading = false; }
   },
-  /* The row at the end of list `key` (a project's Done, search's done matches), shown a part at a time, the most
-     recently done first: {title, note} (moreDone), or null when every one is shown, or it isn't loaded. */
+  /* Describe the next Done page as {title, note}. Return null when all rows are shown or the section has not
+     loaded. */
   moreOf(key){
     const g = this.view.groups.find(x => x.key === key);
     return g?.per && g.loaded !== false && typeof g.count === 'number' ? moreDone(g.count - g.tasks.length, g.per) : null;
   },
-  /* Its tap: the next part, read from where the list is shown to (those left out counted in), and put after it, but any
-     on it already (done since, and so read again); its first rows drawn at once, the rest in batches. The row keeps the
-     focus; once it's gone (none left), the first row it showed has it. Each visit starts again at the latest part. */
+  /* Load the next part after the current list, counting excluded rows in the offset and omitting duplicates. Draw
+     the new rows in batches. Keep focus on Show more, or move it to the first new row when the button disappears.
+     New visits start at the latest part. */
   async showMore(key){
     const g = this.view.groups.find(x => x.key === key), p = this.view.project, s = this.searchQ.trim(), at = g?.tasks.length;
     if (!g || this.showingMore || !this.moreOf(key)) return;
@@ -585,7 +551,7 @@ export default {
     } catch (e) { this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'more', cls: 'failed'}); }
     finally { this.showingMore = null; }
   },
-  // The project on screen, kept for opening without a connection, with where its tasks are in its List view.
+  // Cache the visible project with its List view positions for offline opening.
   saveProject(){
     const p = this.view.project;
     if (!p || this.route.name !== 'project') return;
@@ -593,9 +559,8 @@ export default {
     saved.set(viewKey(this.route), {groups, project: p, listView: this.view.listView, at: new Date().toISOString(),
       positions: Object.fromEntries(ids.map(id => [id, this.positions[id]]))});
   },
-  /* Load a newer Pocket if the server has one, when nothing would be lost by reloading; otherwise the next refresh or
-     return to Pocket tries again. It only asks whether the page changed since this copy was loaded, which the server
-     answers in a few bytes, and runs alongside the list refresh, not before it. */
+  /* Check for a newer Pocket alongside refreshes. Reload only when no drafts or actions would be lost, otherwise
+     try on the next refresh or return. The server answers the version check in a few bytes. */
   async updateIfNew(){
     if (!LOADED || !this.signedIn || this.screen !== 'app') return;
     let res;
@@ -629,11 +594,8 @@ export default {
     this.searchQ = '';
     this.back(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
   },
-  /* Vikunja's search: words in the title or notes, or a task's number. Open tasks soonest first, then the latest
-     FOUND_PART done, with a row for more (moreOf; the same search again, as many as it shows). Not templates or their
-     steps: they're on Checklists (withoutTemplates). An open task found with open subtasks is a stacked card, collapsed
-     (cardOf), so its subtasks are read with it, as Today's cards' are (readCards): who's on each, and where each is in
-     its project's List view. */
+  /* Search titles, notes or task numbers. Show open tasks soonest first and page completed matches newest first.
+     Exclude templates and their steps. Load open subtasks, assignees and positions for collapsed parent cards. */
   async loadSearch(seq){
     const s = this.searchQ.trim();
     if (!s) { this.view.groups = []; return; }
@@ -655,8 +617,7 @@ export default {
     ]);
   },
 
-  /* `n` of the done tasks search `s` finds, the most recently done first, from the `from`th on: {tasks, list: all those
-     read, total, skip}, as doneTasks. */
+  /* Load n completed search matches from index from, returning {tasks, list, total, skip} like doneTasks. */
   async foundDone(s, from, n = FOUND_PART){
     const {items: list, total} = await partOf('/tasks?' + new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}), from, n);
     for (const t of list) cache.set(t.id, t);

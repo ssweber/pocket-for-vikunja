@@ -1,24 +1,25 @@
-<!-- Quick add's box, the bar at the bottom of Today and a project's list, and the place it leaves there (app.html; the
-     specimen draws it too). It's the one box (x-box): nudged, it's seated in the list under a row, as far in as what
-     it adds (seatBox, app/quickadd.js), with ⇤ ⇥ for its level on a project's list. A tap on the place it left, or
-     its row scrolled out of sight, sends it home: it has no button of its own for that, which the line had no room for. -->
-  <!-- The box's place at the bottom while the box is in the list: the bar's height with one line, dashed, saying what
-       the box says there, where the box has it. A tap brings the box back. Ahead of the box, so the box is over it for
-       the frame before it's seated. -->
+<!-- The quick-add bar at the bottom of Today and a project's list. There is one add box (x-box). A nudge on a row moves
+     the box into the list under that row, indented to match what it adds (seatBox, app/quickadd.js), and on a project's
+     list the ⇤ ⇥ button changes its level. While the box is in the list, a dashed placeholder keeps its place at the
+     bottom. Tapping the placeholder, or scrolling the box's row out of sight, brings the box back. The box has no
+     button of its own for that, as its line has no room for one. -->
+  <!-- The placeholder at the bottom while the box is in the list. It is one line tall, dashed, and shows the box's
+       placeholder text. Tapping it brings the box back. It comes before the box in the markup, so the box covers it for
+       the frame before the box is seated under its row. -->
   <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span x-text="capHomeSays"></span></button>
-  <!-- Quick add. (Not on a run's screen: its steps have their own box, under them: screens/run.html.) -->
+  <!-- Quick add. A checklist's screen hides it: its steps have their own box under them (screens/run.html). -->
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
-    <!-- Where what was just added went, when it isn't on this screen; what couldn't be added, and why -->
+    <!-- Messages from the box: where a task went when it isn't on this screen, or why it couldn't be added -->
     <template x-for="line in placeLines('cap')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
     <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
-      <!-- In the list on a project: the box out a level, to add a task after this one and all under it, and back in
-           (boxLevel, quickadd.js). Tab and Shift+Tab do the same, when they can (boxTab). -->
-      <template x-if="canLevel"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Add a subtask instead: move the box in a level' : 'Add a task instead: move the box out a level'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
+      <!-- On a project's list, moves the box out a level, so it adds a task after this one and its subtasks, or back in
+           (boxLevel, quickadd.js). Tab and Shift+Tab do the same (boxTab). -->
+      <template x-if="canLevel"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Move the box in a level, to add a subtask' : 'Move the box out a level, to add a task'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
-        <!-- An add box (x-box, component.js), whichever it is now; it takes a list, so Shift+Enter breaks the line -->
+        <!-- The add box (x-box, component.js). It takes a list, so Shift+Enter starts a new line. -->
         <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" @keydown.tab="boxTab($event)" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"></textarea>
       </div>
       <template x-if="attachmentsOn && capW === 'cap'"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
@@ -30,7 +31,7 @@
     <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">
       <template x-if="capLines.length > 1 && capW === 'cap'"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(nestOn)" @mousedown.prevent @click="tapNest()">↳ Under first line</button></template>
       <template x-if="capBox.focus && !capBox.text"><span class="hint" x-text="boxHint(capW)"></span></template>
-      <!-- What it read (chips.html), for whichever box it is now -->
+      <!-- The chips for what the box read (chips.html) -->
       <template x-for="bw in [capW]" :key="0">
         <!-- include markup/chips.html -->
       </template>

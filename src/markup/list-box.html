@@ -1,18 +1,18 @@
-<!-- The one add box at the foot of a list (inline-add-box-plan): a sheet's (sheet/sub-list.html: a task's subtasks, a
-     template's steps, New template's) and a checklist's steps on its screen (screens/run.html). `where` says which
-     ('sheet' or 'run', from the x-data around it), and footBox(where) what it is there (app/sheet.js): its box as
-     box() names it, its words, whether it's under a row, what it can add.
+<!-- The add box at the foot of a list: a sheet's subtasks, a template's steps, New template's steps
+     (sheet/sub-list.html), and a checklist's steps on its screen (screens/run.html). `where` says which ('sheet' or
+     'run', from the x-data around it), and footBox(where) describes the box there (app/sheet.js): its name as box() has
+     it, its placeholder text, whether it is under a row, and what it can add.
 
-     It's quick add's box: what it read is marked, with chips to undo it, and @ and * suggest people and labels; each
-     line is a subtask, or a step, and Enter or its button adds them. Always there, at the foot. A row nudged has it
-     under it (seatFoot), to add after that row; its place at the foot is then kept, dashed, saying what the box says there, and a tap there brings
-     it back. The last row nudged changes nothing: the box is under it already.
+     It is quick add's box. What it read is marked, with chips to undo each mark, and @ and * suggest people and labels.
+     Each line adds a subtask or a step, on Enter or the button. A nudge on a row moves the box under that row
+     (seatFoot), to add after it, and a dashed placeholder keeps its place at the foot. Tapping the placeholder brings
+     the box back. Nudging the last row changes nothing: the box is under it already.
 
-     On a checklist it has Repeat too, its symbol alone: a fresh copy of the step on the card, right after that step,
-     wherever the box is (repeatCard, app/runs.js). -->
+     On a checklist the box also has Repeat, shown as its symbol alone. Repeat adds a fresh copy of the step on the
+     card, right after that step, wherever the box is (repeatCard, app/runs.js). -->
 <template x-for="fb in [footBox(where)].filter(Boolean)" :key="fb.w"><div class="addbox sub foot-box" :id="fb.id">
-  <!-- What was just done from it on a checklist (Repeated, with its Undo): said in the box, so it's where the box is,
-       at the foot or under a row -->
+  <!-- On a checklist, the message for what the box just did ("Repeated", with Undo) is shown in the box, so it is
+       wherever the box is -->
   <template x-for="line in where === 'run' ? placeLines('cap') : []" :key="line.n">
     <!-- include markup/place-line.html -->
   </template>
@@ -22,11 +22,12 @@
       <textarea :id="fb.in" x-model="box(fb.w).text" x-box.lines="fb.w" rows="1" :placeholder="fb.says" :aria-label="fb.add" enterkeyhint="send"></textarea>
     </div>
     <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
-      :title="rep.can ? 'A fresh copy of “' + rep.title + '”, not done, right after it' : 'It can be repeated once it\'s sent'"
+      :title="rep.can ? 'Add a fresh copy of “' + rep.title + '” right after it' : 'Repeat is available once the step is sent'"
       @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
     <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-up"/></svg></button>
   </form>
-  <!-- A template's step: when it's due, read from its words, with the step it counts from to pick (step-time.html) -->
+  <!-- For a template's step: when it is due, read from its words, and a picker for the step it counts from
+       (step-time.html) -->
   <template x-for="st in fb.steps ? [box(fb.w)] : []" :key="0"><div class="sub-box-time">
     <template x-for="d in draftShown(draft(stepWhich).info.get('+'))" :key="0">
       <!-- include markup/sheet/step-time.html -->
@@ -37,6 +38,6 @@
     <!-- include markup/chips.html -->
   </div></template>
 </div></template>
-<!-- The box's place at the foot, kept while the box is under a row, dashed, saying what the box says there: a tap brings
-     it back -->
+<!-- The dashed placeholder at the foot while the box is under a row. It shows the box's placeholder text, and tapping
+     it brings the box back. -->
 <template x-for="fb in [footBox(where)].filter(b => b?.under)" :key="0"><button type="button" class="sub-home" :id="fb.id + '-place'" :aria-label="fb.home" @click="footHome(where)"><span x-text="fb.rest"></span></button></template>

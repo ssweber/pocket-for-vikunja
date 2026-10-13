@@ -3831,7 +3831,7 @@ ${footName('Hooks')}`);
     await page.evaluate(() => navigator.clipboard.writeText(''));
     await page.evaluate(() => { navigator.share = undefined; });
     await (await menu()).getByRole('menuitem', { name: 'Share progress as a text' }).click();
-    await placeSays(page, 'sheet:top', 'Copied: paste it into a message');
+    await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
     await expect.poll(clip).toBe(text);
     // As a Markdown list, in quick add's words, so it comes back (design rule 9): the task a heading, without its
     // figure, which is worked out from what's under it; each subtask a line.

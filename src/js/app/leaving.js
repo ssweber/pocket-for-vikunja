@@ -1,27 +1,16 @@
-/* Done and deleted, in place: a row ticked done, not done again, or deleted keeps its height and its place until the
-   batch clears (batch.js), so nothing moves under a finger; then every row waiting goes at once, and the rows below
-   close up once. Meanwhile the mark can be taken back from the row itself: its tick opens it again (or ticks it again),
-   and a deleted row, a gap at its height holding only Restore, is restored by a tap anywhere on it. A row done by a
-   full swipe, or a parent closed from its ring, is shown as one ticked is, done in its place, and its tick (or its
-   ring) is the undo: one look for done, however it was done. So it needs no Undo of its own. A row is held
-   this way from the moment it's ticked or let go, before Vikunja has answered and its mark is made (holdRow): what's
-   on screen is worked out from what's done and what's marked, and mustn't change in between. What happens when
-   the batch clears is each mark's `gone`: a ticked row leaves Today, moves between Open and Done in search and a
-   project, a repeating task shows its next date, a deletion is sent (held in the outbox until then: holdDelete).
-   A collapsed card's top row done goes sooner, on its own, for the next subtask to come up (clearTops).
-   Leaving the screen, or putting Pocket away, clears it at once. A screen reader hears each mark from #said. */
+/* Keep ticked and deleted rows in place until the batch clears, so rows don't move under a finger. The row's tick
+   undoes completion, and tapping a deleted row's gap restores it. Hold rows from the gesture until the save answers,
+   then mark them with an undo and a `gone` callback. Clearing the batch moves completed rows, shows repeating tasks'
+   next dates and sends held deletions. A collapsed card advances its top row sooner. Leaving the screen or hiding
+   Pocket clears the batch immediately. */
 import {app, motion} from '../util.js';
 import {batchTimer, TOP_MS} from '../batch.js';
 
-// The hint's space closes this long after it's put away, from when the finger lifts: sooner than rows leaving, as
-// nothing else is waiting on it.
+// Remove the dismissed hint's spacing sooner than rows leave, once the finger lifts.
 const HINT_MS = 1000;
-/* Each component's marks (task id -> its mark; the rows shown with a mark point to the same one) and its batch, kept
-   by its `leaving`: `this` in a method called from the markup is the row's scope, not the component, but `leaving` is
-   the same object from either. `hint`: when the one-time hint, put away, gives its space back (closeHint), on the
-   component that first asked (initBatch, as Pocket starts). `early`: task id -> the rows held before their mark is
-   made (holdRow), each a promise of when what was done to it has answered. `tops`: when the top rows of collapsed
-   cards, done, give their place to the next (clearTops). */
+/* Key batch state by `leaving` because markup calls methods with the row's scope, which shares that object with
+   the component. `marks` maps each affected task id to its mark. `early` holds save promises before marks exist.
+   Separate timers advance collapsed cards and remove hint spacing. */
 const state = new WeakMap();
 const of = c => {
   let s = state.get(c.leaving);
@@ -30,8 +19,8 @@ const of = c => {
   return s;
 };
 const EXIT_MS = 250;
-// The rows leaving go together: each folds to nothing at once, so the rows below close up in one movement. With less
-// motion asked for, they only fade. Resolves to the animations, to be taken off once the rows are gone.
+// Collapse all leaving rows together so the rows below move once. Return the animations to cancel after removal.
+// With reduced motion, fade the rows instead.
 function exit(els){
   const hs = els.map(el => el.offsetHeight);                // read before any of them starts to move
   return Promise.all(els.map((el, i) => {
@@ -41,18 +30,15 @@ function exit(els){
     return a.finished.catch(() => {}).then(() => a);
   }));
 }
-// A task's rows, and its card. Not a collapsed card's top row (.step-line): it doesn't fold, the next slides up into its
-// place (cardEntered).
-// (Not a sheet's own row, its task's head: what's marked is shown on its rows in lists.)
+// Find list rows and cards that can collapse. A collapsed card's top row advances in place, and a sheet keeps its own row.
 const rowsOf = ids => ids.flatMap(id => [...document.querySelectorAll(`:is(.row:not(.step-line, .own), .day-card)[data-id="${id}"]`)]);
 // Whether task `id`'s only row on the screen is a collapsed card's top row.
 const isTop = id => !!document.querySelector(`.row.step-line[data-id="${id}"]`) && !rowsOf([id]).length;
 
 export default {
-  /* Task `id`'s row marked, until the batch clears: {kind: 'done', 'open' (not done again) or 'deleted'; ids: the rows
-     shown with it (the subtasks closed with a task, or deleted with it); out: those that leave when it clears (all of
-     them unless said; a function, to be worked out then); undo: what its tick (or Restore) does meanwhile; gone: what's
-     done when it clears; said: for a screen reader}. A row marked again keeps only the new mark. */
+  /* Mark task `id` and related `ids` until the batch clears. `out` selects leaving rows, directly or through a
+     function, and defaults to all ids. The tick or Restore calls `undo`. Clearing calls `gone`. `said` announces
+     the change to a screen reader. A new mark replaces the old one. */
   markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = ''}){
     const {marks, batch, tops} = of(this), m = {id, kind, ids, out, undo, gone, going: false};
     for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); this.leaving[x] = kind; }
@@ -60,14 +46,9 @@ export default {
     batch.mark();
     if (kind === 'done') tops.mark();
   },
-  /* Row `id` held where it is from the moment something is done to it, before Vikunja has answered and its mark is
-     made: as the mark to come will have it (`kind`: 'done' or 'deleted'). A task
-     is done on the phone the moment it's ticked, and a card is worked out from what's done and what's marked
-     (cardOf, app/cards.js): without this its row would drop off its card while the save is on its way, the next
-     subtask come up in its place, and the done one be back when it's marked. Returns what lets go of it, to call once
-     it has answered: the mark made meanwhile is then in its place (markRow); with none (not saved, or called off),
-     the row is as it was, with the line that says why. A tap on it meanwhile waits for the answer (unmark,
-     restoreRow). */
+  /* Hold the row before its save answers, using the mark's future kind. Otherwise a ticked row would leave its card
+     during the save and return when marked. Return a release function to call after the answer. A mark then keeps
+     the row in place, or a failed save restores it. Undo and Restore wait for this answer. */
   holdRow(id, kind){
     const s = of(this);
     if (s.marks.has(id) || s.early.has(id)) return () => {};
@@ -80,18 +61,14 @@ export default {
       answered();
     };
   },
-  /* A row deleted by a full swipe, or its Delete, held as its gap from the moment it's let go until the deletion
-     (`settled`, its promise) has answered, which doesn't hold it itself. The gap is its row's at once, and drawn when
-     the row has slid away, not when Vikunja answers (sweep, app/progress.js; rows-and-sheet-fixes-plan, part 2):
-     "Deleted" and Restore. */
+  /* Reserve the deleted row's gap immediately after release, until `settled` answers. The gap must appear when the
+     row finishes sliding away, regardless of how long the deletion takes. */
   gapNow(id, settled){
     const letGo = this.holdRow(id, 'deleted');
     Promise.resolve(settled).catch(() => {}).then(letGo);
   },
-  /* A marked row's tick, or a deleted row tapped: the mark taken back (its undo), and it doesn't go. A subtask that was
-     closed with its parent is only taken out of the parent's mark: its tick then opens it as any other. Returns whether
-     the tap was the mark's: its undo's promise, if it has one. A row held before its mark is made (holdRow): once what
-     was done to it has answered, and there's a mark to take back, or none. */
+  /* Undo a row's mark, waiting for a pending save first. A subtask closed with its parent leaves the parent's mark
+     so its normal tick can reopen it. Return false for a normal tick, or true or a promise when the mark handles it. */
   unmark(id){
     const m = of(this).marks.get(id), early = of(this).early.get(id);
     if (!m) return early ? early.then(() => this.unmark(id)) : false;
@@ -102,15 +79,11 @@ export default {
     this.said = m.kind === 'deleted' ? 'Restored: ' + title : m.kind === 'done' ? 'Not done: ' + title : 'Done: ' + title;
     return m.undo?.() || true;
   },
-  /* Whether row `t` of the list `g`, or its card there, is a gap now (markup/gap.html): deleted, until the batch
-     clears. Only that: one done, however it was done, is shown done in its place. Never the sheet's own row nor a
-     run's own, whose marks are their list row's, nor a step on a run's screen, which has no gap when it's deleted. */
+  /* Show a gap for a deleted list row until the batch clears. Sheet headings and run screens keep their own layout. */
   isGap(t, g){ return !g.own && !g.top && !g.run && this.leaving[t.id] === 'deleted'; },
-  // A tap anywhere on a gap restores its row (restoreRow), and goes no further: to its tick, its title or its slot.
+  // Restore from any tap on the gap, without also activating the row's controls.
   tapGap(t, g, e){ if (this.isGap(t, g)) { e.stopPropagation(); e.preventDefault(); this.restoreRow(t.id); } },
-  /* A gap tapped: its deleted row restored (unmark), its rows sliding back in from the left, where the delete took
-     them. One held before its mark was made (holdRow): once the deletion has answered, and there's a mark to take
-     back. */
+  /* Restore the deleted rows from the left. Wait for a pending deletion to answer before undoing its mark. */
   restoreRow(id){
     const early = of(this).early.get(id);
     if (early) return early.then(() => this.restoreRow(id));
@@ -119,15 +92,15 @@ export default {
     for (const el of els) el.animate([{transform: `translateX(${-el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
     return r;
   },
-  // A mark taken off its rows (or off row `only`); with none left waiting, the batch has nothing to clear.
+  // Remove the mark from all its rows, or just `only`. Stop the batch when no marks remain.
   dropMark(m, only){
     const {marks, batch} = of(this);
     for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; }
     if (only !== undefined) m.ids = m.ids.filter(x => x !== only);
     if (!marks.size) batch.stop();
   },
-  /* The batch clears: every marked row that leaves goes at once, then what each mark was for is done. `atOnce`: the
-     screen is being left, or Pocket put away, so with no motion. */
+  /* Remove all marked rows together, then call each mark's `gone`. Skip animation when leaving the screen or hiding
+     Pocket (`atOnce`). */
   async clearBatch(atOnce = false){
     const all = [...new Set(of(this).marks.values())].filter(m => !m.going);
     if (!all.length) return;
@@ -136,14 +109,11 @@ export default {
     const anims = atOnce || !out.length ? [] : await exit(rowsOf(out));
     for (const m of all) this.dropMark(m);
     for (const m of all) m.gone?.();
-    // The rows are off the list by the next turn; one that stayed (it wasn't for this list after all) comes back.
+    // Cancel animations after rendering removes the rows, so any row that stayed becomes visible again.
     if (anims.length) setTimeout(() => anims.forEach(a => { a.cancel(); a.effect.target.style.overflow = ''; }));
   },
-  /* A collapsed card's top row done gives its place to the next subtask sooner than the batch (TOP_MS, batch.js), by
-     the same rules, never under a finger or while the list scrolls. Nothing folds or closes up there: once its mark
-     has gone, the next slides up into the same place (cardEntered, app/cards.js), so the rows around the card don't
-     move. Only a mark of that one row (not a parent's, with the subtasks closed with it), shown nowhere else on the
-     screen; every other row waits for the batch, as before. */
+  /* Advance a collapsed card sooner when its completed top row appears nowhere else. Clear only single-row marks
+     so a parent and its closed subtasks still leave together. The next row enters the same space without collapsing. */
   clearTops(){
     for (const m of new Set(of(this).marks.values())) {
       if (m.going || m.kind !== 'done' || m.ids.length !== 1 || !isTop(m.id)) continue;
@@ -152,11 +122,9 @@ export default {
       m.gone?.();
     }
   },
-  // Leaving the screen, or Pocket put away: the batch clears at once.
+  // Clear immediately when leaving the screen or hiding Pocket.
   clearNow(){ const s = of(this); s.batch.now(); s.tops.now(); this.clearBatch(true); },
-  /* The one-time hint put away (hintSeen, progress.js): it has faded, keeping its space, and gives it back by the
-     batch's rules, never under a finger or while the list scrolls: HINT_MS after the finger lifts, its row closing to
-     its own height, the rows below with it (with less motion, at once). */
+  /* Remove the faded hint's spacing after HINT_MS without a touch or scroll. The row returns to its normal height. */
   hintAway(){ of(this).hint.mark(); },
   async closeHint(){
     if (this.hint?.at == null) return;                     // the screen it was on has been left
@@ -167,8 +135,7 @@ export default {
     }));
     this.hint.at = null;
   },
-  /* What holds the batch back (and the hint's space closing): a finger down anywhere, and the list (or a sheet)
-     scrolling. Each starts its wait again once it's over. */
+  /* Hold all batch timers while a pointer is down or any list or sheet scrolls. Restart the wait when both stop. */
   initBatch(){
     const {batch, tops, hint} = of(this), both = [batch, tops, hint];
     document.addEventListener('pointerdown', e => both.forEach(b => b.down(e.pointerId)), true);

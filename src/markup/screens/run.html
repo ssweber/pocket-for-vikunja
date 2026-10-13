@@ -1,10 +1,11 @@
-    <!-- A run: the step it's on, the list of steps, its comments, and the comments from the last run of the same template -->
+    <!-- A checklist's screen: the current step, the list of steps, its comments, and the comments from the last
+         checklist started from the same template -->
     <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
-      <!-- A start just made, "Started", with its Undo until anything's done in it -->
+      <!-- "Started", with its Undo, until anything is done in the checklist -->
       <template x-for="line in placeLines('run')" :key="line.n">
         <!-- include markup/place-line.html -->
       </template>
-      <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">This checklist's project is shared with you to read only: you can follow it, but not tick its steps or add comments. Ask its owner for write access.</p></template>
+      <template x-if="!canWrite(view.run.run.project_id)"><p class="ro-note" id="run-readonly">Read only. You can follow this checklist, but not tick its steps or add comments. Ask the project's owner for write access.</p></template>
 
       <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
       <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
@@ -12,7 +13,7 @@
         <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun()">Finish checklist</button>
       </div></template>
 
-      <!-- Countdowns running for other steps than the one shown, so none is missed -->
+      <!-- Countdowns running on steps other than the one shown, so none is missed -->
       <template x-if="runView.timers.length"><div class="card" id="run-timers">
         <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(s.i, true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
       </div></template>
@@ -21,12 +22,12 @@
 
       <div class="h3">Steps</div>
       <div class="list" id="run-steps" x-data="{where: 'run'}">
-        <!-- Its steps: the task row, as a run's screen has it (g.run, in task-row.html) -->
+        <!-- The steps, each the shared task row (g.run in task-row.html) -->
         <template x-for="g in [runRows]" :key="0"><template x-for="t in runView.steps" :key="t.id">
           <!-- include markup/task-row.html -->
         </template></template>
-        <!-- The box: at the foot of the steps, as a sheet's list has its own, with Repeat, and what was just done from it
-             said in it (list-box.html). The screen has no bar at its bottom. -->
+        <!-- The add box at the foot of the steps, with Repeat (list-box.html). This screen has no quick-add bar at the
+             bottom. -->
         <!-- include markup/list-box.html -->
       </div>
 
@@ -41,7 +42,7 @@
         </form>
       </div>
 
-      <!-- The comments on the last finished run of this template and its steps, as a handover -->
+      <!-- The comments from the last finished checklist of this template, and on its steps, as a handover -->
       <template x-if="view.run.last"><div>
         <div class="h3">Last time<button class="n linkish" id="run-last-open" @click="openRun(view.run.last.id)" x-text="view.run.last.title"></button></div>
         <div class="card" id="run-last">

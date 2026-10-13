@@ -1,5 +1,6 @@
-<!-- A step being written: when it's due, read from its words, with the step it counts from to pick, and what's wrong.
-     For `st`, the row ({text, keep, from}), and `d`, how it reads (draftSteps). Its buttons keep the keyboard up. -->
+<!-- The time chip of a step being written: when it is due, read from its words, a picker for the step it counts from,
+     and what is wrong. `st` is the row ({text, keep, from}) and `d` how it reads (draftSteps). The buttons keep the
+     keyboard up. -->
 <div class="draft-meta">
   <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
   <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>

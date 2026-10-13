@@ -1,9 +1,10 @@
-<!-- A parent's ring, in place of a tick (parent-tasks-plan, part 3): task `t`, a task with subtasks or a run with steps,
-     and its ring `r` (ringOf, app/cards.js). Thin, its arc the worked-out figure, never a quarter's pie, so it isn't taken
-     for a task's own tick; done of all inside it. Tapped (tapRing, then ringTap): with open subtasks, the question (sheet/complete.html),
-     or, with one, it and the parent completed with an Undo; with every one done, Close; done, opened again. On a card's
-     header, a row (a run's, under Checklists too), in its own sheet, and atop a run's screen (with its own tap, r.tap:
-     runRing). Its touch target is the whole left gutter, as a tick's is. Five characters (12/14) are set smaller
-     (long), to fit inside it. -->
+<!-- A parent's ring, in place of a tick: task `t` has subtasks, or is a checklist with steps, and `r` is its ring
+     (ringOf, app/cards.js). The ring is thin, and its arc is the exact figure, done of all inside it, never a quarter's
+     pie, so it isn't taken for a task's own tick. Tapping it (tapRing, then ringTap) asks the question in
+     sheet/complete.html when there are open subtasks, or, with one, completes it and the parent with an Undo. With
+     every subtask done it is Close, and on a done parent it reopens the parent. The ring sits on a card's header, on a
+     row (a checklist's row under Checklists too), in the task's own sheet, and at the top of a checklist's screen,
+     where it has its own tap (r.tap: runRing). Its touch target is the whole left gutter, as a tick's is. A figure of
+     five characters (12/14) is set smaller (long) to fit inside it. -->
 <button type="button" class="ring" :class="{full: !r.open, done: t.done, long: (r.done + '/' + r.total).length > 4}" :disabled="!canWrite(t.project_id) || !!t.pending" x-style="{'--ring': r.pct / 100}"
         :aria-label="r.label" @click="tapRing(t, r, $el)"><i class="arc" aria-hidden="true"></i><span class="n num" aria-hidden="true" x-text="r.done + '/' + r.total"></span></button>

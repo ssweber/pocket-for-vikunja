@@ -1,4 +1,4 @@
-// The add box: what it read, who can see the project, suggestions for @username and *label, and the marks behind the words.
+// Parse add boxes, suggest people and labels, check project access, and position the box under its target row.
 import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
@@ -12,21 +12,16 @@ import {seats, seatUnder} from './seat.js';
 
 let peopleLoading = null;                      // loadPeople() while it runs
 let peopleAt = 0;                              // when it last loaded, this session
-const PEOPLE_AGE = 10 * 6e4;                   // who can see each project is loaded again once it's older than this
-// What tells when the cursor's row is out of sight (watchCursor): that row, the row standing in for it until it has
-// been seen, and whether each was in sight when last told.
+const PEOPLE_AGE = 10 * 6e4;                   // reload project access after this interval
+// Track the target row's visibility and a fallback row until a newly added target has appeared on screen.
 let cursorIO = null, watched = null, stand = null;
 const inSight = new WeakMap();
-// What each box's text read as, for how it is now (boxRead): which box -> {key, projects, list, first, firstAll, lines}.
+// Cache each box's parsed text and inputs so its chips, highlights and submission share the same parse.
 const reads = new Map();
 
 export default {
-  /* The add boxes read what's typed the same way, with the same marks, chips and suggestions: quick add at the bottom
-     ('cap'), the subtask box in a task's sheet ('sub'), whose lines become subtasks of the open task, in its project,
-     quick add's box again on a project's list while it adds subtasks to the task touched last ('under', the cursor),
-     and on a run's screen ('ins'), whose lines are steps added after the step on its card (runAim), and the boxes a
-     template is written in: its name in New template ('tname'), each step being written ('new:<row key>' there,
-     'add:<row key>' under a template) and a step being changed ('edit'). The methods below take which box. */
+  /* Use the same parsing, chips and suggestions for every add box. cap adds tasks, sub and under add subtasks, and
+     ins inserts run steps. tname names a template, new: and add: write template steps, and edit changes one. */
   box(w){
     if (w === 'sub') return this.sheet.sub;
     if (w === 'under') return this.cap;
@@ -46,9 +41,9 @@ export default {
     if (w.includes(':')) return document.getElementById('d-subin');
     return this.$refs.capture;
   },
-  /* What a box never reads: a subtask stays in its task's project, so "+Garden" stays in its title; and in a checklist
-     project a step's time is its T#30m, so "Check at 3pm" stays as it is. A step has no progress to arrive with, so
-     "Fill to 50%" stays as it is too; a subtask has. */
+  /* Keep project names literal in subtask titles because subtasks stay in their parent's project. Checklist steps
+     use T# timing instead of parsed dates and have no starting progress, so date and percentage words stay in
+     their titles. */
   boxBase(w){
     if (w === 'cap') return {};
     if (!this.isSubBox(w)) return STEP_IGNORE;
@@ -65,14 +60,11 @@ export default {
     if (w === 'tname' || w.startsWith('new:')) return this.sheet.newTpl?.project.id;
     return this.defaultProjectId();
   },
-  /* A box's text read as a list (readList): its lines, and which say they're done. Quick add and the subtask boxes add
-     those done, unless the chip that says so was tapped (ignore.done: a single line then keeps the marker's words, a
-     list leaves those lines out); a run's box and a template's boxes leave a ticked line out, as a step is done by
-     doing it. Which line is under which is read from the list too, in quick add as its ↳ Under first line has it. */
+  /* Read list nesting and done markers. Quick add and subtask boxes can create done tasks. Disabling Done keeps a
+     single marker in the title or omits done lines from a list. Run and template boxes always omit done lines. */
   readsDone(w){ return w === 'cap' || this.isSubBox(w); },
-  /* A box's text is read once for how it is now (its text, the chips tapped off, ↳, quick add's mode) and kept, since
-     its chips, its marks and what it sends each ask many times for one drawing (scratchpad/parse-count.mjs: a line
-     read 28 times, parsed 14). {list, first, firstAll, lines}, each worked out when first asked. */
+  /* Cache parsing by text, disabled chips, nesting and quick add mode. Chips, highlights and submission request
+     the same data many times during rendering, so compute each part only when first read. */
   boxRead(w){
     const b = this.box(w), key = [b.text, JSON.stringify(b.ignore), !!b.nest, !!b.flat, this.quickAddMode, this.dueTime, JSON.stringify(this.boxBase(w))].join('\0');
     const had = reads.get(w);
@@ -87,11 +79,9 @@ export default {
     const b = this.box(w), cap = w === 'cap';
     return r.list = readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap} : {steps: true});
   },
-  /* Quick add's ↳ Under first line, for a pasted list. It shows on by itself when the first line is a parent as the
-     list is written (a heading over its lines, lines indented under it, or its colon, "Groceries:"): tapped off, the
-     lines are all tasks of their own (`flat`), and again, as written. For a list whose first line isn't one, tapped
-     on, it's the parent of every line with none (`nest`). A subtask box has no such chip, so a first line's colon
-     isn't read there: it stays in its title. */
+  /* Preserve written nesting by default for pasted lists. Turning Under first line off flattens the list, and
+     turning it on again restores nesting. For an unstructured list, turning it on makes the first line its parent.
+     Subtask boxes have no nesting chip and keep a trailing colon in the title. */
   get nestOn(){ return this.cap.nest || (!this.cap.flat && this.boxList('cap').first); },
   tapNest(){
     const c = this.cap;
@@ -113,10 +103,8 @@ export default {
     return r[k] = parseCapture(this.boxLines(w)[0] || '', this.projects, {...this.parseOpts, ignore: all ? base : {...base, ...this.box(w).ignore}});
   },
   get parsed(){ return this.boxParsed('cap'); },
-  /* Each line of a box, parsed: a pasted list in quick add goes to one project (parseList); subtasks are read one by one.
-     `done`: the line said it's done, and `under`: the line it's under, by its place among them (boxList). A line with
-     lines under it has no progress of its own, so a figure at its end is taken off and dropped: a parent's is worked
-     out from its subtasks (design rule 5). */
+  /* Parse every line, using one project for a pasted quick-add list. Keep each line's done state and parent index.
+     Remove a parent's explicit progress because its subtasks determine the figure. */
   boxParsedLines(w){
     const r = this.boxRead(w);
     if (r.lines) return r.lines;
@@ -126,15 +114,14 @@ export default {
     const parents = new Set(list.map(l => l.under));
     return r.lines = parsed.map((p, i) => ({...p, done: !!list[i]?.done, under: list[i]?.under ?? null, ...parents.has(i) && {pct: 0}}));
   },
-  // A box's lines for the outbox (itemsOf, sync.js): each with its words, to put back in the box if it isn't added,
-  // still saying it's done, as it was read, and the line it's under.
+  // Preserve each parsed line's original text, done marker and parent index so rejected entries can return to the
+  // box.
   boxItems(w){
     const lines = this.boxLines(w), remind = this.remindOn(w, lines);
     return this.boxParsedLines(w).map((p, i) => ({raw: p.done ? 'x ' + lines[i] : lines[i], p: {...p, remind}, under: p.under}));
   },
-  /* A pasted list goes to one project: the first +project in it, on whichever line. A different +project on a later line
-     stays in that line's text, as a second one does within a line. (Vikunja's own quick add reads each line on its own.)
-     Returns {parsed: [each line], project, miss}; `first` is the first line already parsed, if there is one. */
+  /* Use the first +project anywhere in a pasted list for every line. Keep other project names in their titles.
+     Return {parsed, project, miss}, reusing first when it was already parsed. */
   parseList(lines, first){
     let owner = -1;
     const parsed = lines.map((raw, i) => {
@@ -147,9 +134,8 @@ export default {
   },
   // Whether a box is one of a template's steps: being written ('new:', 'add:') or changed ('edit').
   isStepBox(w){ return w === 'edit' || /^(new|add):/.test(w); },
-  /* What a box reads, under it while it's empty. In a template's name, @user is who its checklists are for; in a step, who
-     does it, and a time after the step before is when it's due. A subtask box doesn't read +project, nor dates in a
-     checklist project, where a subtask may become a step. */
+  /* Explain each box's syntax while empty. Template names assign the checklist, steps assign their own work and
+     parse timing, and subtask boxes omit project selection and checklist dates. */
   boxHint(w){
     const p = this.prefixes;
     if (!p) return 'Quick add shortcuts are turned off in your Vikunja settings';
@@ -160,9 +146,8 @@ export default {
     const base = this.boxBase(w), dates = base.due ? 'dates stay as words in a checklist project' : 'tomorrow · fri at 2 · Oct 12 · every week';
     return `${base.project ? '' : p.project + 'project  '}${p.label}label  ${p.assignee}user  !1–5  ${dates} · tap a chip to undo it`;
   },
-  /* Words a box doesn't read, said as a muted chip, so they're not taken for read: a date in a checklist's box (a step's
-     time is the words before the step after it, like "in 20 min", read on their own), a +project in a subtask's or
-     a checklist's box. */
+  /* Show unsupported dates and project names as muted chips so people can see that those words remain literal. Run
+     step timing is parsed separately. */
   ignoredChips(w, line){
     const base = this.boxBase(w), out = [];
     if (!base.due && !base.project) return out;
@@ -177,8 +162,7 @@ export default {
   },
 
   /* ---------- @username: who can see the task's project ---------- */
-  /* The project a box's lines go to, and the @usernames in them: a single task's, or every line's of a pasted list, which
-     goes to one project (quick add's, by parseList) or the box's own. */
+  /* Find the target project and mentioned users for a task or pasted list before checking access. */
   boxPeople(w){
     const lines = this.boxLines(w);
     if (lines.length === 1) { const p = this.boxParsed(w); return {target: p.project?.id || this.boxHome(w), names: p.assignees, one: true}; }
@@ -192,9 +176,8 @@ export default {
     const {target, names} = this.boxPeople(w);
     return names.length ? [target, ...names.map(n => n.toLowerCase())].join('|') : '';
   },
-  /* From what checkAccess has found so far: {auto, warn}. auto is the one project everyone mentioned can see, when they
-     can't all see the default project and no +project was typed (quick add only: a subtask stays with its task); warn
-     lists the chips for people the task can't reach. */
+  /* Return {auto, warn} from known access. Quick add can choose one project all mentioned users can see when no
+     project was typed and the default is inaccessible. Warn about users who cannot access the target. */
   accessHints(w){
     const out = {auto: null, warn: []};
     if (!this.accessQuery(w)) return out;
@@ -267,8 +250,8 @@ export default {
     }
     return null;
   },
-  /* Chips to tap instead of typing the rest: people who can see the task's project first, then others you share with.
-     None once the word already names one exactly, so the usual chips show what will be saved. */
+  /* Suggest people with access to the target project first, then others who share your projects. Hide suggestions
+     for an exact match so the parsed chips appear. */
   suggestions(w){
     const tk = this.boxToken(w);
     if (!tk) return null;
@@ -285,36 +268,35 @@ export default {
         .sort((a, b) => a.away - b.away || a.s - b.s || (a.x.user.name || a.x.user.username).localeCompare(b.x.user.name || b.x.user.username))
         .map(({x: {user: u}}) => ({key: 's' + u.id, kind: 'suggest', cls: 'suggest', text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username, hint: 'Assign ' + (u.name || u.username), action: () => this.useSuggestion(w, tk, u.username)}));
     }
-    // Suggestions are outlined, unlike what was read; the first says Enter takes it.
+    // Outline suggestions to distinguish them from parsed chips. Enter accepts the first suggestion.
     if (out.length) Object.assign(out[0], {text: out[0].text + '  ↵', hint: out[0].hint + ', or press Enter'});
     return out.length ? out.slice(0, 6) : null;
   },
   useSuggestion(w, tk, name){
     const b = this.box(w), word = tk.prefix + (/\s/.test(name) ? `"${name}"` : name) + ' ', el = this.boxEl(w);
     const text = b.text = el.value = b.text.slice(0, tk.start) + word + b.text.slice(tk.end).replace(/^ /, '');
-    // Set the text and cursor now, not on Alpine's next tick: a fast typist's next letters would otherwise land before the word.
+    // Set text and cursor synchronously so fast typing does not insert letters before the completed suggestion.
     const at = b.caret = Math.min(tk.start + word.length, text.length);
     el.focus(); el.setSelectionRange(at, at);
   },
-  /* Everyone with access to each of your projects, from Vikunja's list per project (which counts teams, and a parent
-     project's shares). Loaded in the background once signed in, and again now and then (refreshPeople); `force` loads
-     it again. It tells checkAccess who can see what, without asking again, and claimSlot which projects no one else can
-     see (seenBy, kept on the phone). Skipped for an API token without Projects → Users search. */
+  /* Load project access in the background, including teams and inherited shares. Use it for assignee checks and
+     private-project claim slots, and cache seenBy on the phone. force reloads access. Skip tokens without Projects
+     → Users search. */
   async loadPeople(force = false){
     if ((this.people && !force) || this.accessBlocked) return;
     if (peopleLoading) return peopleLoading;
     peopleLoading = (async () => {
-      // (Not once Vikunja's session is gone, signed out in its web app: a request then would renew it, from its cookie,
-      // before Pocket sees the sign-out. This runs in the background, often just as Pocket opens.)
+      // Do not request after Vikunja's web app signs out. A background request could renew the cookie session
+      // before Pocket notices.
       const gone = () => this.mode === 'session' && !sharedToken.get();
       const projs = this.projects.filter(p => p.id > 0), get = p => gone() ? null : api(`/projects/${p.id}/users/search`).then(items).catch(e => {
         if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;
         return null;
       });
-      const first = projs.length ? await get(projs[0]) : [];                    // one first, so a token that can't stops here
+      const first = projs.length ? await get(projs[0]) : [];                    // try one project first so a token without permission stops here
       if (this.accessBlocked) return;
       const lists = [first, ...await inBatches(projs.slice(1), 4, get)], byName = new Map();
-      // What was known of a project loaded now goes: someone it's no longer shared with can't see it.
+      // Clear old access for this project so removed shares do not remain allowed.
       const loaded = new Set(projs.filter((p, i) => lists[i]).map(p => p.id));
       for (const key of Object.keys(this.access)) if (loaded.has(+key.split(':')[0])) delete this.access[key];
       projs.forEach((p, i) => { for (const u of lists[i] || []) {
@@ -332,12 +314,11 @@ export default {
     })().finally(() => { peopleLoading = null; });
     return peopleLoading;
   },
-  // Who can see each project, loaded again once it's older than PEOPLE_AGE: in the background, with the other tabs
-  // (preload), from the moment Pocket's signed in.
+  // Refresh project access after PEOPLE_AGE in the background with the other screens.
   refreshPeople(){ return !this.people || Date.now() - peopleAt > PEOPLE_AGE ? this.loadPeople(true).catch(() => {}) : null; },
 
-  /* Enter in an add box: while @ or * is being typed and something's suggested, the suggestion on top; else send. In a
-     template's boxes: the name goes on to the box its steps are written in, and a step changed is done. */
+  /* Enter accepts the first active suggestion, or submits the box. A template name advances to its steps box, and
+     editing a step saves it. */
   boxEnter(w){
     const tk = this.boxToken(w), sg = tk?.q && this.suggestions(w);
     if (sg?.length) { sg[0].action(); return; }
@@ -345,20 +326,19 @@ export default {
     else if (w === 'edit') this.boxEl(w)?.blur();
     else this.boxSend(w);
   },
-  // What a box sends, by Enter or its button: quick add's a task, a run's box steps after the card's, a subtask box
-  // (the sheet's, or quick add's while it adds to the task touched) subtasks, a template's box steps (sendSteps).
+  // Send according to the box's role. Quick add creates tasks, subtask boxes attach to their parent, and run or
+  // template boxes add steps.
   boxSend(w){ return w === 'cap' ? this.submitCapture() : w === 'ins' ? this.insertStep() : w.includes(':') ? this.sendSteps(w.split(':')[0]) : this.addSubtasks(w); },
-  // A template's step, or its name, as quick add reads it, without the chips tapped off: its time is its own.
+  // Parse a template name or step while respecting disabled chips. Step timing is parsed separately.
   stepParsed(text, ignore){ return parseCapture(text || '', this.projects, {...this.parseOpts, ignore: {...STEP_IGNORE, ...ignore}}); },
   // Whether what's sent from a box gets a reminder at its due time: one line, with a time, and the 🔔 chip on.
   remindOn(w, lines){ const p = this.boxParsed(w); return this.box(w).remind && lines.length === 1 && !!p.due && p.due > new Date() && !!p.timeRead && this.remindersReach; },
-  // A chip tapped: its own action, or its words kept in the title (tapped off), or read again.
+  // Run a chip's action or toggle whether its words are parsed. Disabled words remain in the title.
   tapChip(w, c){
     const b = this.box(w);
     if (c.action) c.action(); else if (c.kind) b.ignore = {...b.ignore, [c.kind]: !b.ignore?.[c.kind]};
   },
-  /* What a box read, as chips under it. A subtask box doesn't name the project its lines go to (the task's), and has no
-     photos or "Under first line". */
+  /* Build chips from parsed input. Subtask boxes omit the project, photos and list-nesting chip. */
   chips(w){
     const b = this.box(w), cap = w === 'cap';
     // Photos for the new task, each with a tap to take it off again. A pasted list puts them on its first task.
@@ -367,9 +347,8 @@ export default {
     if (!b.text.trim()) return photos;
     const sg = this.suggestions(w);
     if (sg) return sg;
-    /* Lines that say they're done. One line: a Done chip, which keeps the marker's words in the title when it's tapped
-       off, as the others do. A list: one chip counts them, "2 arrive done"; tapped, those lines are left out, and it
-       says so, and tapped again they're back. In a run's box and a template's they're left out, with nothing to tap. */
+    /* For one line, disabling Done keeps the marker in the title. For a list, the chip counts done lines and
+       toggles whether they are included. Run and template boxes omit those lines without a toggle. */
     const list = this.boxList(w), ticked = list.ticked, left = !!b.ignore?.done;
     // A list's name, one #, as a project's copy starts with: left out, and said so.
     if (list.names.length) photos.push({key: 'nm', cls: 'quiet', text: list.names.length === 1 ? 'The # line is the list’s name: left out' : `${list.names.length} # lines are list names: left out`});
@@ -406,8 +385,8 @@ export default {
     if (all.projectMiss) out.push({key: 'miss', kind: 'new-project', cls: 'create', hint: 'Tap to create this project',
       text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(all.projectMiss)}”`, action: () => this.createProject(all.projectMiss)});
     if (all.due && !all.dueFromRepeat) out.push({key: 'due', kind: 'due', cls: 'num', text: all.dueLabel, off: off('due')});
-    // A time typed ("at 4pm", "in 2 hours", not a bare "friday"): a reminder at it, only when tapped on. Vikunja sends it
-    // by email, so only when that reaches you, and only for a time still to come.
+    // Offer a reminder only for an explicit future time and when Vikunja can send reminder emails. The chip starts
+    // off.
     if (all.due && all.timeRead && all.due > new Date() && !off('due') && this.remindersReach) out.push({key: 'rem', kind: 'remind', cls: 'toggle', pressed: b.remind,
       text: '🔔 Remind me', hint: b.remind ? 'Tap for no reminder' : 'Tap to have Vikunja email you a reminder at this time', action: () => { b.remind = !b.remind; }});
     if (all.repeatWarn) out.push({key: 'rw', cls: 'warn', text: `Vikunja can't repeat “${all.repeatWarn}”: it stays in the title`});
@@ -428,18 +407,12 @@ export default {
   },
 
   /* ---------- what quick add's box adds to, on a project's list ---------- */
-  /* On a project's list, quick add's box adds a task to the project, until a task is touched: its sheet opened, ticked,
-     its progress swiped, or nudged (a short, slow scroll that starts on it: nudged). Its row is then the cursor, lit
-     up, and the box adds subtasks to its task (the box 'under'): after its last, or, the row being a subtask, right
-     after it, under its parent. A subtask added from the box is the cursor in its turn (aimAdded), so the next goes
-     after it: one row is lit, the one the line over the box names (capTarget), and touching a row lights that one,
-     the one touched before too. `cursor` is {id, under: the task it's under on this list, or null}, with `wait` for a
-     subtask not sent yet: its waiting row. A task ticked done can't be one: its parent is, if it's on the list, as it
-     is for a cursor that's gone (keepAim). The box goes back to adding a task with a tap on its place at the bottom,
-     when the cursor's row is out of sight (scrolling back doesn't bring it back), or when the screen is left. */
-  // A task that can be the cursor: open (or ticked, in its place until the batch clears), on this project's list, or on
-  // Today, as a row or on a card there, one you can change, and not a run, a step of one or a template, which add steps
-  // their own way.
+  /* A nudge or Add a subtask here selects the highlighted row for quick add. New subtasks become the target so
+     each follows the last. cursor records {id, under}, plus wait for a pending row. If the target leaves, select
+     its parent or return to adding tasks. Tapping the bottom placeholder, scrolling the target away or leaving the
+     screen returns the box to the bottom. Ordinary taps and progress gestures do not move the box. */
+  // Allow writable open tasks on Today or a project list, including marked rows still waiting for the batch. Runs,
+  // their steps and templates use their own add boxes.
   canAim(t){
     const on = this.route.name;
     return !!t && (on === 'project' || on === 'today') && !t.pending && (!t.done || !!this.leaving[t.id]) && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
@@ -447,8 +420,7 @@ export default {
   },
   // In the screen's list as a row or a card of its own: a project's open tasks, any of Today's groups.
   onList(t){ const today = this.route.name === 'today'; return this.view.groups.some(g => (today || g.key === 'open') && g.tasks.includes(t)); },
-  /* The cursor set, or none (null). `lit` says it to its row alone (the row's id -> true): a row asks only about itself,
-     as it does of `leaving`, so lighting another row draws those two again, not the whole list. */
+  /* Set the target and index its highlight by id. Moving the highlight redraws only the old and new rows. */
   light(c){
     const was = this.cursor;
     if (c && was && was.id === c.id && was.under === c.under && !was.wait === !c.wait && !was.out === !c.out) return;
@@ -456,21 +428,17 @@ export default {
     if (c) this.lit[c.id] = true;
     this.cursor = c;
   },
-  // The row touched last is the cursor, or none if it can't be: also one that was it before a subtask was added.
+  // Select a task as the target, or clear the target if the task is ineligible.
   aim(t){ this.light(this.canAim(t) ? {id: t.id, under: this.listParent(t)?.id ?? null} : null); },
-  /* Subtasks added from the box (addSubtasks, actions.js): the light follows. `i`: the last line of `entry` that's the
-     task's own subtask, not one under another line of a pasted list. Its waiting row (pendingTasks, sending.js, whose
-     id, title and place these are) is the cursor at once, before it's kept or sent, so the next go after it, and
-     `parent`'s own row goes dark. One that arrives done leaves with the batch, so `parent` is lit instead, and the
-     next go after its last. */
+  /* Follow the last new direct subtask on its pending row immediately so the next entry follows it. A subtask
+     created done will leave with the batch, so keep the parent as the target. */
   aimAdded(entry, i, parent){
     const p = entry.items[i].p, id = `pending-${entry.id}-${i}`;
     if (p.done || p.pct >= 100) return this.aim(parent);
     this.light({id, under: parent.id, wait: {id, pending: true, entry: entry.id, index: i, parent: parent.id, title: p.title, position: p.position || 0}});
   },
-  /* What was waiting has been sent, or tried (placeSent, sending.js: `was`, the id each task's waiting row had). The
-     cursor on a waiting row is on its task's row from now, lit still; one whose line has left the outbox without being
-     made (Vikunja turned it down) hands over to the task it was under. */
+  /* Transfer the target from a pending row to its saved task. If creation was rejected and the entry is gone,
+     select its parent. */
   aimSent(tasks){
     const c = this.cursor, w = c?.wait;
     if (!w) return;
@@ -478,8 +446,8 @@ export default {
     if (t) this.light({id: t.id, under: c.under, ...(c.out && {out: true})});
     else if (!sync.all(this.user?.id).some(e => e.id === w.entry)) this.aim(this.tasks[c.under]);
   },
-  // A waiting line called off (cancelPending, sending.js): the cursor on its row hands over to the task it was under; on
-  // a later line of the same list, it's that line still, now a place sooner.
+  // Cancelling the target selects its parent. Cancelling an earlier line adjusts the pending target's index and
+  // id.
   aimCancelled(entry, index){
     const c = this.cursor, w = c?.wait;
     if (w?.entry !== entry || w.index < index) return;
@@ -487,18 +455,13 @@ export default {
     const id = `pending-${entry}-${w.index - 1}`;
     this.light({...c, id, wait: {...w, id, index: w.index - 1}});
   },
-  /* The cursor never points at a row that's gone: deleted, done, or off the list. Then the task it was under is lit,
-     and the box goes back to that task's last; with none, to adding a task. Asked whenever that may have changed
-     (core.js), but not behind a sheet, where the task opened may be ticked and opened again. A row moved up or down
-     (reorder, actions.js) isn't gone: it stays lit, and the next subtask goes after it where it is now. */
+  /* Select the parent when the target leaves the list, or clear the target if no parent remains. Reordering keeps
+     the target and makes the next entry follow its new position. Check after a sheet closes so temporary changes
+     inside it do not move the box. */
   keepAim(){ const c = this.cursor; if (c && !this.cursorTask) this.aim(this.tasks[c.under]); },
-  /* A nudge on a row (watchNudges, app/progress.js): it's the target, as opening its sheet makes it, if it can be one,
-     isn't marked or showing a line, and is still in sight between the header and the add box, so the lit row is seen.
-     A row that can't be leaves the target as it was: one waiting to be sent too, lit only by being added. A light tick
-     is felt whenever the lit row changes, not when it stays: back on the row touched before, too, once a subtask added
-     since has the light.
-     On a run's screen, a step's row nudged puts that step on the card, as a tap on it does (without scrolling up to
-     it), and the box is under its row from then (boxSeat): one current step, never two. Only while the box shows. */
+  /* A nudge selects an eligible visible row and gives feedback when the target changes. Ignore marked rows,
+     messages and pending rows. On a run screen, select the step on the card and move the add box under its row,
+     keeping one current step. */
   nudged(id){
     const run = this.route.name === 'run', row = document.querySelector(`#view :is(.row, .day-card)[data-id="${id}"]`);
     const t = run ? this.runAim && this.runView.steps.find(s => String(s.id) === String(id)) : this.tasks[id];
@@ -528,20 +491,18 @@ export default {
   // Which box quick add's is: adding a task, subtasks to the cursor, or on a run's screen, steps.
   // (Out a level, in the list still, it adds a task again: boxOut.)
   get capW(){ return this.route.name === 'run' ? 'ins' : this.cursorTask && !this.cursor.out ? 'under' : 'cap'; },
-  // Its text and the rest, as the box `capW` keeps them: a run's apart from quick add's, so neither turns up in the other.
+  // Keep the run's input separate from quick add so switching screens does not mix drafts.
   get capBox(){ return this.box(this.capW); },
-  /* What the box adds to, said above it: the task, and, the cursor being one of its subtasks, that subtask, which they
-     go after, the last one too. (In a project with no List view there's no place to give, and they go last: only the
-     task is named.) On a run's screen, the step they go after, and the card's step, which Repeat copies there (not one
-     still waiting to be sent). */
+  /* Name the parent and the subtask new entries follow. Without a List view, name only the parent because new
+     subtasks go last. On a run, name the insertion point and the card's saved step that Repeat copies. */
   get capTarget(){
     if (this.capW === 'ins') return null;                              // a run's screen has its own box, under its steps (list-box.html)
     const t = this.cursorTask, p = this.cursorParent;
     return t && !this.cursor.out ? {to: p.title, after: t !== p && this.cursorListView ? t.title : ''} : null;
   },
   get capPlaceholder(){ return this.cursorTask ? (this.cursor.out ? 'Task' : 'Subtask') : this.capHomeSays; },   // in the list, its place says the rest
-  // What the box says at the bottom, empty. While it's in the list, the dashed place it left there says the same, where
-  // the box has it, so a tap there is known for what it brings back, and nothing moves as the box lands.
+  // Use the same empty-box text in the bottom placeholder so its tap destination is clear and its height stays
+  // stable.
   get capHomeSays(){
     if (this.capPhotos.length) return 'What\'s this photo for?';
     return this.route.name === 'project' && this.view.project ? 'Add a task to ' + this.view.project.title : 'Add a task';
@@ -551,18 +512,15 @@ export default {
     const c = this.capTarget;
     return !c ? '' : c.step ? `Add a step after “${c.after}”` : `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}`;
   },
-  /* The List view the box's places are in: the project's, on its list; on Today, the cursor's project's, which Today
-     read its cards' positions from (readCards, app/cards.js), so a subtask added there goes where the project will
-     show it. Null where there's none. */
+  /* Use the project's List view for new positions. On Today, use the target project's view loaded with its card,
+     so added subtasks appear in the same order in the project. */
   get cursorListView(){
     if (this.route.name === 'project') return this.view.listView;
     const p = this.cursorParent;
     return p ? listViewOf(this.projById.get(p.project_id))?.id || null : null;
   },
-  /* Where the next `n` subtasks from the box go in the project's List view (cursorListView): right after the cursor's row, if it's a
-     subtask (the one nudged, or the last added from the box, waiting or sent), else ahead of the task's first, as the
-     box is right under the task; null if the project has no List view. The task's subtasks are those Vikunja gave it, those on the list under it (one just
-     sent) and those still waiting to be sent, so its last is the last on screen. */
+  /* Place n subtasks after the target subtask, or before the first subtask when targeting the parent. Include
+     saved, newly sent and pending subtasks in the order. Return null without a List view. */
   cursorPlaces(n){
     const t = this.cursorTask, p = this.cursorParent;
     if (!this.cursorListView) return null;
@@ -572,11 +530,8 @@ export default {
     const sibs = [...[...ids].map(id => this.positions[id] || 0), ...this.pendingTasks.filter(x => x.parent === p.id).map(at)];
     return this.clearPlaces(t !== p ? placeAfter(sibs, at(t), n) : placeFirst(sibs, n), sibs);
   },
-  /* The cursor's row, as it's drawn: watched, so the box goes back to the bottom, adding a task, once it's out of sight
-     (not while it's being typed in: the phone scrolls a box it opens its keyboard for, and that isn't scrolling away). A subtask
-     just added may be drawn where it can't be seen yet (the last of many, past the screen's edge): until it has been
-     in sight once, the row that was lit before it stands in for it, so the next one typed is still a subtask, and
-     scrolling that row away ends it as before. */
+  /* Return an unfocused box to the bottom when its target scrolls away. Until a newly added target has been
+     visible once, watch the previous target instead, so typing can continue before the new row appears. */
   watchCursor(el){
     if (watched === el || !window.IntersectionObserver) return;
     const drop = x => { if (x && x !== watched) { cursorIO.unobserve(x); inSight.delete(x); } };
@@ -592,14 +547,10 @@ export default {
     cursorIO.observe(el);
   },
 
-  /* ---------- the add box in the list (inline-add-box-plan, part 1) ---------- */
-  /* While the box adds subtasks at the cursor's row, it's in the list, under that row: the row (for a task with
-     subtasks, its card's header, so what's added comes first) is given room under it, the box's height (.boxed,
-     --box-h), and the box is laid over that room, as far in as what it adds. It's the one box, never taken off the
-     page, so it keeps its text and the focus as it moves: Enter adds a line, and the box is under the new one. Its
-     place at the bottom stays, dashed, saying what the box says there (#cap-home). Where the room is on the page is
-     asked as frames go by while the box is there (seatUnder, seat.js). With no cursor the room goes, and the box is at
-     the bottom again. Asked again whenever the cursor changes (core.js). */
+  /* ---------- the add box in the list ---------- */
+  /* Position the existing add box under its target without removing the input from the page, preserving text and
+     focus. Reserve its height under the row and keep a dashed placeholder at the bottom. seatUnder follows row
+     movement, and clearing the target returns the box to the bottom. */
   seatBox(){
     const bar = this.$refs.captureBar, root = document.documentElement;
     if (!bar) return;
@@ -614,8 +565,7 @@ export default {
         key = el ? s.key : '';
         return el || undefined;
       },
-      // Under the row, at the list's left and width, and as far in as what it adds: a task's inset, out a level; the
-      // row's own, a subtask's or a step's; under its task, a level further.
+      // Align the box with the list and indent it to the level of the tasks it adds.
       place: (b, el, changed) => {
         const s = this.boxSeat;
         b.classList.toggle('out', !!s?.out);                              // a task's box: its tick is the bigger (styles.css, --mark)
@@ -627,9 +577,8 @@ export default {
       unplace: b => { b.classList.remove('out'); b.style.top = b.style.left = b.style.width = b.style.paddingLeft = ''; },
     });
   },
-  /* Where the box is in the list, if it is: {key, sel: what it's under, out, deeper: a level further in than that}.
-     On a project's list and Today, under the cursor's row (out a level: after its task's item). (A run's screen has no
-     bar at its bottom: its box is at the foot of its steps, as a sheet's list has its own: seatFoot, app/sheet.js.) */
+  /* Return {key, sel, out, deeper} for the box's target row or top-level item on Today and project lists. Run
+     screens use their own box at the foot of the step list. */
   get boxSeat(){
     if (!this.boxIn) return null;
     const c = this.cursor, out = !!c.out, id = String(out ? c.under ?? c.id : c.id);
@@ -643,11 +592,8 @@ export default {
     const on = this.route.name;
     return on === 'today' ? 'Add a task instead' : 'Add a task to ' + (this.view.project?.title || 'this project') + ' instead';
   },
-  /* The box's level, on a project's list (inline-add-box-plan, part 2). In the list it adds subtasks at the cursor's
-     row; moved out a level (the cursor's `out`), it adds a task instead, after the cursor's task and all that's under
-     it, where it's then drawn (seatBox), and is quick add's own box again (capW 'cap'), with a place to give. A task
-     added from there is the cursor in its turn, out still, so the next goes after it. Moved back in, it adds subtasks
-     to the cursor's row: not while that's a task still waiting to be sent, which can't have one yet (canIn). */
+  /* Moving the box out one level adds tasks after the target task and its subtasks. Each new task becomes the
+     target, still at that level. Moving back in adds subtasks, once the target task has been sent. */
   get boxIn(){ return ['project', 'today'].includes(this.route.name) && !!this.cursorTask; },
   // Only a project's list has two levels: Today adds subtasks only (part 3).
   get canLevel(){ return this.boxIn && this.route.name === 'project'; },
@@ -659,12 +605,10 @@ export default {
     this.light({...c, out});
     return true;
   },
-  // Tab moves the box in a level and Shift+Tab out, as in any editor: only when it can, so that with the box as far in
-  // or out as it goes the key moves the focus as usual, to the box's chips and its button.
+  // Use Tab and Shift+Tab to change nesting only when another level is available. At either limit, keep normal
+  // keyboard focus navigation.
   boxTab(e){ if (this.boxLevel(e.shiftKey)) e.preventDefault(); },
-  /* Where the next `n` tasks from the box go, out a level, in the project's List view: after the cursor's task (the
-     one it was moved out from, or the last added from there, waiting or sent) and before the task after it; null if
-     the project has no List view. */
+  /* Place n top-level tasks after the target task and before its next sibling. Return null without a List view. */
   outPlaces(n){
     const c = this.cursor, t = this.cursorTask, top = t && (c.under != null ? this.tasks[c.under] : t);
     if (!top || !this.view.listView) return null;
@@ -673,15 +617,13 @@ export default {
     const sibs = [...open, ...this.pendingTasks.filter(x => !x.child && x.project_id === pid)].map(at);
     return this.clearPlaces(placeAfter(sibs, at(top), n), sibs);
   },
-  // Those places, none of them one a task of the view has already, waiting ones too (clearOf, order.js): still before
-  // the sibling they were all put before.
+  // Avoid positions already used by saved or pending tasks while keeping the new tasks before the next sibling.
   clearPlaces(places, sibs){
     const taken = new Set([...Object.values(this.positions), ...this.pendingTasks.map(x => x.position)].filter(p => p > 0));
     const end = Math.min(...sibs.filter(p => p > places.at(-1)));
     return clearOf(places, taken, end === Infinity ? null : end);
   },
-  // Tasks added from the box out a level (submitCapture, sending.js): the last of them is the cursor, on its waiting
-  // row, out still, as aimAdded has it for a subtask.
+  // Follow the last new top-level task on its pending row, keeping the box at the outer level.
   aimAddedOut(entry, i){
     if (i < 0) return;
     const p = entry.items[i].p, id = `pending-${entry.id}-${i}`;
@@ -690,8 +632,8 @@ export default {
   },
   // Whether the box at the bottom, or in the list, is being typed in.
   get boxHasFocus(){ const el = this.$refs?.capture; return !!el && document.activeElement === el; },
-  /* "Add a subtask here", in a task's ⋯: the tap for what a nudge on its row does (design rule 3). Being meant, it
-     gives the box the focus, during the tap, as that's the only way a phone opens its keyboard for it. */
+  /* Add a subtask here is the tap alternative to a nudge. Focus the box during the tap so the phone opens its
+     keyboard. */
   get canAddHere(){ return this.sheet.kind === 'task' && !!this.sheet.task && this.canAim(this.tasks[this.sheet.task.id]); },
   addSubtaskHere(){
     if (!this.canAddHere) return;
@@ -703,15 +645,14 @@ export default {
   },
 
   /* ---------- the words quick add read, marked in the box ---------- */
-  // Marks in the text as typed, over every line of a pasted list. A tapped-off chip's words aren't marked, since they
-  // stay in the title, nor is an @username that won't be assigned: no such user, or one who can't see the project.
-  // What says a line is done is marked too, and a figure for its progress, whichever quick add mode is set.
+  // Highlight parsed words across every line, including done markers and progress. Leave disabled chips and
+  // inaccessible or unknown assignees unmarked because those words stay in the title.
   marks(w){
     if (!this.boxLines(w).length) return [];
     const parsed = this.boxParsedLines(w), target = parsed.length === 1 ? this.boxPid(w) : this.boxPeople(w).target;
     const stays = n => this.userKnown[n.toLowerCase()] === false || (target && this.access[target + ':' + n.toLowerCase()] === false);
     const out = [];
-    // Each line's marks, from where its words start in the box (boxList): after its indent, list marker and spaces.
+    // Offset each line's highlights past its indent, list marker and spaces.
     this.boxList(w).lines.forEach((l, k) => {
       if (l.mark) out.push({kind: 'done', start: l.mark[0], end: l.mark[1]});
       for (const m of parsed[k]?.marks || []) if (!(m.kind === 'assignees' && stays(m.name))) out.push({...m, start: m.start + l.at, end: m.end + l.at});
@@ -721,7 +662,7 @@ export default {
     if (ph) out.push({kind: 'due', start: ph.index, end: ph.index + ph.length});
     return out.sort((a, b) => a.start - b.start);
   },
-  // The box's text with those marks, drawn behind the box itself (.cap-marks), so the marks sit under the typed words.
+  // Draw the highlights behind the input so they align with the typed words.
   marksHtml(w){
     const text = this.box(w).text;
     let html = '', at = 0;

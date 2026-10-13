@@ -264,7 +264,7 @@ try {
     await expect(n).toHaveText('1');
     await expect(n).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('#d-comments')).toHaveCount(0);
-    await expect(page.locator('#d-template-label')).toHaveText('Checklists started from it get its labels, all but “template”, which is what makes it a template.');
+    await expect(page.locator('#d-template-label')).toHaveText('Every checklist started from this template gets its labels, except “template”, which marks it as a template.');
     for (const id of ['#d-desc', '#d-due', '#d-repeat', '#d-assignees']) await expect(page.locator(id)).toBeVisible();
   });
 
@@ -550,7 +550,7 @@ try {
 
   await step('skip-with-a-reason', async () => {
     await page.fill('#step-note', 'Press 2 is down');
-    await page.waitForSelector('#step-note-with:has-text("for Skip, as the reason")');           // Skip stays Skip, the same size
+    await expect(page.locator('#step-note-with')).toHaveText('Tap Done to send this comment. Tap Skip to send it as the reason.');   // Skip stays Skip, the same size
     if (await page.textContent('#step-skip') !== 'Skip') throw new Error('skip says ' + await page.textContent('#step-skip'));
     await page.click('#step-skip');
     await page.waitForSelector('#step-title:text-is("First article check")');
@@ -584,7 +584,7 @@ try {
     await page.click('#run-steps .row:nth-of-type(1) .body');
     await page.waitForSelector('#step-title:text-is("Check the guards at 3pm")');
     await page.fill('#step-note', 'Guard 3 tightened');
-    await expect(page.locator('#step-note-with')).toHaveText('Done or Skip sends this comment with it: for Skip, as the reason.');
+    await expect(page.locator('#step-note-with')).toHaveText('Tap Done to send this comment. Tap Skip to send it as the reason.');
     await page.click('#step-done');
     await until('the note never reached the step', async () => { const t = await task(id); return t.done && (t.comments || []).some(c => c.comment.includes('Guard 3 tightened')); });
     await page.reload();
@@ -854,7 +854,7 @@ try {
     await page.waitForSelector('#d-subtasks .row');
     // A run's sheet has its Comments (its screen's "Comments on this run"); a step is added on its screen.
     await expect(page.locator('#d-comments')).toBeVisible();
-    await expect(page.locator('#d-run-steps-note')).toHaveText("To add a step, use the box under the steps on the checklist's screen: it's marked as added to this checklist alone.");
+    await expect(page.locator('#d-run-steps-note')).toHaveText('Open the checklist. Add a step in the box under its steps. New steps belong to this checklist alone.');
     await page.click('#d-subtasks .row:nth-of-type(2) .body');
     await page.waitForSelector('#d-assignees');
     if (await page.$('#d-repeat')) throw new Error('Repeats on a run\'s step');

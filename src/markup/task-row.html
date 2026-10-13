@@ -1,64 +1,57 @@
-<!-- A task's row, `t`, in the list `g`. In a list of tasks, with its depth under the task above it (g.depth): Today, a
-     project, search, and a run's row under Checklists, so a run looks the same, with its ring, wherever it's listed. And a subtask in its parent's sheet (g.sheet), which has its own tick (toggleSubtask), its words alone for a
-     title, and its due date only under them. Every one has who's doing it at its end (rowSlot). Its progress is drawn
-     in its tick, a pie filling a quarter at a time as a swipe right sets it (--pct), not under the row: swiped, it shows
-     what letting go will do beside it, not on it (progress.js); tapped, the tick ticks it whatever its progress, and
-     again, takes it back with its progress as it was. Where its list allows (g.delete: Today, a project, search, a
-     sheet), swiped left at 0%, its Delete (canDelete; also in the task's ⋯, the way for a keyboard or a screen
-     reader); where it allows g.reorder (a project, a sheet), held and moved up or down, its place. The gesture code
-     reads those off the row (data-gestures, rowGestures), and makes the Delete as the swipe starts, laid under the row
-     (swipeOf, progress.js): the row doesn't carry one. Ticked, or deleted, it stays where it is until the batch
-     clears (leaving[t.id], leaving.js): done, its tick opens it again; deleted, it's a gap at its height (gap.html),
-     holding only "Deleted" and Restore, and a tap anywhere on it restores it (tapGap); done by a full swipe, it's
-     shown as one ticked is, and its tick opens it again. A tick not saved is a line in its place, with Try
-     again (lines.js). One not sent yet (pending) is on its list at once, where
-     it'll be; once it has waited a while (waits), it looks it: tinted, its tick dotted. On a project's list it's lit up
-     (aimed) while quick add's box adds subtasks at it (lit[t.id]: the row touched last, or the subtask just added from
-     the box, waiting too), and watched meanwhile, so the box forgets it once it's out of sight (quickadd.js). A done
-     task over its subtasks still open (g.heads, on a project's list) is a head: struck through, and its tick opens it
-     again.
-     A task's own sheet leads with its row (g.own, sheet/task-card.html: parent-tasks-plan, 6b), acting as it does in a
-     list but about this one task: its tick is the sheet's (sheetDone), a swipe sets its progress there (a full one ticks
-     it in place, with no gap), swiped left at 0% it's deleted and the sheet closes on the list (sheetRowGesture), and a
-     tap on its title changes it where it is (editTitle). Marks, lines and gaps are its list row's, not this one's.
-     A run's own row atop its screen (g.top, RUN_ROW in lists.js) is this row too, the run as the screen has it: its ring
-     (runRing), whose tap or a full swipe right asks to finish the run (runRowGesture), its name, which opens the run's
-     sheet, and who it's for in its slot (forSlot); nothing under its name, no Delete, and no marks, lines or gaps.
-     A step on a run's screen (g.run) is this row too, `t` being the step as the screen has it (runView, runs.js): ticked
-     and held through the outbox (tickRow, stepSlide), its words alone for a title, under them its Inserted or Repeated
-     mark, comments and countdown (rowMeta), and, done, who did or skipped it, ✅ or ⏭️ on their picture. A step's box is
-     square, wherever it's shown (isStepRow). A parent's row (a run's, or an open task's with subtasks of its own, on a
-     card) has its ring in place of a tick (ring.html: parent-tasks-plan, part 3), and no progress of its own to swipe:
-     swiped right all the way, it's its ring's tap. The step on its
-     card is lit (g.at), and the bottom box adds steps after it; while it's on the card, one inserted can be deleted by
-     its ×, and swiped left at 0%, any inserted one not done (stepSlide). A finished run, or one shared with you to
-     read (g.locked), has no tick. It's never moved: a run's order is its order line.
-     On a stacked card (g.card, list-item.html), each of its rows is this row too, a subtask or a run's step: its own
-     tick, slot and progress, and its Delete, as any row's. A collapsed card's top row (.step-line) doesn't fold with the
-     batch: the next slides up into its place (cardEntered). -->
+<!-- The task row, `t` in the list `g`. One piece serves every list, and `g` says which: a list of tasks (Today, a
+     project, search, a checklist's row under Checklists; g.depth gives a subtask's depth), a subtask in its parent's
+     sheet (g.sheet), the task's own row at the top of its sheet (g.own, SHEET_ROW), a checklist's own row at the top of
+     its screen (g.top, RUN_ROW), a step on a checklist's screen (g.run), a template's step in its sheet (g.step), and a
+     row on a stacked card (g.card, list-item.html).
+
+     Progress is drawn in the tick, a pie that fills a quarter at a time as a swipe right sets it (--pct). Tapping the
+     tick marks the task done whatever its progress, and tapping again brings it back with its progress as it was. The
+     gesture code reads what a row allows off data-gestures (rowGestures): swiping left at 0% shows Delete where
+     g.delete allows it, holding moves the row where g.reorder allows it, and the Delete is drawn under the row as the
+     swipe starts (swipeOf, progress.js), so the row doesn't carry one. The ⋯ menu has the same actions for a keyboard
+     or a screen reader.
+
+     A ticked or deleted row stays where it is until the batch clears (leaving[t.id], leaving.js): done, its tick
+     reopens it; deleted, it is a gap with Restore (gap.html). A task not sent yet (pending) is on its list at once, and
+     after a while (waits) it looks it. On a project's list the row lights up (aimed) while quick add's box adds
+     subtasks under it, and is watched so the box forgets it once it scrolls out of sight (quickadd.js).
+
+     The sheet's own row (g.own) acts on this one task: its tick is the sheet's (sheetDone), a full swipe ticks it in
+     place with no gap, swiping left at 0% deletes it and closes the sheet (sheetRowGesture), and a tap on the title
+     edits it (editTitle). Marks, lines and gaps belong to the list's row, not this one. A checklist's own row (g.top)
+     has its ring (runRing), its name, which opens the checklist's sheet, and who it is for (forSlot), and nothing else.
+     A step on a checklist's screen (g.run) is ticked through the outbox (tickRow, stepSlide), shows its Inserted or
+     Repeated mark, comments and countdown under its title (rowMeta), and, when done, who did or skipped it. The step on
+     the card is lit (g.at). An inserted step not yet done can be deleted, by its × while it is on the card or by a
+     swipe left (stepSlide). A finished checklist, or one shared read only (g.locked), has no tick, and steps are never
+     moved: a checklist's order is its order line. A parent (a checklist, or a task with open subtasks on a card) has a
+     ring in place of a tick (ring.html) and no progress of its own; a full swipe right does what the ring's tap does. A
+     collapsed card's top row (.step-line) doesn't fold with the batch: the next row slides up into its place
+     (cardEntered). -->
 <div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.step ? {step: true, editing: sheet.stepEdit?.id === t.id} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
      @click.capture="tapGap(t, g, $event)">
-  <!-- A parent (a run, done or not, or an open task with subtasks): its ring, not a tick (ring.html, rowRing) -->
+  <!-- A parent (a checklist, or an open task with subtasks) has a ring, not a tick (ring.html, rowRing) -->
   <template x-for="r in [rowRing(t, g)].filter(Boolean)" :key="0">
     <!-- include markup/ring.html -->
   </template>
-  <!-- A template's step (g.step: in its template's sheet) has its number there, plain: a square box is a step you tick,
-       in a checklist. Only in the sheet's copy of this row (included with "step": scripts/build.mjs), as is its box
-       below, so no other list's rows have them to work out. -->
+  <!-- A template's step (g.step) shows its number, plain, where a tick would be. A square box would mean a step you
+       tick, which a template's isn't. This part, and the editor below, are only in the sheet's copy of the row
+       (included with the word "step": scripts/build.mjs), so other lists' rows don't evaluate them. -->
   <!-- only step -->
   <template x-if="g.step"><span class="check step-n num" aria-hidden="true" x-text="stepNo(t)"></span></template>
   <!-- /only -->
   <template x-if="!g.top && !g.step && (g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
-  <!-- A run is worked through, and finished, on its own screen; a template is never ticked -->
-  <template x-if="!g.run && !g.sheet && !g.top && !canTick(t) && !rowRing(t, g)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Shared with you to read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
-  <!-- Alt+↑ and Alt+↓ move it among its siblings, as holding it and moving it up or down does, where that's allowed -->
-  <!-- The sheet's own row: its title, tapped, is a box to change it in, in the body's place, until it's left (saveTitle) -->
+  <!-- A checklist is ticked and finished on its own screen, and a template is never ticked, so neither has a tick here -->
+  <template x-if="!g.run && !g.sheet && !g.top && !canTick(t) && !rowRing(t, g)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>
+  <!-- Alt+↑ and Alt+↓ move the row among its siblings where reordering is allowed, as holding it does -->
+  <!-- The sheet's own row: a tap on the title puts a text box in the body's place until the focus leaves it (saveTitle) -->
   <template x-if="g.own && sheet.titleEdit"><div class="body title-in"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" x-model="sheet.title"
     x-init="$nextTick(() => { grow($el); $el.focus(); $el.setSelectionRange($el.value.length, $el.value.length); })" x-grow="sheet.title"
     @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(t); $el.blur()" @blur="saveTitle(); sheet.titleEdit = false"></textarea></div></template>
-  <!-- A template's step tapped: quick add's box in its words' place, until it's left (editStep, sheet/step-edit.html) -->
+  <!-- A template's step, tapped: quick add's box takes the place of its words until the focus leaves it (editStep,
+       sheet/step-edit.html) -->
   <!-- only step -->
   <template x-if="g.step && sheet.stepEdit?.id === t.id">
     <!-- include markup/sheet/step-edit.html -->
@@ -66,22 +59,24 @@
   <!-- /only -->
   <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g)" @keydown.alt.up.prevent="g.reorder && moveBy(t, -1, g.sheet ? 'sheet' : 'list')" @keydown.alt.down.prevent="g.reorder && moveBy(t, 1, g.sheet ? 'sheet' : 'list')">
     <template x-if="g.sheet || g.run"><div class="title" x-text="g.step ? stepShown(t).title : t.title"></div></template>
-    <!-- On one line (g.line), what's at its right and said after its title (rowWhen), worked out once, as its slot is -->
+    <!-- On a one-line row (g.line), what sits at the right and is read after the title (rowWhen), worked out once per
+         row, like its slot -->
     <template x-for="w in !g.sheet && !g.run ? [g.line ? rowWhen(t, g) : null] : []" :key="0"><div class="title-line"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t) && !rowRing(t, g)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template><template x-if="w?.said"><span class="sr" x-text="', ' + w.said"></span></template><template x-if="g.own && canEdit"><span class="sr">, tap to change the title</span></template></div>
-      <!-- On one line (Today): its priority's bars, small, when it's due, short, and its project's dot, at the right of its
-           title. A card's row has no dot, its card's header having it, unless it's in another project; with none of the
-           three, nothing, so its title has the room -->
+      <!-- At the right of the title on a one-line row: small priority bars, the short due date and the project's dot. A
+           card's row has no dot, since the card's header has one, unless the row is in another project. With none of
+           the three, nothing is drawn, so the title has the space. -->
       <template x-if="w && (w.prio || w.due || w.color)"><span class="when" aria-hidden="true"><template x-if="w.prio"><span class="bars" :class="'p' + w.prio"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="w.due"><span class="due num" :class="w.due.cls" x-text="w.due.text"></span></template><template x-if="w.color"><i class="dot" x-style="{background: w.color}"></i></template></span></template></div></template>
     <template x-if="!g.line"><div class="meta" x-show="rowMeta(t, g).length">
       <template x-for="m in rowMeta(t, g)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
     </div></template>
-    <!-- A step of a run, in the run's sheet: added during the run, on a line of its own -->
+    <!-- A step added to a checklist after it started, in the checklist's sheet: its Added mark on a line of its own -->
     <template x-if="g.sheet && checklistRole === 'run' && addedText(t.description)"><div class="meta"><span x-text="addedText(t.description)"></span></div></template>
-    <!-- Once, on the first open row of a screen that takes a swipe for its progress (pickHint): gone, by a slide or a tap on it, it fades, its
-         space kept while a finger may be on the list, then closes (closeHint). A screen reader heard it as the screen opened. -->
+    <!-- The swipe hint, shown once on the first open row of a screen where a swipe sets progress (pickHint). A swipe or
+         a tap on it fades it out. Its space is kept while a finger may be on the list, then closed (closeHint). A
+         screen reader hears it as the screen opens. -->
     <template x-if="hintOn(t, g)"><span class="slide-hint" :class="{gone: hint.done || !rowSlides(t)}" aria-hidden="true" @click.stop.prevent="hintSeen()">Swipe right to start working on it<svg class="i"><use href="#i-close"/></svg></span></template>
   </button>
-  <!-- A done step: who did it, ✓ on their picture (⏭ for a skip), and who else it's assigned to -->
+  <!-- A done step shows who did it, with ✓ on their picture (⏭ for a skip), and who else it is assigned to -->
   <template x-if="g.run && t.done && t.slot"><span class="did" :class="{waiting: t.slow, skip: t.skipped}" role="img" :aria-label="t.whoText"><template x-for="slot in [t.slot]" :key="0"><span class="pics">
     <!-- include markup/pics.html -->
   </span></template></span></template>
@@ -89,7 +84,7 @@
     <!-- include markup/claim-slot.html -->
   </template>
   <!-- include markup/gap.html -->
-  <!-- A step inserted during the run, on its card and not done: likely a mistake, so it can go -->
+  <!-- An inserted step on the card, not done yet, can be deleted with ×, since it is likely a mistake -->
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <template x-for="line in !g.run && !g.own && !g.top && lines[t.id] ? [lines[t.id]] : []" :key="0">

@@ -1,7 +1,7 @@
-/* Alerts while Pocket is on screen: Today keeps itself up to date, and a run's countdown chimes at zero. Pocket promises
-   only what always works, so there are no system notifications: a task come due lights up on Today, and a countdown at
-   zero says so in a toast, with a chime, vibration (Android), the screen kept on during a countdown and the overdue
-   count on the app's icon wherever the phone allows, each tried and quietly skipped where it doesn't. Reminders while Pocket is closed are Vikunja's, by email. */
+/* Alerts while Pocket is on screen. Today regroups its tasks as time passes, and a countdown on a run chimes at zero.
+   There are no system notifications: a task that comes due lights up on Today, and a countdown at zero shows a toast
+   with a chime. Vibration, keeping the screen on and the overdue count on the app icon are tried where the phone
+   allows them. Reminders while Pocket is closed are Vikunja's emails. */
 import {store} from '../util.js';
 import {serverTime} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
@@ -12,7 +12,7 @@ let sound = null;                                // the AudioContext, made on a 
 let wakeLock = null, askingLock = false, lockFailed = 0;
 let lastTick = Date.now();                       // when Today was last checked
 
-// Steps that have chimed, by step and due time, so each does once, even after leaving its run and coming back.
+// Steps that have chimed, keyed by step id and due time, so each chimes once even after leaving the run and coming back.
 const alerted = {
   all(){ try { return JSON.parse(store.get('alerted')) || {}; } catch { return {}; } },
   has(k){ return k in this.all(); },
@@ -20,11 +20,11 @@ const alerted = {
 };
 
 export default {
-  /* Today every minute while it's on screen: tasks move to Overdue as their time passes, without asking Vikunja again
-     (a new day loads afresh), and one whose due time or reminder passes while you're looking says so. */
+  /* Runs every minute while Today is on screen. Tasks move to Overdue as their time passes, without asking Vikunja
+     again (a new day reloads), and a task whose due time or reminder passes is announced. */
   tickToday(){
     const now = Date.now(), since = lastTick;
-    if (this.sheet.open && this.route.name === 'today') return;            // what passes meanwhile is said once it's closed
+    if (this.sheet.open && this.route.name === 'today') return;            // announced once the sheet closes
     lastTick = now;
     if (this.route.name !== 'today' || document.visibilityState !== 'visible' || this.view.loading) return;
     if (this.todayDay !== +startOfDay()) { this.render(); return; }
@@ -35,25 +35,24 @@ export default {
       if (isSet(t.due_date) && passed(+new Date(t.due_date)) && isLate(t.due_date, new Date(now))) due.push(t);
       else if ((t.reminders || []).some(r => isSet(r.reminder) && passed(+new Date(r.reminder)))) reminded.push(t);
     }
-    // Their rows light up for a moment, where they are now (one come due, under Overdue), and a screen reader hears it.
+    // Their rows flash where they are now, and a screen reader hears it.
     const name = t => `“${this.rowTitle(t)}”`, list = [...due, ...reminded];
     if (!list.length) return;
     this.flash(list.map(t => t.id), 'due');
     this.said = list.length === 1 ? (due.length ? `${name(list[0])} is due now` : `Reminder: ${name(list[0])}`)
       : `${list.length} tasks are due ${reminded.length ? 'or have a reminder ' : ''}now: ${name(list[0])} and ${list.length - 1} more`;
   },
-  // Today's dated tasks placed again for the time now, without asking Vikunja: each minute, and offline after midnight.
-  // Returns them.
+  // Regroup Today's dated tasks for the time now, without asking Vikunja. Returns them.
   regroupToday(){
     const groups = this.view.groups, dated = groups.filter(g => ['overdue', 'today', 'week'].includes(g.key)).flatMap(g => g.tasks);
     if (groups.length === 5) this.placeDated(groups, dated);
     return dated;
   },
-  /* Today's dated tasks, each in its group: Overdue once its time has passed (one due on a day, with no time of its own,
-     once that day is over), Today, or the next 7 days; a card by the earliest date that brought it (`cards`, cards.js).
-     The app's icon shows how many are overdue. */
+  /* Put each dated task in its group: Overdue once its time has passed (a task due on a day with no time, once that
+     day is over), Today, or the next 7 days. A card goes by the earliest date among its task and open subtasks
+     (`cards`). The app icon shows the overdue count. */
   placeDated(groups, tasks, cards = this.view.cards || {}){
-    const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // a day of 23 or 25 hours too
+    const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // addDays handles a 23- or 25-hour day
     const at = todayAt(cards), order = todayOrder(at);
     for (const g of [overdue, today, week]) g.tasks = [];
     for (const t of tasks) { const due = at(t).due_date; (isLate(due, now) ? overdue : new Date(due) < t1 ? today : week).tasks.push(t); }
@@ -66,17 +65,17 @@ export default {
   },
 
   /* ---------- a run's countdowns ---------- */
-  // Every second: a countdown on the run on screen that reaches zero chimes, once; and the screen stays on while one runs.
+  // Runs every second. A countdown on the run on screen chimes once when it reaches zero, and the screen stays on while one runs.
   tickRun(){
     const v = this.route.name === 'run' && document.visibilityState === 'visible' && this.view.run ? this.runView : null;
     this.keepAwake(!!v && !v.finished && v.steps.some(s => s.counting));
     if (!v) return;
     const now = serverTime(Date.now());
-    // The run is worked out again only when the time has changed something it shows: a countdown's words, a step's
-    // time come, the day (runShows). Otherwise the screen has nothing to do this second.
+    // Recompute the run only when the time has changed something it shows (runShows): a countdown's text, a step's
+    // time arriving, the day.
     if (runShows(v.steps, now) !== runShows(v.steps, serverTime(this.runNow))) this.runNow = Date.now();
     for (const s of v.steps) {
-      if (!s.counting || s.dueAt > now || now - s.dueAt > 6e4) continue;   // only as it happens, not long after
+      if (!s.counting || s.dueAt > now || now - s.dueAt > 6e4) continue;   // chime within a minute of the time, not long after
       const k = s.id + '@' + s.dueAt;
       if (alerted.has(k)) continue;
       alerted.add(k);
@@ -85,8 +84,8 @@ export default {
       this.notify(`“${s.title}” is due now`);
     }
   },
-  /* Browsers only play sound after a tap, so the tap that starts a run or marks a step done gets it ready, with a
-     moment of silence, which is what lets an iPhone play later. */
+  /* Browsers only play sound after a tap, so the tap that starts a run or ticks a step plays a moment of silence. That
+     is what lets an iPhone play later. */
   unlockSound(){
     try {
       sound ||= new (window.AudioContext || window.webkitAudioContext)();
@@ -94,8 +93,8 @@ export default {
       const s = sound.createBufferSource(); s.buffer = sound.createBuffer(1, 1, 22050); s.connect(sound.destination); s.start();
     } catch {}
   },
-  // Two short notes. With the audio session set to playback, an iPhone may play it with the silent switch on; that's
-  // set only while it plays, so music playing elsewhere isn't stopped for longer than that.
+  // Two short notes. The audio session is set to playback only while they play: that lets an iPhone play them with the
+  // silent switch on, without pausing other music for longer.
   chime(){
     if (!sound) return;
     try {
@@ -111,8 +110,8 @@ export default {
       setTimeout(() => { try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch {} }, 800);
     } catch {}
   },
-  // The screen kept on (where the phone allows) while a countdown runs on screen. The phone lets go when Pocket is
-  // hidden, so it's asked again on coming back.
+  // Keep the screen on while a countdown runs on screen, where the phone allows. The phone releases the lock when
+  // Pocket is hidden, so it is asked for again on return.
   keepAwake(want){
     if (want && !wakeLock && !askingLock && 'wakeLock' in navigator && Date.now() - lockFailed > 3e4) {
       askingLock = true;

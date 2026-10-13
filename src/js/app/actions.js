@@ -1,13 +1,7 @@
-/* What's done to tasks, a function for each thing: ticking (done, or not done again), setting progress, deleting,
-   moving, adding subtasks, people and labels, and saving a change. Each one makes the request, takes the subtasks along
-   where they go too, changes what's on screen and offers the Undo, so the lists and the sheet call these, not api().
-   A task is ticked one way, toggleDone, from a list or its sheet (sheetDone). A run and a run's step are ticked through
-   the outbox (act, in runs.js): toggleDone hands them to tickRunTask and tickRunStep, and a run finished with steps not
-   done leaves them not done (its ring asks first: app/cards.js). A parent (a task with subtasks, a run) is closed from
-   its ring (ringTap, app/cards.js), and its progress is worked out from its subtasks, written to it with each change to
-   them (writeFigure). Reordering: a task among its
-   siblings in its project's List view (reorder), and a template's steps by moveStep (checklists.js), which writes their
-   order line. */
+/* Task actions and their Undo. Lists and sheets call these methods to save, tick, set progress, move, reorder, add
+   or delete tasks. Run actions go through the outbox. A parent's ring asks before closing its open subtasks, and
+   subtask changes update the parent's computed progress. Project reordering writes List view positions, while
+   template steps keep their order in the template's notes. */
 import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
@@ -21,20 +15,20 @@ import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
 
-// How long a deletion is held in another tab, or after Pocket was closed without sending it: its rows can stay a while
-// in this tab, as long as a finger is down or the batch keeps being restarted (leaving.js).
+// Expire a held deletion in another tab or after a restart. This tab can hold its rows longer while a touch or
+// scroll keeps the batch waiting.
 const HELD_MS = 60e3;
 
-// Saves to each task: how many have begun or ended, and how many haven't ended. A copy read while one was under way can
-// be older than Vikunja's, so it isn't shown (readTask).
+// Track started, finished and active saves by task id. Ignore reads made during a save because its reply may be
+// newer.
 const saving = new Map();
 const saveMark = (id, open) => { const s = saving.get(id) || {n: 0, open: 0}; s.n++; s.open += open; saving.set(id, s); };
 export const reminderKey = r => r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
-// The reminders as Vikunja takes them back: a relative one by what it counts from, so it keeps moving with that date.
+// Identify relative reminders by their reference date so they keep following that date.
 export const plainReminders = t => (t?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder});
 const rolls = t => t.repeat_after > 0 || t.repeat_mode === 1;
-// Whether Vikunja's copy `now` has the change `body` made to `before`. A repeating task marked done is moved to its
-// next date instead.
+// Check whether Vikunja saved body's change to before. Completing a repeating task advances its date instead of
+// leaving it done.
 function landed(now, body, before){
   if (body.done === true && !now.done && rolls(now)) return !!before && !before.done && now.due_date !== before.due_date;
   return Object.entries(body).every(([k, v]) => {
@@ -48,21 +42,20 @@ function landed(now, body, before){
 
 export default {
   /* ---------- saving a change ---------- */
-  // Saves changes to a task from anywhere (the sheet, a list row), one save at a time, and updates its rows.
-  // Resolves to Vikunja's copy; rejects if not saved.
+  // Save task changes in order and update their rows. Resolve to Vikunja's copy or reject a failed save.
   saveTask(id, patch, rebase){
     saveMark(id, 1); this.writing++;                                        // from its read first to its reply
     const run = shared.saveChain.then(async () => {
-      // Only the change is sent, so anything changed elsewhere since Pocket loaded the task (notes edited on the web,
-      // say) stays as it is. A field holding a list, or a template's order line in its notes, is sent whole: `rebase`
-      // makes the change to Vikunja's copy as it is now, read first (null: nothing to change).
+      // Send only changed fields to preserve edits made elsewhere. Lists and template order notes need a
+      // whole-field write, so rebase applies the change to a fresh copy, or returns null when nothing remains to
+      // change.
       let saved = rebase && await api('/tasks/' + id);
       const before = saved || cache.get(id), body = rebase ? rebase(saved) : patch;
       if (body) {
         try { saved = await patchTask(id, body); }
         catch (e) {
-          // A reply lost on the way back (a dropped connection, a timeout) doesn't mean the change didn't reach Vikunja:
-          // its copy, read now, says. Ticking a repeating task again would skip a date.
+          // Read Vikunja after a lost reply to check whether the save arrived. Retrying a saved tick on a
+          // repeating task would skip a date.
           const now = e instanceof NetError && await api('/tasks/' + id).catch(() => null);
           if (!now || !landed(now, body, before)) throw e;
           saved = now;
@@ -74,8 +67,8 @@ export default {
     shared.saveChain = run.catch(() => {});
     return run;
   },
-  // Vikunja's copy of a task, read once the saves waiting now are done; or null if another save to it was under way
-  // while it was read: that save's reply is newer.
+  // Wait for queued saves before reading. Return null if another save ran during the read, because its reply is
+  // newer.
   async readTask(id){
     await shared.saveChain;
     const before = saving.get(id), n = before?.n, t = await api('/tasks/' + id);
@@ -90,31 +83,21 @@ export default {
   },
 
   /* ---------- done, and not done again ---------- */
-  /* Ticking a task done, or not done again: the one way it's done, from its row in a list (rowEl), its own sheet
-     (extra.sheet: sheetDone), or a subtask's row in its parent's sheet (extra.sub). A run and a run's step are handed to
-     tickRunTask and tickRunStep, which go through the outbox. A parent's subtasks stay as they are (parent-tasks-plan,
-     part 3: its ring asks first, completeParent), unless `extra.close`: then its open subtasks are closed with it (not
-     those that repeat, nor a repeating task's), and its undo opens exactly those again, its progress as it was. A
-     subtask's tick changes its parent's worked-out progress, written to it right after (refigure).
-     `extra` is saved along with it, and `undoExtra` with the undo: progress uses these to mark a task done at 100%.
-     In a list, the row shows it where it is, with the subtasks closed with it, until the batch clears (markRow,
-     leaving.js): then they leave Today, or move to Done in search and a project; its tick meanwhile is the undo. A
-     repeating task shows done, then its next date. From its sheet, whose tick shows it, only subtasks closed are said,
-     under them, with an Undo; a subtask in its parent's sheet stays where it is, done. Not saved, its row says so, with
-     Try again. A done task shown over its open subtasks (isHead), opened again, stays where it is (reopenedHead).
-     Done by a full swipe, or a parent completed from its ring, it's shown the same way: one look for done, however it
-     was done. Its row is held as that from this moment, not from Vikunja's answer (holdRow, leaving.js), so nothing
-     worked out from what's done (a card's rows, its top row) changes while the save is on its way; not saved, it's
-     let go of. */
+  /* Toggle a task from any row or sheet, delegating runs and their steps to the outbox. Subtasks stay unchanged
+     unless extra.close requests completion of open, non-repeating subtasks. Undo restores exactly those subtasks
+     and the previous progress. Hold list rows from the tap through the save, then mark them until the batch
+     clears, with their tick as Undo. Repeating tasks show done until their next date appears. Sheet ticks show
+     Undo for closed subtasks, while failed saves offer Try again where the action happened. extra and undoExtra
+     carry progress changes through completion and Undo. */
   async toggleDone(t, rowEl, extra = {}, undoExtra = {}){
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl);
     if (this.isRunTask(t) && !extra.quiet) return this.tickRunTask(t, rowEl);
     const {quiet, sub: inSheet, sheet, close = false, ...patch} = extra, sub = inSheet || isSubtask(t), was = t.done, head = was && this.isHead(t);
     const inList = !!rowEl && !quiet && !sheet && !inSheet;
-    // Its open subtasks as they're shown (a run's steps are ticked on its screen, with who did each)
+    // Use the visible open subtasks. Run steps are completed on their own screen to record who did them.
     const subs = was || quiet || !close || this.isRunTask(t) ? [] : openSubtasks(t).map(s => this.tasks[s.id] || s).filter(s => !s.done);
-    // A repeating task moves on its dates, and its reminders at a set time: the undo puts them back.
+    // Keep repeating tasks' dates and fixed reminders so Undo can restore them.
     const back = {due_date: t.due_date}, shown = {due_date: t.due_date, start_date: t.start_date, end_date: t.end_date, reminders: t.reminders};
     for (const k of ['start_date', 'end_date']) if (isSet(t[k])) back[k] = t[k];
     if ((t.reminders || []).some(r => !r.relative_to)) back.reminders = plainReminders(t);
@@ -137,8 +120,8 @@ export default {
         const d = dueInfo(saved.due_date), next = d ? 'next ' + d.label : '';
         if (sheet) { this.say(next ? 'Repeats · ' + next : 'Done — repeats', {place: 'sheet:top', action: {label: 'Undo', fn: undo}}); return; }
         if (!inList) return;
-        // Shown done, with the date it had, until the batch clears: then open, with its next date, or off Today if that's
-        // past the coming week.
+        // Keep the completed row and its old date until the batch clears, then show its next date or remove it
+        // from Today.
         Object.assign(t, shown, {done: true});
         const beyond = () => this.route.name === 'today' && !(new Date(saved.due_date) < addDays(startOfDay(), 8));
         this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: `Done: ${t.title}. It repeats${next ? ', ' + next : ''}`,
@@ -146,7 +129,7 @@ export default {
         return;
       }
       if (head) return this.reopenedHead(t, !inList);
-      // Its open subtasks are done with it, on its row's count and in its sheet too, and the undo opens them again.
+      // Include closed subtasks in the row and sheet, and reopen those same subtasks on Undo.
       const closed = was ? [] : await this.closeSubtasks(subs), ids = [t.id, ...closed];
       const mark = (list, done) => { for (const s of t.related_tasks?.subtask || []) if (list.includes(s.id)) s.done = done; };
       mark(closed, true);
@@ -163,16 +146,16 @@ export default {
           this.render();
         };
       const text = doneText(closed.length, subs.length, t.title);
-      // From a sheet, the subtasks closed are said under them, with the Undo: its own tick, or a subtask's there.
+      // Show the sheet's closed-subtask count and Undo under its subtasks.
       if (sheet || inSheet) {
         if (closed.length || (sheet && subs.length)) this.say(text, {place: 'sheet:subtasks', action: {label: 'Undo', fn: undo}});
         return;
       }
       if (!inList) return;
-      // Some subtasks couldn't be closed: its row says so for a moment, then it's back.
+      // Show a partial completion error briefly before restoring the row.
       if (closed.length < subs.length) this.say(text, {row: {id: t.id, stays: true, cls: 'failed'}, ms: 4000});
-      // Done, it leaves Today, or moves to Done in search and a project; opened again in Done, it moves back to Open. A
-      // task left over its subtasks still open stays, and only those closed with it go.
+      // Move completed rows from Today or Open after the batch. Keep a completed parent above any subtasks still
+      // open.
       const moves = () => !!this.searchGroups(t);
       if (was && !moves()) { this.said = 'Not done: ' + t.title; return; }
       this.markRow(t.id, {kind: was ? 'open' : 'done', ids, undo, said: was ? 'Not done: ' + t.title : text,
@@ -180,22 +163,21 @@ export default {
         gone: () => { if (over) this.moveInSearch(t, closed); else if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) ids.forEach(id => this.removeRow(id)); }});
     } catch (e) {
       t.done = was;
-      // On its row, for its few seconds, and the row is back to be ticked again. From its own sheet there's no row to
-      // give back: said at the sheet's top, it stays until it's tried again, saved, or the sheet is closed.
+      // Restore a failed list row after its message. The sheet's own task has no departing row, so keep its error
+      // until retry, success or closing.
       this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed', ms: UNDO_MS}, place: 'sheet:top', ms: null, action: {label: 'Try again', fn: () => this.toggleDone(t, this.rowEl(t.id), extra, undoExtra)}});
     } finally { letGo?.(); }
   },
-  /* A parent's worked-out progress (parent-tasks-plan, part 3), written to its percent_done after a change to its
-     subtasks, with that change: in the same chain of saves, right after it, Vikunja's copy read first and only a figure
-     that changed saved, with nothing said (figurePatch). Not a template's. Resolves to Vikunja's copy. A run's step goes
-     through the outbox instead, its act's last part doing the same (`figure`, sync.js). */
+  /* Save a parent's computed percent_done after its subtask change, in the same save chain. Read the parent first
+     and save only a changed figure, without a message. Templates are excluded, and run actions do this in their
+     final outbox stage. */
   writeFigure(id){ return this.saveTask(id, null, now => hasTemplateLabel(now) ? null : figurePatch(now)); },
-  // The task a subtask is under: its own copy says, or the sheet it's in, or the task on screen it's listed under.
+  // Find the parent from the task, its open sheet or the list's subtask relations.
   parentIdOf(t){
     const own = parentIds(t)[0], has = p => p?.related_tasks?.subtask?.some(s => s.id === t.id);
     return own ?? (has(this.sheet.task) ? this.sheet.task.id : Object.values(this.tasks).find(has)?.id ?? null);
   },
-  // After a subtask's tick or progress, in a list or its parent's sheet (`up`): its parent's figure, in the background.
+  // Update the parent's progress in the background after a subtask tick or progress change.
   refigure(t, up = null){
     const id = up ?? this.parentIdOf(t);
     if (typeof id === 'number') this.writeFigure(id).catch(() => {});
@@ -207,7 +189,7 @@ export default {
     const g = this.route.name === 'project' && this.view.groups.find(x => x.key === 'open');
     return !!g && g.tasks.includes(t) && g.tasks.some(x => !x.done && !(this.deleting || []).includes(x.id) && parentIds(x).includes(t.id));
   },
-  // A task ticked done that stays over its open subtasks, as a head: counted done, and in the Done section too.
+  // Count a completed parent in Done even while its heading remains above open subtasks.
   makeHead(t){
     const open = this.view.groups.find(x => x.key === 'open'), done = this.view.groups.find(x => x.key === 'done');
     open.heads = [...new Set([...open.heads || [], t.id])];
@@ -215,9 +197,8 @@ export default {
     if (typeof done?.count === 'number') done.count++;
     return true;
   },
-  /* A done task shown over its open subtasks, on a project's list (isHead), opened again, from its row or its sheet: an
-     open task where it is, no longer in the Done section. On its row (not from its sheet, whose tick shows it), its tick
-     meanwhile makes it done again, over them as it was: the list, read again, shows it so. */
+  /* Reopen a completed parent in place above its open subtasks and remove its Done entry. On a list row, its tick
+     can mark it done again while the list reloads. */
   reopenedHead(t, quiet){
     this.outOfDone(t.id);
     if (quiet) return;
@@ -227,7 +208,7 @@ export default {
       this.render();
     }});
   },
-  // A task opened again outside the Done section: out of it, and out of its count, which, not loaded yet, counts it.
+  // Remove a reopened task from Done and adjust the count even if that section has not loaded.
   outOfDone(id){
     const g = this.view.groups.find(x => x.key === 'done');
     if (!g) return;
@@ -235,11 +216,8 @@ export default {
     if (i >= 0) g.tasks.splice(i, 1);
     if ((i >= 0 || !g.loaded) && typeof g.count === 'number') g.count = Math.max(0, g.count - 1);
   },
-  /* A run finished, or opened again, from its ring or its Close (parent-tasks-plan, part 3: a run is a parent, its steps
-     its subtasks), or its sheet, as on its screen, through the outbox. Its steps are ticked one by one on its screen, with
-     who did each, so finishing it leaves them as they are: with steps not done, its ring asks first (askComplete). In a
-     list, it's shown in place, done, until the batch clears, as a task's tick is, its ring the undo; its steps go
-     with it. */
+  /* Finish or reopen a run through the outbox, leaving its steps unchanged. The ring asks before finishing with
+     open steps. Mark list rows until the batch clears, including their steps, and use the ring as Undo. */
   async tickRunTask(t, rowEl){
     const was = t.done, head = was && this.isHead(t);
     const r = await this.act({op: was ? 'reopen' : 'finish', task: t.id, run: t.id});
@@ -250,20 +228,19 @@ export default {
     if (head) return this.outOfDone(t.id);
     const offline = r.status === 'offline', said = was ? 'Not done: ' + t.title : offline ? sentLater('Finished ' + t.title) : 'Finished ' + t.title;
     const undo = async () => { await this.act({op: was ? 'finish' : 'reopen', task: t.id, run: t.id}); t.done = was; this.render(); };
-    // From its sheet: said at its top, with its Undo; with no row of it on screen, by the toast.
+    // Show Undo at the sheet's top, or in a toast when the run has no visible row.
     if (!rowEl) { if (!was) this.say(offline ? sentLater('Finished') : said, {place: 'sheet:top', action: {label: 'Undo', fn: undo}}); return; }
     const moves = () => !!this.searchGroups(t), steps = () => stepsOf(t).map(s => s.id);
     if (was && !moves()) { this.said = said; return; }
     this.markRow(t.id, {kind: was ? 'open' : 'done', undo, said, out: () => this.bothWays && !moves() ? [] : [t.id],
       gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) [t.id, ...steps()].forEach(id => this.removeRow(id)); }});
   },
-  /* A run's step ticked in a list or a sheet: as on the run's screen, with a ✅ for who did it, through the outbox, so it
-     waits without a connection (felt where it was tapped, tickRow, or swiped). In a list, it's shown in place until the batch clears, as a task's tick is, by a
-     full swipe too; in a sheet, it stays, done. */
+  /* Tick a run step through the outbox to record completion and support offline changes. List rows wait for the
+     batch, while sheet subtasks remain visible as done. */
   async tickRunStep(t, run, rowEl){
     const was = t.done;
     t.done = !was;
-    // (Its row held where it is while the outbox takes it, as a task's is while it's saved: toggleDone, holdRow.)
+    // Hold the row until the outbox has queued the tick, as toggleDone does while saving a task.
     const letGo = !was && rowEl ? this.holdRow(t.id, 'done') : null;
     try {
       const r = await this.act({op: was ? 'undone' : 'done', task: t.id, run});
@@ -284,9 +261,8 @@ export default {
     const from = this.view.groups.find(g => g.key === (t.done ? 'open' : 'done')), to = this.view.groups.find(g => g.key === (t.done ? 'done' : 'open'));
     return from && to && from.tasks.some(x => x.id === t.id) ? {from, to} : null;
   },
-  /* A task ticked (and the subtasks ticked with it) moves to Done, at the top, or back to Open: in search at its top, in a
-     project to its place in the List view, which is read again. A Done section not loaded yet only counts it. Returns
-     whether it moved. */
+  /* Move completed tasks and closed subtasks to the top of Done, or reopened tasks back to Open. Project tasks
+     return to their List view positions. Adjust only the count if Done has not loaded. Return whether a row moved. */
   moveInSearch(t, ids){
     const g = this.searchGroups(t);
     if (!g) return false;
@@ -301,13 +277,13 @@ export default {
     if (this.route.name === 'project' && !t.done) this.render();
     return true;
   },
-  // Mark these subtasks of a task just done, done too, one by one. Returns the ids marked; stops at the first that fails.
+  // Close subtasks in order and return their ids. Stop at the first failed save.
   async closeSubtasks(subs){
     const closed = [];
     for (const s of subs) { try { await this.saveTask(s.id, {done: true}); closed.push(s.id); } catch { break; } }
     return closed;
   },
-  // Mark these subtasks not done again (an Undo). Resolves to the ids that couldn't be.
+  // Reopen subtasks for Undo and return the ids that could not be restored.
   async reopen(ids){
     const failed = [];
     for (const id of ids) await this.saveTask(id, {done: false}).catch(() => failed.push(id));
@@ -328,11 +304,9 @@ export default {
   },
 
   /* ---------- progress ---------- */
-  /* Progress set in a list, or on a subtask's row in its parent's sheet (`sub`). At 100% the task is done, as when it's
-     ticked off; a done one set below it is opened again, at that progress, as its tick would (its tick again is the
-     undo). Below that, it shows on its row only, with no message: the row's tick is what was set, and
-     swiping it back is the undo (a line over the row would hide it, and stop the next slide). Not saved, the row says
-     so, with Try again. `undoing`: putting back what it was, exactly, without marking it done. */
+  /* Set progress on a list row or sheet subtask. At 100%, complete the task. Below 100%, reopen a done task or
+     show the new progress on its tick. Keep messages off successful partial progress so the next swipe is
+     available. Failed saves offer Try again. undoing restores progress without marking the task done. */
   async setProgress(t, pct, rowEl, {undoing = false, sub = false} = {}){
     const was = pctOf(t), patch = undoing ? {percent_done: pct / 100} : progressPatch(t, pct);
     if (t.done && !undoing && pct < 100) return this.toggleDone(t, rowEl, {...patch, sub});
@@ -347,8 +321,7 @@ export default {
       this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, action: {label: 'Try again', fn: () => this.setProgress(t, pct, this.rowEl(t.id), {undoing, sub})}});
     }
   },
-  // Progress set in the sheet (its row, or its Progress line: setSheetProgress): as in the list, 100% is done, and
-  // anything else shows on its row's tick (save says if it isn't saved); a subtask's changes its parent's figure.
+  // Apply sheet progress like list progress. Complete at 100% and update a subtask's parent figure.
   async sheetProgress(t, pct){
     const patch = progressPatch(t, pct);
     if (t.done && pct < 100) return this.toggleDone(t, null, {...patch, sheet: true});   // opened again, at that progress
@@ -376,25 +349,22 @@ export default {
     } catch (e) { this.say(`Moved, but not all its subtasks: ${e.message}`, {place: 'sheet:props', cls: 'failed'}); }
     this.sheet.dirty = true;
   },
-  /* "Turn into its own task" (the sheet's ⋯, on a subtask's sheet): the open task is taken out from under the task it's
-     under (each, if it's under more than one), and is a task of its own in its project. In its old parent's project,
-     with the parent's place in the List view known, it goes right after it: before the task after that, where the
-     project's list is on screen to say which, else a little after the parent. Said at the sheet's top, with an Undo,
-     which puts it back under what it was, where it was among the subtasks. Its old parent's worked-out progress is
-     written again, without it (writeFigure: with no subtask left, it keeps its last figure, as when its last is
-     deleted). Not a run's step or a template's, which their order line names (canOwn). */
+  /* Detach the open subtask from all parents and keep it in its project. With a known List view position, place it
+     just after its parent. Undo restores its parents and subtask position. Recompute each old parent's progress,
+     keeping its last figure if no subtasks remain. Run and template steps cannot detach because their order notes
+     still name them. */
   get canOwn(){ return this.sheet.kind === 'task' && this.canEdit && !!this.parentTask && !this.checklistRole; },
   async ownTask(){
     const t = this.sheet.task;
     if (!this.canOwn) return;
     const parents = t.related_tasks.parenttask.map(p => ({id: p.id, title: p.title, project_id: p.project_id})), first = parents[0], out = [];
     const view = listViewOf(this.projById.get(t.project_id))?.id, at = this.positions[first.id], was = this.positions[t.id];
-    // Vikunja's copies as they are now, on the sheet and the rows; each parent's is read as its figure is written.
+    // Apply the fresh copies to the sheet and rows. Updating each parent's figure reads that parent again.
     const fresh = async () => {
       const now = await this.readTask(t.id).catch(() => null) || await this.readTask(t.id).catch(() => null);
       if (now) { cache.set(t.id, now); this.syncTask(now); if (this.sheet.task?.id === t.id) this.showTask(now); }
       await Promise.all(parents.map(p => this.writeFigure(p.id).catch(() => {})));
-      if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]);              // the add box, on it: no longer "after" it under its task
+      if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]);              // keep quick add on the task at its new level
       this.sheet.dirty = true;
     };
     const place = async pos => {
@@ -432,12 +402,11 @@ export default {
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
-  /* "Move all to today": each overdue task to today, at the time of day it had (movedDue). Undo puts every date back
-     (undoMoves). Not a repeating task: moved, its next times would follow the new date; ticked, it moves on to its next
-     date. What it did is said under the Overdue heading, which stays meanwhile. A row or a card held on Today and moved
-     to a new date is the same, one at a time (reschedule). */
+  /* Move overdue tasks to today while keeping their time of day. Exclude repeating tasks because moving them would
+     change their schedule. Show the result under Overdue with Undo to restore each date. reschedule uses the same
+     save and Undo for one held row. */
   async moveOverdueToToday(){
-    // Nor a checklist that comes round: moved, a weekly one would come round on another day from then on.
+    // Exclude repeating checklists so moving one does not change its future schedule.
     // On a card, its task and subtasks that are overdue themselves (overdueTasks).
     const overdue = this.overdueTasks, tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
     const tpl = overdue.filter(t => hasTemplateLabel(t)).length, stay = overdue.length - tasks.length - tpl;
@@ -454,9 +423,8 @@ export default {
     this.say(movedText(n, left, stays), {place: 'overdue', action: this.undoMoves(moves.filter(m => moved.includes(m.t)), 'today', {place: 'overdue'}, () => this.render())});
     this.render();
   },
-  /* The Undo of tasks moved to other dates (`moves`: {t, was}), Move all to today's, and that of one held on Today
-     (reschedule): each put back, unless it was changed since, elsewhere; those that couldn't be are said (`at`: where,
-     as say's), still due `still` (null: with no date). `after(back)`: given the moves put back, to show them. */
+  /* Restore each {t, was} move unless the task changed elsewhere. Explain failures at at with their remaining due
+     date still, or no date when null. Pass restored moves to after(back) to update the screen. */
   undoMoves(moves, still, at, after){
     return {label: 'Undo', fn: async () => {
       const same = [];                                                      // not changed since, elsewhere
@@ -467,14 +435,10 @@ export default {
       after(same.filter(m => back.includes(m.t)));
     }};
   },
-  /* A row or a card held on Today, moved to a new date (app/throw.js): Move all to today, one at a time. `to`: {due:
-     its new date (movedDue: its time of day kept; none for No date), label: the day's name, null for No date}. A
-     card's is its task's date only, its subtasks as they are. It's moved on screen at once (placeOnToday), then saved,
-     and said where it went, with an Undo for a few seconds (design rule 8: hold-to-reschedule-plan), which puts back
-     the date it had, its time too (undoMoves): on its row, where that's in sight once it's in its new place, else by
-     the add box (one that left Today, or is scrolled away). A card whose subtask is due sooner stays where that puts
-     it, and the line says why, by the add box, where there's room for the sentence (a row's line is cut short to one
-     line). Not saved, it goes back, and its row says so, with Try again, once it's drawn where it was. */
+  /* Move a held Today row to to.due immediately, then save and offer Undo. Change only a card's parent date. If an
+     earlier subtask keeps the card in place, explain why beside the add box. Put Undo on the visible destination
+     row, or beside the add box when the row left Today or is offscreen. A failed save restores the old group
+     before showing Try again. */
   async reschedule(t, to){
     const c = this.view.cards?.[t.id], m = {t, was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
     this.placeOnToday(t, to.due);
@@ -482,7 +446,7 @@ export default {
     const want = this.pendingPlace({due_date: to.due}), kept = c && this.todayKey(t) !== want && c.when !== t.due_date
       ? this.cardSubs(t, false).filter(s => !s.done && isSet(s.due_date)).sort((a, b) => Date.parse(a.due_date) - Date.parse(b.due_date))[0] : null;
     const saving = this.saveTask(t.id, {due_date: to.due}).then(() => null, e => e);
-    // Its Undo, once the move is saved (tapped sooner, it waits for that): back where it was, lit up there.
+    // Undo waits for the save before restoring and highlighting the original position.
     const back = this.undoMoves([m], to.label && dayWord(to.label), {place: 'cap'}, done => { if (done.length) { this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived'); } });
     const undo = {label: 'Undo', fn: async () => { if (!await saving) await back.fn(); }};
     await this.$nextTick();                                                 // its row is where it is now
@@ -497,10 +461,9 @@ export default {
   },
   // The group of Today's that task `t` is in (its key), or null.
   todayKey(t){ return this.view.groups.find(g => g.tasks.some(x => x.id === t.id))?.key ?? null; },
-  /* Task `t` due `due` on Today's screen, at once: in the group its date puts it in, among the others there in their
-     order (regroupToday), or off Today, past its next 7 days. A card goes by the earliest of its task's date and its open
-     subtasks' (`when`, as cards.js works it out as Today loads), or is given `when` (a Try again's). With no date, it
-     goes back to `key` (Added today, no date, which shows only those made today). */
+  /* Place task t in the Today group for due, or remove it beyond the next seven days. Cards use the earliest
+     parent or open-subtask date, unless when is supplied for a retry. Without a date, use key for the Added today,
+     no date group. */
   placeOnToday(t, due, when, key = 'nodate'){
     t.due_date = due;
     const c = this.view.cards?.[t.id];
@@ -514,11 +477,9 @@ export default {
   },
 
   /* ---------- reordering ---------- */
-  /* Move task `t` to place `to` among its siblings (`sibs`: tasks in their order on screen, it among them) in its
-     project's List view `view`. The screen changes at once, and the positions are written (placeMove) through the
-     outbox, so a move made without a connection waits, and is sent later. Turned down, it goes back, and its row says
-     why. (If Vikunja keeps another position than the one sent, it renumbered the view: applyAct reads it again.)
-     Resolves to whether it moved. */
+  /* Move t among siblings sibs in project List view view. Update the screen immediately and queue positions
+     through the outbox. Rejected moves restore the old order and explain why on the row. If Vikunja renumbers
+     positions, applyAct reloads the view. Return whether the task moved. */
   async reorder(t, sibs, to, view){
     const from = sibs.findIndex(s => s.id === t.id);
     if (from < 0 || to === from || to < 0 || to >= sibs.length || !view) return false;
@@ -536,7 +497,7 @@ export default {
     this.saveProject();
     return true;
   },
-  // A move Vikunja has, where it kept it: not where it was sent, it renumbered the view, so the list is read again.
+  // Reload the list if Vikunja renumbered the position instead of keeping the value sent.
   positionSent(a){
     if (typeof a.got !== 'number' || Math.abs(a.got - a.pos) < 1e-6) return;
     this.positions[a.task] = a.got;
@@ -548,12 +509,10 @@ export default {
     const o = this.orderOf(t, where), i = o ? o.sibs.findIndex(s => s.id === t.id) : -1;
     return i >= 0 ? this.reorder(t, o.sibs, i + dir, o.view) : false;
   },
-  /* Where task `t` can be moved: {sibs, view, blocks}, or null. Only among its siblings: on a project's list ('list'),
-     the tasks under the same parent there, each with its subtasks (blocks, siblingBlocks); in a task's sheet ('sheet'),
-     its subtasks, once their order is read (subView); from its own sheet ('own'), on the list under it if it's there,
-     else among its parent's subtasks, when where each of them is is known. Not a task done, waiting to be sent, or read
-     only; nor a step of a template or a run, which keep their order line, nor a subtask in another project than its
-     parent's, which has no place in that project's list. */
+  /* Return {sibs, view, blocks} for reordering among siblings, or null when unavailable. List moves include each
+     sibling's subtasks, sheet moves use the loaded subtask order, and an own-sheet move uses the visible list or
+     known parent order. Exclude done, pending, read-only and cross-project subtasks, plus template and run steps
+     with their own order notes. */
   orderOf(t, where){
     if (!t || t.pending || t.done || this.lines[t.id] || this.leaving[t.id] || !this.canWrite(t.project_id)) return null;
     const under = p => !!p && !hasOwnOrder(p) && p.project_id === t.project_id;
@@ -578,18 +537,12 @@ export default {
   },
 
   /* ---------- adding subtasks ---------- */
-  /* A subtask box's lines, as subtasks, through the outbox like quick add: without a connection they wait, shown in the
-     sheet and the lists, and are sent once Pocket reaches Vikunja. The sheet's box ('sub') adds them to the open task,
-     after its subtasks; the add box on a project's list ('under'), to the task it's on (the cursor, quickadd.js), after
-     the cursor's subtask, which the last one added from there then is, so each goes after the one before. Each is sent
-     with its place in its project's List view, once where they are is known (Vikunja would put each first). (A
-     template's steps are added with addTemplateSteps.) The box keeps the focus, to type the next one. Added, they show
-     on their rows, with no message unless there's a problem: one added by mistake is deleted from its row, which has
-     an Undo. */
-  /* Where the next `n` subtasks from the sheet's box go in the project's List view: after the subtask the box is under
-     (sheet.subAt: nudgedSub, app/sheet.js), or the last added from there, still on its way (sheet.subAfter); with the
-     box at the foot, after the last. null where their order isn't known yet. Never a place another task has
-     (clearPlaces, quickadd.js). */
+  /* Queue subtask-box lines like quick add so they appear immediately and survive connection loss. The sheet box
+     inserts at its selected row or the end. The list box inserts at the cursor, following each newly added
+     subtask. Save List view positions so Vikunja does not put them first. Keep input focus and use row deletion
+     with Undo for mistakes. */
+  /* Place n sheet subtasks after the selected row or its latest pending addition, or last when the box is at the
+     foot. Return null until the order is known, and avoid positions already used by another task. */
   subPlaces(n){
     const s = this.sheet;
     if (!s.subView && this.subtasks.length) return null;
@@ -606,41 +559,41 @@ export default {
     const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
-    // On Today, each line that's the task's own subtask takes a row on its card at once, waiting, where the box is:
-    // after the cursor's row, or on top under the header, and each after the one before (cardAdded; cardRows, cards.js).
+    // Reserve new direct subtasks on Today's card immediately, in entry order after the cursor or below the
+    // header.
     if (today) {
       if (!this.cardAdded[parent.id]) this.cardAdded[parent.id] = [];
       const rows = this.cardAdded[parent.id];
       let after = this.cursor?.under != null ? this.cursor.id : null;
       items.forEach((x, i) => { if (x.under === null) { rows.push({id: `pending-${entry.id}-${i}`, after}); after = rows.at(-1).id; } });
     }
-    // From the add box, the light follows what's added, and the next go after it: the last that's the task's own
-    // subtask, not one under it (aimAdded, quickadd.js).
+    // Follow the last new direct subtask with the highlight so the next entry follows it, rather than a nested
+    // child.
     if (foot) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
     const here = () => foot || this.sheet.task?.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
-    // The next can be sent while this one is on its way (the outbox sends them in turn): `adding` counts them.
+    // Allow another submission while this batch sends. adding counts the batches still pending.
     b.adding++; b.text = '';
     if (!foot || b.focus) this.$nextTick(() => this.boxEl(w)?.focus());
     try {
-      // On screen at once, where they'll be, as the outbox is asked to keep them, not once it has: from the add box, the
-      // light is on the last already. They look waiting only if sending takes a while.
+      // Show rows and the target highlight before queuing finishes. Delay the waiting appearance until sending
+      // takes a while.
       const keeping = sync.add(entry, []);
       this.refreshPending();
       const {kept, full} = await keeping;
       const r = await sync.lock(() => this.sendEntry(entry.id));
       if (foot) this.refreshPending();                                    // the waiting rows, and the rows sent, swapped at once
-      // On Today, the tasks sent take their waiting rows' places on the card (cardAdded), kept so the light is on them (aimSent).
+      // Replace pending card rows with their saved tasks while preserving the target highlight.
       if (today) for (const {child, problems, arrived, was, place, ...x} of r.tasks || []) { this.keep(x); for (const a of this.cardAdded[parent.id] || []) { if (a.id === was) a.id = x.id; if (a.after === was) a.after = x.id; } }
       this.placeSent(r.tasks || []);
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && foot) {
         this.flash(r.ids);
-        // Its row's count of subtasks, with these, read again. (On Today its card has them where they were added already.)
+        // Reload the parent's subtask count. Today's card already holds the new rows in their insertion positions.
         this.readTask(parent.id).then(t => { if (t) { cache.set(t.id, t); this.keep(t); } }).catch(() => {});
       } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;
         try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
-        // The box under a subtask: under the last one added from now, in its place on the list, so the next go after it.
+        // Follow the last added sheet subtask so the next entry follows it.
         const last = r.ids[items.findLastIndex(x => x.under === null)];
         if (here() && this.sheet.subAt != null && last) { this.sheet.subAt = last; this.sheet.subAfter = null; this.seatFoot('sheet'); }
       }
@@ -694,20 +647,16 @@ export default {
       this.notify(n ? `Deleted, with ${n} step${n === 1 ? '' : 's'}` : 'Deleted');                   // its sheet and row are gone
     } catch (e) { this.say(`Stopped after deleting ${e.deleted} of ${tree.length}: ${e.message}`, {place: 'sheet:top', cls: 'failed'}); this.render(); }
   },
-  // Whether a row can be swiped to its Delete: not a run, a step of one, a template, a task waiting to be sent, or one
-  // in a project shared with you to read; in a sheet (`sheet`), not a run's or a template's steps.
+  // Allow swipe deletion only for saved writable tasks. Runs, their steps and templates have their own deletion
+  // paths.
   canDelete(t, sheet){
     return !t.pending && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t) && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t))
       && !(sheet && ['run', 'template'].includes(this.checklistRole));
   },
-  /* Deleting a task, from its row's Delete or its sheet's ⋯: its subtasks go with it, all the way down (taskTree), and
-     with any it asks first. Its row stays where it is, a gap holding only Restore, with its subtasks' rows, until
-     the batch clears (markRow, leaving.js): then they go, and it's sent; or at once if the screen is left, or Pocket is
-     put away or closed. Meanwhile it waits in the outbox, kept on the phone, held back (sync.held): so it's sent even
-     if Pocket is closed before then, the next time it opens, and without a connection, once there's one. Restore takes
-     it out of the outbox: nothing was sent, so nothing has to be made again. With no row of it on screen, a message
-     says so, with an Undo, and it's sent when that goes. Resolves to whether it's deleted (not if it was called off).
-     `tree`: what it deletes, if that was asked about already (askDelete). */
+  /* Hold task deletions in the outbox while marked rows keep a Restore gap until the batch clears. Delete
+     descendants too, asking first when any exist. Restore removes the held entry without recreating tasks. Send
+     when the rows or Undo message leave, or when Pocket closes. Persist the hold so reopening or reconnecting
+     finishes the deletion. Return false if cancelled. tree reuses a deletion already confirmed. */
   async removeTask(t, tree = null){
     const d = await this.holdDelete(t, d => {
       const undo = () => this.undoDelete(d.id), gone = () => this.sendHeld(d.id);
@@ -719,9 +668,8 @@ export default {
   },
   // Whether a task has subtasks, as far as the phone knows: by its own copy, the one on screen, or Vikunja's last.
   hasSubtasks(t){ return [t, this.tasks[t.id], cache.get(t.id)].some(x => x?.related_tasks?.subtask?.length); },
-  /* What deleting `t` deletes: itself and its subtasks, all the way down (taskTree), asked about first if there are any,
-     saying how many. Resolves to their ids, deepest first, or null: called off, or not read (its row says so). A row
-     swiped to delete a task with subtasks asks here before the row goes anywhere (swipeDelete, app/progress.js). */
+  /* Find the task and descendants to delete, deepest first, and confirm their count. Return null on cancellation
+     or a read error. Swipe deletion asks before moving any row. */
   async askDelete(t){
     let tree;
     try { tree = await this.taskTree(t.id); } catch (e) { this.say('Not deleted: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'}); return null; }
@@ -729,50 +677,47 @@ export default {
     const deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
     return n && !confirm(`Delete “${t.title}” and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?`) ? null : tree;
   },
-  /* The deletion itself, apart from how it's shown (`show`, given {id, n: its subtasks, ids: the task's and theirs} just
-     before the rows go): asked first if it has subtasks (askDelete; not again, given the `tree` that was asked about),
-     then off the lists at once (but rows deleted in place), and kept in the outbox, held back (sync.held), until
-     sendHeld or undoDelete. Resolves to {id, n}, or null if it was called off. */
+  /* Confirm the task tree unless tree already supplies it. Queue a held deletion and call show({id, n, ids})
+     before hiding unmarked rows. Keep the entry until sendHeld or undoDelete. Return {id, n}, or null on
+     cancellation. */
   async holdDelete(t, show, tree = null){
     tree ||= await this.askDelete(t);
     if (!tree) return null;
     const n = tree.length - 1;
-    // A subtask deleted changes its parent's worked-out progress: written once it's sent (`up`, the act's last part).
+    // Update the surviving parent's progress in the deletion action's final stage.
     const up = this.parentIdOf(t);
     const entry = {id: randomId(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), items: [], files: [], stage: 0, fails: 0,
       run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + HELD_MS, ...typeof up === 'number' && !tree.includes(up) && {up}};
     sync.held.add(entry.id);
     const added = sync.add(entry, []);
     show?.({id: entry.id, n, ids: tree});
-    this.refreshPending();                                                  // off the lists at once, but rows deleted in place
+    this.refreshPending();                                                  // hide unmarked rows immediately while Restore gaps stay visible
     await added;
     return {id: entry.id, n};
   },
-  // Restore, or Undo: the deletion isn't sent, and the rows are back.
+  // Cancel the held deletion and restore its rows.
   async undoDelete(id){
     if (!sync.held.delete(id)) return;
-    // Back on its list at once, not once it's out of the outbox: its row, restored where it is, mustn't blink out.
+    // Restore the rows before removing the outbox entry so they do not disappear for a frame.
     const e = this.user ? sync.all(this.user.id).find(x => x.id === id) : null;
     if (e) this.deleting = this.deleting.filter(x => !e.ids.includes(x));
     await sync.lock(() => sync.remove(id));
     this.refreshPending();
   },
-  // Send a deletion whose rows have gone, or whose Undo has (`id`), or, with none, every one still held: Pocket is being
-  // put away.
+  // Send a deletion after its rows or Undo leave. Without id, send all held deletions when Pocket is hidden.
   async sendHeld(id){
     if (!id) { await Promise.all([...sync.held].map(h => this.sendHeld(h))); return; }
     if (!sync.held.delete(id)) return;                                      // undone, or sent already
     await sync.lock(async () => { const e = await sync.fresh(id); if (e?.until) { delete e.until; await sync.save(e); } });
     await this.sendActs(id);
   },
-  /* A task and its subtasks, all the way down, deepest first. A subtask that's also under another task stays, with
-     what's under it. */
+  /* Collect descendants deepest first. Keep a subtask and its descendants when another parent still owns it. */
   async taskTree(id){
     const out = [], seen = new Set();
     const walk = async (tid, from) => {
       if (seen.has(tid)) return;
       seen.add(tid);
-      // Without a connection: as last loaded, so a task with subtasks Pocket hasn't seen goes without them.
+      // Use cached descendants offline. Unseen subtasks cannot be included in the deletion.
       const t = tid === this.sheet.task?.id ? this.sheet.task : await api('/tasks/' + tid).catch(e => { if (e instanceof NetError) return cache.get(tid) || {id: tid}; throw e; });
       if (from && (t.related_tasks?.parenttask || []).some(p => p.id !== from)) return;
       for (const sub of t.related_tasks?.subtask || []) await walk(sub.id, tid);
@@ -781,7 +726,7 @@ export default {
     await walk(id, null);
     return out;
   },
-  // Delete what taskTree found. A refusal stops it, saying how many went (e.deleted).
+  // Stop deleting at the first rejection and report the number already deleted in e.deleted.
   async deleteTree(ids){
     let n = 0;
     try {
@@ -793,7 +738,7 @@ export default {
   },
 
   /* ---------- people and labels ---------- */
-  // Assign someone to a task, or take them off; resolves once Vikunja has it, and it's on screen.
+  // Save assignee changes before applying them to the screen and cache.
   async addAssignee(t, u){
     await api(`/tasks/${t.id}/assignees`, {method:'POST', body:{user_id: u.id}});
     this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id);
@@ -807,7 +752,7 @@ export default {
     const c = cache.get(id); if (c) c.assignees = assignees;
     this.syncTask({id, assignees});
   },
-  // Label a task, or take a label off. `l` null: a new label called `title`, made first.
+  // Add a label, creating it with title first when l is null.
   async addLabelTo(t, l, title){
     if (!l) { l = await api('/labels', {method:'POST', body:{title}}); this.labels.push(l); }
     await api(`/tasks/${t.id}/labels`, {method:'POST', body:{label_id: l.id}});

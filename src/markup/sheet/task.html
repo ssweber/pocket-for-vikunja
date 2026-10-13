@@ -110,7 +110,7 @@
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Labels</span><span class="v">
           <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
-          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">Checklists started from it get its labels, all but “template”, which is what makes it a template.</span></template>
+          <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">Every checklist started from this template gets its labels, except “template”, which marks it as a template.</span></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" data-tap @click="toggleLabelPicker()">Add</button></template>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Assigned</span><span class="v" id="d-assignees">
@@ -137,10 +137,10 @@
             <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
           </select>
         </span></div></template>
-        <!-- Progress, the tap path for a swipe on the row (design rule 3): the quarters, the one it's at pressed (none for
-             progress set elsewhere, 30% say, nor for a done task, which a quarter opens again at). Done is the tick. Not
-             a parent's (a run's too): its progress is worked out from its subtasks (rule 5). Claims it as a swipe does
-             (setSheetProgress). -->
+        <!-- Progress, the tap path for the row's swipe: the quarters, with the one the task is at pressed. None is pressed
+             for progress set elsewhere (30%, say) or for a done task, which a quarter reopens. Done is the tick. Not for
+             a parent (a checklist too), whose progress is worked out from its subtasks. Tapping a quarter claims the
+             task, as a swipe does (setSheetProgress). -->
         <template x-if="!ofTemplate && !sheetRing && canEdit"><div class="prop"><span class="k">Progress</span><span class="v d-quarters" id="d-progress" role="group" aria-label="Progress">
           <template x-for="q in QUARTERS" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(quarterOn(sheet.task) === q)" :aria-label="q + '% done'" @click="setSheetProgress(q)" x-text="q + '%'"></button></template>
         </span></div></template>

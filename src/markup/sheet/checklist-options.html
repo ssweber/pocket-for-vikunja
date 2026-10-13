@@ -1,7 +1,8 @@
-    <!-- A project's options: using it for checklists, so everyone it's shared with gets the Checklists tab -->
+    <!-- A project's sheet. Using a project for checklists gives everyone it is shared with a Checklists tab. -->
     <template x-if="sheet.kind === 'project' && sheet.project"><div>
       <div class="d-title"><h2 x-text="sheet.project.title"></h2></div>
-      <!-- Its open tasks, to send or keep, and its page in Vikunja: for anyone who can see it, and offline too -->
+      <!-- Share or copy the project's open tasks, and open its page in Vikunja. For anyone who can see the project,
+           offline too. -->
       <div class="card share-card" id="p-sharing">
         <button type="button" id="p-share-text" @click="shareProgress('project')">Share progress as a text</button>
         <button type="button" id="p-copy-md" @click="copyMarkdown('project')">Copy as a Markdown list</button>
@@ -9,51 +10,53 @@
       </div>
       <template x-if="sheet.projEdit?.perm === null"><div class="loading">Loading…</div></template>
       <template x-if="sheet.projEdit?.perm === -1"><p class="note" id="p-offline">Changing a project needs a connection to Vikunja.</p></template>
-      <template x-if="sheet.projEdit?.perm === 0"><p class="note" id="p-readonly">You can see this project, but not change it: it's shared with you to read only.</p></template>
+      <template x-if="sheet.projEdit?.perm === 0"><p class="note" id="p-readonly">Read only. You can see this project but not change it.</p></template>
       <template x-if="sheet.projEdit?.perm >= 1"><label class="field"><span>Name</span>
         <input id="p-name" x-model="sheet.projEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="renameProject()"></label></template>
       <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-checklist">
         <template x-if="!isChecklistProject(sheet.project)"><div>
-          <p>Use this project for checklists: templates people start, and work through step by step, again and again. Everyone the project is shared with gets a Checklists tab in Pocket.</p>
+          <p>Use this project for checklists. A checklist is started from a template and worked through step by step, again and again. Everyone the project is shared with gets a Checklists tab in Pocket.</p>
           <button class="btn block" id="p-use-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, true)">Use for checklists</button>
         </div></template>
         <template x-if="isChecklistProject(sheet.project)"><div>
-          <p>This project is for checklists: its templates, and the checklists started from them, are under Checklists.</p>
+          <p>This project is used for checklists. Its templates, and the checklists started from them, are under Checklists.</p>
           <a class="btn ghost block" href="#/checklists" style="text-decoration:none;margin-bottom:10px">Go to Checklists</a>
           <template x-if="sheet.projEdit.perm >= 2 && startedHidden[sheet.project.id]"><button type="button" class="btn ghost block" id="p-show-started" style="margin-bottom:10px"
             @click="hideGettingStarted(sheet.project.id, false); go('#/checklists')">Show Getting started again</button></template>
           <button class="btn danger block" id="p-stop-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, false)">Stop using for checklists</button>
         </div></template>
       </div></template>
-      <!-- Sharing is done in Vikunja's web app: its share page, for whoever can share -->
+      <!-- Sharing is done on the project's share page in Vikunja's web app -->
       <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-share-card">
         <template x-if="sheet.projEdit.perm >= 2"><div>
-          <p>Sharing it is done in Vikunja's web app. Pick <b>Read &amp; write</b> for anyone who'll tick its tasks or work through its checklists.</p>
+          <p>Share this project in Vikunja's web app. Give <b>Read &amp; write</b> to anyone who will tick its tasks or work through its checklists.</p>
           <a class="btn ghost block" id="p-share" :href="shareUrl(sheet.project.id)" target="_blank" rel="noopener" style="text-decoration:none">Share it in Vikunja ↗</a>
         </div></template>
-        <template x-if="sheet.projEdit.perm < 2"><p style="margin:0">Only its owner, or someone it's shared with as admin, can share it, in Vikunja's web app.</p></template>
+        <template x-if="sheet.projEdit.perm < 2"><p style="margin:0">Only the project's owner, or an admin it is shared with, can share it. That is done in Vikunja's web app.</p></template>
       </div></template>
       <template x-if="sheet.projEdit?.perm >= 1"><div class="danger-zone">
         <button class="btn ghost block" id="p-archive" @click="archiveProject()">Archive project</button>
         <template x-if="sheet.projEdit.perm >= 2"><button class="btn danger block" id="p-delete" style="margin-top:10px" @click="deleteProject()"
           x-text="sheet.projEdit.tasks === null ? 'Delete project' : 'Delete project and its ' + sheet.projEdit.tasks + (sheet.projEdit.tasks === 1 ? ' task' : ' tasks')"></button></template>
-        <template x-if="sheet.projEdit.perm >= 2 && isChecklistProject(sheet.project) && sheet.projEdit.tasks"><p class="note" id="p-delete-note">Its tasks are its templates and checklists, with each one's steps.</p></template>
-        <template x-if="sheet.projEdit.perm < 2"><p class="note">Only the project's owner, or someone it's shared with as admin, can delete it.</p></template>
+        <template x-if="sheet.projEdit.perm >= 2 && isChecklistProject(sheet.project) && sheet.projEdit.tasks"><p class="note" id="p-delete-note">The tasks are its templates and checklists, and their steps.</p></template>
+        <template x-if="sheet.projEdit.perm < 2"><p class="note">Only the project's owner, or an admin it is shared with, can delete it.</p></template>
       </div></template>
     </div></template>
 
-    <!-- A run's ⋯: who started it and when (its history: who it's for is its row's slot), the run as a task, and deleting it -->
+    <!-- A checklist's ⋯ sheet: who started it and when, its name and who it is for, the checklist as a task, and
+         deleting it -->
     <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
       <template x-if="runStarted"><p class="note run-started" id="r-started" x-text="runStarted"></p></template>
       <div class="d-title"><h2 x-text="view.run.run.title"></h2></div>
-      <!-- Its steps, who did each and who's on the rest, to send, and its page in Vikunja. No Markdown copy: that one
-           comes back as tasks when it's pasted, and a run's record of who did what can't -->
+      <!-- Share the steps, who did each and who is on the rest, and open its page in Vikunja. There is no Markdown
+           copy: a pasted Markdown list makes tasks again, and a checklist's record of who did what can't come back that
+           way. -->
       <div class="card share-card" id="r-sharing">
         <button type="button" id="r-share-text" @click="shareProgress('run')">Share progress as a text</button>
         <a id="r-open-vikunja" :href="vikunjaUrl('run')" target="_blank" rel="noopener">Open in Vikunja ↗</a>
       </div>
       <template x-if="sheet.runEdit"><div>
-        <label class="field"><span x-text="!sheet.runEdit.prefix ? 'Name' : 'This checklist\'s own name, ' + (sheet.runEdit.old ? 'between' : 'after') + ' the template\'s and the day'"></span>
+        <label class="field"><span x-text="!sheet.runEdit.prefix ? 'Name' : 'Name, shown ' + (sheet.runEdit.old ? 'between' : 'after') + ' the template\'s name and the day'"></span>
           <input id="r-name" x-model="sheet.runEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="saveRunName()"></label>
         <div class="h3">For</div>
         <div class="card who-pick" id="r-for" role="group" aria-label="Who the checklist is for">

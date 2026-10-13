@@ -1,4 +1,4 @@
-    <!-- Checklists: each checklist project's templates, to start a run from, and its runs in progress -->
+    <!-- The Checklists screen: each checklist project's templates, and the checklists in progress -->
     <template x-if="!view.loading && !view.error && route.name === 'checklists'"><div id="checklists">
       <template x-for="line in placeLines('checklists')" :key="line.n">
         <!-- include markup/place-line.html -->
@@ -8,7 +8,8 @@
       </template>
       <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
         <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
-        <!-- For its owner, until hidden: what tripped everyone setting one up (docs/design/checklist-setup-plan.md) -->
+        <!-- Shown to the project's owner until they hide it. It covers the three things people miss when setting up
+             checklists. -->
         <template x-if="gettingStarted(cl.project.id)"><div class="card getting-started" :id="'getting-started-' + cl.project.id">
           <h3>Getting started</h3>
           <ol>
@@ -26,8 +27,8 @@
               <div class="t"><div class="title" x-text="t.title"></div><div class="meta num"><span x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></span><template x-if="scheduleText(t)"><span class="cl-when" x-text="scheduleText(t)"></span></template></div></div></button>
             <template x-if="canWrite(cl.project.id)"><button class="btn cl-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button></template>
           </div></template>
-          <template x-if="!cl.templates.length"><p class="cl-hint">No templates here yet: a template is what each checklist is started from.</p></template>
-          <template x-if="!canWrite(cl.project.id)"><p class="cl-hint">Shared with you to read only: you can see its checklists, but not start or work on them.</p></template>
+          <template x-if="!cl.templates.length"><p class="cl-hint">No templates yet. A checklist is started from a template.</p></template>
+          <template x-if="!canWrite(cl.project.id)"><p class="cl-hint">Read only. You can see its checklists but not start or work on them.</p></template>
           <div class="row cl-new" x-show="canWrite(cl.project.id)"><button class="body" @click="openNewTemplate(cl.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>
         </div>
         <template x-if="cl.runs.length || startingIn(cl.project.id).length"><div>
@@ -36,13 +37,13 @@
             <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending waits"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
               <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="forText({assignees: e.for})"></span></div></div>
               <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
-            <!-- The same row as on Today: its steps done, the next, its progress line -->
+            <!-- The same row as on Today, with its ring and its progress line -->
             <template x-for="g in [{depth: {}}]" :key="0"><template x-for="t in cl.runs" :key="t.id">
               <!-- include markup/task-row.html -->
             </template></template>
           </div>
         </div></template>
-        <!-- The last few runs finished, to look back at, or reopen from their ⋯ -->
+        <!-- The last few finished checklists, to look back at or reopen from their ⋯ -->
         <template x-if="cl.finished?.length"><div>
           <div class="cl-sub">Finished lately</div>
           <div class="list">

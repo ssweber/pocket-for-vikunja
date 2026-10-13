@@ -84,7 +84,7 @@ function textLines(items, depth, {long, bars, now}){
      Pack the van  ▰▱▱▱ 38%
      ✓ Load chairs
      ◐ Tables 50%
-     ○ Sound system · Priya
+     ○ Sound system · @user
      ○ Lights */
 export function shareText(doc, now = new Date()){
   const items = doc.items || [];

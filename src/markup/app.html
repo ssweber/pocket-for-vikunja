@@ -1,7 +1,7 @@
 <div id="app" :hidden="screen !== 'app'" hidden>
-  <!-- Slides away as the list scrolls down, and back as soon as it scrolls up (initHeader). While searching, it holds the
-       search box instead; that's always here, hidden, so the magnifier can focus it during the tap and the phone's
-       keyboard opens (see openSearch). -->
+  <!-- The header slides away as the list scrolls down and comes back as soon as it scrolls up (initHeader). While
+       searching, it shows the search box instead. The search box is always in the page, hidden, so the magnifier button
+       can focus it during the tap, which is what makes the phone's keyboard open (openSearch). -->
   <header class="top" x-ref="header" :class="{tucked: headerTucked, searching: route.name === 'search'}">
     <form class="search" role="search" @submit.prevent="$refs.searchIn.blur()">
       <svg class="i"><use href="#i-search"/></svg>
@@ -15,26 +15,28 @@
       <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
-    <!-- Refresh, or, while something waits to be sent or was turned down, what's waiting (outbox.js) -->
+    <!-- Refresh. While something waits to be sent, or Vikunja turned something down, the button opens Waiting to send
+         instead (outbox.js). -->
     <button id="btn-refresh" class="icon-btn" :class="{waits: outboxShown, trouble: failed.length}" :aria-label="outboxShown ? outboxLabel : 'Refresh'"
             :disabled="refreshing && !outboxShown" @click="tapRefresh()"><svg class="i"><use :href="failed.length ? '#i-alert' : outboxShown ? '#i-wait' : '#i-refresh'"/></svg>
       <template x-if="outboxShown"><span class="count num" id="outbox-count" aria-hidden="true" x-text="outboxRows.length"></span></template></button>
     <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
-    <!-- What's on screen (the copy kept of it, say) being loaded afresh, when that takes over a second -->
+    <!-- Shown while the screen reloads from Vikunja and that takes over a second -->
     <div class="behind" id="behind" x-show="view.behind" aria-hidden="true"></div>
   </header>
 
-  <!-- Busy while it's loaded afresh, or its rows are still being drawn a batch at a time (drawFrom, views.js) -->
+  <!-- Busy while the screen reloads, or while its rows are still being drawn a batch at a time (drawFrom, views.js) -->
   <main id="view" :class="{bare: route.name === 'run'}" aria-live="polite" :aria-busy="view.updating || drawing ? 'true' : null">
-    <!-- A project's name, or a run's own row (its ring, its name and who it's for: RUN_ROW, the task row) between Back and
-         ⋯, in the place its name had, so the run's screen is no taller for it. Its project is said in its sheet. -->
+    <!-- The title bar: Back, the project's name, and ⋯. On a checklist's screen the name's place holds the checklist's
+         own row instead (RUN_ROW, task-row.html), with its ring, its name and who it's for, so the screen is no taller
+         for it. Its project is named in its sheet. -->
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title" :class="{'run-top': !!runOwn}">
       <button id="btn-back" class="icon-btn plain" :aria-label="'Back to ' + backName" @click="route.name === 'run' ? leaveRun() : back(projectFrom || '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <template x-if="runOwn"><div id="run-own"><template x-for="g in [RUN_ROW]" :key="0"><template x-for="t in [runOwn]" :key="t.id">
         <!-- include markup/task-row.html -->
       </template></template></div></template>
       <template x-if="!runOwn"><div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div></template>
-      <!-- The project's own sheet: where it's used for checklists -->
+      <!-- Opens the project's sheet, where it is set up for checklists -->
       <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
       <template x-if="route.name === 'run' && view.run"><button id="btn-run-more" class="icon-btn plain" aria-label="Checklist options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
     </div></template>
@@ -52,6 +54,6 @@
     <!-- include markup/screens/run.html -->
   </main>
 
-  <!-- Quick add's box at the bottom, and the place it leaves there while it's in the list -->
+  <!-- The quick-add bar at the bottom -->
   <!-- include markup/add-bar.html -->
 </div>

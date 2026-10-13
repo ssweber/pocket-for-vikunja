@@ -1,23 +1,21 @@
-/* The tasks on screen, one copy of each: tasks[id] is the object every row of a task shows, in every list. A list
-   loaded from Vikunja puts its tasks here (keep), and a change saved to one (syncTask) is then on all its rows at once.
-   `cache` (util.js) is apart from it: Vikunja's last copy of each task, as it said it, which an Undo compares against
-   and a failed save puts back. Not yet here: a task's sheet has a copy of its own (sheet.task), its subtasks are
-   Vikunja's copies inside it, and a run's screen has its own steps (view.run). */
+/* One object per task: tasks[id] is what every row of that task shows, in every list. A list loaded from Vikunja puts
+   its tasks here (keep), and a change saved to one (syncTask) shows on all its rows at once. `cache` (util.js) is
+   separate: Vikunja's last copy of each task, which an Undo compares against and a failed save restores. Not here yet:
+   the sheet's own copy of its task (sheet.task), the subtasks inside it, and a run's steps (view.run). */
 import {cache, raw} from '../util.js';
 
-const forgotten = new Set();                     // tasks deleted this session, still in copies kept on the phone
-// A field as Vikunja gave it again: the same, a list or an object by what's in it (Vikunja writes them in one order).
+const forgotten = new Set();                     // tasks deleted this session, which copies kept on the phone may still hold
+// Whether a field is the same as Vikunja gave it. Lists and objects compare by content, since Vikunja writes them in one order.
 const same = (a, b) => a === b || (!!a && !!b && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
 
 export default {
-  /* A task as Vikunja has it now, in place of what was kept of it (a list loaded again): the object its rows show. Only
-     the fields that changed are written, so the row of a task that didn't change has nothing to do: a list or an object
-     from Vikunja is a new one each time, though nothing in it changed. (Not by its `updated` alone: a subtask ticked
-     leaves its parent's as it was, and its ring shows it.)
-     A task shown done, held or marked until the batch clears (leaving.js), that Vikunja has open, stays as it's shown,
-     ticked, with the date it had. It's one just ticked, its save not yet answered (held from the tap: holdRow), which
-     the save's answer brings up to date, or lets go of; or a repeating one, ticked, or added done, which Vikunja
-     moved on to its next date: its mark gives it Vikunja's copy when it goes (toggleDone, actions.js; arrivedDone,
+  /* Update the one object for task `t` from Vikunja's copy, and return it. Only the fields that changed are written,
+     so the rows of a task that didn't change have nothing to redraw: Vikunja sends a new list or object each time even
+     when nothing in it changed, and `updated` alone isn't enough, since ticking a subtask leaves the parent's `updated`
+     as it was though its ring changes.
+     A task shown done until its batch clears (leaving.js) stays shown done even if Vikunja still has it open. Either
+     its save hasn't been answered yet, and the answer brings it up to date, or it is a repeating task that Vikunja
+     moved on to its next date, and it gets Vikunja's copy when it leaves (toggleDone, actions.js; arrivedDone,
      sending.js). */
   keep(t){
     const had = this.tasks[t.id];
@@ -28,8 +26,8 @@ export default {
     for (const [k, v] of Object.entries(t)) if (!same(was[k], v)) had[k] = v;
     return had;
   },
-  /* Tasks from a copy kept on the phone (a screen shown before it's loaded): each the one on screen already, unless the
-     kept copy is newer (loaded in the background since); none deleted since. */
+  /* Rows from a copy kept on the phone, for a screen shown before it has loaded. Each is the object on screen already,
+     unless the kept copy is newer (loaded in the background since). Tasks deleted since are left out. */
   keptRows(list){
     const newer = (a, b) => Date.parse(a.updated) > Date.parse(b.updated);
     return list.filter(t => !forgotten.has(t.id)).map(t => {
@@ -39,16 +37,15 @@ export default {
       return this.keep(t);
     });
   },
-  // A change saved to a task, on its rows.
+  // Put a saved change on the task's rows.
   syncTask(saved){ const t = this.tasks[saved.id]; if (t) Object.assign(t, saved); },
-  // The task of a row on the page, by its id.
   rowTask(id){ return this.tasks[id] || null; },
   removeRow(id){
     for (const g of this.view.groups) { const i = g.tasks.findIndex(t => t.id === id); if (i >= 0) g.tasks.splice(i, 1); }
   },
-  // A task deleted: off the list on screen, and forgotten.
+  // Drop a deleted task from the list on screen, and remember that it is gone.
   forget(id){ cache.delete(id); delete this.tasks[id]; forgotten.add(id); this.removeRow(id); },
-  // Tasks deleted: forgotten, and off the subtasks of those on screen and of the task in the sheet.
+  // Drop deleted tasks, and take them out of the subtasks of tasks on screen and of the task in the sheet.
   forgetTree(ids){
     for (const id of ids) this.forget(id);
     for (const t of [this.sheet.task, ...Object.values(this.tasks)]) {

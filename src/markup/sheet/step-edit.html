@@ -1,8 +1,9 @@
-<!-- A template's step being changed, in its row's place for its words (task-row.html, g.step; `t`, the step): quick
-     add's box ('edit', x-box), where @people assign it and *labels label it, as when it was written, with its time
-     chip and what quick add read under it, and its notes and photos' own sheet. Saved once the focus leaves its row:
-     its chips and its link are part of it, and keep the keyboard up. Escape calls the change off, and Alt+↑ and ↓ move
-     the step. It has no buttons to move or remove it: its row is held, and swiped left (stepReorder, app/progress.js). -->
+<!-- A template's step being edited, in its row's place (task-row.html, g.step; `t` is the step). The editor is quick
+     add's box ('edit', x-box), so @user assigns the step and *label labels it, as when it was written, with its time
+     chip and the chips for what quick add read under it, and a link to its notes and photos. The step is saved once the
+     focus leaves its row; the chips and the link count as part of the row, and keep the keyboard up. Escape cancels the
+     change. Alt+↑ and Alt+↓ move the step. There are no buttons to move or remove it: hold the row to move it, swipe
+     left to delete it (stepReorder, app/progress.js). -->
 <div class="body step-in" x-data="{bw: 'edit'}" @focusout="setTimeout(() => $el.closest('.row')?.contains(document.activeElement) || saveStepEdit(stepAt(t)))">
   <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('edit')"></div><textarea class="draft-in" rows="1" :id="'step-edit-' + t.id" x-model="sheet.stepEdit.text" x-box="bw" :aria-label="'Change step ' + (stepAt(t) + 1)" enterkeyhint="done"
             x-init="$nextTick(() => { passFocus($el, typed => { sheet.stepEdit.text += typed; }, true); grow($el); })"
@@ -14,7 +15,7 @@
     </template>
   </div></template>
   <!-- include markup/sheet/box-chips.html -->
-  <!-- (Not one written in New template: it has no notes until the template is created.) -->
+  <!-- Not in New template: a step has no notes until the template is created. -->
   <template x-if="!t.key"><div class="step-in-foot">
     <button type="button" class="linkish step-notes" :id="'step-notes-' + t.id" @mousedown.prevent @click="openStep(stepAt(t))">Notes and photos ›</button>
   </div></template>

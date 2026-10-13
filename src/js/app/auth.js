@@ -10,7 +10,7 @@ export default {
   get passwordAllowed(){ const a = this.info?.auth || {}; return !!(a.local?.enabled || a.ldap?.enabled); },
   // Single sign-on providers Vikunja offers (Cloudron's login shows up here), from /info.
   get providers(){ const o = this.info?.auth?.openid_connect; return o?.enabled ? o.providers || [] : []; },
-  // Follow the shared session: adopt one that appeared (a sign-in finished) and sign out when Vikunja did.
+  // Follow the shared session: adopt a token that appeared (a sign-in finished), and sign out when Vikunja did.
   sessionChanged(){
     if (this.mode === 'token' && this.signedIn) return;                     // an API token doesn't follow Vikunja's sign-in
     const t = sharedToken.get();
@@ -27,8 +27,8 @@ export default {
       }, 2000);
     } else if (t && t !== seenToken && this.signedIn && this.mode === 'session' && this.user) {
       // A new token is usually Vikunja renewing the session, but it can be someone else signing in on Vikunja's web
-      // app before Pocket saw the sign-out. Then Pocket starts over as them. Until it knows, no change is sent (see
-      // api), and if it can't find out now, the next change, or try to send what's waiting, asks again.
+      // app before Pocket saw the sign-out. Then Pocket starts over as them. Until it knows, api.js sends no change.
+      // If Vikunja can't be asked now, the next change or flush asks again.
       clearTimeout(this.whoCheck);
       this.whoCheck = setTimeout(() => this.confirmAccount().then(same => same && this.flush(), () => {}), 300);
     }
@@ -51,27 +51,27 @@ export default {
       } finally { confirming = null; }
     })();
   },
-  /* The sign-in Vikunja has just said is person `id`'s, kept beside the copies of their lists (saved.who) as its token's
-     hash, never the token: opening with the same token, Pocket shows their kept screen before asking Vikunja (boot).
-     Kept only while those copies are theirs, and cleared with them. */
+  /* Remember that token `t` belongs to user `id`, as the token's hash beside their saved lists (saved.who), never the
+     token itself. Opening later with the same token, boot shows the saved screen before asking Vikunja. Cleared with
+     the saved lists. */
   async keepWho(t, id){
     const hash = t && id && await tokenHash(t);
     if (hash && saved.get('user')?.id === id) saved.set('who', {id, hash});
   },
-  // The person whose lists are kept, when the sign-in Pocket opens with is the one it last confirmed as theirs; else null.
+  // The saved user, if the token Pocket opens with is the one last confirmed as theirs. Else null.
   async keptUser(){
     const u = saved.get('user'), who = saved.get('who'), t = this.mode === 'session' ? sharedToken.get() : this.token;
     return u && t && who?.id === u.id && who.hash === await tokenHash(t) ? u : null;
   },
-  // Forget the last person's lists, caches and open task, and load the new person's. What they left waiting stays in
-  // the outbox, under their name, to be sent when they're back.
+  // Forget the last user's lists, caches and open task, and load the new user's. The last user's outbox entries stay,
+  // under their id, until they sign in again.
   switchAccount(){
     saved.clear(); this.forgetPeople(); this.dropSheet();
     this.user = null; this.pending = []; this.failed = []; this.keyWaiting(); this.cap.text = ''; this.capPhotos = [];
     this.boot();
   },
-  // Close the sheet without saving anything written in it: dropped, for the next person on this device, or with keep,
-  // kept on the phone for when the same person is back.
+  // Close the sheet without saving. With `keep`, drafts written in it are kept on the phone for when the same user
+  // returns.
   dropSheet(keep = false){
     const sh = this.sheet, t = sh.task;
     if (keep && sh.open && sh.kind === 'task' && t) {
@@ -92,8 +92,8 @@ export default {
     try { localStorage.setItem('state', state); } catch {}
     const url = `${p.auth_url}?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${encodeURIComponent(`${location.origin}/auth/openid/${p.key}`)}`
       + `&response_type=code&scope=${encodeURIComponent(p.scope)}&state=${state}`;
-    // A browser tab signs in in a new tab and picks the session up by itself; a home-screen app stays in one window
-    // and picks it up when you come back to it.
+    // In a browser tab, the sign-in opens in a new tab and this one picks the session up. A home-screen app has one
+    // window, so it goes there itself and picks the session up on return.
     const w = !INSTALLED && window.open(url, '_blank');
     if (w) { this.ssoWindow = w; this.login.waiting = true; this.login.err = ''; }
     else location.href = url;
@@ -101,13 +101,14 @@ export default {
   showLogin(err){
     this.screen = 'login';
     this.login.err = err || '';
-    // Password when Vikunja takes one, as on a fresh start (probe), also after a sign-out with /info loaded already.
+    // Offer the password form when Vikunja takes one. probe does this on a fresh start; this covers a sign-out with
+    // /info already loaded.
     if (this.info) this.login.method = this.passwordAllowed ? 'session' : 'token';
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, {tellServer = true} = {}){
     const me = this.user?.id;
-    // Signing out yourself drops the saved lists and anything still waiting to be sent (after asking).
+    // A sign-out the user chose (no `msg`) drops the saved lists and what is waiting to be sent, after asking.
     if (!msg) {
       const mine = sync.all(me);
       const tasks = mine.flatMap(e => e.items.filter(x => !x.taskId)), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
@@ -122,14 +123,14 @@ export default {
     saved.clear();
     if (this.mode === 'session') {
       const t = sharedToken.get();
-      // eslint-disable-next-line no-restricted-globals -- not through api(): signing out, it mustn't renew the session or sign out again
+      // eslint-disable-next-line no-restricted-globals -- not through api(), which could renew the session or sign out again
       if (tellServer && t) fetch(this.server + '/api/v2/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
       sharedToken.del();
     }
     this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
     store.del('token'); store.del('mode');
-    // A sign-out you chose drops what was being written. A session that ended, or a sign-out in Vikunja's web app, keeps
-    // it on the phone for when you're back (boot): someone else signing in starts without it.
+    // A sign-out the user chose drops drafts. A session that ended, or a sign-out in Vikunja's web app, keeps them for
+    // the same user. boot clears them if someone else signs in.
     const keep = !!msg && !!me;
     this.dropSheet(keep); this.forgetPeople(!keep);
     if (keep) store.set('drafts.user', String(me));
@@ -178,12 +179,13 @@ export default {
   async boot(){
     this.screen = 'app'; this.signedIn = true;
     Object.assign(this.view, {loading: true, error: '', bootFailed: false, route: null});
-    // What's waiting, from the phone's database. Not for long, though: another tab with an older Pocket can hold it up.
+    // Wait for the outbox to load from the phone's database, but not long: another tab with an older Pocket can hold
+    // it up.
     await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
     sync.ready.then(() => this.refreshPending());
-    /* Opening with the sign-in Pocket last confirmed as the person whose lists it keeps (keepWho): their screen as kept,
-       at once, with Vikunja asked who it is behind it. Until it answers, nothing is sent (opening, api.js). Any other
-       sign-in (Vikunja's web app may have renewed the session since) waits for Vikunja, as does a screen with no copy. */
+    /* If the token is the one last confirmed for the saved user (keepWho), show their saved screen at once and ask
+       Vikunja who is behind it. Until Vikunja answers, nothing is sent (setOpening, api.js). Any other token waits
+       for Vikunja. */
     const kept = await this.keptUser();
     let opened = null;
     const confirmed = () => { if (opened) { setOpening(null); opened(); opened = null; } };
@@ -196,16 +198,16 @@ export default {
     }
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
-      // Someone else: can't be with the same token, but their lists are never shown; nothing waiting is sent as them.
+      // Someone else behind the same token shouldn't happen, but their lists are never shown and nothing is sent as them.
       if (kept && user.id !== kept.id) { this.switchAccount(); confirmed(); return; }
-      this.user = user; this.info = info || this.info || saved.get('info');   // /info not read this time: as it was
-      // What was being written when a session ended is kept for the same person only.
+      this.user = user; this.info = info || this.info || saved.get('info');   // /info not read this time: keep the old one
+      // Drafts kept when a session ended are for the same user only.
       const owner = store.get('drafts.user');
       if (owner && owner !== String(user.id)) { taskDrafts.clear(); this.runDrafts = {}; }
       store.del('drafts.user');
-      if (this.mode === 'session') setSeenToken(sharedToken.get());             // whose session this is, checked
-      // What was kept of someone else's lists (signed out where Pocket didn't see it) is never shown: screens open with
-      // the copies kept of them (savedView), so they're this account's only.
+      if (this.mode === 'session') setSeenToken(sharedToken.get());             // this token is confirmed as this user's
+      // Another user's saved lists (they signed out where Pocket didn't see it) are never shown: screens open from
+      // the saved copies (savedView), so those must be this account's.
       if (saved.get('user')?.id !== user.id) { saved.clear(); this.perms = {}; this.seenBy = {}; }
       saved.set('user', user); if (info) saved.set('info', info);
       this.keepWho(this.mode === 'session' ? sharedToken.get() : this.token, user.id);

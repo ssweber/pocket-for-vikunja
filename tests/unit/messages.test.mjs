@@ -214,5 +214,5 @@ test('a waiting row\'s Cancel says what becomes of the lines waiting under it', 
 });
 
 test('a Markdown copy says both things it\'s for: notes, and Pocket\'s add box, where it makes the same tasks', () => {
-  assert.equal(COPIED.markdown, 'Copied as a Markdown list: paste it into your notes, or into Pocket\'s add box to make the same tasks');
+  assert.equal(COPIED.markdown, 'Copied as a Markdown list. Paste it into your notes, or into Pocket\'s add box to make the same tasks');
 });

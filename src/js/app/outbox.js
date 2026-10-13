@@ -1,4 +1,4 @@
-// What's waiting to send: the header's button, which says so, and the sheet listing it.
+// The waiting-to-send button and sheet, including rejected changes that can be retried or dropped.
 import {cache, fmtSize} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {htmlToText} from '../html.js';
@@ -12,8 +12,8 @@ const whenText = at => {
 const quoted = t => `“${parseStep(t).title}”`;
 
 export default {
-  /* One row for each thing waiting, oldest first, in plain words: {key, text, when, failed (why Vikunja turned it
-     down), drop (a method's name and its arguments, to not send it), retry}. */
+  /* Describe pending and rejected changes in time order. Each row supplies its key, text, time, failure and
+     available retry or drop action. */
   get outboxRows(){
     const rows = [];
     for (const e of [...this.failed, ...this.pending].sort(byWhen)) {
@@ -41,7 +41,7 @@ export default {
     }
     return rows;
   },
-  // The header's button: Refresh, or what's waiting, once something has waited a moment, or been turned down.
+  // Show the waiting button after a delay, or immediately when a change is rejected.
   get outboxShown(){ return !!this.failed.length || (this.waitShown && !!this.pending.length); },
   get outboxLabel(){
     const failed = this.outboxRows.filter(r => r.failed).length, waiting = this.outboxRows.length - failed;
@@ -53,18 +53,17 @@ export default {
     if (this.failed.length) return 'Vikunja turned these down. Try again once what it said is put right, or don\'t send them.';
     return 'Everything has reached Vikunja.';
   },
-  // <html data-sync> (core.js): sending, waiting, or idle. A box being sent from counts as sending from the start.
+  // Expose sending, waiting or idle to tests. A busy add box counts as sending before its entry is queued.
   get syncState(){ return sendState({busy: this.flushing || this.writing > 0 || this.cap.busy || this.cap.adding > 0 || this.sheet.sub.adding > 0, unsent: this.unsent}); },
   openOutbox(){ this.openSheet('outbox'); },
   tapRefresh(){ if (this.outboxShown) this.openOutbox(); else this.refresh(); },
-  // Offline it says so, rather than the browser's own words for a failed request.
+  // Use Pocket's connection message when retrying offline.
   async tryNow(){
     await this.flush();
     if (this.pending.length && this.offline) { this.say('Still no connection to Vikunja: it\'s all kept, and sent once Pocket reaches it.', {place: 'sheet:top', cls: 'failed'}); return; }
     this.refresh();
   },
-  /* A run's act in words: "Done: Check the milk fridge". A skip with its reason, and a step repeated in the run told
-     apart from the one it repeats. */
+  /* Describe a queued run action, including a skip reason and whether the step was repeated. */
   actText(a){
     const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title + (this.isRepeat(a.task) ? ' (repeated)' : '');
     const why = a.op === 'skip' && htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
@@ -83,7 +82,7 @@ export default {
     if (typeof id === 'string') return this.pending.find(e => 'pending-' + e.id === id)?.title || '';   // a step still being inserted
     return cache.get(id)?.title || r?.steps.find(x => x.id === id)?.title || (r?.run.id === id ? r.run.title : '') || '';
   },
-  // What not sending it leaves in Vikunja, for the confirm.
+  // Explain what dropping this action leaves in Vikunja before asking for confirmation.
   dropText(a){
     const t = quoted(a.label || this.actTitle(a.task) || 'it'), part = a.stage > 0;
     return {done: part ? `${t} stays marked done in Vikunja, without the rest.` : `${t} stays not done in Vikunja.`,
@@ -92,7 +91,7 @@ export default {
       claim: `${t} stays without you on it.`, unclaim: `You stay on ${t}.`, progress: `${t} keeps the progress it has in Vikunja.`,
       note: 'The comment isn\'t posted: its words go back where you wrote them.', delete: `${t} stays in Vikunja.`, position: `${t} stays where it was in Vikunja's list.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
   },
-  // Send one Vikunja turned down again, and what waited behind it.
+  // Retry a rejected action before sending the actions queued behind it.
   async retryAct(id){
     await sync.lock(async () => {
       const e = await sync.fresh(id);
@@ -103,7 +102,7 @@ export default {
     this.refreshPending();
     await this.flush();
   },
-  // Don't send it: one turned down, or one not started yet. Its words go back where they were written.
+  // Drop an action only before sending starts or after rejection. Restore any text to its draft.
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a || !confirm(`Don't send it? ${this.dropText(a)}`)) return;

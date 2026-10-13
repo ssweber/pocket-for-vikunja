@@ -1,4 +1,4 @@
-// Sending what was added to Vikunja, through the outbox, and the "Waiting to send" rows.
+// Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
 import {cache, raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {addDays, isLate, isSet, startOfDay} from '../dates.js';
@@ -10,24 +10,23 @@ import {intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, sav
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
-const lastGroups = new Map();                    // each list's group as listGroups last gave it, by its key
-// What createLines keeps of each line: an earlier try's, for a line that's the same, or a new one.
+const lastGroups = new Map();                    // each group as listGroups last returned it, by key
+// The job for each line: the earlier try's job if the line is unchanged, else a new one.
 export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
 
 export default {
-  /* Create one task from a parsed line; labels are created when missing. */
-  /* Create a task from a parsed line, by LINE_STEPS. `job` keeps each step's progress and `save` keeps the job: for a
-     line in the outbox, job is its item. `made` hears of the task as soon as it exists, and `parent` makes it a
-     subtask of that task. Returns the task (just {id, project_id} if an earlier try made it), with `problems`: what
-     couldn't be done, like an @username who can't see the project, and `arrived`, for a line that said it's done or
-     how far along it is: {now: Vikunja's copy once that was marked, done: whether it's done}. A lost connection or a
-     busy Vikunja is thrown. */
+  /* Create a task from a parsed line, step by step (LINE_STEPS). `job` keeps each step's progress and `save` stores
+     the job. For a line in the outbox, the job is its item. `made` is called as soon as the task exists, and `parent`
+     makes it a subtask of that task. Returns the task (just {id, project_id} if an earlier try made it) with
+     `problems`, what couldn't be done, such as an @username who can't see the project, and `arrived` for a line that
+     said it is done or how far along it is: {now: Vikunja's copy after that was set, done}. A lost connection or a
+     busy Vikunja throws. */
   async createTask(parsed, pid, {job = {}, save = async () => {}, made, at, skip, parent} = {}){
     job.problems ||= [];
-    job.key ||= randomId();                      // this line, for the record of which task was added for it
+    job.key ||= randomId();                      // identifies this line in the record of which task was added for it
     const c = {parsed, pid, save, made, at, skip, parent};
     if (!itemDone(job, !!parent)) {
-      // A busy Vikunja (on SQLite, "database is locked") is tried again a few times at once: each step keeps how far it got.
+      // A busy Vikunja (on SQLite, "database is locked") is retried a few times. Each step records how far it got.
       for (const step of LINE_STEPS) while (!step.done(job, c)) { await patiently(() => step.run(job, c)); await save(); }
       job.done = true; await save();
     }
@@ -43,10 +42,10 @@ export default {
   linkSubtask(parentId, childId){
     return api(`/tasks/${parentId}/relations`, {method:'POST', body:{other_task_id: childId, relation_kind: 'subtask'}});
   },
-  /* Create a task per line, in order. With parent, each becomes its subtask and lands in the parent's project
-     unless the line names one. Returns the ids created and how many lines were used; stops at the first error.
-     `jobs` (from jobsFor) keeps how far each line got, so trying again carries on: a task whose reply was lost is found
-     rather than added twice. `ignores`: each line's chips tapped off, on top of `ignore`. */
+  /* Create a task per line, in order. With `parent`, each becomes its subtask and lands in the parent's project
+     unless the line names one. Returns the ids created and how many lines were used, stopping at the first error.
+     `jobs` (from jobsFor) keeps how far each line got, so a retry carries on: a task whose reply was lost is found
+     rather than added twice. `ignores` holds each line's chips tapped off, on top of `ignore`. */
   async createLines(lines, {pid, parent, ignore = {}, ignores = [], jobs = jobsFor([], lines)} = {}){
     const ids = [], problems = []; let used = 0;
     try {
@@ -61,39 +60,39 @@ export default {
       return {ids, used, problems, error: null};
     } catch (error) { return {ids, used, problems, error}; }
   },
-  /* Every capture goes through the outbox: online it's sent straight away, offline it waits. */
+  /* Everything typed in quick add goes through the outbox: online it is sent straight away, offline it waits. */
   async submitCapture(){
     const lines = this.capLines, parsed = this.parsed;
     if (!parsed.title || this.cap.busy) return;
-    // A single task can go to the project picked for its @usernames; a pasted list goes where it always does.
+    // A single task can go to the project picked for its @usernames. A pasted list goes to the default project.
     const pid = lines.length === 1 ? this.boxPid('cap') : this.defaultProjectId();
     const first = parsed.project?.id || pid;
     if (!first) { this.say('Create a project in Vikunja first', {place: 'cap', cls: 'failed'}); return; }
     if (!this.canWrite(first)) { this.say(`${this.projById.get(first)?.title || 'That project'} is shared with you to read only: pick another with +project.`, {place: 'cap', cls: 'failed'}); return; }
-    // Parse every line now, so dates mean what they meant when typed. Each line says which line it's under. Those
-    // under another keep their order in its project's List view, each after the one before (Vikunja would put each new
-    // one first).
-    // From the box in the list, out a level (boxOut, quickadd.js): the lines that are tasks go where the box is, after the
-    // task it was moved out from and all that's under it, each after the one before.
+    // Parse every line now, so dates mean what they meant when typed. Each line records which line it is under. Lines
+    // under another keep their order in the project's List view, each placed after the one before, since Vikunja would
+    // otherwise put each new one first. When the box in a project's list has been moved out a level (boxOut,
+    // quickadd.js), the top-level lines go where the box is: after the task it was moved out from and everything under
+    // it, each after the one before.
     const places = this.boxOut && first === this.view.project?.id ? this.outPlaces(itemsOf(this.boxItems('cap')).filter(x => x.under === null).length) : null;
     let top = 0;
     const items = itemsOf(this.boxItems('cap'), (k, under) => under !== null ? {position: k * SPACING} : places && {position: places[top++]}), subs = items.filter(x => x.under !== null).length;
     const photos = this.capPhotos.map(f => Alpine.raw(f));
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid, items, files: photos.map(fileEntry)};
-    if (this.boxOut) this.aimAddedOut(entry, items.findLastIndex(x => x.under === null));   // the box is under the last of them
+    if (this.boxOut) this.aimAddedOut(entry, items.findLastIndex(x => x.under === null));   // the box moves under the last of them
     this.cap.busy = true; this.cap.text = ''; this.cap.nest = false; this.cap.flat = false; this.capPhotos = [];
     if (this.cap.focus) this.$nextTick(() => this.$refs.capture.focus());   // to type the next one
     try {
-      // Saved first, with its photos, and on screen at once, where it'll be: it looks waiting only if sending takes a while.
+      // Save it first, with its photos, and show it at once where it will land. It looks waiting only if sending takes a while.
       const {kept, full} = await sync.add(entry, photos);
       this.refreshPending();
       const r = await sync.lock(() => this.sendEntry(entry.id));
       if (r.ids?.length) this.flash(r.ids);
-      this.refreshPending();                                                // its waiting row, and the row sent, swapped at once
+      this.refreshPending();                                                // swap the waiting row for the sent one at once
       this.placeSent(r.tasks || []);
-      /* Added, the new rows light up in the list, and nothing more is said: unless they aren't on this screen (a task due
-         next month, added on Today; one for another project), when the add box says where they went, with Open. What
-         didn't go as asked, or couldn't be added, is said there too. */
+      /* Once added, the new rows flash in the list and nothing more is said, unless they aren't on this screen (a task
+         due next month added on Today, or one for another project): then the add box says where they went, with Open.
+         Anything that didn't go as asked, or couldn't be added, is said there too. */
       const n = items.length, np = photos.length, cap = {place: 'cap'}, err = {place: 'cap', cls: 'failed'};
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       const open = {label: 'Open', fn: () => this.openTask(r.ids[0])};
@@ -102,7 +101,7 @@ export default {
         this.refreshPending();
         sync.keep();
         if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, err);
-        else if (np && r.ids.length === n)            // the task got there; its photos are still to go
+        else if (np && r.ids.length === n)            // the task got there. Its photos are still to go
           this.say(`Added to ${this.projById.get(r.projectId)?.title || 'its project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`, {...cap, action: open});
         else if (np) this.say(`Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`, cap);
         else if (!this.pendingTasks.some(t => t.entry === entry.id && this.pendingPlace(t)))
@@ -116,16 +115,16 @@ export default {
         const away = (r.tasks || []).filter(t => !this.pendingPlace(t));
         if (away.length || but) this.say(addedWhere({n, subs, project: this.projById.get(r.projectId)?.title, due: items[0].p.due, photos: r.uploaded, but}),
           {...(but ? err : cap), action: away.length ? {label: 'Open', fn: () => this.openTask(away[0].id)} : null});
-      }                                                                     // gone: another tab sent it, and its rows show
+      }                                                                     // status gone: another tab sent it, and its rows already show
     } finally {
       this.cap.busy = false;
       this.refreshPending();
       this.render();
     }
   },
-  /* Send one outbox entry, carrying on where an earlier try stopped. Returns {status: sent|offline|error|gone, ...},
-     with the ids of its tasks, the tasks created this time, and how many files were uploaded. `offline` means it's
-     kept to try again; `reached` that Vikunja answered, only not usefully yet (busy, or a server error on a file). */
+  /* Send one outbox entry, carrying on where an earlier try stopped. Returns {status: sent|offline|error|gone, ...}
+     with the ids of its tasks, the tasks created this time, and how many files were uploaded. `offline` means the entry
+     is kept to try again. `reached` means Vikunja answered, but not usefully yet (busy, or a server error on a file). */
   async sendEntry(id){
     const entry = await sync.fresh(id);
     if (!entry) return {status: 'gone', ids: [], tasks: []};                // another tab sent it
@@ -138,24 +137,25 @@ export default {
     let uploaded = 0;
     try {
       for (const [i, item] of entry.items.entries()) {
-        // Under the line it says, made before it (a line is always under an earlier one), else under the entry's task.
-        // (`was`: the id its waiting row had, pendingTasks, for what was on that row: the add box's cursor, aimSent.)
+        // Each line goes under the line it names, which was made before it (a line is always under an earlier one), or
+        // else under the entry's parent task. `was` is the id its waiting row had (pendingTasks), so the add box's cursor
+        // can follow the task from that row (aimSent).
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
           made: t => { taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
-        // One that arrived done, or with progress: its row shows it (placeSent).
+        // A task that arrived done, or with progress, shows that on its row (placeSent).
         if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
         ids.push(item.taskId);
       }
-      // A line with lines under it has the figure they give it, when any of them arrived done or with progress: written
-      // once they're in, the deepest first, as each counts in the one over it.
+      // A line with lines under it gets the progress they give it, when any of them arrived done or with progress. That
+      // is written once they are all in, deepest first, since each counts in the one above it.
       for (let i = entry.items.length - 1; i >= 0; i--) {
         const x = entry.items[i];
         if (x.figured || !entry.items.some((k, j) => underOf(entry, j) === i && (k.p.done || k.p.pct > 0 || k.figured))) continue;
         await this.writeFigure(x.taskId); x.figured = true; await save();
       }
-      // Subtasks added to a task lower its worked-out progress (parent-tasks-plan, part 3): written with them.
+      // Subtasks added to a task lower its worked-out progress, so that is written with them.
       if (entry.parent && !entry.figured) { await this.writeFigure(entry.parent.id); entry.figured = true; await save(); }
       // Then the photos and files, to the task they were added to.
       const target = entry.taskId || entry.items[0]?.taskId, files = (entry.files || []).filter(f => !f.sent);
@@ -164,13 +164,13 @@ export default {
       await sync.remove(entry.id);
       if (files.length) {
         this.refreshPending();
-        // The task with its new attachments, for its row and its sheet.
+        // Read the task again with its new attachments, for its row and its sheet.
         const t = await this.readTask(target).catch(() => null);
         if (t) {
           cache.set(t.id, t); this.syncTask(t);
           for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
           if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
-          const step = this.view.run?.steps.find(s => s.id === t.id);           // a photo of a run's step
+          const step = this.view.run?.steps.find(s => s.id === t.id);           // a photo added to a run's step
           if (step) step.attachments = t.attachments || [];
         }
       }
@@ -185,9 +185,9 @@ export default {
       return {status: 'error', ids, tasks, problems: all(), error, photos, unsent: entry.items.filter(x => !x.taskId).map(x => x.raw), parent: entry.parent || null};
     }
   },
-  // Upload one waiting file, unless an earlier try that was cut off got it there already. A file Vikunja turns down
-  // (too big, say, or the task is gone) is reported and dropped; after a server error it's kept, to try again, and its
-  // row says so (`trouble`). `sent` marks it as dealt with. Returns whether it's on the task.
+  // Upload one waiting file, unless an earlier try that was cut off already got it there. A file Vikunja turns down
+  // (too big, say, or the task is gone) is reported and dropped. After a server error it is kept to try again, and its
+  // row says so (`trouble`). `sent` marks it as dealt with. Returns whether the file is on the task.
   async sendFile(entry, taskId, f){
     const problems = entry.problems ||= [];
     let ok = false;
@@ -217,43 +217,43 @@ export default {
     const t = await api('/tasks/' + taskId), since = triedSince(f.triedAt, at);
     return (t?.attachments || []).some(a => a.file?.name === f.name && a.file?.size === f.size && new Date(a.created).getTime() >= since);
   },
-  // Put tasks that just reached Vikunja in the list on screen, where they belong, without waiting for it to reload. On
-  // a patchy connection the reload can fail, and the list on screen is then kept as it was: without them.
+  // Put tasks that just reached Vikunja into the list on screen, where they belong, without waiting for the list to
+  // reload. On a patchy connection the reload can fail, and the list would otherwise stay as it was, without them.
   placeSent(tasks){
-    this.aimSent(tasks);                         // the add box's cursor, on one of their waiting rows, goes with it (quickadd.js)
+    this.aimSent(tasks);                         // the add box's cursor follows a task from its waiting row (quickadd.js)
     if (this.view.loading || this.view.route !== location.hash) return;
     let placed = false;
     for (const {child, problems, arrived, was, place, ...t} of tasks) {
-      // A subtask sent with its place among its siblings, which Vikunja keeps: known wherever it was added from, Today's card too.
+      // A subtask sent with a position among its siblings keeps it, wherever it was added from, Today's card too.
       if (t.parent && place > 0) this.positions[t.id] = t.position > 0 ? t.position : place;
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
-      // It said it's done, or how far along it is: ticked on its row, or its tick showing how far. One that repeats is
-      // shown done as it was made, until the batch clears (arrivedDone).
+      // A task that said it is done, or how far along it is, shows that on its row. A repeating one shows done as it
+      // was made until the batch clears (arrivedDone).
       const now = arrived?.now;
       if (now) Object.assign(t, arrived.done && !now.done ? {done: true} : {done: now.done, done_at: now.done_at, percent_done: now.percent_done, updated: now.updated});
       const g = this.view.groups.find(g => g.key === key);
-      // On a project's list, a new task goes first, where Vikunja puts it, until the list is read again: unless it was
-      // sent with a place of its own (`place`: from the box in the list, out a level), which Vikunja keeps.
+      // On a project's list a new task goes first, where Vikunja puts it, until the list is read again, unless it was
+      // sent with a position of its own (`place`, from the box moved out a level), which Vikunja keeps.
       if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent && place > 0) this.positions[t.id] = place;
       else if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent)
         this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
-      // A subtask was sent with its place among its siblings, which Vikunja keeps.
+      // A subtask sent with a position keeps it.
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
       if (g) g.tasks.push(this.keep(t));
       else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
       if (arrived?.done) this.arrivedDone(this.tasks[t.id], now);
       placed = true;
     }
-    // And in the copy kept for opening offline.
+    // And into the copy kept for opening offline.
     const k = viewKey(this.route), s = saved.get(k);
     if (placed && s) saved.set(k, {...s, groups: keptGroups(this.view.groups)});
   },
-  /* A task that arrived done (a line that said so: quickadd.js), on its row: ticked, and leaving with the batch, as a
-     task ticked there does (toggleDone, actions.js, whose marks these are): off Today, to Done in a project, its tick
-     meanwhile opening it again. One that repeats (`now`, Vikunja's copy, is open again, moved on) shows done with the
-     date it was given until the batch clears, then open at its next date, or off Today if that's past the coming
-     week; its tick meanwhile puts its date back. */
+  /* A task that arrived done (its line said so: quickadd.js) is ticked on its row and leaves with the batch, as a task
+     ticked there does (toggleDone, actions.js, whose marks these are): off Today, or to Done in a project. Its tick
+     meanwhile opens it again. A repeating task (`now`, Vikunja's copy, is open again at its next date) shows done with
+     the date it was given until the batch clears, then shows open at its next date, or leaves Today if that is past
+     the coming week. Its tick meanwhile puts its date back. */
   arrivedDone(t, now){
     const said = doneText(0, 0, t.title), failed = e => this.say('Not undone: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}});
     if (!now.done) {
@@ -268,8 +268,8 @@ export default {
       out: () => this.bothWays && !moves() ? [] : ids,
       gone: () => { if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) this.removeRow(t.id); }});
   },
-  // The task a cut-off try added, if it got there: this title, in this project, added by you since that try, and not
-  // one of the capture's other tasks or one Pocket added for another line.
+  // The task a cut-off try added, if it got there: the same title, in this project, created by this person since that
+  // try, and not one of the entry's other tasks or one Pocket added for another line.
   async findSent(title, project, triedAt, at, skip = new Set(), key){
     const list = items(await api('/tasks?q=' + encodeURIComponent(title)));
     const since = triedSince(triedAt, at);
@@ -278,7 +278,7 @@ export default {
   },
   // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
   async flush(){
-    if (opening) return;                         // opening on the kept screen: boot sends what's waiting once Vikunja says who it is
+    if (opening) return;                         // while Pocket opens on the kept screen, boot sends what's waiting once Vikunja says who is signed in
     // In a shared session, nothing is sent until Pocket knows the session is still this person's.
     if (this.signedIn && this.user && this.mode === 'session' && sharedToken.get() !== seenToken) { this.sessionChanged(); return; }
     if (this.flushing || !this.signedIn || !this.user || !sync.all(this.user.id).length) return;
@@ -286,8 +286,8 @@ export default {
     let sent = 0; const failed = [], other = [], tasks = [], problems = [];
     try {
       await sync.lock(async () => {
-        let actsWait = false;                                                 // an act kept: the later ones wait behind it
-        const all = sync.all(this.user?.id), stopped = heldTasks(all);        // and behind one turned down, those on its task
+        let actsWait = false;                                                 // once an act is kept offline, the later ones wait behind it
+        const all = sync.all(this.user?.id), stopped = heldTasks(all);        // and acts on a task whose act was turned down wait too
         for (const e of all) {
           if (e.failed || held(e) || (e.kind === 'act' && (actsWait || stopped.has(e.task)))) continue;
           const r = await this.sendEntry(e.id);
@@ -301,15 +301,15 @@ export default {
       });
     } finally { this.flushing = false; this.refreshPending(); }
     this.placeSent(tasks);
-    // Subtasks that were waiting, of the task whose sheet is open: shown there now.
+    // Subtasks that were waiting for the task whose sheet is open now show there.
     const open = this.sheet.task?.id;
     if (open && tasks.some(t => t.parent === open)) this.readTask(open).then(t => {
       if (!t) return;
       cache.set(t.id, t);
       if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
     }).catch(() => {});
-    // What couldn't be added goes back in its box: quick add, or the subtask box if its task's sheet is open. Subtasks of a
-    // task that isn't open are named in the message instead, so they aren't lost.
+    // What couldn't be added goes back in its box: quick add, or the subtask box if its task's sheet is open. Subtasks
+    // of a task whose sheet isn't open are named in the message instead, so they aren't lost.
     const subs = failed.filter(f => f.parent), lost = subs.filter(f => this.sheet.task?.id !== f.parent.id), back = failed.filter(f => !f.parent);
     for (const f of subs) if (!lost.includes(f)) this.sheet.sub.text = [this.sheet.sub.text, ...f.unsent].filter(Boolean).join('\n');
     if (back.length) {
@@ -330,22 +330,22 @@ export default {
   },
 
   /* ---------- what's waiting to be sent ---------- */
-  // What's waiting, and what Vikunja turned down (kept to try again or drop). It's on screen at once; it looks waiting,
-  // and the header's button says so, only once it has waited a while (markSlow).
+  // What's waiting, and what Vikunja turned down (kept to try again or drop). A waiting task is on screen at once, but
+  // looks waiting, and the header's button says so, only once it has waited a while (markSlow).
   refreshPending(){
     const all = this.user ? sync.all(this.user.id) : [];
     this.pending = all.filter(e => !e.failed && !sync.held.has(e.id)); this.failed = all.filter(e => e.failed);
     this.unsent = this.user ? all.length : null;
-    // Tasks being deleted, unless Vikunja turned it down: off every list until they're gone (but rows deleted in place,
-    // leaving.js), or back with Restore or Undo.
+    // Tasks being deleted are off every list until they are gone, or back with Restore or Undo, unless Vikunja turned
+    // the delete down. Rows deleted in place are leaving.js.
     this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
     this.keyWaiting();
     this.markSlow();
   },
-  /* What's waiting to be sent for each task, by its id (`waiting`): its last claim or let-go, and how many photos and
-     files wait to upload. Kept an entry at a time (intoKeys), as the outbox changes: a row asks about its own
-     (peopleOf, rowMeta), where each row used to go through the whole outbox each time anything in it changed, an add
-     on a long list asking every row twice over. */
+  /* What's waiting to be sent for each task, by id (`waiting`): its last claim or unclaim, and how many photos and files
+     wait to upload. Written one key at a time (intoKeys) as the outbox changes, so a row asking about its own task
+     (peopleOf, rowMeta) redraws only when that changes. Before, every row went through the whole outbox each time
+     anything in it changed, so an add on a long list asked every row twice over. */
   keyWaiting(){
     const claims = {}, files = {};
     for (const e of this.pending) {
@@ -355,8 +355,8 @@ export default {
     }
     intoKeys(this.waiting.claims, claims, raw); intoKeys(this.waiting.files, files, raw);
   },
-  // What has waited long enough to look waiting (slowness), worked out again when the next will have. Once it looks
-  // waiting, it does until it's sent.
+  // Which entries have waited long enough to look waiting (slowness), worked out again when the next one will have.
+  // Once an entry looks waiting, it does until it is sent.
   markSlow(){
     clearTimeout(waitTimer);
     const was = new Set(this.slow), still = this.pending.filter(e => was.has(e.id)).map(e => e.id);
@@ -365,7 +365,7 @@ export default {
     this.waitShown = slow.length > 0;
     if (next !== null) waitTimer = setTimeout(() => this.markSlow(), next - Date.now());
   },
-  // What a waiting row's Cancel is called: with what becomes of the lines waiting under it, whichever line it is.
+  // The label of a waiting row's Cancel, which says what becomes of the lines waiting under it.
   cancelLabel(t){
     const e = this.pending.find(x => x.id === t.entry), up = e ? underOf(e, t.index) : null;
     return cancelName(t.title, e ? e.items.filter((x, i) => underOf(e, i) === t.index).length : 0, up !== null ? e.items[up].p.title : e?.parent?.title);
@@ -378,7 +378,8 @@ export default {
       e.items.forEach((x, i) => {
         if (x.taskId) return;
         const p = x.p;
-        // Under the line it says, as that line's row is called until it's sent, then by its task; else under the entry's task.
+        // Under the line it names, by that line's waiting-row id until it is sent and then by its task id, or else under
+        // the entry's parent task.
         const child = isChild(e, i), u = underOf(e, i), over = u === null ? e.parent?.id ?? null : e.items[u].taskId || `pending-${e.id}-${u}`;
         out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: over, title: p.title, done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
@@ -402,17 +403,17 @@ export default {
     const r = this.route;
     if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
     if (r.name !== 'today') return null;
-    // A subtask is never a row of its own on Today: it's on its task's card, waiting there where it was added (cardRows, cards.js).
+    // A subtask is never a row of its own on Today: it waits on its task's card, where it was added (cardRows, cards.js).
     if (t.child || t.parent) return null;
     if (!isSet(t.due_date)) return 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();
     return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
   },
-  /* The current list, with waiting tasks added where they belong, and subtasks under their parents: a project's open
-     tasks in its List view's order. Each group has what a finger can do on its rows on this screen (screenRows), and,
-     where it has cards (not a list of done tasks), what it shows (`items`: listItems, each a row or a card). `before`:
-     how many rows the screen has above it, for drawing a long screen a batch at a time (drawn, app/views.js). A group
-     that comes out as it did last time is that same object (sameGroup), so its rows have nothing to do. */
+  /* The current list, with waiting tasks added where they belong and subtasks nested under their parents, a project's
+     open tasks in List view order. Each group carries the gestures its rows allow on this screen (screenRows)
+     and, where it has cards (not a list of done tasks), `items` (listItems: each a row or a card). `before` is how
+     many rows the screen has above the group, for drawing a long screen a batch at a time (drawn, views.js). A group
+     that comes out as it did last time is the same object (sameGroup), so its rows have nothing to redraw. */
   get listGroups(){
     const hidden = this.hiddenRows, order = this.route.name === 'project' ? positionOrder(this.positions) : null, can = screenRows(this.route.name);
     let before = 0;
@@ -427,11 +428,11 @@ export default {
       return out;
     });
   },
-  /* The same groups as the screen draws them (screens/lists.html): for each, one object kept for as long as the
-     screen is the same one (`shown`, by the group's key), with the group written into it (intoGroup, lists.js): only
-     what changed, its depths and its cards' subtasks one task at a time. A row leaving with the batch, or one added,
-     used to hand every row of its list a new group, and each row worked all of itself out again: on 660 rows, half a
-     second, and seconds on a slow phone. Now the list draws the one row, and the others aren't asked. */
+  /* The same groups as the screen draws them (screens/lists.html). Each is one object kept for as long as the screen is
+     the same (`shown`, by the group's key), and the new group is written into it (intoGroup, lists.js): only what
+     changed, its depths and its cards' subtasks one task at a time. Before, a row leaving with the batch, or one
+     added, handed every row of the list a new group and each row redrew all of itself: half a second on 660 rows, and
+     seconds on a slow phone. Now only the one row is drawn. */
   get shownGroups(){
     const r = this.route, at = r.name + ':' + (r.id ?? '');
     if (raw(this.shown).at !== at) this.shown = {at, groups: {}};
@@ -445,8 +446,8 @@ export default {
     const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
     let base = this.view.groups;
     if (this.route.name === 'today') {
-      // Every group, even in a list saved offline before "Added today, no date" existed, and in one saved yesterday only
-      // today's additions (a card's, by what brought it).
+      // Every group, even in a list saved offline before "Added today, no date" existed. In a list saved yesterday, only
+      // today's additions (for a card, by the task that brought it).
       const t0 = startOfDay(), at = todayAt(this.view.cards);
       base = todayGroups().map(g => {
         const b = base.find(x => x.key === g.key) || g;
@@ -454,7 +455,7 @@ export default {
       });
     } else if (!extra.length) return base;
     if (!base.length && this.route.name === 'project' && this.view.project) base = [{key:'open', cls:'', title:'Open', tasks:[]}];
-    // Today's in each group's own order (a project's are put in its List view's by listGroups).
+    // Today's groups each keep their own order. A project's tasks are put in List view order by listGroups.
     const order = this.route.name === 'today' ? todayOrder(todayAt(this.view.cards)) : {};
     return base.map(g => {
       const tasks = [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)];
@@ -462,15 +463,15 @@ export default {
     });
   },
   /* Cancel one waiting task. Its words go back in the box it was added from, to change or add again. The lines under
-     it go under what it was under, and it says so: cancelling the first line of a pasted list with a parent leaves
-     the rest as tasks of their own. The photos added with it go too. */
+     it go under what it was under, and the message says so: cancelling the first line of a pasted list with a parent
+     leaves the rest as tasks of their own. The photos added with it go too. */
   async cancelPending(entryId, index){
     let raw = '', rest = 0, over = '', parent = null, sent = false;
     await sync.lock(async () => {
       const e = await sync.fresh(entryId);
       if (!e || !e.items[index] || e.items[index].taskId) { sent = true; return; }   // sent while this waited
       raw = e.items[index].raw.trim(); parent = e.parent || null;
-      // Which line each is under, as it is now; then without this one, each line after it a place sooner.
+      // Which line each is under now. Then without this one, each later line sits one index sooner.
       const was = e.items.map((x, i) => underOf(e, i)), up = was[index];
       rest = was.filter(u => u === index).length; over = up !== null ? e.items[up].p.title : parent?.title || '';
       e.items.forEach((x, i) => { const u = was[i] === index ? up : was[i]; x.under = u === null ? null : u - (u > index ? 1 : 0); });
@@ -481,8 +482,8 @@ export default {
       if (entryDone(e)) await sync.remove(e.id);
     });
     this.refreshPending();
-    if (!sent) this.aimCancelled(entryId, index);  // the add box's cursor, on its row or one after it (quickadd.js)
-    // Said by the box its words went back to: quick add's, or the subtask box in its parent's sheet.
+    if (!sent) this.aimCancelled(entryId, index);  // the add box's cursor moves to its row or one after it (quickadd.js)
+    // Said by the box its words went back to: quick add, or the subtask box in its parent's sheet.
     const place = !parent ? 'cap' : this.sheet.task?.id === parent.id ? 'sheet:subtasks' : null;
     if (sent) { this.say('It was sent before it could be cancelled.', {place}); this.render(); return; }
     const box = parent ? (this.sheet.task?.id === parent.id ? this.sheet.sub : null) : this.cap;

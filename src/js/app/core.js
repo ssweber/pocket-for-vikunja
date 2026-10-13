@@ -4,16 +4,13 @@ import {sharedToken} from '../api.js';
 import {currentRoute} from '../routing.js';
 import {saved} from '../lists.js';
 
-/* What more than one part of the app changes. (A module can't assign to a variable of another module, so these are
-   kept as properties of one object.)
-     onClosedSheet: the history entry Pocket is on is a sheet's, closed now, at this address (closedAt).
-     saveChain: changes to a task are saved one after another, in the order they were made. */
+/* Share mutable state across app modules because a module cannot assign to another module's variable.
+   onClosedSheet and closedAt identify a closed sheet's history entry. saveChain saves task changes in order. */
 export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.resolve()};
-// An add box: its text, whether it has focus and where the cursor is (for suggestions), the chips tapped off, whether a
-// pasted list goes under its first line, whether the 🔔 chip is on, whether it's sending, and how many lots of subtasks
-// from it are on their way (addSubtasks).
+// Every add box tracks its text, focus, cursor, disabled chips, list nesting, reminder and sending state. `adding`
+// counts subtask batches still being sent.
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, flat: false, remind: false, busy: false, adding: 0});
-// The box a template's steps are written in: a row, as the steps written are, its key '+' (stepBox, app/checklists.js).
+// Give a template's add box the same row state as a step, with key '+'.
 export const newStepBox = () => ({...newBox(), key: '+', keep: false, from: null});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
@@ -38,28 +35,26 @@ export default () => ({
   positions: {},                               // task id -> its position in its project's List view, as last read or moved (order.js)
   // view
   route: currentRoute(),
-  // cards: Today's tasks shown as cards, by id: what brought each (cards.js)
-  // listView: the id of the project's List view on screen, which its order is read from and moves are written to
-  // savedAt: when the copy on screen was kept, while it's one kept on the phone; updating: it's being loaded afresh, behind
-  // what's on screen; behind: that has taken over a second, which a line under the header says (views.js)
+  // cards maps Today's task ids to cards and what brought them onto Today. listView identifies the project view
+  // whose order Pocket reads and writes. savedAt dates the cached screen. updating marks a background reload, and
+  // behind shows when it takes over a second.
   view: {route: null, loading: true, error: '', bootFailed: false, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null, updating: false, behind: false},
-  // How many of the screen's rows are drawn, and whether more are still to come, a batch at a time (drawFrom, views.js)
+  // Draw long screens in batches, tracking the row limit and whether drawing is still in progress.
   drawTo: Infinity, drawing: false,
   refreshing: false,
   headerTucked: false,                         // the header has slid away while scrolling down
   searchQ: '', searchFrom: '',                 // what's typed in the search box, and the screen to go back to
-  // The quick add box at the bottom: its text, and what's been tapped off (chips) or picked (under the first line). The
-  // subtask box in a task's sheet is the same kind of box: sheet.sub. Both are read by the box methods (quick add).
+  // Quick add and the sheet's subtask box share the same state and parsing methods.
   cap: newBox(),
-  cursor: null,                                // on a project's list, the row quick add adds subtasks at, lit up: {id, under, wait} (quickadd.js)
+  cursor: null,                                // the highlighted row quick add targets, as {id, under, wait} (quickadd.js)
   lit: {},                                     // that row's id -> true, for the row itself to read (light, quickadd.js)
-  shown: {at: '', groups: {}},                 // the screen's lists as they're drawn, one object each while it's this screen (shownGroups, sending.js)
-  // Who can see which project, for @username in quick add: access['<project id>:<name>'] is true or false once known,
-  // and userKnown[name] whether that user exists. accessBlocked: an API token without Projects → Users search.
+  shown: {at: '', groups: {}},                 // the screen's lists, with stable objects while this screen is open (shownGroups, sending.js)
+  // access maps <project id>:<username> to whether that person can see the project. userKnown records whether the
+  // user exists. accessBlocked marks a token without Projects → Users search.
   access: {}, userKnown: {}, accessBlocked: false,
   people: null,                                // everyone you share a project with: [{user, pids}], loaded once signed in (loadPeople)
-  // Project id -> how many people besides you can see it, kept on the phone and loaded again now and then (loadPeople),
-  // so a claim slot shows only where someone else could take the task, from the moment Today opens (claimSlot).
+  // Cache how many other people can see each project, by project id, so private projects hide claim slots as soon
+  // as Today opens. loadPeople refreshes these counts.
   seenBy: saved.get('seenBy') || {},
   sheet: blankSheet(''),
   picker: {open: false, loading: false, error: '', q: ''},
@@ -69,8 +64,8 @@ export default () => ({
   settingUp: false,                            // Set up checklists is making the project and its example
   startedHidden: (() => { try { return JSON.parse(store.get('started.hidden')) || {}; } catch { return {}; } })(),   // project id -> Getting started hidden
   capPhotos: [],                               // photos to attach to the task in the add box (File objects)
-  // Rows lit up for a moment: tasks just added, just come due, and new to the screen on a refresh (flash, lines.js).
-  // Each a task id -> true, for a row to read by its own id, so lighting one row asks nothing of the others.
+  // Highlight tasks just added, just due or new on refresh. Index each kind by task id so one highlight redraws
+  // only that row.
   flashed: {fresh: {}, due: {}, arrived: {}},
   movingOverdue: false,                        // "Move all to today" is saving
   showingMore: null,                           // the list of done tasks whose next part is being read: its key (showMore, views.js)
@@ -80,23 +75,23 @@ export default () => ({
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
-  cardAdded: {},                               // a task's id -> the subtasks added to it from Today's box this visit, each {id: its task's, or its waiting row's, after: the row it went under, null: on top}, until the screen is left (cardRows)
+  cardAdded: {},                               // task id -> subtasks added on Today this visit, as {id, after}, with null after for the top (cardRows)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
-  slideClaim: {},                              // a task or step whose progress is being slid, which you'll be doing: its id -> true (claimOnSlide)
-  // What's waiting to be sent for each task, by its id, for a row to ask about its own (keyWaiting, sending.js): its
-  // last claim or let-go ('claim', 'unclaim'), and how many photos and files wait to upload.
+  slideClaim: {},                              // task id -> temporary claim during a progress gesture (claimOnSlide)
+  // Index the latest pending claim or release and the number of waiting files by task id, so rows read only their
+  // own state.
   waiting: {claims: {}, files: {}},
-  // The one-time hint to swipe right (progress.js): the row (or card) it's on, on this screen; whether to pick one as
-  // the screen is first drawn; and whether it has done its job, on this phone.
+  // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
+  // hint.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},
   places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
   said: '',                                    // the last of those, for a screen reader
-  waitShown: false,                            // something has waited a while: the header's button says so
+  waitShown: false,                            // an outbox entry has waited long enough to show the header's waiting button
   slow: [],                                    // ids of the outbox entries that have waited a while, which look waiting (sending.js)
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
   writing: 0,                                  // changes on their way to Vikunja (api.js, saveTask)
-  unsent: null,                                // this user's outbox entries, held and turned down too; null until read
+  unsent: null,                                // this user's outbox entries, including held and rejected entries, or null before loading
   starting: null,                              // a run being set up: {id, done, total}, for its progress
   runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
   runInsert: newBox(),                          // the bottom box on a run's screen (quick add's 'ins'), apart from quick add's own text
@@ -105,9 +100,9 @@ export default () => ({
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
   clock: Date.now(),                           // now, every second while a run is on screen
-  // The moment a run's screen is worked out for: moved on only once what it shows of the time has changed (tickRun,
-  // alerts.js), so the seconds going by cost an idle run nothing. runMemo: the run as last worked out (runView, runs.js);
-  // runG: its steps' rows' options, one object, so a step going on the card changes its `at` and nothing else.
+  // runNow advances only when time changes what the run shows, so an idle run does not redraw every second.
+  // runMemo caches the computed run. runG keeps one options object for step rows, changing only `at` when the
+  // card's step changes.
   runNow: Date.now(), runMemo: null, runG: {depth: {}, run: true, at: null, locked: false},
   todayDay: 0,                                 // the day Today's groups were loaded for (alerts.js)
   groupedAt: 0,                                // when they were last placed in groups, for the heading's date
@@ -116,13 +111,12 @@ export default () => ({
   init(){
     setApp(this);
     window.addEventListener('hashchange', () => this.navigated());
-    /* An open sheet has a history entry of its own, so the phone's Back closes the sheet (keeping what was written), not
-       the screen under it. A sheet closed another way leaves its entry marked closed; Back from there would show the same
-       screen, so it goes back once more, to the screen before. */
+    /* Give an open sheet its own history entry so Back closes it and keeps its drafts. When another control closes
+       the sheet, mark the entry closed so Back can skip the duplicate screen. */
     window.addEventListener('popstate', () => {
       if (this.sheet.open && this.sheet.show && !history.state?.sheet) { this.closeSheet(); return; }
-      // Back from a closed sheet's entry lands on the same screen, at the same address: once more. (A new address is a
-      // screen opened another way, a link say, which also comes here.)
+      // Skip a closed sheet's duplicate entry only at the same address. A changed address may be a screen opened
+      // by a link.
       if (shared.onClosedSheet && !history.state?.sheet && location.href === shared.closedAt) { shared.onClosedSheet = false; history.back(); return; }
       shared.onClosedSheet = history.state?.sheet === 'closed'; shared.closedAt = location.href;
     });
@@ -142,35 +136,33 @@ export default () => ({
     window.addEventListener('storage', e => { if (e.key === 'token' || e.key === null) this.sessionChanged(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     window.addEventListener('online', () => this.flush());
-    // Without a connection, what's waiting looks it at once.
+    // Show pending entries as waiting immediately when the connection is lost.
     this.$watch('offline', () => this.markSlow());
-    // Where sending stands, on the page itself, so a test can wait until everything has reached Vikunja.
+    // Expose sending state on the page so tests can wait until all changes reach Vikunja.
     Alpine.effect(() => { document.documentElement.dataset.sync = this.syncState; });
-    // Rows marked done or deleted go as Pocket is put away or closed, and a deletion is sent, so it isn't left waiting.
+    // Clear marked rows and send held deletions when Pocket is hidden or closed.
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this.foldLines(); this.sendHeld(); } });
     addEventListener('pagehide', () => { this.foldLines(); this.sendHeld(); });
-    // A message going, by its own timer or anything else, ends its Undo: a deletion waiting for it is sent then.
+    // Ending a toast also ends its Undo and sends any deletion waiting for that Undo.
     this.$watch('toast.show', v => { if (!v) this.toastGone(this.toast); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.flush(); });
     setInterval(() => { if (this.pending.length && document.visibilityState === 'visible') this.flush(); }, 30000);
     setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now(); this.tickRun(); }, 1000);
     setInterval(() => this.tickToday(), 60000);
-    // A run on screen is fetched again every 20 seconds, so a step a teammate ticked shows as done, by them.
+    // Reload the visible run every 20 seconds to show steps completed by teammates.
     setInterval(() => { if (this.route.name === 'run' && document.visibilityState === 'visible' && !this.sheet.open && !this.offline && !this.view.loading) this.render(); }, 20000);
-    // A date without a time is late only once its day is over; quick add gives it the user's default due time.
-    // An emptied add box starts afresh: no chips tapped off.
+    // Reset disabled chips when an add box is emptied.
     this.$watch('cap.text', v => { if (!v.trim()) { this.cap.ignore = {}; this.cap.nest = false; this.cap.flat = false; this.cap.remind = false; } });
     this.$watch('sheet.sub.text', v => { if (!v.trim()) { this.sheet.sub.ignore = {}; this.sheet.sub.remind = false; } });
     this.$watch('runInsert.text', v => { if (!v.trim()) this.runInsert.ignore = {}; });
-    // What quick add's box adds to, said to a screen reader as it changes on a project's list: not behind a sheet, but
-    // as the sheet that changed it closes. (On a run, the step card's step is said as it changes, and the box's label
-    // names where a step goes.)
+    // Announce changes to quick add's target on a project list after any sheet closes. Run screens announce their
+    // card's step separately.
     this.$watch(() => !this.sheet.open && this.capTargetText, (v, was) => { if (this.route.name === 'project' && v !== false && (v || was)) this.said = v || this.capPlaceholder; });
-    // The row the box adds subtasks at, gone (deleted, done, off the list): the task it was under is lit (keepAim).
+    // If the target row leaves the list, move quick add to its parent.
     this.$watch(() => !this.sheet.open && !!this.cursor && !this.cursorTask, gone => { if (gone) this.keepAim(); });
-    // The box is in the list under the cursor's row, or back at the bottom (seatBox, quickadd.js).
+    // Keep the add box under its target row, or return it to the bottom.
     this.$watch(() => this.boxSeat?.key || '', () => this.seatBox());
-    // What's being written is kept on the phone as it's typed, so closing Pocket doesn't lose it.
+    // Save drafts as they change so closing Pocket keeps unfinished text.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])
       this.$watch(get, v => { const t = this.sheet.task; if (this.sheet.kind === 'task' && t) taskDrafts.set(k + ':' + t.id, v); });
@@ -183,32 +175,28 @@ export default () => ({
     // Search once typing pauses.
     let searchTimer;
     this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });
-    // (What an add box loads to suggest, and its @usernames looked up once typing pauses, are each box's own: x-box,
-    // component.js.)
+    // Each x-box directive handles its own suggestions and debounced username lookups (component.js).
     this.$nextTick(() => {
       this.initSwipe();
       this.initBatch();
       this.initProgressDrag();
       this.initSheetProgress();
       this.initHeader();
-      // Keep the list's bottom padding in step with the capture bar as it grows; and, while the box is in the list
-      // (seatBox), with the place it left at the bottom, which is the bar's height with one line, once that's drawn.
+      // Match the list's bottom padding to the capture bar's height. While the box is in the list, use the height
+      // of its placeholder at the bottom.
       const home = document.getElementById('cap-home'), bottom = new ResizeObserver(() => {
         const bar = this.$refs.captureBar, h = bar.classList.contains('inline') ? home.offsetHeight || null : bar.offsetHeight;
         if (h !== null) document.documentElement.style.setProperty('--cap-h', h + 'px');
       });
       bottom.observe(this.$refs.captureBar); bottom.observe(home);
-      // Turning the phone, or the keyboard opening or closing, changes the boxes' width: each fits its text again (notes being
-      // changed too, however long), and quick add's highlights stay over the words they mark.
+      // Refit text boxes after rotation or keyboard resizing changes their width, and realign quick add's
+      // highlights.
       const refit = () => { for (const id of ['in-capture', 'd-subin', 'run-in', 'd-desc-in']) { const el = document.getElementById(id); if (el?.offsetParent) { grow(el); el.dispatchEvent(new Event('scroll')); } } };
       (window.visualViewport || window).addEventListener('resize', refit);
       addEventListener('orientationchange', () => setTimeout(refit, 300));
-      /* The keyboard covers the bottom of the page without making it shorter (Chrome on Android and Safari on iPhone
-         both do this), so what's fixed to the bottom, like the toasts, would be under it: --kb is how much it hides,
-         which is less once the page is panned down under it. --kb-h is the keyboard's own height, however the page is
-         panned: the room the page and a sheet's scroller leave at their ends while it's open (styles.css). Both are
-         0 where the keyboard makes the page shorter instead, as it can in a home-screen app. --vv-h is what's visible,
-         the screen or what the keyboard leaves of it: a box being typed in is at most a third of that. */
+      /* Keep fixed controls above a keyboard that overlays the page. --kb measures the covered area after panning,
+         --kb-h reserves the keyboard's full height at the end of scrollers, and --vv-h limits text boxes to the
+         visible height. When the keyboard resizes the page instead, both keyboard offsets are zero. */
       const vv = window.visualViewport;
       if (vv) {
         const kb = () => {
