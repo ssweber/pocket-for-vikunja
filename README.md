@@ -19,7 +19,7 @@ Pocket is unofficial. Report problems here, not to Vikunja.
 
 **Checklists.** Pocket creates step-by-step checklists from a task template. Each checklist records who completed each step and when. Steps can have timers relative to the previous step, and templates can recur on a schedule. Checklists are ordinary Vikunja tasks and appear in the web app.
 
-**Quick add.** Type a task using Vikunja's quick-add syntax: `+project`, `@user`, `*label`, `!priority`, and natural-language dates. Pocket shows what it parsed before you submit. Paste a list and each line becomes a task; indented lines become subtasks.
+**Quick add.** Type a task using Vikunja's quick-add syntax: `+project`, `@user`, `*label`, `!priority`, and natural-language dates. Pocket shows what it parsed before you submit. Paste a list and each line becomes a task. Indented lines become subtasks.
 
 **Progress.** Swipe a task to set its progress in 25% increments. Setting progress on an unassigned task assigns it to you. Parent tasks show the aggregate progress of their subtasks. Progress can be shared as plain text through the phone's share sheet.
 
@@ -53,7 +53,7 @@ Requires Vikunja 2.7 or later.
 
 3. Restart Vikunja. The log should include `pocket: serving … at /api/v1/plugins/pocket/`.
 
-4. Open `https://<your Vikunja>/api/v1/plugins/pocket/` on your phone, sign in, and add it to your home screen. After single sign-on from the home screen, Vikunja's page stays open; close it to return to Pocket.
+4. Open `https://<your Vikunja>/api/v1/plugins/pocket/` on your phone, sign in, and add it to your home screen. After single sign-on from the home screen, Vikunja's page stays open. Close it to return to Pocket.
 
 To update, unzip the new release over `plugins/pocket/`. Vikunja needs a restart only if `main.go` changed.
 
