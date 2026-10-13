@@ -207,13 +207,15 @@ export default () => ({
          both do this), so what's fixed to the bottom, like the toasts, would be under it: --kb is how much it hides,
          which is less once the page is panned down under it. --kb-h is the keyboard's own height, however the page is
          panned: the room the page and a sheet's scroller leave at their ends while it's open (styles.css). Both are
-         0 where the keyboard makes the page shorter instead, as it can in a home-screen app. */
+         0 where the keyboard makes the page shorter instead, as it can in a home-screen app. --vv-h is what's visible,
+         the screen or what the keyboard leaves of it: a box being typed in is at most a third of that. */
       const vv = window.visualViewport;
       if (vv) {
         const kb = () => {
           const root = document.documentElement.style;
           root.setProperty('--kb', Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + 'px');
           root.setProperty('--kb-h', Math.max(0, Math.round(innerHeight - vv.height)) + 'px');
+          root.setProperty('--vv-h', Math.round(vv.height) + 'px');
         };
         vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); kb();
       }

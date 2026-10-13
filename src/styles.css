@@ -8,7 +8,7 @@
   --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
   --shadow-lift:0 1px 3px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.2); --danger-ink:#FFFFFF;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
-  --pad:16px; --cap-h:64px; --kb:0px; --kb-h:0px;
+  --pad:16px; --cap-h:64px; --kb:0px; --kb-h:0px; --vv-h:100vh;
   /* A tick, a step's box and a ring are one size, and a row's title starts after it: the row's padding, the marker, the
      gap. A subtask's are a little smaller (--sub-tick), and it's indented by less than its parent's marker and gap
      (--sub-in), so it sits close under its parent, its tick starting a little before the parent's title. */
@@ -112,6 +112,8 @@ nav.tabs.icons a:not([aria-current=page]) .lbl{position:absolute;width:1px;heigh
 .page-title h2{margin:0;font-size:15px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}
 .icon-btn{width:40px;height:40px;border-radius:20px;border:0;background:var(--surface);display:grid;place-items:center;color:var(--ink);flex:none}
 .icon-btn.plain{background:transparent}
+/* A box being typed in is at most a third of what's visible (--vv-h, core.js: the screen, or what the keyboard
+   leaves of it), then scrolls inside itself: taller, its bottom line, where the caret is, sat under the keyboard. */
 /* The page, and a sheet's scroller, end with the keyboard's height to spare (--kb-h, core.js) while it's open: a box at
    the foot of a list can then be scrolled up above the keyboard, which Safari does by itself as the caret moves. */
 main{padding:4px var(--pad) calc(var(--cap-h) + 28px + var(--kb-h))}
@@ -642,7 +644,7 @@ a.sec-act{text-decoration:none}
    comment's */
 .addbox textarea,.addbox .cap-marks,.draft-in,.step-box .cap-marks,.comment-form textarea{font-size:17px;line-height:24px}
 .addbox textarea,.addbox .cap-marks{padding:calc((var(--part) - 24px) / 2) 0}
-.addbox textarea{position:relative;display:block;width:100%;border:0;outline:0;background:transparent;resize:none;max-height:35vh;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;scrollbar-width:none}
+.addbox textarea{position:relative;display:block;width:100%;border:0;outline:0;background:transparent;resize:none;max-height:calc(var(--vv-h) * .35);overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;scrollbar-width:none}
 /* The words an add box read: the same text, laid out the same way behind the box, with only the marks showing (in a
    step's box too, .step-box) */
 .addbox .cap-marks{position:absolute;inset:0;white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden;color:transparent;pointer-events:none}
@@ -859,7 +861,7 @@ body.sheet-open{overflow:hidden}
 .comment-form{border-top:0} .comment ~ .comment-form,.row ~ .comment-form{border-top:1px solid var(--line)}
 .linkish{border:0;background:transparent;padding:0;color:var(--accent);font-size:17px;text-align:left}
 /* as tall as its button with one line, its words on the button's centre */
-.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:calc((48px - 3px - 24px) / 2) 10px;background:var(--bg);resize:none;min-height:48px;max-height:35vh;outline:0}
+.comment-form textarea{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:calc((48px - 3px - 24px) / 2) 10px;background:var(--bg);resize:none;min-height:48px;max-height:calc(var(--vv-h) * .35);outline:0}
 .comment-form .go{align-self:flex-end}
 .comment-form textarea:focus{border-color:var(--accent)}
 .att{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left}
