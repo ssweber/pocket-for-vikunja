@@ -26,15 +26,16 @@ export default {
         if (!sharedToken.get() && this.signedIn && this.mode === 'session') this.signOut('You signed out in Vikunja.', {tellServer: false});
       }, 2000);
     } else if (t && t !== seenToken && this.signedIn && this.mode === 'session' && this.user) {
-      // A new token is usually Vikunja renewing the session, but it can be someone else signing in on Vikunja's web
-      // app before Pocket saw the sign-out. Then Pocket starts over as them. Until it knows, api.js sends no change.
-      // If Vikunja can't be asked now, the next change or flush asks again.
+      // A new token is usually Vikunja renewing the session. It can also be someone else signing in on Vikunja's web
+      // app before Pocket saw the sign-out, and then Pocket starts over as that user. Until Pocket knows, api.js sends
+      // no changes to Vikunja. If Vikunja can't be asked now, the next change or flush asks again.
       clearTimeout(this.whoCheck);
       this.whoCheck = setTimeout(() => this.confirmAccount().then(same => same && this.flush(), () => {}), 300);
     }
   },
-  // Whether the shared session is still this person's, asking Vikunja if the token changed since Pocket last checked.
-  // If it's someone else's, Pocket starts over as them. Throws if Vikunja can't be asked.
+  // Check whether the shared session still belongs to the same user. If the token changed since Pocket last checked,
+  // this asks Vikunja. If the session belongs to someone else, Pocket starts over as that user. Throws if Vikunja
+  // can't be asked.
   confirmAccount(){
     return confirming ||= (async () => {
       try {
@@ -42,7 +43,7 @@ export default {
           const t = sharedToken.get();
           if (t === seenToken) return true;
           const was = this.user?.id, u = await api('/user');
-          if (sharedToken.get() !== t) continue;                              // changed again meanwhile: ask again
+          if (sharedToken.get() !== t) continue;                              // the token changed again, so ask again
           setSeenToken(t);
           if (was && u.id !== was && this.user?.id === was) { this.switchAccount(); return false; }
           this.keepWho(t, u.id);
@@ -51,9 +52,9 @@ export default {
       } finally { confirming = null; }
     })();
   },
-  /* Remember that token `t` belongs to user `id`, as the token's hash beside their saved lists (saved.who), never the
-     token itself. Opening later with the same token, boot shows the saved screen before asking Vikunja. Cleared with
-     the saved lists. */
+  /* Remember that token `t` belongs to user `id`. Pocket stores the token's hash beside the user's saved lists
+     (saved.who), never the token itself. When Pocket opens later with the same token, boot shows the saved screen
+     before asking Vikunja. The hash is cleared with the saved lists. */
   async keepWho(t, id){
     const hash = t && id && await tokenHash(t);
     if (hash && saved.get('user')?.id === id) saved.set('who', {id, hash});
@@ -85,15 +86,15 @@ export default {
     cache.clear(); this.tasks = {}; userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null;
     this.labels = []; this.labelsLoaded = false;
   },
-  /* Single sign-on goes through Vikunja: the provider only returns to Vikunja's /auth/openid/<key> page, which finishes
-     signing in and saves the session where Pocket reads it. This is the same request Vikunja's login page makes. */
+  /* Single sign-on goes through Vikunja. The provider only returns to Vikunja's /auth/openid/<key> page, which finishes
+     signing in and saves the session where Pocket reads it. The request is the same one Vikunja's login page makes. */
   signInWith(p){
     const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
     try { localStorage.setItem('state', state); } catch {}
     const url = `${p.auth_url}?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${encodeURIComponent(`${location.origin}/auth/openid/${p.key}`)}`
       + `&response_type=code&scope=${encodeURIComponent(p.scope)}&state=${state}`;
-    // In a browser tab, the sign-in opens in a new tab and this one picks the session up. A home-screen app has one
-    // window, so it goes there itself and picks the session up on return.
+    // In a browser tab, the sign-in opens in a new tab and this tab picks up the session. A home-screen app has one
+    // window, so the app itself goes to the sign-in page and picks up the session on return.
     const w = !INSTALLED && window.open(url, '_blank');
     if (w) { this.ssoWindow = w; this.login.waiting = true; this.login.err = ''; }
     else location.href = url;
@@ -101,8 +102,8 @@ export default {
   showLogin(err){
     this.screen = 'login';
     this.login.err = err || '';
-    // Offer the password form when Vikunja takes one. probe does this on a fresh start; this covers a sign-out with
-    // /info already loaded.
+    // Offer the password form when Vikunja takes one. probe does this on a fresh start. This covers a sign-out when
+    // /info is already loaded.
     if (this.info) this.login.method = this.passwordAllowed ? 'session' : 'token';
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
@@ -179,13 +180,13 @@ export default {
   async boot(){
     this.screen = 'app'; this.signedIn = true;
     Object.assign(this.view, {loading: true, error: '', bootFailed: false, route: null});
-    // Wait for the outbox to load from the phone's database, but not long: another tab with an older Pocket can hold
-    // it up.
+    // Wait for the outbox to load from the phone's database, but not for long. Another tab with an older Pocket can
+    // hold it up.
     await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
     sync.ready.then(() => this.refreshPending());
-    /* If the token is the one last confirmed for the saved user (keepWho), show their saved screen at once and ask
-       Vikunja who is behind it. Until Vikunja answers, nothing is sent (setOpening, api.js). Any other token waits
-       for Vikunja. */
+    /* If the token is the one last confirmed for the saved user (keepWho), show that user's saved screen at once and
+       ask Vikunja whose token it is. Until Vikunja answers, nothing is sent (setOpening, api.js). Any other token
+       waits for Vikunja. */
     const kept = await this.keptUser();
     let opened = null;
     const confirmed = () => { if (opened) { setOpening(null); opened(); opened = null; } };
@@ -198,16 +199,18 @@ export default {
     }
     try {
       const [user, info] = await Promise.all([api('/user'), this.info ? Promise.resolve(this.info) : api('/info', {auth:false}).catch(() => null)]);
-      // Someone else behind the same token shouldn't happen, but their lists are never shown and nothing is sent as them.
+      // A different user behind the same token shouldn't happen. If it does, Pocket starts over as that user
+      // (switchAccount). The saved user's lists are dropped, and their waiting changes stay under their own id, so
+      // nothing of theirs is shown to, or sent as, the other user.
       if (kept && user.id !== kept.id) { this.switchAccount(); confirmed(); return; }
-      this.user = user; this.info = info || this.info || saved.get('info');   // /info not read this time: keep the old one
+      this.user = user; this.info = info || this.info || saved.get('info');   // if /info could not be read this time, keep the old one
       // Drafts kept when a session ended are for the same user only.
       const owner = store.get('drafts.user');
       if (owner && owner !== String(user.id)) { taskDrafts.clear(); this.runDrafts = {}; }
       store.del('drafts.user');
       if (this.mode === 'session') setSeenToken(sharedToken.get());             // this token is confirmed as this user's
-      // Another user's saved lists (they signed out where Pocket didn't see it) are never shown: screens open from
-      // the saved copies (savedView), so those must be this account's.
+      // Another user's saved lists must never be shown, for example after they signed out somewhere Pocket didn't see.
+      // Screens open from the saved copies (savedView), so those must belong to this account.
       if (saved.get('user')?.id !== user.id) { saved.clear(); this.perms = {}; this.seenBy = {}; }
       saved.set('user', user); if (info) saved.set('info', info);
       this.keepWho(this.mode === 'session' ? sharedToken.get() : this.token, user.id);

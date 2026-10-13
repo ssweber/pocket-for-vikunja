@@ -27,8 +27,8 @@ export function placeMove(sibs, from, to){
   writes.push([sibs[from].id, between(rest[to - 1]?.pos ?? null, rest[to]?.pos ?? null)]);
   return writes;
 }
-/* Positions for `n` new subtasks after position `after` (null: after the last). Unpositioned siblings sort last, so
-   "after" one of them means after the last positioned sibling. */
+/* Positions for `n` new subtasks after position `after`, or after the last sibling when `after` is null. Siblings with
+   no position sort last, so "after" one of them means after the last sibling that has a position. */
 export function placeAfter(sibs, after, n = 1){
   const known = sibs.filter(p => p > 0);
   let prev = after > 0 ? after : Math.max(0, ...known);
@@ -37,7 +37,8 @@ export function placeAfter(sibs, after, n = 1){
   return out;
 }
 /* Positions for `n` new subtasks ahead of every sibling. They go first because the add box sits directly under the
-   parent. With no positioned sibling, placeAfter: a position of 0 would sort after the next task added. */
+   parent. If no sibling has a position, this calls placeAfter, because a position of 0 would sort after the next task
+   added. */
 export function placeFirst(sibs, n = 1){
   const known = sibs.filter(p => p > 0), out = [];
   if (!known.length) return placeAfter(sibs, null, n);
@@ -80,9 +81,9 @@ export function siblingBlocks(tasks, depth, id){
     else out.at(-1)?.ids.push(tasks[k].id);
   return out;
 }
-/* Drag geometry. `blocks` are the siblings' {top, height} on the page, `k` the one being dragged, `dy` how far it has
-   moved. Returns `dy` clamped to the list, `shifts` (px each other block moves aside) and `at`, the index it would
-   land on. */
+/* Drag geometry. `blocks` are the siblings' {top, height} on the page, `k` is the index of the dragged block, and `dy`
+   is how far it has moved. Returns `dy` clamped to the list, `shifts` (px each other block moves aside) and `at`, the
+   index the dragged block would land on. */
 export function dragPlace(blocks, k, dy){
   const me = blocks[k], last = blocks.at(-1), h = me.height, end = last.top + last.height;
   const mid = Math.max(blocks[0].top, Math.min(end, me.top + dy + h / 2));   // a taller row still gets past a short one

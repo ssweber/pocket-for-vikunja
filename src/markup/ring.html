@@ -1,10 +1,11 @@
-<!-- A parent's ring, in place of a tick: task `t` has subtasks, or is a checklist with steps, and `r` is its ring
-     (ringOf, app/cards.js). The ring is thin, and its arc is the exact figure, done of all inside it, never a quarter's
-     pie, so it isn't taken for a task's own tick. Tapping it (tapRing, then ringTap) asks the question in
-     sheet/complete.html when there are open subtasks, or, with one, completes it and the parent with an Undo. With
-     every subtask done it is Close, and on a done parent it reopens the parent. The ring sits on a card's header, on a
-     row (a checklist's row under Checklists too), in the task's own sheet, and at the top of a checklist's screen,
-     where it has its own tap (r.tap: runRing). Its touch target is the whole left gutter, as a tick's is. A figure of
-     five characters (12/14) is set smaller (long) to fit inside it. -->
+<!-- A parent's ring, in place of a tick. Task `t` has subtasks, or is a checklist with steps, and `r` is its ring
+     (ringOf, app/cards.js). The ring is thin, and its arc shows the exact fraction of subtasks done, never a
+     quarter's pie, so it isn't mistaken for a task's own tick. Tapping it (tapRing, then ringTap) opens the question
+     in sheet/complete.html when the parent has several open subtasks. With one open subtask, it completes that
+     subtask and the parent, with an Undo. When every subtask is done, the ring is Close. On a done parent, tapping
+     it reopens the parent. The ring appears on a card's header, on a row (a checklist's row under Checklists too), in
+     the task's own sheet, and at the top of a checklist's screen, where it has its own tap (r.tap: runRing). Its
+     touch target is the whole left gutter, as a tick's is. A count of five characters (12/14) is set smaller
+     (long) to fit inside the ring. -->
 <button type="button" class="ring" :class="{full: !r.open, done: t.done, long: (r.done + '/' + r.total).length > 4}" :disabled="!canWrite(t.project_id) || !!t.pending" x-style="{'--ring': r.pct / 100}"
         :aria-label="r.label" @click="tapRing(t, r, $el)"><i class="arc" aria-hidden="true"></i><span class="n num" aria-hidden="true" x-text="r.done + '/' + r.total"></span></button>

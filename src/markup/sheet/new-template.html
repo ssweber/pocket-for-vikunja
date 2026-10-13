@@ -2,12 +2,13 @@
     <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
       <div class="d-title"><h2>New template</h2></div>
       <p class="note" style="margin:0 0 14px" x-text="'In ' + sheet.newTpl.project.title"></p>
-      <!-- The name is a quick-add box ('tname'), so "Opening up @user" assigns the template. Pressing Enter moves the cursor to the first step -->
+      <!-- The name is a quick-add box ('tname'), so "Opening up @user" assigns the template. Pressing Enter moves the
+           cursor to the first step. -->
       <div class="nt-name" x-data="{bw: 'tname'}"><label for="nt-name">Name</label>
         <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" id="nt-name" x-model="sheet.newTpl.box.text" x-box="bw" placeholder="e.g. Opening up" autocomplete="off" enterkeyhint="next"></textarea></div></div>
         <!-- include markup/sheet/box-chips.html -->
       </div>
-      <!-- The steps: the same list a saved template shows (sheet/sub-list.html), nothing in Vikunja yet -->
+      <!-- The steps use the same list as a saved template (sheet/sub-list.html). Nothing is in Vikunja yet. -->
       <div>
         <!-- include markup/sheet/sub-list.html -->
       </div>

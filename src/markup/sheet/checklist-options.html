@@ -1,8 +1,8 @@
     <!-- A project's sheet. Using a project for checklists gives everyone it is shared with a Checklists tab. -->
     <template x-if="sheet.kind === 'project' && sheet.project"><div>
       <div class="d-title"><h2 x-text="sheet.project.title"></h2></div>
-      <!-- Share or copy the project's open tasks, and open its page in Vikunja. For anyone who can see the project,
-           offline too. -->
+      <!-- Share or copy the project's open tasks, or open its page in Vikunja. Anyone who can see the project can do
+           this, offline too. -->
       <div class="card share-card" id="p-sharing">
         <button type="button" id="p-share-text" @click="shareProgress('project')">Share progress as a text</button>
         <button type="button" id="p-copy-md" @click="copyMarkdown('project')">Copy as a Markdown list</button>
@@ -26,7 +26,7 @@
           <button class="btn danger block" id="p-stop-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, false)">Stop using for checklists</button>
         </div></template>
       </div></template>
-      <!-- Sharing is done on the project's share page in Vikunja's web app -->
+      <!-- Sharing the project is done on its share page in Vikunja's web app -->
       <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-share-card">
         <template x-if="sheet.projEdit.perm >= 2"><div>
           <p>Share this project in Vikunja's web app. Give <b>Read &amp; write</b> to anyone who will tick its tasks or work through its checklists.</p>
@@ -43,14 +43,14 @@
       </div></template>
     </div></template>
 
-    <!-- A checklist's ⋯ sheet: who started it and when, its name and who it is for, the checklist as a task, and
-         deleting it -->
+    <!-- A checklist's ⋯ sheet. It shows who started the checklist and when, its name and who it is for, and has
+         buttons to open the checklist as a task and to delete it. -->
     <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
       <template x-if="runStarted"><p class="note run-started" id="r-started" x-text="runStarted"></p></template>
       <div class="d-title"><h2 x-text="view.run.run.title"></h2></div>
-      <!-- Share the steps, who did each and who is on the rest, and open its page in Vikunja. There is no Markdown
-           copy: a pasted Markdown list makes tasks again, and a checklist's record of who did what can't come back that
-           way. -->
+      <!-- Share the steps, who did each and who is on the rest, or open the checklist's page in Vikunja. There is no
+           Markdown copy, because pasting a Markdown list creates tasks again, and a checklist's record of who did what
+           would be lost that way. -->
       <div class="card share-card" id="r-sharing">
         <button type="button" id="r-share-text" @click="shareProgress('run')">Share progress as a text</button>
         <a id="r-open-vikunja" :href="vikunjaUrl('run')" target="_blank" rel="noopener">Open in Vikunja ↗</a>

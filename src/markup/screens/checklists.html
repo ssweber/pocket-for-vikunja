@@ -8,8 +8,8 @@
       </template>
       <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
         <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
-        <!-- Shown to the project's owner until they hide it. It covers the three things people miss when setting up
-             checklists. -->
+        <!-- Shown to the project's owner until they hide it. It lists the three steps people most often miss when
+             setting up checklists. -->
         <template x-if="gettingStarted(cl.project.id)"><div class="card getting-started" :id="'getting-started-' + cl.project.id">
           <h3>Getting started</h3>
           <ol>
@@ -37,13 +37,13 @@
             <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending waits"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
               <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="forText({assignees: e.for})"></span></div></div>
               <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
-            <!-- The same row as on Today, with its ring and its progress line -->
+            <!-- The same row as on Today, with its ring and its progress -->
             <template x-for="g in [{depth: {}}]" :key="0"><template x-for="t in cl.runs" :key="t.id">
               <!-- include markup/task-row.html -->
             </template></template>
           </div>
         </div></template>
-        <!-- The last few finished checklists, to look back at or reopen from their ⋯ -->
+        <!-- The last few finished checklists. The user can look back at them, or reopen one from its ⋯ menu. -->
         <template x-if="cl.finished?.length"><div>
           <div class="cl-sub">Recently finished</div>
           <div class="list">

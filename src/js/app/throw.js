@@ -1,8 +1,8 @@
-/* Hold a row or a card on Today to move its task to another day. Four dates draw as chips around the finger. Moving
-   the finger towards one lights it, and letting go moves the task there at once, with an Undo. A flick picks by
-   direction. Letting go without having moved leaves the chips open to tap, as a menu with Pick a date… in the middle
-   for the phone's own date picker. Which dates, their days and where they sit are in ../throw.js. holdOf and cardHold
-   (progress.js) hook this in through rescheduleOf. */
+/* Holding a row or a card on Today moves its task to another day. Four date chips appear around the touch. Dragging
+   towards a chip highlights it, and releasing moves the task there at once, with an Undo. A flick picks the chip in
+   its direction. Releasing without having dragged leaves the chips open to tap, as a menu with Pick a date… in the
+   middle, which opens the phone's own date picker. ../throw.js decides which dates are offered and where the chips
+   sit. holdOf and cardHold (progress.js) use this file through rescheduleOf. */
 import {dateValue, THROW, THROW_STAYS, throwDate, throwEnd, throwFlick, throwLayout, throwPick, throwTargets} from '../throw.js';
 import {hasTemplateLabel} from '../checklists.js';
 import {isSet, repeats} from '../dates.js';
@@ -10,16 +10,18 @@ import {haptic} from '../haptics.js';
 import {motion} from '../util.js';
 
 const el = (tag, cls, text = '') => { const x = document.createElement(tag); x.className = cls; x.textContent = text; return x; };
-// Position box `b` ({x, y}: its centre within the layout `lay`; w, h) in px.
+// Position box `b` in px. `b.x` and `b.y` are its centre within the layout `lay`, and `b.w` and `b.h` its size.
 const put =(x, lay, b) => Object.assign(x.style, {left: lay.x + b.x - b.w / 2 + 'px', top: lay.y + b.y - b.h / 2 + 'px', width: b.w + 'px', height: b.h + 'px'});
-let shut = null;                                        // closes the chips open to tap, if any (one set at a time)
+let shut = null;                                        // closes the chips open to tap (only one set is open at a time)
 
-/* The chips for layout `lay` (throwLayout): each date's name over its day ("Tomorrow", "Sat 10"), dimmed where it
-   would change nothing. When the task can't move, `why` (a THROW_STAYS key) dims them all and adds a line saying why.
-   Positioned in px within a fixed parent. They are buttons from the start, so they sit in the same place whether
-   flicked to or tapped, but hidden from screen readers and Tab until chipsOpen. Text only, never HTML. Pick a date…
-   sits in the middle, where the finger is, and shows only once the chips are open to tap. Under it is the date input
-   whose picker it opens: `from` is the first day offered, `at` the day it opens on. */
+/* Build the chips for layout `lay` (throwLayout). Each chip shows the date's name over its day ("Tomorrow", "Sat 10"),
+   and is dimmed if choosing it would change nothing. When the task can't move, `why` (a THROW_STAYS key) dims every
+   chip and adds a message that gives the reason.
+   The chips are positioned in px inside a fixed parent. They are buttons from the start, so they sit in the same place
+   whether the user flicks to one or taps it. Screen readers and Tab skip them until chipsOpen. They hold text only,
+   never HTML.
+   Pick a date… sits in the middle, under the touch, and shows only once the chips are open to tap. Beneath it is the
+   date input whose picker it opens. `from` is the first day offered, and `at` is the day the picker opens on. */
 export function chipsEl(lay, why = null, {from = '', at = ''} = {}){
   const set = el('div', 'throw');
   set.setAttribute('aria-hidden', 'true');
@@ -45,14 +47,14 @@ export function chipsEl(lay, why = null, {from = '', at = ''} = {}){
   }
   return set;
 }
-// Light date `p` among the chips, or none.
+// Highlight the chip for date `p`, or clear the highlight if `p` is null.
 export function chipsLight(set, p){
   set.querySelector('.throw-t.on')?.classList.remove('on');
   if (p) set.querySelector(`.throw-t[data-id="${p.id}"]`)?.classList.add('on');
 }
-/* Turn the chips into a menu to tap, where they are: a dialog named for the task, each date reachable by Tab, a
-   dimmed one announced as disabled, and the line saying why read with them. The screen behind dims slightly
-   (.throw.open), since a tap on it only closes the menu. */
+/* Turn the chips into a menu to tap, where they are. The menu is a dialog named for the task. Tab reaches each date,
+   a dimmed chip is announced as disabled, and the message that gives the reason is read with the dialog. The screen
+   behind dims slightly (.throw.open), because a tap on it only closes the menu. */
 export function chipsOpen(set, title){
   set.removeAttribute('aria-hidden');
   set.classList.add('open');
@@ -63,27 +65,27 @@ export function chipsOpen(set, title){
 }
 
 export default {
-  /* What a hold on Today does to task `t` (`el` is the row or card held). Nothing for a task that is done, leaving
-     after its batch, replaced by a line, waiting to be sent, or in a project this person can't write to. A repeating
-     task, a checklist that comes round, a checklist run or one of its steps gets every date dimmed, with a line saying
-     why. */
+  /* What holding task `t` on Today does. `el` is the row or card held. A task does nothing if it is done, marked to
+     leave with its batch, replaced by a message, waiting to be sent, or in a project the user can't write to.
+     A repeating task, a template that repeats, a started checklist and a checklist's step get every date dimmed, with
+     a message that gives the reason. */
   rescheduleOf(t, el){
     if (!t || t.pending || t.done || this.leaving[t.id] || this.lines[t.id] || !this.canWrite(t.project_id)) return null;
     const why = this.isRunTask(t) || this.stepRun(t) ? 'run' : hasTemplateLabel(t) ? 'checklist' : repeats(t) ? 'repeats' : null;
     return this.throwOf(t, el, why);
   },
-  /* The hold as holdToSlide (progress.js) drives it: lift(x, y) as soon as the hold is felt, so a flick that follows
-     counts; move(_, y, x) with the finger; end(commit) when it is let go. The pick depends only on how far the finger
-     has moved from where it was held (throwPick), not on what is drawn where. throwEnd decides what letting go does:
-     move the task, do nothing, or leave the chips open to tap. */
+  /* The hold gesture that holdToSlide (progress.js) drives. It calls lift(x, y) as soon as the phone vibrates for the
+     hold, so a flick right after still counts. It calls move(_, y, x) as the touch moves, and end(commit) on release.
+     The chip chosen depends only on how far the touch has moved from where the hold began (throwPick), not on what is
+     drawn where. On release, throwEnd decides whether to move the task, do nothing or leave the chips open to tap. */
   throwOf(t, held, why){
     const app = this, targets = throwTargets(t.due_date);
     let v = null, x0 = 0, y0 = 0, on = null, out = false, dx = 0, dy = 0, moves = [];
-    // A date that can be picked: not dimmed, and not on a task that can't move.
+    // Returns date `p` if it can be picked, which means it is not dimmed and the task can move. Otherwise null.
     const can = p => p && !p.dim && !why ? p : null;
-    /* The finger's speed as it was let go, in px/ms over its last moves: from where it was at least 16ms before its last
-       move (or where it was held, a frame before the first) to its last move. 0 if it had stopped before it lifted. This
-       tells a flick from a slow move let go near where it started. */
+    /* The touch's speed at release, in px/ms. It is measured from the position at least 16ms before the last move (or
+       the position where the hold began, a frame before the first move) to the last move. It is 0 if the touch had
+       stopped more than 80ms before release. The speed tells a flick from a slow drag released near where it started. */
     const speed = () => {
       const last = moves.at(-1);
       if (!last || performance.now() - last.t > 80) return 0;
@@ -106,34 +108,33 @@ export default {
         if (!v) return;
         const was = v, e = throwEnd({commit, on, out, why, flick: on ? null : throwFlick(targets, dx, dy, speed())});
         v = null;
-        // Open to tap: a tapped date moves the task, and so does a day picked in the picker, unless it is the day the task already has.
+        // Tapping a date moves the task. So does picking a day in the picker, unless the task is already on that day.
         if (e.then === 'open') { was.open(id => app.moveHeld(t, targets.find(x => x.id === id), true), day => { const to = throwDate(t.due_date, day); if (to && !to.dim) app.moveHeld(t, to, true); }); return; }
         was.close();
         if (e.to) app.moveHeld(t, e.to);
       },
     };
   },
-  /* Move the held task to the date picked (`to`, one of throwTargets') at once, with an Undo, and flash its row where
-     it lands. `tapped` means it was picked from the open chips, which had the focus, so the focus goes back to the
-     row. */
+  /* Move the held task to date `to` (one of the throwTargets) at once, with an Undo, and flash its row where it lands.
+     `tapped` means the date was picked from the open chips. They had the focus, so the focus goes back to the row. */
   moveHeld(t, to, tapped = false){
     this.reschedule(t, {due: to.due, label: to.label});
     this.flash([t.id], 'arrived');
     if (tapped) this.$nextTick(() => this.rowEl(t.id)?.querySelector('.card-open, .body')?.focus({preventScroll: true}));
   },
-  /* Draw the dates for task `t` around the finger at (x, y), with `held` (a row or a card) lifted in place
-     (.throw-from). Returns {light(p), close(), open(pick, picked)}. open leaves the chips to tap and calls pick(id) with
-     the date tapped, or picked(day) with the day chosen in the phone's picker. The chips centre on the strip the
-     finger is on (the row, or a card's header or row), so the dates above and below lie over its neighbours and the
-     row shows between them, and stay clear of the header and the add box (throwLayout). The chips scale and fade in,
-     or with reduced motion are simply there. */
+  /* Draw the date chips for task `t` around the touch at (x, y), and lift `held` (a row or a card) in place
+     (.throw-from). Returns {light(p), close(), open(pick, picked)}. `open` leaves the chips open to tap. It calls
+     pick(id) with the date tapped, or picked(day) with the day chosen in the phone's picker.
+     The chips are centred on the strip the touch is on (the row, or a card's header or row). The chips above and below
+     cover the neighbouring rows, and the held row shows between them. They stay clear of the header and the add box
+     (throwLayout). The chips scale and fade in, or with reduced motion simply appear. */
   throwView(t, held, targets, why, x, y){
     shut?.();
     const top = Math.max(0, document.querySelector('header.top')?.getBoundingClientRect().bottom || 0);
     const bottom = document.getElementById('capture')?.getBoundingClientRect().top || innerHeight;
     const strip = [...held.querySelectorAll('.card-head, .row'), held].map(s => s.getBoundingClientRect()).find(r => y >= r.top && y <= r.bottom && r.height <= 2 * THROW.mid.h);
     const lay = throwLayout(targets, {x, y: strip ? strip.top + strip.height / 2 : y, width: innerWidth, height: innerHeight, top, bottom: Math.min(bottom, innerHeight), why: !!why});
-    // The picker's first day is today, and it opens on the task's own day unless that has passed.
+    // The picker's first day is today. It opens on the task's due day unless that day has passed.
     const today = dateValue(null), day = isSet(t.due_date) ? dateValue(t.due_date) : '';
     const set = chipsEl(lay, why, {from: today, at: day >= today ? day : ''});
     document.body.append(set);
@@ -144,12 +145,14 @@ export default {
     }
     const off = [], close = () => { for (const f of off.splice(0)) f(); if (shut === close) shut = null; set.remove(); held.classList.remove('throw-from'); };
     return {light: p => chipsLight(set, p), close,
-      /* Open to tap. Only a press that starts on the chips counts, or a key: not the click that may follow the hold's
-         own release, with the finger still over Pick a date…. A dimmed date does nothing. Pick a date… opens the
-         phone's picker straight from the tap, because a phone allows it only then (as the sheet's Due does: propTap),
-         and the day chosen there closes it all. A tap anywhere else, Escape, or the page scrolled, turned or left
-         closes the menu, changes nothing, and puts the focus back on the row. The arrow keys move to the date in that
-         direction, and Tab stays among the chips. */
+      /* Leave the chips open to tap. Only a press that starts on the chips counts, or a key. The click that can follow
+         the hold's own release is ignored, because the touch may still be over Pick a date…. A dimmed date does
+         nothing.
+         Pick a date… opens the phone's picker straight from the tap, because a phone allows that only from a tap (as
+         the sheet's Due does: propTap). Choosing a day there closes the menu and moves the task.
+         A tap anywhere else, Escape, or the page scrolling, rotating or being left closes the menu, changes nothing,
+         and puts the focus back on the row. An arrow key moves to the date in that direction. Tab stays among the
+         chips. */
       open(pick, picked){
         chipsOpen(set, t.title);
         chipsLight(set, null);
@@ -158,7 +161,7 @@ export default {
         const leave = () => { close(); held.querySelector('.card-open, .body')?.focus({preventScroll: true}); };
         const on = (target, type, fn, how) => { target.addEventListener(type, fn, how); off.push(() => target.removeEventListener(type, fn, how)); };
         on(set, 'pointerdown', () => { pressed = true; });
-        // The release's own mouse events, and a press beside the dates, must not take the focus from the chips.
+        // Mouse events from the hold's release, and a press beside the dates, must not take the focus off the chips.
         on(set, 'mousedown', e => { if (!pressed || !e.target.closest('.throw-t')) e.preventDefault(); });
         on(set, 'click', e => {
           if (!pressed && e.detail) return;

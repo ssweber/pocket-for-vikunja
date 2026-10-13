@@ -1,10 +1,11 @@
-<!-- The chips under an add box, for what the box read (chips(), app/quickadd.js). `bw` is the box's name, as box() has
-     it. The same piece serves quick add's box (app.html), a sheet's subtask box and a template's boxes
-     (sheet/box-chips.html). Tapping a chip with a kind turns it off, so its words stay in the title, and tapping again
-     turns it back on. A chip with an action runs it instead: take a suggestion, drop a photo, or 🔔 Remind me, which
-     says whether it is pressed. A chip with neither only says something and can't take focus: where the task lands,
-     what a list makes, or words that stay as words. Its dot is a project's or a label's colour, and its icon a photo's
-     clip. A tap leaves the focus in the box, so the keyboard stays up. -->
+<!-- The chips under an add box, one for each thing the box read (chips(), app/quickadd.js). `bw` is the box's name, as
+     box() has it. The same piece serves quick add's box (app.html), a sheet's subtask box and a template's boxes
+     (sheet/box-chips.html). Tapping a chip with a kind turns it off, so its text stays in the title, and tapping it
+     again turns it back on. A chip with an action runs it instead: take a suggestion, drop a photo, or 🔔 Remind me,
+     which shows whether it is pressed. A chip with neither only shows information and can't take focus. Examples are
+     where the task will be added, what a list creates, and text kept as plain text. A chip's dot is a project's or a
+     label's colour, and its icon is a photo's clip. Tapping a chip leaves focus in the box, so the keyboard stays
+     up. -->
 <template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
   @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>

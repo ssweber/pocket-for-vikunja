@@ -1,4 +1,4 @@
-// The screen in the address: #/today, #/project/12 and so on.
+// Reads the screen from the address, such as #/today or #/project/12.
 
 export const currentRoute = () => routeOf(location.hash);
 export function routeOf(hash){

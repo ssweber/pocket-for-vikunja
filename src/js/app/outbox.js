@@ -12,8 +12,8 @@ const whenText = at => {
 const quoted = t => `“${parseStep(t).title}”`;
 
 export default {
-  /* Describe pending and rejected changes in time order. Each row supplies its key, text, time, failure and
-     available retry or drop action. */
+  /* List the waiting and rejected changes in time order. Each row has a key, text and time. It also has the failure
+     message, and a retry or drop action, where they apply. */
   get outboxRows(){
     const rows = [];
     for (const e of [...this.failed, ...this.pending].sort(byWhen)) {
@@ -41,7 +41,7 @@ export default {
     }
     return rows;
   },
-  // Show the waiting button after a delay, or immediately when a change is rejected.
+  // The waiting button shows after a delay, or at once when a change is rejected.
   get outboxShown(){ return !!this.failed.length || (this.waitShown && !!this.pending.length); },
   get outboxLabel(){
     const failed = this.outboxRows.filter(r => r.failed).length, waiting = this.outboxRows.length - failed;
@@ -53,17 +53,19 @@ export default {
     if (this.failed.length) return 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Don\'t send it.';
     return 'Everything has reached Vikunja.';
   },
-  // Expose sending, waiting or idle to tests. A busy add box counts as sending before its entry is queued.
+  // Tells tests whether Pocket is sending, waiting or idle. A busy add box counts as sending before its entry is
+  // queued.
   get syncState(){ return sendState({busy: this.flushing || this.writing > 0 || this.cap.busy || this.cap.adding > 0 || this.sheet.sub.adding > 0, unsent: this.unsent}); },
   openOutbox(){ this.openSheet('outbox'); },
   tapRefresh(){ if (this.outboxShown) this.openOutbox(); else this.refresh(); },
-  // Use Pocket's connection message when retrying offline.
+  // Retry sending. If Pocket is still offline, show its own connection message.
   async tryNow(){
     await this.flush();
     if (this.pending.length && this.offline) { this.say('Still offline. Your changes are saved and go to Vikunja when you\'re back online.', {place: 'sheet:top', cls: 'failed'}); return; }
     this.refresh();
   },
-  /* Describe a queued run action, including a skip reason and whether the step was repeated. */
+  /* Describe an action on a checklist that is waiting to be sent, including the reason for a skip and whether the
+     step was repeated. */
   actText(a){
     const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title + (this.isRepeat(a.task) ? ' (repeated)' : '');
     const why = a.op === 'skip' && htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
@@ -71,7 +73,7 @@ export default {
       progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `Assigning “${t}” to you`, unclaim: `Unassigning you from “${t}”`,
       delete: `Deleting “${t}”` + (a.ids?.length > 1 ? `, with ${a.ids.length - 1} subtask${a.ids.length === 2 ? '' : 's'}` : ''), position: `Moving “${t}” in its list`}[a.op] || t;
   },
-  // Whether a run's step is one repeated during the run, as last loaded.
+  // Whether a step was repeated during its checklist, as last loaded.
   isRepeat(id){
     if (typeof id === 'string') return !!this.pending.find(e => 'pending-' + e.id === id && (e.from || e.tpl != null));
     const s = this.view.run?.steps.find(x => x.id === id) || cache.get(id);
@@ -102,7 +104,7 @@ export default {
     this.refreshPending();
     await this.flush();
   },
-  // Drop an action only before sending starts or after rejection. Restore any text to its draft.
+  // Drop an action, but only before sending starts or after it was rejected. Any text it held goes back to its draft.
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a || !confirm(`Don't send it? ${this.dropText(a)}`)) return;
@@ -119,6 +121,6 @@ export default {
     this.giveBack(a, said);
     if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
     this.say('Not sent.' + (said.back ? ' Its text is back where you wrote it.' : ''), {place: 'sheet:top'});
-    this.flush();                                                           // what waited behind it
+    this.flush();                                                           // sends the actions that waited behind it
   },
 };

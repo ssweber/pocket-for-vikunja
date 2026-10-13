@@ -1,8 +1,8 @@
-/* Haptic feedback: 'hold' when a hold picks a row up, 'tick' at each snap of a swipe, 'done' (stronger) at 100% or a
-   tap on the tick. Android has navigator.vibrate. Safari on iPhone has none, but since iOS 18 toggling a switch,
-   <input type="checkbox" switch>, gives a tick, even when its label is clicked from code. That is a trick, not
-   something Apple offers for this: it may stop working, or not work while a finger is moving, and then there is no
-   tick. The screen always shows the change as well, so nothing depends on feeling it. */
+/* Haptic feedback: 'hold' when a hold picks a row up, 'tick' at each snap of a swipe, and 'done' (stronger) at 100% or
+   when the user taps the tick. Android has navigator.vibrate. Safari on iPhone has no such call. Since iOS 18,
+   though, toggling a switch (<input type="checkbox" switch>) makes the phone vibrate, even when code clicks its label.
+   Apple does not offer this for haptics, so it may stop working, or not work while the user is dragging. Then the
+   phone does not vibrate. The screen always shows the change as well, so nothing depends on the vibration. */
 const PATTERNS = {hold: 12, tick: 6, done: [14, 60, 24]};
 
 function iosTick(){

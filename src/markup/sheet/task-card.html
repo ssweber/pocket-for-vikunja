@@ -1,17 +1,17 @@
-<!-- The card a task's sheet leads with: the task's own row, then its notes, then its photos and files, so tapping a
-     task opens the same row with everything under it. The row is the shared task row (task-row.html, `g` is SHEET_ROW),
-     so it looks and acts as it does everywhere: its tick with its quarter, or a parent's ring, its title, which a tap
-     edits (editTitle), its claim slot, and its due line. Swiping right sets progress, and a full swipe ticks it in
-     place with no gap, since the sheet is about this one task. Swiping left at 0% shows Delete, which closes the sheet
-     onto the list, where the gap has Restore (sheetRowGesture). The tap path for progress is the Progress line in
-     Details. A template and its step have no row, since they are never ticked. Their name is a heading over the card,
-     which holds only their notes and files. -->
+<!-- The card at the top of a task's sheet. It holds the task's own row, then its notes, then its photos and files, so
+     tapping a task opens the same row with everything under it. The row is the shared task row (task-row.html, `g` is
+     SHEET_ROW), so it looks and acts as it does everywhere. It has the tick with its quarter (or a parent's ring), the
+     title, which a tap edits (editTitle), the claim slot, and the due date. Swiping right sets progress, and a full
+     swipe ticks the task in place with no gap, because the sheet is about this one task. Swiping left at 0% shows
+     Delete, which closes the sheet onto the list, where the gap has Restore (sheetRowGesture). The Progress buttons in
+     Details do the same as swiping for users who don't swipe. A template and its step have no row, because they are
+     never ticked. Their name is a heading above the card, which holds only their notes and files. -->
 <div class="card task-card" id="d-card">
   <template x-for="g in ofTemplate ? [] : [SHEET_ROW]" :key="0"><template x-for="t in [sheet.task]" :key="t.id">
     <!-- include markup/task-row.html -->
   </template></template>
-  <!-- The notes, sanitized like everything from Vikunja (descHtml). A tap edits them. With none, a quiet "Add notes" is
-       the way to add them. Copy sits at the top right, as on a comment. -->
+  <!-- The notes, sanitized like everything from Vikunja (descHtml). Tapping them edits them. With no notes, a quiet
+       "Add notes" is shown. Copy is at the top right, as on a comment. -->
   <div class="task-card-notes">
     <template x-if="!sheet.editingDesc"><div class="desc" id="d-desc" role="button" tabindex="0" aria-label="Edit notes" x-html="descHtml" @click="$event.target.closest('a') || (canEdit && editDesc())" @keydown.enter="canEdit && editDesc()"></div></template>
     <template x-if="!sheet.editingDesc && notesText(sheet.task).trim()"><button class="icon-btn plain copy-btn" id="d-desc-copy" aria-label="Copy the notes" @click="copyNotes()"><svg class="i"><use href="#i-copy"/></svg></button></template>
@@ -28,19 +28,19 @@ Tap Save to replace Vikunja's notes with yours. Tap Cancel to keep Vikunja's not
       <!-- include markup/place-line.html -->
     </template>
   </div>
-  <!-- The photos and files, then Add a photo or file, one per line, each with its clip where the row's tick is, so the
-       card reads as one column under the title -->
+  <!-- The photos and files, then Add a photo or file, one on each line. Each has its clip where the row's tick is, so
+       the card reads as one column under the title. -->
   <template x-if="attachmentsOn || (sheet.task.attachments || []).length"><div id="d-attachments">
     <template x-for="a in sheet.task.attachments || []" :key="a.id">
       <button class="att" @click="openAttachment(a)"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="a.file?.name || 'file'"></span><span class="sz num" x-text="fmtSize(a.file?.size)"></span></button>
     </template>
-    <!-- Files added here or with the task that aren't in Vikunja yet. They wait on the phone while there is no
+    <!-- Files added here, or with the task, that aren't in Vikunja yet. They wait on the phone while there is no
          connection. -->
     <template x-for="f in waitingByTask.get(sheet.task.id) || []" :key="f.key">
       <div class="att uploading"><svg class="i"><use href="#i-clip"/></svg><span class="nm" x-text="f.name"></span><span class="sz" x-text="offline ? 'Waiting for a connection' : f.trouble ? 'Vikunja had a problem with it. Trying again.' : 'Uploading…'"></span>
         <button class="icon-btn plain" :aria-label="'Don\'t upload ' + f.name" @click="cancelFile(f.entry, f.key)"><svg class="i"><use href="#i-close"/></svg></button></div>
     </template>
-    <!-- The phone offers its own choices: a photo from the library, a new photo, or a file -->
+    <!-- The phone offers the choices: a photo from the library, a new photo, or a file -->
     <template x-if="attachmentsOn && canEdit"><label class="att add-att">
       <svg class="i"><use href="#i-plus"/></svg><span class="nm">Add a photo or file</span>
       <input type="file" id="d-file" class="sr" multiple aria-label="Add a photo or file" @change="addFiles($event.target.files); $event.target.value = ''">

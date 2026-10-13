@@ -1,13 +1,13 @@
-// The sentences Pocket says when something happens. lines.js decides where each is shown. These functions only build
+// The messages Pocket shows when something happens. lines.js decides where each is shown. These functions only build
 // the text, so the unit tests can check it.
 import {NetError} from './api.js';
 import {dueInfo, fmtTime} from './dates.js';
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
-/* The row at the end of a list of done tasks shown `per` at a time, most recently done first (a project's Done,
-   search's done matches), with `left` not shown yet. Returns {title, note}, where note says how many are left and is ''
-   when the title says it, or null when none are left and there is no row. */
+/* The row at the end of a list of done tasks that shows `per` tasks at a time, most recently done first (a project's
+   Done, the done matches in search). `left` is how many are not shown yet. Returns {title, note}, or null when none are
+   left and there is no row. The note gives how many are left, and is '' when the title already gives it. */
 export function moreDone(left, per){
   if (!(left > 0)) return null;
   if (left <= per) return {title: `Show the last ${left === 1 ? 'one' : left}`, note: ''};
@@ -16,14 +16,14 @@ export function moreDone(left, per){
 
 // A change Vikunja didn't save, and why, in a few words.
 export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' : 'Not saved: ' + e.message;
-// A move Vikunja turned down. When an API token without the right permission caused it (api.js), the message names
-// the permission.
+// A move Vikunja refused. If an API token without the right permission caused it (api.js), the message names the
+// permission.
 export const notMoved = e => e?.code === 'token' ? 'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.'
   : 'Not moved: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
 
-/* Where tasks just added went, said by the add box when they aren't on the screen being looked at (a task due next
-   month added on Today, or one for another project). `n` lines were added, `subs` of them subtasks of the others, to
-   `project`. A single task may be due `due`. `but` is what didn't go as asked (", but …"). */
+/* Tells the user where tasks just added went. The add box shows this when the tasks aren't on the current screen (a
+   task due next month added on Today, or a task for another project). `n` tasks were added to `project`, `subs` of
+   them as subtasks of the others. A single task may be due `due`. `but` is what didn't go as asked (", but …"). */
 export function addedWhere({n, subs = 0, project, due = null, photos = 0, but = ''}){
   const what = n === 1 ? 'Added' : subs ? `Added ${plural(n - subs, 'task')} with ${plural(subs, 'subtask')}` : `Added ${plural(n, 'task')}`;
   const when = n === 1 && due ? ', due ' + dueInfo(due).label.replace(/^(Today|Tomorrow|Yesterday)/, w => w.toLowerCase()) : '';
@@ -31,55 +31,57 @@ export function addedWhere({n, subs = 0, project, due = null, photos = 0, but = 
   return `${what} to ${project || 'its project'}${when}${with_}${but}`;
 }
 
-/* What Move all to today says under Overdue: how many moved, and `stays`, a sentence about what stayed where it was.
-   `left` is how many Vikunja didn't save. */
+/* The message that Move all to today shows under Overdue. `n` is how many tasks moved, and `stays` is a sentence about
+   what stayed where it was. `left` is how many tasks Vikunja didn't save. */
 export function movedText(n, left, stays){
   if (!n) return stays ? 'Nothing moved. ' + stays : 'Nothing moved. Vikunja didn\'t save the changes.';
   return `Moved ${n} to today` + (left ? `. ${left === 1 ? '1 wasn\'t' : left + ' weren\'t'} saved and ${left === 1 ? 'is' : 'are'} still overdue.` : '')
     + (stays ? (left ? ' ' : '. ') + stays : '');
 }
 
-// The Undo of Move all to today, or of a task held on Today and moved, when `k` tasks couldn't go back because they
-// changed since or weren't saved. `still` is the date they are still due ("today"), or null when their date was taken
-// off and still is.
+// The message when Undo can't move `k` tasks back, after Move all to today or after the user held a task on Today and
+// moved it. The tasks changed since, or were not saved. `still` is the date they are still due ("today"), or null when
+// their date was removed and they are still without one.
 export const notMovedBack = (k, still) => `${plural(k, 'task')} couldn't be moved back (changed since, or not saved) and ${k === 1 ? 'is' : 'are'} still ${still ? 'due ' + still : 'without a date'}.`;
 
-/* A row or a card held on Today and moved to a new date (app/throw.js), said with its Undo: "Moved to tomorrow". `day`
-   is the date's name as its chip has it ("Today", "Tomorrow", "Mon 12"), or null when the date was taken off. A card
-   whose subtask `kept` (its title) is due sooner stays where it was, and the message says so: "Moved to Friday. Its
-   subtask “Buy paint” is due sooner, so it stays here." */
+/* The message shown with Undo after the user holds a row or a card on Today and moves it to a new date (app/throw.js),
+   such as "Moved to tomorrow". `day` is the date's name as its chip shows it ("Today", "Tomorrow", "Mon 12"), or null
+   when the date was removed. If a card has a subtask (`kept`, its title) that is due sooner, the card stays where it
+   was and the message says so: "Moved to Friday. Its subtask “Buy paint” is due sooner, so it stays here." */
 export const movedTo = (day, kept = null) => (day ? `Moved to ${dayWord(day)}` : 'Removed its due date')
   + (kept ? `. Its subtask “${kept}” ${day ? 'is due sooner' : 'has a date'}, so it stays here.` : '');
 // A day's name inside a sentence: "today", "tomorrow", "Friday".
 export const dayWord = day => /^(Today|Tomorrow)$/.test(day) ? day.toLowerCase() : day;
 
-/* A task ticked done, with `closed` of its `open` subtasks closed with it, as its row's line says it: {text, title,
-   more}. With no subtasks, "Done: Pack the van". With all of them closed, "Closed Pack the van + 4 subtasks". With some
-   not saved, how many were. */
+/* The message in a row after the user ticks a task done, when `closed` of its `open` subtasks were closed with it.
+   Returns {text, title, more}. With no subtasks it reads "Done: Pack the van". With all subtasks closed it reads
+   "Closed Pack the van + 4 subtasks". If some were not saved, `more` says how many were closed and that the rest
+   weren't. */
 export function doneLine(closed, open, title){
   if (!open) return {text: 'Done:', title, more: ''};
   if (!closed) return {text: 'Done:', title, more: `— its ${plural(open, 'subtask')} couldn't be closed`};
   return {text: 'Closed', title, more: closed === open ? '+ ' + plural(open, 'subtask') : `+ ${closed} of ${plural(open, 'subtask')}: the rest couldn't be closed`};
 }
-// The same as one string, for a place other than the row (the sheet's subtasks), with a long title cut short.
+// The same message as one string, for places other than the row (the sheet's subtasks). A long title is shortened.
 export const doneText = (closed, open, title) => {
   const l = doneLine(closed, open, title.length > 40 ? title.slice(0, 38) + '…' : title);
   return [l.text, l.title, l.more].filter(Boolean).join(' ');
 };
-// A done task shown over its open subtasks on a project's list, and why it is there.
+// The message on a done task that a project's list shows above its open subtasks. It explains why the task is there.
 export const headText = n => n ? `Done, but ${n === 1 ? '1 subtask is' : n + ' subtasks are'} still open` : 'Done';
 
-/* The name of a waiting row's Cancel button, for a screen reader. It says what becomes of the `n` lines waiting under
-   the row: they go under `over` (the title of what the row was under), or, for a row at the top, become tasks of their
-   own, as cancelPending (app/sending.js) does. */
+/* The label of a waiting row's Cancel button, for screen readers. It also says what happens to the `n` lines waiting
+   under the row. If the row was under another task (`over`, that task's title), the lines move under that task. If the
+   row was at the top, the lines become separate tasks, as cancelPending (app/sending.js) does. */
 export const cancelName = (title, n = 0, over = '') => 'Cancel ' + title + (!n ? '' : `. The line${n === 1 ? '' : 's'} under it `
   + (over ? `${n === 1 ? 'moves' : 'move'} under “${over}”.` : n === 1 ? 'becomes its own task.' : 'become their own tasks.'));
-// A checklist's step done or skipped without a connection, and when the change is sent.
+// The message after the user marks a checklist's step done or skipped without a connection. It says when the change
+// will be sent.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
 
-/* Who started a checklist, and when. In a finished checklist's summary: "Started by <name> at 6:02 AM", or on another
-   day "Started by <name>, Oct 8, 6:02 AM". At the top of its ⋯ sheet (`day`), always with the day. `who` is their
-   name or "you". Returns '' when who isn't known, and only who when the time isn't. */
+/* Who started a checklist, and when. A finished checklist's summary shows "Started by <name> at 6:02 AM", or for
+   another day "Started by <name>, Oct 8, 6:02 AM". The top of the checklist's ⋯ sheet always includes the day (`day`).
+   `who` is the person's name or "you". Returns '' when `who` is unknown, and only the name when the time is unknown. */
 export function startedText(who, at, {now = new Date(), day = false} = {}){
   if (!who) return '';
   const d = at ? new Date(at) : null;
@@ -88,22 +90,23 @@ export function startedText(who, at, {now = new Date(), day = false} = {}){
   return `Started by ${who}` + (today && !day ? ' at ' + fmtTime(d) : ', ' + d.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}));
 }
 
-// What is said after a copy, where it was copied from: progress as a text (where there is no share sheet), a Markdown
-// list, which pasted into Pocket's add box makes the same tasks, a task's notes, or a comment. Or that the browser
-// didn't allow the copy.
+// The message shown after the user copies something, by what was copied: progress as text (where there is no share
+// sheet), a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, or a comment.
+// `failed` is for when the browser didn't allow the copy.
 export const COPIED = {text: 'Copied. Paste it into a message', markdown: 'Copied as a Markdown list. Paste it into your notes, or into Pocket\'s add box to make the same tasks', notes: 'Copied the notes',
   comment: 'Copied the comment', failed: 'Not copied. This browser didn\'t allow it'};
 
-// Names in a sentence: "A", "A and B", "A, B and C". Past `most` names, the first of them and how many more: "A, B, C
-// and 2 more".
+// Names in a sentence: "A", "A and B", "A, B and C". Past `most` names, it lists the first `most` and counts the rest:
+// "A, B, C and 2 more".
 export function namesText(names, most = 3){
   const shown = names.length > most ? [...names.slice(0, most), `${names.length - most} more`] : names;
   return shown.length < 2 ? shown.join('') : shown.slice(0, -1).join(', ') + ' and ' + shown.at(-1);
 }
-/* The question a parent's ring asks (sheet/complete.html): {head, body, yes: the button's label}. For a task: complete
-   it, and the open subtasks in `names` with it, leaving the `stay` that repeat as they are. For a checklist (`run`):
-   finish it, leaving the steps in `names` not done. The names are in a sentence, not a list, so they aren't taken for
-   boxes to pick from. */
+/* The question a parent's ring asks (sheet/complete.html). Returns {head, body, yes}, where `yes` is the button's
+   label. For a task, the question is whether to complete it together with the open subtasks in `names`. `stay` is how
+   many subtasks repeat and stay as they are. For a checklist (`run`), the question is whether to finish it and leave
+   the steps in `names` not done. The names are written into a sentence, not a list, so they aren't mistaken for boxes
+   to pick from. */
 export function completeAsk({title, run = false, names = [], stay = 0}){
   const n = names.length, which = namesText(names);
   if (run) return {head: `Finish this checklist with ${plural(n, 'step')} not done?`, yes: 'Finish checklist',

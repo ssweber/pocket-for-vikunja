@@ -36,46 +36,51 @@ export const globals = {addedText, colorOf, durText, fmtSize, fromLocalInput, gr
 
 // Pocket's own directives: x-style, x-grow and x-box.
 export const directives = Alpine => {
-  /* x-style="{'--pct': .5, paddingLeft: '18px'}": what :style does with an object, minus the timer Alpine sets each
-     time it evaluates one, to drop an empty style attribute. Every change to a list re-evaluates all its rows, so that
-     was hundreds of timers at once: nothing to a browser, but seconds under the tests' fake clock, which runs timers
-     one at a time. npm run lint keeps :style to strings. */
+  /* x-style="{'--pct': .5, paddingLeft: '18px'}" does what :style does with an object, without the timer Alpine sets
+     each time it evaluates one (the timer removes an empty style attribute). Every change to a list re-evaluates all
+     its rows, which started hundreds of timers at once. A browser handles that easily, but it took seconds under the
+     tests' fake clock, which runs timers one at a time. `npm run lint` keeps :style to strings. */
   Alpine.directive('style', (el, {expression}, {evaluateLater, effect}) => {
     const get = evaluateLater(expression);
     effect(() => get(o => { for (const [k, v] of Object.entries(o || {})) el.style.setProperty(k.startsWith('--') ? k : k.replace(/[A-Z]/g, c => '-' + c.toLowerCase()), v); }));
   });
 
-  // Keep a text box as tall as its text (grow, util.js): when drawn, and on the tick after whatever `read` reads
-  // changes, once the box has its new text.
+  // Keep a text box as tall as its text (grow, util.js). It runs when the box is drawn, and on the next tick after
+  // anything `read` reads changes, once the box has its new text.
   const fit = (el, effect, read) => effect(() => { read(); Alpine.nextTick(() => grow(el)); });
-  // x-grow="sheet.commentDraft": fit a box that isn't an add box (a comment, notes, a title) to the text given.
+  // x-grow="sheet.commentDraft" fits a box that isn't an add box (a comment, notes, a title) to its text.
   Alpine.directive('grow', (el, {expression}, {evaluate, effect}) => fit(el, effect, () => evaluate(expression)));
 
-  /* x-box="'sub'": an add box, named for box() in app/quickadd.js. Everything every add box does is here, once. The
-     markup says only what differs between quick add's box, a sheet's subtask box and the boxes a template is typed in.
-     - It stays as tall as its text.
-     - Its caret index is recorded on each input, click and key (box.caret), since @ and * suggest for the word the
-       caret is in.
-     - The marks behind its words (.cap-marks, the element before it) scroll with it.
-     - On focus it sets box.focus. On blur it clears box.focus 150ms later, unless it has the focus back by then: a chip
-       or a button tapped beside it hands focus back. The box object captured at blur is updated, not whichever box has
-       the name by then, as names move: quick add's box is the run's box on a run's screen.
-     - Enter sends it, or takes the top suggestion (boxEnter), except while an input method is composing a word, when
-       Enter picks from the input method's own list.
-     - Typing @ or * loads what there is to suggest: people who can be assigned, or labels.
-     - Half a second after typing pauses, the @usernames in it are checked (checkAccess): whether each person exists and
-       can see the project the lines go to, for the chips that warn before sending. Checked again only when the names
-       or the project change.
-     x-box.lines marks a box that takes a list (quick add's, a subtask box), where Shift+Enter breaks the line. In a
-     one-line box (a template's name, a step), Shift+Enter is Enter.
+  /* x-box="'sub'" turns an element into an add box. The name is the one box() in app/quickadd.js looks up. This
+     directive does everything that every add box does. The markup says only what differs between quick add's box, a
+     sheet's subtask box and the boxes a template is typed in.
+
+     - The box stays as tall as its text.
+     - It records its caret index on each input, click and key (box.caret), because @ and * suggest for the word at
+       the caret.
+     - The marks behind its text (.cap-marks, the element before it) scroll along with it.
+     - On focus it sets box.focus. On blur it clears box.focus 150ms later, unless the box has focus again by then.
+       Tapping a chip or a button beside the box hands focus back to it. The blur handler updates the box object it
+       captured at blur, not whichever box has that name later, because names move. Quick add's box is the
+       checklist's box on a checklist's screen.
+     - Enter sends the text, or takes the top suggestion (boxEnter). While an input method is composing a word, Enter
+       picks from the input method's own list instead.
+     - Typing @ or * loads the suggestions: people who can be assigned, or labels.
+     - Half a second after typing pauses, it checks the @usernames in the text (checkAccess). The check finds out
+       whether each person exists and can see the project the lines go to, so chips can warn before sending. It
+       checks again only when the names or the project change.
+
+     x-box.lines marks a box that takes a list (quick add's, a subtask box). In it, Shift+Enter starts a new line. In a
+     one-line box (a template's name, a step), Shift+Enter acts as Enter.
+
      Alt+↑ and Alt+↓ move a list's add box through its rows. Alt+← and Alt+→ change a project's box level. */
   Alpine.directive('box', (el, {expression, modifiers}, {evaluate, effect, cleanup}) => {
     const app = Alpine.$data(el), name = () => evaluate(expression), box = () => app.box(name());
     // Listeners are removed when Alpine removes the element, as with @event. A box removed while focused is blurred on
-    // its way out, with no component around it to ask which box it was.
+    // its way out, when no component is left to ask which box it was.
     const on = (type, fn) => { el.addEventListener(type, fn); cleanup(() => el.removeEventListener(type, fn)); };
-    // Effects are released then too. The `effect` Alpine hands a directive releases only the last one made with it,
-    // and a leftover effect would ask about a box with no component around it at the next change.
+    // Effects are released then too. The `effect` Alpine hands to a directive releases only the last effect made with
+    // it. A leftover effect would ask about a box at the next change, when no component is left to answer.
     const watch = fn => { const made = effect(fn); cleanup(() => Alpine.release(made)); };
     fit(el, watch, () => box().text);
     for (const type of ['input', 'click', 'keyup']) on(type, () => { box().caret = el.selectionStart; });
@@ -112,8 +117,8 @@ export const directives = Alpine => {
   });
 };
 
-// The component is one object: core.js's data plus each part's methods. Getters are copied as getters, since a spread
-// ({...auth}) would read each one once and keep the value.
+// The component is core.js's data plus the methods of each part. Getters are copied as getters. A spread ({...auth})
+// would call each getter once and keep its value.
 const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
 export const pocket = () => {
   const component = core();

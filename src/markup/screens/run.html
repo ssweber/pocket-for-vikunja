@@ -1,7 +1,7 @@
-    <!-- A checklist's screen: the current step, the list of steps, its comments, and the comments from the last
-         checklist started from the same template -->
+    <!-- A checklist's screen. It shows the current step, the list of steps, the checklist's comments, and the comments
+         from the last checklist started from the same template. -->
     <template x-if="!view.loading && !view.error && route.name === 'run' && runView"><div id="run">
-      <!-- "Started", with its Undo, until anything is done in the checklist -->
+      <!-- "Started", with its Undo, until a step is done in the checklist -->
       <template x-for="line in placeLines('run')" :key="line.n">
         <!-- include markup/place-line.html -->
       </template>
@@ -13,7 +13,7 @@
         <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun()">Finish checklist</button>
       </div></template>
 
-      <!-- Countdowns running on steps other than the one shown, so none is missed -->
+      <!-- Countdowns running on steps other than the one on the card, so the user doesn't miss one -->
       <template x-if="runView.timers.length"><div class="card" id="run-timers">
         <template x-for="s in runView.timers" :key="s.id"><button class="timer" @click="showStep(s.i, true)"><span class="t" x-text="s.title"></span><span class="num" :class="{late: s.late}" x-text="s.countText"></span></button></template>
       </div></template>
@@ -22,12 +22,11 @@
 
       <div class="h3">Steps</div>
       <div class="list" id="run-steps" x-data="{where: 'run'}">
-        <!-- The steps, each the shared task row (g.run in task-row.html) -->
+        <!-- Each step is the shared task row (g.run in task-row.html) -->
         <template x-for="g in [runRows]" :key="0"><template x-for="t in runView.steps" :key="t.id">
           <!-- include markup/task-row.html -->
         </template></template>
-        <!-- The add box at the foot of the steps, with Repeat (list-box.html). This screen has no quick-add bar at the
-             bottom. -->
+        <!-- The add box at the bottom of the steps, with Repeat (list-box.html). This screen has no quick-add bar. -->
         <!-- include markup/list-box.html -->
       </div>
 
@@ -42,7 +41,7 @@
         </form>
       </div>
 
-      <!-- The comments from the last finished checklist of this template, and on its steps, as a handover -->
+      <!-- The comments on the last finished checklist from this template, and on its steps, handed over to this one -->
       <template x-if="view.run.last"><div>
         <div class="h3">Last time<button class="n linkish" id="run-last-open" @click="openRun(view.run.last.id)" x-text="view.run.last.title"></button></div>
         <div class="card" id="run-last">

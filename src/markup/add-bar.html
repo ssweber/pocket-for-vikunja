@@ -1,21 +1,21 @@
-<!-- The quick-add bar at the bottom of Today and a project's list. There is one add box (x-box). A nudge on a row moves
-     the box into the list under that row, indented to match what it adds (seatBox, app/quickadd.js), and on a project's
-     list the ⇤ ⇥ button changes its level. While the box is in the list, a dashed placeholder keeps its place at the
-     bottom. Tapping the placeholder, or scrolling the box's row out of sight, brings the box back. The box has no
-     button of its own for that, as its line has no room for one. -->
+<!-- The quick-add bar at the bottom of Today and a project's list. There is one add box (x-box). Nudging a row moves
+     the box into the list under that row, indented to match what it adds (seatBox, app/quickadd.js). On a project's
+     list the ⇤ ⇥ button changes the box's level. While the box is in the list, a dashed placeholder keeps its place at
+     the bottom. Tapping the placeholder, or scrolling the box's row out of sight, brings the box back. The box has no
+     button for that, because its line has no space for one. -->
   <!-- The placeholder at the bottom while the box is in the list. It is one line tall, dashed, and shows the box's
-       placeholder text. Tapping it brings the box back. It comes before the box in the markup, so the box covers it for
-       the frame before the box is seated under its row. -->
+       placeholder text. It comes before the box in the markup, so the box covers it for the frame before the box is
+       placed under its row. -->
   <button type="button" id="cap-home" style="display:none" x-show="boxInList" :aria-label="boxBackLabel" @click="boxBack()"><span x-text="capHomeSays"></span></button>
-  <!-- Quick add. A checklist's screen hides it: its steps have their own box under them (screens/run.html). -->
+  <!-- Quick add. A checklist's screen hides it, because its steps have their own box under them (screens/run.html). -->
   <div id="capture" class="addbox" x-ref="captureBar" :hidden="['search', 'checklists', 'run'].includes(route.name)">
     <!-- Messages from the box: where a task went when it isn't on this screen, or why it couldn't be added -->
     <template x-for="line in placeLines('cap')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
     <form id="f-capture" autocomplete="off" @submit.prevent="boxSend(capW)">
-      <!-- On a project's list, moves the box out a level, so it adds a task after this one and its subtasks, or back in
-           (boxLevel, quickadd.js). Tab and Shift+Tab do the same (boxTab). -->
+      <!-- On a project's list, this moves the box out a level, so it adds a task after this one and its subtasks, or
+           back in (boxLevel, quickadd.js). Tab and Shift+Tab do the same (boxTab). -->
       <template x-if="canLevel"><button type="button" class="icon-btn plain box-level" id="btn-box-level" :disabled="boxOut && !canIn" :aria-label="boxOut ? 'Indent the add box to add a subtask' : 'Outdent the add box to add a task'" @mousedown.prevent @click="boxLevel(!boxOut)"><svg class="i"><use :href="boxOut ? '#i-indent' : '#i-outdent'"/></svg></button></template>
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>

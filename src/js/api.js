@@ -19,13 +19,13 @@ export const sharedToken = {
 // Whether Pocket runs as a home-screen app rather than in a browser tab.
 export const INSTALLED = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 // When this copy of Pocket was put on the server, from the page's Last-Modified. The browser gives it in local time as
-// "MM/DD/YYYY hh:mm:ss", and gives the time now when the server sent none.
+// "MM/DD/YYYY hh:mm:ss", and gives the current time when the server sent none.
 export const LOADED = (m => m && new Date(m[3], m[1] - 1, m[2], m[4], m[5], m[6]))(document.lastModified.match(/(\d+)\/(\d+)\/(\d+) (\d+):(\d+):(\d+)/));
 let refreshing = null;                                  // the session renewal under way, so concurrent 401s share it
 export let seenToken = '';                              // the shared token the last time Pocket checked who it belongs to
 export const setSeenToken = t => { seenToken = t; };
-// A promise that settles once Vikunja has said who is signed in, set while Pocket opens on its saved screen. Until
-// then no change is sent.
+// A promise that settles once Vikunja reports who is signed in. It is set while Pocket opens on its saved screen.
+// Until then no change is sent.
 export let opening = null;
 export const setOpening = p => { opening = p; };
 // A token's SHA-256 in hex. Pocket stores the hash to recognise a sign-in later, never the token itself. Returns ''
@@ -73,14 +73,14 @@ function refreshSession(){
   return refreshing;
 }
 const timeoutSignal = ms => { if (AbortSignal.timeout) return AbortSignal.timeout(ms); const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
-// Counts writes in flight in app.writing, so <html data-sync> can say when they have all landed.
+// Counts writes in flight in app.writing, so <html data-sync> can show when they have all finished.
 export async function api(path, opts = {}){
   const write = (opts.method || 'GET') !== 'GET';
   if (write) app.writing = (app.writing || 0) + 1;
   try { return await request(path, opts); } finally { if (write) app.writing--; }
 }
 async function request(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
-  // While Pocket opens on its saved screen, a write waits until Vikunja has said who is signed in, and goes only if
+  // While Pocket opens on its saved screen, a write waits until Vikunja reports who is signed in. It is sent only if
   // that is still the person the screen belonged to.
   if (auth && method !== 'GET' && opening) {
     const who = app.user?.id;
@@ -123,7 +123,7 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
     throw new ApiError(res.status, j.detail || res.statusText || ('HTTP ' + res.status), j.code);
   }
   if (raw) return res;
-  if (res.status === 204 || res.status === 304) return null;              // 304: Vikunja says the change made no difference
+  if (res.status === 204 || res.status === 304) return null;              // 304: the change made no difference
   // A reply cut off half way is a lost connection too, not an error from Vikunja.
   let t; try { t = await res.text(); } catch (e) { app.offline = true; throw new NetError(e.message); }
   return t ? JSON.parse(t) : null;

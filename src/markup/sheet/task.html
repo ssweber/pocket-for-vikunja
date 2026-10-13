@@ -3,24 +3,24 @@
 
     <template x-if="sheet.kind === 'task' && sheet.task"><div>
       <div class="d-head">
-        <!-- Where the task lives: its project, and the task it's part of -->
+        <!-- The task's project, and its parent task if it has one -->
         <div class="d-path" id="d-path">
           <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheet.task.project_id)" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
           <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTitle"></button></span></template>
         </div>
-        <!-- A template and its step have no row (they're never ticked, nor have progress): their name, as a heading over
-             the card of their notes and files. A template's is changed here (Escape calls the change off, as in a
-             task's title); a step's in the template. -->
+        <!-- A template and its step have no row, because they are never ticked and have no progress. Their name is a
+             heading above the card with their notes and files. A template's name is edited here, and Escape cancels the
+             edit, as for a task's title. A step's name is edited in the template. -->
         <template x-if="ofTemplate"><div class="d-title">
           <template x-if="checklistRole === 'template'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title" x-grow="sheet.title"
                     @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(sheet.task); $el.blur()" @change="saveTitle()"></textarea></template>
-          <!-- A template's step: its name without its time, which is changed in the template, with the steps it can count from -->
+          <!-- A template's step shows its name without its time. The time is changed in the template. -->
           <template x-if="checklistRole === 'tplstep'"><h2 class="d-step-title" id="d-step-title" x-text="tplStep?.title || sheet.task.title"></h2></template>
         </div></template>
         <template x-if="checklistRole === 'tplstep' && tplStep"><div class="meta d-step-when num" id="d-step-when">
           <span x-text="'Step ' + tplStep.no + ' of ' + tplStep.of"></span><template x-if="tplStep.problem || tplStep.text"><span :class="{'due overdue': tplStep.problem}" x-text="tplStep.problem || tplStep.text"></span></template>
         </div></template>
-        <!-- Saving…, Saved: at the right of the path's line, so the card stays right under it -->
+        <!-- The Saving… and Saved message sits at the right of the path, so the card stays right under the header -->
         <div class="saved" id="d-saved" x-text="sheet.savedMsg"></div>
       </div>
       <!-- include markup/sheet/task-card.html -->
@@ -41,10 +41,11 @@
       <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Read only.</p></template>
       <!-- x-if, not x-show: x-show switches a frame late, so a step opened from its template would flash the
            template's date and steps -->
-      <!-- A template's schedule: Vikunja's repeat settings, and the reminder emails before each one -->
+      <!-- A template's schedule is Vikunja's repeat settings, plus the reminder emails before each repeat -->
       <template x-if="checklistRole === 'template'"><div class="h3">When it's due</div></template>
-      <!-- A row takes a tap anywhere (propTap): its date's picker, the list of its select, or its Add; a row with only a
-           select has it over the whole row (.prop.sel), so the phone opens it where showPicker can't -->
+      <!-- Tapping anywhere on a row (propTap) opens its date picker, its select list or its Add button. A row with
+           only a select has the select over the whole row (.prop.sel), because the phone can't open it from code
+           (showPicker). -->
       <template x-if="!ofTemplate || checklistRole === 'template'"><div class="card" id="d-due-card">
         <div class="prop" @click="propTap($event)"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
           <input type="datetime-local" id="d-due" data-tap :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
@@ -55,8 +56,8 @@
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>
           </select>
         </span></div></template>
-        <!-- Reminders, which Vikunja sends by email: counted back from the due date when there is one, or at a set time.
-             Only while a task isn't done, so a template's only while it comes round. -->
+        <!-- Vikunja sends reminders by email, counted back from the due date when there is one, or at a set time. A
+             template shows them only while it has a due date, which a done template doesn't. -->
         <template x-if="checklistRole !== 'template' || isSet(dueShown)"><div class="prop" id="d-reminders" @click="propTap($event)"><span class="k">Reminders</span><span class="v">
           <template x-for="(r, k) in sheet.task.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
             <template x-if="canEdit"><button class="chip-x" :aria-label="'Remove the reminder ' + reminderText(r)" @click="removeReminder(k)"><svg class="i"><use href="#i-close"/></svg></button></template></span></template>
@@ -72,13 +73,13 @@
       </div></template>
       <template x-if="checklistRole === 'template'"><p class="note" id="d-comes-round" x-text="comesRoundNote"></p></template>
 
-      <!-- Its subtasks, or a template's steps, and the box that adds them: the sheet's list (sheet/sub-list.html) -->
+      <!-- The task's subtasks, or a template's steps, with the box that adds them (sheet/sub-list.html) -->
       <template x-if="checklistRole !== 'tplstep'"><div>
         <!-- include markup/sheet/sub-list.html -->
       </div></template>
 
-      <!-- Not on a template or its step: a run is a copy of them made by Vikunja, which copies their notes, photos,
-           labels and people but not their comments, so nothing written there reaches a run -->
+      <!-- Comments are not shown on a template or its step. Vikunja copies their notes, photos, labels and people into
+           each checklist, but not their comments, so a comment written there would never reach a checklist. -->
       <template x-if="!ofTemplate"><div>
       <div class="h3">Comments<span class="n num" id="d-ccount" x-text="(sheet.comments?.length || 0) + pendingComments.length || ''"></span></div>
       <div class="card" id="d-comments">
@@ -127,8 +128,8 @@
             </template></div>
           </div></template>
         </span></div>
-        <!-- Priority as a level, 1 to 5 bars, and its word; the phone's own picker lies over the whole row (.prop.sel), as
-             Safari can't open a select from code. Not a template's. -->
+        <!-- Priority shows 1 to 5 bars and a label. The select lies over the whole row (.prop.sel), because Safari
+             can't open a select from code. A template and its step have no priority. -->
         <template x-if="!ofTemplate"><div class="prop sel prio"><span class="k">Priority</span><span class="v">
           <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
           <span x-text="PRIOS[sheet.task.priority || 0].label"></span>
@@ -137,14 +138,16 @@
             <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
           </select>
         </span></div></template>
-        <!-- Progress, the tap path for the row's swipe: the quarters, with the one the task is at pressed. None is pressed
-             for progress set elsewhere (30%, say) or for a done task, which a quarter reopens. Done is the tick. Not for
-             a parent (a checklist too), whose progress is worked out from its subtasks. Tapping a quarter claims the
-             task, as a swipe does (setSheetProgress). -->
+        <!-- Progress buttons, the tap version of the row's swipe. There is one for each quarter, and the task's current
+             quarter is pressed. None is pressed when progress was set elsewhere (30%, say) or the task is done, and
+             tapping a quarter reopens a done task. Done is the tick's job. A parent (a checklist too) has no buttons,
+             because its progress is calculated from its subtasks. Tapping a quarter claims the task, as a swipe does
+             (setSheetProgress). -->
         <template x-if="!ofTemplate && !sheetRing && canEdit"><div class="prop"><span class="k">Progress</span><span class="v d-quarters" id="d-progress" role="group" aria-label="Progress">
           <template x-for="q in QUARTERS" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(quarterOn(sheet.task) === q)" :aria-label="q + '% done'" @click="setSheetProgress(q)" x-text="q + '%'"></button></template>
         </span></div></template>
-        <!-- Not for a step: a template's steps and a run's are copied, not repeated -->
+        <!-- Not for a step, because the steps of a template and of a checklist are copied, not repeated. A template has
+             its own Repeats row in the schedule above. -->
         <template x-if="!['template', 'tplstep', 'step'].includes(checklistRole)"><div class="prop sel"><span class="k">Repeats</span><span class="v">
           <select id="d-repeat" aria-label="Repeats" :disabled="!canEdit" @change="setRepeat($event.target.value)">
             <template x-for="o in repeatOptions" :key="o.value"><option :value="o.value" :selected="o.value === repeatValue" x-text="o.label"></option></template>

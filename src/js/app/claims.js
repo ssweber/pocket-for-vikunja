@@ -10,10 +10,11 @@ const tried = new Map();                         // username -> when the last pi
 const DAY = 864e5;
 
 export default {
-  /* Build the row's claim slot from `people`, including pending claims. An empty open task shows "+ me". Your slot
-     lets you release the task. Other people's slots and done tasks show assignees without an action. Anyone can
-     still mark the task done or skip a step. Show up to two pictures, yours first, and count the rest. In a private
-     project, hide your picture and "+ me", but keep other assignees from before the task was moved there. */
+  /* Build a row's claim slot from `people`, including pending claims. An open task with no assignee shows "+ me".
+     The user's own slot lets them release the task. Another person's slot, and the slot on a done task, show the
+     assignees with no action. Anyone can still mark the task done or skip a step. A slot shows up to two pictures,
+     the user's first, and counts the rest. In a private project the user's picture and "+ me" are hidden, but other
+     assignees from before the task was moved there stay. */
   claimSlot(t, people, done, run = null){
     if (this.onlyYou(t.project_id)) { people = people.filter(u => u.id !== this.user?.id); done = true; }
     const me = this.user, mine = people.some(u => u.id === me?.id), title = parseStep(t.title).title, id = t.id;
@@ -25,21 +26,22 @@ export default {
     if (all.length) return {id, run, users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
     return {id, run, users: [], more: 0, can: true, label: `Tap to assign ${title} to yourself`};
   },
-  /* Show who a run or repeating template is for, using the same pictures as a done task. Change these assignees in
-     the sheet, so the slot has no action. */
+  /* Show who a checklist or a repeating template is for, using the same pictures as a done task. These assignees
+     are changed in the sheet, so the slot has no action. */
   forSlot(t){
     const slot = (t.assignees || []).length ? this.claimSlot(t, t.assignees, true) : null;
     return slot && {...slot, label: this.forText(t)};
   },
-  // Hide claims only when project access is known. A token that can't read access keeps the usual slots.
+  // Claims are hidden only when the project's access is known. A token that can't read access keeps the usual slots.
   onlyYou(pid){ return !this.accessBlocked && this.seenBy?.[pid] === 0; },
-  /* Show who completed or skipped a step, with `badge`, before its other assignees. Return null when no one is known. */
+  /* Show who completed or skipped a step, marked with `badge`, before its other assignees. Returns null when no one
+     is known. */
   doneSlot(by, people, badge){
     const all = [...by.map(u => ({...u, badge})), ...people.filter(u => !by.some(d => d.id === u.id))];
     return all.length ? {users: all.slice(0, 2), more: Math.max(0, all.length - 2), can: false} : null;
   },
-  /* Apply the latest pending claim and the current progress gesture to Vikunja's assignees. Read both by task id
-     so a claim redraws only that task's rows. */
+  /* Apply the latest pending claim and the current progress gesture to Vikunja's assignees. Both are read by task
+     id, so a claim redraws only that task's rows. */
   peopleOf(id, base){
     let list = base || [];
     const op = this.waiting.claims[id];
@@ -47,8 +49,9 @@ export default {
     if (this.slideClaim[id] && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
     return list;
   },
-  /* Claim an unassigned task when a progress gesture changes it. Show your picture during the gesture, then queue
-     the claim on release. Return end(changed) so a cancelled gesture removes the picture without claiming. */
+  /* Claim an unassigned task when a progress gesture changes it. The user's picture shows during the gesture, and
+     the claim is queued on release. Returns end(changed), so a cancelled gesture removes the picture without
+     claiming. */
   claimOnSlide(slot){
     if (!claimsOnSlide(slot)) return () => {};
     this.slideClaim[slot.id] = true;
@@ -57,14 +60,15 @@ export default {
       finally { delete this.slideClaim[slot.id]; }                             // the outbox or Vikunja now supplies the claim
     };
   },
-  // Queue the claim or release so it shows immediately and survives a lost connection.
+  // Queue the claim or release, so it shows at once and survives a lost connection.
   async toggleClaim(slot){
     if (!slot?.can) return;
     navigator.vibrate?.(10);
     await this.act({op: slot.mine ? 'unclaim' : 'claim', task: slot.id, run: slot.run});
-    if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true;   // Today shows what's assigned to you
+    if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true;   // Today shows what's assigned to you, so the list needs a refresh
   },
-  /* Load all subtask assignees in one request because Vikunja omits them from related tasks. Offline, use the cache. */
+  /* Load all subtask assignees in one request, because Vikunja leaves them out of related tasks. Offline, use the
+     cache. */
   async loadSubPeople(t){
     const ids = (t.related_tasks?.subtask || []).map(s => s.id), mine = this.sheet;
     if (!ids.length) return;
@@ -77,8 +81,9 @@ export default {
       for (const id of ids) if (cache.get(id)?.assignees) this.sheet.subPeople[id] ??= cache.get(id).assignees;
     }
   },
-  /* Choose the claim slot for a task, subtask or run step. Runs and repeating templates show who they are for.
-     Keep the previous slot while a ticked row waits for the batch, with taps disabled, so its title doesn't move. */
+  /* Choose the claim slot for a task, a subtask or a checklist step. A checklist and a repeating template show who
+     they are for. While a ticked row waits for the batch, it keeps its previous slot with taps disabled, so its
+     title doesn't move. */
   rowSlot(t, g){
     if (g.run) return t.done ? null : t.slot;
     if (g.sheet) return g.step && this.sheet.stepEdit?.id === t.id ? null : this.subSlots[t.id] || null;   // the step's edit box needs this space
@@ -89,7 +94,7 @@ export default {
     const slot = this.claimSlot(t, this.peopleOf(t.id, t.assignees), was, this.stepRun(t));
     return slot && was !== t.done ? {...slot, can: false, label: (t.done ? 'Done: ' : 'Not done: ') + t.title} : slot;
   },
-  // Index the open task's subtask slots by id for each row to read.
+  // The open task's subtask slots, keyed by id, for each row to read.
   get subSlots(){
     const out = {};
     const run = this.checklistRole === 'run' ? this.sheet.task.id : null;
@@ -110,8 +115,9 @@ export default {
   /* ---------- people's pictures ---------- */
   nameOf(u){ return u?.name || u?.username || 'Someone'; },
   initials(u){ return (this.nameOf(u).match(/[\p{L}\p{N}]+/gu) || ['?']).slice(0, 2).map(w => w[0].toUpperCase()).join(''); },
-  /* Return a picture as a data URL, or '' while loading or when none exists. Vikunja requires authentication for
-     avatars, so fetch them before using them in an <img> and cache them for a day to show offline. */
+  /* Returns a picture as a data URL, or '' while it loads or when there is none. Vikunja requires authentication
+     for avatars, so Pocket fetches each one itself instead of giving an <img> the address. The pictures are cached
+     for a day, so they show offline. */
   avatarUrl(u){
     const k = u?.username;
     if (!k) return '';
@@ -126,7 +132,7 @@ export default {
       const url = blob && /^image\//.test(blob.type) && blob.size < 64e3 ? await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(''); r.readAsDataURL(blob); }) : '';
       this.avatars[k] = {url, at: Date.now()};
       saved.set('avatars', this.avatars);
-    } catch { tried.set(k, Date.now()); }      // show initials and delay the next request after a failure
+    } catch { tried.set(k, Date.now()); }      // shows initials and waits before the next request
     finally { loading.delete(k); }
   },
 };

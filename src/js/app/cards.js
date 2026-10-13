@@ -1,8 +1,9 @@
-/* The stacked card: a task with open subtasks, or a run with open steps, shown the same way wherever it is listed. Its
-   heading has the title and the count of subtasks done, then its open subtasks as rows (task-row.html) with the card's
-   own row options (g.card). On Today and in search the card is collapsed to its most urgent row (a run's next step)
-   with a "More" footer that opens it in place. It collapses again by "Less" or once scrolled off the screen. Which
-   tasks are cards on Today is decided in cards.js. readCards reads what a card needs once per project, not per card. */
+/* The stacked card: a task with open subtasks, or a checklist with open steps, shown the same way wherever it is
+   listed. The heading shows the title and how many subtasks are done. Under it are the open subtasks as rows
+   (task-row.html), with the card's own row options (g.card). On Today and in search, a card shows only its most urgent
+   row (for a checklist, its next step) and a "More" footer that opens it in place. "Less", or scrolling the card off
+   the screen, collapses it again. ../cards.js decides which tasks are cards on Today. readCards reads what the cards
+   need once per project, not once per card. */
 import {colorOf, motion, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, repeats, shortDue} from '../dates.js';
@@ -14,51 +15,59 @@ import {completeAsk} from '../messages.js';
 
 const shownStep = new Map();                     // card id -> the step last on its top row, to tell when a new one arrives
 let cardIO = null;                               // the IntersectionObserver that collapses an opened card once it is off the screen
-const closing = new Set();                       // parents being closed, still cards until they're marked (closeParent)
+const closing = new Set();                       // parents being closed, which stay cards until they are marked (closeParent)
 
 export default {
-  /* Task `t` in list `g` as a stacked card, or null for an ordinary row. Which lists have cards is `g.cards`: on Today
-     ('today') the tasks Today brought as cards (view.cards), in search ('found') any open task with open subtasks or
-     steps, on a project's list ('list') listCard. Anywhere, an open task whose subtasks are all done is a card with
-     no rows and a Close button (`closes`). A task ticked in place, or a step, stays on its card until the batch clears
-     (leaving.js). The card: {id, run, step: the top row, steps: the open subtasks in the card's order, rows: those
-     shown, n, peek: the next one under a collapsed card, more: how many it stands for, open, folds: whether it can be
-     collapsed, all: every subtask, ring: ringOf, closes, project, g: the rows' options}. */
+  /* Task `t` in list `g` as a stacked card, or null for an ordinary row. `g.cards` says whether the list has cards.
+     On Today ('today') the cards are the tasks in view.cards. In search ('found') any open task with open subtasks or
+     steps is a card. On a project's list ('list') listCard decides. On every list, an open task whose subtasks are all
+     done is a card with no rows and a Close button (`closes`). A ticked subtask or step stays on its card until the
+     batch clears (leaving.js).
+
+     The card is {id, run, step, steps, rows, n, peek, more, open, folds, all, ring, closes, project, g}.
+     `step` is the top row. `steps` is the open subtasks in the card's order, and `rows` is the ones shown.
+     `n` is the number of open subtasks. `peek` is the first row that "More" hides, and `more` is how many rows it
+     hides. `open` says the card is expanded, and `folds` that it can be collapsed. `all` is every subtask.
+     `ring` is ringOf. `g` is the options for the card's rows. */
   cardOf(t, g){
     const kind = g?.cards;
     if (kind === 'list') return this.listCard(t, g);
     if (!kind || t.pending || (t.done && !this.leaving[t.id] && !closing.has(t.id)) || hasTemplateLabel(t)) return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     let steps = all.filter(s => !done(s) || this.leaving[s.id]);
-    // Subtasks added from Today's box this visit, each where the box was (addedRows), including ones still waiting to send.
+    // Subtasks added from Today's box during this visit (addedRows), including ones still waiting to be sent.
     const added = kind === 'today' ? this.addedRows(t) : [];
     if (!steps.length && !added.length) return all.length ? this.closingCard(t, g, run, all) : null;
-    // A task given a subtask from Today's box stays a card until the screen is left, whatever its date, so what was added stays in sight.
+    // A task that got a subtask from Today's box stays a card until the user leaves the screen, whatever its date.
+    // That keeps the new subtask visible.
     if (kind === 'today' && !this.view.cards?.[t.id] && !added.length) return null;
-    // A run's top row is its next step (runTop), then the rest in order. A task's top row is the most urgent.
+    // A checklist's top row is its next step (runTop), then the rest in order. A task's top row is its most urgent
+    // subtask.
     if (run) { const k = runTop(steps, this.cardPage[t.id], this.runPick(all, done)); steps = [steps[k], ...steps.filter((_, i) => i !== k)]; }
     else steps = [...steps].sort(urgentFirst(this.rowNow(), positionOrder(this.positions)));
     const n = steps.length + added.filter(a => !steps.some(s => s.id === a.t.id)).length, open = n > 1 && !!this.cardOpen[t.id];
     const r = cardRows(steps, added, open);
     const card = {id: t.id, run, step: r.step, steps: r.list, rows: r.rows, n, peek: r.peek, more: r.more,
       open, folds: true, all, ring: this.ringOf(t), closes: false, project: t.project_id};
-    // The rows' options. `key` lets a row under the Today heading leave "Today" unsaid; `reschedule` lets a held row move the card to another day.
+    // The options for the card's rows. `key` lets a row under the Today heading leave out the word "Today".
+    // `reschedule` lets holding a row move the card to another day.
     card.g = {depth: {}, card, line: g.line, key: g.key, delete: true, reschedule: g.reschedule};
     return card;
   },
-  // A card with no rows, for a task whose subtasks are all done: its header, a full ring, and "All subtasks done" with
-  // Close.
+  // A card with no rows, for a task whose subtasks are all done. It shows the header, a full ring, and "All subtasks
+  // done" with a Close button.
   closingCard(t, g, run, all){
     const card = {id: t.id, run, step: null, steps: [], rows: [], n: 0, peek: null, more: 0, open: false, folds: false, all, ring: this.ringOf(t), closes: true, project: t.project_id};
     card.g = {depth: {}, card, key: g.key};
     return card;
   },
   /* A card on a project's list. It is always open and can't be collapsed. Its rows are the subtasks nested under it
-     (g.kids) in List view order (a run's steps in its order line), which can be reordered there, with new ones waiting
-     to send among them. A subtask with open subtasks of its own stays an ordinary row, with a ring that opens its
-     sheet. A done task over open subtasks (g.heads) is a card with its heading struck through. Not a task waiting to be
-     sent, nor a template. The ring counts the subtasks Vikunja has and those waiting to be sent. With every subtask
-     done and none waiting, the closing card. */
+     (g.kids), including new ones waiting to be sent. They follow List view order, or for a checklist its order line,
+     and the user can reorder them there. A subtask that has open subtasks itself stays an ordinary row, with a ring
+     that opens its sheet. A done task with open subtasks (g.heads) is a card with a struck-through heading.
+
+     A task waiting to be sent and a template are never cards. The ring counts the subtasks Vikunja has and the ones
+     waiting to be sent. When every subtask is done and none is waiting, the card is a closing card. */
   listCard(t, g){
     const rows = g.kids?.get(t.id) || [];
     if (g.depth?.[t.id] || t.pending || hasTemplateLabel(t)) return null;
@@ -66,17 +75,21 @@ export default {
     if (!rows.length) return all.length && (!t.done || this.leaving[t.id] || closing.has(t.id)) && all.every(s => this.subDone(s, run)) ? this.closingCard(t, g, run, all) : null;
     const card = {id: t.id, run, step: rows[0], steps: rows, rows, n: rows.length, peek: null, more: rows.length - 1, open: true, folds: false,
       all, ring: this.ringOf(t, waiting), closes: false, project: t.project_id};
-    // heads and tasks are getters: reading them here would remake every card whenever a row came or went
+    // heads and tasks are getters. Reading them here would rebuild every card whenever a row was added or removed.
     card.g = {depth: {}, card, key: g.key, delete: g.delete, reorder: g.reorder, get heads(){ return g.heads; }, get tasks(){ return g.tasks; }};
     return card;
   },
 
   /* ---------- a parent's ring ---------- */
-  /* A task with subtasks, or a run with steps, has a ring instead of a tick, on its card's header and on its row. The
-     ring is drawn thin and never quarter-filled, so it isn't taken for the task's own progress. Its arc is the
-     computed figure (workedOut): each subtask's progress, a done or skipped one at 100%. `waiting`: subtasks being
-     sent, counted at 0%. Null for a task with no subtasks, a template, or one waiting to be sent. Returns {pct, done,
-     total, open, run, said: in words, label: what a tap does}. */
+  /* A task with subtasks, or a checklist with steps, has a ring instead of a tick, on its card's header and on its
+     row. The ring is drawn thin and never quarter-filled, so it isn't mistaken for the task's own progress. Its arc is
+     the progress calculated from the subtasks (workedOut), where a done or skipped subtask counts as 100%. `waiting`
+     is the number of subtasks still being sent, which count as 0%. Returns null for a task with no subtasks, a
+     template, and a task waiting to be sent.
+
+     Returns {pct, done, total, open, run, said, label}. `pct`, `done` and `total` come from workedOut. `open` is the
+     number of subtasks not done. `said` is the sentence a screen reader reads. `label` is the name of what tapping the
+     ring does. */
   ringOf(t, waiting = 0){
     if (!t || t.pending || hasTemplateLabel(t)) return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run);
@@ -87,14 +100,16 @@ export default {
       : repeats(t) ? 'Mark done: ' + t.title : `Complete ${title} and its ${n(open, 'open subtask')}`;
     return {...w, open, run, said: `${w.done} of ${n(w.total, what)} done, ${w.pct}%`, label};
   },
-  // A row's ring in place of its tick: for a run, done or not, and for an open task with subtasks. Not in a sheet, nor
-  // on a run's steps. The run's own row at the top of its screen gets the screen's ring (runRing).
+  // A row shows a ring instead of its tick for a checklist, done or not, and for an open task with subtasks. Rows in a
+  // sheet and a checklist's steps have no ring. A checklist's own row at the top of its screen gets that screen's ring
+  // (runRing).
   rowRing(t, g){ if (g.top) return this.runRing; return g.run || g.sheet || (t.done && !this.isRunTask(t)) ? null : this.ringOf(t); },
-  /* A parent's ring tapped, its header or row swiped right all the way, or its Close. Nothing closes behind the
-     user's back: one open subtask closes with the parent, with Undo; more than one, or a run with steps not done,
-     asks first (askComplete). A parent marked in place and waiting for the batch is unmarked. A done parent is
-     reopened. A repeating task is marked done, which moves it to its next date with its subtasks as they are. `el`:
-     its card or row. `sheet`: tapped from its own sheet. */
+  /* Runs when the user taps a parent's ring, swipes its header or row all the way right, or taps Close. Nothing closes
+     without the user knowing. A single open subtask closes with the parent, and the user can undo it. Two or more open
+     subtasks, or a checklist with steps not done, make Pocket ask first (askComplete). A parent marked done in place
+     and waiting for the batch is unmarked. A done parent is reopened. A repeating task is marked done, which moves it
+     to its next date and leaves its subtasks as they are. `el` is its card or row. `sheet` is true when the tap came
+     from its own sheet. */
   async ringTap(t, el = null, sheet = false){
     const back = this.unmark(t.id);
     if (back) return back;
@@ -105,20 +120,22 @@ export default {
     if (r.open && (r.run || r.open > 1 || closable.length !== 1) && !repeats(t)) return this.askComplete(t, sheet);
     return this.closeParent(t, el, {sheet, close: !!closable.length});
   },
-  // The open subtasks that close with the task. Not a repeating one: done, it would only move to its next date.
+  // The open subtasks that close with the task. A repeating subtask is left out, because marking it done would only
+  // move it to its next date.
   closable(t){ return this.cardSubs(t, false).filter(s => !s.done && !repeats(s)); },
-  /* Close a parent, with its open subtasks if `close`. Its card or row shows done in place until the batch clears,
-     with its ring as the undo, as a ticked row does. From its sheet, or with no row on screen, the undo is a message.
-     The task stays a card meanwhile (closing). A run is finished instead. */
+  /* Close a parent, and its open subtasks if `close` is true. Its card or row shows as done in place until the batch
+     clears, and tapping its ring undoes it, as for a ticked row. From its sheet, or with no row on screen, a message
+     offers the undo instead. The task stays a card until then (closing). A checklist is finished instead. */
   async closeParent(t, el, {sheet = false, close = false} = {}){
     if (this.isRunTask(t)) return this.tickRunTask(t, sheet ? null : el);
     closing.add(t.id);
     try { await this.toggleDone(t, sheet ? null : el, {close, sheet: sheet || !el}); }
     finally { closing.delete(t.id); }
   },
-  /* Ask before completing, in a sheet of its own (sheet/complete.html). "Complete “Pack the van”?" names the open
-     subtasks that close with it (completeAsk). For a run, "Finish this run with 2 steps not done?": finishing a run
-     leaves its steps as they are. `back`: asked from the parent's own sheet, which Cancel returns to. */
+  /* Ask before completing, in a sheet (sheet/complete.html). For a task, the question is "Complete “Pack the van”?"
+     and it names the open subtasks that close with the task (completeAsk). For a checklist, the question is "Finish
+     this checklist with 2 steps not done?", and finishing leaves its steps as they are. `back` is true when the
+     question was asked from the parent's own sheet, which Cancel returns to. */
   askComplete(t, back = false){
     const run = this.isRunTask(t), subs = this.cardSubs(t, run).filter(s => !this.subDone(s, run));
     const open = subs.map(s => ({id: s.id, title: run ? parseStep(s.title).title : s.title, stays: !run && repeats(s)}));
@@ -127,8 +144,8 @@ export default {
     this.sheet.complete = {id: t.id, task: t, run, back, title, open, n, stay: open.length - n,
       ask: completeAsk({title, run, names: open.filter(s => !s.stays).map(s => s.title), stay: open.length - n})};
   },
-  // Confirmed: complete the parent and its open subtasks, or finish the run. Asked on the run's own screen
-  // (`screen`), it finishes as the Finish button does.
+  // The user confirmed: complete the parent and its open subtasks, or finish the checklist. If the question came from
+  // the checklist's own screen (`screen`), the checklist finishes as the Finish button does.
   async confirmComplete(){
     const c = this.sheet.complete;
     if (!c) return;
@@ -138,15 +155,17 @@ export default {
     await this.closeParent(t, this.rowEl(t.id), {close: !c.run});
   },
   cancelComplete(){ const c = this.sheet.complete; if (c?.back) this.openTask(c.id); else this.closeSheet(); },
-  /* A parent's header or row swiped. Right: it has no progress of its own, so it springs back unless swiped all the
-     way, which counts as a ring tap. Left: Delete, where the list has one. Not a done parent, nor a read-only one.
-     `shown`: the element marked done. `sheet`: the parent's own row in its sheet. */
+  /* The gesture options for a swipe on a parent's header or row. A parent has no progress of its own, so a swipe right
+     springs back unless it goes all the way, which counts as a tap on the ring. A swipe left shows Delete, where the
+     list has one. Returns {} for a done parent and a read-only one. `shown` is the element that gets marked done.
+     `sheet` is true for the parent's own row in its sheet. */
   ringSwipe(t, el, shown = el, sheet = false){
     if (t.done || !this.canWrite(t.project_id)) return {};
     return {start: 0, one: true, springs: true, width: el.clientWidth, finish: pct => { if (pct === 100) this.ringTap(t, sheet ? null : shown, sheet); }};
   },
-  // How a run's card picks its top row, by the run's own rule (whereNext): the next open step in order, one counting
-  // down, or a timed one whose time has come. Given the id of the step that has gone, or null as the card opens.
+  // Returns the function that picks a checklist card's top row by the checklist's own rule (whereNext). The pick is the
+  // next open step in order, a step that is counting down, or a timed step whose time has come. The function takes the
+  // id of the step that just left the card, or null when the card opens.
   runPick(all, done){
     return from => {
       const now = this.rowNow();
@@ -154,18 +173,19 @@ export default {
       return all[whereNext(facts, now, from === null ? null : {id: from})]?.id ?? null;
     };
   },
-  // All of a card's subtasks in order (a run's by its order line, a task's by List view position), each the copy on
-  // screen where there is one.
+  // All of a card's subtasks in order: a checklist's by its order line, a task's by List view position. Each is the
+  // copy on screen where there is one.
   cardSubs(t, run = this.isRunTask(t)){
     const subs = run ? stepsOf(t) : [...(t.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
     return subs.map(s => this.tasks[s.id] || s);
   },
-  // Whether a subtask is done. A run's step counts a tick still waiting to be sent.
+  // Whether a subtask is done. A checklist step counts as done when its tick is still waiting to be sent.
   subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
-  /* A card's heading, computed once per card (list-item.html): the title (a run's without the day it was started),
-     small priority bars, a short due date (nothing for today with no time under the Today heading), and the project's
-     colour dot on Today and in search, not on the project's own list. `said` is what a screen reader hears: done over
-     open subtasks, the ring's count, the due date, the priority, and the project or who a run is for. */
+  /* A card's heading, computed once per card (list-item.html). It holds the title (for a checklist, without the day it
+     was started), small priority bars, a short due date and the project's colour dot. The due date is left out for a
+     task due today with no time, under the Today heading. The dot shows on Today and in search, not on the project's
+     own list. `said` is the text a screen reader reads: whether the task is done with subtasks still open, the ring's
+     count, the due date, the priority, and the project (for a checklist, who it is for). */
   cardHead(t, g){
     const run = this.isRunTask(t), when = dueInfo(t.due_date), p = this.projById.get(t.project_id);
     const said = [t.done && 'Done, with subtasks still open', this.ringOf(t)?.said, when && (when.cls === 'overdue' ? 'Late: ' : 'Due ') + when.label, t.priority && 'Priority: ' + PRIOS[t.priority].label,
@@ -174,22 +194,24 @@ export default {
       due: shortDue(t.due_date, new Date(this.rowNow()), {underToday: g?.key === 'today'}),
       color: p && this.route.name !== 'project' ? colorOf(p.hex_color) : null, said: said.filter(Boolean).join(', ')};
   },
-  // After a tick or a slide on a card's row, a run's card keeps its top row until that row has gone, then picks the
-  // next from there (runTop).
+  // After the user ticks or swipes a card's row, a checklist's card keeps that row on top until it has left the card.
+  // Then the card picks the next row from there (runTop).
   pinCard(c){ if (c?.step) this.cardPage[c.id] = c.step.id; },
-  // The subtasks added to a card from Today's box this visit (cardAdded) as rows, each with the row it went under. One
-  // still on its way is its waiting row, one sent is its task. One done or deleted is left out.
+  // The subtasks added to a card from Today's box during this visit (cardAdded), as rows. Each has `after`, the row it
+  // was added under. A subtask still waiting to be sent is its waiting row, and a sent subtask is its task. A subtask
+  // that is done or deleted is left out, unless it is marked and waiting for the batch.
   addedRows(t){
     const rows = this.cardAdded[t.id] || [], waiting = rows.some(a => typeof a.id === 'string') ? this.pendingTasks : [];
     return rows.map(a => ({t: typeof a.id === 'string' ? waiting.find(x => x.id === a.id) : this.tasks[a.id], after: a.after}))
       .filter(a => a.t && (a.t.pending || !a.t.done || this.leaving[a.t.id]));
   },
-  // On leaving the screen, every card goes back to its next step and collapses.
+  // When the user leaves the screen, every card goes back to its next step and collapses.
   resetCards(){ this.cardPage = {}; this.cardOpen = {}; this.cardAdded = {}; shownStep.clear(); },
-  // More tapped: the card opens in place. watchCard collapses it again once it is off the screen.
+  // Open the card in place when the user taps More. watchCard collapses it again once it is off the screen.
   openCard(c){ this.cardOpen[c.id] = true; },
-  // Collapse a card, by Less or by watchCard. A card above the viewport shrinks without moving what is in sight: scroll
-  // by the difference (the browser may do this itself, then the difference is 0).
+  // Collapse a card, from Less or from watchCard. A card above the viewport shrinks without moving what the user is
+  // looking at, so the page scrolls by the difference in height. The browser may already do this, and then the
+  // difference is 0.
   foldCard(id, el = null){
     const was = el?.getBoundingClientRect().bottom;
     delete this.cardOpen[id];
@@ -201,8 +223,8 @@ export default {
     cardIO ||= new IntersectionObserver(es => { for (const e of es) if (!e.isIntersecting) { cardIO.unobserve(e.target); if (this.cardOpen[e.target.dataset.id]) this.foldCard(e.target.dataset.id, e.target); } });
     cardIO.observe(el);
   },
-  // A collapsed card's new top row (the one before left with the batch) slides up from under it. Not when the card is
-  // first drawn, not in an opened card, and not with reduced motion.
+  // A collapsed card's new top row slides up from under it after the previous top row leaves with the batch. It does
+  // not slide when the card is first drawn, when the card is open, or with reduced motion.
   cardEntered(el, c, t){
     if (t.id !== c.step.id) return;
     const was = shownStep.get(c.id);
@@ -210,18 +232,19 @@ export default {
     if (c.open || was === undefined || was === t.id || !motion()) return;
     el.animate([{transform: 'translateY(24px)', opacity: 0}, {transform: 'none', opacity: 1}], {duration: 200, easing: 'ease-out'});
   },
-  // What Move all to today moves: each overdue row, and on an overdue card its task and its overdue open subtasks. A
-  // run's steps are timed by the run, so they stay.
+  // The tasks that Move all to today moves: each overdue row, and for an overdue card the task and its overdue open
+  // subtasks. A checklist card moves nothing, because the checklist times its own steps.
   get overdueTasks(){
     const g = this.view.groups.find(x => x.key === 'overdue'), late = x => isSet(x.due_date) && isLate(x.due_date);
     return (g?.tasks || []).flatMap(t => !this.view.cards?.[t.id] ? [t] : this.isRunTask(t) ? [] : [t, ...this.cardSubs(t, false).filter(s => !s.done)].filter(late));
   },
 
-  /* Read what Today's cards need beyond what Today read (`known`): each card's task, and its open subtasks with their
-     assignees and List view positions. One request per project with cards, to its List view (expand=subtasks returns
-     each task's subtasks with their positions). A run and its steps were read with Today (loadRunIndex). Then one
-     request for what is still missing: a done task, one in a project with no List view, or a subtask in another
-     project. Returns {parents, steps: the open subtasks, positions}. */
+  /* Read what Today's cards need beyond what Today already read (`known`): each card's task, and its open subtasks
+     with their assignees and List view positions. This makes one request per project that has cards, to the project's
+     List view. `expand=subtasks` returns each task's subtasks with their positions. Checklists and their steps were
+     already read with Today (loadRunIndex). A last request reads whatever is still missing: a done task, a task in a
+     project with no List view, or a subtask in another project. Returns {parents, steps, positions}, where `steps` is
+     the open subtasks. */
   async readCards(cards, known){
     const have = new Map(known.map(t => [t.id, t])), positions = {}, ids = [...cards.keys()];
     const keep = list => { for (const t of list) have.set(t.id, t); };
@@ -231,7 +254,7 @@ export default {
     for (const id of ids) {
       const t = have.get(id), pid = t?.project_id ?? cards.get(id).project;
       if (t && this.isRunTask(t)) continue;
-      // Done subtasks too: a card counts "3 of 5" over all of them.
+      // Include done subtasks, because a card shows "3 of 5" counted over all of them.
       byProject.set(pid, [...(byProject.get(pid) || []), id, ...(t?.related_tasks?.subtask || []).map(s => s.id)]);
     }
     await Promise.all([...byProject].map(async ([pid, list]) => {

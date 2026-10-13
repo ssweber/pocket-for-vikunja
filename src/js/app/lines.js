@@ -1,14 +1,16 @@
-/* Show messages where the action happened. A row can shrink to a message with an action, then return or leave when
-   the message expires. Other messages appear under a heading, beside the add box or in the sheet. Use a toast when
-   none of those places is visible. Leaving the screen folds its messages, and #said announces each to screen readers. */
+/* Messages appear where the action happened. A row can shrink to a message that has an action, and the row comes
+   back or leaves when the message expires. Other messages appear under a heading, beside the add box or in the
+   sheet. If none of those places is visible, a toast is used. Leaving the screen folds its messages, and #said
+   announces each message to screen readers. */
 import {collapse, motion} from '../util.js';
 import {UNDO_MS} from './toast.js';
 
 export const SAY_MS = 4000;                             // how long a message with nothing to tap shows
 const timers = new Map();
-// Find list rows, cards and sheet subtasks. A sheet's own task uses messages below its fields instead.
+// Find list rows, cards and sheet subtasks. A sheet's own task shows its messages below its fields instead.
 const rowsOf = id => [...document.querySelectorAll(`:is(.row:not(.own), .day-card)[data-id="${id}"]`)];
-// The places on a screen, and when each is on it. A sheet's ("sheet:notes") are there while it's open.
+// The places where a message can appear, each with a test for whether it is on the current screen. A sheet's places
+// ("sheet:notes") exist while the sheet is open.
 const SCREEN = {
   overdue: a => a.route.name === 'today',
   done: a => a.route.name === 'project',                 // under a project's Done heading
@@ -20,14 +22,16 @@ const SCREEN = {
   run: a => a.route.name === 'run',
   step: a => a.route.name === 'run' && !!a.runView?.step,
 };
-// The places in a task's sheet, under what each is about; any other sheet has its message at its top.
+// The places in a task's sheet, each below the part of the sheet it is about. Any other sheet shows its message at
+// the top.
 const TASK_SHEET = ['top', 'due', 'notes', 'files', 'subtasks', 'comments', 'props'];
 const flashTimers = {};
 
 export default {
-  /* Show `msg` on a visible row, at the first visible `place`, or in a toast. `row` is an id or a row-line object.
-     `action` supplies {label, fn}, `ms` sets the duration, and `gone` runs if the message ends without the action.
-     `cls` can mark a failure. Return where the message appeared. Rows behind an open sheet don't count as visible. */
+  /* Show `msg` on a visible row, at the first visible `place`, or in a toast. `row` is a task id or an object with
+     the options for rowLine. `action` is {label, fn}, `ms` is the duration, and `gone` runs if the message ends
+     without the action. `cls` can mark a failure. Returns where the message appeared. Rows behind an open sheet
+     don't count as visible. */
   say(msg, {row = null, place = null, action = null, ms, gone, cls = ''} = {}){
     const timing = ms === undefined ? {} : {ms}, r = row && typeof row === 'object' ? row : {id: row};
     const seen = row && rowsOf(r.id).some(el => !(this.sheet.open && this.sheet.show) || el.closest('#sheet'));
@@ -36,9 +40,9 @@ export default {
     this.notify(msg, action && {...action, gone}, null);
     return 'toast';
   },
-  // Find the first row of a task so Try again can reuse the row action.
+  // Find a task's first row, so Try again can use the same row as the original action.
   rowEl(id){ return rowsOf(id)[0] || null; },
-  // Put Undo on the row only when the whole row is visible between the header and add box, with no sheet over it.
+  // Undo goes on the row only if the whole row is visible between the header and the add box, with no sheet over it.
   rowSeen(id){
     if (this.sheet.open && this.sheet.show) return false;
     const top = Math.max(0, document.querySelector('header.top')?.getBoundingClientRect().bottom || 0);
@@ -46,10 +50,10 @@ export default {
     return rowsOf(id).some(el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.top >= top && r.bottom <= bottom; });
   },
 
-  /* ---------- a row's place ---------- */
-  /* Replace task `id`'s rows with {text, title, more, action, ms, stays, gone}. The optional title is struck through.
-     `stays` restores the row when the message ends. A null duration keeps it until an action or navigation.
-     Return false when the task has no row on the page. */
+  /* ---------- a message in place of a row ---------- */
+  /* Replace task `id`'s rows with a message {text, title, more, action, ms, stays, gone}. The optional `title` is
+     struck through. With `stays`, the row comes back when the message ends. A null `ms` keeps the message until the
+     user taps the action or leaves the screen. Returns false if the task has no row on the page. */
   rowLine(id, line){
     const els = rowsOf(id);
     if (!els.length) return false;
@@ -57,13 +61,13 @@ export default {
     const from = els.map(el => el.offsetHeight);
     this.lines[id] = {title: '', more: '', action: null, stays: false, ...line, id};
     this.said = [line.text, line.title, line.more].filter(Boolean).join(' ') + (line.action ? `. ${line.action.label} is ${line.stays ? 'on its row' : 'where it was'}.` : '');
-    // Animate the height change so replacing a row with a message doesn't jump.
+    // Animate the height change, so replacing a row with a message doesn't jump.
     if (motion()) this.$nextTick(() => els.forEach((el, i) => el.isConnected && el.animate([{height: from[i] + 'px'}, {height: el.offsetHeight + 'px'}], {duration: 200, easing: 'ease-out'})));
     const ms = 'ms' in line ? line.ms : line.action ? UNDO_MS : SAY_MS;
     if (ms !== null) timers.set(id, setTimeout(() => this.foldLine(id), ms));
     return true;
   },
-  // Collapse a departing row before ending its message. A row marked `stays` returns without collapsing.
+  // Collapse a leaving row before ending its message. A row with `stays` comes back without collapsing.
   async foldLine(id){
     const line = this.lines[id];
     if (!line) return;
@@ -78,7 +82,7 @@ export default {
     delete this.lines[id];
     if (gone) line.gone?.();
   },
-  // Restore the row before running its action, without calling `gone`.
+  // Restore the row, then run the message's action. `gone` is not called.
   runLineAction(id){
     const line = this.lines[id];
     if (!line) return;
@@ -86,26 +90,27 @@ export default {
     this.said = '';
     line.action?.fn();
   },
-  // End marks and messages when leaving the screen or hiding Pocket, including callbacks that send held deletions.
+  // End all marks and messages when leaving the screen or hiding Pocket. Their `gone` callbacks run, which sends held
+  // deletions.
   foldLines(){
     this.clearNow();
     for (const id of Object.keys(this.lines)) this.endLine(id, true);
     for (const k of Object.keys(this.places)) this.endPlace(k, this.places[k], true);
   },
-  // Hide tasks being deleted unless their marked rows are waiting for the batch.
+  // Hide tasks that are being deleted, unless their marked rows are waiting for the batch to clear.
   get hiddenRows(){ return new Set(this.deleting.filter(id => !this.leaving[id])); },
 
-  /* ---------- a place ---------- */
-  // Keep sheet messages in the sheet so closing it removes them. Other sheets use the top, except New template's
-  // subtask messages, which belong under its steps.
+  /* ---------- a message at a place ---------- */
+  // Sheet messages are kept in the sheet, so closing the sheet removes them. A sheet that is not a task's shows its
+  // messages at the top, except New template's subtask messages, which go under its steps.
   placeOf(place){
     if (!place.startsWith('sheet:')) return SCREEN[place]?.(this) ? {store: this.places, key: place} : null;
     if (!this.sheet.open) return null;
     const key = place.slice(6), kind = this.sheet.kind;
     return {store: this.sheet.lines, key: (kind === 'task' && TASK_SHEET.includes(key)) || (kind === 'newtpl' && key === 'subtasks') ? key : 'top'};
   },
-  /* A line at `place` ("overdue", "cap", "sheet:notes"…): {text, action, ms (null: until the screen or the sheet is
-     left), gone}. Returns false if the place isn't on screen. */
+  /* Show a message at `place`, such as "overdue", "cap" or "sheet:notes". `line` is {text, action, ms, gone}. A null
+     `ms` keeps the message until the screen or the sheet is left. Returns false if the place isn't on the screen. */
   sayAt(place, line){
     const at = this.placeOf(place);
     if (!at) return false;
@@ -119,9 +124,10 @@ export default {
     if (ms !== null) setTimeout(() => this.endPlace(key, l, true, store), ms);
     return true;
   },
-  // The line at a place, for the markup's x-for: [line] or [].
+  // The message at a place as [message], or [] if there is none. The markup loops over it with x-for.
   placeLines(place){ const at = this.placeOf(place), l = at && at.store[at.key]; return l ? [l] : []; },
-  // An old timer must not remove a newer message at the same place.
+  // End the message `l` at a place. Does nothing if a newer message has replaced it, so an old timer can't remove the
+  // newer one.
   endPlace(key, l, gone, store = this.places){
     if (!l || store[key] !== l) return;
     delete store[key];
@@ -134,11 +140,13 @@ export default {
     this.said = '';
     l.action?.fn();
   },
-  // Remove an obsolete message without its callback, such as a failed save that now succeeded.
+  // Remove a message that no longer applies, without its callback. For example, a failed save that later succeeded.
   unsay(place){ const at = this.placeOf(place); if (at) this.endPlace(at.key, at.store[at.key], false, at.store); },
 
-  /* ---------- a row lit up ---------- */
-  // Highlight tasks just added or due. Change entries by id so other rows don't have to recompute their highlights.
+  /* ---------- a highlighted row ---------- */
+  // Highlight tasks for 2 seconds. `kind` is 'fresh' for tasks just added, 'due' for tasks that just came due, and
+  // 'arrived' for tasks a refresh or a move brought in. Entries are keyed by id, so other rows don't have to recompute
+  // their highlights.
   flash(ids, kind = 'fresh'){
     const lit = this.flashed[kind], now = new Set(ids.map(String));
     for (const id of Object.keys(lit)) if (!now.has(id)) delete lit[id];

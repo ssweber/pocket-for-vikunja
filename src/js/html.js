@@ -1,8 +1,8 @@
-// Task notes and comments: Vikunja's HTML made safe to show, and turned to and from plain text.
+// Task notes and comments: makes Vikunja's HTML safe to show, and converts it to and from plain text.
 import {esc} from './util.js';
 
-// Notes and comments are HTML written by anyone who shares the project, so only a small set of formatting tags
-// survives. Alpine runs directives found in x-html content, so attributes are stripped too.
+// Anyone who shares the project can write notes and comments, so only a small set of formatting tags is kept.
+// Alpine runs directives found in x-html content, so attributes are stripped too.
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const ALLOWED = new Set(['p','br','b','strong','i','em','u','s','del','ul','ol','li','a','code','pre','blockquote','h1','h2','h3','h4','h5','h6','span','div','mark','hr','table','thead','tbody','tr','td','th']);
 const DROPPED = new Set(['script','style','iframe','frame','frameset','object','embed','template','form','input','label','textarea','select','button','noscript','link','meta','base','title']);
@@ -12,7 +12,7 @@ export function parseFragment(html){
   root.innerHTML = html || '';
   return root;
 }
-// Only absolute http(s) and mailto links, written back in normalized form.
+// Keeps only absolute http(s) and mailto links, and returns them in normalized form.
 function safeHref(v){
   try { const u = new URL((v || '').trim()); return /^(https?|mailto):$/.test(u.protocol) ? u.href : ''; } catch { return ''; }
 }
@@ -26,7 +26,7 @@ export function sanitize(html){
       if (!ALLOWED.has(tag)) {
         if (tag === 'img') { const t = n.ownerDocument.createTextNode('[image]'); n.replaceWith(t); n = t.nextSibling; continue; }
         if (!tag || DROPPED.has(tag)) { const next = n.nextSibling; n.remove(); n = next; continue; }
-        // Unknown HTML tag: keep its contents in place and carry on from the first of them.
+        // An unknown HTML tag is removed but its contents stay. The loop continues from the first of those contents.
         const next = n.firstChild || n.nextSibling; n.replaceWith(...n.childNodes); n = next; continue;
       }
       for (const a of [...n.attributes]) {

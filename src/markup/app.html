@@ -1,7 +1,7 @@
 <div id="app" :hidden="screen !== 'app'" hidden>
-  <!-- The header slides away as the list scrolls down and comes back as soon as it scrolls up (initHeader). While
-       searching, it shows the search box instead. The search box is always in the page, hidden, so the magnifier button
-       can focus it during the tap, which is what makes the phone's keyboard open (openSearch). -->
+  <!-- The header slides away when the list scrolls down and comes back as soon as it scrolls up (initHeader). While
+       searching, it shows the search box instead. The search box is always in the page, hidden, so the magnifier
+       button can focus it during the tap. That focus is what opens the phone's keyboard (openSearch). -->
   <header class="top" x-ref="header" :class="{tucked: headerTucked, searching: route.name === 'search'}">
     <form class="search" role="search" @submit.prevent="$refs.searchIn.blur()">
       <svg class="i"><use href="#i-search"/></svg>
@@ -15,21 +15,21 @@
       <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
-    <!-- Refresh. While something waits to be sent, or Vikunja turned something down, the button opens Waiting to send
+    <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens Waiting to send
          instead (outbox.js). -->
     <button id="btn-refresh" class="icon-btn" :class="{waits: outboxShown, trouble: failed.length}" :aria-label="outboxShown ? outboxLabel : 'Refresh'"
             :disabled="refreshing && !outboxShown" @click="tapRefresh()"><svg class="i"><use :href="failed.length ? '#i-alert' : outboxShown ? '#i-wait' : '#i-refresh'"/></svg>
       <template x-if="outboxShown"><span class="count num" id="outbox-count" aria-hidden="true" x-text="outboxRows.length"></span></template></button>
     <button id="btn-account" class="icon-btn" aria-label="Account" @click="openAccount()"><svg class="i"><use href="#i-user"/></svg></button>
-    <!-- Shown while the screen reloads from Vikunja and that takes over a second -->
+    <!-- Shown when reloading the screen from Vikunja takes more than a second -->
     <div class="behind" id="behind" x-show="view.behind" aria-hidden="true"></div>
   </header>
 
-  <!-- Busy while the screen reloads, or while its rows are still being drawn a batch at a time (drawFrom, views.js) -->
+  <!-- Marked busy while the screen reloads, or while its rows are still being drawn in batches (drawFrom, views.js) -->
   <main id="view" :class="{bare: route.name === 'run', today: route.name === 'today'}" aria-live="polite" :aria-busy="view.updating || drawing ? 'true' : null">
-    <!-- The title bar: Back, the project's name, and ⋯. On a checklist's screen the name's place holds the checklist's
-         own row instead (RUN_ROW, task-row.html), with its ring, its name and who it's for, so the screen is no taller
-         for it. Its project is named in its sheet. -->
+    <!-- The title bar has Back, the project's name and ⋯. On a checklist's screen, the checklist's own row (RUN_ROW,
+         task-row.html) replaces the name. It shows the ring, the name and who the checklist is for, so the screen is
+         no taller. The checklist's project is shown in its sheet. -->
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title" :class="{'run-top': !!runOwn}">
       <button id="btn-back" class="icon-btn plain" :aria-label="'Back to ' + backName" @click="route.name === 'run' ? leaveRun() : back(projectFrom || '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <template x-if="runOwn"><div id="run-own"><template x-for="g in [RUN_ROW]" :key="0"><template x-for="t in [runOwn]" :key="t.id">

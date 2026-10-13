@@ -47,7 +47,7 @@ export default () => ({
   // Quick add and the sheet's subtask box share the same state and parsing methods.
   cap: newBox(),
   cursor: null,                                // the highlighted row quick add targets, as {id, under, wait} (quickadd.js)
-  lit: {},                                     // that row's id -> true, for the row itself to read (light, quickadd.js)
+  lit: {},                                     // id of the highlighted row -> true, so that row can read it (quickadd.js)
   shown: {at: '', groups: {}},                 // the screen's lists, with stable objects while this screen is open (shownGroups, sending.js)
   // access maps <project id>:<username> to whether that person can see the project. userKnown records whether the
   // user exists. accessBlocked marks a token without Projects → Users search.
@@ -68,13 +68,13 @@ export default () => ({
   // only that row.
   flashed: {fresh: {}, due: {}, arrived: {}},
   movingOverdue: false,                        // "Move all to today" is saving
-  showingMore: null,                           // the list of done tasks whose next part is being read: its key (showMore, views.js)
+  showingMore: null,                           // key of the done list whose next batch is loading (showMore, views.js)
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
-  failed: [],                                  // those Vikunja turned down, kept to try again or drop (outbox.js)
+  failed: [],                                  // outbox entries Vikunja refused, kept to retry or discard (outbox.js)
   deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
-  cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
+  cardPage: {},                                // a checklist card's id -> its pinned top step (pinCard, cards.js)
   cardAdded: {},                               // task id -> subtasks added on Today this visit, as {id, after}, with null after for the top (cardRows)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // task id -> temporary claim during a progress gesture (claimOnSlide)
@@ -84,28 +84,28 @@ export default () => ({
   // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
   // hint.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},
-  places: {},                                  // a place on the screen ("overdue", "cap") -> its message (lines.js)
-  said: '',                                    // the last of those, for a screen reader
+  places: {},                                  // a named spot on the screen ("overdue", "cap") -> its message (lines.js)
+  said: '',                                    // the latest message, which a screen reader announces
   waitShown: false,                            // an outbox entry has waited long enough to show the header's waiting button
-  slow: [],                                    // ids of the outbox entries that have waited a while, which look waiting (sending.js)
+  slow: [],                                    // ids of outbox entries that have waited a while and show as waiting (sending.js)
   dropping: [],                                // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
   writing: 0,                                  // changes on their way to Vikunja (api.js, saveTask)
   unsent: null,                                // this user's outbox entries, including held and rejected entries, or null before loading
-  starting: null,                              // a run being set up: {id, done, total}, for its progress
-  runFrom: '',                                 // the last screen that wasn't a run, for a run's Back
-  runInsert: newBox(),                          // the bottom box on a run's screen (quick add's 'ins'), apart from quick add's own text
-  runBoxAt: null,                              // the step the box is under on a run's screen, or null, at the foot (runAim, runs.js; seatFoot, sheet.js)
-  runDrafts: taskDrafts.get('run') || {},     // notes being written on a run or its steps: task id -> text
+  starting: null,                              // a checklist being started, with its progress: {id, done, total}
+  runFrom: '',                                 // the last screen that wasn't a checklist, for the checklist's Back
+  runInsert: newBox(),                          // the add box at the bottom of a checklist's screen (quick add's 'ins')
+  runBoxAt: null,                              // step the add box is under on a checklist's screen, null for the bottom (runAim, runs.js; seatFoot, sheet.js)
+  runDrafts: taskDrafts.get('run') || {},     // notes being written on a checklist or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back
-  clock: Date.now(),                           // now, every second while a run is on screen
-  // runNow advances only when time changes what the run shows, so an idle run does not redraw every second.
-  // runMemo caches the computed run. runG keeps one options object for step rows, changing only `at` when the
-  // card's step changes.
+  clock: Date.now(),                           // the current time, updated every second while a checklist is on screen
+  // runNow advances only when time changes what the checklist shows, so an idle checklist does not redraw every
+  // second. runMemo caches the computed run. runG keeps one options object for step rows, and only its `at` changes,
+  // when the card's step changes.
   runNow: Date.now(), runMemo: null, runG: {depth: {}, run: true, at: null, locked: false},
   todayDay: 0,                                 // the day Today's groups were loaded for (alerts.js)
-  groupedAt: 0,                                // when they were last placed in groups, for the heading's date
+  groupedAt: 0,                                // when Today's tasks were last grouped, for the heading's date
   avatars: saved.get('avatars') || {},         // username -> {url, at}: people's pictures (claims.js)
 
   init(){

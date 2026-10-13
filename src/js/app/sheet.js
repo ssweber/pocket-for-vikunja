@@ -16,8 +16,8 @@ import {seats, seatUnder} from './seat.js';
 import {haptic} from '../haptics.js';
 
 export let pendingSaves = 0;
-// Notes written but not saved yet, kept on the phone: {text, base: what the notes said when editing began}. An older
-// Pocket kept the text only.
+// Notes written but not saved yet, kept on the phone as {text, base}. `base` is what the notes said when editing began.
+// An older Pocket kept only the text.
 const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
 const repeats = t => t.repeat_after > 0 || t.repeat_mode === 1;
 let closeTimer;
@@ -29,7 +29,7 @@ export default {
     clearTimeout(closeTimer);
     const already = this.sheet.open && this.sheet.show, dirty = already && this.sheet.dirty;   // opening a subtask from its parent's sheet
     if (!already) lastFocus = document.activeElement;
-    // A history entry so the phone's Back closes the sheet: a new one, or a closed sheet's used again.
+    // Give the sheet a history entry so the phone's Back closes it. Reuse a closed sheet's entry, or add a new one.
     if (history.state?.sheet === 'closed') { history.replaceState({...history.state, sheet: true}, ''); shared.onClosedSheet = false; }
     else if (!history.state?.sheet) history.pushState({...(history.state || {}), sheet: true}, '');
     this.sheet = {...blankSheet(kind), open: true, show: already, dirty};
@@ -38,9 +38,10 @@ export default {
     if (already) this.$nextTick(() => { sh.querySelector('.scroll').scrollTop = 0; });
     else this.$nextTick(() => { void sh.offsetHeight; this.sheet.show = true; });   // reflow so the slide-in animates
   },
-  /* The ×, a slide down, the shade, Escape (escapeKey) and the phone's Back all come here. The question a ring asks,
-     when asked from a task's sheet, goes back to that sheet, as Cancel does. `instant` (confirmed, or leaving for a
-     screen) closes it outright. */
+  /* The ×, sliding the sheet down, the shade, Escape (escapeKey) and the phone's Back all close the sheet here. If the
+     sheet is the question a ring asks and it was opened from a task's sheet, closing it returns to that task's sheet,
+     as Cancel does. `instant` closes the sheet with no slide. It is used when the question is confirmed or when Pocket
+     leaves for another screen. */
   closeSheet(instant){
     if (!this.sheet.open) return;
     if (!instant && this.sheet.kind === 'complete' && this.sheet.complete?.back) return this.cancelComplete();
@@ -52,22 +53,23 @@ export default {
     if (instant) done(); else closeTimer = setTimeout(done, 260);
     if (dirty && !instant) this.render();
     lastFocus?.focus?.();
-    // Closed with ×, a swipe or Escape, the sheet's history entry is marked closed (see the popstate listener). A screen
-    // opened from the sheet replaces the entry instead (go()).
+    // When the sheet is closed with ×, a swipe or Escape, its history entry is marked closed (see the popstate listener
+    // in core.js). A screen opened from the sheet replaces the entry instead (go()).
     if (history.state?.sheet === true) { history.replaceState({...history.state, sheet: 'closed'}, ''); shared.onClosedSheet = true; shared.closedAt = location.href; }
   },
-  /* Escape on a desktop closes the innermost thing first: the task's ⋯ menu, with the focus back on ⋯, then the sheet.
-     A field being typed in takes Escape itself and stops it there (@keydown.escape.stop in the markup): it cancels a
-     title or step being changed, or closes the label picker or the assign box. */
+  /* On a desktop, Escape closes the innermost thing first. That is the task's ⋯ menu (the focus returns to ⋯), then the
+     sheet. A field being typed in handles Escape itself and stops it (@keydown.escape.stop in the markup). Then Escape
+     cancels a title or step edit, or closes the label picker or the assign box. */
   escapeKey(){
     if (this.sheet.menu) { this.sheet.menu = false; document.getElementById('d-more')?.focus(); }
     else if (this.sheet.open) this.closeSheet();
   },
-  /* Leaving a task's sheet, whether closed or for another task: save notes being changed, and keep a comment or
-     subtasks being written for when the sheet opens again. Not again for a sheet already closing (a task opened again
-     during its slide down): that was done as it closed. A title being changed is saved too. Its box saves when it loses
-     the focus, which the × takes, but a sheet slid down or closed by the phone's Back doesn't take it, and on an iPhone
-     a tap gives a button no focus either. saveTitle saves once, whichever comes first. */
+  /* Runs when the user leaves a task's sheet, whether it closes or another task opens. It saves notes being edited. It
+     also keeps a comment or subtasks being written, for when the sheet opens again. It does nothing for a sheet that is
+     already closing (a task opened again during the slide down), because the first call did the work.
+     It saves a title being edited too. The title box saves when it loses focus, and tapping × takes the focus. Sliding
+     the sheet down or pressing the phone's Back does not take it, and on an iPhone tapping a button doesn't focus the
+     button either. saveTitle saves once, whichever comes first. */
   leaveTask(){
     const sh = this.sheet, t = sh.task;
     if (!sh.open || !sh.show || sh.kind !== 'task' || !t) return;
@@ -75,8 +77,8 @@ export default {
     if (sh.editingDesc && sh.descDraft.trim() !== this.notesText(t).trim()) {
       const v = sh.descDraft, base = sh.descConflict ?? sh.descBase;
       sh.editingDesc = false; sh.dirty = true;
-      taskDrafts.set('desc:' + t.id, {text: v, base});                       // kept until it's saved
-      // Said on the task's row once the sheet has gone. If not saved, with Open, to see them.
+      taskDrafts.set('desc:' + t.id, {text: v, base});                       // kept until the notes are saved
+      // The message appears on the task's row once the sheet has closed. If the notes aren't saved, it has Open.
       const row = {id: t.id, stays: true}, open = {label: 'Open', fn: () => this.openTask(t.id)};
       this.saveTask(t.id, null, now => this.notesPatch(now, v, base)).then(() => { taskDrafts.delete('desc:' + t.id); this.say('Notes saved', {row}); },
         e => this.say(e.notes !== undefined ? 'Notes not saved. Someone changed them while you were writing. Your version is kept. Open the task to see both.'
@@ -85,12 +87,12 @@ export default {
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
   },
-  /* The sheet slides down with a finger and closes if let go past 110px. slideStarts (progress.js) says where that may
-     start: from the bar at its top (the grab, the task's number, ⋯ and ×), or from anywhere else when the sheet is
-     scrolled to its top, but never from a text field, and not while a field is being typed in, since a pull down
-     beside the field then only puts the keyboard away. This is decided as the finger goes down, so a slide under way
-     carries on whatever takes the focus meanwhile. Not while a row is held or swiped (`sliding`), and called off when
-     the phone takes the touch away. */
+  /* The sheet follows a downward drag and closes if the user releases it past 110px. slideStarts (progress.js) decides
+     where a slide may start. It may start on the bar at the top (the grab, the task's number, ⋯ and ×), or anywhere
+     else when the sheet is scrolled to its top. It never starts in a text field. It does not start while a field is
+     being typed in, because a pull down beside the field then only hides the keyboard.
+     This is decided when the touch begins, so a slide under way carries on whatever takes the focus meanwhile. A slide
+     stops if a row is held or swiped (`sliding`), and is cancelled when the phone takes the touch away. */
   initSwipe(){
     let y0 = null; const sh = this.$refs.sheet;
     sh.addEventListener('touchstart', e => {
@@ -99,13 +101,13 @@ export default {
     }, {passive:true});
     sh.addEventListener('touchmove', e => { if (y0 !== null && sliding) { y0 = null; sh.style.transform = ''; } if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) sh.style.transform = `translateY(${dy}px)`; }, {passive:true});
     sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transform = ''; y0 = null; if (dy > 110) this.closeSheet(); });
-    // When the phone takes the touch away mid-slide (its own gesture from an edge, a call coming in), the sheet goes
-    // back up, still open, rather than staying where the finger left it.
+    // If the phone takes the touch away mid-slide (its own gesture from an edge, a call coming in), the sheet returns
+    // to its place, still open, instead of staying where the touch left it.
     sh.addEventListener('touchcancel', () => { if (y0 === null) return; y0 = null; sh.style.transform = ''; }, {passive:true});
   },
   // The header slides away once the list has scrolled down past it, and comes back as soon as it scrolls up a little.
   initHeader(){
-    let anchor = scrollY;                        // where the current run of scrolling, down or up, turned around
+    let anchor = scrollY;                        // the scroll position where the scroll direction last changed
     addEventListener('scroll', () => {
       const y = scrollY;
       if (y <= this.$refs.header.offsetHeight || this.route.name === 'search') { this.headerTucked = false; anchor = y; return; }
@@ -129,21 +131,21 @@ export default {
     this.sheet.from = from;
     this.sheet.commentDraft = taskDrafts.get('comment:' + id) || '';
     this.sheet.sub.text = taskDrafts.get('sub:' + id) || '';
-    // Notes that couldn't be saved (offline, say) go back in the editor, to save again.
+    // Notes that couldn't be saved (for example, offline) go back into the editor so the user can save them again.
     const desc = notesDraft(id);
     if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc.text, descBase: desc.base, descUnsaved: true});
-    this.sheet.addBox.text = (taskDrafts.get('addsteps:' + id) || []).map(r => r.text).filter(x => x?.trim()).join('\n');   // steps written under a template, not added yet
+    this.sheet.addBox.text = (taskDrafts.get('addsteps:' + id) || []).map(r => r.text).filter(x => x?.trim()).join('\n');   // steps typed under a template and not added yet
     const mine = this.sheet, cached = cache.get(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
-      // If the task was changed while this loaded, the save brings a newer copy, and the old one isn't put back.
+      // If the task was changed while this loaded, the save returns a newer copy, and the older one is not used.
       const t = await this.readTask(id);
       if (this.sheet !== mine) return;
       if (t) { cache.set(id, t); this.showTask(t); this.checkNotes(t); }
       this.loadComments(id); this.loadSubPeople(t || cached || {id}); this.loadSubOrder(t || cached);
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
-      else if (this.sheet === mine) { this.loadComments(id); this.loadSubPeople(cached); }   // offline, loadComments says so, and a comment can still be written
+      else if (this.sheet === mine) { this.loadComments(id); this.loadSubPeople(cached); }   // offline: loadComments shows a message, and the user can still write a comment
     }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
@@ -171,25 +173,27 @@ export default {
     if (v === 'custom') return;
     const patch = v === 'month' ? {repeat_mode: 1, repeat_after: 0}
       : {repeat_mode: 0, repeat_after: {none: 0, day: 86400, week: 604800, '2weeks': 1209600}[v]};
-    // A repeating task needs a due date to move forward from. A done template's date doesn't count: given one, it comes
-    // round, and is no longer done.
+    // A repeating task needs a due date to move forward from. A done template shows no due date (dueShown). Giving it
+    // a date makes it repeat, so it is no longer done.
     const tpl = this.checklistRole === 'template';
     if (v !== 'none' && !isSet(this.dueShown)) {
       const d = atTime(new Date(), this.dueTime);
       patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString();
       if (tpl) patch.done = false;
-      // Say which date was picked, since it may surprise: the next time of day set as this person's default due time in Vikunja.
+      // Tell the user which date was set, since it may surprise them. It is the next occurrence of the default due time
+      // set in Vikunja.
       const label = dueInfo(patch.due_date).label, when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(patch.due_date));
       this.say(`Pocket set the due date to ${when}, because a repeat needs one. Change the date above if that's wrong.`, {place: 'sheet:due', ms: 8000});
     }
     this.save(patch);
   },
-  // The due date the sheet shows: a template's is when it next comes round, so a done one has none.
+  // The due date the sheet shows. A template's due date is when it next repeats, so a done template has none.
   get dueShown(){ const t = this.sheet.task; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
-  /* Set the due date from the sheet. A template's due date is when it comes round: given one, the template is left not
-     done; taken off, it is done again. Its repeat is taken off first, then the date and done are saved (in one save
-     with the repeat, Vikunja would move it on to its next time and leave it not done), then the repeat is put back, so
-     a date given again comes round as before. */
+  /* Set the due date from the sheet. A template's due date is when it repeats. Giving a template a date leaves it not
+     done, and removing the date makes it done again.
+     To remove the date, Pocket first removes the repeat, then saves the date and done, then puts the repeat back.
+     Saved in one request with the repeat, Vikunja would move the template on to its next time and leave it not done.
+     Putting the repeat back means a date given later repeats as before. */
   async setDue(v){
     const t = this.sheet.task;
     if (this.checklistRole !== 'template') return this.save({due_date: v});
@@ -201,17 +205,17 @@ export default {
   },
   // The parent's title. For a template's step, the template's name without "TEMPLATE: ".
   get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },
-  /* The open task's subtasks, without those being deleted: a template's or a run's steps in their order line, and any
-     other task's in its project's List view order once read (loadSubOrder) or moved, and until then in the order they
-     were made. */
+  /* The open task's subtasks, without those being deleted. A template's or checklist's steps are in the order of the
+     order line. Any other task's subtasks are in its project's List view order once that is read (loadSubOrder) or
+     after a move, and until then in the order they were made. */
   get subtasks(){
     const t = this.sheet.task, hidden = this.hiddenRows;
     const subs = hasOwnOrder(t) ? stepsOf(t) : [...(t?.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
     return subs.filter(s => !hidden.has(s.id));
   },
-  /* Read where the open task's subtasks sit in its project's List view, by asking the view for the task and its
-     subtasks. The view gives a task's subtasks, done ones too, while the task itself isn't done. Once read, they can be
-     moved (subView). */
+  /* Read the positions of the open task's subtasks in its project's List view. The request asks the view for the task
+     and its subtasks together, because the view returns a task's subtasks, done ones included, only while the task
+     itself isn't done. Once the positions are read, the subtasks can be moved (subView). */
   async loadSubOrder(t){
     const subs = t?.related_tasks?.subtask || [], lv = listViewOf(this.projById.get(t?.project_id));
     if (!subs.length || hasOwnOrder(t) || !lv) return;
@@ -221,9 +225,9 @@ export default {
       if (this.sheet.task?.id !== t.id) return;
       for (const x of got) this.positions[x.id] = x.position || 0;
       this.sheet.subView = lv.id;
-    } catch {}                                                              // left in the order they were made
+    } catch {}                                                              // the subtasks stay in the order they were made
   },
-  // A template's steps as its sheet and the start sheet show them: when each is due, or what's wrong with it.
+  // A template's steps as its sheet and the start sheet show them. Each shows when it is due, or what is wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
   get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
@@ -235,8 +239,8 @@ export default {
   },
 
   /* Save a change to the open task. The sheet updates right away, and the server's copy is applied once no other saves
-     are queued. If the save fails, the change is undone and the top of the sheet says so, with Try again. Resolves to
-     false then. */
+     are queued. If the save fails, the change is undone, the top of the sheet shows a message with Try again, and the
+     promise resolves to false. */
   save(patch, rebase){
     const id = this.sheet.task?.id; if (!id) return;
     Object.assign(this.sheet.task, patch);
@@ -245,7 +249,7 @@ export default {
     return this.saveTask(id, patch, rebase).then(saved => {
       if (--pendingSaves || this.sheet.task?.id !== id) return;
       const repeated = patch.done === true && !saved.done;
-      this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // a save that failed before is done now
+      this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
       this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
       setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
     }, e => {
@@ -253,26 +257,27 @@ export default {
       if (this.sheet.task?.id === id) {
         this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id));
         this.say(notSaved(e), {place: 'sheet:top', cls: 'failed', ms: null, action: {label: 'Try again', fn: () => this.save(patch, rebase)}});
-      } else this.notify(notSaved(e));                                        // its sheet has gone
+      } else this.notify(notSaved(e));                                        // the sheet no longer shows this task
       return false;
     });
   },
-  // Tapping the title on the sheet's leading row opens a box in its place to change it (task-row.html, g.own), saved
-  // when the box is left (saveTitle). Not for a task shared read only.
+  // Tapping the title on the sheet's first row replaces it with a box to edit it (task-row.html, g.own). The title is
+  // saved when the box loses focus (saveTitle). A read-only task can't be edited.
   editTitle(){ if (this.canEdit) { this.sheet.title = this.rowTitle(this.sheet.task); this.sheet.titleEdit = true; } },
-  // Save the title. A template's keeps "TEMPLATE: " before it. If it is unchanged or emptied, the box shows the task's
-  // title again. (The box may lose the focus only as its sheet goes, with no task left to save.)
+  // Save the title. A template's title keeps its "TEMPLATE: " prefix. If the title is unchanged or empty, the box shows
+  // the task's title again. The box can lose focus just as the sheet closes, when there is no task left to save.
   saveTitle(){
     const t = this.sheet.task, v = (this.sheet.title || '').trim();
     if (!t) return;
     if (v && v !== this.rowTitle(t)) this.save({title: hasTemplateLabel(t) ? templateTitle(v) : v}); else this.sheet.title = this.rowTitle(t);
   },
-  // The notes as text, and as saved. Pocket's own lines in the description (a template's order, a run's) are left out
-  // while the notes are edited, and kept. The notes are saved with the lines Vikunja has at that moment (`t`, read
-  // then), so a step moved elsewhere meanwhile stays moved.
+  // The notes as text (notesText), and as HTML to save (notesHtml). The description also holds Pocket's own lines, such
+  // as a template's order line. They are left out of the text while the notes are edited, and kept when the notes are
+  // saved. They come from Vikunja's copy at the moment of saving (`t`), so a step moved elsewhere in the meantime stays
+  // moved.
   notesText(t){ return htmlToText(notesOnly(t.description)); },
   notesHtml(t, text){ return withLinesOf(text.trim() ? textToHtml(text) : '', t.description); },
-  // Editing the notes starts from what they say now (descBase), so a save can tell if they were changed elsewhere since.
+  // Remember what the notes say when editing starts (descBase), so a save can tell if they changed elsewhere since.
   editDesc(){
     Object.assign(this.sheet, {descDraft: this.notesText(this.sheet.task), descBase: this.notesText(this.sheet.task), descConflict: null, editingDesc: true});
   },
@@ -280,22 +285,24 @@ export default {
     Object.assign(this.sheet, {editingDesc: false, descUnsaved: false, descConflict: null});
     taskDrafts.delete('desc:' + this.sheet.task.id);
   },
-  /* The notes to save, built on Vikunja's copy as it is when they are sent (`now`). If its notes changed since editing
-     began (`base`; null means unknown, from an older Pocket), they aren't written over unseen: the error carries them
-     (notes) and Vikunja's copy (now). */
+  /* Build the notes to save on Vikunja's copy of the task as it is when they are sent (`now`). If Vikunja's notes
+     changed since editing began (`base`, where null means unknown, from an older Pocket), they are not overwritten
+     without the user seeing them. Instead this throws an error that carries Vikunja's notes (`notes`) and its copy of
+     the task (`now`). */
   notesPatch(now, text, base){
     const has = this.notesText(now).trim();
     if (base !== null && base !== undefined && has !== base.trim() && has !== text.trim())
       throw Object.assign(new Error('someone changed the notes while you were writing'), {notes: has, now});
     return {description: this.notesHtml(now, text)};
   },
-  // Notes kept on the phone and opened again: if Vikunja's have changed since editing began, both are shown.
+  // When notes kept on the phone are opened again, show both versions if Vikunja's notes changed since editing began.
   checkNotes(t){
     const sh = this.sheet, has = this.notesText(t).trim();
     if (sh.editingDesc && sh.descBase !== null && sh.descBase !== undefined && has !== sh.descBase.trim() && has !== sh.descDraft.trim()) sh.descConflict = has;
   },
-  /* Save the notes. If they can't be saved (offline, say), they stay in the editor, and on the phone, to save later. If
-     they were changed elsewhere meanwhile, Vikunja's are shown under them, and saving again replaces those, once seen. */
+  /* Save the notes. If they can't be saved (for example, offline), they stay in the editor and on the phone to save
+     later. If the notes were changed elsewhere meanwhile, Vikunja's version is shown under the user's. Saving again
+     replaces Vikunja's version, because the user has now seen it. */
   async saveDesc(){
     const sh = this.sheet, v = sh.descDraft, t = sh.task, base = sh.descConflict ?? sh.descBase, here = () => this.sheet.task?.id === t.id;
     Object.assign(sh, {editingDesc: false, savedMsg: 'Saving…'});
@@ -313,22 +320,24 @@ export default {
         if (e.now) { cache.set(t.id, e.now); this.showTask(e.now); }
         Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
       }
-      // Said under the notes, which stay in the box.
+      // The message appears under the notes, which stay in the box.
       this.say(seen !== null ? 'Not saved. Someone changed the notes while you were writing. Both versions are shown. Save again to replace theirs with yours.'
         : notSaved(e), {place: 'sheet:notes', cls: 'failed', ms: null});
     }
   },
 
   /* ---------- reminders ---------- */
-  // Whether Vikunja's reminders reach this person: it sends them by email, if the server has that on and so do they.
+  // Whether Vikunja's reminders reach this user. Vikunja sends them by email, when both the server and the user have
+  // email reminders on.
   get remindersReach(){ return !!this.info?.email_reminders_enabled && !!this.user?.settings?.email_reminders_enabled; },
   get remindersNote(){
     if (this.remindersReach) return '';
     return 'Vikunja sends reminders by email, and ' + (this.info?.email_reminders_enabled ? 'yours are turned off in your Vikunja settings.' : 'this server doesn\'t send them.');
   },
-  // A reminder in words: "At due", "15 min before due", or when it goes off. One counted from a date the task doesn't have says so.
+  // A reminder as text: "At due", "15 min before due", or the time it goes off. A reminder counted from a date the task
+  // doesn't have says it won't be sent.
   reminderText(r){
-    // At a set time: its day and time, even at noon or midnight, and whether it is past.
+    // A reminder at a set time shows its day and time, even at noon or midnight, and "(past)" if that time has gone by.
     if (!r.relative_to) { const d = new Date(r.reminder); return isSet(r.reminder) ? `${dueInfo(startOfDay(d).toISOString()).label} ${fmtTime(d)}${d < new Date() ? ' (past)' : ''}` : ''; }
     const s = Math.abs(r.relative_period || 0), from = {due_date: 'due', start_date: 'the start', end_date: 'the end'}[r.relative_to] || r.relative_to;
     const unset = !isSet(this.sheet.task?.[r.relative_to]) ? ' (no date, so it won\'t be sent)' : '';
@@ -337,7 +346,8 @@ export default {
     const k = s / n;
     return `${k} ${unit}${k === 1 || unit === 'min' || unit === 'sec' ? '' : 's'} ${r.relative_period < 0 ? 'before' : 'after'} ${from}${unset}`;
   },
-  // Reminders that can be added: counted back from the due date, so they move with it, when there is one; or a set date and time.
+  // The reminders that can be added. If the task has a due date, these are offsets before it, which move with the date.
+  // There is also a set date and time.
   get reminderPresets(){
     const t = this.sheet.task, have = new Set((t?.reminders || []).filter(r => r.relative_to === 'due_date').map(r => r.relative_period || 0));
     const before = isSet(t?.due_date) ? [[0, 'At due'], [-900, '15 min before due'], [-3600, '1 hour before due'], [-86400, '1 day before due']] : [];
@@ -347,11 +357,12 @@ export default {
     if (v === 'at') { this.sheet.remindAt = true; this.$nextTick(() => { const el = document.getElementById('d-remind-at'); el?.focus(); try { el?.showPicker(); } catch {} }); }
     else if (v) this.changeReminders({relative_to: 'due_date', relative_period: +v}, null);
   },
-  /* A tap anywhere on one of the sheet's label-and-value rows (Due, Reminders, Labels, Assigned) works its control,
-     marked data-tap: a date's picker, a select's list (or where the phone can't open one from here, the select is
-     focused), or the row's Add. A tap on a control, or on a button in the row (a date's ×, a chip's ×), is its own. The
-     control stays the one Tab stop. The row isn't a second. Repeats and Project don't need this: their select lies
-     over the whole row (.prop.sel). */
+  /* A tap anywhere on one of the sheet's label-and-value rows (Due, Reminders, Labels, Assigned) activates the row's
+     control, which is marked data-tap. That opens a date's picker, opens a select's list (or focuses the select where
+     the phone can't open the list from here), or presses the row's Add. A tap on a control, or on a button in the row
+     (a date's ×, a chip's ×), does that control's own action instead. The control stays the only Tab stop, and the row
+     is not a second one.
+     Repeats and Project don't need this, because their select covers the whole row (.prop.sel). */
   propTap(e){
     const el = e.currentTarget.querySelector('[data-tap]');
     if (!el || el.disabled || e.target.closest('button, a, input, select, textarea, label, form')) return;
@@ -361,8 +372,8 @@ export default {
   },
   addReminderAt(v){ this.sheet.remindAt = false; if (v) this.changeReminders({reminder: new Date(v).toISOString()}, null); },
   removeReminder(k){ const r = plainReminders(this.sheet.task)[k]; if (r) this.changeReminders(null, r); },
-  // Add a reminder or take one out, among those Vikunja has when the save is sent, so one added or removed elsewhere
-  // since the sheet opened stays that way.
+  // Add or remove a reminder in the list Vikunja has when the save is sent, so a reminder added or removed elsewhere
+  // since the sheet opened stays as it is.
   changeReminders(add, drop){
     const skip = new Set([add, drop].filter(Boolean).map(reminderKey));
     const edit = t => [...plainReminders(t).filter(r => !skip.has(reminderKey(r))), ...add ? [add] : []];
@@ -376,7 +387,8 @@ export default {
     try { await this.loadLabels(); } catch (e) { this.picker.error = errText(e); }
     this.picker.loading = false;
   },
-  // Enter in the label picker adds the label at the top of the list (the one with that exact name, if there is one), else a new one.
+  // Pressing Enter in the label picker adds the label with exactly the typed name if there is one, else the top label
+  // in the list. If the list is empty, it creates a new label.
   labelEnter(){
     const q = this.picker.q.trim().toLowerCase(), m = this.pickerMatches;
     if (!q) return;
@@ -391,8 +403,8 @@ export default {
     const ql = this.picker.q.trim().toLowerCase();
     return !!ql && !this.labels.some(l => l.title.toLowerCase() === ql);
   },
-  /* People to assign, as @ suggests them in quick add, matching what's typed: only those who can see the task's project
-     (Vikunja refuses anyone else), without those assigned already. */
+  /* The people who can be assigned, as @ suggests them in quick add, filtered by what is typed. Only people who can see
+     the task's project are listed, because Vikunja refuses anyone else. People already assigned are left out. */
   get assignSuggestions(){
     const t = this.sheet.task, q = this.sheet.assignName.trim().replace(/^@/, '').toLowerCase(), have = new Set((t?.assignees || []).map(u => u.id));
     const score = u => Math.min(...[u.username, u.name].map(n => (n || '').toLowerCase()).map(n => !q || n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9));
@@ -400,10 +412,10 @@ export default {
       .filter(x => x.s < 9).sort((a, b) => a.s - b.s || (a.u.name || a.u.username).localeCompare(b.u.name || b.u.username))
       .slice(0, 6).map(x => x.u);
   },
-  // Assign the person tapped in the suggestions, or on Enter, the username typed (or the first suggestion). The box
-  // stays open for the next one, until Done.
+  // Assign the person tapped in the suggestions. On Enter, assign the username typed, or the first suggestion. The box
+  // stays open for the next person until the user taps Done.
   async assign(picked){
-    const typed = this.sheet.assignName.trim().replace(/^@/, ''), t = this.sheet.task;   // the task it started on
+    const typed = this.sheet.assignName.trim().replace(/^@/, ''), t = this.sheet.task;   // the task shown when this started
     const sg = this.assignSuggestions, exact = sg.find(u => u.username.toLowerCase() === typed.toLowerCase());
     const pick = picked || exact || (typed && sg[0]) || null, name = pick ? pick.username : typed;
     if (!name) { this.sheet.assigning = false; return; }
@@ -415,20 +427,20 @@ export default {
     } catch (e) { this.say('Not assigned: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async unassign(uid){
-    const t = this.sheet.task;                                                // the task it started on
+    const t = this.sheet.task;                                                // the task shown when this started
     try {
       await this.removeAssignee(t, uid);
     } catch (e) { this.say('Not unassigned: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async addLabel(l){
-    const t = this.sheet.task;                                                // the task it started on
+    const t = this.sheet.task;                                                // the task shown when this started
     try {
       await this.addLabelTo(t, l, this.picker.q.trim());
       if (this.sheet.task?.id === t.id) this.picker.q = '';
     } catch (err) { this.say('Label not added: ' + err.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async removeLabel(lid){
-    const t = this.sheet.task;                                                // the task it started on
+    const t = this.sheet.task;                                                // the task shown when this started
     try {
       await this.removeLabelFrom(t, lid);
     } catch (e) { this.say('Label not removed: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
@@ -446,7 +458,7 @@ export default {
       else this.sheet.commentsNote = errText(e);
     }
   },
-  // A comment goes through the outbox, as a note on a run does: without a connection it waits and is posted later.
+  // A comment goes through the outbox, as a note on a checklist does. Offline, it waits and is posted later.
   async postComment(){
     const id = this.sheet.task.id, v = this.sheet.commentDraft.trim(); if (!v) return;
     this.sheet.commentDraft = ''; taskDrafts.delete('comment:' + id);
@@ -457,18 +469,18 @@ export default {
   // Comments on the open task still waiting to be posted.
   get pendingComments(){ return this.pending.filter(e => e.kind === 'act' && e.op === 'note' && e.task === this.sheet.task?.id && !e.run); },
   get attachmentsOn(){ return this.info?.task_attachments_enabled !== false; },
-  // Which of these files this Vikunja won't take, said plainly, or '' when they all fit. Vikunja's own message gives
-  // the wrong limit.
+  // A message naming the files this Vikunja won't accept because they are too big, or '' when they all fit. Vikunja's
+  // own error message gives the wrong limit.
   tooBig(files){
     const max = sizeLimit(this.info?.max_file_size), big = max ? files.filter(f => f.size > max) : [];
     return big.length ? `${big.map(f => `${f.name} (${fmtSize(f.size)})`).join(', ')} ${big.length === 1 ? 'is' : 'are'} too big. Your Vikunja accepts files up to ${this.info.max_file_size}.` : '';
   },
-  // From the sheet's "Add a photo or file". The files go through the outbox, so without a connection they wait on the
-  // phone, shown in the sheet, and upload once Pocket reaches Vikunja again.
+  // Handles the sheet's "Add a photo or file". The files go through the outbox, so without a connection they wait on
+  // the phone, listed in the sheet, and upload once Pocket reaches Vikunja again.
   async addFiles(list, t = this.sheet.task){
     const files = [...list];
     if (!files.length || !t) return;
-    const at = ['sheet:files', 'step'], big = this.tooBig(files);                // in a task's sheet, or on a run's step card
+    const at = ['sheet:files', 'step'], big = this.tooBig(files);                // where messages go: a task's sheet, or a checklist step's card
     if (big) { this.say(big, {place: at, cls: 'failed'}); return; }
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
     const {kept, full} = await sync.add(entry, files); this.refreshPending();
@@ -477,7 +489,7 @@ export default {
     if (r.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: at, cls: 'failed'}); }
     if (r.problems?.length) this.say(r.problems.join('; '), {place: at, cls: 'failed'});
   },
-  // From the add box's camera button.
+  // Handles the add box's camera button.
   addCapPhotos(list){
     const files = [...list], big = this.tooBig(files);
     if (big) this.say(big, {place: 'cap', cls: 'failed'});
@@ -506,9 +518,10 @@ export default {
     } catch (e) { w?.close(); this.say('Couldn\'t open: ' + e.message, {place: ['sheet:files', 'step'], cls: 'failed'}); }
   },
   /* ---------- the sheet's list, and its box under a row ---------- */
-  /* The sheet's list (sheet/sub-list.html): the open task's subtasks, a template's steps, or in New template the steps
-     written so far, which aren't in Vikunja yet (checklists.js). One list, drawn by the task row, with one box at its
-     foot (`subBoxW`, as box() names it: 'sub' for a task, 'add:+' for a template, 'new:+' for New template). */
+  /* The sheet's list (sheet/sub-list.html) shows the open task's subtasks, a template's steps, or in New template the
+     steps written so far, which aren't in Vikunja yet (checklists.js). It is one list, drawn by the task row, with one
+     add box at its bottom. `subBoxW` is the box's name as box() uses it: 'sub' for a task, 'add:+' for a template, and
+     'new:+' for New template. */
   get subList(){ return this.sheet.kind === 'newtpl' ? this.sheet.newTpl?.rows || [] : this.sheet.kind === 'task' ? this.subtasks : []; },
   get isStepList(){ return this.sheet.kind === 'newtpl' || this.checklistRole === 'template'; },
   get subBoxW(){
@@ -516,31 +529,34 @@ export default {
     if (this.sheet.kind !== 'task' || !this.canEdit || this.checklistRole === 'run') return '';
     return this.checklistRole === 'template' ? 'add:+' : 'sub';
   },
-  // Whether the box's button adds anything: for subtasks, a line with a title; for steps, nothing wrong in them and none on its way.
+  // Whether the box's button would add anything. For subtasks, at least one line has a title. For steps, the typed text
+  // has no problem and nothing is already being sent.
   get subBoxCan(){
     const w = this.subBoxW;
     if (!w) return false;
     if (w === 'sub') return this.boxParsedLines('sub').some(p => p.title);
     return !this.sheet.subBusy && !!(this.box(w).text || '').trim() && !this.draft(this.stepWhich).info.get('+')?.problem;
   },
-  /* A step as its row has it (task-row.html, g.step): its index among the steps, its number, and how it reads. A step
-     written in New template (it has a `key`) reads together with the rows there (draft), with the box's own line
-     counted where the box is. */
+  /* A step as its row shows it (task-row.html, g.step): its index among the steps, its number and its text. A step
+     written in New template has a `key`. Its number and text are read together with the other rows there (draft), and
+     the add box's text counts at the position of the box. */
   stepAt(t){ return this.subList.findIndex(s => s.id === t.id); },
   stepNo(t){ return (t.key ? this.draft('new').info.get(t.key)?.i ?? this.stepAt(t) : this.stepAt(t)) + 1; },
   stepShown(t){
     if (!t.key) return this.templateSteps[this.stepAt(t)] || {title: t.title};
     const d = this.draft('new'), info = d.info.get(t.key), s = info && stepInfos(d.added)[info.i];
-    // The title reads as a saved step's does: without the @people, *labels and !priority that quick add will take when
-    // the step is created, but with the words of a chip tapped off (t.ignore), which stay in the title.
+    // The title shows what a saved step's title will be. It leaves out the @people, *labels and !priority that quick
+    // add will take when the step is created. It keeps the text of any chip the user turned off (t.ignore), because
+    // that text stays in the title.
     const title = text => this.stepParsed(text, t.ignore).title || text;
     return s ? {...s, title: title(s.title), problem: info.problem || s.problem} : {title: title(t.text), text: '', problem: ''};
   },
-  /* The add box at a list's foot (markup/list-box.html), by where the list is: 'sheet' (a task's subtasks, a template's
-     steps, or New template's) or 'run' (a checklist's steps on its screen). Returns the box's name as box() has it, its
-     ids, what it says, whether it is under a row, whether its button adds anything, and on a checklist the step Repeat
-     would copy. `rest` is what it says at the foot, which its place there shows while the box is under a row. Null
-     where there is no box (a checklist finished, or shared read only). */
+  /* The add box at the bottom of a list (markup/list-box.html), chosen by where the list is: 'sheet' (a task's
+     subtasks, a template's steps, or New template's) or 'run' (a checklist's steps on its screen).
+     Returns the box's name as box() uses it, its ids, the text it shows (`says`), whether it is under a row, whether its
+     button would add anything, and on a checklist the step Repeat would copy. `rest` is the text the box shows at the
+     bottom, and the placeholder there shows it while the box is under a row. Returns null when there is no box (a
+     finished checklist, or a read-only one). */
   footBox(where){
     if (where === 'run') {
       const a = this.runAim;
@@ -556,23 +572,28 @@ export default {
     return {w, id: 'd-subbox', in: 'd-subin', under, steps, can: this.subBoxCan, repeat: null, says: under ? (steps ? 'Step' : 'Subtask') : rest, rest,
       add: steps ? 'Add steps' : 'Add subtasks', home: steps ? 'Add after the last step instead' : 'Add after the last subtask instead'};
   },
-  /* A nudge on a row of a list (watchNudges, progress.js) puts the list's box under that row, to add after it: in a
-     sheet, sheet.subAt; on a checklist's screen, runBoxAt. The box is laid over room given to the row, never taken off
-     the page, and its place at the foot stays, dashed. A tap there, or its row scrolled out of sight while the box
-     isn't being typed in, puts it back. Nudging the row the box is already under changes nothing. seatFoot asks where
-     the row is as frames go by, the same way seatBox (quickadd.js) does for a list's box: both through seat.js. */
+  /* Nudging a row of a list (watchNudges, progress.js) puts the list's add box under that row, so the next task is
+     added after it. In a sheet this sets sheet.subAt. On a checklist's screen it sets runBoxAt.
+     The row gets bottom padding as tall as the box, and the box is positioned over that padding. The box's element
+     never leaves the page, so its text and focus are kept. Its placeholder at the bottom stays, drawn dashed. Tapping
+     the placeholder puts the box back at the bottom. So does scrolling the row out of sight while the box isn't being
+     typed in. Nudging the row the box is already under changes nothing.
+     seatFoot checks where the row is on each frame, the same way seatBox (quickadd.js) does for a list's box. Both go
+     through seat.js. */
   nudgedSub(id){
     const s = this.subList.find(x => String(x.id) === String(id));
-    // A template's steps are done tasks, so done doesn't rule them out. Not while a step is being changed: its box is in the way.
+    // A template's steps are done tasks, so a done step is still allowed. Nothing happens while a step is being edited,
+    // because its edit box is in the way.
     if (!s || (s.done && !this.isStepList) || !this.subBoxW || this.sheet.stepEdit) return;
     const at = this.underRow('#d-subtasks', s.id);
     if (String(this.sheet.subAt ?? '') !== String(at ?? '')) haptic('tick');
     this.sheet.subAt = at; this.sheet.subAfter = null;
     this.$nextTick(() => this.seatFoot('sheet'));
   },
-  // A checklist's step nudged on its screen (nudged, quickadd.js, which also puts the box on the card).
+  // Handles a nudge on a checklist step (nudged, quickadd.js, which also moves the box onto the step card).
   nudgedStep(s){ this.runBoxAt = this.underRow('#run-steps', s.id); this.$nextTick(() => this.seatFoot('run')); },
-  // Where the box goes for a row nudged in list `sel`: under it, by id, or at the foot (null) when it is the last row.
+  // Where the add box goes when a row in list `sel` is nudged. That is under the row, given as its id, or at the bottom
+  // (null) when the row is the last one.
   underRow(sel, id){ return [...document.querySelectorAll(sel + ' > .row[data-id]')].at(-1)?.dataset.id === String(id) ? null : id; },
   footHome(where){
     if (where === 'run') this.runBoxAt = null; else { this.sheet.subAt = null; this.sheet.subAfter = null; }
@@ -580,17 +601,18 @@ export default {
   },
   seatFoot(where){
     const run = where === 'run', list = run ? '#run-steps' : '#d-subtasks', boxId = run ? 'run-box' : 'd-subbox';
-    // What's in sight of the list: the screen, or the sheet's own scroller.
+    // The visible area of the list: the screen, or the sheet's scrolling area.
     const sight = () => run ? {top: 0, bottom: innerHeight} : document.getElementById('sheet-body')?.getBoundingClientRect() || {top: 0, bottom: innerHeight};
-    // Whether a row comes after `el` in the list. With none, the box under it is the box at the foot.
+    // Whether any row comes after `el` in the list. If none does, a box under `el` is the box at the bottom.
     const later = el => { for (let n = el.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.row[data-id]')) return true; return false; };
-    // The row the box is under, as the page has it. A step added a moment ago is known by its entry until it is in Vikunja.
+    // The id of the row the box is under. A step added a moment ago is known by its outbox entry until Vikunja has it.
     const at = () => run ? (this.route.name === 'run' && this.runBoxAt != null ? this.actTask({task: this.runBoxAt}) : null) : this.sheet.open ? this.sheet.subAt : null;
     const foot = () => { if (run) this.runBoxAt = null; else { this.sheet.subAt = null; this.sheet.subAfter = null; } };
     seatUnder(seats[where], {
       box: () => document.getElementById(boxId), cls: 'sub-boxed', prop: () => [document.getElementById(boxId).parentElement, '--sub-h'], sight,
-      // The row isn't drawn yet: a row just added is a frame or two away, so wait. One gone for a second is lost. One
-      // that is now last (just added at the end, or the rows after it deleted) sends the box to the foot.
+      // Returns undefined when the row isn't drawn yet. A row just added is a frame or two away, so seatUnder waits. If
+      // the row is still missing after about a second, seatUnder treats it as lost. If the row is now last (just added
+      // at the end, or the rows after it deleted), the box goes to the bottom.
       row: () => {
         const id = at();
         if (id == null) return null;

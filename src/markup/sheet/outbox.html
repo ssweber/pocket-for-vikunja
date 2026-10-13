@@ -1,5 +1,5 @@
-    <!-- The Waiting to send sheet, opened from the header's button: a row for each change waiting, oldest first, and
-         for each Vikunja turned down (outbox.js) -->
+    <!-- The Waiting to send sheet, opened from the header's button. It has a row for each change waiting to be sent,
+         oldest first, and for each change Vikunja rejected (outbox.js). -->
     <template x-if="sheet.kind === 'outbox'"><div>
       <div class="d-title"><h2>Waiting to send</h2></div>
       <p class="note" id="outbox-status" style="margin:0 2px 12px" x-text="outboxStatus"></p>

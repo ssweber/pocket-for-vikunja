@@ -7,8 +7,9 @@ export const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+
 export const fmtTime = d => d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 // A due date at midnight has no time of its own, which is how Vikunja's web app sets a date alone.
 const noTime = d => !d.getHours() && !d.getMinutes();
-/* Whether a task is late: its due time has passed, as in Vikunja, whether the time was typed or filled in (noon for
-   "friday", say). A task due at midnight is due all that day, and late once the day is over. */
+/* Whether a task is late. As in Vikunja, it is late once its due time has passed, whether the user typed the time or
+   Pocket filled it in (noon for "friday"). A task due at midnight is due all that day and is late once the day is
+   over. */
 export function isLate(due, now = new Date()){
   if (!isSet(due)) return false;
   const d = new Date(due);
@@ -29,14 +30,15 @@ export function dueInfo(due){
   if (hasTime && Math.abs(diff) < 7) label += ' ' + fmtTime(d);
   return {label, cls: diff < 0 || isLate(due) ? 'overdue' : diff === 0 ? 'today' : '', diff};
 }
-/* Shorten a time from fmtTime for a one-line row, where a title has little room. "10:30 AM" becomes "10:30a", "3:00 pm"
-   or "3:00 p.m." becomes "3p", noon "12p". Anything else stays as it is: a 24-hour "15:30", or AM and PM written in
-   other words or before the time. Screen readers, sheets and a row's second line get fmtTime's text. */
+/* Shorten a time from fmtTime for a one-line row, where the title needs the space. "10:30 AM" becomes "10:30a",
+   "3:00 pm" or "3:00 p.m." becomes "3p", and noon becomes "12p". Any other text stays as it is, such as a 24-hour
+   "15:30" or an AM or PM written differently or placed before the time. Screen readers, sheets and a row's second line
+   use the full text from fmtTime. */
 export const shortTime = text => { const m = /^(\d{1,2})([:.])(\d\d)\s*([ap])\.?\s?m\.?$/i.exec(text); return m ? m[1] + (m[3] === '00' ? '' : m[2] + m[3]) + m[4].toLowerCase() : text; };
-/* When a task is due, short, for a one-line row: its time if due today ("11:55a", or "Today" with no time), its weekday
-   if due in the coming week ("Fri"), else its date ("Oct 2", with the year when not this year's). `cls` is as in
-   dueInfo. Null with no date, and under Today's heading (`underToday`) for a task due today with no time, where
-   "Today" says nothing new. */
+/* A short due date for a one-line row. A task due today shows its time ("11:55a", or "Today" with no time). A task due
+   in the coming week shows its weekday ("Fri"). Any other task shows its date ("Oct 2", with the year when it is not
+   this year). `cls` is the same as in dueInfo. Returns null with no date. Also returns null under the Today heading
+   (`underToday`) for a task due today with no time, because "Today" would repeat the heading. */
 export function shortDue(due, now = new Date(), {underToday = false} = {}){
   if (!isSet(due)) return null;
   const d = new Date(due), diff = Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
@@ -48,9 +50,9 @@ export function shortDue(due, now = new Date(), {underToday = false} = {}){
 export const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 export const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
-/* The due date for a task moved to `day`, keeping its time of day, or with no time if it had none. If that time on
-   `day` has already passed, the next whole hour instead, or 11:59 PM in the day's last hour, so the task isn't late
-   again at once. */
+/* The due date for a task moved to `day`. It keeps its time of day, or has no time if it had none. If that time on
+   `day` has already passed, the due date is the next whole hour instead, or 11:59 PM in the day's last hour. That way
+   the task isn't late again at once. */
 export function movedDue(due, day, now = new Date()){
   const d = isSet(due) ? new Date(due) : startOfDay(day);
   d.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());

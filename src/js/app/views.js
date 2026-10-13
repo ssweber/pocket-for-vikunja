@@ -17,7 +17,7 @@ import {pendingSaves} from './sheet.js';
 export let renderSeq = 0;
 let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
 const PRELOAD_AGE = 60e3;                        // skip background reloads for copies newer than this
-// The projects whose Done section was left open, kept on the phone: project id -> true.
+// The projects whose Done section is open, remembered on this phone: project id -> true.
 const doneOpen = {
   all(){ try { return JSON.parse(store.get('done.open')) || {}; } catch { return {}; } },
   set(id, open){ const a = this.all(); if (open) a[id] = true; else delete a[id]; store.set('done.open', JSON.stringify(a)); },
@@ -74,12 +74,11 @@ export default {
   // Use history.back when it leads to the requested screen. Otherwise open that screen with go().
   back(to){
     if (history.state?.from !== to || history.state?.sheet === true) { this.go(to); return; }
-    const closed = history.state?.sheet === 'closed';                     // past the closed sheet's entry too
+    const closed = history.state?.sheet === 'closed';                     // also go back past the closed sheet's history entry
     shared.onClosedSheet = false;
     history.go(closed ? -2 : -1);
   },
-  // Name the browser tab for its screen. Project and run screens show their names and parent project above the
-  // list.
+  // The heading of each screen. Project and checklist screens also show the parent project above the title.
   get head(){
     const r = this.route;
     if (r.name === 'projects') return {kicker: '', title: 'Projects'};
@@ -107,13 +106,13 @@ export default {
   },
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
-  // Send each row's tick through its task, sheet or run action. A marked row first undoes its mark. Give
-  // completion feedback once, and keep the add box where it is.
+  // Send a row's tick to the action for its place: a checklist step, the sheet's own task, a sheet subtask or a list
+  // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once.
   tickRow(t, g, row){
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
     haptic(tickFeel(t.done));
     if (g.own) return this.sheetDone();
-    if (g.card) this.pinCard(g.card);                    // the step after it comes in once it has gone (app/cards.js)
+    if (g.card) this.pinCard(g.card);                    // the next step joins the card after this one leaves (app/cards.js)
     const back = this.unmark(t.id);
     if (back) {
       if (g.sheet) return;
@@ -122,9 +121,9 @@ export default {
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row);
   },
-  /* Open the item represented by the row. Run step titles select their card, the sheet's own title edits in place,
-     and sheet subtasks open their task. List rows open tasks, runs or a repeating template's Start sheet. Pending
-     rows have no saved task to open. */
+  /* Open the item a row stands for. A checklist step's title selects its card, the sheet's own title edits in place,
+     and a sheet subtask opens its task. A list row opens a task, a checklist, or the Start sheet of an open template.
+     A pending row has no saved task to open. */
   tapRow(t, g){
     if (g.run) return this.showStep(t.i, true);
     if (g.step) return this.editStep(t);
@@ -132,8 +131,8 @@ export default {
     if (g.own) return this.editTitle();
     return g.sheet || g.top ? this.openTask(t.id) : this.openRow(t);
   },
-  /* Route a ring tap to the run screen's handler or ringTap with its row and sheet context. That context places
-     confirmation results and Undo where the action happened. */
+  /* Send a ring tap to the checklist screen's own handler, or to ringTap with its row and sheet. That lets the
+     confirmation and Undo appear where the tap happened. */
   tapRing(t, r, el){
     if (r.tap) return r.tap();
     const sheet = !!el.closest('#sheet');
@@ -151,11 +150,11 @@ export default {
   // Use Today's grouping minute for due text so its rows redraw only once a minute.
   rowNow(){ return this.route.name === 'today' && this.groupedAt || Date.now(); },
   /* Build metadata for each row context. Sheet subtasks show due dates, while the sheet's own row omits details
-     already shown elsewhere in the sheet. A run's top row uses its assignee slot. Run steps show insertion
-     history, comments and timing. One-line rows omit extra labels and counts. */
+     already shown elsewhere in the sheet. A checklist's top row uses its assignee slot. Checklist steps show how
+     they were added, their comments and their timing. One-line rows omit extra labels and counts. */
   rowMeta(t, g){
     if (g?.top) return [];
-    // A template's step: when it's due in a checklist, or what's wrong with it, and its notes' first line.
+    // A template step's row shows when it is due in a checklist, or what is wrong with it, and the first line of its notes.
     if (g?.step) {
       const s = this.stepShown(t), note = this.stepNote(t);
       return [(s.problem || s.text) && {key: 'when', cls: 'num' + (s.problem ? ' due overdue' : ''), text: s.problem || s.text}, note && {key: 'note', cls: 'step-note', text: note}].filter(Boolean);
@@ -165,16 +164,17 @@ export default {
       t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},
       t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}].filter(Boolean);
     const out = [], due = dueInfo(t.due_date), card = g?.card;
-    // A done task over its open subtasks: why it's on the open list.
+    // A done task stays on the open list while it has open subtasks. Show a message that says why.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});
-    // A run's step not done yet, due within a day: its countdown, to the minute (on Today, its minute redraws it: rowNow).
+    // A checklist step that is not done and is due within a day shows a countdown to the minute. On Today, rowNow
+    // redraws it once a minute.
     const left = due && !t.done && this.stepRun(t) && countdown(+new Date(t.due_date), this.rowNow());
     if (left) out.push({key: 'due', cls: 'due num ' + (left.late ? 'overdue' : 'today'), text: left.text, label: left.late ? 'Late: ' + left.text : 'Due ' + left.text, countdown: left});
     else if (due) out.push({key: 'due', cls: 'due num ' + due.cls, text: due.label});
     if (g?.sheet) return out;
     if (t.priority) out.push({key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label});
     /* Show a repeating template's Start action and project instead of labels and counts, so matching names in
-       different projects are clear. The slot shows who its runs are for. */
+       different projects are clear. The slot shows who its checklists are for. */
     if (comesRound(t) && this.checklistIds.has(t.project_id)) {
       out.push({key: 'tpl', text: !this.canWrite(t.project_id) ? 'Checklist' : this.tickOf(t) ? 'Checklist. Tap to start.' : 'Checklist, not due yet'});
       const tp = this.projById.get(t.project_id);
@@ -183,8 +183,8 @@ export default {
     }
     // Avoid repeating the card's project on its step rows, except when a step belongs to another project.
     const p = (!card || card.project !== t.project_id) && (this.route.name === 'today' || this.route.name === 'search') && this.projById.get(t.project_id);
-    // Name the run on Today and search step rows to distinguish matching step names. Project lists already show
-    // the run above them.
+    // Name the checklist on Today and search step rows, so steps with the same name can be told apart. Project lists
+    // already show the checklist above its steps.
     const run = !card && (this.route.name === 'today' || this.route.name === 'search') && this.stepRun(t) && t.related_tasks.parenttask[0];
     if (run) out.push({key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title});
     else if (p) out.push({key: 'p', color: colorOf(p.hex_color), text: p.title});
@@ -193,7 +193,7 @@ export default {
     if (up) out.push({key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title});
     for (const l of (t.labels || []).slice(0,3)) out.push({key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true});
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
-    // Its subtasks done (a done task's): one with a ring (a run, an open parent) has its count in it (rowRing).
+    // Show the count of done subtasks. A task with a ring (a checklist or an open parent) shows it in the ring (rowRing).
     const subs = t.related_tasks?.subtask || [];
     if (subs.length && !this.isRunTask(t) && !this.rowRing(t, g || {})) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments', extra: true});
@@ -201,7 +201,7 @@ export default {
     // a single total.
     const att = t.attachments?.length || 0, waiting = t.pending ? t.waiting : this.waiting.files[t.id] || 0;
     if (att + waiting) out.push({key: 'att', icon: 'clip', cls: 'num', text: String(att + waiting), label: 'Attachments' + (waiting ? `, ${waiting} waiting to upload` : ''), extra: !waiting});
-    // (Not a run's step's: its reminder is Pocket's own, for the countdown it shows.)
+    // Skip checklist steps. Their reminder is Pocket's own, for the countdown the step shows.
     if (!this.stepRun(t) && (t.reminders || []).some(r => new Date(r.reminder) > new Date())) out.push({key: 'rem', icon: 'bell', text: '', label: 'A reminder is still to come'});
     return out;
   },
@@ -210,7 +210,7 @@ export default {
   // shown.
   async render({kept = false} = {}){
     let r = currentRoute();
-    // A link to a project's done tasks, from before they were a section of its list: the list, with the section open.
+    // An old link to a project's done tasks. Open the project's list with its Done section open.
     if (r.name === 'project' && r.showDone) { doneOpen.set(r.id, true); history.replaceState(history.state, '', '#/project/' + r.id); r = currentRoute(); }
     if (r.name === 'add') {                      // deep link: #/add?text=Buy+milk+tomorrow
       if (kept) return false;
@@ -231,11 +231,11 @@ export default {
     if (fresh) {
       const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
       if (kept && !s) return false;
-      this.drawFrom(0);                                  // its first rows at once, the rest a batch at a time
+      this.drawFrom(0);                                  // draw the first rows now and the rest in batches
       Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null});
       if (s) this.showSaved(r, s);
       if (scrollY) scrollTo(0, 0);                       // a new screen starts at its top
-      Object.assign(this.hint, {at: null, pick: true});  // the hint, if it's still to show, on the new screen's first row (pickHint)
+      Object.assign(this.hint, {at: null, pick: true});  // show the hint, if not yet shown, on the first row (pickHint)
     }
     this.view.route = location.hash; this.view.error = ''; this.view.bootFailed = false;
     if (kept) return fresh;
@@ -255,13 +255,13 @@ export default {
       if (e instanceof NetError) {
         // Keep visible rows after a failed load and show the offline banner. Regroup Today for the current date.
         if (!this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
-        const s = saved.get(viewKey(r));                 // a run's, which isn't shown before it's loaded
+        const s = saved.get(viewKey(r));                 // a checklist's saved copy is used only after a failed load
         if (s) { this.showSaved(r, s); return; }
       }
       if (r.name === 'run' && e.runGone) { this.runGone(r.id); return; }
-      // A project that's gone (deleted elsewhere): back to the list of them.
+      // The project was deleted elsewhere. Go back to the Projects list.
       if (r.name === 'project' && e instanceof ApiError && e.status === 404) { await this.loadProjects().catch(() => {}); this.go('#/projects'); this.notify('That project no longer exists.'); return; }
-      // A refresh that fails says so, unless it would hide a message still being read; what's on screen stays.
+      // Show a failed refresh as a message, unless it would replace a message still being read. The rows on screen stay.
       if (!this.view.loading) { if (!(this.toast.show && this.toast.until - Date.now() > 1500)) this.notify((r.name === 'search' ? 'Couldn\'t search: ' : 'Couldn\'t refresh: ') + e.message); return; }
       Object.assign(this.view, {loading: false, error: errText(e)});
     } finally {
@@ -278,11 +278,11 @@ export default {
     this.drawing = true;
     const seq = ++drawSeq;
     let rows = FIRST_ROWS, took = null, y = scrollY;
-    // (only scrolling down: going to a screen's top, as a new screen does, isn't nearing its end)
+    // Only scrolling down counts. Jumping to the top of a new screen is not nearing the end.
     nearEnd = () => { const down = scrollY > y; y = scrollY; if (down && scrollY + 2 * innerHeight >= document.documentElement.scrollHeight) this.drawAll(); };
     const step = () => {
       if (seq !== drawSeq) return;
-      if (!this.view.loading) {                          // (with no copy kept, its rows come with the load)
+      if (!this.view.loading) {                          // without a saved copy, the rows arrive with the load
         if (this.drawTo >= this.view.groups.reduce((k, g) => k + g.tasks.length, 0)) return this.drawAll();
         if (took !== null) rows = nextBatch(rows, took, batchMs(this.drawTo - n));
         this.drawTo += rows;
@@ -294,7 +294,7 @@ export default {
     addEventListener('scroll', nearEnd, {passive: true});
     requestAnimationFrame(() => requestAnimationFrame(step));   // the second frame: after the first rows are painted
   },
-  // Every row drawn: the rest of a screen being drawn a batch at a time, and anything added later, at once.
+  // Draw all remaining rows at once, and any rows added later.
   drawAll(){ drawSeq++; this.drawTo = Infinity; this.drawing = false; removeEventListener('scroll', nearEnd); nearEnd = null; },
   /* Return the rows or cards drawn so far from an unwatched list. Otherwise x-for would read every drawn item
      through Alpine again for every batch. */
@@ -315,7 +315,7 @@ export default {
     const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || [])}));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
     Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
-    // Where its tasks are in its List view, unless this session knows better (a move since).
+    // Restore the tasks' positions in the project's List view, unless this session has newer ones from a move.
     for (const [id, pos] of Object.entries(s.positions || {})) if (!(id in this.positions)) this.positions[id] = pos;
     if (r.name === 'today') this.regroupToday();
   },
@@ -339,7 +339,7 @@ export default {
         const kept = saved.get(k.key);
         if (location.hash === k.hash || (kept && Date.now() - Date.parse(kept.at) < PRELOAD_AGE)) continue;
         if (this.offline || saved.get('user')?.id !== this.user?.id) break;
-        try { saved.set(k.key, {...await k.load(), at: new Date().toISOString()}); } catch { /* tried again after the next screen loads */ }
+        try { saved.set(k.key, {...await k.load(), at: new Date().toISOString()}); } catch { /* retried after the next screen loads */ }
       }
     } finally { preloading = false; }
   },
@@ -361,7 +361,8 @@ export default {
     if (this.view.loading) return seq === renderSeq;
     const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
     const gone = shown.filter(id => !now.has(id) && !this.lines[id] && !this.leaving[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
-    // Found in one pass over the page, not one for each row gone (2,000 of them, when a project's Done closes).
+    // Find the elements in one pass over the page, not once per removed row. Closing a project's Done section can
+    // remove 2,000 rows.
     const out = new Set(gone.map(String));
     if (gone.length) await collapseRows([...document.querySelectorAll('#view :is(.row:not(.step-line), .day-card)[data-id]')].filter(el => out.has(el.dataset.id)));
     if (seq !== renderSeq) return false;
@@ -396,7 +397,7 @@ export default {
     const t0 = startOfDay();
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
-    // And steps you've claimed in someone else's run, still open, which may have no date yet.
+    // Also open steps you claimed in a checklist someone else started. These may have no due date yet.
     const qMine = new URLSearchParams({filter: `done = false && assignees in ${this.user?.username}`, filter_timezone: TZ, expand: 'comment_count'});
     const [all, allAdded, {index: runs, mine, open = []}, claimed] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
       this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : []]);
@@ -428,7 +429,8 @@ export default {
     const p = this.projById.get(r.id), open = p && doneOpen.all()[p.id];
     this.view.project = p || null;
     if (!p) { this.view.groups = []; return; }
-    // Done, open, as many as it shows now, loaded afresh: a new visit's the latest DONE_PART (it has none yet).
+    // If the Done section is open, reload as many Done tasks as it shows now. A new visit has none yet, so it loads
+    // the latest DONE_PART.
     const d = await this.readProject(p, open && Math.max(DONE_PART, this.view.groups.find(g => g.key === 'done')?.tasks.length || 0));
     if (seq !== renderSeq) return;
     for (const t of [...d.tasks, ...d.read]) cache.set(t.id, t);
@@ -438,9 +440,9 @@ export default {
     const shown = this.view.groups.find(g => g.key === 'done'), quiet = g => g.key === 'done' && shown && !shown.loaded;
     if (!await this.settle(groups.flatMap(g => quiet(g) ? [] : g.tasks.map(t => t.id)), seq)) return;
     Object.assign(this.positions, d.positions);
-    for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;   // a move made meanwhile
+    for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;   // a move made while loading
     Object.assign(this.view, {project: d.project, listView: d.listView, groups: this.keepMarked(groups)});
-    saved.set('project.last', p.id);                            // loaded in the background from now on (preloads)
+    saved.set('project.last', p.id);                            // preloads now loads this project in the background
     this.saveProject();
     if (open && !d.finished) this.loadDoneSection(this.view.groups[1]);
   },
@@ -449,7 +451,7 @@ export default {
   async readProject(p, withDone){
     const q = {filter_timezone: TZ, expand: 'comment_count'}, id = p.id;
     /* Use Vikunja's Done count outside checklist projects. Checklist projects need their tasks loaded first to
-       exclude template and run steps. */
+       exclude template and checklist steps. */
     const count = this.checklistIds.has(id) ? null : api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', per_page: 1})).then(d => d?.total ?? null, () => null);
     const done = withDone ? this.doneTasks(p, 0, withDone).catch(() => null) : null;
     let lv = listViewOf(p), tasks = null;
@@ -464,14 +466,14 @@ export default {
     }
     if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})); }
     /* Show a completed parent above its remaining open subtasks, reading missing parents in one request. Active
-       runs also show their steps as cards. Finished runs belong in Done and leave their unfinished steps off the
-       open list. */
+       checklists also show their steps as cards. Finished checklists belong in Done, and their unfinished steps
+       stay off the open list. */
     const shown = this.onProjectList(tasks), headIds = doneParentIds(shown, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
     const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).catch(() => []) : [];
     const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
     const heads = headIds.map(id => given.get(id) || read.find(t => t.id === id) || named(id));
     const [n, finished] = await Promise.all([count, done]);
-    // The view gives each open task's subtasks, done ones too: those are in the Done section.
+    // The List view returns each open task's subtasks, including done ones. Done subtasks belong in the Done section.
     const list = [...shown.filter(t => !t.done), ...heads], positions = {};
     if (lv) {
       for (const t of tasks) positions[t.id] = t.position || 0;
@@ -481,7 +483,7 @@ export default {
         const at = Math.min(...list.filter(t => !t.done && (t.related_tasks?.parenttask || []).some(x => x.id === h.id)).map(t => positions[t.id] || Infinity));
         positions[h.id] = at < Infinity ? at : 0;
       }
-      // Moves still waiting to be sent, as they'll be.
+      // Use the positions that moves still waiting to be sent will give.
       for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') positions[e.task] = e.pos;
     }
     return {project: p, listView: lv?.id || null, tasks, read, list, heads: headIds, positions, count: n, finished};
@@ -493,7 +495,7 @@ export default {
       count: part ? counted(part, part.skip, count) : count, tasks: (part?.tasks || []).map(own)};
   },
   /* Load n completed tasks from index from, newest first, returning {tasks, total, skip}. Exclude templates and
-     template or run steps before paging. Read all tasks in checklist projects so their pages and counts include
+     template or checklist steps before paging. Read all tasks in checklist projects so their pages and counts include
      only eligible Done rows. */
   async doneTasks(p, from = 0, n = DONE_PART){
     const path = `/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'});
@@ -507,7 +509,7 @@ export default {
     const tasks = this.withoutTemplates(list, true);
     return {tasks, total, skip: list.length - tasks.length};
   },
-  // The Done section opened, loading it the first time, or closed again. Each project's is kept as it was left.
+  // Open or close the Done section, loading it the first time it opens. Pocket remembers each project's choice.
   toggleDoneSection(){
     const p = this.view.project, g = this.view.groups.find(x => x.key === 'done');
     if (!p || !g) return;
@@ -521,7 +523,7 @@ export default {
     try {
       const part = await this.doneTasks(p);
       if (this.view.project?.id !== p.id) return;
-      this.drawFrom(this.listGroups.find(x => x.key === 'done')?.before ?? 0);   // its first rows at once, the rest in batches
+      this.drawFrom(this.listGroups.find(x => x.key === 'done')?.before ?? 0);   // draw the first rows now and the rest in batches
       Object.assign(g, {tasks: part.tasks.map(t => this.keep(t)), loaded: true, per: DONE_PART, skip: part.skip, count: counted(part, part.skip, g.count)});
       this.saveProject();
     } catch (e) { g.open = false; this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'done', cls: 'failed'}); }
@@ -542,7 +544,7 @@ export default {
     this.showingMore = key;
     try {
       const part = this.route.name === 'search' ? await this.foundDone(s, at + g.skip) : await this.doneTasks(p, at + g.skip);
-      if (this.view.groups.find(x => x.key === key) !== g) return;                 // gone meanwhile: another screen, or loaded afresh
+      if (this.view.groups.find(x => x.key === key) !== g) return;                 // the group was replaced meanwhile by another screen or a reload
       const have = new Set(g.tasks.map(t => t.id)), add = part.tasks.filter(t => !have.has(t.id));
       this.drawFrom((this.listGroups.find(x => x.key === key)?.before ?? 0) + g.tasks.length);
       g.skip += part.skip; g.count = counted(part, g.skip, g.count);
@@ -566,7 +568,7 @@ export default {
     let res;
     // eslint-disable-next-line no-restricted-globals -- Pocket's own page, not Vikunja's API
     try { res = await fetch(new URL('.', location.href), {cache: 'no-store', headers: {'If-Modified-Since': LOADED.toUTCString()}}); }
-    catch { return; }                                                          // offline: no news
+    catch { return; }                                                          // offline, so there is nothing to check
     if (res.status !== 200) return;
     const busy = this.sheet.open || this.cap.text.trim() || this.runInsert.text.trim() || this.capPhotos.length || this.cap.busy || this.searchQ || this.movingOverdue || this.starting
       || this.pending.length || pendingSaves;
@@ -576,14 +578,16 @@ export default {
     this.updateIfNew();
     this.refreshing = true;
     this.people = null; this.access = {}; this.userKnown = {}; this.labelsLoaded = false;   // sharing and labels may have changed too
-    // Your settings and the server's (reminder emails, say), changed in Vikunja since Pocket opened.
+    // Reload the user's settings and the server's info (for example reminder emails), which may have changed in Vikunja
+    // since Pocket opened.
     api('/user').then(u => { if (u?.id === this.user?.id) { this.user = u; saved.set('user', u); } }, () => {});
     api('/info', {auth: false}).then(i => { if (i) { this.info = i; saved.set('info', i); } }, () => {});
     try { await this.loadProjects(); await this.render(); } catch (e) { this.notify(e.message); } finally { this.refreshing = false; }
   },
 
   /* ---------- search ---------- */
-  // The magnifier. The box is focused here, during the tap, since that's the only way a phone opens its keyboard for it.
+  // Open search from the magnifier. The search box is focused inside the tap, because a phone opens its keyboard only
+  // for focus set during a tap.
   openSearch(){
     this.$refs.header.classList.add('searching');
     this.$refs.searchIn.focus();
@@ -631,7 +635,8 @@ export default {
     this.sheet.newProj = {name: '', parent: '', checklists: false, busy: false};
     this.$nextTick(() => document.getElementById('np-name')?.focus());
   },
-  // A project made from the Projects tab, inside another if picked, and for checklists if asked; then opened.
+  // Create a project from the New project sheet, inside another project if one is picked, and as a checklists project
+  // if asked. Then open it.
   async makeProject(){
     const np = this.sheet.newProj, name = np?.name.trim();
     if (!name || np.busy) return;
@@ -642,9 +647,10 @@ export default {
       this.setProjects([...this.projects, p]);
       saved.set('projects', this.projects);
       if (this.sheet.newProj === np) this.closeSheet(true);
-      // For checklists: on Checklists, where Getting started says what's next.
+      // The user is the admin (2) of a project they just created. Getting started shows only for a project's admin.
       if (np.checklists) { this.perms[p.id] = 2; saved.set('perms', this.perms); }
-      // Its screen, open, shows it was made; for checklists, Checklists says so too.
+      // Open the new project, which shows it was created. A checklists project opens Checklists, where Getting started
+      // says what to do next.
       this.go(np.checklists ? '#/checklists' : '#/project/' + p.id);
       if (np.checklists) this.say(`Created ${p.title}, for checklists.`, {place: 'checklists'}); else this.said = `Created ${p.title}`;
     } catch (e) {
