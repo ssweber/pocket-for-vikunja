@@ -953,6 +953,46 @@ try {
       for (const id of [...made, p.id]) await api('/tasks/' + id, { method: 'DELETE' });
     }
   });
+  /* The phone's keyboard covers the page without making it shorter. core.js reads the visual viewport into --vv-h (what's
+     visible) and --kb-h (the keyboard's height): a box being typed in is at most a third of what's visible, then scrolls
+     inside itself, and the page and a sheet's scroller end with the keyboard's height to spare, so a box at the foot
+     of a list can be scrolled above it. Chrome here has no keyboard, so the figures are set by hand after the wiring is
+     seen to write them. */
+  await step('a-box-is-at-most-a-third-of-whats-visible-and-the-page-leaves-the-keyboard-room', async () => {
+    const p = await make(`Pocket smoke keyboard ${stamp}`, { due_date: todayAt(23) });
+    const prop = n => page.evaluate(n => document.documentElement.style.getPropertyValue(n), n);
+    const set = (n, v) => page.evaluate(([n, v]) => document.documentElement.style.setProperty(n, v), [n, v]);
+    const size = id => page.$eval('#' + id, ta => ({ tall: ta.clientHeight, inside: ta.scrollHeight - ta.clientHeight }));
+    const room = sel => page.$eval(sel, el => parseFloat(getComputedStyle(el).paddingBottom));
+    try {
+      await toastGone();
+      await refreshToday();
+      // With no keyboard, the wiring says so: what's visible is the window, and the keyboard is 0 tall.
+      await page.evaluate(() => visualViewport.dispatchEvent(new Event('resize')));
+      expect(await prop('--vv-h'), '--vv-h with no keyboard').toBe(await page.evaluate(() => innerHeight + 'px'));
+      expect(await prop('--kb-h'), '--kb-h with no keyboard').toBe('0px');
+      // A keyboard leaving 300px: twenty lines in the box are capped at a third of that and scroll inside it.
+      await set('--vv-h', '300px');
+      await page.focus('#in-capture');
+      await page.fill('#in-capture', Array.from({ length: 20 }, (_, i) => 'Line ' + (i + 1)).join('\n'));
+      await expect.poll(async () => (await size('in-capture')).tall, { message: 'the box grew past a third of what\'s visible' }).toBeLessThanOrEqual(105);
+      await expect.poll(async () => (await size('in-capture')).inside, { message: 'the box doesn\'t scroll inside itself' }).toBeGreaterThan(0);
+      await page.fill('#in-capture', '');
+      // A keyboard 300px tall: the page, and a sheet's scroller, end 300px later than they did.
+      await page.click(`${rowOf(p.title)} > .body`, { timeout: 15000 });
+      await expect(page.locator('#sheet')).toBeVisible();
+      const was = [await room('main'), await room('#sheet .scroll')];
+      await set('--kb-h', '300px');
+      expect(await room('main') - was[0], 'the page\'s room for the keyboard').toBe(300);
+      expect(await room('#sheet .scroll') - was[1], 'the sheet\'s room for the keyboard').toBe(300);
+    } finally {
+      await page.evaluate(() => { for (const n of ['--vv-h', '--kb-h']) document.documentElement.style.removeProperty(n); visualViewport.dispatchEvent(new Event('resize')); }).catch(() => {});
+      await page.fill('#in-capture', '').catch(() => {});
+      if (await page.isVisible('#sheet')) { await page.click('#btn-sheet-close'); await page.waitForSelector('#sheet', { state: 'hidden' }); }
+      await page.evaluate(() => document.activeElement?.blur());
+      await api('/tasks/' + p.id, { method: 'DELETE' });
+    }
+  });
   await step('quick-add-keeps-focus-and-says-where-a-task-went', async () => {
     // On this screen, its row lights up and nothing's said; off it (due next month, on Today), the add box says where it
     // went, with Open. The box keeps the focus for the next one either way.
@@ -3694,7 +3734,7 @@ ${footName('Hooks')}`);
     const a = `Pocket smoke nudge sub A ${stamp}`, b = `Pocket smoke nudge sub B ${stamp}`, c = `Pocket smoke nudge sub C ${stamp}`, made = [];
     const lv = (await (await api(`/projects/${d.project_id}`)).json()).views.filter(v => v.view_kind === 'list').sort((x, y) => x.position - y.position || x.id - y.id)[0].id;
     const find = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
-    const places = async ids => Object.fromEntries((await (await api(`/projects/${d.project_id}/views/${lv}/tasks?filter=` + encodeURIComponent('id in ' + ids.join(', ')))).json()).map(t => [t.id, t.position]));
+    const places = async ids => Object.fromEntries(((await (await api(`/projects/${d.project_id}/views/${lv}/tasks?filter=` + encodeURIComponent('id in ' + ids.join(', ')))).json()).items || []).map(t => [t.id, t.position]));
     const card = cardOf(d.title), rows = () => page.$$eval(`${card} .card-rows > .row .title > span:not(.sr)`, es => es.map(e => e.textContent.trim()));
     const same = (got, want, what) => { if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`); };
     try {
@@ -3710,7 +3750,7 @@ ${footName('Hooks')}`);
       await expect(page.locator(card)).toHaveClass(/\baimed\b/);
       await box.fill(a);
       await box.press('Enter');
-      await expect(page.locator(`${card} .card-rows > .row:first-child .title`)).toContainText(a, { timeout: 15000 });
+      await expect(page.locator(`${card} .card-rows > .row`).nth(0).locator('.title')).toContainText(a, { timeout: 15000 });   // (the rows come after their template)
       await synced(page);
       const A = await find(a); made.push(A);
       if (!A?.related_tasks?.parenttask?.some(p => p.id === d.id)) throw new Error('not a subtask of the card nudged: ' + JSON.stringify(A?.related_tasks));
@@ -3718,7 +3758,7 @@ ${footName('Hooks')}`);
       await boxUnder(d.title);
       await box.fill(b);
       await box.press('Enter');
-      await expect(page.locator(`${card} .card-rows > .row:nth-child(2) .title`)).toContainText(b, { timeout: 15000 });
+      await expect(page.locator(`${card} .card-rows > .row`).nth(1).locator('.title')).toContainText(b, { timeout: 15000 });
       await synced(page);
       const B = await find(b); made.push(B);
       same(await rows(), [a, b, k.title], 'the rows added where the box was, over the most urgent, the card a row taller each time');
@@ -3735,6 +3775,9 @@ ${footName('Hooks')}`);
       await home.click();
       await boxHome();
       // Left and back: the card is sorted as Today has it, the most urgent on top and the dateless rows under More.
+      // (A refresh isn't leaving: the rows stay where they were added through one.)
+      await page.click('[data-tab="projects"]');
+      await page.waitForURL(/#\/projects/);
       await refreshToday();
       await expect(page.locator(card)).toBeVisible({ timeout: 15000 });
       same(await rows(), [k.title], 'back on Today: collapsed to the most urgent');
