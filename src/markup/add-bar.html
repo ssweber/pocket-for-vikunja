@@ -20,7 +20,7 @@
       <div class="cap-field">
         <div class="cap-marks" id="cap-marks" aria-hidden="true" x-html="marksHtml(capW)"></div>
         <!-- The add box (x-box, component.js). It takes a list, so Shift+Enter starts a new line. -->
-        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" @keydown.tab="boxTab($event)" :placeholder="capPlaceholder" :aria-label="!capTarget ? 'New task' : capTarget.step ? 'New step after “' + capTarget.after + '”' : 'New subtask of ' + capTarget.to" enterkeyhint="send"></textarea>
+        <textarea id="in-capture" x-ref="capture" x-model="capBox.text" x-box.lines="capW" rows="1" @keydown.tab="boxTab($event)" :placeholder="capPlaceholder" :aria-label="capTarget ? 'New subtask of ' + capTarget.to : 'New task'" enterkeyhint="send"></textarea>
       </div>
       <template x-if="attachmentsOn && capW === 'cap'"><label class="cam" :class="{on: capPhotos.length}" title="Attach a photo to the new task">
         <svg class="i"><use href="#i-camera"/></svg>

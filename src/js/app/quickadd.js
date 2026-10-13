@@ -525,7 +525,7 @@ export default {
   // The same text for a screen reader, which announces it when it changes.
   get capTargetText(){
     const c = this.capTarget;
-    return !c ? '' : c.step ? `Add a step after “${c.after}”` : `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}`;
+    return c ? `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}` : '';
   },
   /* The List view whose positions new tasks use. On Today it is the List view of the target's project, so the
      subtasks added there appear in the same order in the project. */

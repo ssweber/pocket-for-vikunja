@@ -113,11 +113,7 @@ export default {
     haptic(tickFeel(t.done));
     if (g.own) return this.sheetDone();
     if (g.card) this.pinCard(g.card);                    // the next step joins the card after this one leaves (app/cards.js)
-    const back = this.unmark(t.id);
-    if (back) {
-      if (g.sheet) return;
-      return;
-    }
+    if (this.unmark(t.id)) return;
     if (g.sheet) return this.toggleSubtask(t);
     this.toggleDone(t, row);
   },
