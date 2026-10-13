@@ -255,6 +255,7 @@ test('the cursor never points at a row that has left the list', async () => {
   app.aim(tables);
   await app.reorder(tables, [chairs, tables], 0, 5);
   assert.deepEqual([app.lit, app.capTarget, app.cursorPlaces(1)], [{ 12: true }, { to: 'Pack the van', after: 'Tables' }, [75]]);
+  assert.equal(app.said, 'Tables is now 1 of 2', 'a screen reader hears the new place, without the word "moved"');
   app.aim(van);
   await app.reorder(van, [van, lights], 1, 5);
   assert.deepEqual(app.lit, { 10: true });

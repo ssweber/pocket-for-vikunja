@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, namesText, notMoved, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, movedToProject, namesText, notReordered, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -30,11 +30,11 @@ test('a message for a change that was not saved gives the reason in a few words'
   assert.equal(notSaved(new Error('Forbidden')), 'Not saved: Forbidden');
 });
 
-test('a rejected move gives the reason, and for an API token without permission, the permission it needs', () => {
-  assert.equal(notMoved(Object.assign(new Error('Your API token doesn\'t allow this.'), { status: 403, code: 'token' })),
-    'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.');
-  assert.equal(notMoved(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not moved: Forbidden');
-  assert.equal(notMoved(new NetError('Failed to fetch')), 'Not moved: no connection');
+test('a rejected reorder gives the reason, and for an API token without permission, the permission it needs', () => {
+  assert.equal(notReordered(Object.assign(new Error('Your API token doesn\'t allow this.'), { status: 403, code: 'token' })),
+    'Not reordered: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.');
+  assert.equal(notReordered(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not reordered: Forbidden');
+  assert.equal(notReordered(new NetError('Failed to fetch')), 'Not reordered: no connection');
 });
 
 test('a tick message says "Closed" with a count when a parent closed its open subtasks, and "Done:" otherwise', () => {
@@ -180,6 +180,13 @@ test('the question a parent\'s ring asks lists the tasks that close with it, nam
   assert.deepEqual(completeAsk({title: 'Closing up', run: true, names: ['Mop', 'Lock up']}),
     {head: 'Finish this checklist with 2 steps not done?', body: 'These 2 steps stay not done: Mop and Lock up.', yes: 'Finish checklist'});
   assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, 'This step stays not done: Mop.');
+});
+
+test('moving a task to another project names the project and counts the subtasks that went with it', () => {
+  assert.equal(movedToProject('Errands'), 'Moved to Errands');
+  assert.equal(movedToProject('Errands', 1), 'Moved to Errands, with its subtask');
+  assert.equal(movedToProject('Errands', 3), 'Moved to Errands, with its 3 subtasks');
+  assert.equal(movedToProject(undefined, 2), 'Moved to the other project, with its 2 subtasks', 'a project Pocket has not loaded yet');
 });
 
 test('moving a task held on Today names where it went, explains a card kept by its subtask, and reports what an Undo could not move back', () => {

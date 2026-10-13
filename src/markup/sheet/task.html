@@ -105,8 +105,8 @@
       <div class="h3">Details</div>
       <div class="card">
         <div class="prop sel"><span class="k">Project</span><span class="v">
-          <select id="d-proj" aria-label="Project" :disabled="!canEdit" @change="moveTask(+$event.target.value)">
-            <template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheet.task.project_id" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>
+          <select id="d-proj" aria-label="Project" :disabled="!canMove" @change="moveTask(+$event.target.value)">
+            <!-- include markup/sheet/project-options.html -->
           </select>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Labels</span><span class="v">

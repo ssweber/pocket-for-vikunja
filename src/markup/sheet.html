@@ -9,8 +9,8 @@
     </div></template></div>
     <div class="grab"><i></i></div>
     <!-- The ⋯ menu for the task as a whole. It can share the task's progress and open it in Vikunja. With write
-         access it can also move the task up or down its list, turn a subtask into its own task, use the task as a
-         checklist template, or delete it. -->
+         access it can also move the task to another project or up and down its list, turn a subtask into its own
+         task, use the task as a checklist template, or delete it. -->
     <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-more" aria-label="Task options" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
     <!-- Escape closes the menu before the sheet, wherever the focus is (escapeKey) -->
@@ -19,10 +19,18 @@
       <!-- Not for a checklist opened as a task, which can only be shared as text (share.js) -->
       <template x-if="checklistRole !== 'run'"><button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button></template>
       <a role="menuitem" id="d-open-vikunja" :href="vikunjaUrl('task')" target="_blank" rel="noopener" @click="sheet.menu = false">Open in Vikunja ↗</a>
-      <!-- Move up and Move down let keyboard and screen-reader users do what holding the row does -->
+      <!-- The task's subtasks move with it (moveTask). The select lies over the whole row, as a .prop.sel's does,
+           because the phone can't open a select from code. -->
+      <template x-if="canMove"><label id="d-move-to"><span>Move to another project</span>
+        <template x-if="subtasks.length"><small x-text="subtasks.length === 1 ? 'Its subtask moves with it.' : 'Its subtasks move with it.'"></small></template>
+        <select id="d-move-proj" @change="sheet.menu = false; moveTask(+$event.target.value, 'sheet:top')">
+          <!-- include markup/sheet/project-options.html -->
+        </select></label></template>
+      <!-- Up one place and Down one place let keyboard and screen-reader users do what holding the row does. They
+           don't say Move, which in Vikunja means moving to another project. -->
       <template x-for="m in canEdit && sheetMoves ? [sheetMoves] : []" :key="0"><div>
-        <button role="menuitem" id="d-move-up" :disabled="!m.up" @click="moveBy(sheet.task, -1, 'own')">Move up</button>
-        <button role="menuitem" id="d-move-down" :disabled="!m.down" @click="moveBy(sheet.task, 1, 'own')">Move down</button>
+        <button role="menuitem" id="d-move-up" :disabled="!m.up" @click="moveBy(sheet.task, -1, 'own')"><span><span aria-hidden="true">↑</span> Up one place</span></button>
+        <button role="menuitem" id="d-move-down" :disabled="!m.down" @click="moveBy(sheet.task, 1, 'own')"><span><span aria-hidden="true">↓</span> Down one place</span></button>
       </div></template>
       <!-- On a project's list, this moves the add box under the task's row to add a subtask, as nudging does -->
       <template x-if="canAddHere"><button role="menuitem" id="d-add-here" @click="sheet.menu = false; addSubtaskHere()">Add a subtask here</button></template>

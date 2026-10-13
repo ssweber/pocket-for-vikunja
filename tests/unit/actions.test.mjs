@@ -800,3 +800,63 @@ test('turning a subtask into its own task moves it right after its parent, and U
   await app.ownTask();
   assert.deepEqual([app.toast.action.label, app.toast.cls, v.task(12).related_tasks.parenttask.map(p => p.id), moves.length], ['Try again', 'failed', [10], 2]);
 });
+
+/* Moving a task to another project (moveTask, from "Move to another project" in the ⋯ menu or the Project row under
+   Details) takes its subtasks at every level, where Vikunja's web app moves only the task. The message has an Undo,
+   which puts the task and each subtask that moved back in the project it came from. */
+const twoProjects = c => {
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  const t = (id, project_id, subs = []) => ({ id, title: 'Task ' + id, done: false, project_id, related_tasks: { subtask: subs.map(([id, project_id]) => ({ id, project_id })) } });
+  // Task 10 has the subtasks 11 and 12, and 11 has the subtask 13. Subtask 12 is already in the other project.
+  const v = fakeVikunja([t(10, 5, [[11, 5], [12, 6]]), t(11, 5, [[13, 5]]), t(12, 6), t(13, 5)]), app = component(tasks, actions);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors({
+    projById: new Map([[5, { id: 5, title: 'Inbox' }], [6, { id: 6, title: 'Errands' }]]), canEdit: true, checklistRole: null,
+    save: sheet.save, showTask(x){ Object.assign(this.sheet.task, x); } }));
+  app.sheet = { kind: 'task', task: structuredClone(v.task(10)) };
+  return { v, app, where: () => [10, 11, 12, 13].map(id => v.task(id).project_id) };
+};
+test('moving a task to another project takes its subtasks at every level, and Undo puts each back', async c => {
+  const { v, app, where } = twoProjects(c);
+  await app.moveTask(6, 'sheet:top');
+  assert.deepEqual(patches(v), [[10, { project_id: 6 }], [11, { project_id: 6 }], [13, { project_id: 6 }]], 'the subtask already there is not sent');
+  assert.deepEqual([app.sheet.task.project_id, where()], [6, [6, 6, 6, 6]]);
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['Moved to Errands, with its 2 subtasks', 'sheet:top', 'Undo']);
+  v.requests.length = 0;
+  await app.toast.action.fn();
+  assert.deepEqual(patches(v), [[10, { project_id: 5 }], [11, { project_id: 5 }], [13, { project_id: 5 }]]);
+  assert.deepEqual([where(), app.sheet.task.project_id, app.said], [[5, 5, 6, 5], 5, 'Moved back to Inbox'], 'the subtask that was in the other project all along stays there');
+});
+
+test('a move that stops at a subtask says so, and Undo moves back only what moved', async c => {
+  const { v, app, where } = twoProjects(c);
+  v.trouble = r => r.method === 'PATCH' && r.path === '/tasks/13' ? 403 : null;
+  await app.moveTask(6);
+  assert.deepEqual(where(), [6, 6, 6, 5]);
+  assert.match(app.toast.msg, /^Moved, but not all its subtasks: /);
+  assert.deepEqual([app.toast.place, app.toast.cls, app.toast.action.label], ['sheet:props', 'failed', 'Undo'], 'from the Project row, the message is under that row');
+  v.requests.length = 0;
+  await app.toast.action.fn();
+  assert.deepEqual([patches(v), where()], [[[10, { project_id: 5 }], [11, { project_id: 5 }]], [5, 5, 6, 5]]);
+});
+
+test('a move Vikunja refuses leaves the subtasks where they are', async c => {
+  const { v, app, where } = twoProjects(c);
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  await app.moveTask(6);
+  assert.deepEqual([patches(v).map(([id]) => id), where()], [[10], [5, 5, 6, 5]], 'only the task itself was tried');
+  assert.deepEqual([app.toast.place, app.toast.cls, app.toast.action.label], ['sheet:top', 'failed', 'Try again']);
+});
+
+test('a template, a checklist and their steps cannot move to another project, and a read-only task cannot either', async c => {
+  const { v, app } = twoProjects(c);
+  for (const role of ['template', 'tplstep', 'run', 'step']) {
+    app.checklistRole = role;
+    assert.equal(app.canMove, false, role);
+    await app.moveTask(6);
+  }
+  assert.deepEqual(v.requests, [], 'nothing is sent');
+  app.checklistRole = 'candidate';
+  assert.equal(app.canMove, true, 'a plain task in a checklist project can move out of it');
+  app.canEdit = false;
+  assert.equal(app.canMove, false);
+});

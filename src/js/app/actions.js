@@ -6,7 +6,7 @@ import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
-import {dayWord, doneText, movedText, movedTo, notMoved, notMovedBack, notSaved, sentLater} from '../messages.js';
+import {dayWord, doneText, movedText, movedTo, movedToProject, notReordered, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
@@ -345,21 +345,33 @@ export default {
   },
 
   /* ---------- moving ---------- */
-  // Move the open task to another project, with its subtasks at every level.
-  async moveTask(pid){
-    const t = this.sheet.task, kids = [];
-    if (!t || pid === t.project_id) return;
+  // Whether the open task can move to another project. A template, a checklist and their steps can't, because Pocket
+  // finds them by their checklist project.
+  get canMove(){ return this.sheet.kind === 'task' && this.canEdit && [null, 'candidate'].includes(this.checklistRole); },
+  /* Move the open task to project `pid`, with its subtasks at every level. The message at `at` has an Undo, which
+     puts the task and each subtask that moved back in the project it came from. */
+  async moveTask(pid, at = 'sheet:props'){
+    const t = this.sheet.task, from = t?.project_id, kids = [], moved = [];
+    if (!t || pid === from || !this.canMove) return;
     const walk = async (id, seen = new Set([t.id])) => {
       const x = id === t.id ? t : (cache.get(id) || await api('/tasks/' + id));
-      for (const sub of x.related_tasks?.subtask || []) if (!seen.has(sub.id)) { seen.add(sub.id); kids.push(sub.id); await walk(sub.id, seen); }
+      for (const sub of x.related_tasks?.subtask || []) if (!seen.has(sub.id)) { seen.add(sub.id); kids.push({id: sub.id, was: sub.project_id ?? from}); await walk(sub.id, seen); }
     };
     await this.save({project_id: pid});
     if (cache.get(t.id)?.project_id !== pid) return;                        // the move failed
+    const undo = async () => {
+      if (this.sheet.task?.id !== t.id || await this.save({project_id: from}) === false) return;   // save says why it failed
+      const left = moved.length - (await this.saveEach(moved.map(k => [k, {project_id: k.was}]))).length;
+      if (left) this.say(`Moved back, but not ${left === 1 ? '1 subtask' : left + ' subtasks'}`, {place: at, cls: 'failed'});
+      else this.said = 'Moved back to ' + (this.projById.get(from)?.title || 'its project');
+      this.sheet.dirty = true;
+    };
+    const to = this.projById.get(pid)?.title, action = {label: 'Undo', fn: undo};
     try {
       await walk(t.id);
-      for (const id of kids) await this.saveTask(id, {project_id: pid});
-      if (kids.length) this.say(`Moved, with ${kids.length} subtask${kids.length === 1 ? '' : 's'}`, {place: 'sheet:props'});
-    } catch (e) { this.say(`Moved, but not all its subtasks: ${e.message}`, {place: 'sheet:props', cls: 'failed'}); }
+      for (const k of kids) if (k.was !== pid) { await this.saveTask(k.id, {project_id: pid}); moved.push(k); }
+      this.say(movedToProject(to, moved.length), {place: at, action});
+    } catch (e) { this.say(`Moved, but not all its subtasks: ${e.message}`, {place: at, cls: 'failed', action}); }
     this.sheet.dirty = true;
   },
   /* Detach the open subtask from all its parents and keep it in its project. If its parent's List view position is
@@ -386,7 +398,7 @@ export default {
       const r = await this.act({op: 'position', task: t.id, view, pos, run: null});
       if (r.status !== 'error') return;
       this.positions[t.id] = had;
-      this.say(notMoved(r.error), {place: 'sheet:top', cls: 'failed'});
+      this.say(notReordered(r.error), {place: 'sheet:top', cls: 'failed'});
     };
     try {
       // A 404 means the task is already not a subtask of this parent, for example because it was detached elsewhere.
@@ -500,12 +512,12 @@ export default {
     const writes = placeMove(sibs.map(s => ({id: s.id, pos: this.positions[s.id] || 0})), from, to);
     const was = Object.fromEntries(writes.map(([id]) => [id, this.positions[id]]));
     for (const [id, pos] of writes) this.positions[id] = pos;
-    this.said = `Moved ${t.title}: ${to + 1} of ${sibs.length}`;
+    this.said = `${t.title} is now ${to + 1} of ${sibs.length}`;
     for (const [id, pos] of writes) {
       const r = await this.act({op: 'position', task: id, view, pos, run: null});
       if (r.status !== 'error') continue;
       Object.assign(this.positions, was);
-      this.say(notMoved(r.error), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'});
+      this.say(notReordered(r.error), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'});
       return false;
     }
     this.saveProject();
@@ -544,7 +556,7 @@ export default {
     if (!subs?.length || !view || subs.some(s => !(s.id in this.positions))) return null;
     return {sibs: [...subs].sort(positionOrder(this.positions)), view};
   },
-  // Whether the ⋯ menu's Move up and Move down apply to the open task, or null if neither does.
+  // Whether the ⋯ menu's Up one place and Down one place apply to the open task, or null if neither does.
   get sheetMoves(){
     const t = this.sheet.task, o = this.sheet.kind === 'task' && this.orderOf(t, 'own'), i = o ? o.sibs.findIndex(s => s.id === t.id) : -1;
     return i < 0 ? null : {up: i > 0, down: i < o.sibs.length - 1};

@@ -3181,10 +3181,22 @@ try {
     await page.click(`${cardOf(parent.title)} > .card-head`, { timeout: 15000 });
     await page.waitForFunction(() => document.querySelectorAll('#d-subtasks .row:not(.pending)').length === 2, null, { timeout: 10000 });
     if (other) {
+      // From the ⋯ menu, with an Undo. Then from the Project row under Details.
+      const where = async () => { await synced(page); return Promise.all([parent, ...kids].map(async t => (await get(t.id)).project_id)); };
+      const all = id => [id, id, id], line = placeLine(page, 'sheet:top');
+      await page.click('#d-more');
+      await expect(page.locator('#d-move-to')).toContainText('Its subtasks move with it.');
+      await page.getByLabel('Move to another project').selectOption(String(other.id));
+      await expect(line).toContainText(`Moved to ${other.title}, with its 2 subtasks`, { timeout: 20000 });
+      await expect(page.locator('#d-menu')).toHaveCount(0);
+      await expect(page.locator('#d-project-link')).toHaveText(other.title);
+      expect(await where()).toEqual(all(other.id));
+      await line.getByRole('button', { name: 'Undo' }).click();
+      await expect(page.locator('#d-project-link')).not.toHaveText(other.title);
+      expect(await where()).toEqual(all(parent.project_id));
       await page.selectOption('#d-proj', String(other.id));
-      await synced(page);
-      const where = await Promise.all([parent, ...kids].map(async t => (await get(t.id)).project_id));
-      if (where.some(id => id !== other.id)) throw new Error('projects after the move: ' + where);
+      await expect(placeLine(page, 'sheet:props')).toContainText(`Moved to ${other.title}, with its 2 subtasks`, { timeout: 20000 });
+      expect(await where()).toEqual(all(other.id));
     }
     await page.click('#d-more');
     if (await page.textContent('#d-delete') !== 'Delete task and its 2 subtasks') throw new Error('delete button text: ' + await page.textContent('#d-delete'));
@@ -3297,7 +3309,7 @@ try {
     const T = order.tasks, refuse = r => r.request().method() === 'PUT' ? r.fulfill({ status: 401, contentType: 'application/json', body: '{"message":"missing permission"}' }) : r.fallback();
     await page.route('**/api/v2/tasks/*/position', refuse);
     await dragTo(rowById(T.Charlie.id), rowById(T.Bravo.id), 'bottom');
-    await expect(rowLine(page, 'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.')).toBeVisible();
+    await expect(rowLine(page, 'Not reordered: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.')).toBeVisible();
     await page.unroute('**/api/v2/tasks/*/position', refuse);
     await later(5000);                                                     // the message collapses and the row returns
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
@@ -3305,13 +3317,13 @@ try {
     const roots = (await viewOrder()).filter(t => !t.related_tasks?.parenttask?.length && !t.done).map(t => t.title.replace(` ${stamp}`, ''));
     if (JSON.stringify(roots) !== JSON.stringify(['Alpha', 'Charlie', 'Bravo'])) throw new Error('Vikunja has ' + roots);
   });
-  await step('move-up-from-the-tasks-menu', async () => {
-    // The task's menu moves a task for keyboard and screen-reader users. A drag moves a subtask.
+  await step('up-one-place-from-the-tasks-menu', async () => {
+    // The task's menu reorders a task for keyboard and screen-reader users. A drag reorders a subtask.
     const T = order.tasks;
     await page.click(`${rowById(T.Bravo.id)} > .body`);
     await page.click('#d-more');
-    await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
-    await page.getByRole('menuitem', { name: 'Move up' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Down one place' })).toBeDisabled();
+    await page.getByRole('menuitem', { name: 'Up one place' }).click();
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Bravo', 'Charlie'].map(n => `${n} ${stamp}`));

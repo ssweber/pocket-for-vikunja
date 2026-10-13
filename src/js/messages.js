@@ -16,10 +16,10 @@ export function moreDone(left, per){
 
 // A change Vikunja didn't save, and why, in a few words.
 export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' : 'Not saved: ' + e.message;
-// A move Vikunja refused. If an API token without the right permission caused it (api.js), the message names the
-// permission.
-export const notMoved = e => e?.code === 'token' ? 'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.'
-  : 'Not moved: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
+// A new place in the list that Vikunja refused. If an API token without the right permission caused it (api.js), the
+// message names the permission. It doesn't say "moved", which means moving to another project.
+export const notReordered = e => e?.code === 'token' ? 'Not reordered: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.'
+  : 'Not reordered: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
 
 /* Tells the user where tasks just added went. The add box shows this when the tasks aren't on the current screen (a
    task due next month added on Today, or a task for another project). `n` tasks were added to `project`, `subs` of
@@ -50,6 +50,9 @@ export const notMovedBack = (k, still) => `${plural(k, 'task')} couldn't be move
    was and the message says so: "Moved to Friday. Its subtask “Buy paint” is due sooner, so it stays here." */
 export const movedTo = (day, kept = null) => (day ? `Moved to ${dayWord(day)}` : 'Removed its due date')
   + (kept ? `. Its subtask “${kept}” ${day ? 'is due sooner' : 'has a date'}, so it stays here.` : '');
+// The message shown with Undo after a task moves to another project (moveTask): "Moved to Errands, with its 3
+// subtasks". `n` counts the subtasks, at every level, that moved with it.
+export const movedToProject = (project, n = 0) => `Moved to ${project || 'the other project'}` + (!n ? '' : n === 1 ? ', with its subtask' : `, with its ${n} subtasks`);
 // A day's name inside a sentence: "today", "tomorrow", "Friday".
 export const dayWord = day => /^(Today|Tomorrow)$/.test(day) ? day.toLowerCase() : day;
 
