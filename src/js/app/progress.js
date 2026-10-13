@@ -383,8 +383,7 @@ export default {
   },
   /* Watch for nudges in `area`. A nudge is a touch that starts on a row and becomes a short, slow scroll. It moves the
      add box under that row. It works on a project's list, on Today and on a checklist's steps. isNudge (../progress.js)
-     has the thresholds, and `nudged` (quickadd.js) acts on the nudge. On a checklist the nudged step also goes on the
-     step card. A fast flick is only a scroll.
+     has the thresholds, and `nudged` (quickadd.js) acts on the nudge. A fast flick is only a scroll.
      This listens to passive touch events, so it never blocks scrolling. Pointer events can't be used for touch, because
      the phone ends them (pointercancel) once the page scrolls, while touch events continue. A hold, a swipe or a second
      finger cancels the nudge. A touch that starts in a text field is never a nudge (inTextField).

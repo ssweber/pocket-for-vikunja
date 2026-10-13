@@ -590,7 +590,7 @@ export default {
     this.sheet.subAt = at; this.sheet.subAfter = null;
     this.$nextTick(() => this.seatFoot('sheet'));
   },
-  // Handles a nudge on a checklist step (nudged, quickadd.js, which also moves the box onto the step card).
+  // Handles a nudge on a checklist step (nudged, quickadd.js). The step on the card stays.
   nudgedStep(s){ this.runBoxAt = this.underRow('#run-steps', s.id); this.$nextTick(() => this.seatFoot('run')); },
   // Where the add box goes when a row in list `sel` is nudged. That is under the row, given as its id, or at the bottom
   // (null) when the row is the last one.

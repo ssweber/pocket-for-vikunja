@@ -20,6 +20,7 @@ import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
 import sheetPart from '../../src/js/app/sheet.js';
+import quickadd from '../../src/js/app/quickadd.js';
 import { countText, runShows, whereNext } from '../../src/js/checklists.js';
 import { watching } from './reactive.mjs';
 
@@ -665,6 +666,27 @@ test('Repeat copies the step above the box right after it, whatever is on the ca
   app.runBoxAt = null;                                                     // the box is at the bottom
   await app.repeatAbove();
   assert.deepEqual([added[1].title, added[1].after, added[1].before], ['D', 54, null], 'at the bottom, the copy is of the last step and goes at the end');
+});
+
+/* A nudge on a step's row (nudged, app/quickadd.js) moves the add box and nothing else. The fake page has the four
+   steps' rows, all in sight. navigator.vibrate stands in for the phone's vibration. */
+test('a nudge on a checklist’s step moves the add box under it and leaves the card’s step', () => {
+  const app = runScreen(), felt = [], rows = [51, 52, 53, 54].map(id => ({ dataset: { id: String(id) }, getBoundingClientRect: () => ({ top: 100, bottom: 150 }) }));
+  Object.assign(app, { nudged: quickadd.nudged, nudgedStep: sheetPart.nudgedStep, underRow: sheetPart.underRow, route: { name: 'run' }, $refs: {}, $nextTick(){}, seatFoot(){} });
+  document.getElementById = () => null;
+  document.querySelector = sel => rows.find(r => sel.includes(`data-id="${r.dataset.id}"`)) || null;
+  document.querySelectorAll = () => rows;
+  navigator.vibrate = p => felt.push(p);
+  globalThis.innerHeight = 800;
+  try {
+    const now = () => [app.runBoxAt, app.runView.step.title, felt.length];
+    app.nudged('53');
+    assert.deepEqual(now(), [53, 'B', 1], 'the box goes under C, the card keeps B, and the phone vibrates');
+    app.nudged('53');
+    assert.deepEqual(now(), [53, 'B', 1], 'nudging the same step again changes nothing and does not vibrate');
+    app.nudged('54');
+    assert.deepEqual(now(), [null, 'B', 2], 'under the last step is the bottom of the list');
+  } finally { delete document.getElementById; document.querySelector = () => null; delete document.querySelectorAll; delete navigator.vibrate; delete globalThis.innerHeight; }
 });
 
 /* Tapping a parent's ring never closes subtasks without asking, unless only one subtask is open, which gets an

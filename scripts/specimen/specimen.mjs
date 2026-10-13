@@ -491,7 +491,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         sheet: {...blankSheet('task'), task: s.parent, stepEdit: {id: tplSteps[1].id, text: tplSteps[1].title, caret: 0, focus: true, ignore: {}}}}),
       footBox('A checklist’s steps on its screen: the box at their foot, with Repeat (the step above the box, again)', {g: runList, before: runSteps, fb: runFb}),
       footBox('Typed there', {g: runList, before: runSteps.slice(-3), fb: {...runFb, can: true}, box: {text: 'Sweep outside !2', focus: true}}),
-      footBox('Under a step nudged, which is then the step on the card: Repeat and its button', {g: {...runList, at: runSteps[2].i}, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step', repeat: {title: runSteps[2].title, can: true}}}),
+      footBox('Under a step nudged, which Repeat then copies. The step on the card keeps its bold title', {g: runList, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step', repeat: {title: runSteps[2].title, can: true}}}),
       footBox('What Repeat just did, said in the box; and Repeat off, for a step still waiting to be sent', {g: runList, before: runSteps.slice(-2), fb: {...runFb, repeat: {title: 'Stack the trays', can: false}},
         said: {n: 2, place: 'cap', text: 'Repeated “Take the croissants out”', action: {label: 'Undo', fn(){}}}})];
     this.specimenNames = [barBox('New template’s name: quick add’s box with nothing beside it, empty'),

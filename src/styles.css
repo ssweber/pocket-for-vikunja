@@ -204,9 +204,11 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 @media (prefers-reduced-motion:reduce){.row.fresh{animation:none;background:var(--accent-soft)}}
 /* The row an add box sits under is highlighted the same way on every list: a bar down its side and a faint tint
    (--lit). On a project's list and Today that is the row at the cursor (.aimed). In a sheet's list and on a checklist
-   it is the row with padding left for the box (.sub-boxed, seatFoot). On a checklist's card it is the current step
-   (.current), which is where a nudge puts the box. */
-.row.aimed,.row.sub-boxed,.row.current,.day-card.aimed > .card-head{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
+   it is the row with padding left for the box (.sub-boxed, seatFoot). */
+.row.aimed,.row.sub-boxed,.day-card.aimed > .card-head{background:var(--lit);box-shadow:inset 3px 0 0 var(--accent)}
+/* On a checklist the step on the card (.current) has a bold title. The add box can be under another step, so the two
+   rows must not look alike. */
+.row.current .title{font-weight:750}
 /* A highlighted row that is also waiting to be sent keeps the waiting tint, with the bar */
 .row.aimed.waits{background:color-mix(in srgb,var(--accent-soft) 55%,var(--surface))}
 /* A task whose due time has just passed is highlighted as it moves to Overdue */
@@ -247,9 +249,9 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
    row's drag */
 .pic .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;-webkit-user-drag:none}
 .pic.mine .av{box-shadow:0 0 0 2px var(--accent)}
-.row.current .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--lit)}
+#run-steps > .row.sub-boxed .pic:not(.mine) .av{box-shadow:0 0 0 2px var(--lit)}
 .badge{position:absolute;z-index:2;right:-4px;bottom:-3px;width:15px;height:15px;border-radius:50%;background:var(--accent);display:grid;place-items:center;box-shadow:0 0 0 2px var(--surface)}
-.row.current .badge{box-shadow:0 0 0 2px var(--lit)}
+#run-steps > .row.sub-boxed .badge{box-shadow:0 0 0 2px var(--lit)}
 .badge svg.i{width:10px;height:10px;stroke-width:3.4;color:var(--accent-ink)}
 .badge.skip,.badge.wait{background:var(--muted)}
 .pics .more{padding-left:3px;font-size:13px;color:var(--muted)}
@@ -257,7 +259,7 @@ button.check::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .row.done .pic .av{opacity:.7}
 /* A done step's pictures can't be tapped, so the user's own has no ring. The ✓ already shows who did it. */
 .did .pic.mine .av{box-shadow:0 0 0 2px var(--surface)}
-.row.current .did .pic.mine .av{box-shadow:0 0 0 2px var(--lit)}
+#run-steps > .row.sub-boxed .did .pic.mine .av{box-shadow:0 0 0 2px var(--lit)}
 .did{flex:none;align-self:flex-start;margin-top:2px;display:flex;align-items:center;justify-content:center;min-width:44px;margin-right:-6px;padding:0 6px}
 .ro-note{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:14px}
 /* Rows are held and swiped, so a long press must not select their text or open the phone's menu. A long press

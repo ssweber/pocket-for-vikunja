@@ -1454,19 +1454,20 @@ try {
     await until('the pasted steps were never inserted', async () => (await titles()).includes('Mop up tomorrow | Rinse the mop'));
     const mop = (await subtasks(id)).find(s => s.title === 'Mop up tomorrow');
     if ((await api('/tasks/' + mop.id)).priority !== 3) throw new Error('the step\'s priority was not read');
-    // A nudge on a step's row (a short, slow scroll that starts on it) puts the step on the card, as a tap does, and
-    // moves the box under that row. A longer drag only scrolls.
+    // A nudge on a step's row (a short, slow scroll that starts on it) moves the box under that row. The card keeps
+    // its step, which only a tap on a row changes. A longer drag only scrolls.
     const rowOf = t => `#run-steps .row:has-text("${t}") >> nth=0`, sweep = rowOf('Sweep up'), guards = rowOf('Check the guards at 3pm');   // the guards step was repeated, so use its first row
+    const onCard = await what.textContent();
     await page.locator(sweep).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     await touchDrag(sweep, 30);
-    await expect(what).toHaveText('Sweep up');
-    await expect(page.locator(sweep)).toHaveClass(/current/);
+    await expect(page.locator(sweep)).toHaveClass(/sub-boxed/);
     await expect(page.locator('#run-box')).toHaveClass(/\binline\b/);
+    await expect(what).toHaveText(onCard);
     await touchDrag(guards, 150, 30);                                        // further than a row, so it is a scroll
-    await expect(page.locator(sweep)).toHaveClass(/current/);
+    await expect(page.locator(guards)).not.toHaveClass(/sub-boxed/);
     await touchDrag(guards, 30);
-    await expect(page.locator(guards)).toHaveClass(/current/);
-    await expect(what).toHaveText('Check the guards at 3pm');
+    await expect(page.locator(guards)).toHaveClass(/sub-boxed/);
+    await expect(what).toHaveText(onCard);
   });
 
   await step('add-a-step-after-the-last', async () => {

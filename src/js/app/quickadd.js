@@ -474,8 +474,8 @@ export default {
      changes made temporarily inside the sheet don't move the box. */
   keepAim(){ const c = this.cursor; if (c && !this.cursorTask) this.aim(this.tasks[c.under]); },
   /* A nudge makes the row the target and vibrates when the target changes. It ignores marked rows, rows showing a
-     message and pending rows. On a checklist screen it makes the step the card's current step and moves the add box
-     under that step's row. */
+     message and pending rows. On a checklist screen it moves the add box under the step's row. The step on the card
+     stays, because swapping the card would change the page's height under the finger. A tap on the row swaps it. */
   nudged(id){
     const run = this.route.name === 'run', row = document.querySelector(`#view :is(.row, .day-card)[data-id="${id}"]`);
     const t = run ? this.runAim && this.runView.steps.find(s => String(s.id) === String(id)) : this.tasks[id];
@@ -483,8 +483,9 @@ export default {
     const r = row.getBoundingClientRect(), top = Math.max(0, this.$refs.header?.getBoundingClientRect().bottom || 0);
     const home = document.getElementById('cap-home'), foot = home?.offsetHeight ? home : this.$refs.captureBar;   // the add box's home at the bottom
     if (r.bottom <= top || r.top >= (run ? innerHeight : foot?.getBoundingClientRect().top ?? innerHeight)) return;   // a checklist screen has no bar there
-    if ((run ? this.runView.step?.id : this.cursor?.id) !== t.id && NUDGE_TICK) haptic('tick');
-    if (run) { this.showStep(t.i); this.nudgedStep(t); } else this.aim(t);
+    const was = run ? (this.runBoxAt == null ? null : this.actTask({task: this.runBoxAt})) : this.cursor?.id;
+    if (String(was ?? '') !== String((run ? this.underRow('#run-steps', t.id) : t.id) ?? '') && NUDGE_TICK) haptic('tick');
+    if (run) this.nudgedStep(t); else this.aim(t);
   },
   // The task's parent, if the parent is also on this list.
   listParent(t){
