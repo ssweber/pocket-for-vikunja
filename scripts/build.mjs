@@ -5,9 +5,9 @@
 //
 // It reads src/index.html and replaces these tags in place:
 //   <!-- include markup/x.html -->           is replaced by src/markup/x.html, including any includes inside it
-//   <!-- include markup/x.html step -->      is replaced by the same file, keeping the part of x.html between
-//                                            <!-- only step --> and <!-- /only -->. Without the word "step", that
-//                                            part is left out.
+//   <!-- include markup/x.html run -->       is replaced by the same file, keeping each part of x.html between
+//                                            <!-- only run sheet --> and <!-- /only --> whose words include "run".
+//                                            Every other such part is left out.
 //   <link rel="stylesheet" href="styles.css">  is replaced by that stylesheet from src/, minified, in a <style>
 //   <script type="module" src="js/main.js">  is replaced by that script and everything it imports, as one minified
 //                                            script. The source map is written next to the page (pocket.js.map).
@@ -38,14 +38,18 @@ const inSrc = (from, path) => {
   return file.startsWith(SRC + sep) && existsSync(file) ? file : null;
 };
 
-/* Keeps the text between <!-- only step --> and <!-- /only --> (each tag on its own line) where the file is included
-   with that word, and removes it everywhere else. This lets every list share one row (markup/task-row.html) without
-   every row carrying markup that only a template's steps need (docs/development.md, rule 10). */
-export const onlyParts = (text, words = []) => text.replace(/^[ \t]*<!-- only (\S+) -->\n([\s\S]*?)^[ \t]*<!-- \/only -->\n?/gm, (_, word, part) => words.includes(word) ? part : '');
+/* Keeps the text between <!-- only run sheet --> and <!-- /only --> (each tag on its own line) where the file is
+   included with one of those words, and removes it everywhere else. This lets every list share one row
+   (markup/task-row.html) without each row working out the parts that only another kind of list shows
+   (docs/development.md, rule 10). A part cannot hold another part. */
+export const onlyParts = (text, words = []) => text.replace(/^[ \t]*<!-- only (\S+(?: \S+)*) -->\n([\s\S]*?)^[ \t]*<!-- \/only -->\n?/gm, (_, only, part) => only.split(' ').some(word => words.includes(word)) ? part : '');
 
 export function include(file, seen = [], words = []){
   if (seen.includes(file)) throw new Error(`${relative(ROOT, file)} includes itself`);
-  return onlyParts(read(file), words).replace(/^([ \t]*)<!-- include (\S+)((?: \S+)*) -->\n?/gm, (_, indent, path, more) => {
+  const text = read(file);
+  // Included with no word, such a file would silently lose every one of those parts.
+  if (!words.length && /^[ \t]*<!-- only /m.test(text)) throw new Error(`${relative(ROOT, file)} has parts for some lists only: include it with the kind of list it is in`);
+  return onlyParts(text, words).replace(/^([ \t]*)<!-- include (\S+)((?: \S+)*) -->\n?/gm, (_, indent, path, more) => {
     const part = inSrc(join(SRC, 'index.html'), path);                         // paths are always relative to src/index.html
     if (!part) throw new Error(`${relative(ROOT, file)}: no src file ${path} to include`);
     return include(part, [...seen, file], more.split(' ').filter(Boolean));

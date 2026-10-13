@@ -39,7 +39,7 @@
               <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
             <!-- The same row as on Today, with its ring and its progress -->
             <template x-for="g in [{depth: {}}]" :key="0"><template x-for="t in cl.runs" :key="t.id">
-              <!-- include markup/task-row.html -->
+              <!-- include markup/task-row.html list -->
             </template></template>
           </div>
         </div></template>

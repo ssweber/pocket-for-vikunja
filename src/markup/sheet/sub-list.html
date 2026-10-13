@@ -13,7 +13,7 @@
 <div class="h3"><span x-text="isStepList ? 'Steps' : 'Subtasks'"></span><span class="n num" id="d-subcount" x-text="isStepList ? subList.length || '' : subList.length ? subList.filter(s => s.done).length + '/' + subList.length : ''"></span></div>
 <div class="card" id="d-subtasks" x-data="{where: 'sheet'}">
   <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true, step: isStepList}]" :key="0"><template x-for="t in subList" :key="t.id">
-    <!-- include markup/task-row.html step -->
+    <!-- include markup/task-row.html sheet step -->
   </template></template>
   <!-- Subtasks still waiting to be sent. A subtask whose typed line was marked done is shown ticked. -->
   <template x-for="t in pendingSubtasks" :key="t.id"><div class="row pending" :class="{waits: t.waits, done: t.done}" :data-id="t.id">

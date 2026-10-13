@@ -68,7 +68,7 @@
             <div class="h3"><span>Subtasks</span><span class="n num" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
             <div class="card" id="d-subtasks" x-data="specFoot('at rest')">
               <template x-for="g in [{depth: {}, sheet: true, delete: true, reorder: true}]" :key="0"><template x-for="t in subtasks" :key="t.id">
-                <!-- include markup/task-row.html -->
+                <!-- include markup/task-row.html sheet -->
               </template></template>
               <!-- include markup/list-box.html -->
             </div>
@@ -117,7 +117,7 @@
         <template x-if="g.more"><div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="true"><span x-text="'Done (' + g.count.toLocaleString() + ')'"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
         <div :class="g.sheet ? 'card' : 'list'">
           <template x-for="t in g.tasks" :key="t.id">
-            <!-- include markup/task-row.html -->
+            <!-- include markup/task-row.html top list card run sheet own -->
           </template>
           <!-- include markup/more-row.html -->
         </div>
@@ -197,7 +197,7 @@
         <div class="page-title run-top">
           <button class="icon-btn plain" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
           <div id="run-own"><template x-for="g in [RUN_ROW]" :key="0"><template x-for="t in [top.run]" :key="t.id">
-            <!-- include markup/task-row.html -->
+            <!-- include markup/task-row.html top -->
           </template></template></div>
           <button class="icon-btn plain" aria-label="Run options"><svg class="i"><use href="#i-more"/></svg></button>
         </div>
@@ -217,11 +217,11 @@
         <div class="sec" x-text="sp.spec"></div>
         <div class="list spec-seated" x-data="specBar(sp.spec, sp.f)">
           <template x-for="g in [g]" :key="0"><template x-for="t in before" :key="t.id">
-            <!-- include markup/task-row.html -->
+            <!-- include markup/task-row.html top list card run sheet own -->
           </template></template>
           <!-- include markup/add-bar.html -->
           <template x-for="g in [g]" :key="1"><template x-for="t in after" :key="t.id">
-            <!-- include markup/task-row.html -->
+            <!-- include markup/task-row.html top list card run sheet own -->
           </template></template>
         </div>
       </div></template>
@@ -232,11 +232,11 @@
         <div class="sec" x-text="sp.spec"></div>
         <div class="spec-list" :class="{card: !g.run, list: g.run}" :id="g.run ? 'run-steps' : 'd-subtasks'" x-data="specFoot(sp.spec, sp.f)">
           <template x-for="g in [g]" :key="0"><template x-for="t in before" :key="t.id">
-            <!-- include markup/task-row.html step -->
+            <!-- include markup/task-row.html run sheet step -->
           </template></template>
           <!-- include markup/list-box.html -->
           <template x-for="g in [g]" :key="1"><template x-for="t in after" :key="t.id">
-            <!-- include markup/task-row.html step -->
+            <!-- include markup/task-row.html run sheet step -->
           </template></template>
         </div>
       </div></template>

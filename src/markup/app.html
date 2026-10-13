@@ -33,7 +33,7 @@
     <template x-if="route.name === 'project' || route.name === 'run'"><div class="page-title" :class="{'run-top': !!runOwn}">
       <button id="btn-back" class="icon-btn plain" :aria-label="'Back to ' + backName" @click="route.name === 'run' ? leaveRun() : back(projectFrom || '#/projects')"><svg class="i"><use href="#i-back"/></svg></button>
       <template x-if="runOwn"><div id="run-own"><template x-for="g in [RUN_ROW]" :key="0"><template x-for="t in [runOwn]" :key="t.id">
-        <!-- include markup/task-row.html -->
+        <!-- include markup/task-row.html top -->
       </template></template></div></template>
       <template x-if="!runOwn"><div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div></template>
       <!-- Opens the project's sheet, where it is set up for checklists -->

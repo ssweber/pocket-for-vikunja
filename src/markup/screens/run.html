@@ -24,7 +24,7 @@
       <div class="list" id="run-steps" x-data="{where: 'run'}">
         <!-- Each step is the shared task row (g.run in task-row.html) -->
         <template x-for="g in [runRows]" :key="0"><template x-for="t in runView.steps" :key="t.id">
-          <!-- include markup/task-row.html -->
+          <!-- include markup/task-row.html run -->
         </template></template>
         <!-- The add box at the bottom of the steps, with Repeat (list-box.html). This screen has no quick-add bar. -->
         <!-- include markup/list-box.html -->

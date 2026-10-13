@@ -18,7 +18,7 @@
         <template x-if="g.fold && g.open && g.loaded && !g.tasks.length"><p class="note sec-note">Nothing done here yet.</p></template>
         <template x-if="!g.cards"><div class="list" x-show="!g.fold || (g.open && g.tasks.length)">
           <template x-for="t in drawn(g)" :key="t.id">
-            <!-- include markup/task-row.html -->
+            <!-- include markup/task-row.html list -->
           </template>
           <!-- include markup/more-row.html -->
         </div></template>

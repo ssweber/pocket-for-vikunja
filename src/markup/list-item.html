@@ -13,7 +13,7 @@
      row's does. -->
 <div class="item" :class="itemClass(t, g)" :data-id="t.id">
   <template x-if="!cardOf(t, g)">
-    <!-- include markup/task-row.html -->
+    <!-- include markup/task-row.html list -->
   </template>
   <!-- cardHead is calculated once per card. A screen reader reads the count, the progress and the project after the
        title. On a project's list, holding the card moves it as it moves a row. The card is highlighted (lit,
@@ -34,7 +34,7 @@
       <template x-if="c.closes"><div class="card-close"><span x-text="c.run ? 'All steps done' : 'All subtasks done'"></span><button type="button" class="close-btn" x-show="!t.done" :disabled="!canWrite(t.project_id)" :aria-label="c.ring?.label" @click="ringTap(t, $el.closest('.day-card'))">Close</button></div></template>
       <div class="card-rows">
         <template x-for="[t, g] in c.rows.map(s => [s, c.g])" :key="t.id">
-          <!-- include markup/task-row.html -->
+          <!-- include markup/task-row.html card -->
         </template>
       </div>
       <!-- The footer. A collapsed card has a slim tab under the last row, like the edge of a card stacked behind

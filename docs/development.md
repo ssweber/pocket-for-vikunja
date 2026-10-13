@@ -86,9 +86,10 @@ change against them, and say where it bends one. The code's own rules:
    Vikunja's last copy of each task, for an Undo to compare with.
 2. **One row, everywhere.** `markup/task-row.html` is the row in every list, on a card, in a sheet and on a
    checklist's screen. The list's options object `g` (`screenRows`, `lists.js`) says what the row shows there. The
-   gesture code cannot reach `g`, so the row writes the gestures it allows on itself (`data-gestures`). Markup that
-   only one kind of list needs sits between `<!-- only step -->` and `<!-- /only -->`, and the build leaves it out of
-   every other copy (`scripts/build.mjs`).
+   gesture code cannot reach `g`, so the row writes the gestures it allows on itself (`data-gestures`). Each place
+   that includes the row names its kind of list (`<!-- include markup/task-row.html run -->`). Markup that only some
+   kinds need sits between `<!-- only run sheet -->` and `<!-- /only -->`, and the build leaves it out of every
+   other copy (`scripts/build.mjs`).
 3. **The markup calls actions, never `api()`.** Each action makes the request, changes what is on screen and returns
    the way to undo it. A run and its steps go through the outbox instead (`act`, `app/runs.js`). `fetch()` is only
    in `api.js`, and lint enforces that.

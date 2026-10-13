@@ -8,7 +8,7 @@
      never ticked. Their name is a heading above the card, which holds only their notes and files. -->
 <div class="card task-card" id="d-card">
   <template x-for="g in ofTemplate ? [] : [SHEET_ROW]" :key="0"><template x-for="t in [sheet.task]" :key="t.id">
-    <!-- include markup/task-row.html -->
+    <!-- include markup/task-row.html own -->
   </template></template>
   <!-- The notes, sanitized like everything from Vikunja (descHtml). Tapping them edits them. With no notes, a quiet
        "Add notes" is shown. Copy is at the top right, as on a comment. -->
