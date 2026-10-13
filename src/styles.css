@@ -358,22 +358,24 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .claim.restore .me{border-style:solid;border-color:var(--accent)}
 /* A list with cards (list-item.html: Today, search results, a project's open list). Each item is a row or a card,
    with a line between items and a gap above and below a card, so it is clear where the card's rows end. A drag moves
-   an item whole, so a card moves with its rows (dragOf). */
+   an item whole, so a card moves with its rows (dragOf). An item holding a card has the class has-card, and has-tab
+   when the card has a footer (itemClass, app/cards.js). Selecting them with :has(> .day-card) made every row slow to
+   insert. */
 .item + .item{border-top:1px solid var(--line)}
-.item:has(> .day-card) + .item,.item + .item:has(> .day-card){border-top:8px solid var(--bg)}
+.item.has-card + .item,.item + .item.has-card{border-top:8px solid var(--bg)}
 .item{position:relative;transition:transform .2s ease}
 /* A card's gap or footer splits the list into blocks, and each block gets rounded corners like the list's ends. The
    list's overflow rounds only its own two ends. So the corners here are drawn over the item in the page's background
    colour: the top corners after a gap or footer, and the bottom corners before a gap. A card with a footer rounds its
    bottom corners at its last row (.card-more::after). */
-.item:is(.item:has(> .day-card) + .item,.item + .item:has(> .day-card),.item:has(+ .item > .day-card),.item:has(> .day-card):not(:has(> .day-card > .card-more)):has(+ .item))::before{
+.item:is(.item.has-card + .item,.item + .item.has-card,.item:has(+ .item.has-card),.item.has-card:not(.has-tab):has(+ .item))::before{
   content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
   background-image:var(--c-tl,none),var(--c-tr,none),var(--c-bl,none),var(--c-br,none);background-position:left top,right top,left bottom,right bottom;
   background-size:var(--r-row) var(--r-row);background-repeat:no-repeat}
-.item:has(> .day-card) + .item,.item + .item:has(> .day-card){
+.item.has-card + .item,.item + .item.has-card{
   --c-tl:radial-gradient(circle at 100% 100%,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
   --c-tr:radial-gradient(circle at 0 100%,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
-.item:has(+ .item > .day-card),.item:has(> .day-card):not(:has(> .day-card > .card-more)):has(+ .item){
+.item:has(+ .item.has-card),.item.has-card:not(.has-tab):has(+ .item){
   --c-bl:radial-gradient(circle at 100% 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row));
   --c-br:radial-gradient(circle at 0 0,transparent calc(var(--r-row) - .5px),var(--bg) var(--r-row))}
 .item.dragged{z-index:3;transition:none;background:var(--surface)}
@@ -451,7 +453,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
    position. The touch target is 48px tall, measured from the bottom of the last row. It takes the place of the gap a
    card normally has above the next item, so it never reaches into a row. */
 .card-more{--tab:20px;position:relative;display:block;width:100%;height:calc(var(--tab) + 28px);margin:0;padding:0;border:0;background:var(--bg);color:var(--muted)}
-.item:has(> .day-card > .card-more) + .item{border-top:0}
+.item.has-tab + .item{border-top:0}
 .card-more > .tab{position:absolute;left:12px;right:12px;top:0;height:var(--tab);display:block}
 .card-more[aria-expanded=false] > .tab{border-radius:0 0 12px 12px;background:var(--surface);box-shadow:inset 0 1px 0 var(--line)}
 .card-more svg.i{position:absolute;left:50%;top:calc(var(--tab) / 2 - 7px);width:14px;height:14px;margin-left:-7px;stroke-width:2.4;transform:rotate(90deg)}

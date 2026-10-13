@@ -170,9 +170,11 @@ test('a card lists its open subtasks most urgent first, collapsed to its top row
 
 test('More opens a card to every open subtask and Less collapses it, and a card with one open subtask has neither', () => {
   const { app, parent, g } = today();
+  assert.deepEqual([app.itemClass(parent, g), app.itemClass(parent, { depth: {} })], ['has-card has-tab', ''], 'the card’s item has the classes has-card and has-tab, and a row’s item has neither');
   app.openCard(app.cardOf(parent, g));
   let c = app.cardOf(parent, g);
   assert.deepEqual([c.open, c.rows.map(s => s.title), c.peek, c.folds], [true, ['Chairs', 'Tables', 'Lights'], null, true]);
+  assert.equal(app.itemClass(parent, g), 'has-card has-tab', 'an open card’s item keeps has-tab, because its footer is Less');
   app.foldCard(c.id);
   c = app.cardOf(parent, g);
   assert.deepEqual([c.open, c.rows.length, c.peek.title], [false, 1, 'Tables'], 'after collapsing, More is back');
@@ -181,7 +183,7 @@ test('More opens a card to every open subtask and Less collapses it, and a card 
   assert.equal(app.cardOf(parent, g).open, false, 'leaving the screen collapses the card');
   for (const id of [12, 13]) app.tasks[id].done = true;
   c = app.cardOf(parent, g);
-  assert.deepEqual([c.step.title, c.peek, c.more], ['Lights', null, 0], 'with one open subtask, the card has no More or Less');
+  assert.deepEqual([c.step.title, c.peek, c.more, app.itemClass(parent, g)], ['Lights', null, 0, 'has-card'], 'with one open subtask, the card has no More or Less, and its item has no has-tab');
   app.openCard(c);
   assert.equal(app.cardOf(parent, g).open, false, 'there is nothing to open');
 });

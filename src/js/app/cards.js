@@ -54,6 +54,9 @@ export default {
     card.g = {depth: {}, card, line: g.line, key: g.key, delete: true, reschedule: g.reschedule};
     return card;
   },
+  // An item's classes in a list with cards: has-card when it holds a card, and has-tab when the card has a footer. The
+  // stylesheet spaces and rounds the items by these classes.
+  itemClass(t, g){ const c = this.cardOf(t, g); return !c ? '' : c.peek || (c.open && c.folds) ? 'has-card has-tab' : 'has-card'; },
   // A card with no rows, for a task whose subtasks are all done. It shows the header, a full ring, and "All subtasks
   // done" with a Close button.
   closingCard(t, g, run, all){
