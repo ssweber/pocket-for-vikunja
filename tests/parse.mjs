@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter */
+/* global parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -458,6 +458,12 @@ const placed = await page.evaluate(() => [placeBefore([3, 9, 12], 20, 9), placeB
 // step it repeats. Pocket's own lines are not part of the notes.
 const addeds = await page.evaluate(() => [addedText(withAdded('<p>Mind the hot plate</p>')), addedText(withAdded(withStepLine('', 'Taste T#5m'))),
   addedText('<p>pocket:step Taste T#5m</p>'), notesOnly(withAdded(withStepLine('<p>Mind the hot plate</p>', 'Taste T#5m')))]);
+// A line from a newer Pocket, "pocket:later", is not a note either, and editing the notes keeps it. A note that merely
+// starts with "pocket: " is a note.
+const unknownLines = await page.evaluate(() => {
+  const from = '<p>pocket:later 7</p><p>Mind the hot plate</p><p>pocket: keys</p><p>pocket:step Taste T#5m</p>';
+  return [notesOnly(from), withLinesOf('<p>New note</p>', from)];
+});
 // Templates. A task is a template if it is done, or not done with a due date, but not if it is a copy being set up as
 // a checklist. Also covered are the template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja
 // moves it to when it is ticked, as checked on Vikunja 2.7.
@@ -548,6 +554,7 @@ lates.forEach(([due, now, want], i) => {
 if (!same(runOrder, [[3, 9], [9, 3], [9, 12, 3, 20]])) { failed++; console.log(`FAIL a run's steps by its order line then id, a task's as they are: ${JSON.stringify(runOrder)}`); }
 if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9], [3, 20, 9, 12], [3, 9, 12, 20]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
 if (!same(addeds, ['Inserted', 'Repeated', '', '<p>Mind the hot plate</p>'])) { failed++; console.log(`FAIL steps added during a run: ${JSON.stringify(addeds)}`); }
+if (!same(unknownLines, ['<p>Mind the hot plate</p><p>pocket: keys</p>', '<p>New note</p><p>pocket:step Taste T#5m</p><p>pocket:later 7</p>'])) { failed++; console.log(`FAIL a line from a newer Pocket: ${JSON.stringify(unknownLines)}`); }
 const roundsWant = [true, true, false, false, false, false, false, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
   'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a checklist starts', '',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',

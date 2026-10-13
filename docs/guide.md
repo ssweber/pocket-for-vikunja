@@ -92,7 +92,7 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 **Completion record.** Done is a ✅ reaction and skipped is ⏭️, so the web app shows "Done by … at 4:46 PM". Vikunja only lets users remove their own reactions, so un-ticking someone else's step asks first and leaves their reaction in place.
 
-**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Step order is stored in a `pocket:order 12 15 13` line in the template's description. Leave it in place. Steps it doesn't list sort last.
+**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Pocket keeps its own records as lines in descriptions. Leave them in place. `pocket:checklists` in a project's description marks the project. `pocket:order 12 15 13` in a template's or checklist's description is the step order. Steps it doesn't list sort last. `pocket:run` marks a checklist, `pocket:step Preheat T#10m` on a step is the template step it was copied from, and `pocket:added` marks a step inserted or repeated while the checklist was running. Pocket hides any line starting with `pocket:` from the notes and keeps it when the notes are edited.
 
 ## Timed steps
 

@@ -81,8 +81,11 @@ export const withOrder = (html, ids) => withLine(html, ORDER_LINE, ids ? `${ORDE
 export const withRunMark = html => withLine(html, RUN_LINE, 'pocket:run');
 export const withStepLine = (html, title) => withLine(html, STEP_LINE, title === null ? null : 'pocket:step ' + title);
 export const withAdded = html => withLine(html, ADDED_LINE, 'pocket:added');
+// Any line of Pocket's, including one that a newer Pocket writes and this one does not know. An older copy still
+// installed somewhere must not show such a line as a note, or lose it when the notes are edited.
+const ANY_LINE = /^pocket:\S/i, KNOWN_LINES = [ORDER_LINE, RUN_LINE, STEP_LINE, ADDED_LINE];
 // The notes alone, without Pocket's lines.
-export const notesOnly = html => [ORDER_LINE, RUN_LINE, STEP_LINE, ADDED_LINE].reduce((h, re) => withLine(h, re, null), html || '');
+export const notesOnly = html => withLine(html || '', ANY_LINE, null);
 // `html` with Pocket's lines copied over from the description `from`.
 export function withLinesOf(html, from){
   const order = stepOrder(from), step = stepLine(from);
@@ -90,7 +93,13 @@ export function withLinesOf(html, from){
   if (isRunDesc(from)) html = withRunMark(html);
   if (step !== null) html = withStepLine(html, step);
   if (isAddedDesc(from)) html = withAdded(html);
-  return html;
+  const root = parseFragment(html), kept = new Set(markLines(root, ANY_LINE).map(n => n.nodeValue.trim()));
+  for (const n of markLines(parseFragment(from || ''), ANY_LINE)) {
+    const text = n.nodeValue.trim();
+    if (KNOWN_LINES.some(re => re.test(text)) || kept.has(text)) continue;
+    const p = root.ownerDocument.createElement('p'); p.textContent = text; root.append(p); kept.add(text);
+  }
+  return root.innerHTML;
 }
 export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
 export const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
