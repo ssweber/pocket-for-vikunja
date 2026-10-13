@@ -1,25 +1,22 @@
-/* The order of a project's tasks: Vikunja's List view, where each task has a position (a number, smaller first) in each
-   of its project's views. Pocket reads and writes the project's first List view, so a move shows on the web too, and
-   sets positions the way Vikunja's web app does. A template's and a run's steps keep their order line instead
-   (checklists.js): Vikunja's List view leaves out tasks that are done, as a template and its steps always are. */
+/* Task order within a project. Vikunja's List view gives each task a position (a number, smaller first). Pocket reads
+   and writes the project's first List view, so moving a task in Pocket also moves it in Vikunja's web app. Template
+   and checklist steps are ordered another way (checklists.js): the List view hides done tasks, and templates are
+   stored as done tasks. */
 
-// The List view Pocket uses: a project's first, by its place among the views, then id. Null if it has none.
+// A project's first List view, or null.
 export const listViewOf = p => [...(p?.views || [])].filter(v => v.view_kind === 'list').sort((a, b) => (a.position || 0) - (b.position || 0) || a.id - b.id)[0] || null;
-export const SPACING = 2 ** 16;                         // the room the web app leaves after the last task
-/* A position between two neighbours' (null: none on that side), as Vikunja's web app works it out
-   (calculateItemPosition): half way between them; first, half the next one's; last, the room after the one before; two
-   neighbours with the same position, a little after them. Vikunja renumbers the whole view itself once one falls below
-   0.01, so Pocket never has to. */
+export const SPACING = 2 ** 16;                         // the gap Vikunja's web app leaves after the last task
+/* A position between two neighbours, computed the way Vikunja's web app does (calculateItemPosition). Vikunja
+   renumbers the view once a position drops below 0.01, so Pocket never has to. */
 export function between(before, after){
   if (before !== null && after !== null && before === after) return after + 0.01;
   if (before === null) return after === null ? 0 : after / 2;
   if (after === null) return before + SPACING;
   return before + (after - before) / 2;
 }
-/* A move of the sibling at `from` to `to`, among siblings [{id, pos}] in their order: the [id, position] pairs to
-   write, the moved one last. A sibling with no position (0: moved in from another project, which leaves it none) is
-   after the others; landing next to one, those are given positions after the last that has one first, in their order,
-   so the move has neighbours to go between. */
+/* Move the sibling at index `from` to index `to`. Returns the [id, position] pairs to write, the moved one last.
+   Siblings with position 0 (moved in from another project) sort last. If the move lands next to one, those get
+   positions first, so the moved task has two neighbours to go between. */
 export function placeMove(sibs, from, to){
   let rest = sibs.filter((_, i) => i !== from);
   const writes = [];
@@ -30,9 +27,8 @@ export function placeMove(sibs, from, to){
   writes.push([sibs[from].id, between(rest[to - 1]?.pos ?? null, rest[to]?.pos ?? null)]);
   return writes;
 }
-/* Where `n` new subtasks go, one after another: after the sibling at position `after` (null: after the last of them),
-   and before the sibling after that. `sibs` are the siblings' positions. One with none (0) is after the others, so
-   after one of those they go after the last that has one. */
+/* Positions for `n` new subtasks after position `after` (null: after the last). Unpositioned siblings sort last, so
+   "after" one of them means after the last positioned sibling. */
 export function placeAfter(sibs, after, n = 1){
   const known = sibs.filter(p => p > 0);
   let prev = after > 0 ? after : Math.max(0, ...known);
@@ -40,9 +36,8 @@ export function placeAfter(sibs, after, n = 1){
   for (let k = 0; k < n; k++) out.push(prev = between(prev, next === Infinity ? null : next));
   return out;
 }
-/* Where `n` new subtasks go ahead of all their siblings, one after another: before the first that has a position
-   (the add box sits under their task, so what it adds comes first: inline-add-box-plan, part 1). With none that
-   has one, they're placed as the last are: a position of 0 is none, and would sort after the next one added. */
+/* Positions for `n` new subtasks ahead of every sibling. They go first because the add box sits directly under the
+   parent. With no positioned sibling, placeAfter: a position of 0 would sort after the next task added. */
 export function placeFirst(sibs, n = 1){
   const known = sibs.filter(p => p > 0), out = [];
   if (!known.length) return placeAfter(sibs, null, n);
@@ -51,10 +46,10 @@ export function placeFirst(sibs, n = 1){
   for (let k = 0; k < n; k++) out.push(prev = between(prev, next));
   return out;
 }
-/* Places none of which another task of the view has (`taken`, a Set of positions). Vikunja moves two tasks with the
-   same position apart, both of them, and the line added next was placed by where this one was: a new project's first
-   task is at 65536, where a task's first subtask would go too. One that's taken moves half way to the place after it:
-   the next of them, or `end`, what they're all before (null: nothing). */
+/* Make sure no new task gets a position another task already has. `places` are the positions chosen for new tasks,
+   `taken` the positions in use. Without this, a new project's first task and a task's first subtask both land on
+   65536, Vikunja pushes them apart, and a row the user never touched moves. A clashing position moves halfway towards
+   the next one, or towards `end`. */
 export function clearOf(places, taken, end = null){
   const out = [...places];
   for (let k = out.length - 1; k >= 0; k--) {
@@ -63,18 +58,16 @@ export function clearOf(places, taken, end = null){
   }
   return out;
 }
-/* Siblings in their List view order (`pos`: id -> position): smaller first, and those with none (0) after the others,
-   by id, as Vikunja sorts them. A task still waiting to be sent goes where its position says, if it was given one (a
-   subtask added after another), else first, where Vikunja puts a new task (and placeSent puts it once it's sent), so
-   it doesn't jump there from the bottom. */
+/* Sort siblings by List view position (`pos`: id → position), unpositioned ones last by id, as Vikunja does. A task
+   not yet sent sorts by its own position if it has one, else first, which is where Vikunja puts a new task, so it
+   doesn't jump once sent. */
 export const positionOrder = pos => (a, b) => {
   const p = (a.pending ? a.position : pos[a.id]) || 0, q = (b.pending ? b.position : pos[b.id]) || 0;
   const first = t => !!t.pending && !t.position;
   return first(b) - first(a) || (!p) - (!q) || p - q || (a.pending || b.pending ? 0 : a.id - b.id);
 };
-/* A task's siblings in a list with each subtask under its parent (nestSubtasks: `tasks` in order, `depth` by id): the
-   tasks under the same parent, at the same depth, each with the rows that go with it when it moves (its subtasks, all
-   the way down). Only those: a subtask moves among its parent's subtasks, never to another parent. */
+/* The siblings of task `id` in a nested list (`tasks` in order, `depth` by id), each with the ids of its subtasks, so
+   a drag moves the whole block. A subtask only moves among its parent's subtasks. */
 export function siblingBlocks(tasks, depth, id){
   const i = tasks.findIndex(t => t.id === id);
   if (i < 0) return [];
@@ -87,9 +80,9 @@ export function siblingBlocks(tasks, depth, id){
     else out.at(-1)?.ids.push(tasks[k].id);
   return out;
 }
-/* Where a row being dragged is: blocks [{top, height}] (the siblings, in order, where they are on the page), the one
-   dragged `k`, moved `dy` from where it was. It's drawn between the first and the last of them. A sibling whose middle
-   its middle has passed moves aside, by its height (shifts: px for each block), and `at` is where it would land. */
+/* Drag geometry. `blocks` are the siblings' {top, height} on the page, `k` the one being dragged, `dy` how far it has
+   moved. Returns `dy` clamped to the list, `shifts` (px each other block moves aside) and `at`, the index it would
+   land on. */
 export function dragPlace(blocks, k, dy){
   const me = blocks[k], last = blocks.at(-1), h = me.height, end = last.top + last.height;
   const mid = Math.max(blocks[0].top, Math.min(end, me.top + dy + h / 2));   // a taller row still gets past a short one

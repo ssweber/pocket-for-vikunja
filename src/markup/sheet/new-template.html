@@ -1,19 +1,17 @@
-    <!-- A new template: its name and steps, a row each, with when each is due -->
+    <!-- New template: a name and its steps -->
     <template x-if="sheet.kind === 'newtpl' && sheet.newTpl"><div id="new-template">
       <div class="d-title"><h2>New template</h2></div>
       <p class="note" style="margin:0 0 14px" x-text="'In ' + sheet.newTpl.project.title"></p>
-      <!-- Its name, in quick add's box ('tname', x-box): "Opening up @priya" makes it for Priya. One line: Enter goes
-           on to its first step -->
+      <!-- The name is a quick-add box ('tname'), so "Opening up @user" assigns the template. Pressing Enter moves the cursor to the first step -->
       <div class="nt-name" x-data="{bw: 'tname'}"><label for="nt-name">Name</label>
         <div class="step-box"><div class="cap-field"><div class="cap-marks" aria-hidden="true" x-html="marksHtml('tname')"></div><textarea class="draft-in" rows="1" id="nt-name" x-model="sheet.newTpl.box.text" x-box="bw" placeholder="e.g. Opening up" autocomplete="off" enterkeyhint="next"></textarea></div></div>
         <!-- include markup/sheet/box-chips.html -->
       </div>
-      <!-- Its steps, as a template's sheet has them: the sheet's list, with nothing in Vikunja yet (sheet/sub-list.html) -->
+      <!-- The steps: the same list a saved template shows (sheet/sub-list.html), nothing in Vikunja yet -->
       <div>
         <!-- include markup/sheet/sub-list.html -->
       </div>
-      <p class="note">“@priya” assigns a step. “in 20 min” sets it due 20 minutes after the previous step is done. To count from a different step, select it in the ⏱ chip.</p>
-      <p class="note">To make it recurring, open the template after creating it and set a due date and Repeats.</p>
+      <p class="note">“@user” assigns a step. “in 20 min” makes it due 20 minutes after the previous step is done.</p>
       <button class="btn block" id="nt-create" style="margin-top:16px" :disabled="sheet.newTpl.busy || !sheet.newTpl.box.text.trim() || !draft('new').added.length || draft('new').problem"
               @click="createTemplate()" x-text="sheet.newTpl.busy ? 'Creating…' : 'Create template'"></button>
     </div></template>

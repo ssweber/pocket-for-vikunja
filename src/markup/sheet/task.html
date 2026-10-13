@@ -25,23 +25,23 @@
       </div>
       <!-- include markup/sheet/task-card.html -->
 
-      <!-- In a checklist project: make the task a template, start a run from it, or go to the run it's part of -->
+      <!-- Checklist actions: start a checklist from a template, or open the checklist a step belongs to -->
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
         <template x-if="checklistRole === 'template'"><div>
-          <p>A template: every checklist started from it gets its own copy of these steps. Tap a step to change it, or to add notes and photos to it. Hold a step, then move it up or down, to move it; swipe it left to delete it.</p>
+          <p>Every checklist you start from this template copies these steps. Tap to edit. Hold to reorder. Swipe left to delete.</p>
           <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a checklist</button>
         </div></template>
         <template x-if="checklistRole === 'tplstep'"><div>
-          <p>A step of a template: every checklist started from it gets its own copy of it, with these notes. Its name and when it's due are changed in the template.</p>
+          <p>This step belongs to a template. Change its name or due time there. Notes here are copied into every checklist.</p>
           <button class="btn ghost block" id="d-open-template" @click="openTask(parentTask.id)">Back to the template</button>
         </div></template>
         <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="checklistRole === 'run' ? openRun(sheet.task.id) : openRun(parentTask.id, sheet.task.id)">Open the checklist</button></template>
       </div></template>
 
-      <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Shared with you to read only: you can see this task, but not change it.</p></template>
-      <!-- What a sheet has or not by its kind is x-if, never x-show: x-show changes a frame later, so a template's step
-           opened from its template would show for a frame with the template's date and steps under its own name -->
-      <!-- A template's: when it comes round, as Vikunja's repeating task, and the reminders Vikunja emails before then -->
+      <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Read only.</p></template>
+      <!-- x-if, not x-show: x-show switches a frame late, so a step opened from its template would flash the
+           template's date and steps -->
+      <!-- A template's schedule: Vikunja's repeat settings, and the reminder emails before each one -->
       <template x-if="checklistRole === 'template'"><div class="h3">When it's due</div></template>
       <!-- A row takes a tap anywhere (propTap): its date's picker, the list of its select, or its Add; a row with only a
            select has it over the whole row (.prop.sel), so the phone opens it where showPicker can't -->

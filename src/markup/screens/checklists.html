@@ -14,7 +14,7 @@
           <ol>
             <li><b>Share with your team.</b> In Vikunja, give them <i>Read &amp; write</i> so they can check off steps.
               <a class="gs-act" :href="shareUrl(cl.project.id)" target="_blank" rel="noopener">Share it in Vikunja ↗</a></li>
-            <li><b>Create a checklist template.</b> One step per line. “@priya” assigns a step; “in 18 min” sets it due 18 minutes after the step before.
+            <li><b>Create a checklist template.</b> One step per line. “@user” assigns a step. “in 18 min” makes it due 18 minutes after the previous step is done.
               <button type="button" class="linkish gs-act" @click="openNewTemplate(cl.project)">New template</button></li>
             <li><b>Make it recurring (optional).</b> Set a date and choose <i>Repeats</i>. It'll appear on Today when due.</li>
           </ol>

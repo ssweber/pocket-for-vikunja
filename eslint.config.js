@@ -5,7 +5,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['pocket/app/**', 'node_modules/**', 'test-results/**', 'src/vendor/**'] },   // vendor/: Alpine as published
+  { ignores: ['pocket/app/**', 'node_modules/**', 'test-results/**', 'src/vendor/**', 'scratchpad/**'] },   // vendor/: Alpine as published; scratchpad/: scratch work, not in git
   js.configs.recommended,
   {
     rules: {
