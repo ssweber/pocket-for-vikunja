@@ -1,4 +1,4 @@
-// The lists Pocket shows (src/js/lists.js): their order, and subtasks under their parents.
+// The lists Pocket shows (src/js/lists.js): their order, and where subtasks go under their parents.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,7 +46,7 @@ test('a subtask whose parent isn\'t in the list stays where it was, at the top',
 
 test('a done parent with open subtasks is found, and shown over them, not left out with them at the top', () => {
   const sub = (id, parent, more = {}) => ({ id, done: false, related_tasks: { parenttask: [{ id: parent, done: true, project_id: 1 }] }, ...more });
-  // As a project's List view gives it: its open tasks, and their subtasks, done ones too (8, under 6, and done).
+  // This is what a project's List view returns. It has the open tasks and their subtasks, including done subtasks such as task 8, which is done and under task 6.
   const view = [{ id: 1 }, sub(2, 9), sub(3, 9), sub(4, 7, { related_tasks: { parenttask: [{ id: 7, done: true, project_id: 2 }] } }),
     { id: 6, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, done: true, related_tasks: { parenttask: [{ id: 6, done: false, project_id: 1 }] } }, sub(5, 8)];
   assert.deepEqual(doneParentIds(view, 1), [9, 8], 'not a parent in another project; one the view gave, under an open task, too');
@@ -107,10 +107,11 @@ test('a card goes in Today’s order by what brought it, a row by its own dates'
   assert.equal(by({ id: 4, due_date: at(10) }).due_date, at(10));
 });
 
-/* What lives on Checklists stays out of a project's lists and search (one-concept-plan, part 3): a template marked done,
-   and its steps, known with no request: a template in the same list, one kept from Checklists, or "TEMPLATE:" in its
-   title. A template that comes round stays, as it's due. A project's Done leaves out a run's steps too; its open list
-   has a run in progress as a card, with its open steps on it, and leaves out a finished run's (parent-tasks-plan, part 2). */
+/* Things that belong on Checklists stay out of a project's lists and search. That means a template marked done and its
+   steps. Pocket recognises them without a request. A template is recognised by being in the same list, by being saved
+   from Checklists, or by "TEMPLATE:" in its title. A template that is due again stays in the list. A project's Done
+   list also leaves out the steps of a checklist. A project's open list shows a checklist in progress as a card with its
+   open steps on it, and leaves out the steps of a finished checklist. */
 test('templates marked done and their steps are left out, and in a project’s Done a run’s steps; anything else stays', () => {
   const app = component(checklists, runs), tpl = { title: 'template' }, DUE = '2026-10-09T09:00:00Z';
   app.checklistIds = new Set([2]);
@@ -118,13 +119,13 @@ test('templates marked done and their steps are left out, and in a project’s D
   const t = (id, f = {}) => ({ id, title: 'Task ' + id, done: true, project_id: 2, labels: [], description: '', related_tasks: {}, ...f });
   const under = (id, title) => ({ parenttask: [{ id, title }] });
   const list = [
-    t(30, { labels: [tpl] }), t(31, { related_tasks: under(30, 'Opening up') }),           // a template, and its step
-    t(32, { related_tasks: under(40, 'Old one') }),                                         // a step of a template kept from Checklists
-    t(33, { related_tasks: under(41, 'TEMPLATE: Closing') }),                               // one named as Pocket names templates
-    t(50, { done: false, due_date: DUE, labels: [tpl] }),                                  // a template that comes round
+    t(30, { labels: [tpl] }), t(31, { related_tasks: under(30, 'Opening up') }),           // a template and its step
+    t(32, { related_tasks: under(40, 'Old one') }),                                         // a step of a template saved from Checklists
+    t(33, { related_tasks: under(41, 'TEMPLATE: Closing') }),                               // a template named the way Pocket names templates
+    t(50, { done: false, due_date: DUE, labels: [tpl] }),                                  // a template that is due again
     t(60, { done: false, related_tasks: { copiedfrom: [{ id: 30 }] } }), t(61, { done: false, related_tasks: { ...under(60, 'Opening up · run 1'), copiedfrom: [{ id: 31 }] } }),
     t(70), t(71, { related_tasks: under(70, 'Task 70') }),                                  // a task and its subtask
-    t(80, { project_id: 1, labels: [tpl] }), t(81, { project_id: 1, related_tasks: under(80, 'TEMPLATE: Not here') }),   // not a project for checklists
+    t(80, { project_id: 1, labels: [tpl] }), t(81, { project_id: 1, related_tasks: under(80, 'TEMPLATE: Not here') }),   // a project that isn't for checklists
   ];
   assert.deepEqual(ids(app.withoutTemplates(list)), [50, 60, 61, 70, 71, 80, 81], 'search: a run’s steps stay');
   assert.deepEqual(ids(app.withoutTemplates(list, true)), [50, 60, 70, 71, 80, 81], 'a project’s Done: its steps are on its screen');
@@ -137,8 +138,9 @@ test('templates marked done and their steps are left out, and in a project’s D
   localStorage.removeItem('pocket.saved.templates');
 });
 
-/* A project's copy kept on the phone (performance-plan, part 4): its Done section's count and not its tasks, which are
-   loaded when it's opened; and shown, its Done is open only if it's open now, not as it was when the copy was kept. */
+/* A project's copy saved on the phone keeps the count of its Done section, not the tasks in it. Those load when the
+   user opens Done. When the copy is shown, Done is open only if it is open now, not if it was open when the copy was
+   saved. */
 test('a project\'s kept copy has Done\'s count, not its tasks, and opens Done only if it\'s open now', () => {
   const open = { key: 'open', tasks: [{ id: 1 }] }, done = { key: 'done', fold: true, open: true, loaded: true, count: 2, tasks: [{ id: 8 }, { id: 9 }] };
   assert.deepEqual(keptGroups([open, done]), [open, { ...done, tasks: [], loaded: false, loading: false }]);
@@ -154,8 +156,9 @@ test('a project\'s kept copy has Done\'s count, not its tasks, and opens Done on
   localStorage.removeItem('pocket.done.open');
 });
 
-/* A long screen drawn a batch at a time (performance-plan, part 5): its first rows at once, then the rest down its lists
-   in order, a batch a frame, each about a frame's work; scrolling near the end of what's drawn draws the rest. */
+/* A long screen is rendered in batches. The first rows render at once, then the rest render down the lists in order,
+   one batch per frame, each batch sized to about a frame's work. Scrolling near the end of the rendered rows renders
+   the rest. */
 test('a list draws the rows of the screen’s first rows that are its own', () => {
   const list = [1, 2, 3, 4, 5];
   assert.deepEqual(drawnOf(list, 0, 3), [1, 2, 3]);
@@ -243,9 +246,9 @@ test('the other screens aren’t loaded in the background while a screen’s row
   assert.equal(loaded, 1, 'once they’re drawn');
 });
 
-/* A list of done tasks shown a part at a time (performance-plan, part 9): a project's Done its latest 100, its heading
-   counting them all, and a row at its end for 100 done earlier, read from where it's shown to; search's
-   done matches the same, 50 at a time. */
+/* A list of done tasks is shown a part at a time. A project's Done shows its latest 100 tasks, its heading counts all
+   of them, and a row at the end loads the 100 done before those, starting from the last task shown. Done matches in
+   search work the same way, 50 at a time. */
 function doneVikunja(n){
   const v = { done: Array.from({ length: n }, (_, k) => ({ id: k + 1, title: 'done ' + (k + 1), done: true, project_id: 5 })), asked: [] };
   globalThis.fetch = async url => {
@@ -277,7 +280,7 @@ test('a project\'s Done shows its latest 100, counts them all, and a row shows 1
   assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 3/50', '/projects/5/tasks 4/50']);
   assert.deepEqual(app.moreOf('done'), { title: 'Show the last 50', note: '' });
 
-  // One ticked back, and two done elsewhere since: the next part read from where it's shown to, none twice.
+  // One task was reopened and two were marked done elsewhere. The next part loads from the last task shown, and no task appears twice.
   g.tasks.splice(5, 1); g.count--; v.done.splice(5, 1);
   v.done.unshift({ id: 900, done: true }, { id: 901, done: true });
   await app.showMore('done');
@@ -289,7 +292,7 @@ test('a project\'s Done shows its latest 100, counts them all, and a row shows 1
   const kept = keptGroups([g])[0];
   assert.deepEqual([kept.tasks.length, kept.count], [0, 251], 'the kept copy: its count, none of its tasks');
 
-  // Without a connection, the tap says so under the row, which stays, to be tapped again.
+  // Without a connection, a message appears under the row. The row stays so the user can tap it again.
   globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
   await app.showMore('done');
   assert.equal(g.tasks.length, 249);
@@ -329,11 +332,12 @@ test('search\'s done matches show 50, counted all, with a row for 50 more', asyn
   assert.equal(app.moreOf('done'), null, 'all shown: no row');
 });
 
-/* What every row costs (rows-and-sheet-fixes-plan, part 6): a list's group as the screen draws it is one object for
-   as long as the screen is the same (shownGroups, app/sending.js), with each group listGroups works out written into
-   it (intoGroup): only what changed, its depths and its cards' subtasks a task at a time. A row reads its list's
-   options off it, so a row gone or one added asks nothing of the rows it changed nothing for. On Alpine's own
-   reactivity (reactive.mjs): each thing a row might read is watched, and counted each time it's asked again. */
+/* This keeps the cost of each row low. A list's group stays one object for as long as the screen is the same
+   (shownGroups in app/sending.js). Each group that listGroups works out is written into that object (intoGroup), and
+   only what changed is written. That includes depths and the subtasks of cards, updated one task at a time. A row
+   reads its list's options from the object, so removing or adding a row doesn't make the unchanged rows update. The
+   test uses Alpine's own reactivity (reactive.mjs). It watches everything a row might read and counts how often each
+   watcher runs again. */
 test('a group as the screen draws it stays one object: a row gone or added changes its lists, and only what read something changed is asked again', c => {
   const { Alpine, flush } = watching(c);
   const a = { id: 1 }, b = { id: 2 }, s = { id: 3, related_tasks: { parenttask: [{ id: 2 }] } }, x = { id: 4 }, n = { id: 9, related_tasks: { parenttask: [{ id: 2 }] } };
@@ -346,14 +350,14 @@ test('a group as the screen draws it stays one object: a row gone or added chang
   watch('card 2', () => [g.cards, g.depth[2], g.kids.get(2)]);
   watch('row 3', () => g.depth[3]);
   watch('the list', () => g.tasks.length);
-  watch('row 9', () => g.depth[9]);                                          // (not there yet)
+  watch('row 9', () => g.depth[9]);                                          // task 9 isn't in the list yet
   const once = { 'row 1': 1, 'card 2': 1, 'row 3': 1, 'the list': 1, 'row 9': 1 };
   into([a, b, s, x]);
   assert.deepEqual(asked, once, 'worked out again, the same: nothing is asked again');
-  into([a, b, s]);                                                           // x leaves with the batch
+  into([a, b, s]);                                                           // task x is removed
   assert.deepEqual(asked, { ...once, 'the list': 2 }, 'a row gone: the list draws, and no other row is asked');
   assert.equal(4 in Alpine.raw(g).depth, false);
-  into([a, b, s, n]);                                                        // a subtask added under 2
+  into([a, b, s, n]);                                                        // a subtask is added under task 2
   assert.deepEqual(asked, { ...once, 'the list': 3, 'card 2': 2, 'row 9': 2 }, 'a subtask added: its card, the list and its own row');
   assert.deepEqual([...Alpine.raw(g.kids).get(2)], [s, n]);
   into([a, b, s, n], { before: 3 });
@@ -374,9 +378,10 @@ test('a group written into the one the screen keeps: what it no longer has is ta
   assert.deepEqual(['open' in g, 'count' in g, g.tasks === tasks], [false, false, true], 'fields gone are taken off; a list that\'s the same is the list it had');
 });
 
-/* Rows lit up for a moment (flash, app/lines.js: just added, just come due, new to the screen) are kept by task id,
-   changed a row at a time, so each row reads its own: lighting one asks nothing of the others, where a new list of
-   ids had every row on the screen look through it (rows-and-sheet-fixes-plan, part 6). */
+/* Rows that are highlighted for a moment (flash in app/lines.js) are stored by task id and changed one row at a time.
+   The rows are highlighted when they were just added, just became due, or are new to the screen. Each row reads only
+   its own entry, so highlighting one row doesn't make the others update. A single new list of ids would make every row
+   on the screen search through it. */
 test('rows lit up for a moment are kept by id: lighting one asks nothing of the others, and they go dark after 2 seconds', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const { Alpine, flush } = watching(c), app = Alpine.reactive(component(lines));

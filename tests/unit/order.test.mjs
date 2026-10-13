@@ -1,4 +1,5 @@
-// A project's order (src/js/order.js): its List view, positions as Vikunja's web app sets them, siblings, and a drag.
+// The order of tasks in a project (src/js/order.js). It covers the project's List view, positions set the way Vikunja's
+// web app sets them, sibling tasks, and dragging a task.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,7 +37,7 @@ test('a move writes the moved task only, between where it lands', () => {
 });
 
 test('landing next to tasks with no position, they get positions after the last that has one first, in their order', () => {
-  // 5 and 6 came from another project: no place in this list yet (0), after the others, by id.
+  // Tasks 5 and 6 came from another project, so they have no position in this list yet (0). They sort after the others, by id.
   const sibs = [{ id: 1, pos: 100 }, { id: 2, pos: 200 }, { id: 5, pos: 0 }, { id: 6, pos: 0 }];
   assert.deepEqual(placeMove(sibs, 0, 2), [[5, 200 + SPACING], [6, 200 + 2 * SPACING], [1, 200 + 1.5 * SPACING]], 'between 5 and 6');
   assert.deepEqual(placeMove(sibs, 3, 0), [[6, 50]], 'one with none moved among those with one: only it');
@@ -45,9 +46,9 @@ test('landing next to tasks with no position, they get positions after the last 
 test('siblings in their List view order: by position, those with none after, by id, and one waiting to be sent first', () => {
   const pos = { 1: 300, 2: 100, 3: 0, 4: 200 };
   const list = [{ id: 5 }, { id: 1 }, { id: 'pending-x', pending: true }, { id: 3 }, { id: 2 }, { id: 4 }];
-  // First, where Vikunja puts a new task, so it doesn't jump there once it's sent.
+  // A task waiting to be sent goes first, which is where Vikunja puts a new task. The task then doesn't jump after it is sent.
   assert.deepEqual(ids([...list].sort(positionOrder(pos))), ['pending-x', 2, 4, 1, 3, 5]);
-  // One waiting that was given its place (a subtask added after another) is in it already.
+  // A task waiting to be sent that already has a position (a subtask added after another) goes at that position.
   list.push({ id: 'pending-y', pending: true, position: 150 });
   assert.deepEqual(ids([...list].sort(positionOrder(pos))), ['pending-x', 2, 'pending-y', 4, 1, 3, 5]);
 });
@@ -59,7 +60,7 @@ test('new subtasks go after the one given, before the next, each after the one b
   assert.deepEqual(placeAfter(sibs, null, 2), [300 + SPACING, 300 + 2 * SPACING], 'none given: after the last');
   assert.deepEqual(placeAfter(sibs, 300), [300 + SPACING], 'after the last');
   assert.deepEqual(placeAfter([], null, 2), [SPACING, 2 * SPACING], 'the first subtasks');
-  // One with no position is after the others: after it means after the last that has one.
+  // A task with no position sorts after the others, so placing a task after it means placing it after the last task that has a position.
   assert.deepEqual(placeAfter([100, 0, 200], 0), [200 + SPACING]);
 });
 
@@ -77,9 +78,10 @@ test('subtasks added right under their task go ahead of its first, one after ano
   assert.deepEqual(placeFirst([0, 0]), [SPACING], 'none has a place: a place of 0 would be none too, and sort after the next one added');
 });
 
-/* Quick add's box on a project's list: the row touched last is the cursor, lit, and the box adds subtasks after it; a
-   subtask added from the box is the cursor in its turn. A project's list here: Pack the van (Load chairs, Tables),
-   Lights. `lit` is what each row reads: the one row lit, by its id. */
+/* Quick add's box on a project's list. The row the user nudged last is the cursor and is highlighted, and the box
+   adds subtasks after it. A subtask added from the box then becomes the cursor. The project's list in these tests is
+   Pack the van (with subtasks Load chairs and Tables), then Lights. `lit` is what each row reads. It holds the
+   highlighted row by its id. */
 function projectList(){
   const app = component(tasks, quickadd, { reorder: actions.reorder });
   Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
@@ -90,7 +92,7 @@ function projectList(){
   app.positions = { 10: 1000, 11: 100, 12: 200, 20: 2000 };
   return { app, van, chairs, tables, lights };
 }
-// A line added from the box, as the outbox keeps it, and its waiting row, as the list shows it (pendingTasks).
+// `added` is a line added from the box, as the outbox stores it. `waiting` is the row the list shows for it while it waits (pendingTasks).
 const added = (id, title, position) => ({ id, items: [{ p: { title, position }, under: null }] });
 const waiting = (e, parent) => e.items.map((x, i) => ({ id: `pending-${e.id}-${i}`, pending: true, entry: e.id, index: i, parent, title: x.p.title, position: x.p.position }));
 
@@ -149,7 +151,7 @@ test('the cursor on a task: subtasks go ahead of its first, as the box is right 
 test('a subtask added from the box is the cursor in its turn: the one row lit, the next after it, waiting and sent', () => {
   const { app, van, chairs } = projectList();
   app.aim(van);
-  // "Rope", added ahead of the task's first: its waiting row is lit at once, and the task's own row goes dark.
+  // "Rope" is added ahead of the task's first subtask. Its waiting row is highlighted at once, and the task's own row loses the highlight.
   const rope = added('e1', 'Rope', 50);
   app.aimAdded(rope, 0, van);
   assert.deepEqual(app.lit, { 'pending-e1-0': true });
@@ -157,16 +159,16 @@ test('a subtask added from the box is the cursor in its turn: the one row lit, t
   assert.deepEqual(app.cursorPlaces(1), [75], 'the next goes after it, before its row is even on the list');
   app.pendingTasks = waiting(rope, 10);
   assert.deepEqual(app.cursorPlaces(1), [75], 'and with it there');
-  // The task nudged again, the row touched before: lit again, the line back to the task alone, and its first is Rope.
+  // The user nudges the task again, which was the row nudged before. It is highlighted again, the line names only the task, and its first subtask is Rope.
   app.aim(van);
   assert.deepEqual([app.lit, app.capTarget], [{ 10: true }, { to: 'Pack the van', after: '' }]);
   assert.deepEqual(app.cursorPlaces(1), [25], 'ahead of its first, the one waiting counted');
-  // A subtask nudged, then one added after it: between it and the next, the light on what was added.
+  // The user nudges a subtask and then adds one after it. The new subtask goes between it and the next, and the new subtask is highlighted.
   app.aim(chairs);
   const hooks = added('e2', 'Hooks', 150);
   app.aimAdded(hooks, 0, van);
   assert.deepEqual(app.cursorPlaces(1), [175], 'between Hooks and Tables');
-  // Sent: Vikunja gave it its id, and its row is the lit one still.
+  // After the subtask is sent, Vikunja gives it an id, and its row is still the highlighted one.
   const sent = app.keep({ id: 31, title: 'Hooks', project_id: 1, done: false, parent: 10 });
   app.view.groups[0].tasks.push(sent); app.positions[31] = 150; app.pendingTasks = waiting(rope, 10);
   app.aimSent([{ id: 31, was: 'pending-e2-0' }]);
@@ -174,7 +176,7 @@ test('a subtask added from the box is the cursor in its turn: the one row lit, t
   assert.deepEqual(app.cursorPlaces(1), [175], 'where the next goes hasn\'t moved');
   app.aimSent([{ id: 32, was: 'pending-e1-0' }]);
   assert.deepEqual(app.lit, { 31: true }, 'another row sent: the light stays');
-  // The row touched before the add, nudged again: it's the one lit, and the line says after it.
+  // The user nudges the row that was nudged before the add. That row is highlighted, and the line says the new subtask goes after it.
   app.aim(chairs);
   assert.deepEqual([app.lit, app.capTarget], [{ 11: true }, { to: 'Pack the van', after: 'Load chairs' }]);
   assert.deepEqual(app.cursorPlaces(1), [125], 'between Load chairs and Hooks, sent since');
@@ -217,7 +219,7 @@ test('the cursor\'s row ticked done keeps the box while it waits for the batch; 
 
 test('the cursor never points at a row that\'s gone: deleted or done, its task is lit; called off or turned down while waiting, too; moved, it stays lit', async () => {
   const { app, van, chairs, tables, lights } = projectList();
-  // Deleted (off the lists while its Restore shows): the task it was under. Restored, the light stays where it went.
+  // A deleted row leaves the lists while its Restore message shows, so the highlight moves to the task it was under. Restoring the row doesn't move the highlight back.
   app.aim(chairs);
   app.deleting = [11];
   assert.equal(app.capW, 'cap', 'until it\'s asked: nothing lit, and a task');
@@ -226,25 +228,25 @@ test('the cursor never points at a row that\'s gone: deleted or done, its task i
   app.deleting = [];
   app.keepAim();
   assert.deepEqual(app.lit, { 10: true }, 'restored: not lit again behind your back');
-  // Ticked done somewhere else than its tick here (its sheet, the web app): the same.
+  // A task marked done somewhere other than its tick on this list (its sheet, or the web app) behaves the same way.
   app.aim(tables);
   tables.done = true;
   app.keepAim();
   assert.deepEqual(app.lit, { 10: true });
   tables.done = false;
-  // A task with none over it, gone: a task for the project again.
+  // A task with no parent that leaves the list makes the box add a task to the project again.
   app.aim(lights);
   app.view.groups[0].tasks.pop();
   app.keepAim();
   assert.deepEqual([app.cursor, app.lit, app.capW], [null, {}, 'cap']);
-  // Its task deleted with it: nothing to hand over to.
+  // If the parent task is deleted along with the row, there is no task to move the highlight to.
   app.aim(chairs);
   app.deleting = [10, 11, 12];
   app.keepAim();
   assert.deepEqual([app.cursor, app.lit], [null, {}]);
   app.deleting = [];
-  // Moved up or down among its siblings, it isn't gone: it stays lit, and the next goes after it where it is now,
-  // between it and Load chairs. A task moved stays lit too.
+  // A row moved up or down among its siblings has not left the list. It stays highlighted, and the next subtask goes
+  // after it at its new position, here between it and Load chairs. A moved task stays highlighted as well.
   Object.assign(app, { act: async () => ({ status: 'sent' }), saveProject(){} });
   app.aim(tables);
   await app.reorder(tables, [chairs, tables], 0, 5);
@@ -252,8 +254,9 @@ test('the cursor never points at a row that\'s gone: deleted or done, its task i
   app.aim(van);
   await app.reorder(van, [van, lights], 1, 5);
   assert.deepEqual(app.lit, { 10: true });
-  // Waiting to be sent, "Rope" then "Straps" in one go, Straps lit: the line before it called off, it's the same line, a
-  // place sooner (its row's id is by its place); called off itself, its task is lit.
+  // "Rope" and then "Straps" are waiting to be sent in one go, and Straps is highlighted. Cancelling the line before
+  // Straps leaves Straps highlighted. It is the same line, one position earlier, and its row's id comes from that
+  // position. Cancelling Straps itself highlights its task.
   const e = { id: 'e1', items: [{ p: { title: 'Rope', position: 250 }, under: null }, { p: { title: 'Straps', position: 275 }, under: null }] };
   app.aimAdded(e, 1, van);
   e.items.shift(); app.pendingTasks = waiting(e, 10);
@@ -264,11 +267,11 @@ test('the cursor never points at a row that\'s gone: deleted or done, its task i
   app.pendingTasks = [];
   app.aimCancelled('e1', 0);
   assert.deepEqual([app.lit, app.capTarget], [{ 10: true }, { to: 'Pack the van', after: '' }]);
-  // Turned down by Vikunja: its line has left the outbox without a task made for it.
+  // Vikunja rejected the line. It has left the outbox without a task being created for it.
   app.aimAdded(added('e3', 'Tarp', 300), 0, van);
   app.aimSent([]);
   assert.deepEqual(app.lit, { 10: true });
-  // Its task gone while it waits: nothing lit, a task again.
+  // The task disappears while the line waits. Nothing is highlighted, and the box adds a task again.
   app.aimAdded(added('e4', 'Tarp', 300), 0, van);
   van.done = true;
   assert.equal(app.capW, 'cap');
@@ -276,8 +279,8 @@ test('the cursor never points at a row that\'s gone: deleted or done, its task i
   assert.deepEqual([app.cursor, app.lit], [null, {}]);
 });
 
-/* The box goes back to adding a task once the lit row is out of sight (watchCursor), told by the browser's
-   IntersectionObserver: a pretend one here, which says what `see` gives it. */
+/* The box goes back to adding a task once the highlighted row is out of sight (watchCursor). The browser's
+   IntersectionObserver reports this. The test uses a fake one that reports whatever `see` gives it. */
 test('the lit row out of sight: a task again; one just added past the screen\'s edge is stood in for by the row lit before, until it\'s seen', () => {
   const { app, van, chairs } = projectList();
   let tell;
@@ -286,25 +289,25 @@ test('the lit row out of sight: a task again; one just added past the screen\'s 
   globalThis.window = globalThis;
   try {
     const row = id => ({ dataset: { id: String(id) } }), vanRow = row(10), chairsRow = row(11), ropeRow = row('pending-e1-0'), sentRow = row(31), hooksRow = row('pending-e2-0');
-    // As each row is lit, its row's effect has it watched.
+    // Each row's effect starts watching the row once the row is highlighted.
     app.aim(van); app.watchCursor(vanRow); see([vanRow, true]);
     app.aim(chairs); app.watchCursor(chairsRow); see([chairsRow, true]);
     see([vanRow, false]);
     assert.deepEqual(app.lit, { 11: true }, 'the row lit before, scrolled away: nothing to do with it any more');
-    // "Rope" added, its row drawn below the screen's edge: the box still adds subtasks, while Load chairs is in sight.
+    // "Rope" is added and its row renders below the edge of the screen. The box still adds subtasks while Load chairs is in sight.
     app.aimAdded(added('e1', 'Rope', 150), 0, van); app.watchCursor(ropeRow); see([ropeRow, false]);
     assert.deepEqual([app.lit, app.capW], [{ 'pending-e1-0': true }, 'under']);
-    // Sent, still out of sight: its new row is watched, Load chairs standing in still.
+    // The task is sent and its new row is still out of sight. The new row is watched, and Load chairs still stands in for it.
     app.view.groups[0].tasks.push(app.keep({ id: 31, title: 'Rope', project_id: 1, done: false, parent: 10 }));
     app.aimSent([{ id: 31, was: 'pending-e1-0' }]);
     app.watchCursor(sentRow); see([ropeRow, false], [sentRow, false]);
     assert.deepEqual([app.lit, app.capW], [{ 31: true }, 'under']);
-    // Scrolled into sight, it's the one watched: Load chairs scrolling away changes nothing, Rope scrolling away ends it.
+    // Once Rope's row scrolls into sight, only that row is watched. Load chairs scrolling away changes nothing, and Rope scrolling away ends the cursor.
     see([sentRow, true]); see([chairsRow, false]);
     assert.deepEqual(app.lit, { 31: true });
     see([sentRow, false]);
     assert.deepEqual([app.cursor, app.lit, app.capW], [null, {}, 'cap']);
-    // Never seen, and the row standing in scrolled away: a task again.
+    // If the new row is never seen and the row standing in for it scrolls away, the box adds a task again.
     app.aim(chairs); app.watchCursor(chairsRow); see([chairsRow, true]);
     app.aimAdded(added('e2', 'Hooks', 150), 0, van); app.watchCursor(hooksRow); see([hooksRow, false]);
     assert.equal(app.capW, 'under');
@@ -318,7 +321,7 @@ test('only a task on this project\'s open list that you can change can be the cu
   app.route = { name: 'search' };
   app.aim(van);
   assert.equal(app.cursor, null, 'not in search');
-  // Today: its groups have the task (a card, with its subtasks on it, not rows of their own), and the box only adds subtasks.
+  // On Today, the groups hold the task as a card with its subtasks on it, not as separate rows. The box only adds subtasks there.
   app.route = { name: 'today' };
   const list = app.view;
   app.view = { groups: [{ key: 'overdue', tasks: [] }, { key: 'today', tasks: [van] }], listView: null };
@@ -326,7 +329,7 @@ test('only a task on this project\'s open list that you can change can be the cu
   app.aim(van);
   assert.deepEqual([app.cursor, app.capW, app.boxIn, app.canLevel], [{ id: 10, under: null }, 'under', true, false]);
   assert.equal(app.boxLevel(true), false, 'no level out on Today');
-  // Its places are the project's: its List view, which Today read its cards' positions from.
+  // The positions come from the project's List view, which Today also reads its cards' positions from.
   assert.deepEqual([app.cursorListView, app.cursorPlaces(1)], [5, [50]], 'under the task: ahead of its first subtask, in the project\'s List view');
   app.aim(chairs);
   assert.deepEqual([app.cursor, app.cursorParent], [{ id: 11, under: 10 }, van], 'a card\'s row: under its task');
@@ -355,14 +358,14 @@ test('a project\'s list: top-level tasks and each parent\'s subtasks in position
   const { tasks, depth } = nestSubtasks([parent, sub(11), sub(12), sub(13), { id: 20 }], positionOrder(pos));
   assert.deepEqual(ids(tasks), [20, 10, 12, 11, 13]);
   assert.deepEqual(depth, { 20: 0, 10: 0, 12: 1, 11: 1, 13: 1 });
-  // A run (a copy of a template) keeps its steps in its own order line: without one, the order they were made.
+  // A checklist (a copy of a template) keeps its steps in its own order line. Without one, the steps are in the order they were created.
   const run = { ...parent, related_tasks: { ...parent.related_tasks, copiedfrom: [{ id: 1 }] }, description: '' };
   assert.deepEqual(ids(nestSubtasks([run, sub(11), sub(12), sub(13)], positionOrder(pos)).tasks), [10, 11, 12, 13]);
 });
 
 test('a task\'s siblings: those under the same parent, each with its subtasks; never another parent\'s', () => {
   const tasks = [1, 2, 3, 4, 5, 6, 7].map(id => ({ id }));
-  const depth = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0, 6: 1, 7: 0 };       // 1 > (2 > 3), 4;  5 > 6;  7
+  const depth = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0, 6: 1, 7: 0 };       // 1 has subtasks 2 and 4, and 2 has subtask 3. 5 has subtask 6. 7 has none
   assert.deepEqual(siblingBlocks(tasks, depth, 5).map(b => b.ids), [[1, 2, 3, 4], [5, 6], [7]], 'top level, each with all under it');
   assert.deepEqual(siblingBlocks(tasks, depth, 4).map(b => b.ids), [[2, 3], [4]], 'a subtask: its parent\'s subtasks only');
   assert.deepEqual(siblingBlocks(tasks, depth, 6).map(b => b.ids), [[6]], 'an only subtask: nowhere to go');
@@ -370,16 +373,16 @@ test('a task\'s siblings: those under the same parent, each with its subtasks; n
 });
 
 test('dragging: the siblings it passes the middle of move aside, and it stays within them', () => {
-  const blocks = [{ top: 0, height: 50 }, { top: 50, height: 150 }, { top: 200, height: 50 }];   // the second has subtasks
+  const blocks = [{ top: 0, height: 50 }, { top: 50, height: 150 }, { top: 200, height: 50 }];   // the second block has subtasks
   assert.deepEqual(dragPlace(blocks, 0, 20), { dy: 20, shifts: [0, 0, 0], at: 0 }, 'not past the middle of the next');
   assert.deepEqual(dragPlace(blocks, 0, 110), { dy: 110, shifts: [0, -50, 0], at: 1 });
   assert.deepEqual(dragPlace(blocks, 0, 999), { dy: 200, shifts: [0, -50, -50], at: 2 }, 'drawn no lower than the last');
   assert.deepEqual(dragPlace(blocks, 2, -999), { dy: -200, shifts: [50, 50, 0], at: 0 });
-  // A tall one (with subtasks) gets past a short last one.
+  // A tall block (one with subtasks) can move past a short block at the end.
   assert.equal(dragPlace(blocks, 1, 999).at, 2);
 });
 
-/* The box's level (inline-add-box-plan, part 2): out a level it adds a task, after the cursor's task and all under it. */
+/* The box has two levels. Moved out one level, it adds a task after the cursor's task and all the subtasks under it. */
 test('the box out a level adds a task after the cursor\'s task; in again, a subtask; Tab and Shift+Tab move it only when they can', () => {
   const { app, van, chairs } = projectList();
   assert.equal(app.boxLevel(true), false, 'at the bottom: no level to change');
@@ -392,14 +395,14 @@ test('the box out a level adds a task after the cursor\'s task; in again, a subt
   assert.deepEqual(app.cursor, { id: 11, under: 10, out: true }, 'the cursor stays on its row');
   assert.deepEqual(app.outPlaces(2), [1500, 1750], 'after Pack the van, before Lights');
   assert.equal(key(true), false, 'Shift+Tab again: as far out as it goes');
-  // A task added from there is the cursor, waiting, out still: the next goes after it, and it can't have a subtask yet.
+  // A task added from there becomes the cursor while it waits to be sent, and the box stays out a level. The next task goes after it, and it can't have a subtask yet.
   const strap = added('e1', 'Strap it down', 1500);
   app.aimAddedOut(strap, 0);
   app.pendingTasks = waiting(strap, null).map(x => ({ ...x, child: false, project_id: 1 }));
   assert.deepEqual([app.boxOut, app.canIn, app.cursorTask.title], [true, false, 'Strap it down']);
   assert.deepEqual(app.outPlaces(1), [1750], 'after it, before Lights');
   assert.equal(key(false), false, 'Tab: it has no task to go under yet');
-  // Sent: its task's row, out still; then Tab moves the box in, under it.
+  // After the task is sent, the cursor is on its row and the box is still out a level. Pressing Tab then moves the box in, under the task.
   const sent = app.keep({ id: 30, title: 'Strap it down', project_id: 1, done: false });
   app.view.groups[0].tasks.push(sent); app.positions[30] = 1500; app.pendingTasks = [];
   app.aimSent([{ id: 30, was: 'pending-e1-0' }]);

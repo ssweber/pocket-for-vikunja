@@ -1,16 +1,16 @@
-// A task held on Today, four dates around the finger (hold-to-reschedule-plan): what each direction means on each day
-// of the week, which date a finger points at, and where the chips sit on a phone (src/js/throw.js).
+// Holding a task on Today shows four date chips around the user's touch (src/js/throw.js). The tests cover what each
+// direction means on each day of the week, which date a drag points at, and where the chips sit on a phone.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dateValue, THROW, throwDate, throwEnd, throwFlick, throwLayout, throwPick, throwTargets } from '../../src/js/throw.js';
 
-// October 2026: Monday the 12th to Sunday the 18th, and the weeks either side.
+// October 2026. The 12th is a Monday and the 18th is a Sunday, and the tests use dates in the weeks before and after.
 const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
 const iso = (d, h = 0, m = 0) => on(d, h, m).toISOString();
 const ZERO = '0001-01-01T00:00:00Z';
 const DAYS = { 12: 'Monday', 13: 'Tuesday', 14: 'Wednesday', 15: 'Thursday', 16: 'Friday', 17: 'Saturday', 18: 'Sunday' };
-// A small phone: 360px wide, between the header's foot and the add box's top.
+// A small phone, 360px wide. The chips fit between the bottom of the header and the top of the add box.
 const phone = { width: 360, height: 640, top: 56, bottom: 572 };
 const box = (lay, t) => [lay.x + t.x - t.w / 2, lay.x + t.x + t.w / 2, lay.y + t.y - t.h / 2, lay.y + t.y + t.h / 2];
 
@@ -59,7 +59,7 @@ test('a direction past 24px lights its date, No date by the same short move; bac
   assert.equal(throwFlick(ts, 0, 14, 1)?.id, 'none', 'down too');
   assert.equal(throwFlick(ts, 14, -2, .1), null, 'a slow move let go there doesn\'t');
   assert.equal(throwFlick(ts, 6, 0, 2), null, 'nor a twitch');
-  // Which is where is the list's to say: Next week and No date changed places.
+  // The targets list decides which date goes in which direction. This swaps Next week and No date to show it.
   const swapped = throwTargets(iso(12, 16), on(12), THROW.targets.map(t => ({ ...t, at: { up: 'down', down: 'up' }[t.at] || t.at })));
   assert.deepEqual([throwPick(swapped, 0, -30).id, throwPick(swapped, 0, 30).id, throwPick(swapped, 30, 0).id], ['none', 'week', 'tomorrow']);
 });
@@ -91,7 +91,7 @@ test('the set stays on a 360px screen for a row at the top and at the bottom: th
   const top = throwLayout(ts, { x: 180, y: phone.top + 28, ...phone }), low = throwLayout(ts, { x: 180, y: phone.bottom - 28, ...phone });
   assert.ok(top.y > phone.top + 28 && low.y < phone.bottom - 28, 'the first row: moved down; the last: moved up');
   assert.ok(throwLayout(ts, { x: 350, y: 300, ...phone }).x < 350 && throwLayout(ts, { x: 10, y: 300, ...phone }).x > 10, 'near a side: moved in');
-  // What's picked never asks where the set is: the directions count from where the finger was held.
+  // throwPick ignores where the chips are. Directions are measured from the point where the user started holding.
   assert.equal(throwPick(ts, 30, 0).id, 'tomorrow');
   const squeezed = throwLayout(ts, { x: 180, y: 100, ...phone, bottom: phone.top + 120 });
   assert.ok(Math.min(...squeezed.targets.map(t => box(squeezed, t)[2])) >= phone.top + THROW.margin, 'with no room for it (the keyboard up): clear of the header');

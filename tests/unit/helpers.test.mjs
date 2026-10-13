@@ -1,4 +1,5 @@
-// The small helpers used all over Pocket: the address (routing.js), util.js, and what's waiting to send (sync.js).
+// Small helpers used all over Pocket. They are reading the screen from the URL (routing.js), util.js, and the queue of
+// changes waiting to be sent (sync.js).
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,8 +16,8 @@ test('the screen in the address', () => {
   assert.deepEqual(routeOf('#/nowhere'), { name: 'today' });
 });
 
-// Whether things may move is asked in one place (rows-and-sheet-fixes-plan, part 2), each time, as the phone's setting
-// can change while Pocket is open; npm run lint keeps the question out of every other file.
+// Only motion() decides whether animations may run, and it checks the phone's setting on every call, because the
+// setting can change while Pocket is open. npm run lint stops any other file from checking it.
 test('things move unless the phone asks for less motion, asked each time', () => {
   const was = globalThis.matchMedia, asked = [];
   let less = false;
@@ -56,8 +57,9 @@ test('a label\'s colour only if it is one, and text made safe for HTML', () => {
   assert.equal(esc(null), '');
 });
 
-/* A text box as a browser measures it: its text `text` px tall, its borders `border` px in all, its least height `least`.
-   In a sheet scrolled to `top`, which can't stay scrolled past its end: with the box at its least height, that's `end`. */
+/* A fake text box that reports sizes the way a browser measures them. Its text is `text` px tall, its borders add
+   `border` px in total, and its smallest height is `least`. It sits in a sheet scrolled to `top`. A sheet can't stay
+   scrolled past its end, so when the box is at its smallest height the sheet's scroll position is capped at `end`. */
 function textBox({ text, border = 0, least = 24, top = 0, end = Infinity }){
   const sheet = { scrollTop: top }, ta = { get scrollHeight(){ return text; }, get clientHeight(){ return this.offsetHeight - border; }, closest: sel => sel === '#sheet .scroll' ? sheet : null };
   let height = 'auto';
@@ -96,7 +98,7 @@ test('what\'s waiting: a line is done once its task is made, and a subtask once 
   assert.equal(itemDone({ taskId: 4 }, true), false);
   assert.equal(itemDone({ taskId: 4, linked: true }, true), true);
   assert.equal(itemDone({ done: false, taskId: 4 }, false), false, 'what it says of itself wins');
-  // A pasted list "nested" under its first line: the lines after it are subtasks.
+  // In a pasted list marked `nest`, every line after the first is a subtask of the first line.
   const entry = { nest: true, items: [{ taskId: 1 }, { taskId: 2, linked: true }], files: [{ sent: true }] };
   assert.deepEqual([isChild(entry, 0), isChild(entry, 1)], [false, true]);
   assert.equal(entryDone(entry), true);
@@ -105,15 +107,15 @@ test('what\'s waiting: a line is done once its task is made, and a subtask once 
 });
 
 test('what\'s waiting: each line says which line it\'s under, and an entry kept from before has its first line over the rest', () => {
-  // Two parents, and a subtask of a subtask: "## A", "a1", "  a2", "## B", "b1".
+  // The lines are "## A", "a1", "  a2", "## B", "b1". That makes two parents and a subtask of a subtask.
   const list = { nest: false, items: [{ under: null }, { under: 0 }, { under: 1 }, { under: null }, { under: 3 }] };
   assert.deepEqual(list.items.map((x, i) => underOf(list, i)), [null, 0, 1, null, 3]);
   assert.deepEqual(list.items.map((x, i) => isChild(list, i)), [false, true, true, false, true]);
-  // Kept by a Pocket from before lines said so: `nest`, and no `under`.
+  // An older version of Pocket saved entries with `nest` and no `under`.
   const old = { nest: true, items: [{}, {}, {}] }, flat = { nest: false, items: [{}, {}] };
   assert.deepEqual(old.items.map((x, i) => underOf(old, i)), [null, 0, 0]);
   assert.deepEqual(flat.items.map((x, i) => underOf(flat, i)), [null, null]);
-  // In a subtask box's entry, a line under none of the others is under the entry's task.
+  // In an entry from a subtask box, a line that is not under another line becomes a subtask of the entry's task.
   const sub = { parent: { id: 3 }, items: [{ under: null }, { under: 0 }] };
   assert.deepEqual(sub.items.map((x, i) => [underOf(sub, i), isChild(sub, i)]), [[null, true], [0, true]]);
   assert.equal(entryDone({ ...list, items: list.items.map((x, i) => ({ ...x, taskId: i + 1, linked: x.under !== null })) }), true, 'a line under another is done once it\'s linked');
@@ -125,7 +127,7 @@ test('a box\'s lines as an entry\'s items: a line with no title left is left out
     (k, under) => under !== null && { position: k * 10 });
   assert.deepEqual(items.map(x => [x.raw, x.under, x.p.position]), [['A', null, undefined], ['a1', 0, 10], ['B', null, undefined], ['b1', 2, 30]]);
   assert.deepEqual(items.map(x => [x.taskId, x.done, x.linked]), Array(4).fill([null, false, false]));
-  // A parent with no title: its lines are tasks of their own.
+  // A parent with no title is dropped, and its lines become separate tasks.
   assert.deepEqual(itemsOf([{ raw: 'tomorrow', p: p(''), under: null }, { raw: 'a', p: p('a'), under: 0 }]).map(x => [x.raw, x.under]), [['a', null]]);
 });
 

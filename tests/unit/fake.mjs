@@ -1,19 +1,19 @@
-// A pretend Vikunja behind fetch(), and a pretend Alpine component, for running the app's methods (actions.js,
-// tasks.js) in Node: api() is Pocket's own, so it signs, sends and reads replies as it does in the browser.
+// A fake Vikunja behind fetch(), and a fake Alpine component. Together they run the app's methods (actions.js,
+// tasks.js) in Node. api() is Pocket's real one, so it signs, sends and reads replies as it does in the browser.
 import './browser.mjs';
 import { setApp, cache } from '../../src/js/util.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-/* Tasks by id, which GET, PATCH and DELETE /tasks/:id read and change, as Vikunja does: a repeating task marked done
-   moves on to its next date instead (where Pocket thinks Vikunja moves it, vikunjaNext), and a task read has its
-   subtasks as they are now, one deleted gone (related_tasks). A task is made by POST /projects/:id/tasks, with the next
-   id, put under another by POST /tasks/:id/relations (taken out again by DELETE /tasks/:id/relations/subtask/:other,
-   which takes both sides off, as Vikunja does), and looked for by its title with GET /tasks?q=, as the outbox
-   does for a line (LINE_STEPS). Every request is kept in
-   `requests`. `trouble(request)` can make one go wrong: 'offline' (it never reaches Vikunja), 'lost' (it does, and the
-   reply is lost on the way back), or an HTTP status to answer with. */
+/* The fake keeps tasks by id and behaves as Vikunja does. GET, PATCH and DELETE /tasks/:id read and change a task. A
+   repeating task marked done moves to its next date instead (vikunjaNext, which is where Pocket expects Vikunja to
+   move it). A task that is read lists its current subtasks, without any that were deleted (related_tasks).
+   POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
+   another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does.
+   GET /tasks?q= finds a task by its title, which the outbox uses for a line (LINE_STEPS). Every request is recorded in
+   `requests`. `trouble(request)` makes a request fail: 'offline' (it never reaches Vikunja), 'lost' (it reaches Vikunja
+   but the reply is lost on the way back), or an HTTP status to answer with. */
 export function fakeVikunja(tasks = []){
   const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), requests: [], trouble: () => null }, gone = new Set();
   const withSubtasks = t => {
@@ -64,11 +64,11 @@ export function fakeVikunja(tasks = []){
   return v;
 }
 
-/* The component, with the parts of the app given (their methods, as component.js puts them together), what they use
-   from the rest made simple: messages are kept in `toasts`, with where each was said (say: `row`, `place`; there's no
-   screen, so that's where it's asked for), and nothing is a run. Rows marked done or deleted (leaving.js) are in
-   `leaving`, when that part is given. Signed in with an API token, so a change isn't checked
-   against the shared session first. */
+/* A fake component made from the parts of the app that are passed in (their methods, as component.js combines them).
+   The rest of the app is stubbed. Messages are recorded in `toasts`, with the `row` and `place` each was shown at.
+   There is no screen, so these are just the values the caller asked for. No task counts as a checklist. Rows marked
+   done or deleted (leaving.js) are in `leaving`, when that part is passed in. The component is signed in with an API
+   token, so a change is not checked against the shared session first. */
 export function component(...parts){
   const c = {
     server: 'http://vikunja.test', mode: 'token', token: 'tk_test', signedIn: true, offline: false, writing: 0,

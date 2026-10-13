@@ -1,8 +1,9 @@
-// Alpine's reactivity for a unit test: the part of Pocket's own copy of Alpine (src/vendor/) that watches data, run
-// as it is, behind a pretend `Alpine` with what Pocket's code asks of the real one (reactive, effect, release, raw).
-// An effect whose data changed runs when the test says (flush()), as Alpine runs them a moment later, together.
+// Alpine's reactivity for a unit test. It runs the unmodified data-watching code from Pocket's copy of Alpine
+// (src/vendor/) behind a fake `Alpine` object. The fake has only what Pocket's code uses from the real one (reactive,
+// effect, release, raw). An effect whose data changed runs when the test calls flush(). Real Alpine runs these
+// effects together a moment later.
 //
-//   const { Alpine, flush } = watching(c);        // from now until the test ends, globalThis.Alpine is this one
+//   const { Alpine, flush } = watching(c);        // until the test ends, globalThis.Alpine is this fake
 //   const data = Alpine.reactive({ n: 1 });
 import { readFileSync } from 'node:fs';
 
@@ -14,8 +15,8 @@ const engine = new Function(vendor.slice(from, to) + '; return {reactive: reacti
 
 export function watching(c){
   const queued = new Set();
-  // As Alpine sets its engine up (setReactivityEngine, and the wrapper its cdn build gives it): an effect whose data
-  // changed is queued, not run.
+  // This copies how Alpine sets up its engine (setReactivityEngine and the wrapper in its cdn build). An effect whose
+  // data changed is queued instead of run.
   const effect = callback => { const runner = engine.effect(callback, { scheduler: () => { if (runner) queued.add(runner); } }); return runner; };
   const Alpine = { reactive: engine.reactive, effect, release: runner => { queued.delete(runner); engine.stop(runner); }, raw: engine.toRaw };
   globalThis.Alpine = Alpine;

@@ -2,12 +2,12 @@
 //
 //   npm run test:parse
 //
-// Loads src/js/quickadd.js and src/js/checklists.js in a headless browser, with chrono from pocket/app/, and runs
-// parseCapture() on each phrase with a fixed "now", captureLines() on a few pasted lists, and the checklist steps' own
-// reading on steps. It tests src/ as it is, so there's no need to build first.
+// Loads src/js/quickadd.js and src/js/checklists.js in a headless browser, with chrono from pocket/app/. It runs
+// parseCapture() on each phrase with a fixed "now", captureLines() on a few pasted lists, and the checklist step
+// parsing on steps. It tests src/ as it is, so there is no need to build first.
 // The phrases and expectations are adapted from Vikunja's own Quick Add Magic tests
-// (frontend/src/modules/quickAddMagic/quickAddMagic.test.ts), so Pocket reads text the way Vikunja does.
-// Cases marked `pocket` are where Pocket deliberately differs from Vikunja, or goes further; `why` says how.
+// (frontend/src/modules/quickAddMagic/quickAddMagic.test.ts), so Pocket parses text the way Vikunja does.
+// Cases marked `pocket` are where Pocket deliberately differs from Vikunja or does more. `why` explains how.
 // Optional: BROWSER_CHANNEL=msedge|chrome.
 import { createServer } from 'node:http';
 import { readdir, readFile } from 'node:fs/promises';
@@ -18,7 +18,7 @@ import { chromium } from 'playwright';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
-// The page: the modules' functions, as globals for page.evaluate().
+// The page exposes the modules' functions as globals, so page.evaluate() can call them.
 const CHRONO = (await readdir(resolve(ROOT, 'pocket/app'))).find(f => /^chrono-.*\.js$/.test(f));
 const PAGE = `<!doctype html><script type="module">
 import * as chrono from '/pocket/app/${CHRONO}'; window.chrono = chrono;
@@ -62,8 +62,8 @@ add({ text: '"delete mails today', date: 'any' });
 add({ text: '"delete mails today\'', date: 'any' });
 add({ text: 'delete "mails" today', date: 'any' });
 add({ text: '""', title: '', date: null });
-// Pocket's own: quotes round the start of the text hold its title, and the words after them are read as usual. A copied
-// Markdown list quotes a title this way when quick add would read words in it (share.js).
+// Pocket's own rule: quotes around the start of the text mark it as the title, and the text after them is parsed as
+// usual. A copied Markdown list quotes a title this way when quick add would otherwise parse words in it (share.js).
 const held = why => ({ pocket: true, why });
 add({ text: '"Lunch friday" @sam 2026-10-16', title: 'Lunch friday @sam', assignees: ['sam'], date: '2026-10-16', marked: ['assignees:@sam', 'due:2026-10-16'], ...held('the title read as typed, the words after it as usual') });
 add({ text: '"Call Bob tomorrow" tomorrow !2 *calls', title: 'Call Bob tomorrow', date: '2021-6-25', priority: 2, labels: ['calls'], ...held('the same word inside and after') });
@@ -133,7 +133,7 @@ for (const [d, n] of Object.entries(DAYS)) for (const w of [d, d[0].toUpperCase(
 }
 
 // ---------- written dates ----------
-// Vikunja keeps "21st June" style dates in the past when they've passed this year; Pocket always takes the next one.
+// Vikunja leaves a date like "21st June" in the past if it has already passed this year. Pocket always picks the next one.
 const NEXT_YEAR = { pocket: true, why: 'the next one, not a date that has passed' };
 const written = {
   '06/08/2021': '2021-6-8', '6/7/21': '2021-6-7', '27/07/2021,': null, '2021/07/06': '2021-7-6', '2021-07-06': '2021-7-6',
@@ -197,7 +197,7 @@ add({ text: 'Lorem Ipsum @email@example.com', title: 'Lorem Ipsum @email@example
 
 // ---------- repeating ----------
 const H = 3600, D = 86400, W = 604800, M = 30 * D, Y = 365 * D;
-const MONTHLY = { after: 0, mode: 1 };                // Pocket: "every month" keeps the day of month; Vikunja uses 30 days
+const MONTHLY = { after: 0, mode: 1 };                // Pocket repeats "every month" on the same day of the month. Vikunja uses 30 days
 const repeats = {
   'every 1 hour': H, 'every hour': H, 'every 5 hours': 5 * H, 'every 12 hours': 12 * H, 'every day': D, 'every 1 day': D, 'every 2 days': 2 * D,
   'every week': W, 'every 1 week': W, 'every 3 weeks': 3 * W, 'every month': MONTHLY, 'every 1 month': MONTHLY, 'every 2 months': 2 * M,
@@ -232,18 +232,19 @@ add({ text: 'Lorem Ipsum dec 21 at 3pm @ann *calls +project !2', title: 'Lorem I
   marked: ['due:dec 21 at 3pm', 'assignees:@ann', 'labels:*calls', 'project:+project', 'priority:!2'], ...extra('everything at once') });
 add({ text: 'Team sync every monday @ 10', title: 'Team sync', repeat: { after: W, mode: 0 }, time: '10:0', marked: ['repeat:every monday', 'due:@ 10'],
   ...extra('each phrase is marked where it was typed, even "@ 10"') });
-// A bare hour is daytime: 1 to 7 is the afternoon or evening (Vikunja reads "at 5" as 5 AM). Written-out times stay.
+// A bare hour is read as daytime. 1 to 7 means afternoon or evening, where Vikunja reads "at 5" as 5 AM. Times written
+// with am, pm or a full hour like 05:00 are read as written.
 add({ text: 'Call Ana at 5', title: 'Call Ana', date: '2021-6-24', time: '17:0', ...extra('a bare 5 is 5 PM: today, as it’s still to come') });
 add({ text: 'Call Ana at 9', title: 'Call Ana', date: '2021-6-25', time: '9:0', ...extra('a bare 9 is the morning: the next one') });
 add({ text: 'Call Ana tomorrow at 5:30', title: 'Call Ana', date: '2021-6-25', time: '17:30', ...extra('5:30 is the afternoon too') });
 add({ text: 'Call Ana at 5am', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"am" is as written') });
 add({ text: 'Call Ana at 05:00', title: 'Call Ana', date: '2021-6-25', time: '5:0', ...extra('"05:00" is as written') });
-// Repeats Vikunja can't do stay as words, and nothing in them is read as something else.
+// A repeat that Vikunja can't store stays in the title as text, and no part of it is parsed as anything else.
 add({ text: 'Water lawn every other day', title: 'Water lawn', repeat: { after: 2 * D, mode: 0 }, ...extra('"every other day" is every 2 days') });
 add({ text: 'Standup every weekday at 9', title: 'Standup every weekday', repeat: null, date: '2021-6-25', time: '9:0', ...extra('weekdays only can’t repeat in Vikunja') });
 add({ text: 'Gym every monday and thursday', title: 'Gym every monday and thursday', repeat: null, date: null, ...extra('two days a week can’t repeat in Vikunja') });
 
-// A figure at the end of a line is the task's own progress, whichever mode is set: Vikunja's quick add has no word for it.
+// A percentage at the end of a line is the task's progress in every mode. Vikunja's quick add has no syntax for it.
 add({ text: 'Tables (50%)', title: 'Tables', pct: 50, marked: ['progress:(50%)'], ...extra('a figure at the end is its progress') });
 add({ text: 'Tables 50%', title: 'Tables', pct: 50, marked: ['progress:50%'], ...extra('without brackets too') });
 add({ text: 'Tables (50%) @sam', title: 'Tables @sam', pct: 50, assignees: ['sam'], ...extra('people may follow it: they stay in the title until they’re assigned') });
@@ -262,7 +263,8 @@ add({ text: 'Tables (50%) +sam @hire', mode: 'todoist', title: 'Tables +sam', pc
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
-// (captureLines reads a run's box and a template's steps, where a ticked line is left out: a step is done by doing it.)
+// captureLines reads a checklist's add box and a template's steps. A ticked line is left out there, because a step
+// is completed by doing it.
 addList('Groceries\n- [] Cheese\n- [ ] Milk\n- [x] Eggs', ['Groceries', 'Cheese', 'Milk'], 'iOS Notes checklist: a line ticked off already is left out');
 addList('• Bread\n◦ Jam\n☐ Butter\n✓ Tea', ['Bread', 'Jam', 'Butter', 'Tea'], 'bullets and checkbox symbols');
 addList('1. One\n2) Two\n(3) Three', ['One', 'Two', 'Three'], 'numbering');
@@ -270,8 +272,8 @@ addList('> - Quoted item\n\n  - Indented item  ', ['Quoted item', 'Indented item
 addList('*calls Bob\n+Kitchen paint\n-[] Bread', ['*calls Bob', '+Kitchen paint', '-[] Bread'], 'a marker needs a space after it');
 addList('x Call Sam\nX Call Priya\n[x] Eggs\nMilk', ['x Call Sam', 'X Call Priya', 'Milk'], 'in a step\'s box an x is a word, a capital X too, and a ticked line is left out');
 
-// ---------- quick add and the subtask boxes: a line that says it's done arrives done ----------
-// readList(text, opts): each line as [its words, whether it's done].
+// ---------- quick add and the subtask boxes: a line marked as done is created as done ----------
+// readList(text, opts) returns each line as [its text, whether it is done].
 const reads = [];
 const addRead = (text, lines, why, opts = {}) => reads.push({ text, lines, why, opts });
 for (const m of ['x ', 'x - ', 'x- ', 'X ', 'X - ', 'X- ', '[x] ', '- [x] ', '* [X] ', '☑ ', '☒ ', '> - [x] ', '1. [✓] ', '  - [x]'])
@@ -290,8 +292,8 @@ addRead('x Call Sam', [['x Call Sam', false]], 'one line, its chip tapped: the m
 addRead('- [x] Call Sam', [['[x] Call Sam', false]], 'and a checkbox\'s, without its bullet', { done: false });
 
 // ---------- parents in a pasted list ----------
-// addNest(text, each line's words, the line each is under (its place among them, or null), why, options, whether the
-// first line is a parent as the list is written)
+// addNest(text, the text of each line, the index of each line's parent among the lines (or null), why, options,
+// whether the first line is a parent as the list is written)
 const addNest = (text, titles, under, why, opts = {}, first = under.includes(0)) => reads.push({ text, lines: titles.map(t => Array.isArray(t) ? t : [t, false]), under, first, why, opts });
 // A heading is a task, and the lines under it, up to the next heading, are its subtasks.
 addNest('## Pack the van\n- Load chairs\n- Tables\n\n## Set the hall\nLights', ['Pack the van', 'Load chairs', 'Tables', 'Set the hall', 'Lights'], [null, 0, 0, null, 3], 'two headings, each over its lines');
@@ -305,7 +307,7 @@ addNest('## Pack the van\n- Load chairs\n## Set the hall\n- Lights', ['Pack the 
 addNest('Pack the van\n- Load chairs\n- Tables', ['Pack the van', 'Load chairs', 'Tables'], [null, 0, 0], 'a list with no markers, ↳ Under first line on', { nest: true }, false);
 addNest('## A\n## [x] B\nb1\n### C\nc1', ['A', 'b1', 'C', 'c1'], [null, null, null, 2], 'a done heading left out: its lines are no longer under one', { done: false });
 addNest('#project task\n#5 on the list', ['#project task', '#5 on the list'], [null, null], 'a # with no space after it is a word (Todoist\'s #project)');
-// Indenting, as in Vikunja's web app: a line indented more than the line above it is under it, to any depth.
+// Indentation works as in Vikunja's web app. A line indented more than the line above it is a subtask of that line, to any depth.
 addNest('Pack the van\n  Load chairs\n    Stack them\n  Tables\nSet the hall\n\tLights', ['Pack the van', 'Load chairs', 'Stack them', 'Tables', 'Set the hall', 'Lights'], [null, 0, 1, 0, null, 4], 'spaces or a tab, to any depth');
 addNest('- Pack the van\n   - [x] Load chairs\n      * Stack them\n - Tables', ['Pack the van', ['Load chairs', true], 'Stack them', 'Tables'], [null, 0, 1, 0], 'any width: only more than the line above counts');
 addNest('    Pack the van\n    Tables\n  Lights\n      Cables', ['Pack the van', 'Tables', 'Lights', 'Cables'], [null, null, null, 2], 'a list indented as a whole, and a line indented less, start again at the top');
@@ -314,12 +316,12 @@ addNest('Pack the van\n  - [x] Load chairs\n      Stack them\n  Tables', ['Pack 
 addNest('Pack the van\n  Load chairs\nSet the hall\n  Lights', ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'], [null, null, null, null], '↳ Under first line tapped off: all tasks of their own', { flat: true }, true);
 addNest('Order cups\nPack the van\n  Load chairs', ['Order cups', 'Pack the van', 'Load chairs'], [null, 0, 1], '↳ Under first line tapped on, the first line not a parent as written: over the lines with no parent', { nest: true }, false);
 addList('Wipe down\n  Counter\n    Under it', ['Wipe down', 'Counter', 'Under it'], 'in a step\'s box indenting isn\'t read');
-// One # is the name of the whole list, as a project's copy starts with: left out.
+// A line with one # is the name of the whole list, as at the start of a project's copy. It is left out.
 addNest('# Café · 12 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables', ['Order milk', 'Pack the van', 'Tables'], [null, null, 1], 'a list\'s name, with one #, is left out', { names: ['Café · 12 open · 5 done'] });
 addNest('# Friday\n## Pack the van\n- Tables\n# [x] Saturday\n- Lights', ['Pack the van', 'Tables', 'Lights'], [null, 0, null], 'each of them, and nothing is under one', { names: ['Friday', '[x] Saturday'] });
 addNest('# of chairs we need', ['# of chairs we need'], [null], 'alone in the box, it names no list: a title as typed', { names: [] });
 addList('# Opening\n- Unlock', ['# Opening', 'Unlock'], 'in a step\'s box a # is words');
-// For typing: a first line ending with a colon is the parent of the rest, its colon taken off (quick add's box only).
+// In quick add's box only, a first line ending with a colon is the parent of the other lines, and the colon is removed.
 addNest('Groceries:\n- milk\n- eggs', ['Groceries', 'milk', 'eggs'], [null, 0, 0], 'a first line ending with a colon', { colon: true });
 addNest('Groceries tomorrow: \nDairy\n  milk\nBread', ['Groceries tomorrow', 'Dairy', 'milk', 'Bread'], [null, 0, 1, 0], 'over the lines with no parent of their own', { colon: true });
 addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], '↳ Under first line tapped off: tasks of their own, the colon staying in its title', { colon: true, flat: true }, true);
@@ -330,7 +332,7 @@ addNest('Groceries:\n- milk', ['Groceries:', 'milk'], [null, null], 'a subtask b
 addList('## Wipe down\n- Counter', ['## Wipe down', 'Counter'], 'in a step\'s box a heading is words');
 
 // ---------- checklist steps ----------
-// A step's T#20m, T#40m:roast and {#roast} stay in its title, for parseStep, and nothing reads them as a date or a time.
+// A step's T#20m, T#40m:roast and {#roast} stay in the title for parseStep. Quick add never parses them as a date or time.
 add({ text: 'Check the guards at 3pm T#30m', ignore: { due: true, repeat: true }, title: 'Check the guards at 3pm T#30m', date: null, pocket: true, why: 'a checklist step keeps its words; T#30m is read by parseStep' });
 add({ text: 'Warm up the press T#2h', title: 'Warm up the press T#2h', date: null, pocket: true, why: "T#2h isn't a time of day" });
 add({ text: 'Baste the roast T#40m:roast', title: 'Baste the roast T#40m:roast', date: null, pocket: true, why: 'nor is T#40m:roast' });
@@ -339,11 +341,11 @@ add({ text: 'pay rent oct 7 at 10am', now: new Date(2026, 9, 7, 11, 0), title: '
 add({ text: 'pay rent Oct 4', now: new Date(2026, 9, 5, 20, 50), title: 'pay rent', date: '2027-10-4', pocket: true, why: 'yesterday\'s date is next year\'s' });
 add({ text: 'Task *"batch {#roast}"', title: 'Task', labels: ['batch {#roast}'], pocket: true, why: 'a step\'s words inside a quoted label stay in the label' });
 add({ text: 'Task *"batch T#20m"', title: 'Task', labels: ['batch T#20m'], pocket: true, why: 'and a T# time ends before the quote' });
-// The same text with a step's token after it reads the same: [text, token, mode].
+// Adding a step's token after the text must not change how the text is parsed: [text, token, mode].
 const collisions = [['Call the lab 17:30', 'T#20m'], ['The 9/11 Report due 10/12', 'T#40m:roast'], ['01.02 Lorem Ipsum', 'T#1h30m'],
   ['Lorem Ipsum 01.02', '{#roast}'], ['Order resin 2026-10-12', 'T#3d'], ['Baste the roast at 5pm', 'T#40m:roast'], ['Roast in tomorrow', '{#roast}'],
   ['Set the table #project', 'T#20m:roast', 'todoist'], ['Set the table #project', '{#table}', 'todoist'], ['Make the gravy *kitchen', 'T#5m']];
-// parseStep: [text, title, offset in ms, name, ref, problems]
+// parseStep: [text, title, offset in ms, name, ref, number of problems]
 const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['Warm up the press T#30m', 'Warm up the press', 30 * 6e4, null, null, 0],
   ['First article check T#2h', 'First article check', 120 * 6e4, null, null, 0], ['Cool down T#1h30m', 'Cool down', 90 * 6e4, null, null, 0],
   ['Settle T#1.5h', 'Settle', 90 * 6e4, null, null, 0], ['Rinse T#90s', 'Rinse', 90e3, null, null, 0], ['Blink T#250ms', 'Blink', 250, null, null, 0],
@@ -355,49 +357,49 @@ const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['
   ['Two times T#5m T#10m', 'Two times', 5 * 6e4, null, null, 1], ['Bad name {#1st}', 'Bad name', null, null, null, 1],
   ['Bad ref T#5m:2nd', 'Bad ref', null, null, null, 1], ['Way off T#400d', 'Way off', null, null, null, 1],
   ['Overflow T#999999999999999999999d', 'Overflow', null, null, null, 1], ['Nbsp\u00a0T#20m', 'Nbsp', 20 * 6e4, null, null, 0], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
-// stepProblems over a template's steps: [titles, what each problem says]
+// stepProblems on a template's steps: [titles, the text each problem message contains]
 const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
   [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['an earlier step is also named']],
   [['A', 'B T#5m:nope'], ['no step is named']], [['A T#5', 'B'], ["isn't a time"]]];
-// A step's time in words, read while steps are written in Pocket: [text, offset in ms or null]
+// A step's time written in words, parsed while the user writes steps in Pocket: [text, offset in ms or null]
 const phrases = [['Check the oil in 10 min', 6e5], ['Baste after an hour', 36e5], ['Pull the jeans 20 minutes later', 12e5], ['Carve 1h 30m after', 54e5],
   ['Rest in half an hour', 18e5], ['Call back in 2 days', 1728e5], ['Check in two hours', 72e5], ['Check in 1 hour and 30 minutes', 54e5], ['Sand in 90s', 9e4],
   ['Stir for 2 minutes', null], ['Let it rest 10 minutes', null], ['Meet in am', null], ['Sign in and out', null], ['Log in 5', null], ['Wait in a while', null], ['Ship in 400 days', null]];
-// Rows of steps written in Pocket, saved: [rows, steps already there, what's added, the steps renamed, a problem]
+// Rows of steps written in Pocket and saved: [rows, steps already in the template, titles to add, steps to rename, whether there is a problem]
 const drafts = [
   [[{ key: 'a', text: 'Put the roast in' }, { key: 'b', text: 'Peel the potatoes in 20 min' }, { key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'd', text: 'Stir for 2 minutes' }], [],
     ['Put the roast in {#put-the-roast}', 'Peel the potatoes T#20m', 'Baste T#40m:put-the-roast', 'Stir for 2 minutes'], [], false],
-  // Moved above the step it counts from.
+  // A step moved above the step it counts from.
   [[{ key: 'c', text: 'Baste 40 minutes later', from: 'a' }, { key: 'a', text: 'Put the roast in' }], [], ['Baste T#40m:put-the-roast', 'Put the roast in {#put-the-roast}'], [], true],
-  // Words kept as words; an empty row left out.
+  // Text marked `keep` stays as typed. An empty row is left out.
   [[{ key: 'b', text: 'Peel the potatoes in 20 min', keep: true }, { key: 'e', text: '  ' }], [], ['Peel the potatoes in 20 min'], [], false],
-  // Counting from a step already in the template names it.
+  // Counting from a step that is already in the template gives that step a name.
   [[{ key: 'x', text: 'Baste in 40 min', from: 'task:1' }], [{ key: 'task:1', text: 'Put the roast in' }], ['Baste T#40m:put-the-roast'], [{ key: 'task:1', title: 'Put the roast in {#put-the-roast}' }], false],
-  // Back to the step before; a name taken already gets a number.
+  // Counting from the previous step again. A name that is already used gets a number.
   [[{ key: 'a', text: 'Put {#roast}' }, { key: 'b', text: 'Baste T#40m:roast', from: '' }], [], ['Put {#roast}', 'Baste T#40m'], [], false],
   [[{ key: 'a', text: 'Check it {#check-it}' }, { key: 'b', text: 'Check it' }, { key: 'c', text: 'Again in 5 min', from: 'b' }], [], ['Check it {#check-it}', 'Check it {#check-it-2}', 'Again T#5m:check-it-2'], [], false],
-  // A time in words before punctuation: the words go, and its T# goes at the end.
+  // A time in words before punctuation. The time words are removed and the T# token is added at the end.
   [[{ key: 'a', text: 'Baste in 20 min.' }, { key: 'b', text: 'Flip it after 5 minutes, then season' }], [], ['Baste. T#20m', 'Flip it, then season T#5m'], [], false],
-  // A priority stays one: only punctuation that ends a word is pulled back to it.
+  // A priority like !2 stays a priority. Only punctuation that ends a word is moved back to that word.
   [[{ key: 'a', text: 'Baste !2 in 20 min' }], [], ['Baste !2 T#20m'], [], false],
-  // Counting from a step that isn't there: a problem, not the step before.
+  // Counting from a step that doesn't exist is a problem. It does not fall back to the previous step.
   [[{ key: 'a', text: 'Baste in 20 min', from: 'task:99' }], [{ key: 'task:1', text: 'Put the roast in' }], ['Baste T#20m'], [], true],
-  // A name doesn't end on a small word.
+  // A generated name doesn't end on a small word.
   [[{ key: 'a', text: 'Warm up the press' }, { key: 'b', text: 'Check in 5 min', from: 'a' }], [], ['Warm up the press {#warm-up}', 'Check T#5m:warm-up'], [], false]];
 
-// The line in a project's description that makes it a checklist project: on its own, anywhere in it.
+// The line in a project's description that makes it a checklist project. It must be a line of its own, anywhere in the description.
 const marks = [['<p>pocket:checklists</p>', true], ['<p>Line 2 startups</p><p>Pocket:Checklists </p>', true], ['Notes<br>pocket:checklists', true],
   ['<p>Our safety checklists</p>', false], ['<p>see pocket:checklists in the docs</p>', false], ['', false]];
-// A template's step order, a line in its description: [description, the order read, the step ids as shown].
-const S = [{id: 9}, {id: 3}, {id: 12}, {id: 5}];                             // as Vikunja gives them: in no set order
+// A template's step order is a line in its description: [description, the order parsed, the step ids as displayed].
+const S = [{id: 9}, {id: 3}, {id: 12}, {id: 5}];                             // as Vikunja returns them, in no set order
 const orders = [['<p>Notes</p><p>pocket:order 9 3 5 12</p>', [9, 3, 5, 12], [9, 3, 5, 12]],
-  ['<p>pocket:order 12 5</p>', [12, 5], [12, 5, 3, 9]],                     // steps it doesn't list follow, in the order made
-  ['<p>pocket:order 40 9 41</p>', [40, 9, 41], [9, 3, 5, 12]],               // ids no longer steps are skipped
+  ['<p>pocket:order 12 5</p>', [12, 5], [12, 5, 3, 9]],                     // steps the line doesn't list follow, in the order they were made
+  ['<p>pocket:order 40 9 41</p>', [40, 9, 41], [9, 3, 5, 12]],               // ids that are no longer steps are skipped
   ['<p>Notes</p>', null, [3, 5, 9, 12]], ['<p>pocket:order</p>', [], [3, 5, 9, 12]], ['', null, [3, 5, 9, 12]],
   ['<p>see pocket:order 9 3 in the docs</p>', null, [3, 5, 9, 12]],
-  ['<p>pocket:order 12 5<br>Bring cash for the float</p>', [12, 5], [12, 5, 3, 9]],   // a line of a paragraph (Shift+Enter)
+  ['<p>pocket:order 12 5<br>Bring cash for the float</p>', [12, 5], [12, 5, 3, 9]],   // one line of a paragraph (Shift+Enter)
   ['<p>pocket:order 12</p><p>pocket:order 5</p>', [12], [12, 3, 5, 9]], ['<ul><li>pocket:order 12</li></ul>', null, [3, 5, 9, 12]]];
-// Written: [description, ids, what it becomes].
+// Writing the order: [description, ids, the resulting description].
 const orderWrites = [['<p>Notes</p>', [5, 3], '<p>Notes</p><p>pocket:order 5 3</p>'], ['', [5], '<p>pocket:order 5</p>'],
   ['<p>pocket:order 3 5</p><p>Notes</p>', [5, 3], '<p>pocket:order 5 3</p><p>Notes</p>'],
   ['<p>Notes</p><p>pocket:order 3 5</p>', null, '<p>Notes</p>'],
@@ -405,7 +407,7 @@ const orderWrites = [['<p>Notes</p>', [5, 3], '<p>Notes</p><p>pocket:order 5 3</
   ['<p>Bring cash<br>pocket:order 3 5</p>', null, '<p>Bring cash</p>'], ['<p>pocket:order 3</p><p>pocket:order 5</p>', [9], '<p>pocket:order 9</p>'],
   ['<ul><li>pocket:order 3</li></ul>', [9], '<ul><li>pocket:order 3</li></ul><p>pocket:order 9</p>']];
 
-// ---------- run ----------
+// ---------- run the cases in the browser ----------
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const page = await browser.newPage();
 await page.goto(`http://127.0.0.1:${http.address().port}/`);
@@ -418,7 +420,7 @@ const results = await page.evaluate(([cases, projects]) => cases.map(c => {
     marks: r.marks };
 }), [cases.map(c => ({ ...c, now: +(c.now || REF) })), PROJECTS]);
 const listResults = await page.evaluate(lists => lists.map(l => captureLines(l.text)), lists);
-// Each line's words, whether it's done, and whether its words are where it says they start in the text.
+// Each line's text, whether it is done, and whether the line's text starts at the position the parser reports in the original text.
 const readResults = await page.evaluate(reads => reads.map(r => { const { names, ...opts } = r.opts, list = readList(r.text, opts); return { names: list.names, lines: list.lines.map(l => [l.text, l.done]),
   placed: list.lines.every(l => r.text.slice(l.at, l.at + l.text.length) === l.text), marked: list.lines.map(l => l.mark ? r.text.slice(...l.mark) : ''),
   under: list.lines.map(l => l.under), first: list.first }; }), reads);
@@ -437,25 +439,28 @@ const markResults = await page.evaluate(marks => marks.map(([html]) => isCheckli
 const orderResults = await page.evaluate(([os, steps]) => os.map(([html]) => [stepOrder(html),
   stepsOf({labels: [{title: 'template'}], description: html, related_tasks: {subtask: steps}}).map(s => s.id)]), [orders, S]);
 const orderWriteResults = await page.evaluate(ws => ws.map(([html, ids]) => withOrder(html, ids)), orderWrites);
-// A run's steps by id, whatever order Vikunja gives them in; any other task's subtasks as they are.
-// Late: [due, now, late?]. Any time is late once it's passed, noon too; midnight, a day without a time, once it's over.
+// Late: [due, now, late?]. A time of day is late once it has passed, noon included. Midnight means a day with no
+// time, and it is late only once that day is over.
 const lates = [['2021-06-24T09:30', '2021-06-24T10:00', true], ['2021-06-24T10:30', '2021-06-24T10:00', false],
   ['2021-06-24T12:00', '2021-06-24T15:00', true], ['2021-06-24T00:00', '2021-06-24T15:00', false],
   ['2021-06-24T09:00', '2021-06-24T15:00', true], ['2021-06-23T00:00', '2021-06-24T08:00', true]];
 const lateResults = await page.evaluate(ls => ls.map(([due, now]) => isLate(new Date(due).toISOString(), new Date(now))), lates);
+// A started checklist's steps are ordered by the order line in its description, then by id, whatever order Vikunja
+// returns them in. Any other task's subtasks keep the order they came in.
 const runOrder = await page.evaluate(() => [stepsOf({related_tasks: {copiedfrom: [{id: 1}], subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
   stepsOf({related_tasks: {subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
   stepsOf({description: '<p>pocket:run</p><p>pocket:order 9 12 3</p>', related_tasks: {subtask: [{id: 3}, {id: 12}, {id: 9}, {id: 20}]}}).map(s => s.id)]);
-// Inserting a step: before the one given; if that's gone, after the one it was inserted under, and if that's gone too, at
-// the end; and not twice.
+// An inserted step goes before the step given. If that step is gone, it goes after the step it was inserted under.
+// If that step is gone too, it goes at the end. A step already in the list is not added twice.
 const placed = await page.evaluate(() => [placeBefore([3, 9, 12], 20, 9), placeBefore([3, 9, 12], 20, 99), placeBefore([3, 20, 9], 20, 12),
   placeBefore([3, 9, 12], 20, 99, 3), placeBefore([3, 9, 12], 20, 99, 98)]);
-// A step added during its run: "Inserted", or "Repeated" when it keeps the line of the one it repeats; Pocket's lines
-// aren't its notes.
+// A step added while a checklist is running is labelled "Inserted", or "Repeated" if it keeps the step line of the
+// step it repeats. Pocket's own lines are not part of the notes.
 const addeds = await page.evaluate(() => [addedText(withAdded('<p>Mind the hot plate</p>')), addedText(withAdded(withStepLine('', 'Taste T#5m'))),
   addedText('<p>pocket:step Taste T#5m</p>'), notesOnly(withAdded(withStepLine('<p>Mind the hot plate</p>', 'Taste T#5m')))]);
-// A template: done, or not done with a due date, but not a copy being set up as a run; its name without "TEMPLATE: ";
-// its repeat in words; and where Vikunja moves it when it's ticked, as checked on Vikunja 2.7 (the round-out plan).
+// Templates. A task is a template if it is done, or not done with a due date, but not if it is a copy being set up as
+// a checklist. Also covered are the template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja
+// moves it to when it is ticked, as checked on Vikunja 2.7.
 const rounds = await page.evaluate(() => {
   const L = [{title: 'template'}], due = '2026-09-15T19:09:31Z', now = Date.parse('2026-10-06T18:09:31Z'), at = ms => ms === null ? null : new Date(ms).toISOString();
   return [isTemplate({labels: L, done: true}), isTemplate({labels: L, done: false, due_date: due}),
@@ -466,10 +471,10 @@ const rounds = await page.evaluate(() => {
     ...[{repeat_after: 86400}, {repeat_after: 3 * 86400}, {repeat_after: 604800}, {repeat_after: 1209600}, {repeat_mode: 1}, {repeat_after: 6 * 3600},
       {repeat_mode: 2, repeat_after: 86400}, {}].map(repeatWords),
     at(vikunjaNext({due_date: due, repeat_after: 86400}, now)),                          // every day, 3 weeks late: the next 19:09 after now
-    at(vikunjaNext({due_date: '2026-10-07T18:09:31Z', repeat_after: 86400}, now)),       // ticked early: a day on all the same
-    at(vikunjaNext({due_date: due, repeat_mode: 1}, now)),                               // every month: one month
-    at(vikunjaNext({due_date: '2026-07-06T18:09:31Z', repeat_mode: 1}, now)),            // ...still late
-    at(nextAfter({repeat_mode: 1}, Date.parse('2026-08-06T18:09:31Z'), now)),            // which Pocket moves past now
+    at(vikunjaNext({due_date: '2026-10-07T18:09:31Z', repeat_after: 86400}, now)),       // ticked early: still one day later
+    at(vikunjaNext({due_date: due, repeat_mode: 1}, now)),                               // every month: one month later
+    at(vikunjaNext({due_date: '2026-07-06T18:09:31Z', repeat_mode: 1}, now)),            // every month, still late after one month
+    at(nextAfter({repeat_mode: 1}, Date.parse('2026-08-06T18:09:31Z'), now)),            // Pocket moves it past now
     at(vikunjaNext({due_date: due, repeat_after: 86400, repeat_mode: 2}, now)), at(vikunjaNext({due_date: due}, now))];
 });
 await browser.close();
@@ -486,8 +491,8 @@ cases.forEach((c, i) => {
   for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority', 'pct']) if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
-  // The marks are what was read: taking them out of the text leaves the title, give or take spaces. (@username stays.)
-  // So do the quotes round a title held at its start.
+  // The marks cover what was parsed. Removing them from the text leaves the title, apart from spaces. (@username stays.)
+  // Quotes around a title at the start of the text are removed too.
   if (c.mode !== 'disabled') {
     let rest = c.text;
     for (const m of [...r.marks].reverse()) if (m.kind !== 'assignees') rest = rest.slice(0, m.start) + ' ' + rest.slice(m.end);

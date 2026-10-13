@@ -1,5 +1,5 @@
-// The one row (src/markup/task-row.html), for a task, a subtask in its sheet, and a step on a run's screen: what it asks
-// the component, by the options of the list it's in (g).
+// The shared row (src/markup/task-row.html) renders a task, a subtask in a sheet and a step on a checklist's screen.
+// These tests check what the row asks the component, given the options of the list it is in (`g`).
 import { component } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import sending from '../../src/js/app/sending.js';
@@ -20,7 +20,7 @@ import { THROW_STAYS } from '../../src/js/throw.js';
 import { HOLD_MS, TEXT_FIELD } from '../../src/js/progress.js';
 
 const RUN = { depth: {}, run: true, at: 0, locked: false };
-// A step as a run's screen works it out (runView, runs.js), with only what the row reads.
+// A step as the checklist screen builds it (runView, runs.js), with only the fields the row reads.
 const step = f => ({ id: 7, i: 0, title: 'Take the croissants out', done: false, skipped: false, slow: false, added: '', notes: [], dueText: '', late: false, slot: null, ...f });
 
 test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a task\'s, as before: none moves the add box', () => {
@@ -36,7 +36,8 @@ test('a step\'s tick goes through the outbox; a subtask\'s in its sheet, and a t
   assert.deepEqual(calls, [['step', 7, 'done'], ['step', 7, 'undone'], ['sub', 3], ['task', 4, 'row'], ['sheet']], 'the sheet\'s own row: its tick is the sheet\'s');
 });
 
-/* A row's title tapped (tapRow), by where the row is: what the markup's tap asked in one long line before. */
+/* Tapping a row's title (tapRow) does something different depending on where the row is. This replaces one long
+   expression in the markup. */
 test('a row\'s title tapped: a step goes on the card, the sheet\'s own title is changed, a subtask or a run\'s own row opens its task, a list\'s row what it\'s a row of', () => {
   const app = component(views), calls = [];
   Object.assign(app, { showStep: (i, tap) => calls.push(['step', i, tap]), editTitle: () => calls.push(['edit']), openTask: id => calls.push(['task', id]), openRow: t => calls.push(['row', t.id]) });
@@ -54,8 +55,9 @@ test('a row\'s title tapped: a step goes on the card, the sheet\'s own title is 
   assert.deepEqual(calls, [['step', 1, true]], 'a step added and not sent yet still goes on the card');
 });
 
-/* A ring tapped (tapRing): a run's own, atop its screen, has its own tap; any other is ringTap, told whether it's in a
-   sheet (no row to turn into a gap there) or on which card or row of a list. */
+/* Tapping a ring (tapRing). A checklist's own ring at the top of its screen has its own tap. Any other ring calls
+   ringTap, which is told whether the ring is in a sheet (where there is no row to turn into a gap) or which card or
+   row of a list it is on. */
 test('a ring tapped: a run\'s own tap atop its screen; in a sheet, with no row; in a list, with its card or row', () => {
   const app = component(views), calls = [], t = { id: 4 };
   app.ringTap = (t, el, sheet) => calls.push([t.id, el, sheet]);
@@ -66,11 +68,11 @@ test('a ring tapped: a run\'s own tap atop its screen; in a sheet, with no row; 
   assert.deepEqual(calls, ['own', [4, null, true], [4, 'card', false]]);
 });
 
-/* Enter in an add box, and its button (boxEnter, boxSend): each box's own send, which the add box's form asked in a
-   line of its own before. */
+/* Pressing Enter in an add box (boxEnter) or tapping its button (boxSend) sends what that box holds. This replaces a
+   separate expression for each box in the add box's form. */
 test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks, a template\'s steps; a template\'s name goes on to its steps\' box', () => {
   const app = component(quickadd), calls = [], focused = [];
-  Object.assign(app, { user: { settings: { frontend_settings: { quick_add_magic_mode: 'disabled' } } }, cap: { text: '' },   // no @ or * to suggest for
+  Object.assign(app, { user: { settings: { frontend_settings: { quick_add_magic_mode: 'disabled' } } }, cap: { text: '' },   // nothing to suggest after @ or *
     submitCapture: () => calls.push('task'), insertStep: () => calls.push('steps'), addSubtasks: w => calls.push('subtasks ' + w),
     sendSteps: which => calls.push('steps ' + which), stepBox: () => ({ text: '' }), sheet: { stepEdit: { id: 3 } } });
   document.getElementById = id => ({ focus: () => focused.push(id), blur: () => focused.push('blur ' + id) });
@@ -83,9 +85,9 @@ test('what a box sends, by Enter or its button: a task, a run\'s steps, subtasks
   } finally { delete document.getElementById; }
 });
 
-/* A row, or a card, that's a gap (markup/gap.html): deleted, until the batch clears. One rule says which (isGap), for
-   the gap's drawing and for the tap that restores it, a row's and a card's alike. One done is never a gap, however it
-   was done, by its tick, a full swipe or its ring: it's shown done in its place, and its tick is the undo. */
+/* A deleted row or card is shown as a gap (markup/gap.html) until the batch clears. One rule (isGap) decides this, for
+   both the gap's drawing and the tap that restores it. A done task is never a gap, however it was marked done (tick,
+   full swipe or ring). It stays in place as done, and tapping its tick undoes it. */
 test('a row deleted is a gap, a card too, and a tap anywhere on it restores it and goes no further; one done never is', () => {
   const app = component(views, leaving), LIST = { depth: {} }, CARDS = { depth: {}, cards: 'list' }, did = [];
   Object.assign(app, { leaving: { 1: 'deleted', 2: 'done' }, restoreRow: id => did.push(['restore', id]) });
@@ -101,9 +103,10 @@ test('a row deleted is a gap, a card too, and a tap anywhere on it restores it a
   assert.deepEqual(tap(1, SHEET_ROW), []);
 });
 
-/* A tap on a tick is felt (rows-and-sheet-fixes-plan, part 2), through haptic(), which the phone's vibrate stands in
-   for here: a task's, a subtask's in its sheet and the sheet's own, where it's tapped (tickRow); a step's in tickStep,
-   from its box or its card's Done, but not when a swipe did it, which was felt as it passed its full point. */
+/* Tapping a tick makes the phone vibrate, through haptic(). Here navigator.vibrate stands in for the phone. This
+   covers a task's tick, a subtask's tick in its sheet and the sheet's own tick (tickRow), and a step's tick in
+   tickStep, from its box or its card's Done. A step done by a swipe does not vibrate a second time, because the
+   swipe already vibrated when it passed its full point. */
 test('a tick tapped is felt, a task\'s and a step\'s, firmer when it marks it done; a step done by a swipe isn\'t felt twice', async () => {
   const felt = [], app = component(views, claims, leaving, runs);
   navigator.vibrate = p => felt.push(p);
@@ -126,8 +129,8 @@ test('a tick tapped is felt, a task\'s and a step\'s, firmer when it marks it do
   } finally { delete navigator.vibrate; }
 });
 
-/* A task's sheet leads with its row (parent-tasks-plan, 6b): under its title only when it's due and how soon, as its
-   project, run or parent are in the path over it, and its labels and counts in the sheet under it. */
+/* A task's sheet starts with the task's row. Under the title it shows only when the task is due and how soon. The
+   project, checklist and parent are in the path above the row, and labels and counts are in the sheet below it. */
 test('the sheet\'s own row says only when it\'s due, its priority, that it repeats and a reminder to come', () => {
   const app = component(views, claims), soon = new Date(Date.now() + 5 * 36e5).toISOString();
   Object.assign(app, { route: { name: 'today' }, projById: new Map([[1, { id: 1, title: 'Café', hex_color: '1d6b52' }]]), waitingByTask: new Map(),
@@ -148,8 +151,8 @@ test('under a step\'s title: Inserted or Repeated, its comments, and its countdo
   assert.deepEqual(app.rowMeta(step({ done: true, dueText: 'Due in 3m' }), RUN), [], 'a done step has no countdown');
 });
 
-// Which projects are for checklists is worked out once, as the projects are set, not each time a row asks (isRunTask):
-// it reads each project's description as HTML.
+// Which projects are for checklists is worked out once, when the projects are set. Otherwise isRunTask would read
+// each project's description as HTML every time a row asks.
 test('the projects for checklists are worked out when the projects are set, not each time a row asks', () => {
   const app = component(views, runs, checklists);
   let read = 0;
@@ -163,10 +166,10 @@ test('the projects for checklists are worked out when the projects are set, not 
   assert.deepEqual([...app.checklistIds], [1], 'a project made one, another one no longer');
 });
 
-/* A run's row, on a project's list, in search and under Checklists (one-concept-plan, part 3): its ring says how far it
-   is, so no count of its steps and no "Next: …"; who it's for is its slot's pictures, said to a screen reader as its
-   line said it, and not on a project only you can see. A run's step has no 🔔: its reminder is Pocket's own, for the
-   countdown the row shows. */
+/* A checklist's row (on a project's list, in search and on Checklists) shows progress in its ring, so it has no count
+   of steps and no "Next: …". Who the checklist is for appears as the pictures in its slot, with a label for screen
+   readers, and is hidden on a project only the user can see. A checklist's step has no 🔔, because its reminder is
+   Pocket's own and feeds the countdown the row shows. */
 test('a run\'s row shows who it\'s for in its slot, not under its title; a run\'s step has no 🔔, a task has', () => {
   const app = component(views, runs, checklists, cards, claims), me = { id: 1, username: 'alex' }, soon = new Date(Date.now() + 18 * 6e4).toISOString();
   app.checklistIds = new Set([2]);
@@ -194,10 +197,10 @@ test('a step\'s slot is who\'s doing it until it\'s done, when its row shows who
   assert.equal(app.rowSlot(step({ slot, done: true }), RUN), null);
 });
 
-/* What a finger can do on a row, besides its progress, by the screen its list is on (parent-tasks-plan, part 1): a row
-   acts the same everywhere, so every screen's rows are swiped to Delete; a hold moves a row on a project's list and in
-   a task's sheet, on Today moves it to another date (hold-to-reschedule-plan), and search has no order of its own. The
-   row writes its list's options on itself, and the gesture code reads them there. */
+/* Besides progress, which gestures a row allows depends on the screen its list is on. Every screen's rows swipe to
+   Delete. Holding a row reorders it on a project's list and in a task's sheet, and moves it to another date on
+   Today. Search has no order, so holding does nothing there. The row writes its list's options on itself, and the
+   gesture code reads them there. */
 test('every screen\'s rows are swiped to Delete; a project\'s and a sheet\'s are moved too, Today\'s to another date, search\'s not', () => {
   const on = name => rowGestures({ depth: {}, ...screenRows(name) });
   assert.equal(on('today'), 'delete reschedule', 'Today: a hold picks it another date');
@@ -230,15 +233,15 @@ test('a row swiped or held: its Delete and its move only where its list allows t
   assert.equal(app.rowGesture({ id: 7, pending: true }, row(''), false), null, 'one waiting to be sent: only its tap');
 });
 
-/* What a hold moves is asked each time a finger goes down on a row, tap, swipe or scroll alike (reorderOf, from
-   rowGesture), so it mustn't cost what a long list costs: its siblings' rows are found in one pass over the list, and
-   a list still being drawn is drawn to its end only once the hold is felt. A list of 3 tasks, the second with a
-   subtask under it on its card; the pretend list can't be searched (it has no querySelectorAll), only gone over. */
+/* reorderOf (called from rowGesture) runs every time the user touches a row, whether it ends as a tap, a swipe or a
+   scroll. It must stay cheap on a long list. It finds the siblings' rows in one pass over the list, and a list still
+   being drawn is drawn to its end only once the hold registers. The list here has 3 tasks, and the second has a
+   subtask under it on its card. The fake list can't be searched (it has no querySelectorAll), only iterated. */
 test('a finger down on a row doesn\'t search a long list, nor draw the rest of one still being drawn: that waits for the hold', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(progress), drawn = [], read = { n: 0 };
   const list = { get children(){ read.n++; return kids; } }, item = id => ({ dataset: { id: String(id) }, parentElement: list, matches: sel => sel === '.item', classList: { add(){}, remove(){} } });
-  const kids = [{ dataset: {} }, item(1), item(2), item(3)];                // (its <template> first, as Alpine leaves it)
+  const kids = [{ dataset: {} }, item(1), item(2), item(3)];                // the <template> comes first, as Alpine leaves it
   const row = { parentElement: kids[2], matches: () => false, dataset: { id: '2', gestures: 'reorder' }, clientWidth: 360, closest: () => null, classList: { add(){}, remove(){} } };
   const sibs = [{ id: 1 }, { id: 2 }, { id: 3 }];
   Object.assign(app, { drawing: false, drawAll: () => drawn.push('all'), orderOf: () => ({ sibs, view: 5, blocks: [{ ids: [1] }, { ids: [2, 21] }, { ids: [3] }] }), $refs: {} });
@@ -248,7 +251,7 @@ test('a finger down on a row doesn\'t search a long list, nor draw the rest of o
   app.drawing = true;
   const hold = app.reorderOf({ id: 2 }, row, false);
   assert.deepEqual([drawn, read.n], [[], 1], 'a list still being drawn: nothing drawn, nothing looked for, as the finger goes down');
-  // Through the real listeners: down, and the hold felt 450 ms later.
+  // Use the real listeners: pointer down, then the hold registers 450 ms later.
   const on = {}, win = {}, area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
   document.addEventListener = () => {}; globalThis.addEventListener = (type, fn) => { (win[type] ||= []).push(fn); }; globalThis.getSelection = () => null;
   c.after(() => { delete document.addEventListener; delete globalThis.addEventListener; delete globalThis.getSelection; });
@@ -258,12 +261,12 @@ test('a finger down on a row doesn\'t search a long list, nor draw the rest of o
   assert.deepEqual(drawn, [], 'not before the hold');
   c.mock.timers.tick(1);
   assert.deepEqual(drawn, ['all'], 'the hold felt: the rest of the list is drawn, for the row to be moved among all its siblings');
-  for (const fn of win.pointerup) fn({ pointerId: 1 });                     // let go, so nothing is held for the tests after
+  for (const fn of win.pointerup) fn({ pointerId: 1 });                     // release, so no hold carries into later tests
 });
 
-/* A finger moved past SWIPE_PX is scrolling or swiping, not holding still: no hold comes of a pause after that, even
-   one moved more sideways than not but not clearly so (SWIPE_SLOPE), which holdToSlide leaves undecided. Within
-   SWIPE_PX a thumb may wobble, and the hold still comes. */
+/* A touch that moves past SWIPE_PX is scrolling or swiping, so pausing afterwards must not start a hold. This includes
+   a move that is mostly sideways but not clearly so (SWIPE_SLOPE), which holdToSlide leaves undecided. A move within
+   SWIPE_PX is a wobble of the thumb, and the hold still starts. */
 test('a finger moved past the swipe threshold on a slant, then held still, lifts nothing; one that only wobbles is held', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(progress), felt = [], on = {}, win = {}, area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
@@ -272,21 +275,22 @@ test('a finger moved past the swipe threshold on a slant, then held still, lifts
   c.after(() => { delete document.addEventListener; delete globalThis.addEventListener; delete globalThis.getSelection; delete navigator.vibrate; });
   app.holdToSlide(area, () => ({ el: row, reorder: { start(){}, move(){}, end(){} } }));
   const finger = (type, e) => { for (const fn of (type === 'pointerdown' ? on : win)[type] || []) fn({ isPrimary: true, pointerType: 'touch', pointerId: 1, target: { closest: () => null }, preventDefault(){}, ...e }); };
-  c.after(() => finger('pointerup', {}));                                   // let go, so nothing is held for the tests after
+  c.after(() => finger('pointerup', {}));                                   // release, so no hold carries into later tests
   finger('pointerdown', { clientX: 100, clientY: 100 });
-  finger('pointermove', { clientX: 109, clientY: 108 });                   // 12px, past SWIPE_PX; sideways by 9 to 8, short of SWIPE_SLOPE
+  finger('pointermove', { clientX: 109, clientY: 108 });                   // 12px, past SWIPE_PX. 9px across and 8px down, short of SWIPE_SLOPE
   c.mock.timers.tick(HOLD_MS);
   assert.deepEqual(felt, [], 'moved that far on a slant, then still: no hold');
   finger('pointerup', {});
   finger('pointerdown', { clientX: 100, clientY: 100 });
-  finger('pointermove', { clientX: 104, clientY: 104 });                   // under SWIPE_PX: a wobble
+  finger('pointermove', { clientX: 104, clientY: 104 });                   // under SWIPE_PX, so a wobble
   c.mock.timers.tick(HOLD_MS);
   assert.deepEqual(felt, [12], 'a wobble within the threshold, then still: the hold is felt');
   finger('pointerup', {});
 });
 
-/* A run's step is swiped as a task's row is (parent-tasks-plan, part 1): its progress either way, a done one down, and
-   past 0% only a step inserted or repeated during the run, not done, has a Delete; a template's step stops at 0%. */
+/* A checklist's step swipes like a task's row. Swiping sets progress either way, and a done step swipes down. Past
+   0%, only a step that was inserted or repeated during the checklist and is not done has a Delete. A template's step
+   stops at 0%. */
 test('a run\'s step: swiped for its progress as a task is; only one inserted during the run goes on into a Delete', () => {
   const app = component(progress), steps = [step({ id: 1, pct: 50 }), step({ id: 2, added: 'Inserted' }), step({ id: 3, done: true, pct: 25 }), step({ id: 4, pending: true })];
   Object.assign(app, { runView: { steps, finished: false }, view: { run: { run: { project_id: 1 } } }, canWrite: () => true });
@@ -300,8 +304,8 @@ test('a run\'s step: swiped for its progress as a task is; only one inserted dur
   assert.equal(at(1), null, 'a finished run: nothing');
 });
 
-// A step added during a run is asked about before it's deleted, from its × or its row's Delete, the same question:
-// asked before its row goes anywhere (swipeDeleteStep), the deletion doesn't ask again.
+// Deleting a step added during a checklist asks for confirmation, from its × or from its row's Delete. A swipe asks
+// before the row moves (swipeDeleteStep), so the deletion itself does not ask again.
 test('a step added during a run is asked about once before it\'s deleted: by its ×, or beforehand by its row\'s swipe', async () => {
   const app = component(runs), asked = [], was = globalThis.confirm;
   let yes = false;
@@ -330,9 +334,9 @@ test('a done step swiped down is not done again first, then at that progress; as
   assert.deepEqual(sent, [['progress', 50]], 'an open step: only its progress');
 });
 
-/* A step swiped right past half its row is done (parent-tasks-plan, 1b), through the outbox, as its box tapped is: done
-   in its place, with nothing marked and no gap, its box unticking it. A screen reader hears it, as a swipe has no box
-   in focus to say it. */
+/* A step swiped right past half its row is done through the outbox, the same as tapping its box. The step stays in
+   place as done, with nothing marked and no gap, and unticking its box undoes it. The component announces it to
+   screen readers, because a swipe has no focused box to do that. */
 test('a step done by a full swipe is done as its box tapped is: in its place, with no gap and nothing marked', async () => {
   const app = component(runs, leaving), sent = [];
   Object.assign(app, { tickStep: async (s, op) => { sent.push(op); } });
@@ -342,8 +346,8 @@ test('a step done by a full swipe is done as its box tapped is: in its place, wi
   assert.equal(app.isGap({ id: 4 }, RUN), false);
 });
 
-/* Progress slid on a row no one is doing says you're doing it (motion-and-rows-plan, section 3): your picture as the
-   slide starts, the claim sent only if the slide changed something, and someone else's never replaced. */
+/* Sliding progress on a row that nobody is doing means the user is doing it. The user's picture shows when the slide
+   starts. The claim is sent only if the slide changed something, and it never replaces someone else's claim. */
 test('a slide shows you on a task no one is doing, and claims it only once it has changed something', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
   const app = component(claims);
@@ -367,9 +371,9 @@ test('a slide shows you on a task no one is doing, and claims it only once it ha
   assert.equal(acts.length, 1, 'yours already: nothing to send, and sliding back to 0% later keeps it');
 });
 
-/* What's waiting to be sent, by task (keyWaiting, sending.js): a row asks about its own claim and its own files, so the
-   outbox changing asks nothing of the other rows (rows-and-sheet-fixes-plan, part 6). On Alpine's own reactivity
-   (reactive.mjs): each row's question is watched, and counted each time it's asked again. */
+/* Claims and files waiting in the outbox are kept by task (keyWaiting, sending.js). A row asks only about its own
+   claim and files, so a change in the outbox does not make the other rows ask again. The test uses Alpine's
+   reactivity (reactive.mjs). Each row's question is watched and counted every time it is asked again. */
 test('a claim, a let-go and files waiting to be sent are kept by their task: the last claim counts, and only that task\'s row is asked again', c => {
   const { Alpine, flush } = watching(c), me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' };
   const app = Alpine.reactive(component(claims, sending));
@@ -390,9 +394,10 @@ test('a claim, a let-go and files waiting to be sent are kept by their task: the
   assert.deepEqual([seen, { ...Alpine.raw(app).waiting.claims }], [{ 5: [['priya'], 0], 6: [['priya'], 0] }, {}], 'all sent: nothing waits');
 });
 
-/* "+ me" only where someone else could take it (one-concept-plan, part 4): in a project no one else can see (seenBy,
-   loaded with who can see each project), no slot, nor your own picture; someone else given it still shows, and a slide
-   claims nothing. Until that's known, or for an API token that can't ask, the slot is as anywhere else. */
+/* "+ me" appears only where someone else could take the task. In a project nobody else can see (seenBy, loaded with
+   who can see each project), there is no slot and no picture of the user. Someone else's assignment still shows, and
+   a slide claims nothing. Until seenBy is known, or for an API token that can't ask, the slot appears as it does
+   everywhere else. */
 test('in a project only you can see, no "+ me" nor your picture, someone else\'s still, and a slide claims nothing', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
   const app = component(claims);
@@ -424,8 +429,8 @@ test('a checklist step\'s box is square, on its run\'s screen, in its run\'s she
   assert.equal(app.isStepRow(sub, { depth: {}, sheet: true }), false);
 });
 
-/* The one-time hint (motion-and-rows-plan, section 8): on the first row of a screen that takes a slide, as the screen is
-   first drawn; on Today, a card's step line counts, the hint then being the card's, so its next step keeps it. */
+/* The one-time hint appears on the first row of a screen that takes a slide, when the screen is first drawn. On Today
+   a card's step line counts as a row. The hint then belongs to the card, so the card's next step keeps it. */
 test('the hint goes on the first open row that takes a swipe, a card\'s step line counting, and is said once', () => {
   const app = component(progress, leaving);
   const ro ={ id: 1, project_id: 9 }, done = { id: 2, done: true }, waiting = { id: 3, pending: true }, card = { id: 4 }, row = { id: 5 }, folded = { id: 6 };
@@ -456,10 +461,11 @@ test('the hint goes on the first open row that takes a swipe, a card\'s step lin
   assert.equal(app.hint.at, null, 'gone for good');
 });
 
-/* The sheet's own row (parent-tasks-plan, 6b) swiped as a list's row, about this one task: its progress from where it
-   is, springing back whatever it set (a full swipe ticks it in place, with no gap); left at 0%, its Delete, which
-   deletes it as the sheet's ⋯ does. A parent's: no progress, all the way its ring's tap from the sheet. Not a template's,
-   one shared with you to read, nor while its title is being changed. */
+/* The sheet's own row swipes like a row in a list, but acts on the one open task. Swiping sets progress from where it
+   is now, and the row springs back whatever it set. A full swipe ticks the task in place, with no gap. Swiping left
+   at 0% is Delete, which deletes the task the same way the sheet's ⋯ menu does. A parent task has no progress swipe,
+   and swiping all the way taps its ring from the sheet. The row does not swipe for a template, a read-only task, or
+   while the title is being edited. */
 test('the sheet\'s own row: swiped for its progress, springing back; at 0% its Delete; a parent\'s is its ring\'s', () => {
   const app = component(progress, cards), taps = [];
   const t = { id: 5, title: 'Wipe the menus', project_id: 1, percent_done: 0.25 };
@@ -488,8 +494,8 @@ test('the sheet\'s own row: swiped for its progress, springing back; at 0% its D
   assert.equal(app.sheetRowGesture(row), null, 'shared with you to read');
 });
 
-/* Where a gesture starts (holdToSlide, watchNudges), run as they are on a pretend screen: `area` keeps the listeners
-   they add, `fire` calls them. What a finger went down on says only what it's in (`closest`): a text field, a row. */
+/* These helpers run the start of a gesture (holdToSlide, watchNudges) on a fake screen. `area` keeps the listeners
+   they add and `fire` calls them. The touch target answers only what it is inside (`closest`): a text field or a row. */
 function screen(){
   const on = {}, area = { addEventListener: (type, fn) => { (on[type] ||= []).push(fn); } };
   return { area, fire: (type, e) => { for (const fn of on[type] || []) fn(e); } };
@@ -516,7 +522,7 @@ test('on a list, a touch that starts in a text field is never a row\'s swipe or 
   try {
     Object.assign(app, { route: { name: 'project' }, stepSlide: r => { asked.push(r.dataset.id); return null; }, nudged: id => nudged.push(id) });
     app.initProgressDrag();
-    // A finger down on a row, moved 30px down over 300ms and lifted, slowly: a nudge.
+    // Touching a row, moving 30px down over 300ms and releasing is a slow scroll, which counts as a nudge.
     const nudge = target => {
       const at = (y, t) => ({ target, timeStamp: t, touches: [{ clientX: 100, clientY: y }], changedTouches: [{ clientX: 100, clientY: y }] });
       fire('touchstart', at(100, 0)); fire('touchmove', at(110, 100)); fire('touchmove', at(120, 200)); fire('touchend', { ...at(130, 300), touches: [] });
@@ -529,9 +535,10 @@ test('on a list, a touch that starts in a text field is never a row\'s swipe or 
   } finally { delete document.getElementById; }
 }));
 
-/* A nudge always selects (rows-and-sheet-fixes-plan, part 3), through the real listeners (watchNudges) and `nudged`
-   (quickadd.js): the row touched before a subtask was added, too. A tick is felt whenever the lit row changes, which
-   the phone's vibrate stands in for here. Pack the van, with Load chairs under it; each row is on the pretend screen. */
+/* A nudge always selects the row, including the row touched before a subtask was added. The test uses the real
+   listeners (watchNudges) and `nudged` (quickadd.js). The phone vibrates whenever the highlighted row changes, and
+   navigator.vibrate stands in for that here. The task is Pack the van with Load chairs as its subtask, and both rows
+   are on the fake screen. */
 test('a nudge lights the row it starts on, the one touched before too, and is felt when the lit row changes; a waiting or a done row is left alone', () => noWindow(() => {
   const app = component(progress, cards, quickadd), felt = [], { area, fire } = screen(), els = {};
   const rowEl = id => els[id] ||= { dataset: { id: String(id) }, parentElement: {}, getBoundingClientRect: () => ({ top: 100, bottom: 150 }) };
@@ -544,7 +551,7 @@ test('a nudge lights the row it starts on, the one touched before too, and is fe
     Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], lines: {}, checklistIds: new Set(), canWrite: () => true, $refs: {},
       tasks: { 10: van, 11: chairs }, positions: { 10: 1000, 11: 100 }, view: { groups: [{ key: 'open', tasks: [van, chairs] }], listView: 5 } });
     app.initProgressDrag();
-    // A finger down on a row, moved 30px down over 300ms and lifted, slowly.
+    // Touching a row, moving 30px down over 300ms and releasing is a slow scroll, which counts as a nudge.
     const nudge = id => {
       const target = within(false, { '.item > .row': rowEl(id) }), at = (y, t) => ({ target, timeStamp: t, touches: [{ clientX: 100, clientY: y }], changedTouches: [{ clientX: 100, clientY: y }] });
       fire('touchstart', at(100, 0)); fire('touchmove', at(110, 100)); fire('touchmove', at(120, 200)); fire('touchend', { ...at(130, 300), touches: [] });
@@ -554,11 +561,11 @@ test('a nudge lights the row it starts on, the one touched before too, and is fe
     assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 1], 'lit, and felt');
     nudge(10);
     assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 1], 'the lit row again: nothing changes, nothing felt');
-    // A subtask added from the box has the light (aimAdded); its row, still waiting to be sent, nudged: left alone.
+    // A subtask added from the box becomes the highlighted row (aimAdded). Nudging its row while it is still waiting to be sent changes nothing.
     app.aimAdded({ id: 'e1', items: [{ p: { title: 'Rope', position: 2000 }, under: null }] }, 0, van);
     nudge('pending-e1-0');
     assert.deepEqual(now(), [['pending-e1-0'], { to: 'Pack the van', after: 'Rope' }, 1]);
-    // The task touched before, nudged again: it's selected, the line goes back to it, and that's felt.
+    // Nudging the task touched before selects it again, the add box goes back to it, and the phone vibrates.
     nudge(10);
     assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 2]);
     nudge(11);
@@ -569,8 +576,9 @@ test('a nudge lights the row it starts on, the one touched before too, and is fe
   } finally { delete document.getElementById; delete document.querySelector; delete navigator.vibrate; delete globalThis.innerHeight; }
 }));
 
-// Progress set in the sheet, by a swipe on its row or a quarter in Details, claims as a row's swipe does (user,
-// 2026-10-08: the same rule everywhere), after its save, whose reply would otherwise be shown over the claim.
+// Setting progress in the sheet, by swiping its row or tapping a quarter in Details, claims the task the same way a
+// swipe on a list row does. The claim is sent after the save, because the save's reply would otherwise replace the
+// claim on screen.
 test('the sheet\'s progress, swiped or a quarter tapped, claims a task no one is doing, after its save; someone else\'s stays theirs', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, order = [];
   const app = component(progress, claims);
@@ -597,8 +605,9 @@ test('the sheet\'s progress, swiped or a quarter tapped, claims a task no one is
   assert.deepEqual(order, [], 'a parent\'s progress is its subtasks\'');
 });
 
-// Who can see each project is loaded in the background once signed in, and kept (seenBy), so the claim slots are right
-// as Today opens; loaded again, a project no longer shared counts again, and one that can't be read keeps what was known.
+// Who can see each project is loaded in the background after sign-in and kept in seenBy, so the claim slots are right
+// when Today opens. On a later load, a project that is no longer shared counts as only the user's again. A project
+// that can't be read keeps its earlier value.
 test('who can see each project: how many besides you, kept on the phone, and loaded again now and then', async () => {
   const me = { id: 1, username: 'alex' }, bob = { id: 2, username: 'bob' }, seen = { 1: [me], 2: [me, bob] }, fail = new Set();
   const app = component(quickadd, claims);
@@ -619,9 +628,9 @@ test('who can see each project: how many besides you, kept on the phone, and loa
   assert.notEqual(app.access['2:bob'], true, 'bob no longer seen to see it (asked again if typed)');
 });
 
-/* A hold on Today (hold-to-reschedule-plan): a row's or a card's dates, around the finger (app/throw.js), a card's row
-   holding its card; what Move all to today leaves where it is has every date dimmed and a line saying why; one that
-   can't be changed, nothing. */
+/* Holding a row or card on Today shows its dates around the touch point (app/throw.js). A card's row holds its card.
+   A task that Move all to today leaves where it is shows every date dimmed, with a line saying why. A task the user
+   can't change shows nothing. */
 test('a row held on Today has its dates, but one that repeats, a checklist, a run or its step can\'t move, and says why', () => {
   const app = component(progress, throwing), held = [];
   Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, isRunTask: t => t.id === 4, stepRun: t => t.id === 5 ? 4 : null,
@@ -637,13 +646,14 @@ test('a row held on Today has its dates, but one that repeats, a checklist, a ru
   assert.deepEqual(Object.keys(THROW_STAYS), ['repeats', 'checklist', 'run'], 'each says why, over its dates');
 });
 
-/* The hold itself, run as it is on a pretend screen: holdToSlide (app/progress.js) drives the row's gesture
-   (rowGesture, throwOf in app/throw.js), with what's drawn stood in for (throwView: `seen` keeps what it's told to
-   show; left open to tap, `tap(id)` taps a date and `pickDay(day)` chooses one in the phone's picker) and the move it
-   ends in kept (`moved`: reschedule). `touch(x, y)` puts a finger down on the row and holds it
-   until the hold is felt; `to(x, y)` moves it, `up()` lets go, `away()` is the phone taking it (pointercancel). What's
-   felt is the phone's vibrate, standing in for haptic(): 12 as the hold is felt, 6 at each date lit. It's Wednesday 7
-   October 2026, 2:20 PM, and the task (`t`, which a test may change between holds) was due the morning before. */
+/* Runs a hold on a fake screen. holdToSlide (app/progress.js) drives the row's gesture (rowGesture, throwOf in
+   app/throw.js). throwView stands in for what is drawn, and `seen` records what it is told to show. When the dates are
+   left open to tap, `tap(id)` taps a date and `pickDay(day)` picks one in the phone's date picker. `moved` records
+   the reschedule the hold ends in. `touch(x, y)` touches the row and waits until the hold registers. `to(x, y)`
+   moves the touch, `up()` releases it, and `away()` is the phone cancelling the touch (pointercancel). `felt`
+   records navigator.vibrate, which stands in for haptic(): 12 when the hold registers and 6 for each highlighted
+   date. The clock is set to Wednesday 7 October 2026, 2:20 PM. The task `t` (a test may change it between holds) was
+   due the morning before. */
 function heldOnToday(c){
   c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date(2026, 9, 7, 14, 20) });
   const app = component(progress, throwing), t = { id: 1, title: 'Call the plumber', project_id: 1, due_date: new Date(2026, 9, 6, 9).toISOString() };
@@ -751,8 +761,8 @@ test('open to tap, a day picked in the phone\'s own picker moves the task there,
   assert.deepEqual(h.moved.at(-1), [1, 'Tomorrow', oct(8, 9)], 'tomorrow, picked: said as Tomorrow');
 });
 
-/* New template's steps (app/checklists.js; sheet/sub-list.html): rows on the phone only, written through the one box
-   at the list's foot, and nothing of them in Vikunja until Create template. */
+/* The steps of a new template (app/checklists.js, sheet/sub-list.html) exist only as rows on the phone. They are
+   written through the one box at the bottom of the list, and Vikunja knows nothing about them until Create template. */
 test('in New template the box\'s lines join the rows, after the row the box is under, and the box follows the last; one taken out hands the box to the row before', () => {
   const app = component(checklists, quickadd, sheet);
   Object.assign(app, { user: { settings: { frontend_settings: {} } }, projects: [], sheet: { kind: 'newtpl', subAt: null, stepEdit: null, newTpl: { rows: [], add: { text: '', keep: false, from: null, ignore: {} } } } });
@@ -761,21 +771,21 @@ test('in New template the box\'s lines join the rows, after the row the box is u
   box.text = 'Wipe the tables\nLock up'; app.sendSteps('new');
   assert.deepEqual([rows(), box.text, app.sheet.subAt], [['Turn on the machine', 'Wipe the tables', 'Lock up'], '', null], 'at the foot: after the last, a pasted list a row a line');
   assert.ok(app.sheet.newTpl.rows.every(r => r.id === 'new-' + r.key), 'each shaped for the task row, by its id, and for its reading, by its key');
-  // The box under the first row: what's written goes after it, and the box is under what was written.
+  // With the box under the first row, a new step goes after that row, and the box then sits under the new step.
   app.sheet.subAt = app.sheet.newTpl.rows[0].id;
   box.text = 'Fill the grinder'; app.sendSteps('new');
   assert.deepEqual(rows(), ['Turn on the machine', 'Fill the grinder', 'Wipe the tables', 'Lock up']);
   assert.equal(app.sheet.subAt, app.sheet.newTpl.rows[1].id, 'under the one just written');
   box.text = '   '; app.sendSteps('new');
   assert.equal(rows().length, 4, 'nothing typed: nothing added');
-  // Taken out, by a swipe: the box, which was under it, is under the row before; the first taken out, at the foot.
+  // Deleting a step by swipe moves the box that was under it to the row before it. Deleting the first step moves the box to the bottom.
   app.removeStep(1);
   assert.deepEqual([rows(), app.sheet.subAt], [['Turn on the machine', 'Wipe the tables', 'Lock up'], app.sheet.newTpl.rows[0].id]);
-  // Held and moved: its place among the rows, with nothing sent.
+  // Holding and dragging a step changes its position among the rows. Nothing is sent.
   app.moveStep(2, -2, true);
   assert.deepEqual(rows(), ['Lock up', 'Turn on the machine', 'Wipe the tables']);
-  // A row reads as a saved step does (the user, 2026-10-12): without the !priority quick add will read when it's
-  // created, and with the words of a chip tapped off, which stay in its title.
+  // A row shows the same title a saved step would. The title leaves out !priority, which quick add reads when the step
+  // is created. It keeps the text of a chip the user tapped off, because that text stays in the title.
   box.text = 'Count the till !4'; app.sendSteps('new');
   const till = app.sheet.newTpl.rows.find(r => r.text.startsWith('Count'));
   assert.equal(app.stepShown(till).title, 'Count the till');

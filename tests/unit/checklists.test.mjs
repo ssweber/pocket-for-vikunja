@@ -1,5 +1,6 @@
-// Checklist steps that need no HTML (src/js/checklists.js): their order, times and what's shown of them. Reading and
-// writing Pocket's lines in a description, and steps as they're typed, are in tests/parse.mjs, which has a browser.
+// Checklist steps that don't need HTML (src/js/checklists.js): their order, their times, and what is shown for them.
+// tests/parse.mjs covers the parts that need a browser. Those are reading and writing Pocket's lines in a description,
+// and parsing steps as the user types them.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

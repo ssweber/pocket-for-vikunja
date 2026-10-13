@@ -1,6 +1,7 @@
-// The stacked card (src/js/cards.js, and app/cards.js on a pretend component): which tasks are cards on Today and what
-// brought each, where each sits there, which subtask is its top row, its peek, opening it, and its count; a card in
-// search; where a run goes next, the one rule its card and its screen go by, and the bottom box aimed at its step.
+// Tests for the stacked card (src/js/cards.js, and app/cards.js on a fake component). They cover which tasks become
+// cards on Today and what brought each, where each card sits, which subtask is its top row, its peek, opening it and
+// its count. They also cover a card in search, where a checklist goes next (one rule shared by its card and its
+// screen), and the add box at the bottom aimed at a checklist's step.
 import { component, fakeVikunja } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -106,8 +107,8 @@ test('a run’s step’s countdown, to the minute, within a day', () => {
   assert.equal(countdown(now + 864e5 * 2, now), null, 'further off: its date says it');
 });
 
-// The component, with Today's cards: `parent` with its subtasks in the store, at their positions in its List view: 14,
-// done, first, then Chairs, Tables and Lights.
+// The component with Today's cards. `parent` has its subtasks in the store, at their positions in its List view:
+// 14 (done) first, then Chairs, Tables and Lights.
 const today = (...more) => {
   const app = component(cards, views, alerts, tasks, leaving, ...more);
   Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, stepPct: s => Math.round((s.percent_done || 0) * 100), checklistIds: new Set(), waitingByTask: new Map() });
@@ -211,7 +212,7 @@ test('a card’s heading: its priority’s bars as its row shows them, only when
   assert.equal(app.cardHead({ ...urgent, assignees: [me] }).said.split(', ').pop(), 'For you', 'or who it’s for');
 });
 
-// rows-and-sheet-fixes-plan, part 4: the dot's room goes to a subtask's words.
+// The card's header shows the project dot, so its rows leave the dot out and give that space to the subtask's text.
 test('a card’s header has its project’s dot, once: its rows leave theirs out, and a row in another project keeps its own', () => {
   const { app, parent, g } = today();
   app.projById = new Map([[5, { id: 5, title: 'Café', hex_color: '1d6b52' }], [6, { id: 6, title: 'Upkeep', hex_color: '3d85c6' }]]);
@@ -224,12 +225,12 @@ test('a card’s header has its project’s dot, once: its rows leave theirs out
   const far = app.keep(task(13, { title: 'Tables', project_id: 6, related_tasks: under(10) })), f = app.rowWhen(far, c.g);
   assert.deepEqual([f.color, f.said], ['#3d85c6', 'Upkeep'], 'a subtask in another project: its own dot, and its project said');
   assert.deepEqual(app.rowMeta(far, c.g).map(m => m.text), ['Upkeep'], 'not the task it’s under: that is its card');
-  // In search a card's rows keep their second line, with no project on it but for one in another; the header has the dot.
+  // In search a card's rows keep their second line. It shows no project unless the subtask is in a different one. The header has the dot.
   app.route = { name: 'search' };
   const found = app.cardOf(parent, { cards: 'found', delete: true });
   assert.equal(app.cardHead(parent, { cards: 'found' }).color, '#1d6b52', 'in search too');
   assert.deepEqual([app.rowMeta(found.step, found.g).map(m => m.text), app.rowMeta(far, found.g).map(m => [m.color, m.text])], [[], [['#3d85c6', 'Upkeep']]]);
-  // On its project's own list no row says its project, nor does the header.
+  // On the task's own project list, neither the rows nor the header show the project.
   app.route = { name: 'project' };
   assert.equal(app.cardHead(parent, { cards: 'list' }).color, null, 'not on its own project’s list');
   app.route = { name: 'today' };
@@ -269,25 +270,25 @@ test('ticked, a card’s top row stays until the batch clears, then the next com
   assert.equal(all.ring.label, 'Close “Pack the van”: all its subtasks are done');
 });
 
-/* A card is worked out from what's done, and a task is done the moment it's ticked, before Vikunja has answered and its
-   row is marked: without more, a card's top row done drops off its card while the save is on its way, the next subtask
-   comes up in its place, and then the done one is back (user, 2026-10-10, on a phone, where an
-   answer takes longer than a frame: "the next subtask sorta races the animation, cuts it short, pulls up into its
-   spot, THEN the 'undo' shows up"). So a row done in a list is held where it is from that moment (holdRow,
-   leaving.js): by a tap or a full swipe, a task's subtask or a run's step, on a collapsed card or an opened one. */
+/* A card is worked out from what is done, and a task counts as done the moment the user ticks it, before Vikunja
+   answers and before its row is marked. Without a hold, a card's top row would drop off the card while the save is on
+   its way, the next subtask would move up in its place, and then the done row would come back with its Undo. On a
+   phone, where an answer takes longer than a frame, the next subtask raced the animation and cut it short. So a row
+   done in a list stays where it is from that moment (holdRow, leaving.js). This covers a tap or a full swipe, a
+   task's subtask or a checklist's step, on a collapsed card or an open one. */
 test('a card’s top row done is still its top row from the tap, or the swipe’s let-go, until the batch clears, however long Vikunja takes to answer', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const { app, parent, g } = today(actions), v = fakeVikunja(Object.values(app.tasks)), send = globalThis.fetch;
   Object.assign(app, { lines: {}, pending: [], perms: {}, render(){} });
   app.view.groups = [{ key: 'today', tasks: [parent] }];
-  // Vikunja's answers, held back until answer().
+  // Vikunja's answers are held back until answer() is called.
   let held = [];
   const answer = () => { const go = held; held = []; go.forEach(ok => ok()); };
   globalThis.fetch = async (...a) => { await new Promise(ok => held.push(ok)); return send(...a); };
   const card = () => app.cardOf(parent, g), top = () => card().step.title, turn = () => new Promise(ok => setImmediate(ok));
   const over = async doing => { let done = false; doing.then(() => { done = true; }); while (!done) { answer(); await turn(); } };
   try {
-    // Tapped: its tick.
+    // Tapping the tick.
     assert.deepEqual([top(), card().peek.title, card().more], ['Chairs', 'Tables', 2]);
     app.pinCard(card());
     let doing = app.toggleDone(app.tasks[12], ROW);
@@ -298,7 +299,7 @@ test('a card’s top row done is still its top row from the tap, or the swipe’
     assert.deepEqual([top(), app.leaving, v.task(12).done], ['Chairs', { 12: 'done' }, true], 'answered: marked, and where it was');
     await app.clearBatch(true);
     assert.deepEqual([top(), card().peek.title, card().more], ['Tables', 'Lights', 1], 'the batch cleared: the next comes up, and not before');
-    // A full swipe right, let go: held done from that moment, as a tick is.
+    // A full swipe right, once released, is held as done from that moment, the same as a tick.
     doing = app.setProgress(app.tasks[13], 100, ROW);
     await turn();
     assert.deepEqual([top(), card().peek.title, card().more, app.leaving, v.task(13).done], ['Tables', 'Lights', 1, { 13: 'done' }, false], 'let go: still on top, done, nothing answered yet');
@@ -306,7 +307,7 @@ test('a card’s top row done is still its top row from the tap, or the swipe’
     assert.deepEqual([top(), app.leaving], ['Tables', { 13: 'done' }]);
     await over(Promise.resolve(app.unmark(13)));
     assert.deepEqual([top(), app.tasks[13].done, app.leaving], ['Tables', false, {}], 'its tick: open again, where it was');
-    // On an opened card, its rows stay as they are, the done one among them.
+    // On an opened card the rows stay as they are, including the done one.
     app.openCard(card());
     assert.deepEqual(card().rows.map(s => s.title), ['Tables', 'Lights']);
     doing = app.setProgress(app.tasks[13], 100, ROW);
@@ -315,7 +316,7 @@ test('a card’s top row done is still its top row from the tap, or the swipe’
     await over(doing);
     await app.clearBatch(true);
     assert.deepEqual([top(), card().rows.map(s => s.title)], ['Lights', ['Lights']]);
-    // Not saved: it's let go of, open, where it was, and its row says why.
+    // If the save fails, the row is released, open, where it was, and shows a message saying why.
     v.trouble = () => 500;
     doing = app.toggleDone(app.tasks[11], ROW);
     await turn();
@@ -326,9 +327,9 @@ test('a card’s top row done is still its top row from the tap, or the swipe’
   } finally { globalThis.fetch = send; }
 });
 
-// A plain row on Today done is held the same way, so a list loaded while its save is on its way treats it as it does a
-// marked one: it keeps its row, though Vikunja's list no longer has it (keepMarked), and leaves it as it's shown,
-// ticked, though Vikunja's copy of it is still open (keep).
+// A plain row on Today that is done is held the same way. A list loaded while its save is on its way then treats the
+// row like a marked one. It keeps the row, though Vikunja's list no longer has it (keepMarked). It also keeps the row
+// ticked, though Vikunja's copy of the task is still open (keep).
 test('a row ticked on Today is kept, ticked, by a list loaded before Vikunja has answered its tick', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const { app } = today(actions), row = app.keep(task(20, { title: 'Call the plumber' })), v = fakeVikunja([row]), send = globalThis.fetch;
@@ -347,22 +348,23 @@ test('a row ticked on Today is kept, ticked, by a list loaded before Vikunja has
   } finally { globalThis.fetch = send; }
 });
 
-// A run's step on its card goes through the outbox, which answers in its own time too: its row is held the same way.
+// A checklist's step on its card goes through the outbox, which also answers in its own time, so the row is held the
+// same way.
 test('a run’s card’s top step done is still its top row while the outbox takes it, and until the batch clears', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const { app, parent, g } = today(actions);
   let taken = null;
   Object.assign(app, { isRunTask: t => t.id === 10, stepRun: t => t.id === 10 ? null : 10, act: () => new Promise(ok => { taken = ok; }) });
-  const top = () => app.cardOf(parent, g).step.title;                        // (a run's steps in its order: Lights, Chairs, Tables)
+  const top = () => app.cardOf(parent, g).step.title;                        // the checklist's steps in order: Lights, Chairs, Tables
   app.pinCard(app.cardOf(parent, g));
-  const doing = app.toggleDone(app.tasks[11], ROW);                           // its tick, or a full swipe on its row
+  const doing = app.toggleDone(app.tasks[11], ROW);                           // a tick, or a full swipe on its row
   assert.deepEqual([app.tasks[11].done, top(), app.leaving], [true, 'Lights', { 11: 'done' }], 'let go: done, and still on top');
   taken({ status: 'ok' });
   await doing;
   assert.deepEqual([top(), app.leaving], ['Lights', { 11: 'done' }]);
   await app.clearBatch(true);
   assert.equal(top(), 'Chairs', 'the batch cleared: the next in order');
-  // One the outbox turns down goes back, and isn't held.
+  // If the outbox rejects the change, the row goes back and is not held.
   app.pinCard(app.cardOf(parent, g));
   const failing = app.toggleDone(app.tasks[12], ROW);
   assert.deepEqual([top(), app.leaving[12]], ['Chairs', 'done']);
@@ -422,19 +424,19 @@ test('a row on Today, on one line: when it is due, short, its project’s dot, a
   assert.match(w.said, /^Due Today .*, Priority: High, Café$/, 'when in words, its priority and its project; not its label nor its comments');
   assert.equal(w.said.split(', ')[0], 'Due Today ' + full, 'a screen reader hears its time in full');
   assert.equal(app.rowWhen({ ...t, priority: 0 }, { line: true, depth: {} }).prio, 0, 'no priority, no bars');
-  // Due today with no time: "Today" under Overdue's heading and elsewhere, nothing under Today's, which says it.
+  // A task due today with no time shows "Today" under the Overdue heading and in other groups. It shows nothing under the Today heading, which already says it.
   const day = new Date(); day.setHours(0, 0, 0, 0);
   const u = app.keep(task(21, { title: 'Order the cups', due_date: day.toISOString(), project_id: 5 }));
   assert.equal(app.rowWhen(u, { line: true, depth: {}, key: 'overdue' }).due.text, 'Today');
   assert.equal(app.rowWhen(u, { line: true, depth: {}, key: 'today' }).due, null, 'under Today: no time, nothing');
   assert.match(app.rowWhen(u, { line: true, depth: {}, key: 'today' }).said, /^Due Today/, 'a screen reader still hears it');
   assert.equal(app.rowWhen(t, { line: true, depth: {}, key: 'today' }).due.text, w.due.text, 'a time still shows');
-  // Its attachments are a count, unsaid; photos still waiting to upload are work still to send, said.
+  // A screen reader does not hear the attachment count. It does hear photos still waiting to upload, because they are work still to send.
   assert.doesNotMatch(app.rowWhen({ ...t, attachments: [{ id: 1 }] }, { line: true, depth: {} }).said, /Attachments/);
   app.waiting.files[20] = 1;
   assert.match(app.rowWhen(t, { line: true, depth: {} }).said, /, Attachments, 1 waiting to upload$/);
   delete app.waiting.files[20];
-  // A run's step counting down: its countdown at the right, as under its title elsewhere, and said.
+  // A checklist step that is counting down shows its countdown at the right, as it does under its title elsewhere, and a screen reader hears it.
   const soon = app.keep(task(22, { title: 'Proof the dough', due_date: new Date(Date.now() + 10 * 6e4 + 3e4).toISOString(), related_tasks: under(50) }));
   app.stepRun = x => x.id === 22 ? 50 : null;
   const s = app.rowWhen(soon, { line: true, depth: {}, key: 'today' });
@@ -457,7 +459,7 @@ test('a run’s card has a heading like a task’s: its name without the day it 
   assert.equal(app.cardHead({ ...run, title: 'Opening up' }).title, 'Opening up', 'a name of its own: kept whole');
   assert.equal(app.cardHead({ ...run, created: NONE }).title, run.title, 'not made yet: kept whole');
   assert.equal(app.cardHead(task(31, { title: `Pack the van · front · ${day(made)}`, created: made.toISOString() })).title, `Pack the van · front · ${day(made)}`, 'a task’s title as it is');
-  // Due when its template was (started from Today), it shows that at the right, as a task's card does.
+  // A checklist is due when its template was due (started from Today). The card shows that time at the right, as a task's card does.
   const due = new Date(); due.setHours(23, 30, 0, 0);
   const full = due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), h = app.cardHead({ ...run, due_date: due.toISOString() }, { key: 'today' });
   assert.equal(h.due.text, shortTime(full), 'short, as a row on Today has it');
@@ -484,9 +486,9 @@ test('where a run goes next: the next open step in order, even counting down; be
 
 test('a run’s card on Today opens on the step its screen would, and goes by the same rule once the step ticked has gone', () => {
   const { app, parent, g } = today();
-  app.isRunTask = t => t.id === 10;                                        // its steps in its order: Lights, Chairs, Tables, then 14, done
+  app.isRunTask = t => t.id === 10;                                        // the steps in order: Lights, Chairs, Tables, then 14 (done)
   const soon = m => new Date(Date.now() + m * 6e4).toISOString();
-  app.tasks[11].due_date = soon(10); app.tasks[13].due_date = soon(20);   // Lights and Tables counting down
+  app.tasks[11].due_date = soon(10); app.tasks[13].due_date = soon(20);   // Lights and Tables are counting down
   const c = app.cardOf(parent, g);
   assert.deepEqual([c.step.title, c.peek.title, c.ring.said, c.ring.label], ['Lights', 'Chairs', '1 of 4 steps done, 25%', 'Finish “Pack the van”, with 3 steps not done'], 'the first in order, counting down; the next in order under it');
   app.pinCard(c);
@@ -499,7 +501,7 @@ test('a run’s card on Today opens on the step its screen would, and goes by th
   assert.equal(app.cardOf(parent, g).step.title, 'Tables', 'a timed step whose time has come, before it');
 });
 
-// A run on its screen (runView, runs.js): A done a minute ago; B timed 30 minutes from A, counting down; C and D.
+// A checklist on its screen (runView, runs.js). A was done a minute ago. B is timed 30 minutes after A and is counting down. C and D have no time.
 const runScreen = () => {
   const app = component(runs, claims, checklists, cards, views), now = Date.now(), NONE = '0001-01-01T00:00:00Z';
   const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
@@ -516,13 +518,13 @@ test('a run’s screen opens on the next step in order, counting down, and a tic
   assert.equal(v.card, undefined, 'no strip: its steps, listed, say where it is');
   assert.equal(app.nextStep(v.steps[1]), 2, 'ticked, on to C');
   assert.equal(app.nextStep(v.steps[2]), 3, 'C ticked, on to D, with B still counting down');
-  app.showStep(0);                                                         // A tapped in the list
+  app.showStep(0);                                                         // tap A in the list
   assert.deepEqual([app.runView.step.title, app.runView.step.done], ['A', true], 'a done step comes on the card from its row');
 });
 
-/* What every row costs (rows-and-sheet-fixes-plan, part 6): a run is worked out once per change, not once for each
-   binding that reads it nor once a second, and a step nothing happened to is the same object, so its row has nothing
-   to do. On Alpine's own reactivity (reactive.mjs), as on the phone. */
+/* Keeps the cost of each row low. A checklist is worked out once per change, not once for each binding that reads it
+   and not once a second. A step that nothing happened to stays the same object, so its row has nothing to redo. The
+   test uses Alpine's reactivity (reactive.mjs), as the phone does. */
 test('a run is worked out once while nothing in it changes; a tick works it out again, and only that step is a new object', c => {
   const { Alpine } = watching(c), app = Alpine.reactive(runScreen());
   let worked = 0;
@@ -531,9 +533,9 @@ test('a run is worked out once while nothing in it changes; a tick works it out 
   assert.equal(app.runView, v, 'read again: the same object');
   assert.deepEqual([app.runRows.at, app.runRows.locked, worked], [1, false, 1], 'its rows\' options, with the step on the card');
   const g = app.runRows;
-  app.clock += 1000;                                                       // a second goes by
+  app.clock += 1000;                                                       // a second passes
   assert.deepEqual([app.runView, worked], [v, 1], 'a second later: nothing to work out');
-  app.pending = [{ kind: 'act', id: 'a1', run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // C ticked, waiting to be sent
+  app.pending = [{ kind: 'act', id: 'a1', run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // C is ticked and waiting to be sent
   const w = app.runView;
   assert.notEqual(w, v, 'a tick: worked out again, at once');
   assert.equal(worked, 2);
@@ -544,8 +546,9 @@ test('a run is worked out once while nothing in it changes; a tick works it out 
   assert.deepEqual(app.runView.steps.map((s, i) => s === w.steps[i]), [true, true, true, true], 'and no step is a new object');
 });
 
-/* The time: a run's screen is worked out for runNow, which tickRun moves on, once a second at most, only when the
-   time has changed something the run shows (runShows, checklists.js). B is due 30 minutes after A, done a minute ago. */
+/* A checklist's screen is worked out for runNow. tickRun moves runNow on at most once a second, and only when the time
+   has changed something the checklist shows (runShows, checklists.js). B is due 30 minutes after A, which was done a
+   minute ago. */
 test('the seconds going by work a run out again only when a countdown\'s words change, or a step\'s time comes', c => {
   const { Alpine } = watching(c), app = Alpine.reactive(Object.defineProperties(runScreen(), Object.getOwnPropertyDescriptors(alerts))), t0 = app.runNow;
   c.mock.timers.enable({ apis: ['Date'], now: t0 });
@@ -559,7 +562,7 @@ test('the seconds going by work a run out again only when a countdown\'s words c
   const w = app.runView;
   assert.deepEqual([w === v, w.steps[1].countText], [false, 'in 28m'], 'a minute on: its words change, so it\'s worked out again');
   assert.deepEqual(w.steps.map((s, i) => s === v.steps[i]), [true, false, true, true], 'and only the step counting down is a new object');
-  // In its last minute, each second; and as its time comes, the run goes to it.
+  // In the last minute the countdown changes every second. When the step's time comes, the checklist moves to it.
   c.mock.timers.setTime(t0 + 29 * 60000 - 5000); app.tickRun();
   assert.equal(app.runView.steps[1].countText, 'in 5s');
   c.mock.timers.setTime(t0 + 29 * 60000 - 4000); app.tickRun();
@@ -589,9 +592,10 @@ test('the step card shows who’s on its step, as its row does, until it’s don
   assert.equal(app.rowSlot(v.steps[0], { run: true }), null, 'done: its row and card say who did it instead');
 });
 
-/* The run's own row atop its screen (RUN_ROW): its ring from the steps as the screen has them, its tap (or a full swipe)
-   asking to finish it there, with no way to open the run it's on; who it's for in its slot; who started it in its
-   history: the summary once every step is done, and its ⋯. */
+/* The checklist's own row at the top of its screen (RUN_ROW). Its ring is calculated from the steps as the screen has
+   them. Tapping the ring, or a full swipe, asks to finish the checklist there, because the user is already on it and
+   has no way to open it. Its slot shows who it is for. Who started it is in the summary, which the screen shows once
+   the checklist is finished or every step is done, and in its ⋯ sheet. */
 test('a run’s own row: its ring asks to finish it on its screen, its slot says who it’s for, and who started it is its history', async () => {
   const app = runScreen(), made = new Date(Date.now() - 36e5).toISOString(), calls = [];
   Object.assign(app.view.run.run, { created: made });
@@ -619,9 +623,9 @@ test('a run’s box, at the foot of its steps, adds after the last; under a step
   const app = runScreen(), added = [], aim = () => { const a = app.runAim; return [a.on.title, a.after, a.before]; };
   app.addStep = async f => { added.push(f); };
   app.seatFoot = () => {};
-  app.showStep(2);                                                         // C tapped, on the card
+  app.showStep(2);                                                         // tap C, which puts it on the card
   assert.deepEqual(aim(), ['C', 54, null], 'at the foot: after the last step, whatever is on the card');
-  app.runBoxAt = 52;                                                       // B nudged: the box is under it
+  app.runBoxAt = 52;                                                       // nudge B, which puts the box under it
   assert.deepEqual(aim(), ['C', 52, 53], 'after B, before C');
   const a = app.runAim, ids = await app.addSteps([{ title: 'X' }, { title: 'Y' }], { after: a.after, before: a.before, follow: true });
   assert.deepEqual(added.map(f => [f.id, f.title, f.after, f.before]), [[ids[0], 'X', 52, 53], [ids[1], 'Y', 'pending-' + ids[0], 53]], 'a pasted list in order');
@@ -645,10 +649,10 @@ test('Repeat copies the card’s step right after it, wherever the box is, with 
   const app = runScreen(), added = [], said = [];
   app.addStep = async f => { added.push(f); };
   app.seatFoot = () => {};
-  app.showStep(2);                                                         // C tapped, on the card
+  app.showStep(2);                                                         // tap C, which puts it on the card
   app.say = (text, o) => said.push({ text, ...o });
-  app.dropStep = async () => false;                                        // still waiting: not sent
-  app.runBoxAt = 51;                                                       // the box under A
+  app.dropStep = async () => false;                                        // the step is still waiting, so it is not sent
+  app.runBoxAt = 51;                                                       // the box is under A
   await app.repeatCard();
   assert.deepEqual([added[0].title, added[0].tpl, added[0].after, added[0].before], ['C', 'C', 53, 54], 'a copy of C, right after C');
   assert.equal(app.runBoxAt, 51, 'the box stays where it was');
@@ -657,8 +661,8 @@ test('Repeat copies the card’s step right after it, wherever the box is, with 
   assert.equal(app.said, 'Not repeated: C');
 });
 
-/* A parent's ring (parent-tasks-plan, part 3; design rules 7 and 8): its tap never closes subtasks without asking, unless
-   there's one, which has an Undo; with every subtask done, it's Close. */
+/* Tapping a parent's ring never closes subtasks without asking, unless only one subtask is open, which gets an
+   Undo. With every subtask done, the tap closes the parent. */
 const ringed = (c, list) => {
   if (c) c.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja(list), app = component(cards, tasks, leaving, actions, runs);
@@ -676,7 +680,7 @@ test('a parent’s ring with one open subtask: it and the parent completed at on
   assert.deepEqual([v.task(10).done, v.task(11).done], [true, true]);
   assert.deepEqual([app.leaving, app.isGap(app.tasks[10], { depth: {}, cards: 'list' })], [{ 10: 'done', 11: 'done' }, false], 'its card done where it is, never a gap, until the batch clears');
   assert.equal(app.sheet.kind, undefined, 'nothing asked');
-  await app.ringTap(app.tasks[10], ROW);                                     // its ring again: the undo
+  await app.ringTap(app.tasks[10], ROW);                                     // tapping its ring again undoes it
   assert.deepEqual([v.task(10).done, v.task(11).done], [false, false], 'both open again');
 });
 
@@ -698,7 +702,7 @@ test('a parent’s ring with more open subtasks asks first, listing them; confir
 test('the question asked from a task’s sheet goes back to that sheet however it’s closed, and Back then closes the sheet', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const kids = [kid(11), kid(12)], v = fakeVikunja([parentOf(...kids), ...kids]), app = component(cards, tasks, leaving, actions, runs, sheetPart);
-  // the phone's history, as much of it as a sheet uses: its entry pushed, marked closed, or gone back from
+  // the phone's history, as far as a sheet uses it: an entry is pushed, marked closed, or gone back from
   globalThis.history = { state: null, pushState(s){ this.state = s; }, replaceState(s){ this.state = s; } };
   document.getElementById = () => ({ querySelector: () => ({}) });
   const opened = [];
@@ -707,20 +711,20 @@ test('the question asked from a task’s sheet goes back to that sheet however i
   for (const t of [parentOf(...kids), ...kids]) app.keep(t);
   const ask = sheet => { app.openSheet('task'); app.sheet.show = true; app.askComplete(app.tasks[10], sheet); assert.equal(app.sheet.kind, 'complete'); };
   ask(true);
-  app.closeSheet();                                                          // the ×, the slide down, the shade, Escape
+  app.closeSheet();                                                          // the ×, sliding down, tapping the dimmed background, or Escape
   assert.deepEqual([opened, app.sheet.kind, app.sheet.open], [[10], 'task', true], 'back on the task’s sheet, as Cancel goes');
   ask(true);
-  history.state = null;                                                      // the phone's Back: the sheet's entry gone
-  app.closeSheet();                                                          // (core.js's popstate)
+  history.state = null;                                                      // the phone's Back removes the sheet's entry
+  app.closeSheet();                                                          // core.js handles popstate
   assert.deepEqual([opened, app.sheet.kind, history.state?.sheet], [[10, 10], 'task', true], 'the task’s sheet, with an entry of its own for Back');
   app.closeSheet();
   assert.equal(app.sheet.open, true, 'still showing as it slides down');
   c.mock.timers.tick(300);
   assert.deepEqual([app.sheet.open, history.state.sheet], [false, 'closed'], 'Back, or the ×, then closes the task’s sheet');
   ask(true);
-  app.closeSheet(true);                                                      // confirmed, or a screen opened: closed outright
+  app.closeSheet(true);                                                      // confirmed, or a screen was opened, so the sheet closes outright
   assert.deepEqual([app.sheet.open, opened.length], [false, 2]);
-  ask(false);                                                                // asked from a list: closing it closes it
+  ask(false);                                                                // asked from a list, so closing the question closes the sheet
   app.closeSheet(); c.mock.timers.tick(300);
   assert.deepEqual([app.sheet.open, opened.length, v.task(10).done], [false, 2, false]);
 });
@@ -728,7 +732,7 @@ test('the question asked from a task’s sheet goes back to that sheet however i
 test('a parent with every subtask done waits for Close; a repeating one is done as before, its subtasks as they are', async c => {
   const kids = [kid(11, { done: true }), kid(12, { done: true })], { v, app } = ringed(c, [parentOf(...kids), ...kids]);
   assert.equal(app.ringOf(app.tasks[10]).open, 0);
-  await app.ringTap(app.tasks[10], ROW);                                     // Close
+  await app.ringTap(app.tasks[10], ROW);                                     // the tap closes the parent
   assert.deepEqual([v.task(10).done, app.leaving[10], app.cardOf(app.tasks[10], { depth: {}, cards: 'found' })?.closes], [true, 'done', true], 'closed: still its card, done, until the batch clears');
   const open = [kid(21), kid(22)], rep = { ...parentOf(...open), id: 20, repeat_after: 86400, due_date: '2026-10-09T09:00:00Z' };
   const r = ringed(null, [rep, ...open]);

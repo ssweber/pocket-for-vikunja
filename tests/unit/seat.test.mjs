@@ -1,4 +1,4 @@
-// The floating add box follows its row even when Alpine draws the form a frame later or draws it again.
+// The floating add box follows its row, even when Alpine renders the form a frame later or renders it again.
 import './browser.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,16 +1,16 @@
-// An add box's own directive, x-box, and x-grow beside it (src/js/component.js): what every add box does, written
-// once. Run here on a pretend element and a pretend Alpine, which keeps each directive as it's registered, runs an
-// effect once as it's made, and keeps what's asked for the next tick.
+// The x-box directive for add boxes, and x-grow beside it (src/js/component.js). Every add box behaves the same way
+// because it uses x-box. The test runs the directives on a fake element and a fake Alpine. The fake Alpine records each
+// directive when it is registered, runs each effect once when it is created, and holds callbacks for the next tick.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { directives } from '../../src/js/component.js';
 import { grow } from '../../src/js/util.js';
 
-// The directives, as Alpine is given them; `ticks`: what waits for the next tick; `effects`: each effect, to run again;
-// `gone()`: the element taken off the page, as Alpine does it: what each directive asked to have cleaned up, and of
-// the effects made with the `effect` it was handed, only the last let go of (Alpine keeps one per directive);
-// `running`: the effects still kept up to date.
+// The directives, registered the way Alpine registers them. `ticks` holds callbacks waiting for the next tick. `effects`
+// holds every effect, so a test can run it again. `gone()` removes the element from the page as Alpine does. It runs
+// each directive's cleanups, and of the effects a directive created, it releases only the last (Alpine keeps one per
+// directive). `running` holds the effects that are still kept up to date.
 function alpine(app){
   const made = {}, ticks = [], effects = [], cleanups = [], running = new Set();
   directives({ directive: (name, fn) => { made[name] = fn; }, $data: () => app, nextTick: fn => ticks.push(fn), release: fn => running.delete(fn) });
@@ -23,14 +23,14 @@ function alpine(app){
   };
   return { on, ticks, effects, running, names: Object.keys(made), gone(){ for (const fn of cleanups.splice(0)) fn(); } };
 }
-// A text box, with what the directive listens for; fire(type, event) is the browser telling it.
+// A fake text box. `fire(type, event)` stands in for the browser sending an event to the listeners the directive added.
 function textarea(){
   const heard = {};
   return { heard, style: {}, selectionStart: 0, scrollTop: 0, scrollHeight: 60, offsetHeight: 62, clientHeight: 60, previousElementSibling: { scrollTop: 0 }, closest: () => null,
     addEventListener(type, fn){ (heard[type] ||= []).push(fn); }, removeEventListener(type, fn){ heard[type] = (heard[type] || []).filter(x => x !== fn); },
     fire(type, e = {}){ for (const fn of heard[type] || []) fn(e); } };
 }
-// The component, as far as a box asks it: its boxes by name, what Enter did, and what was loaded.
+// A fake component with only what a box uses. It has the boxes by name, a record of Enter presses, and a record of what was loaded.
 const component = () => {
   const app = { boxes: { cap: { text: '', focus: false, caret: 0 }, ins: { text: '', focus: false, caret: 0 }, tname: { text: '', focus: false, caret: 0 } }, entered: [], loaded: [], checked: [],
     names: { capW: 'cap', "'tname'": 'tname' }, box(w){ return this.boxes[w]; }, boxEnter(w){ this.entered.push(w); },
@@ -92,7 +92,7 @@ test('Enter sends an add box, not while a word is being composed; Shift+Enter br
   assert.equal(press(line, { isComposing: true, shiftKey: true }), false);
   const other = key('a'); list.fire('keydown', other);
   assert.deepEqual([other.prevented, app.entered.length], [false, 3], 'any other key is the box\'s');
-  // Whichever box it is now: quick add's box is the run's on a run's screen.
+  // Enter goes to whichever box the name points at now. On a checklist's screen, quick add's box is the checklist's box.
   app.names.capW = 'ins';
   press(list);
   assert.equal(app.entered.at(-1), 'ins');
@@ -106,18 +106,19 @@ test('a box says it has the focus, and that it lost it only a moment later, of t
   try {
     el.fire('focus');
     assert.deepEqual([app.boxes.cap.focus, app.loaded], [true, []], 'nothing is loaded for being focused');
-    // Left for a chip, which hands the focus back: it never says it lost it.
+    // The user taps a chip, which gives the focus back to the box. The box never reports that it lost the focus.
     el.fire('blur');
     document.activeElement = el;
     c.mock.timers.tick(150);
     assert.equal(app.boxes.cap.focus, true);
-    // Left for good.
+    // The user leaves the box and the focus does not come back.
     el.fire('blur');
     document.activeElement = null;
     assert.equal(app.boxes.cap.focus, true, 'not yet');
     c.mock.timers.tick(150);
     assert.equal(app.boxes.cap.focus, false);
-    // Left as quick add's box, which is the run's box a moment later: the one left is told, the other is as it was.
+    // The user leaves the box, and a moment later the name `capW` points at the checklist's box. The box that was left
+    // is told it lost the focus, and the other box is unchanged.
     el.fire('focus');
     app.boxes.ins.focus = true;
     el.fire('blur');
@@ -126,8 +127,9 @@ test('a box says it has the focus, and that it lost it only a moment later, of t
     assert.deepEqual([app.boxes.cap.focus, app.boxes.ins.focus], [false, true]);
     name.fire('focus');
     assert.deepEqual([app.boxes.tname.focus, app.loaded], [true, []], 'a template\'s name: the same');
-    // Taken off the page while it has the focus (a step being changed, called off): it's blurred on its way out, with
-    // nothing left around it to say which box it was. It listens no more by then, as an @event wouldn't.
+    // The box is removed from the page while it has the focus (for example, a step edit is cancelled). The browser blurs
+    // it on the way out, when nothing around it says which box it was. By then it must not listen any more, just as an
+    // @event listener would not.
     a.gone();
     delete app.names["'tname'"];
     name.fire('blur'); name.fire('keydown', key('Enter')); name.fire('input');
@@ -136,9 +138,10 @@ test('a box says it has the focus, and that it lost it only a moment later, of t
   } finally { delete document.activeElement; }
 });
 
-/* Every add box, a step being written too: what @ and * suggest is loaded as one is started, and its @usernames are
-   looked up once typing pauses, each time they or the project they'd go to change. (The effects are run again by
-   hand here, as Alpine runs them when what they read changes: the 2nd made is the suggestions', the 3rd the look-up's.) */
+/* This applies to every add box, including the box for writing a step. Starting an @username or a *label loads the
+   suggestions. When typing pauses, the box looks up its @usernames, again each time they change or the project they
+   would go to changes. The test runs the effects by hand, as Alpine does when the data they read changes. The second
+   effect created is the suggestions and the third is the look-up. */
 test('starting an @username or a *label loads what to suggest; once typing pauses, a box\'s @usernames are looked up, once for each change', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(), a = alpine(app), el = textarea();
@@ -151,12 +154,12 @@ test('starting an @username or a *label loads what to suggest; once typing pause
   assert.deepEqual(app.loaded, ['labels', 'people']);
   app.query = '1|bob'; look();
   c.mock.timers.tick(400);
-  app.query = '1|bob|priya'; look();                       // still typing: the wait starts again
+  app.query = '1|bob|priya'; look();                       // still typing, so the wait restarts
   c.mock.timers.tick(400);
   assert.deepEqual(app.checked, [], 'not while typing goes on');
   c.mock.timers.tick(100);
   assert.deepEqual(app.checked, ['cap']);
-  look(); look();                                          // worked out again with nothing changed: not asked again
+  look(); look();                                          // nothing changed, so no second look-up
   c.mock.timers.tick(500);
   assert.deepEqual(app.checked, ['cap']);
   app.names.capW = 'under'; app.query = '7|bob|priya'; look();   // the box now adds subtasks to a task in another project
@@ -165,8 +168,8 @@ test('starting an @username or a *label loads what to suggest; once typing pause
   app.query = ''; look();
   c.mock.timers.tick(500);
   assert.deepEqual(app.checked, ['cap', 'under'], 'emptied: nothing to look up');
-  // Taken off the page while a look-up waits: it's called off, and nothing of the box is kept up to date any more
-  // (one effect left running would ask, at the next change, about a box with nothing around it).
+  // Removing the box from the page while a look-up waits cancels the look-up and stops every effect of the box. An
+  // effect left running would ask about a box that is no longer on the page, the next time anything changed.
   app.query = '7|sam'; look();
   assert.equal(a.running.size, 3);
   a.gone();
@@ -175,14 +178,14 @@ test('starting an @username or a *label loads what to suggest; once typing pause
 });
 
 test('a text box fitted to its text leaves the page where it was: measured at its least height, the page ends sooner, and is pulled down', t => {
-  // The page, 600px past its screen, scrolled to its end; a box of three lines at its foot, 48px taller than with one.
+  // The page extends 600px past the screen and is scrolled to its end. It ends with a box of three lines, which is 48px taller than the box with one line.
   const page = { y: 600, end: 600 }, el = textarea(), tall = 86;
   const was = Object.fromEntries(['scrollY', 'scrollX', 'scrollTo'].map(k => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
   t.after(() => { for (const [k, d] of Object.entries(was)) if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; });
   Object.defineProperty(globalThis, 'scrollY', { get: () => page.y, configurable: true });
   Object.defineProperty(globalThis, 'scrollX', { get: () => 0, configurable: true });
   Object.defineProperty(globalThis, 'scrollTo', { value: (x, y) => { page.y = Math.min(y, page.end); }, configurable: true, writable: true });
-  // As a browser does it: with the box at its least height the page is 48px shorter, and no further down than its end.
+  // This copies a browser. With the box at its smallest height the page is 48px shorter, and the scroll position cannot go past the end of the page.
   el.style = { set height(h){ page.end = h === 'auto' ? 600 - 48 : 600; page.y = Math.min(page.y, page.end); this.h = h; }, get height(){ return this.h; } };
   Object.assign(el, { scrollHeight: tall - 2, offsetHeight: tall, clientHeight: tall - 2 });
   grow(el);

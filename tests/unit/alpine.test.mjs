@@ -1,13 +1,13 @@
-// Pocket's copy of Alpine (src/vendor/, its scheduler and its x-for patched) runs reactive updates in the same order as
-// Alpine's own: both are given the same updates, queued and taken off the queue at random, before and during a flush,
-// and must run them in the same order.
+// Pocket patches the scheduler and x-for in its copy of Alpine (src/vendor/). The patched scheduler must run updates in
+// the same order as Alpine's original. Both get the same random updates, queued and removed from the queue before and
+// during a flush.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { watching } from './reactive.mjs';
 import { memo } from '../../src/js/util.js';
 
-// Alpine 3.17.4's scheduler (MIT), as in its published dist/cdn.js, before Pocket patched it.
+// Alpine 3.17.4's scheduler (MIT), copied from its published dist/cdn.js, before Pocket patched it.
 const OWN = `
   // packages/alpinejs/src/scheduler.js
   var flushPending = false;
@@ -104,7 +104,7 @@ const root = new URL('../../', import.meta.url), read = path => readFileSync(new
 const lib = read('src/index.html').match(/src="(alpine-[^"]+)-pocket\.\d+\.min\.js"/)[1], vendor = read(`src/vendor/${lib}.js`);
 const PATCHED = vendor.slice(vendor.indexOf('  // packages/alpinejs/src/scheduler.js'), vendor.indexOf('  // packages/alpinejs/src/reactivity.js'));
 
-// A scheduler from its code, with its microtask run when the test says.
+// Builds a scheduler from its source. Microtasks wait until the test calls `flush`.
 const scheduler = code => {
   const tasks = [];
   const { queue, dequeue } = new Function('queueMicrotask', code + ';return {queue: queueJob, dequeue: dequeueJob}')(f => tasks.push(f));
@@ -113,8 +113,9 @@ const scheduler = code => {
 
 const random = seed => () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
 
-// One scenario on one scheduler: elements nested at random, updates (some an x-for/x-if's, on an element, in the order
-// they were made), each of which, when it runs, queues or takes off others by a script fixed for its nth run.
+// Runs one random scenario on one scheduler and returns the order the updates ran in. Elements are nested at random,
+// and some updates belong to an element (as x-for and x-if updates do). Each update queues or removes other updates
+// when it runs, following a script fixed by its run count.
 const run = (code, seed) => {
   const r = random(seed), s = scheduler(code), log = [];
   const els = [];
@@ -124,11 +125,11 @@ const run = (code, seed) => {
     const job = () => {
       const n = ran[i] = (ran[i] || 0) + 1;
       log.push(i);
-      if (n > 4) return;                                        // so that it ends
+      if (n > 4) return;                                        // stops the scenario from looping forever
       const rr = random(seed * 1000 + i * 10 + n);
       for (let k = Math.floor(rr() * 4); k--;) {
         const other = Math.floor(rr() * jobs.length);
-        if (other === i) continue;                              // Alpine never takes off the update running
+        if (other === i) continue;                              // Alpine never removes the update that is running
         rr() < 0.7 ? s.queue(jobs[other]) : s.dequeue(jobs[other]);
       }
     };
@@ -154,10 +155,11 @@ test('updates run in the same order as in Alpine\'s own scheduler', () => {
   assert.ok(ran > 10000, 'enough updates run: ' + ran);
 });
 
-/* Its x-for (patched too): a key that's a path into the item (`t.id`) is read off the item, and the items at the start
-   of the list that are the same objects in the same places keep their key and scope from the last time, rather than
-   being worked out again (a long list drawn a batch at a time went over every row drawn for each batch). Run here on a
-   pretend DOM: after every change, each element in its place, with the scope of the item there, whatever moved. */
+/* The patched x-for. A key that is a path into the item (`t.id`) is read straight from the item. Items at the start of
+   the list that are the same objects in the same positions keep the key and scope from the last render, so they are
+   not worked out again. Without this, a long list drawn a batch at a time went over every row already drawn for each
+   batch. The tests run it on a fake DOM and check, after every change, that each element is in its place with the
+   scope of its item. */
 const XFOR = vendor.slice(vendor.indexOf('  // packages/alpinejs/src/directives/x-for.js'), vendor.indexOf('  // packages/alpinejs/src/directives/x-ref.js'));
 class El {
   constructor(parent = null){ this.parent = parent; if (parent) parent.kids.push(this); }
@@ -166,8 +168,8 @@ class El {
   after(el){ if (el.parent) el.remove(); const k = this.parent.kids; k.splice(k.indexOf(this) + 1, 0, el); el.parent = this.parent; }
   replaceWith(el){ if (el.parent) el.remove(); const k = this.parent.kids; k.splice(k.indexOf(this), 1, el); el.parent = this.parent; this.parent = null; }
 }
-// An x-for over `items`, keyed by `key`: set(list) draws it, rows() its elements in order, keyRuns how many times
-// Alpine's own evaluation worked out a key.
+// An x-for over `items`, keyed by `key`. `set(list)` renders it, `rows()` returns its elements in order, and `keyRuns`
+// counts how many times Alpine's own evaluation worked out a key.
 const xfor = (expression, key) => {
   const box = { kids: [] }, tpl = new El(box), state = { items: [], keyRuns: 0 };
   tpl.content = { children: { length: 1 } }; tpl._x_keyExpression = key;
@@ -215,9 +217,9 @@ test('x-for keyed any other way, or with the list named, works out every key as 
   }
 });
 
-/* memo (util.js): a value worked out once per change to what working it out reads, on Alpine's own reactivity as
-   Pocket's copy has it (reactive.mjs). It sets its effect's own scheduler, which Alpine doesn't offer: an upgrade that
-   moves that fails here. */
+/* memo (util.js) works a value out once per change to the data it reads. It uses the reactivity in Pocket's copy of
+   Alpine (reactive.mjs) and sets a scheduler on its effect, which Alpine's public API doesn't offer. An Alpine upgrade
+   that moves that code fails here. */
 test('a memo is worked out once per change to what it reads, at once after a change, and tells what read it to read it again', c => {
   const { Alpine, flush } = watching(c);
   const data = Alpine.reactive({ steps: [{ id: 1, done: false }, { id: 2, done: false }], other: 0 }), self = { data };
@@ -228,10 +230,10 @@ test('a memo is worked out once per change to what it reads, at once after a cha
   assert.equal(open.call(self), first, 'read again with nothing changed: the same object');
   data.other++;
   assert.deepEqual([open.call(self), worked], [first, 1], 'something it doesn\'t read changed: still the same, not worked out again');
-  // Something that shows it: drawn once, and again only once the value is old.
+  // An effect that renders the value runs once, then again only after the value goes stale.
   Alpine.effect(() => { drawn++; seen = open.call(self).n; });
   assert.deepEqual([drawn, seen, worked], [1, 2, 1]);
-  data.steps[0].done = true;                                                // deep inside what it read
+  data.steps[0].done = true;                                                // a change deep inside the data the memo read
   assert.deepEqual([open.call(self).n, worked], [1, 2], 'read straight after a change, before Alpine has run anything: worked out afresh');
   assert.equal(drawn, 1, 'what showed it hasn\'t run yet');
   flush();

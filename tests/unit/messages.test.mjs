@@ -1,4 +1,4 @@
-// What Pocket says (src/js/messages.js), and where (src/js/app/lines.js): its places on each screen and in a sheet.
+// The messages Pocket shows (src/js/messages.js), and where each one appears on a screen or in a sheet (src/js/app/lines.js).
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,8 +11,9 @@ import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
 import { component } from './fake.mjs';
 
-/* The row at the end of a list of done tasks shown a part at a time (performance-plan, part 9): the next part, and how
-   many are left; fewer left than a part, the last of them; none, no row. */
+/* The row at the end of a list of done tasks that is shown a part at a time. It offers the next part and says how many
+   tasks are left. When fewer than a full part are left, it offers the last of them. When none are left, there is no
+   row. */
 test('the row for more done tasks says what its tap shows, and how many are left', () => {
   assert.deepEqual(moreDone(2900, 100), { title: 'Show 100 done earlier', note: `${(2900).toLocaleString()} more not shown` });
   assert.deepEqual(moreDone(101, 100), { title: 'Show 100 done earlier', note: '101 more not shown' });
@@ -43,7 +44,7 @@ test('what a tick says: a parent that closed its open subtasks, "Closed", with h
   assert.equal(doneText(1, 3, 'Pack'), "Closed Pack + 1 of 3 subtasks: the rest couldn't be closed");
   assert.equal(doneText(0, 2, 'Pack'), "Done: Pack — its 2 subtasks couldn't be closed");
   assert.equal(doneText(0, 0, 'x'.repeat(50)), 'Done: ' + 'x'.repeat(38) + '…', 'a long title is cut short');
-  // On its row: the title on its own, struck through, with what's before and after it.
+  // On the row, the title is shown struck through, with the text before it and after it separate.
   assert.deepEqual(doneLine(2, 2, 'Pack the van'), { text: 'Closed', title: 'Pack the van', more: '+ 2 subtasks' });
   assert.deepEqual(doneLine(0, 0, 'Pack the van'), { text: 'Done:', title: 'Pack the van', more: '' });
 });
@@ -74,7 +75,7 @@ test('Move all to today says how many moved, and what stayed', () => {
   assert.equal(sentLater('Done'), 'Done. It\'s sent once Pocket reaches Vikunja.');
 });
 
-// The places, on a pretend component with lines.js's methods, a screen (route) and a sheet.
+// A fake component with the methods from lines.js and leaving.js, a screen (route) and a sheet. Messages appear at a `place` on the screen or in the sheet.
 const app = (route = 'today', sheet = blankSheet('')) => {
   const a = { route: { name: route }, sheet, places: {}, lines: {}, leaving: {}, said: '', toasts: [], runView: null, notify(msg, action){ this.toasts.push({ msg, action }); } };
   for (const part of [lines, leaving]) Object.defineProperties(a, Object.getOwnPropertyDescriptors(part));
@@ -97,8 +98,9 @@ test('a message goes to its place when that is on screen, and to the toast when 
   assert.equal(app('run').say('x', { place: ['sheet:files', 'step', 'run'] }), 'place', 'the first of a list on screen');
 });
 
-/* In the page, what's put in the component's data is given back as Alpine's own copy of it (a Proxy), never the object
-   put there: stood in for here by a store that does the same. A line's time must end the line the store gives back. */
+/* In the page, anything put in the component's data comes back as Alpine's copy of it (a Proxy), never as the original
+   object. This test uses a store that does the same. The timer that ends a message must remove the copy that the store
+   returns. */
 test('a message in its place goes once its time is up, in a store that gives back its own copy of it, as Alpine\'s does', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const copies = new WeakMap(), copy = o => copies.get(o) || (copies.set(o, new Proxy(o, {})), copies.get(o));
@@ -124,19 +126,19 @@ test('a sheet\'s messages are in it, under what each is about, and go with it', 
   task.say('Not saved: no connection', { place: 'sheet:notes', cls: 'failed' });
   assert.equal(task.sheet.lines.notes.text, 'Not saved: no connection');
   assert.equal(task.sheet.lines.notes.cls, 'failed');
-  // Another kind of sheet has its message at its top.
+  // Another kind of sheet shows the message at its top.
   const proj = app('projects', { ...blankSheet('project'), open: true });
   proj.say('Renamed', { place: 'sheet:notes' });
   assert.deepEqual(Object.keys(proj.sheet.lines), ['top']);
-  // New template has the list of steps, with its place: a line for it is there, and one for the top isn't drawn there too.
+  // The New template sheet has its own place for the list of steps. A message for the steps appears there, and the sheet's top message does not appear in it as well.
   const tpl = app('checklists', { ...blankSheet('newtpl'), open: true });
   tpl.say('Not finished', { place: 'sheet:top', cls: 'failed' });
   tpl.say('Not moved', { place: 'sheet:subtasks', cls: 'failed' });
   assert.deepEqual([tpl.placeLines('sheet:top').map(l => l.text), tpl.placeLines('sheet:subtasks').map(l => l.text)], [['Not finished'], ['Not moved']]);
-  // Closed, there's no sheet to say it in.
+  // With no sheet open, the message goes to a toast instead.
   const closed = app('today');
   assert.equal(closed.say('Renamed', { place: 'sheet:top' }), 'toast');
-  // A save that failed, done since, takes its message back.
+  // A save that failed and then succeeded removes its failure message.
   task.unsay('sheet:notes');
   assert.deepEqual(task.placeLines('sheet:notes'), []);
 });
@@ -148,7 +150,7 @@ test('an action tapped runs once, and its line goes without calling gone', () =>
   const [l] = a.placeLines('overdue');
   a.runPlaceAction(l); a.runPlaceAction(l);
   assert.deepEqual([ran, gone, a.placeLines('overdue').length], [1, 0, 0]);
-  // Leaving the screen: what's left folds, as gone.
+  // Leaving the screen folds away the remaining messages and calls `gone` for each.
   a.sayAt('overdue', { text: 'Nothing moved', gone: () => gone++ });
   a.foldLines();
   assert.deepEqual([gone, a.placeLines('overdue').length], [1, 0]);
@@ -193,8 +195,8 @@ test('a task held on Today and moved says where it went; a card kept by its subt
   assert.equal(notMovedBack(2, 'Friday'), '2 tasks couldn\'t be moved back (changed since, or not saved) and are still due Friday.');
 });
 
-// Who started a run, in its history (parent-tasks-plan, the run's row): its summary, today with the time only, and its ⋯,
-// always with the day; who alone when its time isn't known, nothing when who isn't.
+// Who started a checklist, shown in its history. The summary shows only the time when the checklist started today. The
+// ⋯ menu always shows the day. When the time is unknown, only the name is shown. When the name is unknown, nothing is shown.
 test('a run says who started it and when, with the day when it was another day or at the top of its ⋯', () => {
   const now = new Date(2026, 9, 9, 14, 0), at = new Date(2026, 9, 9, 6, 2), before = new Date(2026, 9, 8, 6, 2);
   const time = d => d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}), full = d => d.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});

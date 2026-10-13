@@ -1,4 +1,4 @@
-// A task's progress, marking it done, and what a finger does on a row (src/js/progress.js).
+// A task's progress, marking it done, and the gestures on a row (src/js/progress.js).
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -59,8 +59,8 @@ test('a swipe: either way, clearly sideways, not from the screen\'s edges; on an
   assert.equal(swipeStarts(-9, 2, 380, 390, true), true, 'an open row, swiped on');
 });
 
-/* What a finger went down on, as far as the guard asks: its tag, whether it's contenteditable (true, false, or not
-   said), and what it's in. There's no DOM here, so `closest` reads the guard's own list of selectors. */
+/* A fake element for the text-field guard. It has a tag, a contenteditable value (true, false, or not set) and a
+   parent. There is no DOM here, so `closest` matches the selectors that inTextField passes it. */
 const el = (tag, parent = null, editable) => ({ tag, parent, editable, closest(sel){
   const is = e => sel.split(',').map(x => x.trim()).some(x => x.startsWith('[contenteditable]') ? e.editable === true : x === e.tag);
   for (let e = this; e; e = e.parent) if (is(e)) return e;
@@ -114,10 +114,11 @@ test('let go, a swiped row goes back, stays open on its Delete, or past half its
   assert.equal(swipeEnd(swipeOffset(-DELETE_W - 100, w), w), 'delete', 'carried on from the open row');
 });
 
-/* Swiping a row is one mechanism with mirrored sides (parent-tasks-plan, 1b; SIDES), each with one job, chosen as the
-   swipe starts: the content moves with the finger, and what letting go does is shown, not done, until then. Right
-   (up): the stops above where it is spread over the first half of the row, then done. Left, a row with progress
-   (down): the stops below it the same way, stopping at 0%. Left, a row at 0% (delete): its Delete. */
+/* Swiping a row uses one mechanism for both directions (SIDES). Each side has one job, chosen when the swipe starts.
+   The row's content follows the finger, and releasing only shows what will happen. It happens when the user lets go.
+   Swiping right (`up`) spreads the progress stops above the current value over the first half of the row, then marks
+   the task done. Swiping left on a row with progress (`down`) spreads the stops below the current value the same way,
+   down to 0%. Swiping left on a row at 0% (`delete`) reveals its Delete button. */
 const W = 358, SCREEN = 390;
 test('swiped right, the stops above its progress spread over the first half of the row, and past it, done', () => {
   const at = (dx, start = 0, x = 100) => swipeAt({ start, dx, x, width: W, screen: SCREEN, del: true });
@@ -129,7 +130,7 @@ test('swiped right, the stops above its progress spread over the first half of t
   assert.equal(at(W + 50).off, W, 'never further than the row');
   assert.deepEqual([at(half / 2 - 1, 50).pct, at(half / 2, 50).pct, at(half, 50).to], [50, 75, 'done'], 'from 50%: 75% halfway, done at half');
   assert.deepEqual([at(30, 30).pct, at(half / 3, 30).pct], [30, 50], 'progress set elsewhere: from where it is, to the next stop');
-  // Put down near the right edge, the stops come closer, so done is still within reach (slidePct's room).
+  // A swipe that starts near the right edge has less space, so the stops are closer together and done is still reachable.
   const near = swipeAt({ start: 0, dx: 50, x: 330, width: W, screen: SCREEN });
   assert.equal(near.to, 'done');
 });
@@ -185,7 +186,7 @@ test('a tick is felt at each stop and at a Delete’s button, a firmer one at a 
   assert.equal(swipeFeel({ to: 'open', pct: 0 }, { to: 'shut', pct: 0 }), null);
 });
 
-// A tap on a tick is felt too (rows-and-sheet-fixes-plan, part 2), a task's or a step's: done as a full swipe's done is.
+// Tapping a task's or a step's tick makes the phone vibrate, and marking it done vibrates the same as a full swipe.
 test('a tick tapped is felt: marked done, the firmer one a full swipe gives; opened again, a light tick', () => {
   assert.equal(tickFeel(false), 'done');
   assert.equal(tickFeel(true), 'tick');
@@ -211,8 +212,7 @@ test('sliding progress claims a task only where no one is on it and its slot can
   assert.equal(claimsOnSlide(null), false, 'no slot: a run, a template, a task waiting to be sent');
 });
 
-/* A parent's progress is worked out from its subtasks (parent-tasks-plan, part 3; design rule 5): it has none of its own
-   to set. */
+/* A parent's progress is calculated from its subtasks, so the user can't set it directly. */
 test('a parent\'s figure is the average of its subtasks\', a done one 100%, rounded; with none, it has none', () => {
   assert.deepEqual(workedOut([{ pct: 50 }, { pct: 0 }, { pct: 0 }, { pct: 0 }]), { pct: 13, done: 0, total: 4 }, 'one at 50% of four: 13%');
   assert.deepEqual(workedOut([{ done: true }, { pct: 50 }, { done: true, pct: 20 }, { pct: 0 }]), { pct: 63, done: 2, total: 4 }, 'done counts 100%, whatever its progress was');
@@ -256,7 +256,7 @@ test('a nudge: a touch moved up or down past a tap, within about a row, and slow
 test('the speed as the finger lifts is over its last moves, not the whole touch', () => {
   const slow = [0, 40, 80, 120, 160, 200].map((t, i) => ({ t, y: 400 - i * 5 }));
   assert.equal(releaseSpeed(slow, 240, 370), 10 / 80, `from its first move in the last ${NUDGE_SPEED_MS}ms`);
-  // Slow, then flicked at the end: the end is what counts.
+  // The drag is slow and ends with a flick. Only the end of the drag counts.
   const flick = [{ t: 0, y: 400 }, { t: 500, y: 390 }, { t: 600, y: 388 }, { t: 620, y: 370 }];
   assert.ok(releaseSpeed(flick, 640, 340) > NUDGE_MAX_SPEED);
   assert.equal(releaseSpeed([{ t: 0, y: 400 }], 50, 380), 20 / 50, 'a touch shorter than that: from where it went down');

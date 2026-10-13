@@ -1,5 +1,6 @@
-// When rows marked done or deleted leave together (src/js/batch.js): 3 seconds after the last mark, counted from when
-// the finger lifts, never while a finger is down or the list scrolls, and at once when the screen is left.
+// When rows marked done or deleted leave the list together (src/js/batch.js). They leave 3 seconds after the last mark,
+// counted from when the user stops touching the screen. They never leave while the user is touching the screen or the
+// list is scrolling, and they leave at once when the user leaves the screen.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +13,7 @@ test('rows marked go together, 3 seconds after the last mark', t => {
   assert.equal(BATCH_MS, 3000);
   b.mark();
   t.mock.timers.tick(2000);
-  b.mark();                                                     // a second row: the wait starts again
+  b.mark();                                                     // marking a second row restarts the wait
   t.mock.timers.tick(2999);
   assert.equal(went.length, 0);
   t.mock.timers.tick(1);
@@ -25,7 +26,7 @@ test('rows marked go together, 3 seconds after the last mark', t => {
 test('a finger down holds them, and the wait starts when it lifts', t => {
   const { went, b } = timer(t);
   b.down(1);
-  b.mark();                                                     // marked with the finger still down
+  b.mark();                                                     // marked while the touch is still down
   t.mock.timers.tick(10000);
   assert.equal(went.length, 0, 'not while the finger is down');
   b.up(1);
@@ -45,7 +46,7 @@ test('a touch after the mark starts the wait again; two fingers, from the last t
   t.mock.timers.tick(5000);
   assert.equal(went.length, 0, 'one finger still down');
   b.up(2);
-  b.up(2);                                                      // a lift seen twice changes nothing
+  b.up(2);                                                      // a second release of the same touch changes nothing
   t.mock.timers.tick(2999);
   assert.equal(went.length, 0);
   t.mock.timers.tick(1);
@@ -75,12 +76,13 @@ test('leaving the screen ends the wait (the rows are cleared at once by the call
   b.stop();
   t.mock.timers.tick(10000);
   assert.equal(went.length, 0);
-  b.mark();                                                     // a finger left down when the screen was left doesn't hold the next
+  b.mark();                                                     // a touch still down when the user left the screen must not hold the next mark
   t.mock.timers.tick(3000);
   assert.equal(went.length, 1);
 });
 
-// The rows marked (src/js/app/leaving.js), on a pretend component: what each tap does, and what's done when it clears.
+// Marked rows (src/js/app/leaving.js) on a fake component. The test checks what tapping a row does and what runs when
+// the batch clears.
 test('a row marked: its tap takes the mark back; a subtask closed with its parent only leaves its parent\'s mark', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default;
@@ -98,49 +100,49 @@ test('a row marked: its tap takes the mark back; a subtask closed with its paren
   await app.clearBatch(true);
   assert.deepEqual(did, ['restored 1', 'gone 2'], 'what each was for, once');
   assert.deepEqual(app.leaving, {});
-  // Leaving the screen: whatever's marked goes at once.
+  // Leaving the screen clears every marked row at once.
   app.markRow(1, { kind: 'deleted', gone: () => did.push('sent 1') });
   app.clearNow();
   assert.deepEqual(did.at(-1), 'sent 1');
   assert.deepEqual(app.leaving, {});
 });
 
-/* A collapsed card's top row done gives its place to the next subtask sooner than the batch (clearTops): half the
-   wait, by the same rules. Only that row's own mark: any other row, a parent closed with its subtasks, and a deleted
-   one wait for the batch. */
+/* When the top row of a collapsed card is marked done, it leaves after half the usual wait (clearTops), so the next
+   subtask comes up sooner. The same touch and scroll rules apply. Only that row's own mark leaves early. Any other
+   row, a parent closed together with its subtasks, and a deleted row wait for the batch. */
 test('a collapsed card\'s top row done goes after 1.5 seconds, for the next to come up; every other row waits for the batch', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default;
   const { TOP_MS } = await import('../../src/js/batch.js');
   const app = component(leaving), did = [], was = { one: document.querySelector, all: document.querySelectorAll };
-  // On the page: task 1 is a collapsed card's top row; 2 is a plain row; 4 is a top row, and a row of its own elsewhere.
+  // On the page, task 1 is the top row of a collapsed card and task 2 is a plain row. Task 4 is both a top row and a plain row elsewhere.
   const tops = [1, 4, 5, 6], plain = [2, 4];
   document.querySelector = sel => tops.some(id => sel.includes(`.step-line[data-id="${id}"]`)) ? {} : null;
   document.querySelectorAll = sel => plain.some(id => sel.includes(`[data-id="${id}"]`)) ? [{ offsetHeight: 50, style: {}, animate: () => ({ finished: Promise.resolve(), cancel(){}, effect: { target: { style: {} } } }) }] : [];
   try {
     assert.equal(TOP_MS, 1500);
     for (const id of [1, 2, 4]) app.markRow(id, { kind: 'done', gone: () => did.push('gone ' + id) });
-    app.markRow(5, { kind: 'done', ids: [5, 7], gone: () => did.push('gone 5') });      // a parent closed with its subtask
+    app.markRow(5, { kind: 'done', ids: [5, 7], gone: () => did.push('gone 5') });      // a parent closed together with its subtask
     app.markRow(6, { kind: 'deleted', gone: () => did.push('sent 6') });
     t.mock.timers.tick(TOP_MS - 1);
     assert.deepEqual(did, [], 'not before');
     t.mock.timers.tick(1);
     assert.deepEqual([did, app.leaving], [['gone 1'], { 2: 'done', 4: 'done', 5: 'done', 7: 'done', 6: 'deleted' }], 'the top row alone');
-    // Ticked again in time, it's taken back, and nothing goes.
+    // Ticking the row again before the wait ends undoes the mark, and the row does not leave.
     app.markRow(1, { kind: 'done', undo: () => did.push('opened 1'), gone: () => did.push('gone 1 again') });
     t.mock.timers.tick(1000);
     app.unmark(1);
     t.mock.timers.tick(1000);
     assert.deepEqual(did, ['gone 1', 'opened 1']);
-    // The screen left: it goes with the rest, at once.
+    // Leaving the screen clears this row with the rest, at once.
     app.markRow(1, { kind: 'done', gone: () => did.push('gone 1 again') });
     app.clearNow();
     assert.deepEqual(did.slice(2).sort(), ['gone 1 again', 'gone 2', 'gone 4', 'gone 5', 'sent 6'], 'the screen left: all at once');
   } finally { document.querySelector = was.one; if (was.all) document.querySelectorAll = was.all; else delete document.querySelectorAll; }
 });
 
-// Rows gone from a list loaded afresh (settle, collapseRows in util.js): a few on the screen fold away, every one
-// measured before any is changed; more than a few at once, or any off the screen, simply go.
+// Rows missing from a freshly loaded list (settle and collapseRows in util.js). A few rows on the screen fold away, and
+// all of them are measured before any is changed. More than a few at once, or any row off the screen, just disappear.
 const fakeRow = (id, top, log) => ({ isConnected: true, style: {}, dataset: { id: String(id) },
   get offsetHeight(){ log.push('read'); return 50; },
   getBoundingClientRect(){ log.push('read'); return { top, bottom: top + 50, height: 50 }; },
@@ -163,12 +165,12 @@ test('rows marked stay where they were through a load: one Vikunja no longer lis
   const ids = groups => groups.map(g => g.tasks.map(t => t.id));
   app.view = { groups: [{ key: 'today', tasks: [a, b, c] }, { key: 'week', tasks: [d] }] };
   app.leaving = { 2: 'done', 3: 'done' };
-  // b is done, so Vikunja's Today no longer has it; c repeats, and is now due next week.
+  // Task b is done, so Vikunja's Today no longer lists it. Task c repeats and is now due next week.
   assert.deepEqual(ids(app.keepMarked([{ key: 'today', tasks: [a] }, { key: 'week', tasks: [d, c] }])), [[1, 2, 3], [4]], 'both where they were');
-  // Not marked, a task goes where Vikunja has it.
+  // A task that is not marked appears where Vikunja lists it.
   app.leaving = {};
   assert.deepEqual(ids(app.keepMarked([{ key: 'today', tasks: [a] }, { key: 'week', tasks: [d, c] }])), [[1], [4, 3]]);
-  // In search and a project, a ticked task Vikunja now lists under Done is left there: its mark moves nothing more.
+  // In search and in a project, a ticked task that Vikunja now lists under Done stays where it is. Its mark moves nothing further.
   app.route = { name: 'search' };
   app.view = { groups: [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [] }] };
   app.leaving = { 2: 'done' };

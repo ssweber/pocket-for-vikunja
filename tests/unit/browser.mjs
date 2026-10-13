@@ -1,11 +1,10 @@
-// What Pocket's modules expect of a browser, as little of it as they need to load in Node and run what the unit tests
-// call. Imported first by each test file, before anything from src/, since api.js and sync.js look at these as they load.
+// A minimal fake browser, just enough for Pocket's modules to load in Node and run the unit tests. Each test file
+// imports it first, before anything from src/, because api.js and sync.js read these globals as they load.
 //
-// There's no DOM: reading HTML (a task's notes, for Pocket's lines in them, or a comment) is left to the browser tests
-// (tests/parse.mjs), so here a task's description has to be empty. Anything else throws, saying so, rather than reading
-// as nothing.
+// There is no DOM. Parsing HTML (a task's notes or a comment) is covered by the browser tests (tests/parse.mjs), so a
+// task's description must be empty here. Any other HTML throws an error, so a test can't silently read it as empty.
 
-globalThis.self = {};                                    // no BroadcastChannel, which would keep Node running
+globalThis.self = {};                                    // no BroadcastChannel, because an open one keeps Node running
 globalThis.matchMedia = () => ({ matches: false });
 globalThis.location = { origin: 'http://pocket.test', hash: '' };
 globalThis.NodeFilter = { SHOW_TEXT: 4 };
@@ -18,7 +17,7 @@ const empty = () => ({
 });
 globalThis.document = { lastModified: '', visibilityState: 'visible', querySelector: () => null, implementation: { createHTMLDocument: () => ({ createElement: empty }) } };
 
-// localStorage, in memory: Pocket's drafts, saved lists and settings.
+// localStorage in memory. Pocket keeps its drafts, saved lists and settings there.
 const kept = new Map();
 globalThis.localStorage = {
   getItem: k => kept.has(k) ? kept.get(k) : null,

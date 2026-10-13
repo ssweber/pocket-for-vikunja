@@ -1,5 +1,6 @@
-// Opening on the kept screen (src/js/app/auth.js, boot): only with the sign-in Pocket last confirmed as the person whose
-// lists it keeps, known by its token's hash, and nothing sent until Vikunja has said who it is.
+// Opening on the saved screen (boot in src/js/app/auth.js). Pocket shows saved lists only when the sign-in token is the
+// one it last confirmed for that user. It recognises the token by its hash. Pocket sends nothing until Vikunja has
+// said who the user is.
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { saved } from '../../src/js/lists.js';
 
 const ME = { id: 7, username: 'alex' };
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-// A pretend Vikunja whose /user answers only when the test says (`answer`), and every request kept in `requests`.
+// A fake Vikunja. /user answers only when the test calls `answer`, and every request is recorded in `requests`.
 function vikunja(user = ME){
   const v = { requests: [] };
   let answer;
@@ -25,8 +26,8 @@ function vikunja(user = ME){
   };
   return v;
 }
-// The component, with boot's own parts and what it calls on the rest written down: the screens it showed, and whether
-// each showed the kept copy.
+// The component with the real auth and sending code. The methods boot calls on the rest of the app are stubs that
+// record which screens were shown and whether each used the saved copy.
 function app(mode = 'token'){
   const c = component(auth, sending);
   Object.assign(c, {
@@ -37,12 +38,13 @@ function app(mode = 'token'){
   c.flush = sending.flush;
   return c;
 }
-// (localStorage.clear: saved.clear() goes through the keys of the page's localStorage, which the stub in Node hasn't.)
+// This uses localStorage.clear() because saved.clear() walks the keys of the page's localStorage, and the stub in Node
+// has none.
 const keep = async (token, user = ME) => { localStorage.clear(); saved.set('user', user); saved.set('who', { id: user.id, hash: await tokenHash(token) }); };
 const settle = () => new Promise(ok => setTimeout(ok, 10));
-// Until boot has got as far as asking Vikunja who it is: by then it has shown the kept screen, if it shows one, and holds
-// changes back. Not a fixed wait: the token's hash is worked out off the main thread, which takes longer on a busy
-// computer (with every test file running at once, 10 ms wasn't always enough).
+// Waits until boot has asked Vikunja who the user is. By then boot has shown the saved screen, if there is one, and is
+// holding changes back. This polls instead of waiting a fixed time, because the token's hash is computed off the main
+// thread and takes longer on a busy computer. With every test file running at once, 10 ms was not always enough.
 const asked = async v => { for (let i = 0; i < 500 && !v.requests.some(r => r.path === '/user'); i++) await settle(); };
 
 test('a token is kept as its SHA-256, never itself', async () => {
@@ -97,9 +99,9 @@ test('a shared session: the kept screen only for the token whose hash is kept, a
   await keep('jwt-1');
   sharedToken.set('jwt-1');
   assert.equal((await c.keptUser())?.id, ME.id);
-  sharedToken.set('jwt-2');                                                   // renewed by Vikunja's web app
+  sharedToken.set('jwt-2');                                                   // Vikunja's web app renewed the token
   assert.equal(await c.keptUser(), null);
-  // Pocket's own renewal: a 401, the refresh cookie spent, the request again with the new token.
+  // Pocket renews the token itself. The request gets a 401, Pocket refreshes the token, and it sends the request again.
   await keep('jwt-1'); sharedToken.set('jwt-1'); setSeenToken('jwt-1'); c.user = ME;
   let n = 0;
   globalThis.fetch = async (url, { headers = {} } = {}) => {

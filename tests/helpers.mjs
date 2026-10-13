@@ -1,61 +1,64 @@
-// What the end-to-end tests share: Playwright's assertions that try again, waiting until Pocket has sent everything,
-// and signing in. Not a test file itself.
+// What the end-to-end tests share: retrying assertions, waiting until Pocket has sent everything, and signing in.
+// This file contains no tests.
 import { expect as base } from 'playwright/test';
 import { swipeAt } from '../src/js/progress.js';
 
-/* Playwright's own expect, without its test runner: `await expect(locator).toBeVisible()` tries again until it passes
-   or 10 seconds go by, so a test needn't wait for the page and then check it. */
+/* Playwright's `expect` with a 10 second timeout. `await expect(locator).toBeVisible()` retries until it passes or
+   the timeout ends, so a test doesn't need a separate wait before checking the page. */
 export const expect = base.configure({ timeout: 10000 });
 
-/* Until everything Pocket has to send has reached Vikunja: <html data-sync> says "idle" (core.js), and still does a
-   moment later, as a tap's handler may be about to send. Before a test reads Vikunja, or deletes what it made.
-   Something kept that can't go now (a deletion whose Undo still shows, no connection, turned down) never gets there. */
+/* Waits until everything Pocket has to send has reached Vikunja. Call it before a test reads Vikunja or deletes
+   what the test made. It needs <html data-sync> (core.js) to be "idle" for `settle` ms, because a tap's handler may be
+   about to send something. It never finishes while something can't be sent (a deletion whose Undo is still showing,
+   no connection, a request Vikunja rejected). */
 export async function synced(page, { timeout = 20000, settle = 250 } = {}){
   let since = 0, state;
   for (const end = Date.now() + timeout; ; await new Promise(r => setTimeout(r, 50))) {
-    state = await page.evaluate(() => document.documentElement.dataset.sync).catch(() => null);    // mid-reload: again
+    state = await page.evaluate(() => document.documentElement.dataset.sync).catch(() => null);    // the page is reloading, so try again
     if (state !== 'idle') since = 0; else if (!since) since = Date.now(); else if (Date.now() - since >= settle) return;
     if (Date.now() > end) throw new Error(`Pocket never finished sending: data-sync is "${state}"`);
   }
 }
 
-// Signed in with an API token, from Pocket's sign-in screen at `url`, until its first list has loaded.
+// Signs in with an API token on Pocket's sign-in screen at `url`, then waits for the first list to load.
 export async function signIn(page, url, token){
   await page.goto(url);
-  await expect(page.locator('#auth-step')).toBeVisible();                  // no address to enter: it's this Vikunja
+  await expect(page.locator('#auth-step')).toBeVisible();                  // no server address to enter, Pocket uses this Vikunja
   const tab = page.getByRole('button', { name: 'API token', exact: true });
-  if (await tab.isVisible()) await tab.click();                            // not there when passwords are off
+  if (await tab.isVisible()) await tab.click();                            // missing when password sign-in is off
   await page.getByLabel('API token').fill(token);
   await page.getByRole('button', { name: 'Connect' }).click();
   await expect(page.locator('#app')).toBeVisible();
   await loaded(page);
 }
 
-/* Until the screen on show is loaded from Vikunja: no Loading, and not the copy kept of it, shown at once while it's
-   loaded afresh behind (<main id="view" aria-busy>). */
+/* Waits until the current screen is loaded from Vikunja. That means no Loading text, and no saved copy of the
+   screen that is shown while the real one loads behind it (<main id="view" aria-busy>). */
 export async function loaded(page, timeout = 15000){
   await expect(page.locator('#view .loading')).toHaveCount(0, { timeout });
   await expect(page.locator('#view[aria-busy="true"]')).toHaveCount(0, { timeout });
 }
 
-/* A message in its place (lines.js): under a heading ("overdue"), by the add box ("cap"), in a sheet ("sheet:notes"), on
-   a run ("step", "run"), as Pocket asked for it (data-place). Its action is a button with its name: line.getByRole(…). */
+/* A message line (lines.js), found by where Pocket put it (data-place). Examples are under a heading ("overdue"),
+   by the add box ("cap"), in a sheet ("sheet:notes") and on a checklist ("step", "run"). The line's action is a
+   button with a label: line.getByRole(…). */
 export const placeLine = (page, where) => page.locator(`.place-line[data-place="${where}"]`);
 export const placeSays = (page, where, text, timeout = 20000) => expect(placeLine(page, where)).toContainText(text, { timeout, ignoreCase: true });
-// A line in a row's place: what it says, and its action.
+// A message line that replaces a row, found by its text.
 export const rowLine = (page, text) => page.locator('.row-line', { hasText: text });
-// No message at the bottom of the screen.
+// Fails if a toast (the message at the bottom of the screen) is showing.
 export const noToast = async page => { if (await page.locator('#toast.show').count()) throw new Error('the toast said: ' + await page.textContent('#toast-msg')); };
-// A message showing in the toast (a hidden one keeps its words, only see-through: so only one showing counts).
+// Waits for a toast with this text. A hidden toast keeps its text and is only transparent, so only a showing toast counts.
 export const toast = (page, text, timeout = 20000) => expect(page.locator('#toast.show #toast-msg')).toContainText(text, { timeout, ignoreCase: true });
-// So the next one is new: the one showing goes now, as its own timer would make it. (Not by moving the page's clock on,
-// which would also bring every other timer round sooner: the run screen's reload every 20 seconds, under a finger.)
+// Hides the showing toast now, as its timer would, so the next toast is a new one. The test doesn't advance the page's
+// clock instead, because that would also fire every other timer early, such as the checklist screen's reload every
+// 20 seconds while the user is touching the screen.
 export async function toastGone(page){
   await page.evaluate(() => { const t = window.Alpine?.$data(document.body)?.toast; if (t) t.show = false; });
   await expect(page.locator('#toast.show')).toHaveCount(0);
 }
 
-// Where an element is once it has stopped moving (a sheet sliding in, a list scrolling): to put a finger on it.
+// Returns an element's bounding box once it has stopped moving (a sheet sliding in, a list scrolling), so a touch can target it.
 export async function steady(locator, timeout = 5000){
   let was = null;
   for (const end = Date.now() + timeout; Date.now() < end; await new Promise(r => setTimeout(r, 80))) {
@@ -66,19 +69,20 @@ export async function steady(locator, timeout = 5000){
   throw new Error('it never stopped moving');
 }
 
-/* A finger on `page`: Chrome's own touch input, so the page scrolls under it as on a phone, and the phone's rules for a
-   touch hold (touch-action, a scroll taking the touch away from the page), which a mouse (swipeRow) never meets.
-   `touch(type, x, y, at)` is one touchStart, touchMove, touchEnd or touchCancel. Each says when it happened (`at`, in ms), as a
-   phone's do, since Chrome takes its own time to pass them on: how fast the finger went is then the test's to say.
-   `touchDrag(sel, by, n, every, hold, {check, cancel})`: `sel` touched in its middle, moved `by` px down in `n` moves
-   `every` ms apart, then lifted; held `hold` ms first (really waited). `check` runs before it's lifted, the finger
-   still down, once the page has had its last move: Chrome hands a page its touch moves a frame at a time, later than
-   it takes them from here, so a check that nothing moved would otherwise pass before the page had the chance.
-   `cancel`: not lifted, but taken away by the phone (touchcancel), as its own gesture or a call does mid-touch. */
+/* Real touch input on `page`, sent through Chrome. The page scrolls as it does on a phone, and the phone's touch
+   rules apply (touch-action, a scroll taking the touch away from the page). A mouse (swipeRow) never meets those rules.
+   `touch(type, x, y, at)` sends one touchStart, touchMove, touchEnd or touchCancel. Each carries its time (`at`, in ms),
+   as events from a phone do, because Chrome delays passing them on. The test therefore decides how fast the touch moves.
+   `touchDrag(sel, by, n, every, hold, {check, cancel})` touches the middle of `sel`, moves `by` px down in `n` moves
+   `every` ms apart, then releases. It really waits `hold` ms before moving. `check` runs before the release, while the
+   touch is still down and after the page has received the last move. Chrome gives the page touch moves one frame at a
+   time, later than the test sends them, so a check that nothing moved would otherwise pass before the page could react.
+   `cancel` ends the touch with touchcancel instead of a release, as the phone does when its own gesture or a call
+   interrupts a touch. */
 export async function finger(page){
   const cdp = await page.context().newCDPSession(page);
   const touch = (type, x, y, at = Date.now()) => cdp.send('Input.dispatchTouchEvent', { type, timestamp: at / 1000, touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x, y }] });
-  // Where the page last saw the finger: a listener that only looks, added once per page load.
+  // Records where the page last saw the touch. The listener only reads, and is added once per page load.
   const watch = () => page.evaluate(() => {
     if (window.__finger) return;
     window.__finger = {};
@@ -92,20 +96,21 @@ export async function finger(page){
     if (hold) await page.waitForTimeout(hold);
     const t0 = Date.now();
     for (let i = 1; i <= n; i++) await touch('touchMove', x, y + by * i / n, t0 + i * every);
-    // The finger lifts whatever the check found, so the next touch starts afresh.
+    // The touch ends even if the check fails, so the next touch starts clean.
     try { if (check) { await seenAt(x, y + by); await check(); } }
     finally { await touch(cancel ? 'touchCancel' : 'touchEnd', x, y + by, t0 + n * every + 8); }
   };
   return { touch, touchDrag };
 }
 
-/* What a swiped row uncovers (lay, app/progress.js): a layer laid still under the row, first in the box the row is
-   placed by, not inside the row. One row is swiped at a time, so it's found by its kind: a row's stops, on green
-   ('.row-prog'), or its Delete, red, with its button ('.row-red'). */
+/* The layer a swiped row uncovers (lay, app/progress.js). The layer stays still under the row. It is placed in the
+   box that positions the row, not inside the row. Only one row is swiped at a time, so the layer is found by its
+   kind: the progress stops on green ('.row-prog'), or the red Delete layer with its button ('.row-red'). */
 export const uncovered = (page, kind = '.row-prog') => page.locator(`${kind}.row-under`);
-/* How row `sel`, swiped and still held, lies over what it uncovers: `x`, how far aside the row is; `inside`, whether
-   the layer is in the row (it mustn't be); `off`, how far the layer's box is from the row's place at rest (0: laid
-   exactly under it, whatever the row's indent); `ring`, the ring's distance from the layer's edge it's uncovered at. */
+/* Measures how row `sel`, swiped and still held, sits over the layer it uncovers. `x` is how far the row has moved
+   sideways. `inside` is whether the layer is inside the row, which it must not be. `off` is how far the layer's box is
+   from the row's resting position, and 0 means the layer is exactly under the row whatever the row's indent. `ring` is
+   the distance from the ring to the edge of the layer where the ring is uncovered. */
 export const laidUnder = (page, sel, kind = '.row-prog') => page.locator(sel).evaluate((row, kind) => {
   const u = document.querySelector(`${kind}.row-under`);
   if (!u) return null;
@@ -113,15 +118,16 @@ export const laidUnder = (page, sel, kind = '.row-prog') => page.locator(sel).ev
   return { x, inside: row.contains(u), ring: ring ? (u.dataset.side === 'right' ? b.right - ring.right : ring.left - b.left) : null,
     off: Math.max(Math.abs(b.left - (a.left - x)), Math.abs(b.width - a.width), Math.abs(b.top - a.top - row.clientTop), Math.abs(b.height - row.clientHeight)) };
 }, kind);
-/* Row `sel` watched frame by frame for `ms` from now, as it's let go: how far aside it is (`x`) and its width (`w`);
-   the layer under it, while there is one: where its ring or its Delete's word is (`ring`, its left edge on the
-   screen), how wide the layer is (`under`) and where its right edge is (`right`); and everything on the page that's
-   moving or changing size then (`moving`: 'row:transform' for the row moved by its transform, else whose it is, by
-   its class, and what of it). And whether it's still the row it was among its list's: `there` (still on the page),
-   `at` (which of its list's rows it is, the first 0), `rows` (how many the list has), and `gap` (its gap, "Deleted",
-   drawn: never for one done): a card's top row let go must stay its top row, with no other coming up meanwhile. Only the row moves (rows-and-sheet-fixes-plan, part 2): one animation of its transform,
-   over a layer that stays still. slideSeen() waits for the frames. still(frames) says what else moved, as a
-   sentence, or '' if nothing did. */
+/* Records row `sel` frame by frame for `ms` from now, starting when the user releases it. Each frame has:
+   `x` (how far the row has moved sideways) and `w` (its width). While a layer is under the row: `ring` (the left edge
+   of the ring or of the Delete text, on the screen), `under` (the layer's width) and `right` (the layer's right edge).
+   `moving` lists everything on the page that is moving or changing size: 'row:transform' for the row's own transform,
+   otherwise the element's class and the properties that change. Also whether the row is still in its list:
+   `there` (still on the page), `at` (its index among the list's rows, the first is 0), `rows` (how many rows the
+   list has) and `gap` (whether its "Deleted" gap is drawn, which never happens for a done row). A card's top row that
+   is released must stay the top row, with no other row moving up meanwhile. Only the row should move, in one
+   animation of its transform, over a layer that stays still. slideSeen() waits for the frames. still(frames) returns a
+   sentence describing what else moved, or '' if nothing did. */
 export const watchSlide = (page, sel, ms = 700) => page.locator(sel).evaluate((row, ms) => {
   const seen = window.__slide = [], t0 = performance.now(), moves = /^(transform|translate|scale|rotate|width|height|left|right|top|bottom|inset|margin|padding|flex|justify|align)/i;
   const own = k => !['offset', 'computedOffset', 'easing', 'composite'].includes(k), list = row.parentElement;
@@ -147,19 +153,21 @@ export function still(frames){
   return '';
 }
 
-/* The one-time hint to hold and slide put away, as on a phone that has slid a row: otherwise it adds a line to the
-   first row of each screen, which a test measuring rows doesn't expect. Every page of `context`, from the start. */
+/* Dismisses the one-time hold-and-slide hint, as if the user had already slid a row. Otherwise the hint adds a line to
+   the first row of each screen, which tests that measure rows don't expect. It applies to every page of `context`
+   from the start. */
 export const hintSeen = context => context.addInitScript(() => { try { localStorage.setItem('pocket.hint.slide', 'done'); } catch {} });
 
-/* A finger swiped across row `sel` (pressed, moved, lifted, as a phone's touch does with no hold), to where letting go
-   does `to`: a quarter of progress, or 100, done (a full swipe right); 'open' or 'delete' (a row at 0% swiped left into
-   its Delete, resting open on it, or past half the row, deleted); 'back' (a parent's header swiped right a little, which
-   springs back). Where that is comes from the app's own sums (swipeAt), so a change to its numbers (SIDES) changes no
-   test: the finger is let go in the middle of the stretch that does it, or a little past a full point. Right from near
-   the row's left, left from near its right, so each side has its room. `start`: its progress as the swipe starts (a done
-   row's 100); `one`: a parent's header or row, whose right side has only its full point; `check` runs while it's held.
-   By the mouse, which the page takes as a finger, but the phone's own rules for a touch never meet it: `finger`
-   (finger(page).touch) swipes it by a real touch instead. */
+/* Swipes across row `sel` (press, move, release, with no hold, as a touch on a phone does) so that releasing does
+   `to`. `to` is a progress such as 25, or 100 for done (a full swipe right). It can also be 'open' (a row at 0%
+   swiped left until it rests open on its Delete), 'delete' (swiped left past half the row, which deletes it) or
+   'back' (a parent's header swiped a little to the right, which springs back). The distance comes from the app's own
+   calculation (swipeAt), so a change to its numbers (SIDES) doesn't break any test. The swipe is released in the middle
+   of the range of distances that does `to`, or a little past the full point. A swipe right starts near the row's left
+   edge and a swipe left near its right edge, so each direction has space to move. `start` is the row's progress when
+   the swipe starts (100 for a done row). `one` is for a parent's header or row, whose right side only has its full
+   point. `check` runs while the swipe is held. By default the mouse is used, which the page treats as a touch but
+   which never meets the phone's touch rules. Pass `finger` (finger(page).touch) to swipe with real touch events. */
 export async function swipeRow(page, sel, to, { start = 0, one = false, check = null, finger = null } = {}){
   const el = page.locator(sel);
   await el.evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));

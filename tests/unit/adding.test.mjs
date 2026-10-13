@@ -1,6 +1,7 @@
-// What an add box's lines become, through the outbox (src/js/app/sending.js, LINE_STEPS in src/js/sync.js), against a
-// pretend Vikunja: what's sent for each line, in which order, and what its row shows once it's there. And what a box
-// says it read before that: its chips and the words marked in it (src/js/app/quickadd.js).
+// Tests for what an add box's lines become when they go through the outbox (src/js/app/sending.js, LINE_STEPS in
+// src/js/sync.js), against a fake Vikunja. They check what is sent for each line, in what order, and what its row
+// shows once it arrives. They also check what a box shows it has read before sending: its chips and the text marked
+// in it (src/js/app/quickadd.js).
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,8 +18,8 @@ import { sync } from '../../src/js/sync.js';
 
 const DAY = 86400;
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
-// The component on Today, with the parts that send an entry and put what it made on the screen. The batch's timer is
-// the test's, so it doesn't clear by itself.
+// The component on Today, with the parts that send an entry and put the result on the screen. The test controls the
+// batch's timer, so the batch doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'cancelLabel'));
@@ -27,9 +28,11 @@ const adding = t => {
   app.view = { groups: todayGroups(), route: '' };
   return app;
 };
-// A line as an add box keeps it in the outbox (packParsed): `p`, what was read in it; `under`: the line it's under.
+// A line as an add box keeps it in the outbox (packParsed). `p` is what was read from the line, and `under` is the
+// index of the line it sits under.
 const line = (title, p = {}, under = null) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0, ...p }, under, taskId: null, done: false, linked: false });
-// The same as a Pocket from before lines said which line they're under kept it: its entry's `nest` said it for them all.
+// A line as an older Pocket kept it, before each line said which line it sits under. The entry's `nest` said it for all
+// the lines.
 const oldLine = (title, p = {}) => { const { under, ...x } = line(title, p); return x; };
 let n = 0;
 const entry = (items, more = {}) => ({ id: 'e' + ++n, user: 1, at: new Date().toISOString(), nest: false, pid: 5, items, files: [], ...more });
@@ -65,7 +68,7 @@ test('a task that arrived done shows ticked on its row and leaves with the batch
   assert.equal(group(app, 'nodate').length, 1, 'not before 3 seconds');
   await app.clearBatch(true);
   assert.deepEqual(group(app, 'nodate'), [], 'gone with the batch');
-  // Another, opened again by its tick before the batch clears.
+  // Another task, opened again by its tick before the batch clears.
   const again = await send(app, entry([line('Call Jo', { done: true })]));
   app.placeSent(again.tasks);
   await app.unmark(102);
@@ -124,7 +127,7 @@ test('a line over lines that arrived done or with progress has the figure they g
   await send(app, entry([line('Set the hall'), line('Tables', { pct: 50 }, 0), line('Lights', {}, 0)]));
   await app.saveTask(104, null, () => null);
   assert.equal(v.task(104).percent_done, 0.25, 'one at 50% of two');
-  // With none done, its figure is 0, as Vikunja made it: nothing is written.
+  // With no subtask done, the parent's progress is 0, as Vikunja made it, so nothing is written.
   v.requests.length = 0;
   await send(app, entry([line('Order cups'), line('Small', {}, 0), line('Large', {}, 0)]));
   assert.deepEqual(sent(v).filter(([m]) => m === 'PATCH'), []);
@@ -133,7 +136,7 @@ test('a line over lines that arrived done or with progress has the figure they g
 const links = v => v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]);
 test('a list with several parents, and subtasks of subtasks: each line is made under the line it says, in order', async t => {
   const v = fakeVikunja(), app = adding(t);
-  // "## Pack the van", "Load chairs", "  Stack them" (done), "## Set the hall", "Tables (50%)"
+  // The lines are "## Pack the van", "Load chairs", "  Stack them" (done), "## Set the hall", "Tables (50%)"
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', { done: true }, 1), line('Set the hall'), line('Tables', { pct: 50 }, 3)]);
   v.trouble = () => 'offline';
   await send(app, e);
@@ -147,7 +150,8 @@ test('a list with several parents, and subtasks of subtasks: each line is made u
   assert.deepEqual(links(v), [[101, 102], [102, 103], [104, 105]]);
   assert.deepEqual(r.tasks.map(x => [x.title, x.parent, x.child]), [['Pack the van', null, false], ['Load chairs', 101, true], ['Stack them', 102, true], ['Set the hall', null, false], ['Tables', 104, true]]);
   await app.saveTask(101, null, () => null);
-  // The deepest first, as each counts in the one over it: Load chairs 100% (its one subtask done), so Pack the van 100%.
+  // The deepest task is written first, because its progress counts in the task above it. Load chairs is 100% (its one
+  // subtask is done), so Pack the van is 100%.
   assert.deepEqual(sent(v).filter(([m, , b]) => m === 'PATCH' && 'percent_done' in b && !b.done).map(([, path, b]) => [path, b.percent_done]),
     [['/tasks/105', 0.5], ['/tasks/104', 0.5], ['/tasks/102', 1], ['/tasks/101', 1]]);
 });
@@ -159,11 +163,11 @@ test('an entry kept from before lines said which line they\'re under still sends
   assert.deepEqual(r.tasks.map(x => x.parent), [null, 101, 101]);
   await send(app, entry([oldLine('Order cups'), oldLine('Order lids')]));
   assert.equal(links(v).length, 2, 'no more links: tasks of their own');
-  // Half sent by the older Pocket: its first line made, and the project it went to kept on the entry.
+  // An entry the older Pocket half sent: its first line was made, and the project it went to is kept on the entry.
   const half = entry([{ ...oldLine('Set the hall'), taskId: 101, projectId: 5, done: true }, oldLine('Lights')], { nest: true, parentProject: 5 });
   await send(app, half);
   assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100], 'the rest carries on under it');
-  // Subtasks added from a task's sheet (parent), kept without `under`: under that task.
+  // Subtasks added from a task's sheet (`parent`) are kept without `under`, and go under that task.
   await send(app, entry([oldLine('Sound check')], { parent: { id: 101, project_id: 5, title: 'Pack the van' } }));
   assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100]);
 });
@@ -174,7 +178,7 @@ test('a waiting line cancelled: the lines under it go under what it was under, a
   v.trouble = () => 'offline';
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1), line('Tables', {}, 0)]);
   await send(app, e);
-  // Each waiting row's Cancel says what becomes of the lines under it, a later parent's too.
+  // Each waiting row's Cancel label says what becomes of the lines under it, including the lines under a later parent.
   assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Pack the van. The lines under it become their own tasks.',
     'Cancel Load chairs. The line under it moves under “Pack the van”.', 'Cancel Stack them', 'Cancel Tables']);
   await app.cancelPending(e.id, 1);
@@ -186,7 +190,7 @@ test('a waiting line cancelled: the lines under it go under what it was under, a
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Stack them', null], ['Tables', null]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now their own tasks.');
   assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Stack them', 'Cancel Tables']);
-  // One kept from before, its first line cancelled: the rest are tasks of their own, as they were then.
+  // An older entry with its first line cancelled: the other lines become separate tasks, as they were then.
   const old = entry([oldLine('Order cups'), oldLine('Small'), oldLine('Large')], { nest: true });
   await send(app, old);
   await app.cancelPending(old.id, 0);
@@ -195,8 +199,8 @@ test('a waiting line cancelled: the lines under it go under what it was under, a
   for (const x of sync.all(1)) await sync.remove(x.id);
 });
 
-/* What a box reads, before it's sent (src/js/app/quickadd.js): the chips under it, as their words (a chip tapped off
-   with a ~ before them), and the words marked in it, each as kind:words. */
+/* What a box reads before it is sent (src/js/app/quickadd.js). These helpers show the chips under the box as text (a
+   chip that is tapped off has a ~ in front) and the marked text in the box as kind:text. */
 const boxes = () => {
   const app = component(quickadd), cafe = { id: 5, title: 'Café' };
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, cap: newBox(), runInsert: newBox(), capPhotos: [], projects: [cafe], projById: new Map([[5, cafe]]),
@@ -221,13 +225,13 @@ test('one line that says it\'s done: a Done chip, its marker marked; tapped off,
   assert.deepEqual(linesOf(app, 'cap'), [['x Call Sam', false]]);
   tap(app, 'cap', 'Done');
   assert.deepEqual(linesOf(app, 'cap'), [['Call Sam', true]], 'tapped again: read again');
-  // A capital X, as a phone's keyboard starts a line: the same chip, and tapped off, the title as typed.
+  // A capital X, which a phone's keyboard puts at the start of a line, gives the same chip. Tapped off, the title stays as typed.
   app.cap.text = 'X Call Sam';
   assert.deepEqual([chipsOf(app, 'cap')[0], marksOf(app, 'cap'), linesOf(app, 'cap')], ['Done', ['done:X'], [['Call Sam', true]]]);
   tap(app, 'cap', 'Done');
   assert.deepEqual(linesOf(app, 'cap'), [['X Call Sam', false]]);
   tap(app, 'cap', 'Done');
-  // With quick add turned off in Vikunja, it's read all the same: it's about the list, not Vikunja's shortcuts.
+  // With quick add turned off in Vikunja, the box still reads the markers. They describe the list, not Vikunja's shortcuts.
   app.user.settings.frontend_settings.quick_add_magic_mode = 'disabled';
   app.cap.text = '- [x] Call Sam tomorrow (50%)';
   assert.deepEqual(marksOf(app, 'cap'), ['done:[x]', 'progress:(50%)']);
@@ -265,7 +269,7 @@ test('a pasted list with headings: each a task over its lines, the chip counting
   assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '5 tasks', 'Café']);
   app.tapNest();
   assert.deepEqual([app.nestOn, under(app, 'cap')], [true, [null, 0, 0, null, 3]], 'tapped again: as written');
-  // A list with no markers: off until it's tapped, as before.
+  // A list with no markers does not nest until the user taps ↳ Under first line.
   app.cap = newBox();
   app.cap.text = 'Pack the van\nLoad chairs\nTables';
   assert.deepEqual([app.nestOn, chipsOf(app, 'cap')], [false, ['3 tasks', 'Café']]);
@@ -289,7 +293,7 @@ test('a pasted list with indented lines: each under the line above it that\'s in
   assert.deepEqual(under(app, 'cap'), [null, 0, 1, 0, null]);
   assert.deepEqual(app.boxParsedLines('cap').map(p => p.pct), [0, 0, 0, 0, 0], 'a figure on a line with lines under it is dropped');
   assert.equal(app.nestOn, true);
-  // In a subtask box: under the line above it, which is under the open task.
+  // In a subtask box, a line goes under the line above it, which goes under the open task.
   app.sheet.sub.text = 'Chairs\n  Stack them\nTables';
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['Tables', null]]);
 });
@@ -300,7 +304,7 @@ test('a project\'s copy pasted: its heading, one #, is the list\'s name, left ou
   assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name, so it is left out', '2 tasks + 1 subtask', 'Café']);
   assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under, x.p.pct]), [['Order milk', null, 0], ['Pack the van', null, 0], ['Tables', 1, 50]]);
   assert.equal(app.nestOn, false, 'the first line that\'s a task isn\'t a parent');
-  // Alone in the box, a # line names no list: it's a task, as typed.
+  // Alone in the box, a # line names no list. It is a task, as typed.
   app.cap.text = '# of chairs we need';
   assert.deepEqual([chipsOf(app, 'cap'), linesOf(app, 'cap')], [['Café'], [['# of chairs we need', false]]]);
 });
@@ -313,14 +317,15 @@ test('a first line ending with a colon is the parent of the rest in quick add, i
   app.tapNest();
   assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 will be added as done', '3 tasks', 'Café'], false]);
   assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under]), [['Groceries:', null], ['milk', null], ['eggs', null]]);
-  // A subtask box has no ↳ Under first line to tap it off with: the colon is a title's there.
+  // A subtask box has no ↳ Under first line to tap off, so the colon stays in the title there.
   app.sheet.sub.text = 'Groceries:\nmilk';
   assert.deepEqual(app.boxItems('sub').map(x => [x.p.title, x.under]), [['Groceries:', null], ['milk', null]]);
 });
 
-/* Subtasks from the add box on a project's list (addSubtasks, actions.js; the cursor, quickadd.js): Pack the van, with
-   Chairs under it, the box on the task: right under it, so the first one added goes ahead of Chairs. What's added is
-   the lit row (`lit`, which each row reads by its own id), so the next go after it. */
+/* Subtasks from the add box on a project's list (addSubtasks, actions.js; the cursor, quickadd.js). The list has Pack
+   the van with Chairs under it. The box is on the task, directly under it, so the first subtask added goes ahead of
+   Chairs. The added subtask becomes the highlighted row (`lit`, which each row reads by its own id), so the next
+   subtasks go after it. */
 const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
@@ -332,7 +337,7 @@ const underBox = t => {
     view: { groups: [{ key: 'open', tasks: [van, chairs] }], route: '', listView: 3 }, cursor: null, lit: {}, flash(){}, $nextTick(){} });
   app.aim(van);
   const add = text => { app.cap.text = text; return app.addSubtasks('under'); };
-  // The one row lit, and what the line over the box says they go after.
+  // The highlighted row, and what the line above the box says the new tasks go after.
   const aimed = () => [Object.keys(app.lit), app.capTarget?.after];
   return { v, app, van, chairs, add, aimed, pos: id => v.task(id).position };
 };
@@ -349,7 +354,7 @@ test('a subtask added from the add box is the lit row at once: its waiting row, 
   await add('Straps');
   assert.deepEqual(aimed(), [['102'], 'Straps']);
   assert.ok(pos(101) < 100 && pos(102) > pos(101) && pos(102) < 100, 'the first ahead of Chairs, each after the one before');
-  // Two typed one straight after the other, the first still on its way: the second goes after it all the same.
+  // Two lines typed one right after the other, with the first still being sent. The second still goes after the first.
   const one = add('Hooks'), two = add('Tarp');
   await Promise.all([one, two]);
   assert.deepEqual([aimed(), v.task(103).title, v.task(104).title], [[['104'], 'Tarp'], 'Hooks', 'Tarp']);
@@ -405,17 +410,17 @@ test('a waiting subtask called off, or turned down: the light goes to its task; 
   assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[[`pending-${e}-0`], 'Straps'], [[`pending-${e}-0`, 'Straps']]], 'the same line, lit, a place sooner');
   await app.cancelPending(e, 0);
   assert.deepEqual([aimed(), app.toast.msg], [[['9'], ''], 'Cancelled.'], 'called off: its task is lit');
-  // Turned down by Vikunja: back in the box, with why, and the task lit.
+  // If Vikunja refuses, the text goes back in the box with the reason, and the task is highlighted.
   v.trouble = r => r.method === 'POST' ? 400 : null;
   await add('Straps');
   assert.deepEqual([aimed(), app.cap.text, app.toast.msg], [[['9'], ''], 'Straps', 'Not added: HTTP 400']);
   assert.equal(sync.all(1).length, 0);
 });
 
-/* A row ticked is held done where it is from the tap, before Vikunja answers (holdRow, leaving.js). The box under it
-   stays under it meanwhile, so nothing moves: a row waiting for the batch can still be the cursor (canAim). Not saved,
-   the row is let go of, open again, the box under it still. Once the batch has cleared and the row has gone, its
-   task has the box, as it's asked (keepAim). */
+/* A ticked row is held as done where it is from the tap, before Vikunja answers (holdRow, leaving.js). The box under
+   it stays under it meanwhile, so nothing moves. A row waiting for the batch can still be the cursor (canAim). If the
+   save fails, the row is released and open again, with the box still under it. Once the batch has cleared and the row
+   has left the list, keepAim gives the box to its task. */
 test('the lit subtask ticked: the box stays under it while it waits for the batch, saved or not; gone, its task has it', async t => {
   const { v, app, chairs, aimed } = underBox(t);
   app.aim(chairs);
@@ -439,11 +444,11 @@ test('the lit subtask ticked: the box stays under it while it waits for the batc
   assert.deepEqual(aimed(), [['9'], ''], 'gone with the batch: its task has the box');
 });
 
-/* A tick never moves the box (tickRow, views.js): only a nudge does, or Add a subtask here (inline-add-box-plan). */
+/* Ticking a row never moves the box (tickRow, views.js). Only a nudge does, or Add a subtask here. */
 test('a tick never moves the box: another row ticked, and ticked back, leaves it under the row it was', async t => {
   const { v, app, chairs, add, aimed } = underBox(t), g = { depth: {} };
   app.tickRow = views.tickRow;
-  // What's on its way has gone and come back: the save, the mark taken back, and the save of that.
+  // Wait until nothing is still on its way: the save, taking the mark back, and the save of that.
   const quiet = async () => { for (let k = 0; k < 20; k++) { const n = v.requests.length; for (let i = 0; i < 20; i++) await new Promise(ok => setImmediate(ok)); if (v.requests.length === n) return; } };
   await add('Rope');
   assert.deepEqual(aimed(), [['101'], 'Rope']);
@@ -461,8 +466,9 @@ test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a 
   assert.deepEqual(linesOf(app, 'ins'), [['x Wipe the counter', false], ['Lock up', false]]);
 });
 
-/* A list's box (footBox, app/sheet.js): at the foot it says what it takes; under a row, what one line makes, and the
-   place it left at the foot says what the box says there, for a task's subtasks, a template's steps and a checklist's. */
+/* A list's box (footBox, app/sheet.js). At the bottom of the list its label says what the box takes. Under a row, the
+   label says what one line makes, and `rest` is the label the box has at the bottom. This holds for a task's subtasks,
+   a template's steps and a checklist's steps. */
 test('a list\'s box under a row says what a line makes, and its place at the foot says what the box says there', () => {
   const box = (of, where = 'sheet') => { const b = sheetPart.footBox.call({ subBoxCan: false, boxParsedLines: () => [], ...of }, where); return [b.under, b.says, b.rest]; };
   assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: null } }), [false, 'Add subtasks, or paste a list', 'Add subtasks, or paste a list']);
@@ -473,7 +479,7 @@ test('a list\'s box under a row says what a line makes, and its place at the foo
   assert.deepEqual(box({ runAim: { on }, runBoxAt: 52 }, 'run'), [true, 'Step', 'Add steps, or paste a list']);
 });
 
-/* The sheet's own box under a subtask (nudgedSub, app/sheet.js; inline-add-box-plan, part 3): where its lines go. */
+/* The sheet's own box under a subtask (nudgedSub, app/sheet.js) decides where its lines go. */
 test('the sheet\'s box under a subtask: the next go after it, each after the one before while they wait; at the foot, after the last', t => {
   const { app, chairs } = underBox(t);
   const straps = app.keep({ id: 7, title: 'Straps', project_id: 5 });

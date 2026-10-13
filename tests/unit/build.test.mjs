@@ -1,4 +1,4 @@
-// The page written compressed by the build (scripts/build.mjs, compressed), which main.go sends a browser that takes it.
+// The build writes a compressed copy of the page (compressed in scripts/build.mjs). main.go sends it to browsers that accept it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';

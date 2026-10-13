@@ -4,13 +4,13 @@
 //   VIKUNJA_URL=... VIKUNJA_TOKEN=tk_... node tests/offline.mjs
 //   (ASSIGNEE=<username> ASSIGNEE_PROJECT=<project shared with them> adds a lost reply for a task with @username)
 //
-// Opens Pocket online once (so it's saved on the "phone"), then cuts the connection with the browser's offline switch:
-// Pocket must open with the last-loaded list, queue new tasks and pasted lists, and add them all once back online.
-// Also checks the case that's easy to get wrong: a task that reaches Vikunja but whose reply is lost must not be added
-// twice. Photos go the same way: added offline, or cut off mid-upload, they wait on the phone and upload later, once.
-// Every task it creates has the run's stamp in its title and is deleted at the end.
+// Opens Pocket online once so it is saved on the "phone", then goes offline with the browser's offline switch. Pocket
+// must open with the last loaded list, queue new tasks and pasted lists, and send them all once it is back online.
+// It also checks an easy mistake: a task that reaches Vikunja but whose reply is lost must not be added twice.
+// Photos behave the same way. A photo added offline, or cut off mid-upload, waits on the phone and is uploaded once later.
+// Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
-import { chromium, webkit } from 'playwright';   // BROWSER=webkit runs it on Safari's engine, as on an iPhone
+import { chromium, webkit } from 'playwright';   // BROWSER=webkit uses Safari's engine, as an iPhone does
 import { expect, hintSeen, placeSays, signIn, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
@@ -18,8 +18,8 @@ const TOKEN = process.env.VIKUNJA_TOKEN;
 const OUT = process.env.OUT || 'test-results';
 if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
 const POCKET = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
-// Vikunja on SQLite answers 500 "database is locked" now and then, when a request comes while it's still writing what
-// the one before changed: the test's own requests try again, as Pocket's do.
+// Vikunja on SQLite sometimes answers 500 "database is locked" when a request arrives while it is still writing the
+// previous request's changes. The test retries its own requests, as Pocket does.
 const api = async (path, init = {}) => {
   for (let i = 0; ; i++) {
     const r = await fetch(SERVER + '/api/v2' + path, { ...init, headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...init.headers } });
@@ -32,32 +32,32 @@ const byTitle = async title => ((await (await api('/tasks?q=' + encodeURICompone
 await mkdir(OUT, { recursive: true });
 const stamp = Date.now();
 const T = name => `Pocket offline ${name} ${stamp}`;
-const LABEL = 'pocket-smoke';                    // the label the end-to-end test uses too, so no new one is left behind
+const LABEL = 'pocket-smoke';                    // the label smoke.mjs also uses, so this test leaves no new label behind
 const browser = process.env.BROWSER === 'webkit' ? await webkit.launch() : await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-await hintSeen(context);                         // the one-time hint: smoke.mjs
+await hintSeen(context);                         // dismisses the one-time hint (see helpers.mjs)
 const page = await context.newPage();
 page.on('dialog', d => d.accept());
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 let failed = 0;
 async function step(name, fn){
-  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // each step's time, so a slow one is seen
+  const start = Date.now(), secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`;   // shows each step's duration so slow steps stand out
   try { await fn(); console.log('PASS', name + secs()); }
   catch (e) { failed++; console.log('FAIL', name + secs(), '-', e.message.split('\n').slice(0, process.env.VERBOSE ? 8 : 1).join(' · ')); await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {}); }
 }
 const capture = async text => { await page.fill('#in-capture', text); await page.click('#f-capture .go'); };
-// A task added offline sits in the normal list, tinted, until it's sent.
+// A task added offline appears in the normal list with a tint until it is sent.
 const pendingRow = title => `.row.pending:has(.title:has-text("${title}"))`;
 const NO_DATE = 'div:has(> .sec:has-text("Added today, no date"))';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const photo = name => ({ name, mimeType: 'image/png', buffer: PNG });
-// The names of the files on a task in Vikunja.
+// The file names of a task's attachments in Vikunja.
 const attached = async n => { const [t] = await byTitle(T(n)); return t ? ((await (await api('/tasks/' + t.id)).json()).attachments || []).map(a => a.file.name) : []; };
-const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));   // try again now
+const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));   // makes Pocket retry now
 
 try {
-  // A task due tomorrow, so the Today list has something to remember.
+  // A task due tomorrow, so there is something for Pocket to save for offline use.
   const me = await (await api('/user')).json(), projects = (await (await api('/projects')).json()).items;
   const home = me.settings?.default_project_id || projects.find(p => p.id > 0)?.id;
   const seeded = await api(`/projects/${home}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('seed'), due_date: new Date(Date.now() + 86400000).toISOString() }) });
@@ -67,14 +67,14 @@ try {
     await signIn(page, POCKET, TOKEN);
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
     await page.evaluate(() => navigator.serviceWorker.ready);                // Pocket is now saved for offline use
-    await page.reload();                                                     // and this page is served by the service worker
+    await page.reload();                                                     // so the service worker serves this page
     await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 });
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
   });
 
   await step('reads-dates-offline-straight-after-install', async () => {
-    // The first page wasn't the service worker's: its saved copy of chrono must still be found offline, though Vikunja
-    // answers "Vary: Origin" and the page asks for it with an Origin.
+    // The first page load wasn't served by the service worker. The saved copy of chrono must still be found offline,
+    // although Vikunja answers with "Vary: Origin" and the page requests chrono with an Origin header.
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
     await hintSeen(ctx);
     const p = await ctx.newPage();
@@ -89,8 +89,9 @@ try {
     } finally { await ctx.close(); }
   });
 
-  /* Opening Pocket again is answered from the page it saved, at once, and the page is fetched behind it and saved for
-     the next opening (sw.js). The saved copy is given a mark: the next opening shows it, the one after doesn't. */
+  /* Opening Pocket again shows the saved page at once. The service worker fetches a fresh page in the background and
+     saves it for the next opening (sw.js). The test marks the saved copy, so the next opening shows the mark and the
+     opening after that doesn't. */
   await step('opens-from-the-saved-page-and-saves-the-new-one-behind-it', async () => {
     const savedPage = mark => page.evaluate(async mark => {
       const cache = await caches.open((await caches.keys()).find(k => k.startsWith('pocket-')));
@@ -102,7 +103,7 @@ try {
     await page.reload();
     await expect(page.locator('meta[name="saved-copy"]')).toHaveCount(1);
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
-    await expect.poll(() => savedPage(false)).toBe(false);                  // the page fetched behind it, saved
+    await expect.poll(() => savedPage(false)).toBe(false);                  // the fresh page was fetched in the background and saved
     await page.reload();
     await expect(page.locator('meta[name="saved-copy"]')).toHaveCount(0);
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
@@ -118,7 +119,7 @@ try {
 
   await step('task-added-offline-waits', async () => {
     await capture(`${T('A')} tomorrow`);
-    await page.waitForSelector(pendingRow(T('A')));                           // in Next 7 days, where it belongs
+    await page.waitForSelector(pendingRow(T('A')));                           // in Next 7 days, where the task belongs
     if (await page.isVisible('#toast.show')) throw new Error('toast: ' + await page.textContent('#toast-msg'));
   });
 
@@ -127,7 +128,7 @@ try {
     await page.click('#cap-nest');
     await page.click('#f-capture .go');
     await page.waitForSelector(pendingRow(T('P')));
-    if (await page.isVisible(pendingRow(T('P1')))) throw new Error('a subtask is shown in Today');     // only the parent is
+    if (await page.isVisible(pendingRow(T('P1')))) throw new Error('a subtask is shown in Today');     // only the parent should show
   });
 
   await step('cancel-a-waiting-task', async () => {
@@ -135,7 +136,7 @@ try {
     await page.waitForSelector(pendingRow(T('X')));
     await page.click(`${pendingRow(T('X'))} button[aria-label^="Cancel"]`);
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
-    // Its words are back in the box, to change or add again, and the box says so.
+    // The task's text returns to the add box so the user can change it or add it again, and a message tells them.
     if (await page.inputValue('#in-capture') !== `${T('X')} tomorrow`) throw new Error('box: ' + await page.inputValue('#in-capture'));
     await placeSays(page, 'cap', 'Cancelled. It\'s back in the box.');
     await page.fill('#in-capture', '');
@@ -143,9 +144,9 @@ try {
   });
 
   await step('the-header-says-what-is-waiting', async () => {
-    // Refresh becomes what's waiting, with how many; tapping it lists them, and one can be dropped from there.
+    // The Refresh button turns into a waiting indicator with a count. Tapping it lists the waiting tasks, and the user can delete one there.
     await page.waitForSelector('#btn-refresh.waits[aria-label$="waiting to send"] #outbox-count');
-    await expect(page.locator('html')).toHaveAttribute('data-sync', 'waiting');   // what the tests' synced() waits on
+    await expect(page.locator('html')).toHaveAttribute('data-sync', 'waiting');   // the state synced() waits on
     await capture(`${T('Y')} tomorrow`);
     await page.waitForSelector(pendingRow(T('Y')));
     await page.click('#btn-refresh');
@@ -170,13 +171,13 @@ try {
   await step('photo-added-offline-waits', async () => {
     await page.setInputFiles('#in-photo', photo('offline.png'));
     await capture(T('F'));
-    // On Today, on one line, a screen reader hears it (labels and counts are off Today)
+    // On Today the row is a single line, so a screen reader announces the waiting attachment (labels and counts are hidden on Today)
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('F'))} .title .sr:has-text("Attachments, 1 waiting to upload")`, { state: 'attached' });
-    await placeSays(page, 'cap', 'Saved offline, with the photo. Both go to Vikunja');                // by the add box
+    await placeSays(page, 'cap', 'Saved offline, with the photo. Both go to Vikunja');                // the message appears by the add box
   });
 
   await step('still-waiting-after-reopening', async () => {
-    await page.reload();                                                     // e.g. the phone closed the app
+    await page.reload();                                                     // as when the phone closes the app
     await page.waitForSelector(pendingRow(T('A')), { timeout: 15000 });
     await page.waitForSelector(pendingRow(T('P')));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
@@ -184,32 +185,32 @@ try {
   });
 
   await step('back-online-sends-everything', async () => {
-    await context.setOffline(false);                                         // fires the browser's "online" event
+    await context.setOffline(false);                                         // this fires the browser's "online" event
     await synced(page);
     await expect(page.locator('.row.pending')).toHaveCount(0);
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('A')}"))`);   // now a normal task
-    await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('U')}"))`);   // added today, no date
+    await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('U')}"))`);   // in the "Added today, no date" section
     for (const n of ['A', 'P', 'P1', 'P2', 'U', 'F']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
     if ((await byTitle(T('X'))).length || (await byTitle(T('Y'))).length) throw new Error('a cancelled task was added');
     const parent = (await byTitle(T('P')))[0];
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
     if (await page.isVisible('.offline')) throw new Error('still says offline');
-    // Kept on the phone across the reload, then uploaded.
+    // The photo stayed on the phone across the reload and was then uploaded.
     if ((await attached('F')).join() !== 'offline.png') throw new Error('the photo added offline never reached the task');
-    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveClass(/waits/);   // nothing waiting
+    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveClass(/waits/);   // nothing is waiting
   });
 
   await step('lost-reply-is-not-added-twice', async () => {
-    // The first try reaches Vikunja, but the reply never arrives.
+    // The first request reaches Vikunja, but its reply never arrives.
     let cut = true;
     await page.route('**/api/v2/projects/*/tasks', async route => {
       if (cut && route.request().method() === 'POST') { cut = false; await route.fetch(); return route.abort('internetdisconnected'); }
       return route.fallback();
     });
     await capture(`${T('D')} tomorrow`);
-    // Pocket tries again as soon as a request gets through (here, the list reloading), so the waiting row may come
-    // and go before it can be seen.
+    // Pocket retries as soon as a request gets through (here, the list reloading), so the waiting row may appear and
+    // disappear before the test can see it.
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('D')}"))`, { timeout: 20000 });
     if (await page.isVisible(pendingRow(T('D')))) throw new Error('still shown as waiting');
@@ -219,7 +220,7 @@ try {
   });
 
   await step('photo-upload-cut-off-keeps-the-task', async () => {
-    // Online, but the connection drops as the photo uploads, and the list can't reload either.
+    // The browser is online, but the connection drops during the photo upload, and the list can't reload either.
     let cut = true;
     const cutOff = r => cut ? r.abort('internetdisconnected') : r.fallback();
     const lists = url => url.pathname.endsWith('/api/v2/tasks');
@@ -228,7 +229,7 @@ try {
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
     await placeSays(page, 'cap', 'The photo uploads when the connection');
-    // The task is in Vikunja, so it's a normal row, with its photo waiting (said, on Today's one line).
+    // The task is in Vikunja, so it is a normal row. Its photo is still waiting, and Today's single-line row announces that.
     await page.waitForSelector(`${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`, { state: 'attached' });
     await page.click(`.row .body:has-text("${T('G')}")`);
     await page.waitForSelector('#d-attachments .att.uploading:has-text("glitch.png"):has-text("Waiting for a connection")');
@@ -241,7 +242,7 @@ try {
   });
 
   await step('photo-whose-reply-is-lost-is-not-attached-twice', async () => {
-    // From the task's sheet, still open. The upload reaches Vikunja, but the reply never arrives.
+    // The upload is from the task's sheet, which is still open. The upload reaches Vikunja, but the reply never arrives.
     let cut = true;
     const lose = async r => { if (!cut) return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
     await page.route('**/api/v2/tasks/*/attachments', lose);
@@ -255,8 +256,8 @@ try {
   });
 
   await step('server-error-keeps-the-photo', async () => {
-    // Vikunja answers 500 once: the photo waits, says so, and goes up on the next try.
-    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // the add's toast, from before
+    // Vikunja answers 500 once. The photo waits, shows a message, and uploads on the next try.
+    await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });   // the toast from adding the task, which must go first
     let busy = true;
     const answer = r => { if (!busy) return r.fallback(); busy = false; return r.fulfill({ status: 500, contentType: 'application/problem+json', body: '{"title":"Internal Server Error","status":500,"detail":"Internal Server Error"}' }); };
     await page.route('**/api/v2/tasks/*/attachments', answer);
@@ -283,7 +284,7 @@ try {
   });
 
   await step('subtasks-added-offline-wait', async () => {
-    // The sheet's subtask box goes through the outbox too: offline, a subtask waits in the sheet, then is sent.
+    // The sheet's subtask box also uses the outbox. Offline, a subtask waits in the sheet and is sent later.
     await page.click(`.row .body:has-text("${T('G')}")`);
     await page.waitForSelector('#d-subin');
     await context.setOffline(true);
@@ -302,8 +303,8 @@ try {
   });
 
   await step('comment-written-offline-waits', async () => {
-    // A comment goes through the outbox too; the banner says what needs a connection. (On Today, with its subtask, it's a
-    // card now: its title opens it.)
+    // Comments also use the outbox, and the offline banner names what needs a connection. On Today a task with a
+    // subtask is shown as a card, and tapping the card's title opens the task.
     await page.click(`:is(.row .body:has-text("${T('G')}"), .day-card:has(.card-title:has-text("${T('G')}")) > .card-head)`);
     await page.waitForSelector('#d-cin');
     await context.setOffline(true);
@@ -322,9 +323,10 @@ try {
   });
 
   await step('a-subtask-from-the-add-box-waits-offline', async () => {
-    // On its project's list, the add box adds subtasks to the task it was moved under ("Add a subtask here" in its ⋯,
-    // the tap for a nudge): offline, one waits under it, on its card (a task with an open subtask is a stacked card
-    // there, open). The light follows it: its waiting row is the one row lit, and still is once it's sent.
+    // On a project's list, "Add a subtask here" in the task's ⋯ menu points the add box at that task, so the box adds
+    // subtasks to it. Offline, the new subtask waits on the task's card (a task with an open subtask is shown there as an
+    // open, stacked card). The highlight follows the new subtask: its waiting row is the only highlighted row, and still
+    // is once it has been sent.
     const [g] = await byTitle(T('G'));
     await page.evaluate(id => { location.hash = '#/project/' + id; }, g.project_id);
     const card = page.locator(`#view .day-card[data-id="${g.id}"]`);
@@ -335,17 +337,17 @@ try {
     await page.click('#d-add-here');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await expect(page.locator('#in-capture')).toHaveAttribute('aria-label', `New subtask of ${T('G')}`);
-    await expect(page.locator('#cap-home')).toBeVisible();                     // the box is in the list: its place at the bottom shows
+    await expect(page.locator('#cap-home')).toBeVisible();                     // the add box is in the list, so its dashed placeholder shows at the bottom
     await expect(card).toHaveClass(/\baimed\b/);
     await context.setOffline(true);
     await page.fill('#in-capture', T('G2'));
     await page.press('#in-capture', 'Enter');
-    // Waiting, under it, first (the box under a task adds its first subtask: inline-add-box-plan, part 1), before its
-    // other subtask; nothing said, and the box keeps the focus.
+    // The waiting row goes first under the task, before the existing subtask, because the add box under a task adds
+    // that task's first subtask. No message appears and the add box keeps focus.
     const waiting = card.locator(`.card-rows > .row.pending:has-text("${T('G2')}")`);
     await expect(waiting).toBeVisible();
     await expect(waiting).toHaveClass(/\baimed\b/);
-    await expect(page.locator('#view .aimed')).toHaveCount(1);                 // the card's own header is dark
+    await expect(page.locator('#view .aimed')).toHaveCount(1);                 // only the waiting row is highlighted, not the card's header
     await expect(page.locator('#in-capture')).toHaveAttribute('aria-label', `New subtask of ${T('G')}`);
     const order = await page.locator('#view :is(.card-title, .row .title)').evaluateAll(els => els.map(el => el.textContent || ''));
     const at = order.findIndex(t => t.includes(T('G')) && !t.includes(T('G1')) && !t.includes(T('G2')));
@@ -366,12 +368,12 @@ try {
   });
 
   await step('cut-off-label-is-still-added', async () => {
-    // The task reaches Vikunja, then the connection drops before its label is on it.
+    // The task reaches Vikunja, then the connection drops before the label is added to it.
     let cut = true;
     const drop = r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; return r.abort('internetdisconnected'); };
     await page.route('**/api/v2/tasks/*/labels', drop);
     await capture(`${T('L')} tomorrow *${LABEL}`);
-    await page.waitForSelector(`.row:has(.title:has-text("${T('L')}"))`);     // shown straight away, as it's in Vikunja
+    await page.waitForSelector(`.row:has(.title:has-text("${T('L')}"))`);     // shown at once, because the task is already in Vikunja
     await online();
     await synced(page);
     if (!(await byTitle(T('L')))[0]?.labels?.some(l => l.title === LABEL)) throw new Error('the label never reached the task');
@@ -380,7 +382,7 @@ try {
   });
 
   if (process.env.ASSIGNEE) await step('assigned-task-whose-reply-is-lost-is-added-once', async () => {
-    // The @username leaves the title, so the retry must look for the title as it was sent.
+    // The @username is removed from the title, so the retry must search for the title as it was sent.
     const who = process.env.ASSIGNEE, where = process.env.ASSIGNEE_PROJECT ? ` +"${process.env.ASSIGNEE_PROJECT}"` : '';
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
@@ -395,8 +397,8 @@ try {
   });
 
   await step('no-room-on-the-phone-waits-while-open', async () => {
-    // Pocket's storage is full, and the connection drops as the photo of a new task uploads: the photo waits in memory,
-    // with a message saying so, and goes up once the connection's back.
+    // Pocket's storage is full, and the connection drops while the photo of a new task uploads. The photo waits in
+    // memory, a message tells the user, and the photo uploads once the connection returns.
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
     await page.evaluate(() => {
       const put = window.realPut = IDBObjectStore.prototype.put;
@@ -419,7 +421,7 @@ try {
   });
 
   await step('same-title-twice-stays-two-tasks', async () => {
-    // The second "Buy milk" never reaches Vikunja on its first try; the retry mustn't take the first one for it.
+    // The second "Buy milk" never reaches Vikunja on its first try. The retry must not mistake the first task for it.
     await capture(T('M'));
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('M')}"))`);
     const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
@@ -433,10 +435,10 @@ try {
   });
 
   await step('same-title-made-elsewhere-is-not-taken', async () => {
-    // A task made on the web, then one with the same title in Pocket that never reaches Vikunja on its first try.
-    const [me] = await byTitle(T('M'));                                      // a project to put it in
+    // A task is made on the web. Then a task with the same title is made in Pocket, and it never reaches Vikunja on its first try.
+    const [me] = await byTitle(T('M'));                                      // gives a project for the web task
     await api(`/projects/${me.project_id}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('E') }) });
-    await page.waitForTimeout(4000);                                         // a little later, as a person would
+    await page.waitForTimeout(4000);                                         // the Pocket task is made later, as a person would
     const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
     await page.route('**/api/v2/projects/*/tasks', drop);
     await capture(T('E'));
@@ -448,7 +450,7 @@ try {
   });
 
   await step('subtask-link-whose-reply-is-lost', async () => {
-    // A pasted list under its first line: the link reaches Vikunja but its reply doesn't. The retry finds it made.
+    // A pasted list whose first line is the parent. The subtask link reaches Vikunja but its reply doesn't, and the retry finds the link already made.
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
     await page.route('**/api/v2/tasks/*/relations', lose);
@@ -466,9 +468,9 @@ try {
   });
 
   await step('a-pasted-list-with-several-parents-waits-and-keeps-its-shape', async () => {
-    // Two headings, each over its lines, one line done already. Added while Vikunja can't be reached, each parent waits
-    // on Today with its lines under it, not rows of their own; sent, each line is under the one it was under, and the
-    // done one is done.
+    // Two headings, each over its lines, and one line is already done. The list is added while Vikunja can't be
+    // reached. Each parent waits on Today with its lines under it, not as separate rows. Once sent, each line is under
+    // its original parent and the done line is done.
     const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
     await page.route('**/api/v2/projects/*/tasks', drop);
     await page.fill('#in-capture', `## ${T('H1')} tomorrow\n- ${T('H1a')}\n- [x] ${T('H1b')}\n## ${T('H2')} tomorrow\n- ${T('H2a')}`);
@@ -476,7 +478,7 @@ try {
     await page.waitForSelector(pendingRow(T('H1')));
     await page.waitForSelector(pendingRow(T('H2')));
     if (await page.isVisible(pendingRow(T('H1a'))) || await page.isVisible(pendingRow(T('H2a')))) throw new Error('a subtask is shown in Today');
-    // Each parent's Cancel says what becomes of the lines waiting under it, the second's too.
+    // Each parent's Cancel button has a label that says what happens to the lines waiting under it, for the second parent too.
     await expect(page.locator(`${pendingRow(T('H1'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H1')}: the lines under it become tasks of their own`);
     await expect(page.locator(`${pendingRow(T('H2'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H2')}: the line under it becomes a task of its own`);
     await page.unroute('**/api/v2/projects/*/tasks', drop);
@@ -488,7 +490,7 @@ try {
   });
 
   await step('waiting-work-from-an-older-pocket-moves-over', async () => {
-    // An older Pocket kept its outbox in localStorage. Opening this one moves it to the database, and sends it.
+    // An older Pocket kept its outbox in localStorage. Opening this version moves the outbox to the database and sends it.
     await context.setOffline(true);
     await page.evaluate(([title, pid]) => {
       const user = JSON.parse(localStorage.getItem('pocket.saved.user')).id;
@@ -505,7 +507,7 @@ try {
   });
 
   await step('two-tabs-send-it-once', async () => {
-    // Added offline in one tab, the task shows as waiting in the other too; back online, both try, and it's added once.
+    // A task added offline in one tab also shows as waiting in the other tab. Back online, both tabs try to send it, and it is added once.
     const other = await context.newPage();
     other.on('pageerror', e => errors.push(String(e)));
     await other.goto(POCKET);
@@ -524,9 +526,9 @@ try {
   await step('sign-out-clears-saved-data', async () => {
     await context.setOffline(true);
     await page.setInputFiles('#in-photo', photo('dropped.png'));
-    await capture(`${T('Y')} tomorrow`);                                    // waiting when signing out: Pocket asks first
+    await capture(`${T('Y')} tomorrow`);                                    // a task is waiting at sign-out, so Pocket asks first
     await page.waitForSelector(pendingRow(T('Y')));
-    // Back online for the sign-out itself, but keep this task from being sent in the meantime.
+    // The browser goes back online for the sign-out, but the waiting task must not be sent meanwhile.
     await page.route('**/api/v2/projects/*/tasks', r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback());
     await context.setOffline(false);
     await page.click('#btn-account');
@@ -544,7 +546,7 @@ try {
 } finally {
   await browser.close();
   const left = ((await (await api('/tasks?q=' + stamp)).json()).items || []).filter(t => t.title.endsWith(String(stamp)));
-  // A few tries: a Vikunja on SQLite (the local one with DB=sqlite) can answer 500 "database is locked" while busy.
+  // Retry a few times. Vikunja on SQLite (the local one with DB=sqlite) can answer 500 "database is locked" while busy.
   for (const t of left) for (let i = 0; i < 5 && !(await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++) await new Promise(ok => setTimeout(ok, 500));
 }
 console.log(failed ? `${failed} failed` : 'All passed');

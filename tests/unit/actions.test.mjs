@@ -1,5 +1,5 @@
-// What's done to a task (src/js/app/actions.js), against a pretend Vikunja: what's sent, what's on screen, and the undo:
-// in a list, the row's own tick while it waits for the batch to clear (leaving.js).
+// Tests for what happens to a task (src/js/app/actions.js), against a fake Vikunja. They check what is sent, what is
+// on screen, and the undo. In a list, a row's tick waits for the batch to clear (leaving.js).
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,17 +21,17 @@ import { ACT_STEPS, ACTS, sync } from '../../src/js/sync.js';
 
 const DAY = 86400;
 const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
-// A parent with four subtasks: two open (one half done), one done already, and one that repeats (which completing a
-// parent leaves alone).
+// A parent with four subtasks: two open (one half done), one already done, and one that repeats. Completing a parent
+// leaves the repeating subtask alone.
 const family = () => {
   const subs = [sub(11), sub(12, { done: true }), sub(13, { repeat_after: DAY, due_date: '2026-10-07T09:00:00Z' }), sub(14, { percent_done: 0.5 })];
   const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0.25, related_tasks: { subtask: subs } };
   return { parent, subs };
 };
 const patches = v => v.requests.filter(r => r.method === 'PATCH').map(r => [+r.path.split('/')[2], r.body]);
-// Those that aren't a parent's worked-out progress, written after its subtasks change (writeFigure).
+// The patches that are not a parent's calculated progress, which Pocket writes after its subtasks change (writeFigure).
 const ticks = v => patches(v).filter(([, b]) => !('percent_done' in b && Object.keys(b).length === 1));
-// A row in a list, for a tick from there; the batch's timer is the test's, so it doesn't clear by itself.
+// A row in a list, for ticking from there. The test controls the batch's timer, so the batch doesn't clear by itself.
 const ROW = {};
 const listed = t => { t.mock.timers.enable({ apis: ['setTimeout'] }); return component(tasks, actions, leaving); };
 
@@ -48,7 +48,7 @@ test('a parent completed (close) closes its open subtasks, shown done in place w
   const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = listed(c);
   const t = app.keep(parent);
   await app.toggleDone(t, ROW, { close: true });
-  await app.saveTask(10, null, () => null);                                  // the figure's write, after them
+  await app.saveTask(10, null, () => null);                                  // the parent's progress write, after the subtasks
   assert.deepEqual(patches(v), [[10, { done: true }], [11, { done: true }], [14, { done: true }], [10, { percent_done: 0.75 }]], 'its figure: three of four done');
   assert.equal(t.done, true);
   assert.equal(app.said, 'Closed Pack the van + 2 subtasks', 'a screen reader hears it');
@@ -90,9 +90,10 @@ test('a subtask that fails to close stops the rest, and its row says so', async 
   assert.deepEqual([app.toast.msg, app.toast.row.id, app.toast.cls], ['Done: Pack the van — its 2 subtasks couldn\'t be closed', 10, 'failed']);
 });
 
-/* A tick not saved says so, with Try again. In a list that's a line in its row's place, gone after a few seconds, the
-   row back to be ticked again. From the task's own sheet there's no row to give back: it's said at the sheet's top,
-   and stays there, not on a timer, until it's tried again or the tick is saved. (Said by lines.js as it is, here.) */
+/* A tick that is not saved shows a message with Try again. In a list the message replaces the row for a few seconds,
+   then the row returns to be ticked again. A task's own sheet has no row to give back, so the message appears at the
+   top of the sheet and stays, with no timer, until the user tries again or the tick is saved. The test uses the real
+   lines.js. */
 test('a tick not saved from its own sheet says so at its top, with Try again, and stays until the tick is saved', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', done: false }]), app = component(tasks, actions, lines);
@@ -120,7 +121,7 @@ test('completed from its sheet the same way: its subtasks closed, said under the
   await app.toast.action.fn();
   assert.deepEqual([10, 11, 12, 14].map(id => v.task(id).done), [false, false, true, false]);
   assert.deepEqual(app.sheet.task.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
-  // A task with none: its tick says nothing, it shows on the tick; ticked again, it's not done.
+  // A task with no subtasks shows no message, because the tick itself shows the change. Ticking it again opens it.
   const n = app.toasts.length;
   app.sheet.task = structuredClone(v.task(12));
   await app.sheetDone();
@@ -158,7 +159,7 @@ test('a parent completed on a project\'s list with a subtask left open (one that
   await app.unmark(10);
   assert.deepEqual([10, 11, 14].map(id => v.task(id).done), [false, false, false], 'its tick again: all open again');
   assert.equal(app.view.groups[1].count, 1);
-  // Completed again, and the batch cleared: it stays, over the repeating one, and those closed go to Done.
+  // Complete it again and let the batch clear. The parent stays, over the repeating subtask, and the closed tasks move to Done.
   await app.toggleDone(t, ROW, { close: true });
   await app.clearBatch(true);
   assert.deepEqual(app.view.groups[0].tasks.map(t => t.id), [10, 13]);
@@ -191,7 +192,7 @@ test('a repeating task whose tick lost its reply is ticked once, not twice', asy
   assert.equal(Date.parse(v.task(1).due_date) - Date.parse(due), DAY * 1000);
   assert.deepEqual([t.done, t.due_date, app.leaving[1]], [true, due, 'done'], 'its row shows it done, with its date, until the batch clears');
   assert.match(app.said, /^Done: Water the plants\. It repeats, next /);
-  // Its tick before then puts its date back.
+  // Tapping its tick before the batch clears restores its date.
   v.trouble = () => null;
   await app.unmark(1);
   assert.deepEqual([v.task(1).due_date, t.due_date, t.done], [due, due, false]);
@@ -206,7 +207,7 @@ test('a repeating task ticked in a list is back, open, with its next date once t
   const t = app.view.groups[0].tasks[0];
   assert.deepEqual([t?.done, t?.due_date], [false, v.task(1).due_date], 'still on the list');
   assert.equal(Date.parse(t.due_date) - Date.parse(due), DAY * 1000);
-  // One whose next date is past what Today shows leaves it.
+  // A task whose next date is past what Today shows leaves Today.
   v.task(1).repeat_after = 30 * DAY;
   app.tasks[1].repeat_after = 30 * DAY;
   await app.toggleDone(app.tasks[1], ROW);
@@ -222,7 +223,7 @@ test('progress taken to 100% marks the task done, and its tick again puts back t
   assert.equal(v.task(1).done, true);
   await app.unmark(1);
   assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.4 }]);
-  // From the sheet (its row, or its Progress line), the same, shown by its tick: ticked again, it's back with its progress.
+  // The sheet (its row or its Progress line) behaves the same. The tick shows it, and ticking again restores the progress.
   const n = app.toasts.length;
   app.sheet = { task: structuredClone(v.task(1)) };
   await app.sheetProgress(app.sheet.task, 100);
@@ -231,10 +232,9 @@ test('progress taken to 100% marks the task done, and its tick again puts back t
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.4]);
 });
 
-/* A full swipe right is done (parent-tasks-plan, 1b), and shown as a tick shows it (the user, 2026-10-11: one look for
-   done, however it was done): the row carries on off the screen and is done in its place, never a gap, with the same
-   mark as a tick's, so its tick is the undo; it leaves with the batch. In a sheet, a subtask's row stays, done, with
-   nothing marked. */
+/* A full swipe right marks the task done and looks the same as a tick. The row finishes its swipe off the screen, then
+   shows as done in its place, never as a gap, with the same mark as a tick. Tapping its tick undoes it. The row
+   leaves the list when the batch clears. In a sheet, a subtask's row stays in place as done, with nothing marked. */
 test('a full swipe is done as a tick is: its row done in place, never a gap, until the batch clears, and its tick puts back the progress it had', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c);
   app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
@@ -248,24 +248,24 @@ test('a full swipe is done as a tick is: its row done in place, never a gap, unt
   assert.deepEqual(app.leaving, { 1: 'done', 2: 'done' }, 'swiped or ticked: marked the same');
   await app.clearBatch(true);
   assert.deepEqual([app.view.groups[0].tasks, app.leaving], [[], {}], 'both gone with the batch');
-  // A subtask in its parent's sheet: done where it is, with nothing marked.
+  // A subtask in its parent's sheet is done where it is, with nothing marked.
   v.tasks.set(3, { id: 3, title: 'Prime it', done: false });
   const inSheet = { id: 3, title: 'Prime it', done: false };
   await app.setProgress(inSheet, 100, null, { sub: true });
   assert.deepEqual([app.leaving, inSheet.done, v.task(3).done], [{}, true, true]);
 });
 
-/* A row done is held where it is, done, from the moment it's ticked or let go, not from when Vikunja answers
-   (rows-and-sheet-fixes-plan, part 2; toggleDone's holdRow), and the mark takes its place once the save is made. Its
-   tick tapped meanwhile waits for the answer, and is then its undo. A save not made: it's let go of, and the row says
-   so, with Try again. A deletion's gap is held the same way (gapNow), until it's kept to send. */
+/* A row shows as done in place from the moment the user ticks it or releases the swipe, not from when Vikunja answers
+   (toggleDone's holdRow). The mark replaces that once the save is made. Tapping its tick in the meantime waits for
+   the answer and then undoes it. If the save fails, the row is released and shows a message with Try again. A
+   deletion's gap is held the same way (gapNow) until the deletion is queued to send. */
 test('a full swipe\'s row is held done before Vikunja answers; its tick tapped meanwhile undoes it once it has; not saved, the row says so', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 }, { id: 2, title: 'Sand it', done: false }]), app = listed(c), send = globalThis.fetch;
-  // Vikunja's answers, held back until `answer()`.
+  // Vikunja's answers are held back until `answer()` is called.
   let held = [];
   const answer = () => { const go = held; held = null; go.forEach(ok => ok()); }, turn = () => new Promise(ok => setImmediate(ok));
   globalThis.fetch = async (...a) => { if (held) await new Promise(ok => held.push(ok)); return send(...a); };
-  document.querySelectorAll = () => [];                                       // (no rows to slide back in)
+  document.querySelectorAll = () => [];                                       // no rows to slide back in
   try {
     app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1)), app.keep(v.task(2))] }];
     let setting = app.setProgress(app.tasks[1], 100, ROW);
@@ -277,7 +277,7 @@ test('a full swipe\'s row is held done before Vikunja answers; its tick tapped m
     await setting; await tapped;
     assert.deepEqual(app.leaving, {}, 'answered: marked, and the tap was its undo');
     assert.deepEqual([v.task(1).done, v.task(1).percent_done, patches(v).length], [false, 0.5, 2], 'open again, at the progress it had');
-    // Not saved: it's let go of, and the row says so.
+    // If the save fails, the row is released and shows a message.
     v.trouble = () => 500;
     setting = app.setProgress(app.tasks[1], 100, ROW);
     assert.deepEqual(app.leaving, { 1: 'done' });
@@ -285,10 +285,10 @@ test('a full swipe\'s row is held done before Vikunja answers; its tick tapped m
     assert.deepEqual([app.leaving, app.tasks[1].done], [{}, false], 'not held, and not done');
     assert.match(app.toast.msg, /^Not saved: /);
     assert.deepEqual([app.toast.row.id, app.toast.action.label], [1, 'Try again']);
-    v.trouble = () => null; app.rowEl = () => ROW;                             // (its row is on screen)
+    v.trouble = () => null; app.rowEl = () => ROW;                             // the row is on screen
     await app.toast.action.fn();
     assert.deepEqual([app.leaving, v.task(1).done], [{ 1: 'done' }, true], 'Try again: done, in its place');
-    // A tick tapped is held the same way; tapped again before the answer, that's its undo once it's in.
+    // A tapped tick is held the same way. Tapping it again before the answer undoes it once the answer arrives.
     await app.unmark(1);
     held = [];
     const ticking = app.toggleDone(app.tasks[1], ROW), again = app.unmark(1);
@@ -296,7 +296,7 @@ test('a full swipe\'s row is held done before Vikunja answers; its tick tapped m
     answer();
     await ticking; await again;
     assert.deepEqual([app.leaving, v.task(1).done, app.tasks[1].done], [{}, false, false], 'ticked and ticked again: open, and nothing left marked');
-    // A deletion's: "Deleted" and Restore at once; called off (its question said no), the row is back.
+    // A deletion shows "Deleted" and Restore at once. If the user cancels (the confirmation is answered no), the row comes back.
     let said = null;
     const asked = new Promise(ok => { said = ok; });
     app.gapNow(2, asked);
@@ -325,8 +325,8 @@ test('progress below 100% is saved as it is, shown on its bar alone; not saved, 
   assert.equal(v.task(1).percent_done, 0.9, 'Try again sets it');
 });
 
-/* A done row swiped left opens again at the progress it's let go at (parent-tasks-plan, part 1), as its tick would open
-   it, in one save; its tick again makes it done. The sheet's row and Progress line the same. */
+/* Swiping a done row left opens it again at the progress where the user releases the swipe, the same as its tick
+   would, in one save. Ticking it again makes it done. The sheet's row and Progress line behave the same. */
 test('a done task swiped down is open again, at that progress, in one save', async c => {
   const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: true, percent_done: 0.4 }]), app = listed(c);
   const t = app.keep(v.task(1));
@@ -392,15 +392,15 @@ test('a subtask\'s tick and progress show on its row only: no message, and its r
   await app.toggleDone(t, null);
   assert.equal(v.task(2).done, false);
   assert.deepEqual(app.toasts, [], 'no messages');
-  // In its parent's sheet, a subtask's copy has no parent of its own: it's said to be one.
+  // In its parent's sheet, the subtask's copy has no parent set, so `sub: true` tells the action it is a subtask.
   const inSheet = { id: 3, title: 'Wash them', done: false };
   v.tasks.set(3, structuredClone(inSheet));
   await app.toggleDone(inSheet, null, { sub: true });
   assert.deepEqual(app.toasts, []);
 });
 
-/* A parent's worked-out progress (parent-tasks-plan, part 3): written to it right after a change to its subtasks, by the
-   same action, and only when it changes. */
+/* A parent's calculated progress is written right after one of its subtasks changes, by the same action, and only
+   when the progress changes. */
 test('a subtask ticked, or its progress set, writes its parent\'s worked-out figure right after; unchanged, nothing', async () => {
   const kid = id => ({ id, title: 'Step ' + id, done: false, percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } });
   const v = fakeVikunja([{ id: 1, title: 'Open up', percent_done: 0, related_tasks: { subtask: [{ id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }] } }, kid(2), kid(3), kid(4), kid(5)]);
@@ -416,7 +416,7 @@ test('a subtask ticked, or its progress set, writes its parent\'s worked-out fig
   await app.setProgress(app.keep(v.task(3)), 0, null);
   await app.saveTask(1, null, () => null);
   assert.deepEqual(patches(v), [[3, { percent_done: 0 }]], 'the figure unchanged: not written');
-  // In its parent's sheet, a subtask's copy names no parent: the sheet's task is it.
+  // In its parent's sheet, the subtask's copy names no parent, so the sheet's task is its parent.
   v.requests.length = 0;
   app.sheet = { task: { id: 1, related_tasks: { subtask: [{ id: 4 }] } } };
   await app.toggleDone({ id: 4, title: 'Step 4', done: false }, null, { sub: true });
@@ -424,7 +424,8 @@ test('a subtask ticked, or its progress set, writes its parent\'s worked-out fig
   assert.deepEqual(patches(v), [[4, { done: true }], [1, { percent_done: 0.5 }]]);
 });
 
-// A subtask's own sheet: its progress set by a swipe on its row, or a quarter in Details (parent-tasks-plan, 6b).
+// In a subtask's own sheet, setting progress by swiping its row or tapping a quarter in Details also writes the
+// parent's progress.
 test('a subtask\'s progress set in its own sheet writes its parent\'s figure right after', async () => {
   const kid = id => ({ id, title: 'Step ' + id, done: false, percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } });
   const v = fakeVikunja([{ id: 1, title: 'Open up', percent_done: 0, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, kid(2), kid(3)]);
@@ -447,9 +448,9 @@ test('a run\'s step: what changes it goes through the outbox, its run\'s figure 
   assert.equal(patches(v).length, 1, 'sent again: the same, so nothing written');
 });
 
-// The parts a deletion is sent with: what's waiting, and the outbox's acts (runs.js), on the pretend component.
+// The parts needed to send a deletion are what is waiting and the outbox's acts (runs.js), on the fake component.
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
-// Its timers are the test's, so the ones still to come (the Undo's own, say) don't keep Node waiting.
+// The test controls the timers, so timers that have not fired yet (the Undo's, for example) don't keep Node waiting.
 const deleting = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'keyWaiting', 'markSlow', 'sendEntry'),
@@ -475,9 +476,9 @@ test('a subtask deleted: its parent\'s worked-out progress is written once the d
   assert.deepEqual(ACTS.delete.at(-1), 'figure');
 });
 
-/* A task with subtasks is asked about before anything is done (rows-and-sheet-fixes-plan, part 2): askDelete reads what
-   goes with it and asks, on its own, so a row swiped to delete asks before it slides away (swipeDelete,
-   app/progress.js), and the deletion that follows isn't asked about again. */
+/* Deleting a task with subtasks asks for confirmation first. askDelete reads which tasks go with it and asks on its
+   own, so a row swiped to delete asks before it slides away (swipeDelete, app/progress.js). The deletion that follows
+   does not ask again. */
 test('deleting a task with subtasks asks first, saying how many go; said no, nothing is kept to send; asked beforehand, it isn\'t asked again', async t => {
   const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, { id: 2, title: 'Pack the cups', related_tasks: { parenttask: [{ id: 1 }], subtask: [{ id: 4 }] } },
     { id: 3, title: 'Pack the plates', related_tasks: { parenttask: [{ id: 1 }] } }, { id: 4, title: 'Wrap them', related_tasks: { parenttask: [{ id: 2 }] } }, { id: 5, title: 'Lock up' }]);
@@ -512,7 +513,7 @@ test('a deletion waits for its Undo: off the list at once, nothing sent, and Und
   assert.equal(app.pending.length, 0, 'nor said to be waiting to send');
   await app.undoDelete(d.id);
   assert.deepEqual(app.deleting, [], 'back on the list');
-  await app.sendHeld();                                                       // Pocket put away: nothing left to send
+  await app.sendHeld();                                                       // the app goes to the background, with nothing left to send
   assert.deepEqual(deletes(v), []);
   assert.equal(sync.all(1).length, 0);
 });
@@ -527,7 +528,7 @@ test('a deletion is sent once its Undo has gone, deepest first, and its rows are
   assert.deepEqual(app.view.groups[0].tasks, []);
   assert.deepEqual(app.deleting, []);
   assert.equal(sync.all(1).length, 0, 'nothing left waiting');
-  await app.undoDelete(d.id);                                                 // too late for Undo: nothing happens
+  await app.undoDelete(d.id);                                                 // too late for Undo, so nothing happens
   assert.deepEqual(deletes(v), [2, 1]);
 });
 
@@ -536,7 +537,7 @@ test('a deletion without a connection waits in the outbox, off the list, and goe
   app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(5))] }];
   await app.holdDelete(app.tasks[5]);
   v.trouble = r => r.method === 'DELETE' ? 'offline' : null;
-  await app.sendHeld();                                                       // put away while offline
+  await app.sendHeld();                                                       // the app goes to the background while offline
   assert.deepEqual(app.deleting, [5], 'still off the list');
   assert.equal(app.pending.length, 1, 'shown as waiting to send');
   v.trouble = () => null;
@@ -577,14 +578,14 @@ test('the page says where sending stands: waiting while an Undo shows or offline
   assert.equal(app.syncState, 'idle');
 });
 
-/* A row or a card held on Today and moved to a new date (hold-to-reschedule-plan: app/throw.js): Move all to today, one
-   at a time, each with an Undo for a few seconds that puts back the date and the time it had (design rule 8). There's
-   no screen here: `seen` is the tasks whose row is in sight once it's in its new place (rowSeen), which says where the
-   line with the Undo goes: on its row, or by the add box. */
+/* Holding a row or card on Today and moving it to a new date (app/throw.js). Move all to today does the same one task
+   at a time. Each move has an Undo for a few seconds that restores the date and time the task had. There is no screen
+   here. `seen` holds the tasks whose row is in sight once the task is in its new place (rowSeen). That decides where
+   the message with the Undo appears, on the task's row or by the add box. */
 const onToday = (c, list, cardsBy = {}) => {
   c?.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
   const v = fakeVikunja(list), app = component(tasks, actions, cards, alerts, sending), seen = new Set(list.map(t => t.id));
-  const shown = id => app.listBase.some(g => g.tasks.some(t => t.id === id));       // on Today's lists, as they're drawn
+  const shown = id => app.listBase.some(g => g.tasks.some(t => t.id === id));       // whether the task is on one of Today's lists as drawn
   Object.assign(app, { setBadge(){}, lines: {}, positions: {}, route: { name: 'today' }, pending: [], flashed: {}, flash(ids, kind){ this.flashed[kind] = ids; },
     $nextTick: async () => {}, rowSeen: id => seen.has(id) && shown(id) });
   app.view = { groups: todayGroups(), cards: cardsBy };
@@ -593,7 +594,8 @@ const onToday = (c, list, cardsBy = {}) => {
 };
 const moveTo = (app, t, day, label) => app.reschedule(t, { label, due: day ? movedDue(t.due_date, day, new Date()) : ZERO });
 const ZERO = '0001-01-01T00:00:00Z';
-// What was last said, and where: its words, its action's name, the row it's on (or none) and the place it goes otherwise.
+// The last message and where it appears: its text, its action's label, the id of the row it is on (or null) and the
+// place it goes otherwise.
 const said = app => { const s = app.toast; return [s.msg, s.action?.label ?? null, s.row?.id ?? null, s.place]; };
 
 test('a row moved to a new date goes there at its own time, at once, said on its row with an Undo; off Today, by the add box', async c => {
@@ -646,7 +648,7 @@ test('every date changed by a hold has an Undo, which puts back the date and the
   await moveTo(app, app.tasks[3], new Date(2026, 9, 8), 'Tomorrow');
   await app.toast.action.fn();
   assert.deepEqual([v.task(3).due_date, key(3)], [ZERO, 'nodate'], 'one that had no date has none again');
-  // Tapped before Vikunja has answered the move: it waits for that, then puts the date back.
+  // Tapping Undo before Vikunja answers the move makes Undo wait for the answer, then restore the date.
   const real = globalThis.fetch;
   let answer;
   const held = new Promise(r => { answer = r; });
@@ -659,7 +661,7 @@ test('every date changed by a hold has an Undo, which puts back the date and the
   assert.equal(await going, true);
   await undone;
   assert.deepEqual([v.task(1).due_date, key(1)], [at(7, 16), 'today'], 'moved, then moved back');
-  // Changed elsewhere since: left as it is, and said so.
+  // If the task changed elsewhere since the move, Undo leaves it as it is and shows a message.
   await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
   const undo = app.toast.action;
   v.task(1).updated = new Date(2026, 9, 7, 14, 30).toISOString();
@@ -703,9 +705,10 @@ test('a card moved to a new date moves only its task\'s date; one whose subtask 
   assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [ZERO, at(7, 18), 'today'], 'Undo: its date off again, its subtask\'s as it was');
 });
 
-/* A title being changed, in the box in the sheet's own row or a template's over its card, is saved by its box as it
-   loses the focus. A sheet slid down, or closed by the phone's Back, doesn't take the focus from it, and on an iPhone
-   there's no button to hand it back to: leaving the sheet saves it too, once, whichever comes first. */
+/* A title being edited, in the box in the sheet's own row or in a template's box over its card, is saved when the box
+   loses focus. A sheet that is slid down or closed with the phone's Back doesn't take focus from the box, and on an
+   iPhone there is no button to move the focus to. So leaving the sheet saves the title too, once, whichever happens
+   first. */
 test('a title being changed is saved when its sheet closes, however it closes, and once; emptied, it stays as it was', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', project_id: 1 }, { id: 2, title: 'TEMPLATE: Opening', project_id: 1, done: true, labels: [{ id: 9, title: 'template' }] }]);
@@ -720,24 +723,24 @@ test('a title being changed is saved when its sheet closes, however it closes, a
     open(1);
     app.editTitle();
     app.sheet.title = 'Wipe the menus and the tables ';
-    app.closeSheet();                                                          // slid down, or the phone's Back: the box keeps the focus
+    app.closeSheet();                                                          // closed by sliding down or the phone's Back, so the box keeps the focus
     assert.deepEqual(await sent(), [[1, { title: 'Wipe the menus and the tables' }]], 'saved as the sheet is left');
     assert.equal(app.sheet.titleEdit, false);
-    app.saveTitle();                                                           // the box's blur, after
-    c.mock.timers.tick(300);                                                   // the sheet gone
-    app.saveTitle();                                                           // or only now, as its box goes with it
+    app.saveTitle();                                                           // the box's blur comes later
+    c.mock.timers.tick(300);                                                   // the sheet has closed
+    app.saveTitle();                                                           // or the blur comes only now, as the box goes with the sheet
     assert.equal((await sent()).length, 1, 'once');
-    // Emptied: as it was.
+    // An emptied title stays as it was.
     open(1);
     app.editTitle();
     app.sheet.title = '   ';
     app.closeSheet(true);
     assert.equal((await sent()).length, 1, 'nothing sent for a title emptied');
-    // Not being changed: nothing to save.
+    // A title that is not being edited has nothing to save.
     open(1);
     app.closeSheet(true);
     assert.equal((await sent()).length, 1);
-    // A template's name, in the box over its card, which has the focus: saved with "TEMPLATE: " kept before it.
+    // A template's name is edited in the box over its card, which has focus. It is saved with "TEMPLATE: " kept in front.
     open(2);
     document.activeElement = { id: 'd-title' };
     app.sheet.title = 'Opening up';
@@ -746,8 +749,8 @@ test('a title being changed is saved when its sheet closes, however it closes, a
   } finally { delete document.activeElement; delete document.getElementById; delete globalThis.history; }
 });
 
-/* Escape, on a desktop, closes what's innermost first (rows-and-sheet-fixes-plan, part 5): the task's ⋯ menu, wherever
-   the focus is, which goes back to ⋯; only then the sheet. With no sheet open it does nothing. */
+/* On a desktop, Escape closes the innermost thing first. That is the task's ⋯ menu, wherever the focus is, and the
+   focus then goes back to ⋯. Only after that does Escape close the sheet. With no sheet open it does nothing. */
 test('Escape closes the task\'s menu before its sheet, the focus back on ⋯', () => {
   const app = component(sheet), did = [];
   document.getElementById = id => ({ focus: () => did.push('focus ' + id) });
@@ -764,9 +767,10 @@ test('Escape closes the task\'s menu before its sheet, the focus back on ⋯', (
   } finally { delete document.getElementById; }
 });
 
-/* "Turn into its own task" (the sheet's ⋯ on a subtask's sheet: ownTask): the subtask is taken out from under its task,
-   put right after it in the project's List view, and its old parent's worked-out progress is written without it. Said
-   at the sheet's top, with an Undo, which puts it back under it, where it was. Not for a run's step or a template's. */
+/* "Turn into its own task" (ownTask, in the ⋯ menu on a subtask's sheet) removes the subtask from under its parent and
+   puts it right after the parent in the project's List view. The old parent's calculated progress is then written
+   without the subtask. A message with an Undo appears at the top of the sheet, and Undo puts the subtask back under
+   its parent where it was. It is not available for a checklist's step or a template's. */
 test('a subtask made its own task leaves its parent, goes right after it, and the parent\'s progress is worked out without it; Undo puts it back', async () => {
   const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0.5, project_id: 5, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } };
   const kid = (id, f = {}) => ({ id, title: 'Kid ' + id, done: false, percent_done: 0, project_id: 5, related_tasks: { parenttask: [{ id: 10, title: 'Pack the van', project_id: 5 }] }, ...f });
@@ -791,7 +795,7 @@ test('a subtask made its own task leaves its parent, goes right after it, and th
   await app.toast.action.fn();
   assert.deepEqual([v.task(12).related_tasks.parenttask.map(p => p.id), v.task(10).related_tasks.subtask.map(s => s.id)], [[10], [11, 12]], 'Undo: under it again');
   assert.deepEqual([moves.at(-1), patches(v).at(-1)], [['position', 12, 7, 200], [10, { percent_done: 0.5 }]], 'where it was among the subtasks, and counted again');
-  // Vikunja turns it down: said, with Try again, and nothing changed.
+  // If Vikunja refuses, a message with Try again appears and nothing changes.
   v.trouble = r => r.method === 'DELETE' ? 403 : null;
   await app.ownTask();
   assert.deepEqual([app.toast.action.label, app.toast.cls, v.task(12).related_tasks.parenttask.map(p => p.id), moves.length], ['Try again', 'failed', [10], 2]);

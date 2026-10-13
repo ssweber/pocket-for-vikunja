@@ -1,13 +1,13 @@
-// Reading a whole list from Vikunja (src/js/api.js, allPages): page 1, then the rest at once, as many to a page as
-// Vikunja gives, to the list's end.
+// Reading a whole list from Vikunja (allPages in src/js/api.js). It reads page 1, then requests the remaining pages at
+// the same time, using the largest page size Vikunja allows.
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { allPages, partOf } from '../../src/js/api.js';
 
-/* A pretend Vikunja with a list of `n` items, paged as Vikunja pages them (at most `max` to a page), each reply held a
-   moment so the requests made at once overlap. Keeps what was asked (`asked`: [page, per_page]) and the most requests
-   it had at once (`most`). `fail` makes that page answer 500. */
+/* A fake Vikunja with a list of `n` items, paged the way Vikunja pages them (at most `max` per page). Each reply is
+   delayed briefly so requests made together overlap. It records the requests (`asked`, as [page, per_page]) and the
+   most requests open at once (`most`). The page number `fail` answers 500. */
 function list(n, { max = 50, fail = 0 } = {}){
   const v = { asked: [], most: 0 };
   let open = 0;
@@ -54,8 +54,8 @@ test('a page that fails fails the whole read', async () => {
   await assert.rejects(allPages('/tasks'), { status: 500 });
 });
 
-/* A part of a list (partOf: performance-plan, part 9, a project's Done shown 100 at a time): the items from where it's
-   shown to, read at once in as few pages as Vikunja gives that many to, and how many it has in all. */
+/* partOf reads one slice of a list, such as a project's Done list shown 100 at a time. It requests the fewest pages
+   that cover the slice, all at once, and also returns the total number of items. */
 test('a part of a list is read at once, in as few pages as Vikunja gives that many to, with how many it has in all', async () => {
   const app = component(); let v = list(3000);
   let part = await partOf('/projects/2/tasks?filter=done+%3D+true', 0, 100);
