@@ -474,9 +474,9 @@ test('a list\'s add box under a row is labelled with what one line makes, and at
   assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: null } }), [false, 'Add subtasks, or paste a list', 'Add subtasks, or paste a list']);
   assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: 8 } }), [true, 'Subtask', 'Add subtasks, or paste a list']);
   assert.deepEqual(box({ subBoxW: 'add:+', isStepList: true, sheet: { subAt: 8 } }), [true, 'Step', 'Add steps, or paste a list']);
-  const on = { title: 'Mop the floor', pending: false };
-  assert.deepEqual(box({ runAim: { on }, runBoxAt: null }, 'run'), [false, 'Add steps, or paste a list', 'Add steps, or paste a list']);
-  assert.deepEqual(box({ runAim: { on }, runBoxAt: 52 }, 'run'), [true, 'Step', 'Add steps, or paste a list']);
+  const above = { title: 'Mop the floor', pending: false };
+  assert.deepEqual(box({ runAim: { above }, runBoxAt: null }, 'run'), [false, 'Add steps, or paste a list', 'Add steps, or paste a list']);
+  assert.deepEqual(box({ runAim: { above }, runBoxAt: 52 }, 'run'), [true, 'Step', 'Add steps, or paste a list']);
 });
 
 /* The sheet's own box under a subtask (nudgedSub, app/sheet.js) decides where its lines go. */

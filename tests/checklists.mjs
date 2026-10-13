@@ -1297,13 +1297,13 @@ try {
 
   await step('insert-and-repeat-a-step', async () => {
     // The add box at the bottom inserts a step after the step shown on the card, and a line above the box says so. The
-    // next step typed goes after that one. Repeat adds a fresh copy of the card's step in the same position. Neither
-    // changes the template.
+    // next step typed goes after that one. Repeat adds a fresh copy of the step above the box, right after that step.
+    // Neither changes the template.
     const { id } = await startRun(), tplSteps = (await subtasks(template.id)).length;
     const titles = async () => (await subtasks(id)).map(s => s.title).join(' | ');
     // The box is at the end of the steps, and the screen has no bar at the bottom. What is typed there goes after the
     // last step. After a nudge (a short drag) on a step, the box moves under that step and what is typed goes after
-    // that step. `what` is the step on the card, which Repeat copies.
+    // that step. `what` is the step on the card.
     const box = '#run-in', what = page.locator('#step-title'), go = '#run-box form .go';
     const add = async text => { await page.fill(box, text); await page.press(box, 'Enter'); };
     await page.click('#step-done');
@@ -1345,8 +1345,10 @@ try {
     await page.waitForSelector('#step-added:text-is("Inserted")', { timeout: 15000 });
     // The step after the inserted one still counts from the template step before the inserted one.
     await page.waitForSelector('#run-steps .row:nth-of-type(3) .meta .due span:text-matches("^Due in (30|29)m$")');
-    // Repeat, in the message line, adds a copy of the card's step, not done, at once, in the position the box points to. An Undo button appears by the box.
+    // Repeat copies the step above the box. After a nudge puts the box under the first step, Repeat adds a copy of
+    // that step, not done, at once, right after it. An Undo button appears by the box.
     await page.click('#run-steps .row:nth-of-type(1) .body');
+    await touchDrag('#run-steps .row:nth-of-type(1)', 30);
     await page.getByRole('button', { name: 'Repeat “Check the guards at 3pm”' }).click();
     await page.waitForSelector('#run-steps .row:nth-of-type(2):has-text("Check the guards at 3pm")');
     await expect(what).toHaveText('Check the guards at 3pm');

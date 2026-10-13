@@ -563,7 +563,7 @@ export default {
       if (!a) return null;
       const under = this.runBoxAt != null;
       const rest = 'Add steps, or paste a list';
-      return {w: 'ins', id: 'run-box', in: 'run-in', under, steps: false, can: this.boxParsedLines('ins').some(p => p.title), repeat: {title: a.on.title, can: !a.on.pending},
+      return {w: 'ins', id: 'run-box', in: 'run-in', under, steps: false, can: this.boxParsedLines('ins').some(p => p.title), repeat: {title: a.above.title, can: !a.above.pending},
         says: under ? 'Step' : rest, rest, add: 'Add steps', home: 'Add after the last step instead'};
     }
     const w = this.subBoxW;

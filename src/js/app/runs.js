@@ -721,14 +721,15 @@ export default {
 
   /* ---------- steps added during a run ---------- */
   /* Insert or repeat a step through the outbox. Show it in place and allow ticks while it waits offline. */
-  /* Describe where the run's add box inserts steps. Return the card's step for Repeat, plus the predecessor and
-     successor at the box's position. Hide the box on finished or read-only runs. */
+  /* Describe where the run's add box inserts steps. Return the step above the box, which Repeat copies, plus the
+     predecessor and successor at the box's position. Above a box at the bottom is the last step. Hide the box on
+     finished or read-only runs. */
   get runAim(){
     const r = this.view.run, v = this.runView;
     if (!v || v.finished || !v.steps.length || !this.canWrite(r.run.project_id)) return null;
-    const on = v.step || v.steps[v.total - 1], same = x => String(this.actTask({task: x}));
-    const after = (this.runBoxAt != null && v.steps.find(s => same(s.id) === same(this.runBoxAt))) || v.steps[v.total - 1];
-    return {on, after: after.id, before: v.steps[after.i + 1]?.id ?? null};
+    const same = x => String(this.actTask({task: x}));
+    const above = (this.runBoxAt != null && v.steps.find(s => same(s.id) === same(this.runBoxAt))) || v.steps[v.total - 1];
+    return {above, after: above.id, before: v.steps[above.i + 1]?.id ?? null};
   },
   /* Queue each step in list order between after and before. With follow, move the box under the last queued step
      before sending, so the next entry follows it. Return the entry ids. */
@@ -747,10 +748,10 @@ export default {
     this.runInsert = {...newBox(), focus: this.runInsert.focus};
     await this.addSteps(lines.map(p => ({title: p.title, p: packParsed(p)})), {after: a.after, before: a.before, follow: true});
   },
-  /* Repeat the card's step immediately after itself, regardless of the add box's position, with Undo beside the
-     box. A pending step has no saved task to copy yet. */
-  async repeatCard(){
-    const s = this.runAim?.on;
+  /* Repeat the step above the add box, whichever step is on the card. The copy goes right after that step, and the
+     box stays where it is, with Undo beside it. A pending step has no saved task to copy yet. */
+  async repeatAbove(){
+    const s = this.runAim?.above;
     if (!s || s.pending) return;
     const id = randomId();
     this.say(`Repeated “${s.title}”`, {place: 'cap', action: {label: 'Undo', fn: () => this.undoAdded(id, s.title)}});

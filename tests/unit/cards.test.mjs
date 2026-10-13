@@ -622,13 +622,13 @@ test('a checklist’s own row asks to finish it from its ring, shows who it is f
 });
 
 test('a checklist’s add box adds after the last step, or after the step it is under, and then moves under what was added', async () => {
-  const app = runScreen(), added = [], aim = () => { const a = app.runAim; return [a.on.title, a.after, a.before]; };
+  const app = runScreen(), added = [], aim = () => { const a = app.runAim; return [a.above.title, a.after, a.before]; };
   app.addStep = async f => { added.push(f); };
   app.seatFoot = () => {};
   app.showStep(2);                                                         // tap C, which puts it on the card
-  assert.deepEqual(aim(), ['C', 54, null], 'at the bottom, the box adds after the last step, whatever is on the card');
+  assert.deepEqual(aim(), ['D', 54, null], 'at the bottom, the box adds after the last step, whatever is on the card');
   app.runBoxAt = 52;                                                       // nudge B, which puts the box under it
-  assert.deepEqual(aim(), ['C', 52, 53], 'after B, before C');
+  assert.deepEqual(aim(), ['B', 52, 53], 'after B, before C');
   const a = app.runAim, ids = await app.addSteps([{ title: 'X' }, { title: 'Y' }], { after: a.after, before: a.before, follow: true });
   assert.deepEqual(added.map(f => [f.id, f.title, f.after, f.before]), [[ids[0], 'X', 52, 53], [ids[1], 'Y', 'pending-' + ids[0], 53]], 'a pasted list is added in order');
   assert.equal(app.runBoxAt, 'pending-' + ids[1], 'the box is under the last of them, so the next goes after it');
@@ -640,14 +640,14 @@ test('a checklist’s add box goes after the last step when every step is done, 
   const app = runScreen();
   for (const s of app.view.run.steps) Object.assign(s, { done: true, done_at: new Date().toISOString() });
   assert.equal(app.runView.step, null, 'no step on the card');
-  assert.deepEqual([app.runAim.on.title, app.runAim.before], ['D', null]);
+  assert.deepEqual([app.runAim.above.title, app.runAim.before], ['D', null]);
   app.perms[5] = 0;
   assert.equal(app.runAim, null, 'a read-only checklist has no box');
   app.perms[5] = 1; app.view.run.run.done = true;
   assert.equal(app.runAim, null, 'a finished checklist has no box');
 });
 
-test('Repeat copies the card’s step right after it, wherever the box is, with an Undo', async () => {
+test('Repeat copies the step above the box right after it, whatever is on the card, with an Undo', async () => {
   const app = runScreen(), added = [], said = [];
   app.addStep = async f => { added.push(f); };
   app.seatFoot = () => {};
@@ -655,12 +655,16 @@ test('Repeat copies the card’s step right after it, wherever the box is, with 
   app.say = (text, o) => said.push({ text, ...o });
   app.dropStep = async () => false;                                        // the step is still waiting, so it is not sent
   app.runBoxAt = 51;                                                       // the box is under A
-  await app.repeatCard();
-  assert.deepEqual([added[0].title, added[0].tpl, added[0].after, added[0].before], ['C', 'C', 53, 54], 'the copy of C goes right after C');
+  await app.repeatAbove();
+  assert.deepEqual([added[0].title, added[0].tpl, added[0].after, added[0].before], ['A', 'A', 51, 52], 'the copy of A goes right after A');
   assert.equal(app.runBoxAt, 51, 'the box stays where it was');
-  assert.deepEqual([said[0].text, said[0].place, said[0].action.label], ['Repeated “C”', 'cap', 'Undo']);
+  assert.equal(app.runView.step.title, 'C', 'the card keeps its step');
+  assert.deepEqual([said[0].text, said[0].place, said[0].action.label], ['Repeated “A”', 'cap', 'Undo']);
   await said[0].action.fn();
-  assert.equal(app.said, 'Not repeated: C');
+  assert.equal(app.said, 'Not repeated: A');
+  app.runBoxAt = null;                                                     // the box is at the bottom
+  await app.repeatAbove();
+  assert.deepEqual([added[1].title, added[1].after, added[1].before], ['D', 54, null], 'at the bottom, the copy is of the last step and goes at the end');
 });
 
 /* Tapping a parent's ring never closes subtasks without asking, unless only one subtask is open, which gets an

@@ -6,8 +6,8 @@
      Nudging a row moves the box under that row (seatFoot), so the new task is added after it. A dashed placeholder
      keeps the box's place at the bottom, and tapping it brings the box back. Nudging the last row changes nothing,
      because the box is already under it. -->
-<!-- On a checklist the box also has Repeat, shown as its symbol alone. It adds a fresh copy of the step on the card
-     right after that step, wherever the box is (repeatCard, app/runs.js). -->
+<!-- On a checklist the box also has Repeat, shown as its symbol alone. It adds a fresh copy of the step above the box,
+     right after that step (repeatAbove, app/runs.js). -->
 <template x-for="fb in [footBox(where)].filter(Boolean)" :key="fb.w"><div class="addbox sub foot-box" :id="fb.id">
   <!-- On a checklist, the message for what the box just did ("Repeated", with Undo) is shown in the box, so it moves
        with the box -->
@@ -21,7 +21,7 @@
     </div>
     <template x-for="rep in fb.repeat ? [fb.repeat] : []" :key="0"><button type="button" class="rep" id="btn-repeat" :disabled="!rep.can" :aria-label="'Repeat “' + rep.title + '”'"
       :title="rep.can ? 'Add a fresh copy of “' + rep.title + '” right after it' : 'Repeat is available once the step is sent'"
-      @mousedown.prevent @click="repeatCard()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
+      @mousedown.prevent @click="repeatAbove()"><svg class="i"><use href="#i-repeat"/></svg></button></template>
     <button class="go" type="submit" :aria-label="fb.add" @mousedown.prevent :disabled="!fb.can"><svg class="i"><use href="#i-up"/></svg></button>
   </form>
   <!-- For a template's step: when it is due, read from the typed text, and a picker for the step it counts from
