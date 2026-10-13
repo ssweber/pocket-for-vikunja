@@ -217,6 +217,26 @@ test('x-for keyed any other way, or with the list named, evaluates every key as 
   }
 });
 
+/* A template nested in another names the template that holds its content (data-from, written by shared in
+   scripts/build.mjs), and x-for and x-if clone from the one named. Without the patch a list's row was cloned with the
+   content of every template inside it. */
+test('x-for and x-if clone the content of the template theirs names, and their own content without a name', () => {
+  const XIF = vendor.slice(vendor.indexOf('  // packages/alpinejs/src/directives/x-if.js'), vendor.indexOf('  // packages/alpinejs/src/directives/x-id.js'));
+  assert.ok(XIF.includes('Pocket:'), 'the patch is there');
+  const cloned = [], part = what => ({ what, children: { length: 1 }, cloneNode(){ cloned.push(what); return { firstElementChild: new El() }; } });
+  const named = part('named'), document = { getElementById: id => id === 'part-1' ? { content: named } : null, importNode: content => content.cloneNode() };
+  for (const [code, expression] of [[XFOR, 't in items'], [XIF, 'true']]) for (const from of ['part-1', undefined]) {
+    const tpl = new El({ kids: [] });
+    Object.assign(tpl, { tagName: 'TEMPLATE', dataset: { from }, content: part('own') });
+    let made;
+    const evaluateLater = () => receiver => receiver(expression === 'true' ? true : [{ id: 1 }]);
+    const stubs = { directive: (name, f) => { made = f; }, skipDuringClone: f => f, evaluateLater, mutateDom: f => f(), destroyTree(){}, initTree(){}, addScopeToNode(){}, reactive: x => x, warn(){}, document };
+    new Function(...Object.keys(stubs), code)(...Object.values(stubs));
+    made(tpl, { expression }, { effect: f => f(), cleanup(){} });
+  }
+  assert.deepEqual(cloned, ['named', 'own', 'named', 'own']);
+});
+
 /* memo (util.js) works a value out once per change to the data it reads. It uses the reactivity in Pocket's copy of
    Alpine (reactive.mjs) and sets a scheduler on its effect, which Alpine's public API doesn't offer. An Alpine upgrade
    that moves that code fails here. */

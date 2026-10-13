@@ -4250,9 +4250,12 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
             }
             return;
           }
-          if (templateEl.content.children.length > 1)
+          // Pocket: a template nested in another names the template that holds its content (data-from, written by
+          // scripts/build.mjs). A row is then cloned without the content of every template inside it.
+          let content = templateEl.dataset?.from ? document.getElementById(templateEl.dataset.from).content : templateEl.content;
+          if (content.children.length > 1)
             warn("x-for templates require a single root element, additional elements will be ignored.", templateEl);
-          let clone2 = document.importNode(templateEl.content, true).firstElementChild;
+          let clone2 = document.importNode(content, true).firstElementChild;
           let reactiveScope = reactive(scope2);
           addScopeToNode(clone2, reactiveScope, templateEl);
           clone2._x_refreshXForScope = refreshScope(reactiveScope);
@@ -4342,7 +4345,9 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     let show = () => {
       if (el._x_currentIfEl)
         return el._x_currentIfEl;
-      let clone2 = el.content.cloneNode(true).firstElementChild;
+      // Pocket: its content from the template it names (data-from), as x-for's.
+      let content = el.dataset.from ? document.getElementById(el.dataset.from).content : el.content;
+      let clone2 = content.cloneNode(true).firstElementChild;
       addScopeToNode(clone2, {}, el);
       mutateDom(() => {
         el.after(clone2);

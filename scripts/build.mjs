@@ -11,7 +11,7 @@
 //   <link rel="stylesheet" href="styles.css">  is replaced by that stylesheet from src/, minified, in a <style>
 //   <script type="module" src="js/main.js">  is replaced by that script and everything it imports, as one minified
 //                                            script. The source map is written next to the page (pocket.js.map).
-//   <script defer src="alpine-3.17.4-pocket.2.min.js">
+//   <script defer src="alpine-3.17.4-pocket.3.min.js">
 //                                            stays, and src/vendor/alpine-3.17.4.js is minified into that file next
 //                                            to the page (see vendor() below)
 // A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The markup's comments and
@@ -105,7 +105,7 @@ async function build(){
 
 /* A library that Pocket patches is kept readable in src/vendor/ (alpine-3.17.4.js is Alpine as published, then
    patched, with each change marked "Pocket:"). This function minifies it into the file the page names
-   (alpine-3.17.4-pocket.2.min.js). The name must change with every change to the patch. sw.js caches libraries by
+   (alpine-3.17.4-pocket.3.min.js). The name must change with every change to the patch. sw.js caches libraries by
    name, so a changed file under an old name would never reach an installed Pocket. */
 async function vendor(page){
   for (const [, name, lib] of page.matchAll(/<script[^>]* src="(([\w.-]+?)-pocket\.\d+\.min\.js)"/g)) {
