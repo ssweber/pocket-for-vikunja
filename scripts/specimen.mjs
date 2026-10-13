@@ -10,12 +10,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
-import { include } from './build.mjs';
+import { include, lean } from './build.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const HERE = join(ROOT, 'scripts', 'specimen'), OUT = join(ROOT, 'specimen');
 
-let page = include(join(HERE, 'page.html'));
+let page = lean(include(join(HERE, 'page.html')));
 // Pocket's stylesheet applies its dark colours to the whole page when the computer is in dark mode. Here they apply to
 // .theme-dark instead, so light and dark show at once.
 const dark = /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/;

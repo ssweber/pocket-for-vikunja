@@ -14,8 +14,9 @@
 //   <script defer src="alpine-3.17.4-pocket.2.min.js">
 //                                            stays, and src/vendor/alpine-3.17.4.js is minified into that file next
 //                                            to the page (see vendor() below)
-// A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The page is also written
-// compressed, as index.html.br and index.html.gz, for main.go to send to browsers that accept them (see compressed()).
+// A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The markup's comments and
+// indentation are removed (see lean() below). The page is also written compressed, as index.html.br and index.html.gz,
+// for main.go to send to browsers that accept them (see compressed()).
 //
 // The page is one file, so a phone never mixes a new page with old code. sw.js and main.go need nothing more. Edit
 // src/, never pocket/app/index.html. The build overwrites that file, and CI checks that it matches the build of src/.
@@ -50,6 +51,15 @@ export function include(file, seen = [], words = []){
   });
 }
 
+/* Removes the markup's comments and its indentation, which is the white space between two tags that has a line break
+   in it. Each row of a list is a copy of its template, so a comment or an indent in a row's markup is copied once for
+   every row drawn. White space on one line is kept, because between two inline elements it shows as a space. Quoted
+   attributes are left as they are. */
+export const lean = html => html.replace(/<!--[\s\S]*?-->|<(?:[^>"']|"[^"]*"|'[^']*')*>|[^<]+/g, part =>
+  part.startsWith('<!--') ? ''
+  : part[0] === '<' ? part.replace(/"[^"]*"|'[^']*'|\s+/g, s => /^\s/.test(s) ? ' ' : s)
+  : /^\s*\n\s*$/.test(part) ? '' : part);
+
 export async function css(file){
   const r = await esbuild.build({ entryPoints: [file], bundle: true, minify: true, write: false, logLevel: 'silent' });
   return r.outputFiles[0].text.trim();
@@ -69,7 +79,7 @@ async function js(file){
 }
 
 async function build(){
-  let page = include(join(SRC, 'index.html')), map = null;
+  let page = lean(include(join(SRC, 'index.html'))), map = null;
   const tag = /<link rel="stylesheet" href="([^"]+)">|<script type="module" src="([^"]+)"><\/script>/g;
   const parts = [];
   for (const m of page.matchAll(tag)) {

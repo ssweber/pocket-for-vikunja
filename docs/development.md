@@ -220,6 +220,8 @@ cannot delete. The checklists test needs a token that can create and update proj
   of this uses a stand-in store that also returns a copy.
 - **Alpine's `x-for` reorders whatever follows its `<template>`.** An element of ours placed among the rows is
   swapped with the next row each time the list is drawn. Put it before the template.
+- **The build removes the markup's comments and indentation** (`lean`, `scripts/build.mjs`). Two inline elements on
+  separate lines get no space between them. Write them on one line, with the space, to keep it.
 - **`:text-is()` matches the innermost element** with that text. Prefer `getByRole` with a name, or `:has-text`.
 - **`toContainText` is case-sensitive;** `:has-text` is not. Given a regular expression, `toHaveText` does not fold
   the markup's line breaks into spaces.

@@ -5,12 +5,18 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
-import { compressed, onlyParts } from '../../scripts/build.mjs';
+import { compressed, lean, onlyParts } from '../../scripts/build.mjs';
 
 test('a part marked "only" is kept where the include names it, and left out everywhere else', () => {
   const row = '<div class="row">\n  <!-- only step -->\n  <span class="n"></span>\n  <!-- /only -->\n  <button></button>\n  <!-- only other -->\n  <i></i>\n  <!-- /only -->\n</div>\n';
   assert.equal(onlyParts(row), '<div class="row">\n  <button></button>\n</div>\n', 'an include with no name keeps neither part');
   assert.equal(onlyParts(row, ['step']), '<div class="row">\n  <span class="n"></span>\n  <button></button>\n</div>\n', 'an include with the name keeps that part, without its markers');
+});
+
+test('the page is built without its comments and indentation, and keeps white space that shows', () => {
+  assert.equal(lean('<div class="row">\n  <!-- why -->\n  <b>a</b> <i>b</i>\n  <span>one\n    two</span>\n</div>\n'), '<div class="row"><b>a</b> <i>b</i><span>one\n    two</span></div>');
+  assert.equal(lean('<p\n   :class="{a: x > 1,\n            b: y}"   hidden>'), '<p :class="{a: x > 1,\n            b: y}" hidden>', 'between attributes a space, inside one nothing changes');
+  assert.equal(lean('<p x-text="\'<!-- kept -->\'"></p>'), '<p x-text="\'<!-- kept -->\'"></p>');
 });
 
 test('the page is written as .br and .gz files that decode to it, with no time or operating system in the gzip header', () => {
