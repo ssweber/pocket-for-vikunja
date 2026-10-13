@@ -1980,7 +1980,7 @@ try {
     let n = 1; while (months(n) <= Date.now()) n++;
     await setDaily({ due_date: due.toISOString(), repeat_after: 0, repeat_mode: 1 });
     const { tpl, note } = await startDaily();
-    if (!note.includes('the one due')) throw new Error('note: ' + note);
+    if (!note.includes('the checklist due')) throw new Error('note: ' + note);
     if (tpl.done || !sameTime(tpl.due_date, months(n).toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}, wanted ${months(n).toISOString()}`);
   });
 

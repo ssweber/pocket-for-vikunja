@@ -302,7 +302,7 @@ try {
     await page.click('#btn-overdue-today');
     await page.waitForSelector(`.sec.today ~ .list ${lateRow}`, { timeout: 15000 });
     // A message with an Undo button appears under the Overdue heading, which stays in place meanwhile.
-    await expect(placeLine(page, 'overdue')).toContainText(/^Moved \d+ to today\. \d+ repeating tasks? stays?: tick/);
+    await expect(placeLine(page, 'overdue')).toContainText(/^Moved \d+ to today\. \d+ repeating tasks? stays?\. Tick/);
     await expect(placeLine(page, 'overdue').getByRole('button', { name: 'Undo' })).toBeVisible();
     await noToast(page);
     if (new Date((await (await api('/tasks/' + daily.id)).json()).due_date).getTime() !== due.getTime()) throw new Error('the repeating task was moved');
@@ -3877,7 +3877,7 @@ ${footName('Hooks')}`);
     await page.evaluate(id => { location.hash = '#/project/' + id; }, proj.id);
     await page.click(`#view .day-card[data-id="${van.id}"] > .card-head .card-open`, { timeout: 15000 });
     await expect(page.locator('#d-subtasks .row .title')).toHaveText(['Load chairs', 'Tables', 'Sound system', 'Lights']);
-    await expect(page.locator('#d-subtasks').getByRole('button', { name: 'You\'re doing Sound system. Tap to let it go' })).toBeVisible();
+    await expect(page.locator('#d-subtasks').getByRole('button', { name: 'Sound system is assigned to you. Tap to unassign yourself.' })).toBeVisible();
     await expect(page.locator('#d-comments .comment')).toHaveCount(1);
 
     // Sharing through the phone's share sheet sends plain text, with the task's name as its title. The progress is the
