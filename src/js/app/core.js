@@ -204,10 +204,17 @@ export default () => ({
       (window.visualViewport || window).addEventListener('resize', refit);
       addEventListener('orientationchange', () => setTimeout(refit, 300));
       /* The keyboard covers the bottom of the page without making it shorter (Chrome on Android and Safari on iPhone
-         both do this), so what's fixed to the bottom, like the toasts, would be under it: --kb is how much it hides. */
+         both do this), so what's fixed to the bottom, like the toasts, would be under it: --kb is how much it hides,
+         which is less once the page is panned down under it. --kb-h is the keyboard's own height, however the page is
+         panned: the room the page and a sheet's scroller leave at their ends while it's open (styles.css). Both are
+         0 where the keyboard makes the page shorter instead, as it can in a home-screen app. */
       const vv = window.visualViewport;
       if (vv) {
-        const kb = () => document.documentElement.style.setProperty('--kb', Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + 'px');
+        const kb = () => {
+          const root = document.documentElement.style;
+          root.setProperty('--kb', Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + 'px');
+          root.setProperty('--kb-h', Math.max(0, Math.round(innerHeight - vv.height)) + 'px');
+        };
         vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); kb();
       }
     });

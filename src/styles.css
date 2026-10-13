@@ -8,7 +8,7 @@
   --shadow-toast:0 8px 28px rgba(0,0,0,.25); --scrim:rgba(10,16,13,.42); --code-bg:rgba(0,0,0,.06);
   --shadow-lift:0 1px 3px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.2); --danger-ink:#FFFFFF;
   --r-row:14px; --r-sheet:22px; --r-chip:999px;
-  --pad:16px; --cap-h:64px; --kb:0px;
+  --pad:16px; --cap-h:64px; --kb:0px; --kb-h:0px;
   /* A tick, a step's box and a ring are one size, and a row's title starts after it: the row's padding, the marker, the
      gap. A subtask's are a little smaller (--sub-tick), and it's indented by less than its parent's marker and gap
      (--sub-in), so it sits close under its parent, its tick starting a little before the parent's title. */
@@ -112,7 +112,9 @@ nav.tabs.icons a:not([aria-current=page]) .lbl{position:absolute;width:1px;heigh
 .page-title h2{margin:0;font-size:15px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}
 .icon-btn{width:40px;height:40px;border-radius:20px;border:0;background:var(--surface);display:grid;place-items:center;color:var(--ink);flex:none}
 .icon-btn.plain{background:transparent}
-main{padding:4px var(--pad) calc(var(--cap-h) + 28px)}
+/* The page, and a sheet's scroller, end with the keyboard's height to spare (--kb-h, core.js) while it's open: a box at
+   the foot of a list can then be scrolled up above the keyboard, which Safari does by itself as the caret moves. */
+main{padding:4px var(--pad) calc(var(--cap-h) + 28px + var(--kb-h))}
 
 .sec{margin:18px 0 6px;display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:15px}
 .sec .n{color:var(--muted);font-weight:600}
@@ -759,7 +761,7 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 #sheet .bar .grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
 /* While a sheet is open, the page behind it stays put: the sheet keeps its scrolling to itself, even at its ends */
 body.sheet-open{overflow:hidden}
-#sheet .scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:4px var(--pad) calc(env(safe-area-inset-bottom) + 32px);-webkit-overflow-scrolling:touch}
+#sheet .scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:4px var(--pad) calc(env(safe-area-inset-bottom) + 32px + var(--kb-h));-webkit-overflow-scrolling:touch}
 /* where the task lives, above its title */
 .d-path{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;margin:2px 0 8px 2px;color:var(--muted);font-size:14px;font-weight:600}
 .d-path .dot{margin:0}
