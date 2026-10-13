@@ -1,6 +1,7 @@
-// A CPU profile's time by function, its own (self) and with what it calls (total): what prof.mjs prints.
+// Adds up a CPU profile's time per function, both the function's own time (self) and the time including the functions
+// it calls (total). prof.mjs prints this report.
 //   node scripts/perf/agg.mjs <file.cpuprofile> [how many] [--mine]
-// --mine: Pocket's own functions only (in its page), leaving out Alpine's and the browser's.
+// --mine counts only Pocket's own functions (the ones in its page), not Alpine's or the browser's.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 

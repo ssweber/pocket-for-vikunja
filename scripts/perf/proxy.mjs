@@ -1,17 +1,18 @@
-// In front of the measuring Vikunja (up.mjs): a phone's connection and a reverse proxy, as Pocket would meet them.
+// Sits in front of the benchmark Vikunja (up.mjs) and imitates a phone's connection and a reverse proxy, as Pocket would
+// meet them.
 //   node scripts/perf/proxy.mjs [--port 3471] [--gzip] [--pass-encoding] [--rtt 100] [--kbps 5000]
-// --gzip compresses HTML, JS and JSON as nginx does by default (level 1); --pass-encoding sends the browser's
-// Accept-Encoding on to Vikunja, and a reply it sent compressed (the plugin's index.html.br or .gz) passes as it is, as
-// nginx passes it; --rtt delays each reply by that many ms (a request's round trip); --kbps is the
-// link's speed, shared by every reply at once. GET /__stats gives {requests, bytes, api, apiBytes, list} since the
-// last GET /__reset.
+// --gzip compresses HTML, JS and JSON as nginx does by default (level 1). --pass-encoding forwards the browser's
+// Accept-Encoding to Vikunja, and passes on a reply that Vikunja already compressed (the plugin's index.html.br or .gz)
+// unchanged, as nginx does. --rtt delays each reply by that many ms (a request's round trip). --kbps is the link's
+// speed, shared by every reply at once. GET /__stats returns {requests, bytes, api, apiBytes, list} since the last
+// GET /__reset.
 import http from 'node:http';
 import zlib from 'node:zlib';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const PORT = +arg('port', 3471), RTT = +arg('rtt', 0), KBPS = +arg('kbps', 0), GZIP = process.argv.includes('--gzip');
 const UP = 'http://127.0.0.1:3470', PASS = process.argv.includes('--pass-encoding');
-// Vikunja's reply with its body as sent (fetch would decode it): {status, headers: Headers, buf}.
+// Returns Vikunja's reply with its body as sent, still compressed (fetch would decode it): {status, headers: Headers, buf}.
 const raw = (url, opts, body) => new Promise((ok, fail) => {
   const r = http.request(UP + url, opts, res => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => {
     const h = new Headers(); for (const [k, v] of Object.entries(res.headers)) h.set(k, Array.isArray(v) ? v.join(', ') : v);
@@ -20,7 +21,7 @@ const raw = (url, opts, body) => new Promise((ok, fail) => {
   r.on('error', fail); r.end(body);
 });
 let stats = { requests: 0, bytes: 0, api: 0, apiBytes: 0, list: [] };
-let linkFree = 0;                                               // when the shared link is next free, ms
+let linkFree = 0;                                               // the time in ms when the shared link is next free
 const bytesPerMs = KBPS ? KBPS * 1000 / 8 / 1000 : 0;
 const sleep = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));
 
@@ -54,7 +55,7 @@ http.createServer(async (req, res) => {
     buf = zlib.gzipSync(buf, { level: 1 }); out['content-encoding'] = 'gzip'; out.vary = 'Accept-Encoding';
   }
   out['content-length'] = buf.length;
-  await sleep(RTT - (Date.now() - t0));                       // the round trip, less what Vikunja itself took
+  await sleep(RTT - (Date.now() - t0));                       // wait for the round trip time minus what Vikunja itself took
   res.writeHead(up.status, out);
   stats.requests++; stats.bytes += buf.length;
   if (req.url.startsWith('/api/v2')) { stats.api++; stats.apiBytes += buf.length; stats.list.push({ url: req.url.slice(0, 140), bytes: buf.length, ms: Date.now() - t0 }); }

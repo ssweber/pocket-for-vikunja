@@ -1,8 +1,9 @@
-// How long reading a whole list from the measuring Vikunja (up.mjs) takes through proxy.mjs, at each page size: one page
-// after another, or page 1 and then all the rest at once, as Pocket does (allPages, src/js/api.js).
+// Times reading a whole list from the benchmark Vikunja (up.mjs) through proxy.mjs, at each page size. It tries two
+// ways. One reads the pages one after another. The other reads page 1, then all the rest at once, as Pocket does
+// (allPages, src/js/api.js).
 //   node scripts/perf/api-bench.mjs [--rtt 100 --kbps 5000 --gzip] [--per 50,500]
-// Lists: Big's open tasks through its List view with subtasks (a project screen), and all its done tasks. A page size
-// over Vikunja's max_items_per_page gets that many (up.mjs --maxpp).
+// The lists are Big's open tasks through its List view with subtasks (a project screen), and all its done tasks. A page
+// size above Vikunja's max_items_per_page returns only that many items per page (up.mjs sets it with --maxpp).
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -27,9 +28,9 @@ const lists = {
 };
 const page = (path, p, per) => get(`${path}&page=${p}&per_page=${per}`);
 const ways = {
-  // Pocket before 21c4444: one page after another.
+  // The way Pocket used to read lists: one page after another.
   async oneByOne(path, per){ const out = []; for (let p = 1; p <= 400; p++) { const d = await page(path, p, per); out.push(...d.items); if (!d.items.length || p >= (d.total_pages || 1)) break; } return out; },
-  // Page 1 says how many there are; the rest at once (allPages).
+  // Page 1 shows how many pages there are, so the rest can be requested at once (allPages).
   async restAtOnce(path, per){ const d = await page(path, 1, per), n = d.total_pages || 1; const rest = await Promise.all(Array.from({ length: n - 1 }, (_, i) => page(path, i + 2, per))); return [...d.items, ...rest.flatMap(x => x.items)]; },
 };
 const pers = arg('per', '50,500').split(',').map(Number);

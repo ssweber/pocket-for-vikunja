@@ -1,15 +1,15 @@
-// A throwaway Vikunja in Docker with Pocket's plugin loaded straight from this repo, plus a mock single sign-on
-// provider standing in for Cloudron's login.
+// Starts a throwaway Vikunja in Docker with Pocket's plugin loaded from this repo, plus a mock single sign-on provider
+// that stands in for Cloudron's login.
 //
 //   npm run dev          start it, then open the printed address and sign in as dev / dev-password, or with "Mock SSO"
 //   npm run test:local   start it and run all the test files against it
 //
-// Both build Pocket's page from src/ first. npm run dev then keeps building it as src/ changes, so edits show up on
-// reload, until it's stopped with Ctrl+C; Vikunja keeps running. After changing pocket/main.go, run it again. The data lives only as long as
-// the containers. Stop them with: docker rm -f pocket-dev pocket-dev-sso pocket-dev-db
+// Both commands build Pocket's page from src/ first. npm run dev then rebuilds it whenever src/ changes, so edits show
+// up on reload. Ctrl+C stops the rebuilding, and Vikunja keeps running. After changing pocket/main.go, run it again.
+// The data lasts only as long as the containers. Stop them with: docker rm -f pocket-dev pocket-dev-sso pocket-dev-db
 //
-// Vikunja keeps its data in Postgres, as most servers do: SQLite answers "database is locked" when a request comes
-// while it's still writing the one before. DB=sqlite uses SQLite instead, inside Vikunja's container.
+// Vikunja keeps its data in Postgres, as most servers do. SQLite answers "database is locked" when a request arrives
+// while it is still writing the previous one. DB=sqlite uses SQLite instead, inside Vikunja's container.
 import { spawn, spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,27 +43,27 @@ async function waitFor(url, what){
 run(process.execPath, [fileURLToPath(new URL('build.mjs', import.meta.url))], { stdio: 'inherit' });
 run('docker', ['rm', '-f', NAME, SSO, DB], { allowFail: true });
 
-// The mock provider signs anyone in as "sso". Vikunja joins its network, so both the browser and Vikunja reach the
-// provider at the same 127.0.0.1 address, which OpenID Connect needs.
+// The mock provider signs anyone in as "sso". Vikunja joins the provider's network, so the browser and Vikunja reach
+// the provider at the same 127.0.0.1 address, which OpenID Connect needs.
 const claims = { sub: 'sso-user', email: 'sso@example.com', preferred_username: 'sso', name: 'SSO User' };
 run('docker', ['run', '-d', '--name', SSO, '-p', `127.0.0.1:${PORT}:3456`, '-p', `127.0.0.1:${SSO_PORT}:8080`,
   '-e', 'JSON_CONFIG=' + JSON.stringify({ interactiveLogin: false, tokenCallbacks: [{ issuerId: 'default', tokenExpiry: 3600,
     requestMappings: [{ requestParam: 'grant_type', match: '*', claims }] }] }),
   'ghcr.io/navikt/mock-oauth2-server:2.1.10']);
-// Postgres joins the same network, so Vikunja reaches it at 127.0.0.1. Its data is thrown away with the container, so
-// it's kept in memory and never waits for the disk. It starts while the provider does.
+// Postgres joins the same network, so Vikunja reaches it at 127.0.0.1. Its data is deleted with the container, so it is
+// kept in memory and never waits for the disk. Postgres starts while the provider is starting.
 if (!SQLITE) run('docker', ['run', '-d', '--name', DB, '--network', `container:${SSO}`, '--tmpfs', '/var/lib/postgresql/data',
   '-e', 'POSTGRES_USER=vikunja', '-e', 'POSTGRES_PASSWORD=vikunja', '-e', 'POSTGRES_DB=vikunja',
   'postgres:16-alpine', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']);
 await waitFor(`http://127.0.0.1:${SSO_PORT}/default/.well-known/openid-configuration`, 'The mock sign-on provider');
-// Over TCP: while the image sets the database up, a first Postgres listens only on its socket, then restarts.
+// Check over TCP. While the image sets up the database, a temporary Postgres listens only on its socket, then restarts.
 for (let i = 0; !SQLITE && run('docker', ['exec', DB, 'pg_isready', '-h', '127.0.0.1', '-U', 'vikunja', '-d', 'vikunja'], { allowFail: true }).status; i++) {
   if (i > 60) throw new Error('Postgres did not start; see: docker logs ' + DB);
   await new Promise(r => setTimeout(r, 500));
 }
 
 const config = join(tmpdir(), 'pocket-dev-vikunja.yml');
-// Vikunja allows 10 sign-in requests a minute per address, which the tests' many Vikunja page loads use up.
+// Vikunja allows 10 sign-in requests a minute per address, and the tests' many page loads would use them up.
 writeFileSync(config, `ratelimit:
   noauthlimit: 1000
 auth:
@@ -91,8 +91,9 @@ if (!/pocket: serving/.test(logs.stdout + logs.stderr) || !/pocket: step times o
 const info = await (await fetch(BASE + '/api/v2/info')).json();
 if (!info.auth?.openid_connect?.providers?.length) throw new Error('Vikunja does not offer the mock sign-on provider; see: docker logs ' + NAME);
 
-// Two users and a project they share, so @assignee can be tried. And dev's default project shared with a third, carol:
-// a task's "+ me" shows only where someone else could take it, and the tests claim tasks there (smoke.mjs).
+// Create two users and a project they share, so @assignee can be tried. Also share dev's default project with a third
+// user, carol. A task's "+ me" button appears only where someone else could take the task, and the tests claim tasks
+// there (smoke.mjs).
 for (const u of ['dev', 'bob', 'carol']) await call('POST', '/register', { username: u, email: `${u}@example.com`, password: `${u}-password` });
 const { token } = await call('POST', '/login', { username: 'dev', password: 'dev-password' });
 const team = await call('POST', '/projects', { title: 'Team' }, token);
@@ -107,8 +108,8 @@ console.log(`Stop with:     docker rm -f ${NAME} ${SSO}${SQLITE ? '' : ' ' + DB}
 if (process.argv.includes('--test')) {
   const env = { ...process.env, VIKUNJA_URL: BASE, VIKUNJA_TOKEN: token, ASSIGNEE: 'bob', ASSIGNEE_PROJECT: 'Team',
     VIKUNJA_USER: 'dev', VIKUNJA_PASSWORD: 'dev-password', SSO_USER: 'sso', OTHER_USER: 'bob', OTHER_PASSWORD: 'bob-password' };
-  // The unit tests first, as they take a second, then each file in turn. Each one's time is printed at the end, so a
-  // slow one is seen.
+  // Run the unit tests first, since they take a second, then each test file in turn. Each file's time is printed at the
+  // end, so a slow file is easy to see.
   const ROOT = fileURLToPath(new URL('..', import.meta.url));
   const results = ['tests/unit/*.test.mjs', 'tests/parse.mjs', 'tests/smoke.mjs', 'tests/session.mjs', 'tests/offline.mjs', 'tests/checklists.mjs', 'tests/steptimes.mjs'].map(test => {
     const start = Date.now();

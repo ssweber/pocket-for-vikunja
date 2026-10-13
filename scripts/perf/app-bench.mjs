@@ -1,10 +1,11 @@
-// Times Pocket in a browser against the measuring Vikunja (up.mjs), through proxy.mjs as a phone would reach it.
+// Times Pocket in a browser against the benchmark Vikunja (up.mjs), through proxy.mjs, the way a phone would reach it.
 //   npm run perf -- [--profile fast] [--runs 3] [--label name]
-// Profiles: fast (no slowing), phone (CPU 4 times slower, 100 ms round trips, 5 Mbps, behind nginx: gzip, and the
-// plugin's compressed page passed on), phone-raw (the same without compression), weak (CPU 4x, 300 ms, 1 Mbps). Each
-// run times four steps: opening Pocket on Today with its kept copy, and without it; Today -> Big; and Big's Done
-// opened. Times are from the start of each step, in ms, the median of the runs: "rows" when the screen's first row is
-// in the page, "fresh" when it's loaded from Vikunja and every row is drawn (no Loading, not busy). Results go to
+// Profiles: fast (no slowing), phone (CPU 4 times slower, 100 ms round trips, 5 Mbps, behind nginx, so gzip, and the
+// plugin's compressed page is passed on), phone-raw (the same without compression), weak (CPU 4x slower, 300 ms,
+// 1 Mbps). Each run times four steps: opening Pocket on Today with its saved copy, opening Today without it, going
+// from Today to Big, and opening Big's Done section. Times are milliseconds from the start of each step, and the
+// result is the median of the runs. "rows" is when the screen's first row is in the page. "fresh" is when the screen
+// has loaded from Vikunja and every row is drawn (no Loading text, not busy). Results go to
 // test-results/perf/results/<label>.json, with every run.
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -34,7 +35,7 @@ await ctx.addInitScript(() => {
     const v = document.getElementById('view'); if (!v) return;
     const now = performance.now() - P.t0;
     if (P.firstRow == null && v.querySelector(P.sel)) P.firstRow = now;
-    // (busy first: it's one attribute, where looking for .loading goes through the whole page, at each change while a screen is drawn a batch at a time)
+    // Check aria-busy first. It is one attribute, while searching for .loading scans the whole page on every change as a screen is drawn a batch at a time.
     if (P.firstRow != null && P.fresh == null && v.getAttribute('aria-busy') !== 'true' && !v.querySelector('.loading')) P.fresh = now;
   };
   new MutationObserver(check).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-busy', 'class'] });
@@ -53,7 +54,7 @@ async function settle(page, timeout = 900000){
 }
 const quiet = ms => new Promise(r => setTimeout(r, ms));
 
-// Sign in once, open Big once (so it's the project kept and preloaded), and let the background loads finish.
+// Sign in once and open Big once, so Pocket saves and preloads it, then let the background loads finish.
 let page = await slowPage();
 await page.goto(APP);
 const tab = page.getByRole('button', { name: 'API token', exact: true });
@@ -68,12 +69,12 @@ await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects
 await page.evaluate(() => window.__perf.start('#view:has(#sec-done) .row'));
 await settle(page);
 await page.evaluate(() => { location.hash = '#/today'; });
-await quiet(8000);                                              // preload (views.js) runs 2 s after a screen loads
+await quiet(8000);                                              // views.js starts its preload 2 s after a screen loads
 
 const out = {};
 const add = (k, v) => (out[k] ||= []).push(v);
 for (let r = 0; r < RUNS; r++) {
-  // 1. Opening Pocket, as on a phone after a while: service worker, kept copies, signed in.
+  // 1. Open Pocket as on a phone after some time away: the service worker is installed, copies are saved, the user is signed in.
   await page.close(); await reset();
   page = await slowPage();
   await page.goto(APP + '#/today', { waitUntil: 'commit' });
@@ -82,7 +83,7 @@ for (let r = 0; r < RUNS; r++) {
   add('open Today (kept copy)', { ...open, ...nav, ...(({ api, apiBytes }) => ({ api, apiKB: Math.round(apiBytes / 1024) }))(await stats()) });
   await quiet(6000);
 
-  // 2. The same without the kept copy of Today: what a first open, or a phone whose copy didn't fit, waits for.
+  // 2. Open it again without the saved copy of Today. This is the wait on a first open, or on a phone where the copy didn't fit.
   await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('pocket.saved.today')) localStorage.removeItem(k); });
   await page.close(); await reset();
   page = await slowPage();
@@ -90,12 +91,12 @@ for (let r = 0; r < RUNS; r++) {
   add('open Today (no copy)', { ...await settle(page), ...(({ api, apiBytes }) => ({ api, apiKB: Math.round(apiBytes / 1024) }))(await stats()) });
   await quiet(6000);
 
-  // 3. Today → Big, in the app (its kept copy first, then loaded).
+  // 3. Go from Today to Big inside the app. Big shows its saved copy first, then loads.
   await reset();
   await page.evaluate(id => { window.__perf.start('#view:has(#sec-done) .row'); location.hash = '#/project/' + id; }, state.projects.big);
   add('Today → Big', { ...await settle(page), ...(({ api, apiBytes }) => ({ api, apiKB: Math.round(apiBytes / 1024) }))(await stats()) });
 
-  // 4. Its Done section opened, then closed again (it stays as left, and would load with the project).
+  // 4. Open Big's Done section, then close it again. Pocket remembers an open section and would load it with the project.
   await reset();
   await page.evaluate(() => { window.__perf.start('.done-sec ~ .list .row'); document.getElementById('sec-done').click(); });
   add('open Done', { ...await settle(page), ...(({ api, apiBytes }) => ({ api, apiKB: Math.round(apiBytes / 1024) }))(await stats()) });

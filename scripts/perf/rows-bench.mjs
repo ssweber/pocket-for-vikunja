@@ -1,22 +1,27 @@
-// What every row costs once a screen is open (rows-and-sheet-fixes-plan, part 6), against the measuring Vikunja
-// (up.mjs --runs): a run's screen sitting idle and swiped, a tick, a swipe, a nudge and an add on a long project, and
-// a scroll's start while a long list draws.
+// Measures what every row costs once a screen is open, against the benchmark Vikunja (up.mjs --runs). It covers a
+// checklist screen sitting idle and being swiped, a tick, a swipe, a nudge and an add on a long project, and the start
+// of a scroll while a long list is drawn.
 //   npm run perf:rows -- <what> [--profile fast] [--runs 3] [--label name]
-//     run     a run's screen (20 and 60 steps, one of each with a step counting down): how often the run is worked
-//             out a second while it sits idle, the main thread's time a second and its longest task, what its reload
-//             every 20 seconds takes, a step's row swiped for 3 seconds, frame by frame (the longest wait between
-//             two frames at a second's tick, and away from one), and that step's tick tapped (to the step drawn done)
-//     list    Big (660 rows) and Errands (25): a tick tapped (from the finger lifting to the tick drawn), a full swipe
-//             (the finger going down, before the row can follow it; from letting go to the row moving, and to its gap
-//             drawn; the longest wait between two frames of the slide), the batch clearing (the main thread's time around the rows going, and its longest task), a nudge
-//             (to the row lit), and two subtasks added from the add box (Enter to the waiting row drawn; sent)
-//     scroll  a finger's scroll on Big while its later batches draw, once it's drawn, and as its Done opens: from the
-//             first move sent to the page hearing of it, and to the page having moved
-//     counts  counted, not timed (fast, once): the bindings worked out, per row, for each of the above (Alpine's own
-//             copy with a counter, lib.mjs), what each row asks of the component as Big opens, and the listeners a row has
-// Every number is the median of the runs with the least and the most, in ms. Results go to
-// test-results/perf/results/rows-<what>-<label>.json, with every run. A run of `list` ticks and adds: it puts back
-// what it changed (the ticks opened again, the subtasks deleted) through Vikunja's API as it ends.
+//     run     a checklist screen (20 and 60 steps, one of each with a step counting down). Measures how many times a
+//             second the checklist is computed while the screen sits idle, the main thread's time per second and its
+//             longest task, how long the reload every 20 seconds takes, a step's row swiped for 3 seconds and
+//             watched frame by frame (the longest wait between two frames at a one-second tick, and away from one),
+//             and a tap on that step's tick (until the step is drawn done).
+//     list    Big (660 rows) and Errands (25). Measures a tapped tick (from the touch ending to the tick drawn) and a
+//             full swipe (how long the page takes to handle the pointer going down, before the row can follow it, then
+//             from release to the row moving and to its delete gap being drawn, and the longest wait between two
+//             frames of the slide). It also measures the batch clearing (the main thread's time around the rows
+//             leaving, and its longest task), a nudge (until the row is highlighted), and two subtasks added from the
+//             add box (from Enter until the waiting row is drawn, and until the sent row is drawn).
+//     scroll  a touch scroll on Big while its later batches are drawn, after it is drawn, and while its Done section
+//             opens. Measures the time from the first touch move being sent to the page receiving it, and to the
+//             page having scrolled.
+//     counts  counts instead of timing (fast profile, once). It counts the bindings evaluated per row for each action
+//             above (using the copy of Alpine with a counter, lib.mjs), what each row asks of the component as Big
+//             opens, and the event listeners on a row.
+// Every number is the median of the runs with the lowest and highest in brackets, in ms. Results go to
+// test-results/perf/results/rows-<what>-<label>.json, with every run. `list` ticks tasks and adds subtasks, so at the
+// end it restores them through Vikunja's API: it unticks the tasks and deletes the subtasks.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, loaded, median, OUT, phone, PROFILES, proxyUp, sleep, spread, traced, vikunja } from './lib.mjs';
@@ -31,35 +36,35 @@ const LABEL = arg('label', `${state.pocket || 'folder'}-${WHAT === 'counts' ? 'f
 const out = {}, add = (k, v) => (out[k] ||= []).push(v);
 const r1 = x => x == null ? null : Math.round(x * 10) / 10;
 
-/* ---------- a run's screen ---------- */
-// The run's reload comes 20 s after Pocket opened and every 20 s (core.js): the idle seconds are measured between two.
+/* ---------- a checklist screen ---------- */
+// The checklist reloads 20 s after Pocket opens and every 20 s after that (core.js). The idle seconds are measured between two reloads.
 const pageTime = page => page.evaluate(() => performance.now());
 const until = async (page, ms) => sleep(ms - await pageTime(page));
 async function runScreen(key){
   const run = state.runs[key], n = run.steps.length;
   const { page } = await ph.page('#/run/' + run.id);
   await page.waitForFunction(n => document.querySelectorAll('#run-steps > .row').length === n && document.getElementById('view').getAttribute('aria-busy') !== 'true', n, { polling: 200, timeout: 120000 });
-  // Idle: 10 whole seconds, from one tick of its clock to the tenth after, counted and traced, nothing asked of the page meanwhile.
-  await until(page, 26000);                                                  // (well past the reload at 20 s: on a slow phone, reading 60 steps again takes a few seconds)
+  // Idle: 10 whole seconds, from one tick of the clock to the tenth tick after it. Count and trace them without sending the page any requests meanwhile.
+  await until(page, 26000);                                                  // well past the reload at 20 s, since on a slow phone reading 60 steps again takes a few seconds
   const idle = await traced(browser, page, async () => {
     await page.evaluate(() => { const P = window.__pf; P.stopCount = P.counted(['runView']); P.clock(() => P.stopCount.now.runView.n); });
     await sleep(10500);
     return page.evaluate(() => { const P = window.__pf; P.stopCount(); return P.ticks; });
   });
-  // From its clock's first tick to its last in those seconds (the first entry is the effect starting). A phone that
-  // takes over a second to work a tick out ticks less often than once a second: `ticks` says how many it managed.
+  // Measure from the clock's first tick to its last in those seconds (the first entry is the effect starting). A phone
+  // that needs over a second to process a tick ticks less often than once a second, and `ticks` records how many it managed.
   const seen = idle.out.slice(1, 12), ticks = seen.map(t => t.t), last = ticks.length - 1;
   if (last < 1) throw new Error('the clock ticked ' + ticks.length + ' times');
   const span = (ticks[last] - ticks[0]) / 1000;
-  // How long working the run out takes by itself, here: 200 times over.
+  // Time one evaluation of runView on its own, averaged over 200 evaluations.
   const each = await page.evaluate(() => { const a = window.__pf.app(), t = performance.now(); for (let i = 0; i < 200; i++) void a.runView; return (performance.now() - t) / 200; });
   const res = { ticks: last, callsPerSec: r1((seen[last].n - seen[0].n) / span), msPerSec: r1(idle.sum(ticks[0] - 2, ticks[last] - 2) / span), longest: r1(idle.longest(ticks[0] - 2, ticks[last] - 2)),
     layoutPerSec: r1(idle.layout(ticks[0] - 2, ticks[last] - 2) / span), runViewMs: Math.round(each * 1000) / 1000 };
-  // Its reload, 40 s after Pocket opened: the main thread's time from just before it to 4 s after, less what idling takes.
+  // The reload at 40 s after Pocket opened. Take the main thread's time over a 6 s window that starts at 38.5 s, minus what idling would take in the same time.
   await until(page, 38500);
   const reload = await traced(browser, page, async () => { const from = await pageTime(page); await sleep(6000); return { from, to: await pageTime(page) }; });
   res.reloadMs = r1(reload.sum(reload.out.from, reload.out.to) - res.msPerSec * (reload.out.to - reload.out.from) / 1000); res.reloadLongest = r1(reload.longest(reload.out.from, reload.out.to));
-  // A step's row swiped for 3 seconds, the finger never still: each frame's time, and each tick's.
+  // Swipe a step's row back and forth for 3 seconds without stopping, and record the time of each frame and of each clock tick.
   await until(page, 45500);
   const box = await page.evaluate(() => {
     const row = [...document.querySelectorAll('#run-steps > .row:not(.done)')][3]; row.scrollIntoView({ block: 'center' });
@@ -69,17 +74,17 @@ async function runScreen(key){
   await page.evaluate(() => { const P = window.__pf; P.ticks = []; P.stopRec = P.record('#pf-row'); });
   await page.mouse.move(box.x, box.y); await page.mouse.down();
   const t0 = Date.now();
-  for (let i = 1; Date.now() - t0 < 3200; i++) { await page.mouse.move(box.x + 30 + 25 * (1 - Math.cos(i / 9)), box.y); await sleep(12); }   // back and forth between 30 and 80 px aside
+  for (let i = 1; Date.now() - t0 < 3200; i++) { await page.mouse.move(box.x + 30 + 25 * (1 - Math.cos(i / 9)), box.y); await sleep(12); }   // moves between 30 and 80 px sideways
   await page.mouse.move(box.x + 3, box.y); await page.mouse.up();
   const sw = await page.evaluate(() => { const P = window.__pf; return { frames: P.stopRec(), ticks: P.ticks.map(t => t.t) }; });
   const moving = sw.frames.filter(f => f[1] > 0), gaps = moving.slice(1).map((f, i) => ({ at: moving[i][0], ms: f[0] - moving[i][0] }));
-  // Each second's tick while the row was aside: the longest wait between two frames around it. (A tick's time is when
-  // the clock's own effect ran: at the end of the wait, if working the screen out again caused one.)
+  // For each one-second tick while the row was swiped sideways, find the longest wait between two frames around it. A
+  // tick's time is when the clock's effect ran. If recomputing the screen caused a long wait, that is the end of the wait.
   const near = (g, t) => t > g.at - 20 && t < g.at + g.ms + 20, swiped = sw.ticks.filter(t => t > moving[0][0] + 50 && t < moving.at(-1)[0] - 50);
   const atTick = swiped.map(t => Math.max(0, ...gaps.filter(g => near(g, t)).map(g => g.ms))), away = gaps.filter(g => !sw.ticks.some(t => near(g, t))).map(g => g.ms);
   Object.assign(res, { frame: r1(median(gaps.map(g => g.ms))), frameAtTick: r1(median(atTick)), frameAtTickMost: r1(Math.max(0, ...atTick)), frameAway: r1(Math.max(0, ...away)), ticksSwiped: atTick.length,
     late: gaps.filter(g => g.ms > 25).length, frames: gaps.length });
-  // That step's tick tapped: from the finger lifting to the step drawn done, and the main thread's longest task.
+  // Tap that step's tick. Measure from the touch ending to the step being drawn done, and the main thread's longest task.
   await sleep(600);
   const cb = await boxOf(page, '#pf-row > .check'), stepId = await page.evaluate(() => +document.getElementById('pf-row').dataset.id);
   const tk = await traced(browser, page, async () => {
@@ -92,19 +97,19 @@ async function runScreen(key){
   });
   Object.assign(res, { stepTick: r1(tk.out.d.drawn - tk.out.up), stepTickLongest: r1(tk.longest(tk.out.up - 5, tk.out.up + 400)) });
   await page.close();
-  await vikunja('PATCH', '/tasks/' + stepId, { done: false });               // as it was, for the next run
+  await vikunja('PATCH', '/tasks/' + stepId, { done: false });               // restore the step for the next run
   return res;
 }
 
 /* ---------- a long project ---------- */
-// The rows a finger can reach now: plain open tasks (no card, no subtask), in sight, clear of the header and the add box.
+// The rows the user can tap now: plain open tasks (not a card, not a subtask) that are on screen and clear of the header and the add box.
 const plainRows = page => page.evaluate(() => [...document.querySelectorAll('#view .list > .item > .row')].filter(r => {
   const b = r.getBoundingClientRect(), c = r.querySelector(':scope > .check:not(.no-tick)');
   return c && !c.disabled && !r.matches('.done, .pending, .leaving') && b.top > 140 && b.bottom < innerHeight - 170;
 }).map(r => +r.dataset.id));
 const rowSel = id => `#view .item > .row[data-id="${id}"]`;
 const boxOf = (page, sel) => page.evaluate(sel => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; }, sel);
-// The row gone from its list, as the batch clears: when, in the page's time.
+// Resolves when the row has left its list as the batch clears, with the time in the page's time.
 const gone = (page, id) => page.evaluate(id => { const row = document.querySelector(`#view .item > .row[data-id="${id}"]`); return window.__pf.when(() => !row.isConnected, document.getElementById('view'), { subtree: true, childList: true }); }, id);
 const lastEv = (page, type) => page.evaluate(type => window.__pf.ev[type]?.at(-1)?.t ?? null, type);
 const idleSync = page => page.waitForFunction(() => document.documentElement.dataset.sync === 'idle', null, { polling: 100, timeout: 180000 });
@@ -112,32 +117,33 @@ const idleSync = page => page.waitForFunction(() => document.documentElement.dat
 async function listScreen(name, pid, undo){
   const { page, cdp } = await ph.page('#/project/' + pid);
   await page.locator('#view .item > .row').first().waitFor();
-  await loaded(page); await sleep(7000);                                          // the other tabs' copies are loaded 2 s after a screen is (preload)
+  await loaded(page); await sleep(7000);                                          // the preload loads the other tabs' copies 2 s after a screen loads
   const rows = await page.evaluate(() => document.querySelectorAll('#view .row').length);
   const ids = await plainRows(page);
   if (ids.length < 6) throw new Error(name + ': only ' + ids.length + ' plain rows in sight');
   const res = { rows };
-  // The batch clearing, around the moment the row is seen to be gone: whatever the main thread was doing from 400 ms
-  // before (its fold; on a slow phone the task that takes it off the list started long before) to 900 ms after.
+  // Measure the batch clearing around the moment the row is seen to have left the list. Count whatever the main thread
+  // was doing from 400 ms before that to 900 ms after. On a slow phone the task that removes the row from the list
+  // started long before it, so tasks that overlap the window count too.
   const clearing = (tr, at) => ({ clearMs: r1(tr.sumOver(at - 400, at + 900)), clearLongest: r1(tr.longestOver(at - 400, at + 900)) });
 
-  // From the add box: Enter to the waiting row drawn, to the sent one drawn, and the main thread's time for all of it.
+  // Add a task from the add box. Measure from Enter to the waiting row drawn, to the sent row drawn, and the main thread's time for all of it.
   const addOne = async (k, text) => {
     await page.locator('#in-capture').fill(text);
-    await sleep(700);                                                             // its chips read, its @people looked up
+    await sleep(700);                                                             // wait for the box to read its chips and look up @people
     const tr = await traced(browser, page, async () => {
       await page.evaluate(() => window.__pf.clear());
       const waiting = page.evaluate(() => window.__pf.when(() => !!document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
       await page.keyboard.press('Enter');
       const w = await waiting, down = await lastEv(page, 'keydown');
       const sent = await page.evaluate(() => window.__pf.when(() => !document.querySelector('#view .row.pending'), document.getElementById('view'), { subtree: true, childList: true }));
-      await idleSync(page); await sleep(900);                                     // (a task of its own has its screen drawn again once it's sent)
+      await idleSync(page); await sleep(900);                                     // a task added to the project itself makes the screen redraw once it is sent
       return { down, w, sent, end: await pageTime(page) };
     });
     Object.assign(res, { [k]: r1(tr.out.w.drawn - tr.out.down), [k + 'Longest']: r1(tr.longest(tr.out.down - 5, tr.out.down + 400)), [k + 'Sent']: r1(tr.out.sent.drawn - tr.out.down),
       [k + 'Work']: r1(tr.sum(tr.out.down - 5, tr.out.end)), [k + 'SentLongest']: r1(tr.longest(tr.out.down + 400, tr.out.end)) });
   };
-  // 0. A task added with no row lit: a task of the project's own.
+  // 0. Add a task with no row highlighted, so it is a top-level task in the project.
   {
     const title = `perf add0 ${Date.now() % 100000}`;
     await addOne('add0', title);
@@ -145,7 +151,7 @@ async function listScreen(name, pid, undo){
     if (made) undo.push(() => vikunja('DELETE', '/tasks/' + made));
   }
 
-  // 1. A tick tapped.
+  // 1. Tap a tick.
   let id = ids[0], b = await boxOf(page, rowSel(id) + ' > .check');
   undo.push(() => vikunja('PATCH', '/tasks/' + id0, { done: false })); const id0 = id;
   let tr = await traced(browser, page, async () => {
@@ -159,13 +165,13 @@ async function listScreen(name, pid, undo){
   });
   Object.assign(res, { tick: r1(tr.out.t.drawn - tr.out.up), tickWork: r1(tr.out.t.at - tr.out.up), tickLongest: r1(tr.longest(tr.out.up - 5, tr.out.up + 400)), tickSum: r1(tr.sum(tr.out.up - 5, tr.out.up + 400)) }, clearing(tr, tr.out.g.at));
 
-  // 2. A full swipe, by a pointer: watched frame by frame from before it's let go.
+  // 2. A full swipe with a pointer, watched frame by frame from before the release.
   id = ids[2]; b = await boxOf(page, rowSel(id));
   const id2 = id; undo.push(() => vikunja('PATCH', '/tasks/' + id2, { done: false }));
   tr = await traced(browser, page, async () => {
     await page.evaluate(sel => { const P = window.__pf; P.clear(); P.stopRec = P.record(sel); }, rowSel(id));
     const left = gone(page, id), x = b.x + 90, y = b.y + b.h / 2, far = b.w * 0.62;
-    // `press`: how long the page takes over the finger going down, before it can follow it.
+    // `press` is how long the page takes to handle the pointer going down, before the row can follow it.
     await page.mouse.move(x, y); const t = Date.now(); await page.mouse.down(); const press = Date.now() - t;
     for (let i = 1; i <= 14; i++) { await page.mouse.move(x + far * i / 14, y); await sleep(14); }
     await sleep(120);
@@ -183,7 +189,7 @@ async function listScreen(name, pid, undo){
       swipeLongest: r1(tr.longest(up - 5, up + 500)), swipeSum: r1(tr.sum(up - 5, up + 500)), swipeClearMs: clearing(tr, g.at).clearMs, swipeClearLongest: clearing(tr, g.at).clearLongest });
   }
 
-  // 3. A nudge: a finger's short, slow move down a row, which lights it for the add box.
+  // 3. A nudge: a short, slow downward drag on a row, which highlights the row as the target of the add box.
   id = ids[4]; b = await boxOf(page, rowSel(id) + ' > .body');
   const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
   tr = await traced(browser, page, async () => {
@@ -199,22 +205,25 @@ async function listScreen(name, pid, undo){
   });
   Object.assign(res, { nudge: r1(tr.out.l.drawn - tr.out.up), nudgeLongest: r1(tr.longest(tr.out.up - 5, tr.out.up + 400)) });
 
-  // 4. Two subtasks added from the add box, aimed at that row: the first makes it a card, the second goes under a lit card.
+  // 4. Add two subtasks from the add box, targeting that row. The first makes the row a card. The second goes under the highlighted card.
   const parent = id; undo.push(async () => { for (const s of (await vikunja('GET', '/tasks/' + parent)).related_tasks?.subtask || []) await vikunja('DELETE', '/tasks/' + s.id); });
   for (const k of ['add1', 'add2']) await addOne(k, `perf ${k} ${Date.now() % 100000}`);
   await page.close();
   return res;
 }
 
-/* ---------- a scroll's start ---------- */
-/* A finger's scroll up the page, by Chrome's own touch input: a first move of 24 px (past where a touch becomes a
-   scroll), then 11 of 14 px, 16 ms apart. `heard`: from that first move being sent (this computer's clock, which the
-   page's is set by) to the page's own listeners hearing of it: holdToSlide's can stop a scroll, so the page can't
-   move before the main thread has answered. `moved`: until the page's own code saw a frame with the page scrolled.
-   `shown`: Chrome's own account, from the finger's move that started the scroll to its first frame on the screen
-   (the compositor's, which scrolls without the main thread once it may). `busy`: how much longer the main thread was
-   in the task it was in when the move was sent (0: it was free). `when`: 'drawing', Big past its first three screens,
-   in its batches of about a second; 'drawn', once it's all there; 'done', as its Done's rows come. */
+/* ---------- the start of a scroll ---------- */
+/* A touch scroll up the page, sent as Chrome's own touch input. The first move is 24 px (past the distance where a
+   touch becomes a scroll), then come 11 moves of 14 px, 16 ms apart.
+   `heard`: the time from the first move being sent (by this computer's clock, which the page's clock is set from) until
+     the page's own listeners receive it. The listener in holdToSlide can stop a scroll, so the page can't scroll until
+     the main thread has answered.
+   `moved`: the time until the page's own code saw a frame with the page scrolled.
+   `shown`: Chrome's own measurement, from the touch move that started the scroll to its first frame on the screen.
+     The compositor makes that frame, and it scrolls without the main thread once it is allowed to.
+   `busy`: how much longer the main thread stayed in the task it was running when the move was sent (0 means it was free).
+   `when`: 'drawing' is Big past its first three screens, while its batches (about a second each) are drawn. 'drawn' is
+     once the whole list is there. 'done' is while the rows of its Done section arrive. */
 async function scrollStart(when, delay){
   const { page, cdp } = await ph.page('#/today');
   await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(7000);
@@ -223,17 +232,17 @@ async function scrollStart(when, delay){
   if (when !== 'drawing') {
     await big(); await page.locator('#sec-done').waitFor(); await loaded(page); await sleep(3000);
     if (when === 'done') {
-      // Its Done closed, if it was left open, and the page at its foot, where Done is.
+      // Close Done if a previous run left it open, then scroll to the bottom of the page, where Done is.
       await page.evaluate(() => { const b = document.getElementById('sec-done'); if (b.getAttribute('aria-expanded') === 'true') b.click(); }); await sleep(1500);
       await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await sleep(1500);
     }
   }
-  // Where the finger goes down: on a plain row, a task with hundreds of siblings, in the middle of the screen.
+  // Where the touch starts: on a plain row (a task with hundreds of siblings) in the middle of the screen.
   const spot = () => page.evaluate(() => {
     const rows = [...document.querySelectorAll('#view .list > .item > .row:not(.done)')].map(r => r.getBoundingClientRect()).filter(b => b.top > 380 && b.bottom < innerHeight - 170);
     return rows.length ? { x: 195, y: rows[0].top + rows[0].height / 2 } : { x: 195, y: 600 };
   });
-  // Everything asked of the page before the list starts to draw: while it draws, a question would wait for a batch to end.
+  // Ask the page everything it needs before the list starts to draw. While the list draws, a request to the page would wait for a batch to end.
   const tr = await traced(browser, page, async () => {
     await page.evaluate(() => { const P = window.__pf; P.clear(); P.long = []; P.stopRec = P.record('#view'); });
     if (when === 'drawing') {
@@ -243,12 +252,12 @@ async function scrollStart(when, delay){
     if (when === 'done') await page.evaluate(() => { document.getElementById('sec-done').click(); return window.__pf.when(() => !!document.querySelector('.done-sec ~ .list .row'), document.getElementById('view'), { subtree: true, childList: true }); });
     const { x, y } = await spot(), sends = [];
     await sleep(delay);
-    // As a finger does it: down, and moving 30 ms later whether or not the page has answered the touch yet.
+    // As a real touch does: start, then move 30 ms later whether or not the page has answered the touch yet.
     const all = [touch('touchStart', x, y)]; await sleep(30);
     for (let i = 1; i <= 12; i++) { sends.push(Date.now()); all.push(touch('touchMove', x, y - 10 - 14 * i)); await sleep(16); }
     all.push(touch('touchEnd', x, y - 10 - 14 * 12)); await Promise.all(all);
     await loaded(page); await sleep(500);
-    if (when === 'done') await page.evaluate(() => document.getElementById('sec-done').click());   // closed again, as the next run expects
+    if (when === 'done') await page.evaluate(() => document.getElementById('sec-done').click());   // close it again, as the next run expects
     return { sends, ...await page.evaluate(() => { const P = window.__pf; return { origin: performance.timeOrigin, moves: P.ev.touchmove || [], frames: P.stopRec(), long: P.long, rows: document.querySelectorAll('#view .row').length }; }) };
   }, ['input', 'benchmark', 'latencyInfo'], false);
   const { sends, origin, moves, frames, long, rows } = tr.out, sent = sends[0] - origin, y0 = frames.filter(f => f[0] < sent).at(-1)?.[3] ?? frames[0][3], moved = frames.find(f => f[0] > sent && f[3] !== y0);
@@ -260,7 +269,7 @@ async function scrollStart(when, delay){
 }
 
 /* ---------- counted, not timed ---------- */
-// What a row asks of the component, each counted as Big opens (lib.mjs counted()), and the getters behind a list.
+// The component methods and getters that a row and a list call. counted() in lib.mjs counts each one while Big opens.
 const ASKED = ['rowRing', 'canTick', 'shownPct', 'rowMeta', 'rowWhen', 'rowSlot', 'isRunTask', 'isStepRow', 'cardOf', 'cardHead', 'cardEntered', 'hintOn', 'rowTitle', 'isGap', 'ringOf', 'claimSlot', 'peopleOf', 'stepRun',
   'canWrite', 'listGroups', 'listBase', 'pendingTasks', 'hiddenRows', 'waitingByTask', 'subSlots', 'subtasks', 'templateSteps', 'runView'];
 const fx = (page, reset = true) => page.evaluate(reset => { const r = window.__fx.read(); if (reset) window.__fx.reset(); return r; }, reset);
@@ -269,7 +278,7 @@ async function counts(){
   const res = {}, undo = [];
   let { page, cdp } = await ph.page('#/today');
   await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(6000);
-  // On Today (506 rows): a tick, its save answered, the batch clearing.
+  // On Today (506 rows), count after a tick, after its save is answered, and after the batch clears.
   {
     const of = await page.evaluate(() => document.querySelectorAll('#view .row').length), id = (await plainRows(page))[1], b = await boxOf(page, rowSel(id) + ' > .check');
     undo.push(() => vikunja('PATCH', '/tasks/' + id, { done: false }));
@@ -280,7 +289,7 @@ async function counts(){
     await left; await sleep(800); res['on Today, the batch clearing'] = flat(await fx(page));
     await sleep(1500);
   }
-  // Big opened: the bindings worked out, and what its rows asked.
+  // Open Big, then count the bindings evaluated and what its rows asked of the component.
   await page.evaluate(names => { window.__fx.reset(); window.__pf.stop = window.__pf.counted(names); }, ASKED);
   await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);
   await page.locator('#sec-done').waitFor(); await loaded(page); await sleep(3000);
@@ -288,13 +297,13 @@ async function counts(){
   res['Big opens'] = { ...flat(await fx(page)), of: rows };
   const asked = await page.evaluate(() => window.__pf.stop());
   res.asked = Object.fromEntries(Object.entries(asked).filter(([, c]) => c.n).map(([k, c]) => [k, { n: c.n, perRow: r1(c.n / rows), ms: r1(c.ms) }]));
-  // The listeners one plain row has, itself and everything in it.
+  // The event listeners on one plain row, counting the row itself and everything inside it.
   const ids = await plainRows(page);
   const { result } = await cdp.send('Runtime.evaluate', { expression: `document.querySelector('${rowSel(ids[1])}')` });
   const tree = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId, depth: -1 });
   res.listeners = { onARow: tree.listeners.length, types: Object.entries(tree.listeners.reduce((m, l) => (m[l.type] = (m[l.type] || 0) + 1, m), {})).map(([k, n]) => `${k} ${n}`).join(', ') };
-  // Each thing done, and what was worked out for it: a row touched (no tick), a tick, its save answered, the batch
-  // clearing, a full swipe, a nudge, two adds.
+  // For each action below, count the bindings evaluated: a row touched (no tick), a tick, its save answered, the batch
+  // clearing, a full swipe, a nudge, and two adds.
   await sleep(4000); await fx(page);
   let b = await boxOf(page, rowSel(ids[1]) + ' > .body');
   await page.mouse.move(b.x + 200, b.y + 20); await page.mouse.down(); await sleep(200); res['a row touched'] = flat(await fx(page));
@@ -326,7 +335,7 @@ async function counts(){
     await page.locator('#view .row.pending').first().waitFor(); await sleep(30); res[k + ', waiting'] = flat(await fx(page));
     await page.locator('#view .row.pending').waitFor({ state: 'detached' }); await idleSync(page); await sleep(400); res[k + ', sent'] = flat(await fx(page));
   }
-  // A task's sheet with subtasks, and a template's with 20 steps: how often each list is made as it opens.
+  // Open a task's sheet with subtasks, and a template's sheet with 20 steps, and count how often each list is built as the sheet opens.
   const sheet = async id => {
     await page.evaluate(() => { window.__pf.stop = window.__pf.counted(['subSlots', 'subtasks', 'templateSteps']); window.__fx.reset(); });
     await page.evaluate(id => window.__pf.app().openTask(id), id); await page.locator('#d-subtasks .row').first().waitFor(); await sleep(1500);
@@ -338,7 +347,7 @@ async function counts(){
   await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(3000);
   res['a template of 20 steps, its sheet'] = await sheet(state.template);
   await page.close();
-  // A run's screen sitting idle: what a second works out.
+  // A checklist screen sitting idle: count what is evaluated in one second.
   for (const key of ['plain20', 'plain60', 'timed20']) {
     ({ page } = await ph.page('#/run/' + state.runs[key].id));
     const n = state.runs[key].steps.length;

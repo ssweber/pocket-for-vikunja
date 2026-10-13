@@ -1,5 +1,6 @@
-// What the measuring scripts share: the profiles, the proxy, a browser signed in to the measuring Vikunja (up.mjs),
-// what a page is asked while it's measured, and a trace of its main thread. Not a script itself.
+// What the benchmark scripts share: the profiles, the proxy, a browser signed in to the benchmark Vikunja (up.mjs),
+// the helpers injected into a page while it is measured, and a trace of the page's main thread. This file is a library,
+// not a script.
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -8,8 +9,8 @@ import { chromium } from 'playwright';
 
 export const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..', '..'), OUT = join(ROOT, 'test-results', 'perf');
 export const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-// fast: the computer as it is. phone: CPU 4 times slower, 100 ms round trips, 5 Mbps, behind nginx (gzip, and the
-// plugin's compressed page passed on). phone-raw: the same without compression. weak: CPU 4x, 300 ms, 1 Mbps.
+// fast: this computer, unchanged. phone: CPU 4 times slower, 100 ms round trips, 5 Mbps, behind nginx (so gzip, and the
+// plugin's compressed page is passed on). phone-raw: the same without compression. weak: CPU 4x slower, 300 ms, 1 Mbps.
 export const PROFILES = {
   fast: { cpu: 1, proxy: [] },
   phone: { cpu: 4, proxy: ['--gzip', '--pass-encoding', '--rtt', '100', '--kbps', '5000'] },
@@ -20,7 +21,7 @@ export const readState = () => JSON.parse(readFileSync(join(OUT, 'state.json'), 
 export const sleep = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));
 const sorted = a => [...a].sort((x, y) => x - y);
 export const median = a => { const s = sorted(a.filter(x => x != null)); return s.length ? s[Math.floor(s.length / 2)] : null; };
-// "12 (10–15)": the median of the runs, and the least and the most.
+// Formats the runs as "12 (10–15)": the median, then the lowest and highest.
 export const spread = (a, digits = 0) => {
   const s = sorted(a.filter(x => x != null)), f = x => x.toFixed(digits);
   return !s.length ? '' : s.length === 1 ? f(s[0]) : `${f(median(s))} (${f(s[0])}–${f(s.at(-1))})`;
@@ -28,13 +29,13 @@ export const spread = (a, digits = 0) => {
 
 const PX = 'http://127.0.0.1:3471';
 export const APP = PX + '/api/v1/plugins/pocket/';
-// proxy.mjs between the browser and Vikunja, as a profile's network.
+// Start proxy.mjs between the browser and Vikunja, set up as the profile's network.
 export async function proxyUp(profile){
   const proxy = spawn(process.execPath, [join(HERE, 'proxy.mjs'), '--port', '3471', ...profile.proxy], { stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(ok => proxy.stdout.once('data', ok));
   return { stop: () => proxy.kill(), stats: async () => (await fetch(PX + '/__stats')).json(), reset: () => fetch(PX + '/__reset') };
 }
-// Vikunja asked straight, as user perf: to put back what a measurement changed.
+// Call Vikunja directly as user perf, to restore what a measurement changed.
 export async function vikunja(method, path, body){
   const state = readState();
   const r = await fetch(state.base + '/api/v2' + path, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token }, body: body && JSON.stringify(body) });
@@ -42,20 +43,23 @@ export async function vikunja(method, path, body){
   return r.status === 204 || r.status === 304 ? null : r.json();
 }
 
-/* What a measured page has from its start, as window.__pf: nothing here changes what Pocket does, and nothing runs
-   until it's asked, so a page left alone is as idle as Pocket is.
-     app(), raw(): the component as Alpine watches it, and as it is (to count what's read off it: counted()).
-     painted(): resolves once what's in the page now has been drawn (the next frame, and the turn after it).
-     when(test, root, opts): resolves {at, drawn} when test() first holds, looked at as `root` changes: when it held,
-       and when that was drawn.
-     ev: every pointer, touch and key event's time as the page got it ({t: the event's own time, now: when its
-       listener ran}), by type, since clear().
-     record(sel): the element watched frame by frame, [time, how far aside it is, whether its gap is drawn], until the
-       function it returns is called, which gives the frames.
-     long: each task of the main thread's that took 50 ms or more, [{at, ms}], as the browser reports them.
-     counted(names): each method or getter of the component named, counted from now: {name: {n, ms}} from the function
-       it returns (ms: the time inside it, others it calls included, to the browser's 0.1 ms).
-     ticks: when a run's screen's clock last moved, each second, with what count() says then (clock(count)). */
+/* Helpers that every measured page has from its start, as window.__pf. They don't change what Pocket does, and they run
+   only when called, so a page left alone is as idle as Pocket is.
+     app(), raw(): the component as Alpine watches it, and the plain object underneath. Use raw() to count reads
+       without Alpine's tracking (see counted()).
+     painted(): resolves once what is in the page now has been drawn (after the next frame and the task after that).
+     when(test, root, opts): watches `root` for changes and resolves {at, drawn} when test() first returns true. `at` is
+       when it became true, and `drawn` is when that was drawn.
+     ev: the time of every pointer, touch and key event, by type, since the last clear(). Each entry is {t: the event's
+       own time, now: when the page's listener ran}.
+     record(sel): watches the element frame by frame until the function it returns is called, which returns the frames.
+       Each frame is [time, horizontal offset, whether its delete gap is displayed, scroll position].
+     long: each main thread task that took 50 ms or more, as {at, ms}, as the browser reports them.
+     counted(names): counts each named method or getter of the component from now on. The function it returns gives
+       {name: {n, ms}}. n is the number of calls. ms is the time inside the call, including what it calls, to the
+       browser's precision of 0.1 ms.
+     ticks: {t, n} recorded each time the component's clock changes (every second), with n from count(). Set up by
+       clock(count). */
 export function inPage(){
   const P = window.__pf = { ev: {}, ticks: [] };
   P.app = () => window.Alpine.$data(document.body);
@@ -90,26 +94,27 @@ export function inPage(){
       Object.defineProperty(raw, k, d.get ? { ...d, get: wrap(d.get) } : { ...d, value: wrap(d.value) });
     }
     const stop = () => { for (const k in was) Object.defineProperty(raw, k, was[k]); return C; };
-    stop.now = C;                                      // the counts so far
+    stop.now = C;                                      // the counts so far, readable before stop()
     return stop;
   };
   P.clock = count => window.Alpine.effect(() => { void P.app().clock; P.ticks.push({ t: performance.now(), n: count ? count() : 0 }); });
 }
 
-/* Alpine as Pocket's own copy of it (src/vendor/, as at the commit being served), with one line more: each time a
-   binding is worked out, window.__fx(el, 'its attribute') is told. For counting only (rows-bench.mjs counts): the file
-   is the readable one, not the minified one Pocket ships, so nothing is timed with it. */
+/* Returns Pocket's patched copy of Alpine from src/vendor/ (as of the commit being served, `sha`) with one line added.
+   That line calls window.__fx(el, attribute) each time a binding is evaluated. It is only for counting (rows-bench.mjs
+   counts). The file is the readable one, not the minified one Pocket ships, so don't time anything with it. */
 export function countingAlpine(file, sha){
   const path = 'src/vendor/' + file.replace(/-pocket\.\d+\.min\.js$/, '.js');
   const src = sha ? spawnSync('git', ['-C', ROOT, 'show', `${sha}:${path}`], { encoding: 'utf8', maxBuffer: 1 << 26 }).stdout : readFileSync(join(ROOT, path), 'utf8');
-  // Where a directive is handed what it works with (getDirectiveHandler): the one place every binding's effect is made.
+  // The place in getDirectiveHandler where a directive gets its utilities. Every binding's effect is created there, and nowhere else.
   const at = /(let handler4 = directiveHandlers\[directive2\.type\] \|\| noop;\s*let \[utilities, cleanup\] = getElementBoundUtilities\(el\);)/;
   if (!src || src.split(at).length !== 3) throw new Error('Alpine has changed: no one place to count from in ' + path);
   return src.replace(at, '$1 if (window.__fx) { const fx0 = utilities.effect; utilities.effect = (cb, o) => fx0(() => { window.__fx(el, directive2.original); return cb(); }, o); }');
 }
-/* What counts them, in the page: __fx.read() gives, since __fx.reset(), how many bindings were worked out (`runs`), on
-   how many rows (`rows`: a row, or a card's header, by its task's id), the most on one row (`most`), how many rows
-   had their own class worked out and how often at most (`cls`, `clsMost`), and the count by attribute (`by`). */
+/* Counts bindings inside the page. Since the last __fx.reset(), __fx.read() returns: `runs`, how many bindings were
+   evaluated. `rows`, how many rows they were on (a row, or a card's header, identified by its task id). `most`, the
+   largest number on one row. `inRows`, the total on rows. `cls`, how many rows had their own class binding evaluated,
+   `clsMost`, the most times for one row, and `clsRuns`, the total. `by`, the count per attribute (the top 8). */
 export function inPageCounts(){
   let all = 0, rows = new Map(), cls = new Map(), by = {};
   const fx = window.__fx = (el, name) => {
@@ -125,9 +130,9 @@ export function inPageCounts(){
     clsRuns: [...cls.values()].reduce((a, b) => a + b, 0), by: Object.fromEntries(Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 8)) });
 }
 
-/* A browser as a phone, signed in as perf through the proxy. page(hash) opens Pocket there in a new page, the CPU
-   slowed as the profile says: {page, cdp}. Its service worker is off, so each page is the one Vikunja serves now.
-   `counting`: with countingAlpine in the place of Pocket's own. */
+/* Starts a browser that behaves as a phone, signed in as perf through the proxy. page(hash) opens Pocket at that hash
+   in a new page, with the CPU slowed as the profile says, and returns {page, cdp}. The service worker is blocked, so
+   each page is the one Vikunja serves now. `counting` replaces Pocket's Alpine with countingAlpine. */
 export async function phone(profile, { counting = false } = {}){
   const state = readState();
   const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 'chrome' });
@@ -155,14 +160,20 @@ export async function phone(profile, { counting = false } = {}){
   }
   return { browser, ctx, page, state, close: () => browser.close() };
 }
-// Until the screen is loaded from Vikunja and every row is drawn, asked a few times a second (so not while timing).
+// Wait until the screen has loaded from Vikunja and every row is drawn. It polls a few times a second, so don't use it inside a timed section.
 export const loaded = (page, timeout = 900000) => page.waitForFunction(() => { const v = document.getElementById('view'); return v && v.getAttribute('aria-busy') !== 'true' && !v.querySelector('.loading'); }, null, { timeout, polling: 200 });
 
-/* The page's main thread while fn() runs: {out: what fn gave, tasks: [{at, ms}] (each thing the main thread did, when
-   it started, in the page's own time, performance.now(), and how long it took), sum(a, b) and longest(a, b) of those
-   that started between two of the page's times (sumOver, longestOver: that were going on between them), events: the whole trace, at(ts): a trace time as the page's}.
-   `more`: other things to trace; `timeline` false leaves the main thread's tasks out (tasks is then empty), for a
-   trace kept going while a long list draws, which would be too big. */
+/* Traces the page's main thread while fn() runs. It returns:
+     out: what fn returned.
+     tasks: [{at, ms}], each task the main thread ran, with its start in the page's own time (performance.now()) and
+       its duration.
+     sum(a, b), longest(a, b): the total and longest duration of the tasks that started between two page times.
+     sumOver(a, b), longestOver(a, b): the same for tasks that were running at any time between the two times.
+     layout(a, b): the time spent on style calculation and layout between the two times.
+     events: the whole trace.
+     at(ts): converts a trace time to the page's time.
+   `more` adds trace categories. `timeline` false leaves out the main thread's tasks (tasks is then empty). Use it for a
+   trace kept running while a long list is drawn, which would otherwise be too big. */
 export async function traced(browser, page, fn, more = [], timeline = true){
   await browser.startTracing(page, { categories: [...timeline ? ['disabled-by-default-devtools.timeline', 'devtools.timeline'] : [], 'blink.user_timing', ...more] });
   let out, events, ref;
@@ -176,9 +187,9 @@ export async function traced(browser, page, fn, more = [], timeline = true){
   const main = events.filter(e => e.pid === m.pid && e.tid === m.tid && e.ph === 'X');
   const tasks = main.filter(e => e.name === 'RunTask').map(e => ({ at: at(e.ts), ms: e.dur / 1000 })).sort((a, b) => a.at - b.at);
   const within = (a, b) => tasks.filter(t => t.at >= a && t.at < b);
-  // Working out styles and laying the page out, of that: the rest is mostly script.
+  // The part of the main thread's time spent on style calculation and layout. The rest is mostly script.
   const layout = (a, b) => main.filter(e => (e.name === 'UpdateLayoutTree' || e.name === 'Layout') && at(e.ts) >= a && at(e.ts) < b).reduce((s, e) => s + e.dur / 1000, 0);
-  // (over: those going on at any time between the two, for something whose task may have started well before it's seen)
+  // Tasks running at any time between a and b. Use these for an event whose task may have started well before the event was seen.
   const over = (a, b) => tasks.filter(t => t.at < b && t.at + t.ms > a);
   return { out, tasks, events, at, layout, sum: (a, b) => within(a, b).reduce((s, t) => s + t.ms, 0), longest: (a, b) => Math.max(0, ...within(a, b).map(t => t.ms)),
     sumOver: (a, b) => over(a, b).reduce((s, t) => s + t.ms, 0), longestOver: (a, b) => Math.max(0, ...over(a, b).map(t => t.ms)) };

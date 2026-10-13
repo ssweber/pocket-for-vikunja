@@ -6,32 +6,34 @@
 <title>Pocket · the task row and the add box in every state</title>
 <link rel="stylesheet" href="styles.css">
 <style>
-  /* The page around the rows: light and dark side by side, each a phone's width */
+  /* The page around the rows. Light and dark sit side by side, each as wide as a phone. */
   body{background:#888}
   .specimen{display:flex;flex-wrap:wrap;gap:24px;padding:24px;align-items:flex-start}
   .theme{width:390px;padding:4px 16px 24px;background:var(--bg);color:var(--ink);border-radius:24px}
   .theme h1{font-size:20px;margin:16px 0 0}
-  /* a row lit up stays lit, to be looked at */
+  /* Pause the highlight animation, so a highlighted row stays highlighted. */
   .row.fresh,.row.came-due{animation-play-state:paused}
-  /* The add boxes. The bar and the place it leaves are in the page's flow here, not fixed to its foot, and span the
-     phone's width as they do there; a box seated under a row is in the flow too, between the rows, where the app
-     lays it over room given to that row (seatBox, seatFoot). A list's dashed place stays at its foot. */
+  /* The add boxes. The bar and the placeholder it leaves behind are in the page flow here, not fixed to the bottom,
+     and span the phone's width as they do in the app. A box seated under a row is in the flow too, between the rows.
+     In the app it is laid over space reserved for that row (seatBox, seatFoot). A list's dashed placeholder stays at
+     the end of the list. */
   .theme #capture,.theme #cap-home{position:relative}
   .theme #capture.inline,.theme .foot-box.inline{position:relative;width:auto}
   .spec-bar{margin:0 -16px}
   .spec-seated #cap-home,.spec-place #capture{display:none!important}
   .spec-list{display:flex;flex-direction:column}
   .spec-list > .sub-home{order:9}
-  /* a task held on Today, its dates around the finger: on a phone's screen, 360px wide (.wide: 390), over its rows,
-     not fixed to the page; the dot is the finger (.was: where it was held, once it has moved) */
+  /* A task held on Today, with its date chips around the touch. Each is a phone-sized screen 360px wide (.wide is
+     390px), over its rows and not fixed to the page. The dot is the touch. Once the touch has moved, .was is the dot
+     where it was first held. */
   .spec-ring{position:relative;width:360px;height:344px;margin:0 -1px 16px;padding:8px;overflow:hidden;border-radius:16px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
   .spec-ring.wide{width:390px;margin:0 -16px 16px}
   .spec-ring .throw{position:absolute}
   .spec-finger{position:absolute;z-index:16;width:40px;height:40px;margin:-20px;border-radius:50%;background:rgba(60,120,230,.3);box-shadow:0 0 0 2px rgba(60,120,230,.75);pointer-events:none}
   .spec-finger.was{background:none;box-shadow:0 0 0 2px rgba(60,120,230,.45)}
-  /* the question a ring asks, as the sheet shows it */
+  /* The question a parent's ring asks, as its sheet shows it. */
   .spec-sheet{margin-bottom:16px;padding:16px;border-radius:20px;background:var(--surface)}
-  /* a task's sheet, as its scrolling part shows it: the page's colour, set apart from the next by a dashed line */
+  /* A task's sheet as its scrolling part shows it, in the page's colour and separated from the next sheet by a dashed line. */
   .spec-task-sheet{margin:0 -16px 8px;padding:12px 16px 4px;border-bottom:2px dashed var(--line)}
   .spec-task-sheet .h3 small{font-weight:500;color:var(--muted)}
 </style>
@@ -44,10 +46,10 @@
   <template x-for="theme in ['light', 'dark']" :key="theme">
     <section class="theme" :class="'theme-' + theme" inert>
       <h1 x-text="theme === 'light' ? 'Light' : 'Dark'"></h1>
-      <!-- A task's sheet led by its row (parent-tasks-plan, 6b): the card is sheet/task-card.html, the real row
-           (task-row.html, SHEET_ROW) and the sheet's notes and files. Above it, the sheet's path (a copy of its markup);
-           below it, what stays, as stand-ins but the subtasks' rows, which are the real row. Each is the sheet of its
-           own task: `sheet` here is that sheet, as the app's is. -->
+      <!-- A task's sheet that starts with the task's row. The card is sheet/task-card.html, which holds the real row
+           (task-row.html, SHEET_ROW) and the sheet's notes and files. Above the card is the sheet's path (a copy of its
+           markup). Below it is the rest of the sheet, all stand-ins except the subtasks' rows, which are the real row.
+           Each is the sheet of a separate task, and `sheet` here is that sheet, as in the app. -->
       <template x-for="sheet in specimenSheets" :key="sheet.task.id"><div class="spec-task-sheet">
         <div class="sec" x-text="sheet.spec"></div>
         <div class="d-path">
@@ -56,12 +58,12 @@
         </div>
         <!-- include markup/sheet/task-card.html -->
         <template x-if="sheet.parts.length"><div>
-          <!-- Stand-in: the Due card (Due and Reminders), as sheet/task.html has it -->
+          <!-- Stand-in for the Due and Reminders card, laid out as in sheet/task.html -->
           <template x-if="sheet.parts.includes('due')"><div class="card">
             <div class="prop"><span class="k">Due</span><span class="v"><input type="datetime-local" aria-label="Due date" :value="isSet(sheet.task.due_date) ? toLocalInput(sheet.task.due_date) : ''"></span></div>
             <div class="prop"><span class="k">Reminders</span><span class="v"><select aria-label="Add a reminder"><option>Add a reminder</option></select></span></div>
           </div></template>
-          <!-- The subtasks: the real rows, as the sheet has them (g.sheet); the add box under them, a stand-in -->
+          <!-- The subtasks use the real rows, as the sheet does (g.sheet). The add box under them is a stand-in. -->
           <template x-if="sheet.parts.includes('subtasks')"><div>
             <div class="h3"><span>Subtasks</span><span class="n num" x-text="subtasks.length ? subtasks.filter(s => s.done).length + '/' + subtasks.length : ''"></span></div>
             <div class="card" id="d-subtasks" x-data="specFoot('at rest')">
@@ -71,7 +73,7 @@
               <!-- include markup/list-box.html -->
             </div>
           </div></template>
-          <!-- Stand-in: Comments -->
+          <!-- Stand-in for Comments -->
           <template x-if="sheet.parts.includes('comments')"><div>
             <div class="h3">Comments<span class="n num" x-text="sheet.task.comment_count || ''"></span><small>stand-in</small></div>
             <div class="card">
@@ -80,9 +82,9 @@
                 <button class="go btn" type="button" style="width:44px;padding:0" aria-label="Post comment"><svg class="i"><use href="#i-up"/></svg></button></form>
             </div>
           </div></template>
-          <!-- Details, a stand-in but for its Progress line, a copy of sheet/task.html's (the tap path for a swipe's
-               progress: 0, 25, 50, 75%; done is the tick). Not for a parent: its progress is worked out from its
-               subtasks (design rule 5). -->
+          <!-- Details is a stand-in except for its Progress line, which is a copy of the one in sheet/task.html. The
+               line lets the user tap a progress value (0, 25, 50 or 75%) as an alternative to swiping. Done is the
+               tick. A parent has no Progress line, because its progress is worked out from its subtasks. -->
           <template x-if="sheet.parts.includes('details')"><div>
             <div class="h3">Details<small>stand-in, but Progress</small></div>
             <div class="card">
@@ -108,10 +110,10 @@
       </div></template>
       <template x-for="g in specimen" :key="g.title"><div>
         <div class="sec" x-text="g.title"></div>
-        <!-- A project's Done section (screens/lists.html): its heading folded, and open -->
+        <!-- A project's Done section (screens/lists.html), with its heading folded and open -->
         <template x-if="g.fold"><div><div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="false"><span>Done (24)</span><svg class="i chev"><use href="#i-chev"/></svg></button></div>
           <div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="true"><span x-text="'Done (' + g.tasks.length + ')'"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></div></template>
-        <!-- A project's Done open, its latest 100 (a few here), counting them all, and the row for more at its end -->
+        <!-- A project's Done section open. It shows the latest 100 done tasks (a few here), counts all of them, and ends with the row for loading more. -->
         <template x-if="g.more"><div class="sec done-sec"><button type="button" class="sec-fold" aria-expanded="true"><span x-text="'Done (' + g.count.toLocaleString() + ')'"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
         <div :class="g.sheet ? 'card' : 'list'">
           <template x-for="t in g.tasks" :key="t.id">
@@ -120,20 +122,21 @@
           <!-- include markup/more-row.html -->
         </div>
       </div></template>
-      <!-- Today's stacked cards (list-item.html): the header (its ring, title, priority bars, time and its project's dot,
-           which its rows leave out); its top row, the
-           most urgent, one line as a row on Today; and under it the footer, a slim tab with ⌄. A task of high priority
-           opened by it, a plain ⌃ in its place; a run's, its next step counting down; a run due at 6 PM, its heading as a
-           task's, without the day it was started; one with one open subtask, no footer; one of 14, low priority; and one
-           opened whose rows have a priority and a time before "+ me", one of them in another project, with its own dot -->
+      <!-- Today's stacked cards (list-item.html). A card has a header (ring, title, priority bars, time, and the
+           project's dot, which its rows leave out), then its top row (the most urgent, on one line as a row on Today),
+           then a footer that is a slim tab with ⌄. The cards shown are: a high-priority task, opened with its footer,
+           which becomes a plain ⌃; a checklist with its next step counting down; a checklist due at 6 PM, whose heading
+           reads like a task's without the day it was started; a task with one open subtask, so no footer; a low-priority
+           task with 14 subtasks; and an opened card whose rows have a priority and a time before "+ me", one of them in
+           another project with its own dot. -->
       <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
       <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
       </div></template>
-      <!-- A screen's headings (screens/lists.html, its groups), each under the end of the list before it: under a card's
-           footer, as far from its tab as from any list's last row -->
+      <!-- A screen's headings (screens/lists.html, its groups), each under the end of the list before it. The heading
+           under a card's footer is as far from the tab as it is from any list's last row. -->
       <div class="sec">A heading under the list before it: after a collapsed card’s tab, after an opened card’s ⌃, after a card with no footer, and after a row: each as far under what’s drawn above it</div>
       <template x-for="(items, i) in specimenEnds" :key="i"><div>
         <div class="sec"><span x-text="['Today', 'Next 7 days', 'Later', 'No date', 'Done'][i]"></span><span class="n num" x-text="items.length || ''"></span></div>
@@ -143,23 +146,25 @@
           </template>
         </div></template>
       </div></template>
-      <!-- A parent's ring (parent-tasks-plan, part 3): on a card's header, in place of a tick, its arc the worked-out
-           figure and done of all inside it; every subtask done, "All subtasks done" with Close; closed, a gap with Undo;
-           its header swiped right part way (it springs back), and left onto its Delete -->
+      <!-- A parent's ring sits on a card's header in place of a tick. Its arc shows the percentage worked out from the
+           subtasks, and how many of all the subtasks inside it are done. When every subtask is done the card shows "All
+           subtasks done" with Close. A closed card leaves a gap with Undo. The header can be swiped right part way (it
+           springs back) and left onto its Delete. -->
       <div class="sec">A parent’s ring: one of four subtasks at 50%, 13%; two of four done; none of three; all done, waiting for Close; closed by its ring, a gap with Undo; its header swiped right part way (it springs back), and left onto its Delete</div>
       <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
         <template x-for="t in specimenParents" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
       </div></template>
-      <!-- The question a parent's ring asks (sheet/complete.html), as its sheet shows it: a task's, naming its open
-           subtasks (one that repeats stays); and a run's, which finishes it with its steps not done -->
+      <!-- The question a parent's ring asks (sheet/complete.html), as its sheet shows it. A task's question names its
+           open subtasks, and a repeating subtask stays open. A checklist's question finishes the checklist with its
+           steps not done. -->
       <div class="sec">The question a ring asks, its open subtasks named in a sentence: a task with 3; one with 5, one of them repeating (it stays, and isn’t named); a run’s, finished with its steps not done</div>
       <template x-for="sheet in specimenComplete" :key="sheet.complete.title"><div class="spec-sheet">
         <!-- include markup/sheet/complete.html -->
       </div></template>
-      <!-- A task held on Today, its four dates around the finger (hold-to-reschedule-plan): a still of each hold, on a
-           phone's screen, the chips drawn on the rows by the page's code with the app's own (app/throw.js: chipsEl) -->
+      <!-- A task held on Today, with four date chips around the touch. Each is a still of a hold on a phone-sized
+           screen. The page's code draws the chips on the rows using the app's own code (app/throw.js: chipsEl). -->
       <template x-for="r in specimenRings" :key="r.id"><div>
         <div class="sec" x-text="r.spec"></div>
         <div class="spec-ring" :class="{wide: r.wide}" :data-ring="r.id">
@@ -170,22 +175,22 @@
           </div></template>
         </div>
       </div></template>
-      <!-- A project's open list (screens/lists.html, cards 'list'): each card open, for good, its rows in its List
-           view's order, a run's steps in its order line -->
+      <!-- A project's open list (screens/lists.html, cards 'list'). Each card stays open, its rows are in the order of
+           Vikunja's List view, and a checklist's steps are in their order. -->
       <div class="sec">A project’s list: a card open, its subtasks in their order (one with its own subtask, a row; one waiting to be sent); a row; a task done over a subtask still open; a run in progress, its open steps on it</div>
       <template x-for="g in [specimenProject]" :key="0"><div class="list">
         <template x-for="t in g.items" :key="t.id">
           <!-- include markup/list-item.html -->
         </template>
       </div></template>
-      <!-- A run's step card (step-card.html): its title and who's on it, when it's due, Done and Skip. Where the run is,
-           its steps listed under it say -->
+      <!-- A checklist's step card (step-card.html). It shows the step's title, who is on it, when it is due, and Done
+           and Skip. The steps listed under the card show where the checklist has got to. -->
       <div class="sec">A run’s step card: on a step of yours, counting down, with a photo still uploading and its × not to upload it; one Jamie is on, half done; one done, tapped in the list</div>
       <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
         <!-- include markup/step-card.html -->
       </div></template>
-      <!-- A run's screen's top (app.html, a copy of its .page-title): Back, the run's own row (task-row.html, RUN_ROW) in
-           the place its name had, and ⋯ -->
+      <!-- The top of a checklist's screen (a copy of the .page-title in app.html). It has Back, the checklist's own row
+           (task-row.html, RUN_ROW) where its name would be, and ⋯. -->
       <div class="sec">A run’s screen’s top: its own row between Back and ⋯, its ring, its name, who it’s for in its slot</div>
       <template x-for="top in specimenRunTops" :key="top.run.id"><div style="margin-bottom:12px">
         <div class="note" style="margin:0" x-text="top.spec"></div>
@@ -197,17 +202,17 @@
           <button class="icon-btn plain" aria-label="Run options"><svg class="i"><use href="#i-more"/></svg></button>
         </div>
       </div></template>
-      <!-- The add box in every state (inline-add-box-plan). Each is the app's own markup, given what it reads by the
-           x-data around it (specimen.mjs: specBar, specFoot), so what it read is marked and its chips are worked out as
-           the app's are. Nothing here can be typed in or take the focus: a focused box is one told it has it. -->
-      <!-- Quick add's bar at the bottom (add-bar.html), and the dashed place it leaves while it's in the list -->
+      <!-- The add box in every state. Each is the app's own markup, given the values it reads by the x-data around it
+           (specimen.mjs: specBar, specFoot). The marks and chips are worked out the same way as in the app. Nothing here
+           can be typed in or take focus, so a focused box is one that has been told it has focus. -->
+      <!-- Quick add's bar at the bottom (add-bar.html), and the dashed placeholder it leaves while the bar is seated in the list -->
       <template x-for="sp in specimenBars" :key="sp.spec"><div>
         <div class="sec" x-text="sp.spec"></div>
         <div class="spec-bar" :class="{'spec-place': place}" x-data="specBar(sp.spec, sp.f)">
           <!-- include markup/add-bar.html -->
         </div>
       </div></template>
-      <!-- The same bar seated in a list under a row, as far in as what it adds: the rows before it, the bar, the rows after -->
+      <!-- The same bar seated in a list under a row, indented to the level of what it adds. The rows before it, the bar, and the rows after it. -->
       <template x-for="sp in specimenSeated" :key="sp.spec"><div>
         <div class="sec" x-text="sp.spec"></div>
         <div class="list spec-seated" x-data="specBar(sp.spec, sp.f)">
@@ -220,8 +225,9 @@
           </template></template>
         </div>
       </div></template>
-      <!-- The box at a list's foot (list-box.html): a task's subtasks, a template's steps (New template's are the same
-           list), and a checklist's steps on its screen, with Repeat. Under a row, its place at the foot is kept, dashed. -->
+      <!-- The box at the end of a list (list-box.html). It is used for a task's subtasks, a template's steps (New
+           template uses the same list), and a checklist's steps on its screen, with Repeat. When the box is under a row,
+           its position at the end of the list stays as a dashed placeholder. -->
       <template x-for="sp in specimenFeet" :key="sp.spec"><div>
         <div class="sec" x-text="sp.spec"></div>
         <div class="spec-list" :class="{card: !g.run, list: g.run}" :id="g.run ? 'run-steps' : 'd-subtasks'" x-data="specFoot(sp.spec, sp.f)">
@@ -234,8 +240,8 @@
           </template></template>
         </div>
       </div></template>
-      <!-- Its relatives, which share the field: New template's name (a copy of sheet/new-template.html's box), and a
-           comment's (in the first sheet above, a stand-in) -->
+      <!-- Two more boxes that share the same field. New template's name box is a copy of the box in
+           sheet/new-template.html. The comment box is a stand-in in the first sheet above. -->
       <template x-for="sp in specimenNames" :key="sp.spec"><div>
         <div class="sec" x-text="sp.spec"></div>
         <div class="nt-name" x-data="specName(sp.spec, sp.f)"><label>Name</label>

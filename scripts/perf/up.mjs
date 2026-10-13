@@ -1,22 +1,26 @@
-// A Vikunja just for measuring, apart from pocket-dev: containers pocket-perf and pocket-perf-db, on 127.0.0.1:3470.
+// Starts a Vikunja just for benchmarking, separate from pocket-dev: containers pocket-perf and pocket-perf-db, on
+// 127.0.0.1:3470.
 //
-//   node scripts/perf/up.mjs --seed M            a fresh one, seeded (below), with Pocket as committed at HEAD
+//   node scripts/perf/up.mjs --seed M            start a fresh one, seeded (see below), with Pocket as committed at HEAD
 //   node scripts/perf/up.mjs --at b884d9a        restart only Vikunja, keeping the data, with Pocket as at that commit
-//   node scripts/perf/up.mjs --plugin pocket     ... with Pocket from a folder as it is (an unminified build, say)
-//   --maxpp 50                                   Vikunja's service.maxitemsperpage (50, its own default)
-//   --runs                                       with either: checklist runs to measure a run's screen on (below)
+//   node scripts/perf/up.mjs --plugin pocket     the same, with Pocket from a folder as it is (an unminified build, say)
+//   --maxpp 50                                   set Vikunja's service.maxitemsperpage (50 is Vikunja's default)
+//   --runs                                       with either of the first two, add checklists for measuring a checklist's
+//                                                screen (see below)
 //
-// --at archives that commit's pocket/ (git archive), so edits in the working tree don't move the numbers. --seed fills
-// it with user perf / perf-password: a project "Big" (S: 150 open and 500 done, M: 600 and 3,000, L: 2,000 and
-// 8,000; a twentieth of the open tasks overdue, a twentieth due in the next 8 days, every twentieth a parent of 3),
-// "Errands" with 25, and an API token with every permission for 30 days. Due dates are from the day it's seeded, so
-// seed again before measuring on another day. Everything it keeps is in test-results/perf/ (state.json: {base,
-// token, scale, projects}), with the commit Pocket is served as at (`pocket`; null for a folder).
-// --runs adds, once, a project for checklists, "Lists", made by a second user, perf2, and shared with perf, so Today
-// doesn't show its runs and app-bench's numbers stay as they were but for the requests that read it: four runs in
-// progress, of 20 and of 60 steps, one of each with its second step counting down (20 hours from its first step's
-// tick, which --runs makes again each time it's given: its text changes once a minute), and a template of 20 steps.
-// Their ids go in state.json (`runs`, `template`, `projects.lists`).
+// --at archives that commit's pocket/ (git archive), so edits in the working tree don't change the numbers. --seed
+// fills the database with user perf (password perf-password), a project "Big", a project "Errands" with 25 tasks, and
+// an API token with every permission for 30 days. Big has 150 open and 500 done tasks at scale S, 600 and 3,000 at M,
+// and 2,000 and 8,000 at L. A twentieth of the open tasks are overdue, a twentieth are due in the next 8 days, and
+// every twentieth is a parent of 3. Due dates are relative to the day of seeding, so seed again before measuring on
+// another day. Everything is kept in test-results/perf/. state.json holds {base, token, scale, projects}, plus
+// `pocket`, the commit Pocket is served from (null for a folder).
+// --runs adds, once, a checklists project "Lists". A second user, perf2, owns it and shares it with perf. Today
+// therefore doesn't show its checklists, and app-bench's numbers stay the same except for the requests that read it. It
+// holds four started checklists, two of 20 steps and two of 60. One of each size has a countdown on its second step (20
+// hours after its first step is ticked, so its text changes once a minute). Each time --runs is given, it ticks the
+// first step again to restart the countdown. Lists also holds a template of 20 steps. Their ids go in state.json
+// (`runs`, `template`, `projects.lists`).
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -38,31 +42,31 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function waitFor(url){ for (let i = 0; i < 90; i++) { try { if ((await fetch(url)).ok) return; } catch {} await sleep(1000); } throw new Error('no ' + url); }
 async function call(method, path, body, token){
   const r = await fetch(BASE + '/api/v2' + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body && JSON.stringify(body) });
-  if (!r.ok && r.status !== 304) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);   // 304: a change that changes nothing
+  if (!r.ok && r.status !== 304) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);   // 304 means the change altered nothing
   return r.status === 204 || r.status === 304 ? null : r.json();
 }
 
-// The plugin folder Vikunja loads: one given as it is, or a commit's pocket/.
+// The plugin folder that Vikunja loads: either the folder given with --plugin, used as it is, or the pocket/ of a commit.
 let plugin = arg('plugin') && resolve(arg('plugin')), sha = null;
 if (!plugin) {
   sha = run('git', ['-C', ROOT, 'rev-parse', '--short', AT]).stdout.trim();
   plugin = join(OUT, 'plugin-' + sha);
   rmSync(plugin, { recursive: true, force: true }); mkdirSync(plugin, { recursive: true });
   run('git', ['-C', ROOT, 'archive', '-o', join(OUT, 'plugin.tar'), `${sha}:pocket`]);
-  run('tar', ['-xf', '../plugin.tar'], { cwd: plugin }); rmSync(join(OUT, 'plugin.tar'));   // relative: Git's tar reads "C:" as a host
+  run('tar', ['-xf', '../plugin.tar'], { cwd: plugin }); rmSync(join(OUT, 'plugin.tar'));   // use a relative path, because Git's tar reads "C:" as a host name
 }
 if (!existsSync(join(plugin, 'main.go'))) throw new Error('no main.go in ' + plugin);
 
 if (SEED) {
   run('docker', ['rm', '-f', NAME, DB], { allowFail: true });
-  // Postgres publishes the port; Vikunja joins its network. Data in memory, thrown away with the container.
+  // Postgres publishes the port, and Vikunja joins its network. The data is kept in memory and deleted with the container.
   run('docker', ['run', '-d', '--name', DB, '-p', `127.0.0.1:${PORT}:3456`, '--tmpfs', '/var/lib/postgresql/data',
     '-e', 'POSTGRES_USER=vikunja', '-e', 'POSTGRES_PASSWORD=vikunja', '-e', 'POSTGRES_DB=vikunja',
     'postgres:16-alpine', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']);
   for (let i = 0; run('docker', ['exec', DB, 'pg_isready', '-h', '127.0.0.1', '-U', 'vikunja', '-d', 'vikunja'], { allowFail: true }).status; i++) {
     if (i > 60) throw new Error('Postgres did not start'); await sleep(500);
   }
-  await sleep(1500);                                         // the image's first Postgres restarts once
+  await sleep(1500);                                         // the image starts Postgres once, then restarts it
 }
 run('docker', ['rm', '-f', NAME], { allowFail: true });
 run('docker', ['run', '-d', '--name', NAME, '--network', `container:${DB}`, '-v', `${plugin}:/app/vikunja/plugins/pocket:ro`,
@@ -91,7 +95,7 @@ if (SEED) {
   let n = 0;
   const pick = a => a[(n * 7919 + a.length * 31) % a.length];
   const desc = i => i % 3 ? '' : `<p>${Array.from({ length: 40 }, (_, k) => words[(i + k) % words.length]).join(' ')}.</p><ul><li>${words[i % 16]} first</li><li>then ${words[(i + 5) % 16]}</li></ul>`;
-  // Open: 5% overdue, 5% in the next 8 days, 20% later, 70% undated; a tenth carry a label; every 20th is a parent of 3.
+  // Open tasks: 5% overdue, 5% due in the next 8 days, 20% due later, 70% with no date. A tenth have a label. Every 20th is a parent of 3.
   function openTask(i){
     const r = i % 20, t = { title: `${pick(words)} ${pick(words)} #${i}`, description: desc(i), priority: i % 6 === 0 ? (i % 5) + 1 : 0 };
     if (r === 0) t.due_date = new Date(now - (1 + i % 30) * day).toISOString();
@@ -119,7 +123,7 @@ if (SEED) {
   await pool(scale.done, async i => { await call('POST', `/projects/${big.id}/tasks`, { title: `done ${pick(words)} #${i}`, description: desc(i), done: true }, token); });
   await pool(25, async i => { await call('POST', `/projects/${small.id}/tasks`, { title: `errand ${i}`, due_date: i % 4 ? undefined : new Date(now + i * 3600000).toISOString() }, token); });
   await call('POST', `/projects/${me.settings.default_project_id}/tasks`, { title: 'inbox task', due_date: new Date(now + 2 * 3600000).toISOString() }, token);
-  // An API token with every permission: a sign-in's lasts 10 minutes, less than a measuring run.
+  // Create an API token with every permission, because a sign-in token lasts 10 minutes, which is shorter than a benchmark run.
   const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   const routes = await (await fetch(BASE + '/api/v1/routes', { headers: auth })).json();
   const body = JSON.stringify({ title: 'perf ' + now, expires_at: new Date(now + 30 * day).toISOString(), permissions: Object.fromEntries(Object.entries(routes).map(([g, r]) => [g, Object.keys(r)])) });
@@ -138,7 +142,7 @@ state.pocket = sha;
 if (process.argv.includes('--runs')) {
   const token = state.token;
   if (!state.runs) {
-    await call('POST', '/register', { username: 'perf2', email: 'perf2@example.com', password: 'perf-password' }).catch(() => {});   // there already, from a try cut short
+    await call('POST', '/register', { username: 'perf2', email: 'perf2@example.com', password: 'perf-password' }).catch(() => {});   // the user may already exist from an interrupted attempt
     const two = (await call('POST', '/login', { username: 'perf2', password: 'perf-password' })).token;
     for (const p of (await call('GET', '/projects', undefined, two)).items || []) if (p.title === 'Lists') await call('DELETE', '/projects/' + p.id, undefined, two);
     const lists = await call('POST', '/projects', { title: 'Lists', description: '<p>pocket:checklists</p>' }, two);
@@ -147,8 +151,9 @@ if (process.argv.includes('--runs')) {
     const things = 'till fridge floor door shelf bins oven tables menu stock float lights signs cups filter log'.split(' ');
     const mk = body => call('POST', `/projects/${lists.id}/tasks`, body, two);
     const under = (p, id) => call('POST', `/tasks/${p}/relations`, { other_task_id: id, relation_kind: 'subtask' }, two);
-    // A run as Pocket keeps one: "pocket:run" in its notes, and in each step's its title in the template then
-    // ("pocket:step …", which its time is read from: T#20h, 20 hours after the step before is done). A third have notes.
+    // A checklist as Pocket stores it: "pocket:run" in its notes, and "pocket:step <title>" in each step's notes, where
+    // the title is the step's title in the template. A step's time is read from that line: T#20h means 20 hours after
+    // the previous step is done. A third of the steps have extra notes.
     async function runOf(n, timed){
       const r = await mk({ title: `${timed ? 'Timed' : 'Plain'} run of ${n}`, description: '<p>pocket:run</p>' }), steps = [];
       for (let i = 0; i < n; i++) {
@@ -160,7 +165,7 @@ if (process.argv.includes('--runs')) {
     }
     console.log('seeding runs');
     state.runs = { plain20: await runOf(20, false), plain60: await runOf(60, false), timed20: await runOf(20, true), timed60: await runOf(60, true) };
-    // A template as Pocket keeps one: labelled "template", done, its steps done.
+    // A template as Pocket stores it: it has the label "template", and it and all its steps are marked done.
     const label = await call('POST', '/labels', { title: 'template' }, two);
     const tpl = await mk({ title: 'TEMPLATE: Closing down' });
     for (let i = 0; i < 20; i++) { const s = await mk({ title: `${words[(i + 3) % 16]} the ${things[(i * 5 + 1) % 16]}${i === 4 ? ' T#10m' : ''}` }); await under(tpl.id, s.id); await call('PATCH', '/tasks/' + s.id, { done: true }, two); }
@@ -168,7 +173,7 @@ if (process.argv.includes('--runs')) {
     await call('PATCH', '/tasks/' + tpl.id, { done: true }, two);
     state.template = tpl.id; state.projects.lists = lists.id;
   }
-  // The countdowns start from now: the timed runs' first step ticked again.
+  // Restart the countdowns from now by unticking and re-ticking the first step of each timed checklist.
   for (const r of [state.runs.timed20, state.runs.timed60]) { await call('PATCH', '/tasks/' + r.steps[0], { done: false }, token); await call('PATCH', '/tasks/' + r.steps[0], { done: true }, token); }
   state.timed = new Date().toISOString();
 }

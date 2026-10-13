@@ -1,24 +1,24 @@
 // Builds Pocket's page, pocket/app/index.html, from src/:
 //
-//   npm run build           once
-//   npm run build -- --watch   again on every change in src/ (npm run dev does this)
+//   npm run build              build once
+//   npm run build -- --watch   build again on every change in src/ (npm run dev does this)
 //
-// It reads src/index.html and puts into it, in place:
-//   <!-- include markup/x.html -->                 src/markup/x.html (and any includes in it, also from src/)
-//   <!-- include markup/x.html step -->            the same, with what x.html has between <!-- only step --> and
-//                                                  <!-- /only --> kept; included without the word, that's left out
-//   <link rel="stylesheet" href="styles.css">      that stylesheet from src/, minified, in a <style>
-//   <script type="module" src="js/main.js">        that script from src/ and everything it imports, as one minified
-//                                                  script, with a source map next to the page (pocket.js.map)
+// It reads src/index.html and replaces these tags in place:
+//   <!-- include markup/x.html -->           is replaced by src/markup/x.html, including any includes inside it
+//   <!-- include markup/x.html step -->      is replaced by the same file, keeping the part of x.html between
+//                                            <!-- only step --> and <!-- /only -->. Without the word "step", that
+//                                            part is left out.
+//   <link rel="stylesheet" href="styles.css">  is replaced by that stylesheet from src/, minified, in a <style>
+//   <script type="module" src="js/main.js">  is replaced by that script and everything it imports, as one minified
+//                                            script. The source map is written next to the page (pocket.js.map).
 //   <script defer src="alpine-3.17.4-pocket.2.min.js">
-//                                                  src/vendor/alpine-3.17.4.js, minified, written as that file
-//                                                  next to the page (vendor, below)
+//                                            stays, and src/vendor/alpine-3.17.4.js is minified into that file next
+//                                            to the page (see vendor() below)
 // A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The page is also written
-// compressed, as index.html.br and index.html.gz, for main.go to send a browser that takes one (compressed, below).
+// compressed, as index.html.br and index.html.gz, for main.go to send to browsers that accept them (see compressed()).
 //
-// Everything Pocket's page needs is in that one file, so a phone never mixes a new page with old code, and sw.js and
-// main.go need nothing more. Edit src/, never pocket/app/index.html: the build overwrites it, and CI checks it's the
-// build of src/.
+// The page is one file, so a phone never mixes a new page with old code. sw.js and main.go need nothing more. Edit
+// src/, never pocket/app/index.html. The build overwrites that file, and CI checks that it matches the build of src/.
 import { existsSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from 'node:zlib';
@@ -29,23 +29,22 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SRC = join(ROOT, 'src'), OUT = join(ROOT, 'pocket', 'app');
 const MAP = 'pocket.js.map';
 
-// The same output on every computer: \n line endings, whatever git checked out.
+// Convert line endings to \n, so the output is the same on every computer whatever git checked out.
 const read = file => readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
 const inSrc = (from, path) => {
   const file = resolve(dirname(from), path);
   return file.startsWith(SRC + sep) && existsSync(file) ? file : null;
 };
 
-/* A piece's parts for some of the places it's included only: what's between <!-- only step --> and <!-- /only -->,
-   each on a line of its own, is kept where the piece is included with that word, and left out everywhere else. So one
-   row is every list's (markup/task-row.html), and what only a template's steps need isn't in every list's markup,
-   where each row would work it out (docs/development.md, rule 10). */
+/* Keeps the text between <!-- only step --> and <!-- /only --> (each tag on its own line) where the file is included
+   with that word, and removes it everywhere else. This lets every list share one row (markup/task-row.html) without
+   every row carrying markup that only a template's steps need (docs/development.md, rule 10). */
 export const onlyParts = (text, words = []) => text.replace(/^[ \t]*<!-- only (\S+) -->\n([\s\S]*?)^[ \t]*<!-- \/only -->\n?/gm, (_, word, part) => words.includes(word) ? part : '');
 
 export function include(file, seen = [], words = []){
   if (seen.includes(file)) throw new Error(`${relative(ROOT, file)} includes itself`);
   return onlyParts(read(file), words).replace(/^([ \t]*)<!-- include (\S+)((?: \S+)*) -->\n?/gm, (_, indent, path, more) => {
-    const part = inSrc(join(SRC, 'index.html'), path);                         // always from src/, wherever it's written
+    const part = inSrc(join(SRC, 'index.html'), path);                         // paths are always relative to src/index.html
     if (!part) throw new Error(`${relative(ROOT, file)}: no src file ${path} to include`);
     return include(part, [...seen, file], more.split(' ').filter(Boolean));
   });
@@ -63,8 +62,8 @@ async function js(file){
   });
   const code = r.outputFiles.find(f => f.path.endsWith('.js')).text.trim();
   const map = JSON.parse(r.outputFiles.find(f => f.path.endsWith('.map')).text);
-  map.sources = map.sources.map(s => s.replace(/^(\.\.\/)+/, ''));       // "src/js/api.js", the same on every computer
-  map.sourcesContent = map.sourcesContent.map(s => s.replace(/\r\n/g, '\n'));   // esbuild reads them as checked out
+  map.sources = map.sources.map(s => s.replace(/^(\.\.\/)+/, ''));       // gives "src/js/api.js" on every computer
+  map.sourcesContent = map.sourcesContent.map(s => s.replace(/\r\n/g, '\n'));   // esbuild keeps the line endings git checked out
   map.file = 'index.html';
   return { code, map: JSON.stringify(map) + '\n' };
 }
@@ -85,7 +84,7 @@ async function build(){
     }
   }
   for (const [from, to] of parts) page = page.replace(from, () => to);
-  // A "</script" or "</style" inside what was put in would end it early.
+  // A "</script" or "</style" inside the inlined code would end the tag early.
   for (const [, to] of parts) if (/<\/(script|style)/i.test(to.replace(/^<(script|style)[^>]*>/, '').replace(/<\/(script|style)>$/, '')))
     throw new Error('A </script> or </style> inside the inlined code would cut it short');
   write(join(OUT, 'index.html'), page);
@@ -94,10 +93,10 @@ async function build(){
   await vendor(page);
 }
 
-/* A library Pocket patches is kept readable in src/vendor/ (alpine-3.17.4.js: Alpine as published, then patched, each
-   change marked "Pocket:") and minified here, as its own makers do, into the file the page names
-   (alpine-3.17.4-pocket.2.min.js). That name changes with each change to the patch: sw.js keeps the libraries by name,
-   so a changed file under an old name would never reach an installed Pocket. */
+/* A library that Pocket patches is kept readable in src/vendor/ (alpine-3.17.4.js is Alpine as published, then
+   patched, with each change marked "Pocket:"). This function minifies it into the file the page names
+   (alpine-3.17.4-pocket.2.min.js). The name must change with every change to the patch. sw.js caches libraries by
+   name, so a changed file under an old name would never reach an installed Pocket. */
 async function vendor(page){
   for (const [, name, lib] of page.matchAll(/<script[^>]* src="(([\w.-]+?)-pocket\.\d+\.min\.js)"/g)) {
     const file = join(SRC, 'vendor', lib + '.js');
@@ -107,14 +106,14 @@ async function vendor(page){
   }
 }
 
-/* The page compressed, which main.go sends a browser that takes it: brotli (a fifth of the size) and gzip. Each is made
-   again only when what's there doesn't decode to the page, so a build that changes nothing is quick, and it's the same
-   bytes on every computer: gzip's header has no time in it, and its "made on" byte is set, not this computer's. */
+/* Writes the page compressed with brotli (a fifth of the size) and gzip. main.go sends these to browsers that accept
+   them. A file is rewritten only when it doesn't decompress to the page, so a build that changes nothing is quick. The
+   bytes are the same on every computer: the gzip header holds no time, and its operating-system byte is fixed. */
 export function compressed(file, page){
   const text = Buffer.from(page);
   const ways = {
     '.br': [brotliDecompressSync, () => brotliCompressSync(text, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT, [constants.BROTLI_PARAM_SIZE_HINT]: text.length } })],
-    '.gz': [gunzipSync, () => { const gz = gzipSync(text, { level: 9 }); gz.writeUInt32LE(0, 4); gz[9] = 255; return gz; }],   // 255: made on "unknown"
+    '.gz': [gunzipSync, () => { const gz = gzipSync(text, { level: 9 }); gz.writeUInt32LE(0, 4); gz[9] = 255; return gz; }],   // 255 means the operating system is unknown
   };
   for (const [ext, [unzip, zip]] of Object.entries(ways)) {
     try { if (unzip(readFileSync(file + ext)).equals(text)) continue; } catch {}
@@ -122,13 +121,12 @@ export function compressed(file, page){
   }
 }
 
-// Only a file that changed is written: a new modification time is a new version of Pocket to every open copy of it,
-// which reloads to get it.
+// Write only a file that changed. A new modification time makes every open copy of Pocket reload to get a new version.
 function write(file, text){
   if (!existsSync(file) || read(file) !== text) writeFileSync(file, text);
 }
 
-// Run as a script, it builds; imported (by the specimen page), it only lends its functions.
+// Run as a script, this file builds. When the specimen page imports it, it only provides its functions.
 if (resolve(process.argv[1] || '').toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
   try {
     await build();

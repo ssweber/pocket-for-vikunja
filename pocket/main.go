@@ -7,18 +7,19 @@
 //	  enabled: true
 //	  loader: yaegi
 //
-// and restart Vikunja. Needs Vikunja 2.7 or later; Vikunja runs plugins from source with Yaegi (nothing to compile).
-// If it fails to load, Vikunja logs it and keeps running.
+// and restart Vikunja. Needs Vikunja 2.7 or later. Vikunja runs plugins from source with Yaegi, so there is nothing
+// to compile. If the plugin fails to load, Vikunja logs the error and keeps running.
 //
 // What it does to Vikunja's data:
 //
 //   - By default, nothing. It only reads the files in app/ and serves them.
-//   - With step times turned on, one thing: when a step of a checklist run is marked done, it sets the due date of the
-//     steps in that run timed from it (T#40m in their template step: 40 minutes after). It writes only due_date, and
-//     the time of those steps' reminders counted from their due date (Vikunja works those out only when a task is
-//     saved through it), only on steps of that run in the same project that aren't done, and nothing else, not even
-//     the time a task was last changed. When the step is marked not done again, it takes those due dates off, and
-//     those reminders with them, so none goes off for a step that's still waiting. All of it is in writeStepDueDates.
+//   - With step times turned on, one thing. When a step of a checklist run is marked done, it sets the due date of the
+//     steps in that run that are timed from it (T#40m in their template step means 40 minutes after). It writes only
+//     due_date, and the time of those steps' reminders that count from their due date (Vikunja works those out only
+//     when a task is saved through it). It writes only on steps of that run, in the same project, that aren't done.
+//     It writes nothing else, not even the time a task was last changed. When the step is marked not done again, it
+//     removes those due dates, and the reminders' times with them, so no reminder goes off for a step that is still
+//     waiting. All of this is in writeStepDueDates.
 //     Turn it on in config.yml, or with the environment variable VIKUNJA_PLUGINS_POCKET_STEPTIMES=true:
 //
 //	plugins:
@@ -61,14 +62,14 @@ import (
 type Pocket struct{ dir string }
 
 func (p *Pocket) Name() string    { return "pocket" }
-func (p *Pocket) Version() string { return "0.0.0-dev" } // set from the tag when a release is made
+func (p *Pocket) Version() string { return "0.0.0-dev" } // replaced with the tag when a release is made
 func (p *Pocket) Shutdown() error { return nil }
 
-// Init turns on step times if asked to, and finds the app/ folder. Vikunja doesn't tell a plugin where it lives, so
-// this looks in POCKET_APP_DIR, then in plugins/pocket/app under the working directory (Vikunja's rootpath on Cloudron
-// and in Docker).
+// Init turns on step times if the config asks for them, and finds the app/ folder. Vikunja doesn't tell a plugin where
+// it is installed, so Init looks in POCKET_APP_DIR, then in plugins/pocket/app under the working directory (which is
+// Vikunja's rootpath on Cloudron and in Docker).
 func (p *Pocket) Init() error {
-	// Vikunja starts its events after its plugins, so a listener added here hears every one.
+	// Vikunja starts its events after its plugins, so a listener added here receives every event.
 	if viper.GetBool("plugins.pocket.steptimes") {
 		events.RegisterListener((&models.TaskUpdatedEvent{}).Name(), &stepTimes{})
 		log.Infof("pocket: step times on: a checklist step marked done sets the due dates of the steps timed from it")
@@ -92,14 +93,14 @@ func (p *Pocket) Init() error {
 }
 
 func (p *Pocket) RegisterUnauthenticatedRoutes(g *echo.Group) {
-	// Without the trailing slash, the page's relative links would point one folder up.
+	// Without the trailing slash, the page's relative links would resolve one folder too high.
 	g.GET("/pocket", func(c *echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, c.Request().URL.Path+"/")
 	})
 	g.GET("/pocket/*", p.serve)
 }
 
-// Types Go might not know, or might guess differently.
+// Content types that Go might not know, or might guess differently.
 var contentTypes = map[string]string{
 	".html":        "text/html; charset=utf-8",
 	".js":          "text/javascript; charset=utf-8",
@@ -111,7 +112,7 @@ func (p *Pocket) serve(c *echo.Context) error {
 	if p.dir == "" {
 		return echo.NewHTTPError(http.StatusNotFound, "not found")
 	}
-	// Cleaning a rooted path drops any "..", and the prefix check below makes sure nothing outside app/ is served.
+	// Cleaning a rooted path removes any "..", and the prefix check below makes sure nothing outside app/ is served.
 	name := path.Clean("/" + c.Param("*"))
 	if name == "/" {
 		name = "/index.html"
@@ -120,7 +121,7 @@ func (p *Pocket) serve(c *echo.Context) error {
 	if !strings.HasPrefix(file, p.dir+string(filepath.Separator)) {
 		return echo.NewHTTPError(http.StatusNotFound, "not found")
 	}
-	// The compressed copies of the page are sent only in its place (below), never under their own names.
+	// The compressed copies of the page are sent only in place of index.html (below), never under their own names.
 	if ext := path.Ext(name); ext == ".br" || ext == ".gz" {
 		return echo.NewHTTPError(http.StatusNotFound, "not found")
 	}
@@ -133,13 +134,14 @@ func (p *Pocket) serve(c *echo.Context) error {
 		h.Set("Content-Type", t)
 	}
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Security-Policy", "frame-ancestors 'none'") // no framing by other sites
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'") // other sites can't embed Pocket in a frame
 	h.Set("Referrer-Policy", "no-referrer")
 	if name == "/index.html" {
-		h.Set("Cache-Control", "no-cache") // pick up a new version as soon as it's uploaded
+		h.Set("Cache-Control", "no-cache") // browsers pick up a new version as soon as it is uploaded
 		h.Set("Vary", "Accept-Encoding")
-		// The build also writes the page compressed (index.html.br and .gz, a fifth and a quarter of its size): sent to
-		// a browser that takes it, with the page's own time, which Pocket asks by whether there's a new version.
+		// The build also writes compressed copies of the page (index.html.br and .gz, a fifth and a quarter of its size).
+		// They go to browsers that accept them, with the page's own modified time, so Pocket's check for a new version
+		// works the same on a compressed copy.
 		if enc, ext := pageEncoding(c.Request().Header.Get("Accept-Encoding")); enc != "" {
 			if f, err := os.Open(file + ext); err == nil {
 				defer f.Close()
@@ -152,8 +154,8 @@ func (p *Pocket) serve(c *echo.Context) error {
 	return c.File(file)
 }
 
-// The compressed page to send for an Accept-Encoding header ("gzip, deflate, br"): brotli if it's taken, then gzip,
-// and "" for the page as it is. One with q=0 ("br;q=0") isn't taken.
+// pageEncoding returns the compressed page to send for an Accept-Encoding header such as "gzip, deflate, br". It
+// prefers brotli, then gzip, and returns "" for the uncompressed page. An encoding with q=0 ("br;q=0") is refused.
 func pageEncoding(accept string) (string, string) {
 	taken := map[string]bool{}
 	for _, part := range strings.Split(accept, ",") {
@@ -179,29 +181,32 @@ func pageEncoding(accept string) (string, string) {
 
 /* ---------- step times ---------- */
 
-/* A template step's title says when a run's copy of it is due, as Pocket's app reads it (parseStep in index.html):
+/* A template step's title says when a run's copy of that step is due. This is how Pocket's app reads it (parseStep in
+   index.html):
      T#20m          20 minutes after the step before it is done
      {#roast}       names the step "roast"
      T#40m:roast    40 minutes after the step named "roast" is done
-   Units d, h, m, s and ms, combined as in T#1h30m, up to a year. Pocket checks templates when they're made, changed and
-   started, so anything else here (T#-10m, a name used twice) is simply not a time. */
+   The units are d, h, m, s and ms, combined as in T#1h30m, up to a year. Pocket checks templates when they are made,
+   changed and started, so anything else here (T#-10m, a name used twice) is simply not a time. */
 var (
 	stepTimeRe = regexp.MustCompile(`(?i)(?:^|\s)T#((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::([a-z][\w-]*))?(?:\s|$)`)
 	stepUnitRe = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)(ms|d|h|m|s)`)
 	stepNameRe = regexp.MustCompile(`\{#([A-Za-z][\w-]*)\}`)
 	stepUnits  = map[string]float64{"d": 86400000, "h": 3600000, "m": 60000, "s": 1000, "ms": 1}
-	stepMax    = 365 * 86400000.0 // a year, in ms, as index.html
-	// A run keeps what it was started from (checklists.js): "pocket:run" in its description, and "pocket:step <its
-	// template step's title then>" in each step's, so a template changed or deleted since changes only later runs.
+	stepMax    = 365 * 86400000.0 // a year in ms, the same limit as index.html
+	// A run keeps what it was started from (checklists.js). Its description has "pocket:run", and each step's description
+	// has "pocket:step <title of the template step when the run started>". Changing or deleting the template later
+	// then affects only later runs.
 	runLineRe  = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:run\s*(?:<|$)`)
 	stepLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:step\s+([^<\n]+)`)
-	// A run's own order, "pocket:order 12 15 13", written when it starts and when a step is inserted; and "pocket:added"
-	// on a step inserted during the run, or repeated (which also keeps the "pocket:step" line of the one it repeats).
+	// A run's step order, "pocket:order 12 15 13", is written when the run starts and when a step is inserted. A step
+	// inserted or repeated during the run gets "pocket:added". A repeated step also keeps the "pocket:step" line of the
+	// step it repeats.
 	orderLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:order((?:\s+\d+)*)\s*(?:<|$)`)
 	addedLineRe = regexp.MustCompile(`(?im)(?:^|>)\s*pocket:added\s*(?:<|$)`)
 )
 
-// The ids in a run's order line, by where they are in it; nil for a run without one.
+// orderOf returns each task id in a run's order line with its index in that line, or nil for a run without an order line.
 func orderOf(desc string) map[int64]int {
 	m := orderLineRe.FindStringSubmatch(desc)
 	if m == nil {
@@ -218,7 +223,8 @@ func orderOf(desc string) map[int64]int {
 	return at
 }
 
-// A run's step's template step title when the run started, from its description; ok false for a run started before.
+// stepLineOf reads, from a step's description, the title its template step had when the run started. ok is false for a
+// step in a run started before steps kept this line.
 func stepLineOf(desc string) (title string, ok bool) {
 	m := stepLineRe.FindStringSubmatch(desc)
 	if m == nil {
@@ -230,12 +236,12 @@ func stepLineOf(desc string) (title string, ok bool) {
 type stepTime struct {
 	timed  bool
 	offset time.Duration
-	ref    string // the name it counts from, or "" for the step before
+	ref    string // the name of the step it counts from, or "" for the previous step
 	name   string
 }
 
 func parseStepTime(title string) stepTime {
-	// Any kind of space is a space, as in JavaScript, where Pocket checks the same title.
+	// Treat every kind of whitespace as a space, because JavaScript does, and Pocket checks the same title there.
 	title = strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) || r == 0xFEFF {
 			return ' '
@@ -259,7 +265,7 @@ func parseStepTime(title string) stepTime {
 	return st
 }
 
-// The fields of a task.updated event this needs.
+// The fields of a task.updated event that the plugin uses.
 type eventTask struct {
 	ID     int64     `json:"id"`
 	Done   bool      `json:"done"`
@@ -269,7 +275,7 @@ type taskEvent struct {
 	Task eventTask `json:"task"`
 }
 
-// Each time a task was marked done that's been acted on: task id and done_at, kept for stepFresh.
+// A time a task was marked done that the plugin has already acted on: the task id and its done_at. Kept for stepFresh.
 type stepTick struct{ id, at int64 }
 
 var (
@@ -282,12 +288,13 @@ type stepTimes struct{}
 
 func (l *stepTimes) Name() string { return "pocket.steptimes" }
 
-// Handle hears every task update and acts once on each time a task is marked done. Vikunja's event doesn't say what
-// changed, but done_at changes only when a task is marked done: so a done task whose done_at is recent, and not acted on
-// already. Saving it again, labelling or assigning it changes nothing; marking it not done forgets it, so the next tick
-// counts even within the same second, and takes the due dates it set off the steps waiting on it. (Just after Vikunja
-// restarts, an edit within stepFresh of the tick can set the same dates again.) Our own writes send no event at all.
-// Returning an error makes Vikunja try again, a few times.
+// Handle receives every task update and acts once each time a task is marked done. Vikunja's event doesn't say what
+// changed. But done_at changes only when a task is marked done, so Handle acts on a done task whose done_at is recent
+// and not yet acted on. Saving the task again, labelling it or assigning it does nothing. Marking it not done forgets
+// the earlier mark, so the next time it is marked done counts even within the same second. It also removes the due
+// dates that mark set on the steps waiting for it. (Just after Vikunja restarts, an edit within stepFresh of the mark
+// can set the same dates again.) The plugin's own writes send no event. If Handle returns an error, Vikunja tries
+// again a few times.
 func (l *stepTimes) Handle(msg *message.Message) error {
 	ev := taskEvent{}
 	if err := json.Unmarshal(msg.Payload, &ev); err != nil {
@@ -324,7 +331,7 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 		return err
 	}
 	if !handled {
-		return nil // undone since, or done again: that tick's own event is acted on in its turn
+		return nil // marked not done since, or done again: the event for that change is handled separately
 	}
 	stepTicksMu.Lock()
 	for k, at := range stepTicks {
@@ -337,13 +344,14 @@ func (l *stepTimes) Handle(msg *message.Message) error {
 	return nil
 }
 
-// setStepDueDates: given a task marked done at doneAt that is a step of a checklist run, it sets the due date of each
-// step of the same run timed from it (writeStepDueDates). handled: whether the task was still done at doneAt, so this
-// tick is dealt with.
+// setStepDueDates takes a task that was marked done at doneAt. If it is a step of a checklist run, the function sets
+// the due date of each step in the same run that is timed from it (see writeStepDueDates). handled reports whether the
+// task was still done at doneAt. If so, this mark as done is dealt with.
 //
-// Vikunja lets anyone link a task they can edit to one they can only see, so the run is taken only as Pocket makes
-// one: the run and its steps in the done step's project, and each step's offset read from its own "pocket:step" line
-// or, for a run started before runs kept them, from a step of its template, in the project and labelled "template".
+// Vikunja lets anyone link a task they can edit to a task they can only view. So the plugin accepts a run only in the
+// shape Pocket makes: the run and its steps are in the done step's project. Each step's offset comes from its own
+// "pocket:step" line. For a run started before runs kept that line, it comes from a step of the run's template, which
+// must be in the same project and have the label "template".
 func setStepDueDates(stepID int64, doneAt time.Time) (handled bool, err error) {
 	s := db.NewSession()
 	defer s.Close()
@@ -355,9 +363,10 @@ func setStepDueDates(stepID int64, doneAt time.Time) (handled bool, err error) {
 	return true, writeStepDueDates(s, step)
 }
 
-// clearStepDueDates: given a task marked not done, if it's a step of a checklist run, the steps timed from it that
-// aren't done have no due date until it's done again, as Pocket shows them (or, if it was repeated, count from a copy
-// still done). Read again, as events can arrive out of order: a step done again since is left to that tick.
+// clearStepDueDates takes a task that was marked not done. If it is a step of a checklist run, the steps timed from it
+// that aren't done lose their due date until it is done again, as Pocket shows them. If the step was repeated, they
+// count from a copy that is still done instead. The task is read again because events can arrive out of order. A step
+// that was marked done again since is left to the event for that change.
 func clearStepDueDates(stepID int64) error {
 	s := db.NewSession()
 	defer s.Close()
@@ -369,14 +378,16 @@ func clearStepDueDates(stepID int64) error {
 	return writeStepDueDates(s, step)
 }
 
-// writeStepDueDates is the only place the plugin writes to Vikunja's data. Given a step of a checklist run, it sets
-// the due date of each step of the same run timed from it to when it was done (or the last of its repeats was) plus the
-// offset in that step's template step title, or, when none of them is done, to none. It writes only due_date (not even
-// "updated"), and the time of the step's reminders counted from its due date, only on steps of that run in its project
-// that aren't done, and only when the date changes.
+// writeStepDueDates is the only place the plugin writes to Vikunja's data. It takes a step of a checklist run and sets
+// the due date of each step in the same run that is timed from it. The date is when the step was done (or when the last
+// of its repeats was done) plus the offset in the timed step's template step title. If none of them is done, the date
+// is cleared. It writes only due_date (not even "updated") and the time of the timed step's reminders that count from
+// its due date. It writes only on steps of that run, in the step's project, that aren't done, and only when the date
+// changes.
 func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 	stepID, project := step.ID, step.ProjectID
-	// The run it's a step of: a copy of a template, and not a template itself, nor one still being set up.
+	// Find the run this step belongs to. It must be a copy of a template, not a template itself and not one still being
+	// set up.
 	parents, err := relatedIDs(s, stepID, "parenttask")
 	if err != nil || len(parents) != 1 {
 		return err
@@ -388,8 +399,9 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 	if tpl, err := isTemplate(s, run.ID); err != nil || tpl {
 		return err
 	}
-	// Its template's steps, for a run started before runs kept their steps' times: the template it was copied from, in
-	// the project and labelled "template". A run that keeps them needs no template: it may have been deleted since.
+	// The template's steps, for a run started before runs kept their steps' times. The template is the one the run was
+	// copied from, in the same project, with the label "template". A run that keeps the times needs no template, which
+	// may have been deleted since.
 	tplSteps := map[int64]*models.Task{}
 	from, err := relatedIDs(s, run.ID, "copiedfrom")
 	if err != nil {
@@ -419,12 +431,13 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 		}
 	}
 	if len(tplSteps) == 0 && !runLineRe.MatchString(run.Description) {
-		return nil // not a run Pocket made
+		return nil // Pocket didn't make this run
 	}
 
-	// The run's steps in their order: its own order line, written when it starts and when a step is inserted, then any it
-	// doesn't list in the order they were copied, by id, as Pocket shows them. All of them, wherever they are, so "the
-	// step before" is the one Pocket shows before it; only those in the project are written to.
+	// Put the run's steps in the order Pocket shows them. The run's order line (written when the run starts and when a
+	// step is inserted) comes first, then any steps it doesn't list, in the order they were copied, by id. This includes
+	// steps in other projects, so "the previous step" is the one Pocket shows before this step. Only steps in this
+	// project are written to.
 	runStepIDs, err := relatedIDs(s, run.ID, "subtask")
 	if err != nil || len(runStepIDs) < 2 {
 		return err
@@ -462,12 +475,13 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 			fromOf[r.TaskID] = t
 		}
 	}
-	/* Each step's time, read from its own line or else from the template step it was copied from, and its group. "The
-	   step before" and a name are read among the template's steps only. A step inserted during the run ("pocket:added",
-	   with no template step) has no time, and timing doesn't see it. A repeated step (added, with the line of the one it
-	   repeats) has no time of its own, but joins that one's group: a step timed from the group counts from whichever of
-	   it was done last. group[i] is the index of the step's template step in steps, or -1. */
-	// One assignment a line: Yaegi gets an index and an append in the same assignment wrong.
+	/* Read each step's time and group. The time comes from the step's own line, or else from the template step it was
+	   copied from. "The previous step" and step names are looked up among the template's steps only. A step inserted
+	   during the run ("pocket:added", with no template step) has no time, and the timing ignores it. A repeated step
+	   (added, with the line of the step it repeats) has no time of its own but joins that step's group. A step timed
+	   from a group counts from whichever step in the group was done last. group[i] is the index in steps of step i's
+	   template step, or -1. */
+	// Keep each of these to one assignment per line, because Yaegi gets an index and an append in the same assignment wrong.
 	steps, place, at := []stepTime{}, []int{}, -1
 	group, lines := make([]int, len(ids)), make([]string, len(ids))
 	for i, id := range ids {
@@ -497,7 +511,7 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 	if at < 0 || group[at] < 0 {
 		return nil
 	}
-	// When the group was last done; none if none of it is done any more.
+	// The time the group was last done. It stays zero if no step in the group is done any more.
 	g := group[at]
 	last := time.Time{}
 	for i, id := range ids {
@@ -527,8 +541,8 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 			_ = s.Rollback()
 			return err
 		}
-		// A reminder counted from the due date (Pocket gives timed steps one at it) moves with it, as Vikunja would
-		// move it if the date were saved through Vikunja: without a due date, to none, which Vikunja never sends.
+		// A reminder relative to the due date (Pocket gives timed steps one) moves with it, as it would if the date were
+		// saved through Vikunja. When there is no due date, the reminder is cleared, which Vikunja never does on its own.
 		reminders := []*models.TaskReminder{}
 		if err := s.Where("task_id = ? AND relative_to = ?", dep.ID, "due_date").Find(&reminders); err != nil {
 			_ = s.Rollback()
@@ -552,7 +566,7 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 	return s.Commit()
 }
 
-// A task, if it's in the project; nil if not.
+// taskIn returns the task if it is in the project, or nil if it is not.
 func taskIn(s *xorm.Session, id, project int64) (*models.Task, error) {
 	t := &models.Task{}
 	if has, err := s.ID(id).Get(t); err != nil || !has || t.ProjectID != project {
@@ -561,7 +575,8 @@ func taskIn(s *xorm.Session, id, project int64) (*models.Task, error) {
 	return t, nil
 }
 
-// stepFrom is which step a timed step counts from: the one before it, or the earlier one with its name; -1 if none.
+// stepFrom returns the index of the step that timed step i counts from. That is the previous step, or the earlier step
+// with the name it refers to. It returns -1 if there is none.
 func stepFrom(steps []stepTime, i int) int {
 	if steps[i].ref == "" {
 		return i - 1
@@ -574,7 +589,8 @@ func stepFrom(steps []stepTime, i int) int {
 	return -1
 }
 
-// The tasks related to a task by one kind of relation, in the order the relations were made.
+// relatedIDs returns the ids of the tasks related to a task by one kind of relation, in the order the relations were
+// made.
 func relatedIDs(s *xorm.Session, taskID int64, kind string) ([]int64, error) {
 	rels := []*models.TaskRelation{}
 	if err := s.Where("task_id = ? AND relation_kind = ?", taskID, kind).OrderBy("id").Find(&rels); err != nil {
@@ -587,7 +603,7 @@ func relatedIDs(s *xorm.Session, taskID int64, kind string) ([]int64, error) {
 	return ids, nil
 }
 
-// Whether a task has the label "template", as Pocket marks a template.
+// isTemplate reports whether a task has the label "template", which is how Pocket marks a template.
 func isTemplate(s *xorm.Session, taskID int64) (bool, error) {
 	links := []*models.LabelTask{}
 	if err := s.Where("task_id = ?", taskID).Find(&links); err != nil || len(links) == 0 {
@@ -609,10 +625,10 @@ func isTemplate(s *xorm.Session, taskID int64) (bool, error) {
 	return false, nil
 }
 
-// One instance for every factory, as Vikunja's example plugin does.
+// Every factory returns this one instance, as Vikunja's example plugin does.
 var singleton = &Pocket{}
 
 func NewPlugin() plugins.Plugin { return singleton }
 
-// Yaegi needs a factory typed as the router interface for Vikunja to see the routes.
+// Yaegi needs this factory typed as the router interface, or Vikunja doesn't see the routes.
 func NewUnauthenticatedRouterPlugin() plugins.UnauthenticatedRouterPlugin { return singleton }

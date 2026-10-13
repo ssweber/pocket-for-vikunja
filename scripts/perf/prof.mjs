@@ -1,8 +1,9 @@
-// A CPU profile of one step in Pocket against the measuring Vikunja (up.mjs), with its time by function (agg.mjs).
+// Takes a CPU profile of one step in Pocket against the benchmark Vikunja (up.mjs) and prints the time per function
+// (agg.mjs).
 //   node scripts/perf/prof.mjs [big|done|today] [--cpu 4] [--mine]
-// big: Today -> Big; done: Big's Done opened; today: Pocket opened again on Today. Writes
+// big goes from Today to Big. done opens Big's Done section. today reopens Pocket on Today. The profile is written to
 // test-results/perf/prof-<step>.cpuprofile, which Chrome's developer tools open (Performance, Load profile). Pocket's
-// page is minified: for names worth reading, run Vikunja on an unminified build (scripts/perf/README.md).
+// page is minified, so for readable function names run Vikunja on an unminified build (scripts/perf/README.md).
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -23,7 +24,7 @@ const page = await ctx.newPage();
 const cdp = await ctx.newCDPSession(page);
 await cdp.send('Emulation.setCPUThrottlingRate', { rate: +arg('cpu', 1) });
 const fresh = () => page.waitForFunction(() => document.querySelector('#view .row') && !document.querySelector('#view .loading') && !document.querySelector('#view[aria-busy="true"]'), null, { timeout: 900000, polling: 200 });
-// Signed in (once: the browser's profile keeps it), with the page Vikunja serves now rather than one saved before.
+// Sign in (only once, because the browser profile keeps it), using the page Vikunja serves now, not a cached one.
 await page.goto(APP + '#/today');
 await page.evaluate(async () => { for (const k of await caches.keys()) await caches.delete(k); for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); });
 await page.reload();
@@ -38,7 +39,7 @@ await page.waitForTimeout(500); await fresh(); await page.waitForTimeout(3000);
 if (STEP === 'done') {
   await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);
   await page.waitForTimeout(300); await fresh(); await page.waitForTimeout(3000);
-  if (await page.getAttribute('#sec-done', 'aria-expanded') === 'true') await page.click('#sec-done');   // left open last time
+  if (await page.getAttribute('#sec-done', 'aria-expanded') === 'true') await page.click('#sec-done');   // the previous run left it open
 }
 await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 500 }); await cdp.send('Profiler.start');
 const t0 = Date.now();
@@ -50,5 +51,5 @@ const ms = Date.now() - t0;
 const { profile } = await cdp.send('Profiler.stop');
 writeFileSync(join(OUT, `prof-${STEP}.cpuprofile`), JSON.stringify(profile));
 console.log(`step ${STEP}: ${ms} ms\n${report(profile, 45, process.argv.includes('--mine'))}`);
-if (STEP === 'done') await page.click('#sec-done');                         // closed again, as the next run expects
+if (STEP === 'done') await page.click('#sec-done');                         // close it again, as the next run expects
 await ctx.close(); proxy.kill();

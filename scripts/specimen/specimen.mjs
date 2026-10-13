@@ -1,5 +1,5 @@
-// The specimen page's code: Pocket's own Alpine component, as the app has it, given made-up tasks instead of signing in,
-// so the task row can be seen in every state. Nothing here is sent anywhere: the rows can't be tapped (inert).
+// The specimen page's code. It runs Pocket's own Alpine component with made-up tasks instead of signing in, so the task
+// row can be seen in every state. Nothing is sent anywhere, and the rows can't be tapped (inert).
 import {directives, globals, pocket} from '../../src/js/component.js';
 import {setApp} from '../../src/js/util.js';
 import {CHECKLIST_MARK} from '../../src/js/checklists.js';
@@ -17,15 +17,15 @@ const at = ms => new Date(Date.now() + ms).toISOString();
 const me = {id: 1, username: 'alex', name: 'Alex'}, jamie = {id: 2, username: 'jamie', name: 'Jamie'}, sam = {id: 3, username: 'sam', name: ''};
 const label = (id, title, hex_color) => ({id, title, hex_color});
 let n = 100;
-// A task as Vikunja gives it, with only what a row reads.
+// A task as Vikunja returns it, with only the fields a row reads.
 const task = fields => ({id: ++n, title: 'A task', done: false, priority: 0, due_date: ZERO, project_id: 1, labels: null, assignees: null, percent_done: 0,
   comment_count: 0, attachments: null, reminders: null, repeat_after: 0, repeat_mode: 0, description: '', related_tasks: {}, created_by: me, ...fields});
 
 const projects = [{id: 1, title: 'Café', hex_color: '1d6b52'}, {id: 2, title: 'Checklists', hex_color: 'b8860b', description: `<p>${CHECKLIST_MARK}</p>`},
   {id: 3, title: 'Head office', hex_color: '6a5acd'}, {id: 4, title: 'Upkeep', hex_color: '3d85c6'}, {id: 5, title: 'My own', hex_color: 'c0504d'}];
 
-// The sections of the page: each a list of rows, as `g` is to a row in the app (its depth under the task above it,
-// and whether it's in a task's sheet).
+// The sections of the page. Each section is a list of rows with a `g` object, the same object the app gives a row. `g`
+// holds each row's depth under the task above it, and whether the row is in a task's sheet.
 function sections(){
   const top = task({title: 'Set up the new till'}), d1 = task({title: 'Unbox it', related_tasks: {parenttask: [{id: top.id}]}});
   const d2 = task({title: 'Find the receipt roll', related_tasks: {parenttask: [{id: d1.id}]}});
@@ -35,13 +35,13 @@ function sections(){
   const tables = task({title: 'Set out the tables', state: {drag: 70}});
   const hall = task({title: 'Book the hall', state: {aimed: true}}), van = task({title: 'Pack the van'});
   const load = task({title: 'Load chairs', state: {aimed: true}, related_tasks: {parenttask: [{id: van.id}]}});
-  // Subtasks added from the add box (quickadd.js: aimAdded): the last added has the light, its task's own row dark.
+  // Subtasks added from the add box (quickadd.js: aimAdded). The most recently added one is highlighted, and the parent's row is not.
   const crates = task({title: 'Pack the crates'}), under = (title, more) => ({...task({title, related_tasks: {parenttask: [{id: crates.id}]}}), ...more});
   const added = [under('Rope', {id: 'pending-specimen-2', pending: true, waits: true, entry: 'specimen', index: 1}),
     under('Straps', {id: 'pending-specimen-3', pending: true, waits: true, entry: 'specimen', index: 2, state: {aimed: true}}),
     under('Tarp', {id: 'pending-specimen-4', pending: true, entry: 'specimen', index: 3, state: {aimed: true}}), under('Hooks', {state: {aimed: true, flash: 'fresh'}})];
   const chairs = task({title: 'Wipe the chairs', state: {drag: 70, with: true}, related_tasks: {parenttask: [{id: tables.id}]}});
-  // A done task with subtasks still open (ticked done on the web, say): over them, struck through, on a project's list.
+  // A task marked done while it still has open subtasks (done in the web app, say). In a project's list its title is struck through, above its subtasks.
   const party = task({title: 'Plan the staff party', done: true}), cake = task({title: 'Order the cake', related_tasks: {parenttask: [{id: party.id}]}});
   const mover = task({title: 'Pack the van', done: true, assignees: [me], state: {leaving: 'done'}});
   const moverKid = task({title: 'Load chairs', done: true, related_tasks: {parenttask: [{id: mover.id}]}, state: {leaving: 'done'}});
@@ -49,24 +49,27 @@ function sections(){
   const poles = task({title: 'Tie down the poles', related_tasks: {parenttask: [{id: tent.id}]}, done: true, state: {swept: true}});
   const room = task({title: 'Book the back room', due_date: at(30 * HOUR), related_tasks: {parenttask: [{id: party.id}]}});
   const run = task({title: 'Opening up · Oct 7', project_id: 2, related_tasks: {copiedfrom: [{id: 900}], subtask: steps}, assignees: [me, jamie]});
-  // A long run, of 16 steps: its ring, as any run's.
+  // A checklist with 16 steps. Its ring works the same as any checklist's.
   const long = task({title: 'Deep clean · Oct 5', project_id: 2, assignees: [jamie], related_tasks: {copiedfrom: [{id: 899}],
     subtask: Array.from({length: 16}, (_, i) => ({id: 950 + i, title: 'Step ' + (i + 1), done: i < 5}))}});
-  // A step of a run you've claimed, on Today, beside a task: square and round.
+  // A step of a checklist you've claimed, on Today, next to a task. The step's box is square and the task's is round.
   const stepRow = task({title: 'Take the croissants out', project_id: 2, assignees: [me], related_tasks: {parenttask: [{id: run.id, title: run.title}], copiedfrom: [{id: 903}]}});
   const subRow = task({title: 'Book the back room', assignees: [me]});
-  // A run's step counting down, with the reminder Pocket gave it for that: no 🔔, the countdown says it; a task's has one.
+  // A checklist step counting down, with the reminder Pocket gave it for that. It shows no 🔔 because the countdown already says it, while a task's reminder shows one.
   const timed = task({title: 'Take the croissants out', project_id: 2, due_date: at(18 * 6e4), reminders: [{reminder: at(18 * 6e4)}], related_tasks: {parenttask: [{id: run.id, title: run.title}], copiedfrom: [{id: 903}]}});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
     task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
     task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
-  // Today's stacked cards (cards.js): a task of high priority with one subtask of five done and four open (one of them
-  // yours), opened by its footer's More; a run with a step counting down; a run started from a template that came round, due
-  // when it was; a task with one subtask open, so no footer; and one of 14, twelve done, of low priority
-  // (its ring's 12/14 set smaller, to fit). Plain rows between them: two after the opened card, one after the run's
-  // tab, each a block of its own with its corners rounded where a card's gap or footer cuts the list. Their subtasks are in
-  // the store, as Today keeps them. A run's heading reads as a task's: its name without the day it was started
-  // (runWithoutDay), and when it's due at the right.
+  // Today's stacked cards (cards.js). The cards are:
+  // - a high-priority task with five subtasks, one done and four open (one of them yours), opened with its footer's More
+  // - a checklist with a step counting down
+  // - a checklist due at 6 PM, started from a template that was due again
+  // - a task with one open subtask, so it has no footer
+  // - a low-priority task with 14 subtasks, twelve done (its ring's "12/14" is set smaller to fit)
+  // Plain rows sit between the cards, two after the opened card and one after the checklist's tab. Each group of rows is
+  // its own block, with rounded corners where a card's gap or footer cuts the list. The cards' subtasks are in the store,
+  // as Today keeps them. A checklist's heading reads like a task's. It shows the name without the day the checklist
+  // was started (runWithoutDay), and the due time at the right.
   const now = new Date(), day = now.toLocaleDateString([], {month: 'short', day: 'numeric'}), six = new Date(now); six.setHours(18, 0, 0, 0);
   const dayAt = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString(); };
   const kid = (id, f) => task({id, related_tasks: {parenttask: [{id: f.under}]}, ...f});
@@ -75,9 +78,9 @@ function sections(){
   const closing = task({title: `Closing up · ${day} · #5`, created: now.toISOString(), due_date: six.toISOString(), project_id: 2, assignees: [me, jamie], related_tasks: {copiedfrom: [{id: 897}], subtask: [{id: 751}, {id: 752}]}});
   const sign = task({title: 'Repaint the sign', related_tasks: {subtask: [{id: 721, done: true}, {id: 722, done: true}, {id: 723}]}});
   const shelves = task({title: 'Stock the new shelves in the back room before the delivery comes', priority: 1, related_tasks: {subtask: Array.from({length: 14}, (_, i) => ({id: 731 + i, done: i < 12}))}});
-  /* A card whose rows have the most at their right (rows-and-sheet-fixes-plan, part 4), opened: a priority and a time
-     before "+ me" ("10:30a"), noon ("12p") and a whole hour ("3p"), and a subtask in another project, which keeps its
-     own dot while the rest leave theirs to the header; one with nothing there, its title's the whole row. */
+  /* An opened card whose rows show the most at their right end: a priority and a time before "+ me" ("10:30a"), noon
+     ("12p"), a whole hour ("3p"), and a subtask in another project. That subtask keeps its own project dot, while the
+     other rows leave the dot to the card's header. One row has nothing at its right end, so its title fills the row. */
   const tasting = task({title: 'Get ready for the tasting evening', due_date: dayAt(0, 18, 30), priority: 2, related_tasks: {subtask: [{id: 1401}, {id: 1402}, {id: 1403}, {id: 1404}]}});
   const cardSubs = [kid(1401, {under: tasting.id, title: 'Print the tasting notes', due_date: dayAt(0, 10, 30), priority: 3}),
     kid(1402, {under: tasting.id, title: 'Borrow glasses from next door', project_id: 4, due_date: dayAt(0, 12), priority: 1}),
@@ -91,18 +94,19 @@ function sections(){
     kid(752, {under: closing.id, project_id: 2, title: 'Lock the door', related_tasks: {parenttask: [{id: closing.id}], copiedfrom: [{id: 5}]}}),
     kid(723, {under: sign.id, title: 'Varnish it', assignees: [sam]}),
     ...Array.from({length: 14}, (_, i) => kid(731 + i, {under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 12}))];
-  // Today's rows, on one line (line: section 9): the title cut short; and at the right its priority's bars, small, from
-  // none to do now (one-concept-plan, part 4), when it's due, short (a time today, "10:30a" where the browser writes
-  // "10:30 AM", a weekday this week, a date beyond, red when late), and the project's dot.
+  // Today's rows, each on one line. The title is cut short. At the right are small priority bars (from none to do now),
+  // a short due time, and the project's dot. The due time is a time today ("10:30a" where the browser writes
+  // "10:30 AM"), a weekday this week, or a date beyond that, and it is red when late.
   const today = [task({title: 'Post next week’s rota', due_date: dayAt(0, 10, 30), priority: 3}),
     task({title: 'Call the plumber about the dishwasher that leaks under the sink again', due_date: dayAt(0, 15, 30), priority: 1, assignees: [jamie]}),
     task({title: 'Pay the milk invoice', due_date: dayAt(-2, 9), priority: 4, project_id: 4}),
     task({title: 'Order the cups', due_date: dayAt(2, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(12, 0)}),
     task({title: 'Fix the till drawer', due_date: dayAt(0, 9), priority: 5, assignees: [me]})];
-  /* A project's open list (cards 'list'): a task whose open subtasks are on its card, open for good, in its List view's
-     order (one with a subtask of its own, a row that opens its sheet; one waiting to be sent, added from the add box);
-     a task with none, a row; a task done over a subtask still open, its title struck through; and a run in progress,
-     its open steps on it in its order. */
+  /* A project's open list (cards 'list'). A task with open subtasks shows them on its card, which stays open, in the
+     order of Vikunja's List view. One of those subtasks has a subtask of its own, shown as a row that opens its sheet.
+     Another is waiting to be sent after being added from the add box. A task with no subtasks is a plain row. A done
+     task with an open subtask has its title struck through. A checklist in progress shows its open steps on its card,
+     in their order. */
   const launch = task({title: 'Plan the launch party', related_tasks: {subtask: [{id: 761}, {id: 762, done: true}, {id: 763}, {id: 764}]}});
   const plain = task({title: 'Water the plants'});
   const staff = task({title: 'Plan the staff party', done: true, related_tasks: {subtask: [{id: 771}]}});
@@ -117,9 +121,10 @@ function sections(){
     kid(783, {under: closing2.id, project_id: 2, title: 'Lock the door', related_tasks: {parenttask: [{id: closing2.id}], copiedfrom: [{id: 7}]}})];
   const project = {list: [plain, launch, staff, closing2, ...projectSubs], heads: [staff.id],
     positions: {[launch.id]: 10, [plain.id]: 20, [staff.id]: 30, [closing2.id]: 40, 761: 1, 763: 2, 764: 3, 765: 1, 771: 1}};
-  /* A parent's ring (parent-tasks-plan, part 3), on Today's cards: one subtask of four at 50%, so 13%; two of four done,
-     50%; none of three; every one done, waiting for Close; one closed by its ring, a gap with Undo; a header swiped right
-     part way (it springs back: no progress of its own), and one swiped left onto its Delete. */
+  /* A parent's ring on Today's cards, in these states: one subtask of four at 50%, so 13%. Two of four done, so 50%.
+     None of three done. Every subtask done, waiting for Close. Closed by the ring, which leaves a gap with Undo. A
+     header swiped right part way, which springs back because a parent has no progress of its own. A header swiped left
+     onto its Delete. */
   const wall = task({title: 'Paint the back wall', related_tasks: {subtask: [{id: 1101}, {id: 1102}, {id: 1103}, {id: 1104}]}});
   const menu = task({title: 'Print the new menus', priority: 2, related_tasks: {subtask: [{id: 1111, done: true}, {id: 1112, done: true}, {id: 1113}, {id: 1114}]}});
   const rota = task({title: 'Write the summer rota', related_tasks: {subtask: [{id: 1121}, {id: 1122}, {id: 1123}]}});
@@ -133,11 +138,15 @@ function sections(){
     kid(1131, {under: till.id, title: 'Unbox it', done: true}), kid(1132, {under: till.id, title: 'Plug it in', done: true}), kid(1133, {under: till.id, title: 'Test a sale', done: true}),
     kid(1141, {under: bins.id, title: 'Kitchen', done: true}), kid(1142, {under: bins.id, title: 'Yard', done: true}),
     kid(1151, {under: floor.id, title: 'Sweep first'}), kid(1152, {under: floor.id, title: 'Mop'}), kid(1161, {under: sink.id, title: 'Buy a washer'}), kid(1162, {under: sink.id, title: 'Fit it'})];
-  /* A task's sheet led by its row (parent-tasks-plan, 6b): a task at 50% with notes and two photos, Jamie on it, the
-     whole sheet under it; a subtask with no notes or photos, its parent in the path; a parent, its ring at 13% (one
-     subtask of four at 50%), its subtasks below; the card's row swiped right from 25% to 50%, still held; its title
-     tapped, a box to change it in; its notes tapped, short ones in the box at its least height and long ones in a box
-     as tall as they are; and a done task. `parts`: what of the rest of the sheet is drawn under the card. */
+  /* A task's sheet that starts with the task's row. The sheets are:
+     - a task at 50% with notes and two photos, assigned to Jamie, with the rest of the sheet below it
+     - a subtask with no notes or photos, with its parent in the path above
+     - a parent with its ring at 13% (one subtask of four at 50%) and its subtasks below
+     - the card's row swiped right from 25% to 50% and still held
+     - a title tapped, which opens a box to edit it
+     - notes tapped, where short notes sit in a box at its minimum height and long notes in a box as tall as the text
+     - a done task
+     `parts` lists which parts of the rest of the sheet are drawn under the card. */
   const photo = (id, name, size) => ({id, file: {name, size}});
   const notes = '<p>Use the green from the shed: <strong>two coats</strong>, a day apart.</p><ul><li>Sand the old paint off first</li><li>Tape round the letterbox</li></ul>';
   const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, related_tasks: {parenttask: [{id: 1200}]}}),
@@ -171,11 +180,12 @@ function sections(){
     {spec: 'A done task: its row as a done row in a list; Details’ Progress line has no quarter pressed', parts: ['details'],
       task: task({title: 'Clean the grinder', done: true, percent_done: .5, due_date: dayAt(-1, 17), description: '<p>Burrs out, brush, then rice through it.</p>', attachments: [photo(4, 'burrs.jpg', 1.6e6)]})},
   ];
-  /* A task held on Today, its four dates around the finger (hold-to-reschedule-plan; app/throw.js): small Todays on a
-     phone's screen, 360px wide (`wide`: 390), each a still of a hold on a fixed day (`now`). `held`: the row held, the
-     `row`th of the screen's (the third, unless said); `x`: where the finger is held, from the screen's left; `to`: the
-     date the finger has gone towards, lit; `why`: a task a hold can't move; `card`: held by its header, a card; `open`:
-     let go without a move, the dates open to tap. */
+  /* A task held on Today, with four date chips around the touch (app/throw.js). Each still is a small Today screen 360px
+     wide (390px with `wide`), showing a hold on a fixed day (`now`). `held` is the row being held, at index `row`
+     among the screen's rows (the third unless given). `x` is where the touch is held, measured from the screen's left.
+     `to` is the date the touch has dragged towards, which is highlighted. `why` is the reason a task can't be moved by
+     a hold. `card` means the task is held by its card header. `open` means the touch was released without moving, so
+     the date chips stay open to tap. */
   const on = (d, h = 10, m = 0) => new Date(2026, 9, d, h, m);
   const others = () => [task({title: 'Fix the other fridge', due_date: dayAt(-1, 15), assignees: [me]}), task({title: 'Count the stock', percent_done: .25, assignees: [me]}),
     task({title: 'Order the cups', due_date: dayAt(1, 0), priority: 2}), task({title: 'Book the window cleaner', due_date: dayAt(3, 0)}), task({title: 'Collect the new aprons', due_date: dayAt(5, 11)})];
@@ -195,7 +205,7 @@ function sections(){
     ring('Let go without a move: the four stay open, to tap, where they were, with Pick a date… in the middle, where the finger was, the screen behind dimmed very lightly; a tap anywhere else closes them', on(9), milk(), {open: true}),
     ring('A repeating task’s, open to tap: still dimmed, Pick a date… too, with its line', on(9), task({title: 'Water the plants', due_date: on(9).toISOString(), repeat_after: 86400}), {why: 'repeats', open: true}),
     ring('A card held by its header: the card lifts whole, and only its task’s date moves', on(9), heldCard, {card: true, row: 1}),
-    // The same on a 390px screen: the first row, the last, and open to tap.
+    // The same cases on a 390px screen: the first row, the last row, and chips open to tap.
     ring('On a 390px screen, the first row held near its right end', on(9), milk(), {row: 0, x: 340, wide: true}),
     ring('On a 390px screen, the last row held near its left end, the finger gone down: No date lit, though the set moved up', on(9), milk(), {row: 5, x: 44, to: 'none', wide: true}),
     ring('On a 390px screen, open to tap, held right of the middle', on(9), milk(), {open: true, x: 230, wide: true}),
@@ -203,16 +213,16 @@ function sections(){
   return {parent, steps: runSteps(), sheets, rings, cards: [van2, task({title: 'Fix the other fridge', due_date: at(-20 * HOUR), assignees: [me]}), task({title: 'Count the stock', percent_done: .25, assignees: [me]}), opening,
     task({title: 'Order the milk', priority: 2}), closing, sign, shelves, tasting], cardSubs: [...cardSubs, ...ringSubs], parents: [wall, menu, rota, till, bins, floor, sink], parentSubs, project, list: [
     {title: 'Today, on one line, priority as bars before the time: high, low, urgent, medium, none, do now', depth: {}, line: true, delete: true, tasks: today},
-    // Under Today's heading (its group's key): due today with no time says no time; with a time, its time.
+    // Under the Today heading (the group's key). A task due today with no time shows no time, and one with a time shows the time.
     {title: 'Under the Today heading: due today with no time shows no time (“Today” elsewhere)', key: 'today', depth: {}, line: true, tasks: [
       task({title: 'Order the cups', due_date: dayAt(0, 0), priority: 2}), task({title: 'Post next week’s rota', due_date: dayAt(0, 16, 30)})]},
-    // A project no one else can see (seenBy 0): no "+ me", nor your picture; someone given it in a shared project before it was moved here, still.
+    // A project only the user can see (seenBy 0). Rows show no "+ me" and no picture of the user. A task assigned to someone in a shared project before it was moved here still shows that person.
     {title: 'A project only you can see: no “+ me”, nor your picture; someone given it elsewhere, before it was moved there, still shows', depth: {}, tasks: [
       task({title: 'Renew the car insurance', project_id: 5}), task({title: 'Book the dentist', project_id: 5, assignees: [me]}),
       task({title: 'Fix the shed door', project_id: 5, assignees: [jamie]})]},
     {title: 'Open, done, and waiting to send', depth: {}, tasks: [task({title: 'Order oat milk'}), task({title: 'Wipe the counters', done: true}),
       {...task({title: 'Call the plumber tomorrow'}), id: 'pending-specimen-0', pending: true, waits: true, entry: 'specimen', index: 0}]},
-    // Progress is drawn in the tick (parent-tasks-plan, part 1), a quarter at a time, with no line under the row.
+    // Progress is drawn in the tick, a quarter at a time, with no line under the row.
     {title: 'Progress in the tick, a quarter at a time: none, 25%, 50%, 75%, done; and 30%, set on the web', depth: {}, tasks: [task({title: 'Order oat milk'}),
       task({title: 'Repaint the sign', percent_done: .25}), task({title: 'Train the new barista', percent_done: .5}), task({title: 'Deep clean the fridge', percent_done: .75}),
       task({title: 'Wipe the counters', done: true, percent_done: .5}), task({title: 'Fix the till drawer', percent_done: .3})]},
@@ -228,9 +238,10 @@ function sections(){
       task({title: 'Call the plumber', reminders: [{reminder: at(5 * HOUR)}]})]},
     {title: 'A checklist’s step has a square box (a step you’ve claimed, on Today), a task or a subtask a round one', depth: {}, tasks: [stepRow, subRow]},
     {title: 'Read only: a project shared with you to read', depth: {}, tasks: [task({title: 'Quarterly stock count', project_id: 3})]},
-    // Swiped (progress.js: swipeAt, revealOf), still held: the row's content moved by `reveal` of its width, and what's
-    // uncovered says what letting go there does. Swiped to its Delete (a project's list, which has one: delete), and a
-    // line in a row's place (lines.js): shown by `state`.
+    // Swipes that are still held (progress.js: swipeAt, revealOf). The row's content moves by `reveal` times its width,
+    // and the space it uncovers shows what releasing there would do. Some rows are swiped to their Delete (only a
+    // project's list has one, set by `delete`). Another row shows a message in place of the row (lines.js). `state`
+    // sets each of these.
     {title: 'Swiped right, still held: the ring in the space uncovered says what letting go sets, 25%, 50%, 75%, and past half the row, done; the row itself unchanged', depth: {}, delete: true, tasks: [
       task({title: 'Restock the napkins', state: {reveal: .15}}), task({title: 'Restock the napkins', state: {reveal: .27}}),
       task({title: 'Restock the napkins', state: {reveal: .4}}), task({title: 'Clean the grinder', percent_done: .75, state: {reveal: .55}})]},
@@ -245,46 +256,49 @@ function sections(){
       task({title: 'Sweep the yard', done: true, state: {reveal: -.09}}), task({title: 'Sweep the yard', done: true, state: {reveal: -.15}})]},
     {title: 'A full swipe left, or Delete tapped: the row carries on off the screen, leaving a gap with Restore', depth: {}, delete: true,
       tasks: [task({title: 'Wipe the menus', state: {sweep: .8}}), task({title: 'Wipe the menus', state: {leaving: 'deleted'}})]},
-    // Ticked and deleted, where they were until the batch clears (leaving.js): a parent with the subtask closed with it,
-    // a deleted row's gap with Restore, and a repeating task ticked; then the batch clearing, its rows partway folded.
+    // Ticked and deleted rows stay in place until the batch clears (leaving.js). Shown here are a parent with its subtask
+    // closed along with it, the gap a deleted row leaves with Restore, and a ticked repeating task. Then comes the batch
+    // clearing, with its rows partway folded.
     {title: 'Ticked and deleted, in place: a parent with its subtask, a deleted row’s gap with Restore, a repeating task', depth: {[mover.id]: 0, [moverKid.id]: 1}, tasks: [
       mover, moverKid, task({title: 'Return the crates', due_date: at(4 * HOUR), assignees: [jamie], state: {leaving: 'deleted'}}),
       task({title: 'Water the plants', done: true, due_date: at(-HOUR), repeat_after: 86400, state: {leaving: 'done'}}), task({title: 'Order oat milk'})]},
     {title: 'The batch clearing: the rows ticked and deleted fold together, and the row below closes up once', depth: {}, tasks: [
       task({title: 'Sweep the yard', done: true, state: {leaving: 'done', folding: .45}}), task({title: 'Wipe the menus', state: {leaving: 'deleted', folding: .45}}),
       task({title: 'Light the heaters'})]},
-    // Let go on a task no one was doing: yours, as the swipe set its progress (claimOnSlide).
+    // Releasing a swipe on a task nobody is doing makes it yours, because the swipe set its progress (claimOnSlide).
     {title: 'Let go at 25% on a task no one was doing: it\'s yours, its tick a quarter', depth: {}, tasks: [task({title: 'Restock the napkins', percent_done: .25, state: {claim: true}})]},
     {title: 'A subtask swiped from 50% to 75%, and one done by a full swipe: what\'s uncovered, and the gap, span the whole row, not from its indent', delete: true, depth: {[tent.id]: 0, [pegs.id]: 1, [poles.id]: 1}, tasks: [tent, pegs, poles]},
     {title: 'A line in a row\'s place: a tick not saved', depth: {}, tasks: [
       task({title: 'Call the plumber', state: {line: {text: 'Not saved: no connection', title: '', stays: true, cls: 'failed', action: {label: 'Try again', fn(){}}}}})]},
-    // The task quick add's box adds subtasks to (quickadd.js: the cursor), lit up: a task, and a subtask.
+    // The task that the quick add box adds subtasks to (quickadd.js: the cursor) is highlighted. Shown for a task and for a subtask.
     {title: 'What the add box adds subtasks to, lit up: a task, and a subtask', depth: {[van.id]: 0, [load.id]: 1}, tasks: [hall, van, load]},
-    // The light follows what's added: lit while it waits (after one that waits, not lit), before it looks waiting, and
-    // just sent, its flash fading to the lit tint.
+    // The highlight follows the most recently added subtask. Here it is shown while that subtask waits to be sent (an
+    // earlier waiting subtask is not highlighted), before the subtask looks like it is waiting, and just after it is
+    // sent, when its flash fades to the highlight colour.
     {title: 'A subtask just added from the add box is the lit row, its task dark: waiting to send, after one that waits unlit; not yet looking it; and just sent',
       depth: {[crates.id]: 0, ...Object.fromEntries(added.map(t => [t.id, 1]))}, tasks: [crates, ...added]},
-    // Held and moved down (progress.js: dragOf): it follows the finger, with its subtask, and the row it has passed the
-    // middle of has moved up to make room.
+    // A row held and dragged down (progress.js: dragOf). It follows the touch together with its subtask, and the row it
+    // has passed the middle of moves up to make space.
     {title: 'Held and moved down, with its subtask, past the row below', depth: {[tables.id]: 0, [chairs.id]: 1}, tasks: [task({title: 'Sweep the yard'}),
       tables, chairs, task({title: 'Light the heaters', state: {shift: -148}})]},
-    // A project's done tasks, in their section under the open ones, the most recently done first.
+    // A project's done tasks, in a section under the open tasks, with the most recently done first.
     {title: 'A project’s done tasks, folded, then open', depth: {}, fold: true, tasks: [task({title: 'Order the milk', done: true}), task({title: 'Clean the grinder', done: true})]},
-    // Its latest 100 shown (the last two of them here), and a row for more, done before these: with 2,900 left, and with
-    // fewer than 100 (performance-plan, part 9).
+    // Only the latest 100 done tasks are shown (here, the last two of them), followed by a row for loading more tasks
+    // that were done earlier. One case has 2,900 left, and the other has fewer than 100 left.
     {title: 'A project’s Done with 3,000: its latest 100 shown (the last two here), and the row for 100 more', key: 'more-many', depth: {}, count: 3000, more: moreDone(2900, 100),
       tasks: [task({title: 'Restock the price labels', done: true}), task({title: 'Pack invoice #2,892', done: true})]},
     {title: 'A project’s Done with 112: the row for the last 12', key: 'more-last', depth: {}, count: 112, more: moreDone(12, 100),
       tasks: [task({title: 'Sweep the yard', done: true}), task({title: 'Fix the till roll', done: true})]},
-    // Lit up as its time passes, moving to Overdue (alerts.js), and just added (the page holds both at their start).
+    // A row highlighted when its due time passes and it moves to Overdue (alerts.js), and a row highlighted when it is just added. The page holds both animations at their start.
     {title: 'Just come due, and just added', depth: {}, tasks: [task({title: 'Collect the cake order', due_date: at(-60e3), state: {flash: 'due'}}),
       task({title: 'Order more cups', state: {flash: 'fresh'}})]},
   ]};
 }
 
-/* A run's steps as Vikunja gives them, with only what its screen keeps (plainStep): done by you, by Jamie, skipped by
-   Sam, a step with notes on you, one inserted and one repeated during the run, progress, people on them, and timed
-   steps: one counting down from the step before it, one late, and one waiting on a step not done. */
+/* A checklist's steps as Vikunja returns them, with only the fields its screen keeps (plainStep). They cover: done by
+   you, done by Jamie, skipped by Sam, a step assigned to you with notes, a step inserted and a step repeated while the
+   checklist runs, progress, assigned people, and timed steps. The timed steps are one counting down from the step
+   before it, one late, and one waiting on a step that isn't done. */
 function runSteps(){
   const MIN = 6e4;
   const step = f => ({id: ++n, title: 'A step', done: false, done_at: ZERO, due_date: ZERO, updated: at(-HOUR), percent_done: 0, description: '', assignees: [],
@@ -308,31 +322,33 @@ function runSteps(){
   return list;
 }
 
-/* An add box as the page gives it to the app's own markup (add-bar.html, list-box.html): what that markup reads, by
-   the x-data around it, in place of the component's own, so every state shows at once. The component's methods still
-   work out its marks, chips and hint from the box they're handed here (box()). Each is made afresh for the element
-   it's the x-data of (Alpine keeps its own things on that object), from what its state is listed with: {spec, f}.
-   specBar: quick add's bar. `inset`: seated in a list, that far in, as seatBox seats it; `place`: only the dashed place
-   it leaves; `before` and `after`: the rows around it, in a list `g`.
-   specFoot: the box at a list's foot. `fb`: what footBox() says of it in the app (under a row, its words, Repeat);
-   `time`: a step's time line under it; `said`: what was just done from it. */
-// The row just over a box seated among a list's rows.
+/* State objects for the add boxes. Each is the x-data around the app's own markup (add-bar.html, list-box.html). It
+   supplies what that markup reads, in place of the app component's values, so every state shows at once. The
+   component's methods still work out the marks, chips and hint from the box object passed in here (box()). Each
+   object is created afresh for its element, because Alpine stores its own properties on it, from the {spec, f} listed
+   for that state.
+   specBar is quick add's bar. `inset` seats it in a list, indented by that amount, as seatBox does. `place` shows only
+   the dashed placeholder the bar leaves behind. `before` and `after` are the rows around it, in a list `g`.
+   specFoot is the box at the end of a list. `fb` is what footBox() returns in the app (position under a row, hint
+   text, Repeat). `time` is a step's time line under the box. `said` is the message about what was just done from the
+   box. */
+// The row directly above a box seated among a list's rows.
 const rowOver = box => [...box.parentElement.querySelectorAll(':scope > .row')].filter(r => r.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
 const blankBox = f => ({text: '', caret: 0, focus: false, busy: false, ignore: {}, remind: false, ...f});
 const specBar = (spec, f = {}) => ({spec, capW: 'cap', canLevel: false, boxOut: false, canIn: true, boxInList: false, capTarget: null, capPlaceholder: 'Add a task to Café', capHomeSays: 'Add a task to Café',
   boxBackLabel: 'Add a task to Café instead', capPhotos: [], attachmentsOn: true, said: null, inset: '', place: false, before: [], after: [], g: {depth: {}}, ...f,
   capBox: blankBox(f.box), get cap(){ return this.capBox; }, box(){ return this.capBox; }, placeLines(){ return this.said ? [this.said] : []; },
-  // Seated: as seatBox seats it, and the row it's under lit, as the cursor's row is.
+  // Seat the bar as seatBox does, and highlight the row above it, as the app highlights the cursor's row.
   init(){ this.$nextTick(() => { const bar = this.$el.querySelector('#capture'); if (bar && this.inset) { bar.classList.add('inline'); bar.classList.toggle('out', this.boxOut); bar.style.paddingLeft = this.inset; rowOver(bar)?.classList.add('aimed'); } }); }});
 const specFoot = (spec, f = {}) => ({spec, where: f.g?.run ? 'run' : 'sheet', said: null, time: null, before: [], after: [], g: {depth: {}, sheet: true, delete: true, reorder: true}, ...f,
   fb: {w: 'sub', id: 'd-subbox', in: 'd-subin', under: false, steps: false, can: false, repeat: null, says: 'Add subtasks, or paste a list', rest: 'Add subtasks, or paste a list', add: 'Add subtasks',
     home: 'Add after the last subtask instead', ...f.fb},
   b: blankBox(f.box), footBox(){ return this.fb; }, box(w){ return w === 'edit' && this.sheet.stepEdit || this.b; }, placeLines(){ return this.said ? [this.said] : []; },
-  // A step's time line, and a template's steps as rows: their numbers, when each is due, its notes' first line.
+  // Stand-ins for a step's time line, and for a template's steps shown as rows with their numbers, when each is due, and the first line of its notes.
   draft(){ return {info: new Map([['+', this.time]])}; }, draftShown(d){ return d ? [d] : []; }, stepEditDraft(){ return this.time; }, passFocus(){},
   stepNo(t){ return [...this.before, ...this.after].findIndex(x => x.id === t.id) + 1; }, stepAt(t){ return this.stepNo(t) - 1; },
   stepShown(t){ return {title: t.title, text: t.when || '', problem: ''}; }, stepNote(t){ return t.note || ''; },
-  // Under a row: as seatFoot seats it, the row it's under given its class, which lights it.
+  // Seat the box under a row as seatFoot does, and give that row the class that highlights it.
   init(){ this.$nextTick(() => { const box = this.fb.under && this.$el.querySelector('.foot-box'); if (box) { box.classList.add('inline'); rowOver(box)?.classList.add('sub-boxed'); } }); }});
 const specName = (spec, f = {}) => ({spec, bw: 'tname', b: blankBox(f.box), box(){ return this.b; }});
 
@@ -342,71 +358,72 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
   c.specimenSheets = [];
   c.specimen = []; c.specimenCards = []; c.specimenEnds = []; c.specimenParents = []; c.specimenComplete = []; c.specimenProject = {items: []}; c.specimenCarry = []; c.specimenRunCards = []; c.specimenRunTops = []; c.specimenAdding = {steps: [], at: null};
   c.specimenBars = []; c.specimenSeated = []; c.specimenFeet = []; c.specimenNames = [];
-  // A message in its place (lines.js: sayAt), each as the app shows it.
+  // Messages, each in the place where the app shows it (lines.js: sayAt).
   const undo = {label: 'Undo', fn(){}};
   c.specimenLines = [{key: 1, place: 'overdue', text: 'Moved 6 to today', action: undo},
     {key: 2, place: 'cap', text: 'Added to Head office, due Friday', action: {label: 'Open', fn(){}}},
     {key: 3, place: 'sheet:top', text: 'Not saved: no connection', cls: 'failed', action: {label: 'Try again', fn(){}}},
     {key: 4, place: 'sheet:subtasks', text: 'Closed Deep clean + 3 subtasks', action: undo},
     {key: 5, place: 'step', text: 'Done: Take the croissants out', action: undo}];
-  // A list of done tasks' row for more (more-row.html), from its specimen: the made-up figures it's given.
+  // The row that loads more done tasks (more-row.html) reads the made-up numbers from its section.
   c.moreOf = function(key){ return key && this.specimen.find(g => g.key === key)?.more || null; };
-  // In place of signing in and loading: you, your projects, what you can change in each, and the tasks.
+  // Replaces signing in and loading with the user, their projects, what the user can change in each project, and the tasks.
   c.init = function(){
     setApp(this);
     const s = sections(), subs = s.parent.related_tasks.subtask;
-    // Who can see each project besides you (loadPeople): all shared but the last, yours alone.
+    // How many people can see each project besides the user (loadPeople). All are shared except the last, which only the user can see.
     Object.assign(this, {signedIn: true, screen: 'app', user: me, route: {name: 'today'}, perms: {1: 2, 2: 2, 3: 0, 4: 1, 5: 2}, seenBy: {1: 2, 2: 2, 3: 4, 4: 1, 5: 0},
       avatars: Object.fromEntries([me, jamie, sam].map(u => [u.username, {url: '', at: Date.now()}])), labelsLoaded: true});
     this.setProjects(projects);
-    // A task's sheet, open on a task with subtasks, for its rows' slots: who's doing each.
+    // A task's sheet open on a task with subtasks, so the subtask rows can show who is doing each.
     this.sheet = {...blankSheet('task'), task: s.parent, subPeople: {801: [], 802: [me], 803: [jamie], 804: [jamie, sam]}};
-    // A run's screen, open on its fifth step, with a tick on the last waiting to be sent: its steps are the task row
-    // too (g.run), each as the screen works it out (runView).
+    // A checklist's screen open on its fifth step, with a tick on the last step waiting to be sent. The steps use the
+    // task row too (g.run), each as the screen works it out (runView).
     const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, jamie], created_by: me, comments: [], from: 900, steps: s.steps.map(x => x.id)};
     this.pending = [{kind: 'act', id: 'specimen-tick', run: run.id, task: s.steps.at(-1).id, op: 'done', at: new Date().toISOString(), items: []}];
     this.slow = ['specimen-tick'];
     this.view.run = {run: {...run, done: true}, steps: s.steps, at: null, last: null};
     const finished = this.runView.steps;
-    // Its step card, on a step of yours counting down, one Jamie is on, half done, and one done by Jamie (tapped in the
-    // list): each as runView has it then, to draw step-card.html with.
+    // The step card for three steps: one of yours counting down, one Jamie is on that is half done, and one done by
+    // Jamie (tapped in the list). Each is the runView value at that point, used to draw step-card.html.
     this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
-    // A photo added to the first of them, still uploading: its line on the card, with the × not to upload it after all.
+    // A photo added to the first of those steps and still uploading. The card shows a line for it, with a × that cancels the upload.
     this.pending.push({id: 'specimen-photo', taskId: s.steps[7].id, at: new Date().toISOString(), items: [], files: [{key: 'specimen-photo-1', name: 'oven-dial.jpg', type: 'image/jpeg', size: 48213}]});
     const steps = this.runView.steps;
     steps[7] = {...steps[7], state: {reveal: .4}};
-    steps[5] = {...steps[5], state: {swiped: true}};                 // inserted during the run: it has a Delete
-    /* Steps added from the box under a checklist's steps, one after another, after the step on the card: two sent, the
-       third waiting to be sent. */
+    steps[5] = {...steps[5], state: {swiped: true}};                 // inserted while the checklist runs, so it has a Delete
+    /* Steps added from the box under a checklist's steps, one after another, after the step on the card. Two are sent
+       and the third is waiting to be sent. */
     const mk = title => ({...s.steps[5], id: ++n, title, comments: [], assignees: []});
     const inRow = [...s.steps.slice(0, 5), mk('Fill the water jug'), mk('Wipe the counter'), ...s.steps.slice(5)];
     this.pending.push({kind: 'step', id: 'specimen-step', run: run.id, title: 'Stack the trays', before: s.steps[5].id, after: inRow[6].id, at: new Date().toISOString(), tpl: null, from: null, items: [], files: []});
     this.slow.push('specimen-step');
     this.view.run = {run, steps: inRow, at: 4, last: null};
-    // (from the step before the card's to the run's next steps; other ids, so the states above stay on their own rows)
+    // These run from the step before the card's step to the checklist's next steps. They get different ids, so the states above apply only to their own rows.
     this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4};
-    /* A run's screen's top (app.html): its own row between Back and ⋯ (RUN_ROW), its ring the screen's (runRing, the run
-       above), who it's for in its slot: you; you and Jamie; on a project only you can see, no slot. */
+    /* The top of a checklist's screen (app.html). The checklist's own row sits between Back and ⋯ (RUN_ROW). Its ring
+       is the screen's ring (runRing, for the checklist above). The assignee slot shows who the checklist is for. The
+       cases are: you, you and Jamie, and a project only you can see, which has no slot. */
     const top = this.view.run.run;
     this.specimenRunTops = [{spec: 'For you', run: {...top, id: ++n, assignees: [me]}},
       {spec: 'Swiped right part way, still held (it springs back, as a parent’s header does): what it uncovers stays between Back and ⋯', run: {...top, id: ++n, assignees: [me]}, reveal: .3},
       {spec: 'For you and Jamie, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Oct 7 · Front counter and the till'}},
       {spec: 'On a project only you can see: no slot', run: {...top, id: ++n, project_id: 5, assignees: [me]}}];
-    // Today's cards: their subtasks in the store, the van's opened by its footer's More.
+    // Today's cards. Their subtasks are in the store. The van's card and the last card are open.
     for (const x of s.cardSubs) this.keep(x);
     this.specimenCards = s.cards.map(t => this.keep(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
     this.cardOpen = {[s.cards[0].id]: true, [s.cards.at(-1).id]: true};
-    // A screen's headings, each under the end of the list before it: a collapsed card's tab, an opened card's ⌃, a card
-    // with no footer, and a row.
+    // A screen's headings, each under the end of the list before it. The lists end with a collapsed card's tab, an
+    // opened card's ⌃, a card with no footer, or a row.
     const [van, , , opening, milk, , sign] = this.specimenCards;
     this.specimenEnds = [[milk, opening], [van], [sign], [milk], []];
-    // The parents' rings, on Today's cards; and the question their ring asks (sheet/complete.html), for a task's and a run's.
+    // The parents' rings on Today's cards, and the question the ring asks (sheet/complete.html), for a task and for a checklist.
     for (const x of s.parentSubs) this.keep(x);
     this.specimenParents = s.parents.map(t => this.keep(t));
     Object.assign(this.view.cards, Object.fromEntries(s.parents.map(t => [t.id, {when: null, made: null, focus: null}])));
-    // Each with its sentence (completeAsk): a task with 3 open subtasks; one with 5, one of them repeating (it stays, and
-    // isn't named); a run with 2 steps not done.
+    // Each question has its sentence (completeAsk). The first is a task with 3 open subtasks. The second is a task with 5,
+    // one of them repeating, which stays open and isn't named. The third is a checklist with 2 steps not done.
     const ask = (title, run, open) => {
       const names = open.filter(o => !o.stays).map(o => o.title), stay = open.length - names.length;
       return {kind: 'complete', complete: {id: 0, run, title, n: run ? open.length : names.length, stay, open: open.map((o, i) => ({id: i + 1, ...o})), ask: completeAsk({title, run, names, stay})}};
@@ -415,13 +432,13 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimenComplete = [ask(s.parents[2].title, false, titles('Ask for holidays', 'Draft it', 'Post it')),
       ask(s.parents[0].title, false, titles('Sand it', 'Tape the edges', 'First coat', 'Second coat', {title: 'Water the plants', stays: true})),
       ask('Closing up', true, titles('Stack the chairs', 'Lock the door'))];
-    // A task's sheet led by its row (parent-tasks-plan, 6b): each its own sheet, as the app's is for one task.
+    // A task's sheet that starts with the task's row. Each sheet is separate, as the app's is for one task.
     for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.keep(x);
     this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.keep(sh.task)}));
-    // A task held on Today: each still's rows as Today has them (screenRows('today')), the held one among them.
+    // A task held on Today. Each still gets its rows as Today has them (screenRows('today')), including the held one.
     Object.assign(this.view.cards, Object.fromEntries(s.rings.filter(r => r.card).map(r => [r.held.id, {when: null, made: null, focus: null}])));
     this.specimenRings = s.rings.map((r, i) => ({...r, id: i, g: {key: 'today', cards: 'today', line: true, depth: {}, delete: true, reschedule: true, items: r.rows.map(t => this.keep(t)), tasks: r.rows}}));
-    // A project's open list, as listGroups makes it: each subtask under its parent there, and what it shows.
+    // A project's open list, as listGroups makes it, with each subtask under its parent.
     Object.assign(this.positions, s.project.positions);
     const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
     this.specimenProject = {...g, items: listItems(g.tasks, g.depth, t => !!this.cardOf(t, g))};
@@ -430,12 +447,12 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         depth: {}, run: true, at: 4, locked: false, tasks: steps},
       {title: 'A run’s step done by a full swipe: a gap with Undo, which unticks it, until the batch clears; then done in its place', depth: {}, run: true, at: null, locked: false,
         tasks: [{...steps[3], id: steps[3].id + 3000, state: {swept: true}}]},
-      // (other ids, so the states above stay on their own rows)
+      // (different ids, so the states above apply only to their own rows)
       {title: 'The same steps in a run finished, or shared with you to read only', depth: {}, run: true, at: null, locked: true,
         tasks: finished.map(x => ({...x, id: x.id + 1000}))}];
-    /* The add boxes (inline-add-box-plan), each state its own: quick add's bar at the bottom; the bar seated in a
-       project's list, a level in under a task and under a subtask, and out a level, and on Today; the box at a
-       list's foot, for a task's subtasks, a template's steps and a checklist's; and New template's name. */
+    /* The add boxes, one entry per state. They are quick add's bar at the bottom, the bar seated in a project's list
+       (one level in under a task, one level in under a subtask, one level out, and on Today), the box at the end of a
+       list (for a task's subtasks, a template's steps and a checklist's steps), and New template's name. */
     const barBox = (spec, f = {}) => ({spec, f}), footBox = barBox;
     const list3 = 'Buy milk\nBuy the oat milk too, for Jamie\nWipe the fridge shelves';
     this.specimenBars = [barBox('The add box, the bar at the bottom of Today and a project’s list: empty'),
@@ -479,7 +496,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         said: {n: 2, place: 'cap', text: 'Repeated “Take the croissants out”', action: {label: 'Undo', fn(){}}}})];
     this.specimenNames = [barBox('New template’s name: quick add’s box with nothing beside it, empty'),
       barBox('Typed, focused, with its priority as a chip', {box: {text: 'Opening up !2', focus: true}})];
-    // The states a finger makes, put on the rows as the app does.
+    // Apply the states that touch gestures cause to the rows, as the app does.
     const all = this.specimen.flatMap(g => g.tasks).filter(t => t.state);
     for (const t of all) if (t.state.line) this.lines[t.id] = {id: t.id, title: t.title, more: '', action: {label: 'Undo', fn(){}}, ...t.state.line};
     for (const t of all) if (t.state.leaving) this.leaving[t.id] = t.state.leaving;
@@ -487,18 +504,19 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     for (const t of all) if (t.state.flash) this.flashed[t.state.flash][t.id] = true;
     for (const t of all) if (t.state.claim) this.slideClaim[t.id] = true;
     for (const t of s.parents) if (t.state?.swept) { t.done = true; this.leaving[t.id] = 'done'; }
-    // A still of a row swiped left onto its Delete, `off` px aside, where letting go does `to` (swipeOf, as a swipe uses it).
+    // Show a row swiped left onto its Delete, moved `off` px aside. Releasing there does `to` (swipeOf, as a swipe uses it).
     const redUnder = (row, name, off, to) => { const s = swipeOf(row, () => {}, name); s.begin(); s.move({off, to}); };
     this.$nextTick(() => {
-      // A parent's header swiped: part way right (the empty ring, as it springs back short of the full point), or left onto its Delete.
+      // A parent's header swiped. Part way right shows the empty ring, because the header springs back when released short of the full point. Left shows its Delete.
       for (const t of s.parents) for (const head of document.querySelectorAll(`.day-card[data-id="${t.id}"] > .card-head`)) {
         if (t.state?.head === 'delete') redUnder(head, t.title, -88, 'open');
         else if (t.state?.head) { const w = head.clientWidth; revealOf(head).move(swipeAt({start: 0, dx: t.state.head * w, x: w / 2, width: w, screen: 1e4, one: true})); }
       }
-      /* A task held on Today (app/throw.js): drawn by the app's own code (throwTargets, throwLayout, chipsEl) on its
-         day, around where the finger is held, at the height of its row (a card's header), which lifts in its place;
-         a date lit as the finger pointing at it lights it (chipsLight), or left open to tap (chipsOpen). The dot is
-         the finger: where it was held (hollow), and where it has gone. */
+      /* A task held on Today (app/throw.js). The app's own code (throwTargets, throwLayout, chipsEl) draws the date
+         chips for the task's due day around the point where the touch is held, at the height of the task's row (or a
+         card's header), which lifts in place. A date is highlighted the way it is when the touch points at it
+         (chipsLight), or the chips are left open to tap (chipsOpen). The dot is the touch. The hollow dot is where it
+         was held, and the filled dot is where it has moved to. */
       for (const r of this.specimenRings) for (const frame of document.querySelectorAll(`[data-ring="${r.id}"]`)) {
         const held = frame.querySelector(`.item[data-id="${r.held.id}"] > :is(.row, .day-card)`), f = frame.getBoundingClientRect();
         const strip = (held.querySelector('.card-head') || held).getBoundingClientRect(), x = r.x, y = strip.top - f.top + strip.height / 2;
@@ -512,40 +530,40 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         if (p) dot('spec-finger was', 0, 0);
         dot('spec-finger', p ? Math.sign(p.x) * 30 : 0, p ? Math.sign(p.y) * 30 : 0);
       }
-      // A sheet's subtasks swiped, still held: its stops, or its Delete, laid under the row in the subtasks' card.
+      // A sheet's subtasks swiped and still held. The progress stops, or the Delete, are laid under the row inside the subtasks' card.
       for (const sh of this.specimenSheets) for (const [id, st] of Object.entries(sh.subSwipes || {})) for (const row of document.querySelectorAll(`.spec-task-sheet .row[data-id="${id}"]`)) {
         const w = row.clientWidth, sub = sh.task.related_tasks.subtask.find(x => x.id === +id);
         if (st.reveal) revealOf(row).move(swipeAt({start: Math.round((sub.percent_done || 0) * 100), dx: st.reveal * w, x: w / 2, width: w, screen: 1e4}));
         if (st.swiped) redUnder(row, sub.title, -88, 'open');
       }
-      // A run's own row atop its screen swiped right part way, still held: a parent's, with only its full point.
+      // A checklist's own row at the top of its screen, swiped right part way and still held. It behaves like a parent's row, which has only the full point.
       for (const top of this.specimenRunTops) if (top.reveal) for (const row of document.querySelectorAll(`#run-own > .row[data-id="${top.run.id}"]`)) {
         const w = row.clientWidth; revealOf(row).move(swipeAt({start: 0, dx: top.reveal * w, x: w / 2, width: w, screen: 1e4, one: true}));
       }
-      // The sheet's own row swiped, still held, as a list's row is (below).
+      // The sheet's own row swiped and still held, the same as a list's row below.
       for (const sh of this.specimenSheets) if (sh.state?.reveal) for (const row of document.querySelectorAll(`.task-card > .row[data-id="${sh.task.id}"]`)) {
         const w = row.clientWidth; revealOf(row).move(swipeAt({start: Math.round(sh.task.percent_done * 100), dx: sh.state.reveal * w, x: w / 2, width: w, screen: 1e4}));
       }
       for (const t of all) for (const row of document.querySelectorAll(`.row[data-id="${t.id}"]`)) {
-        // A still of a swipe, held (progress.js: revealOf, swipeAt), put down where its room isn't cut short by the edge.
+        // A swipe that is still held (progress.js: revealOf, swipeAt). A left swipe starts at the row's right edge and a right swipe at its middle, so the screen's edge doesn't cut the swipe short.
         if (t.state.reveal) { const w = row.clientWidth; revealOf(row).move(swipeAt({start: t.done ? 100 : t.pct ?? Math.round(t.percent_done * 100), dx: t.state.reveal * w, x: t.state.reveal < 0 ? w : w / 2, width: w, screen: 1e4})); }
         if (t.state.sweepRight) revealOf(row).move({off: row.clientWidth * t.state.sweepRight, pct: 100, to: 'done'});
-        // Its Delete (progress.js: swipeOf), laid under the row as the app lays it: resting open on its button, past half
-        // the row, and following through (sweep), partway off the screen, the red still under it.
+        // The Delete (progress.js: swipeOf) laid under the row as the app lays it. The cases are resting open on its
+        // button, dragged past half the row, and following through (sweep) partway off the screen with the red still under the row.
         if (t.state.swiped) redUnder(row, t.title, -88, 'open');
-        if (t.state.rest) row.offsetParent.querySelector(':scope > .row-red').classList.add('open');   // (the one just laid is first)
+        if (t.state.rest) row.offsetParent.querySelector(':scope > .row-red').classList.add('open');   // the red layer just added is the first match
         if (t.state.full) redUnder(row, t.title, -240, 'delete');
         if (t.state.sweep) redUnder(row, t.title, -row.clientWidth * t.state.sweep, 'delete');
         if (t.state.drag) { row.classList.add('dragged', ...t.state.with ? [] : ['held']); row.style.transform = `translateY(${t.state.drag}px)`; row.parentElement.classList.add('reordering'); }
         if (t.state.shift) row.style.transform = `translateY(${t.state.shift}px)`;
         if (t.state.aimed) row.classList.add('aimed');
-        // A still of the exit (leaving.js), partway: each row folding at once, the rows below closing up with them.
+        // A row partway through leaving (leaving.js). Each row folds at once, and the rows below close up with them.
         if (t.state.folding) { const h = row.offsetHeight, f = t.state.folding; Object.assign(row.style, {overflow: 'hidden', minHeight: '0', height: h * f + 'px', opacity: f, paddingTop: 12 * f + 'px', paddingBottom: 12 * f + 'px'}); }
       }
     });
   };
-  c.loadPerms = () => {};                                  // nothing to ask Vikunja
-  c.watchCard = () => {};                                  // an opened card stays open, off the screen too
+  c.loadPerms = () => {};                                  // there is no Vikunja to ask
+  c.watchCard = () => {};                                  // an opened card stays open when it is off screen
   return c;
 }));
 Object.assign(window, globals, {specBar, specFoot, specName});
