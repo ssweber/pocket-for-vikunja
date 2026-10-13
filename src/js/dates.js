@@ -5,10 +5,10 @@ export const isSet = d => d && !String(d).startsWith('0001');
 export const startOfDay = (d=new Date()) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
 export const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
 export const fmtTime = d => d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
-// Midnight: a due date without a time of its own, as Vikunja's web app sets one.
+// A due date at midnight has no time of its own, which is how Vikunja's web app sets a date alone.
 const noTime = d => !d.getHours() && !d.getMinutes();
-/* Whether a task is late: its due time has passed, whatever the time, typed or not (noon for "friday", say), as in
-   Vikunja. One due at midnight is due that day, and late once the day is over. */
+/* Whether a task is late: its due time has passed, as in Vikunja, whether the time was typed or filled in (noon for
+   "friday", say). A task due at midnight is due all that day, and late once the day is over. */
 export function isLate(due, now = new Date()){
   if (!isSet(due)) return false;
   const d = new Date(due);
@@ -29,16 +29,14 @@ export function dueInfo(due){
   if (hasTime && Math.abs(diff) < 7) label += ' ' + fmtTime(d);
   return {label, cls: diff < 0 || isLate(due) ? 'overdue' : diff === 0 ? 'today' : '', diff};
 }
-/* A time written short, for a row on one line, where a title has little room (rows-and-sheet-fixes-plan, part 4), from
-   the time as the phone writes it (`text`, fmtTime's): one that ends with AM or PM, however the phone writes them
-   ("10:30 AM", "3:00 pm", "3:00 p.m."), is "10:30a" and "3p", a whole hour without its ":00", noon "12p". Any other is
-   kept as it is: a 24-hour clock's "15:30", and a day's halves in other words or before the time. Not for what a
-   screen reader hears, nor a sheet or a row's second line: those have fmtTime's. */
+/* Shorten a time from fmtTime for a one-line row, where a title has little room. "10:30 AM" becomes "10:30a", "3:00 pm"
+   or "3:00 p.m." becomes "3p", noon "12p". Anything else stays as it is: a 24-hour "15:30", or AM and PM written in
+   other words or before the time. Screen readers, sheets and a row's second line get fmtTime's text. */
 export const shortTime = text => { const m = /^(\d{1,2})([:.])(\d\d)\s*([ap])\.?\s?m\.?$/i.exec(text); return m ? m[1] + (m[3] === '00' ? '' : m[2] + m[3]) + m[4].toLowerCase() : text; };
-/* When a task is due, short, for a row on one line (Today: motion-and-rows-plan, section 9): its time today, short
-   ("11:55a", shortTime; or "Today" with no time); its weekday in the coming week ("Fri"); else its date ("Oct 2", with
-   the year when it isn't this one's). `cls` as dueInfo's: 'overdue' when late, 'today'. null with no date, and,
-   `underToday` (a row under Today's heading), for today with no time: "Today" there says nothing new. */
+/* When a task is due, short, for a one-line row: its time if due today ("11:55a", or "Today" with no time), its weekday
+   if due in the coming week ("Fri"), else its date ("Oct 2", with the year when not this year's). `cls` is as in
+   dueInfo. Null with no date, and under Today's heading (`underToday`) for a task due today with no time, where
+   "Today" says nothing new. */
 export function shortDue(due, now = new Date(), {underToday = false} = {}){
   if (!isSet(due)) return null;
   const d = new Date(due), diff = Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
@@ -50,9 +48,9 @@ export function shortDue(due, now = new Date(), {underToday = false} = {}){
 export const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 export const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
-/* A task due `due` moved to `day` (Move all to today, and a row or a card held on Today and moved to a date: hold-to-
-   reschedule-plan): at the time of day it had, or with no time if it had none (or no date at all). Today, if that
-   time has gone, the next whole hour instead, or in the day's last hour 11:59 PM, so it isn't late again at once. */
+/* The due date for a task moved to `day`, keeping its time of day, or with no time if it had none. If that time on
+   `day` has already passed, the next whole hour instead, or 11:59 PM in the day's last hour, so the task isn't late
+   again at once. */
 export function movedDue(due, day, now = new Date()){
   const d = isSet(due) ? new Date(due) : startOfDay(day);
   d.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());

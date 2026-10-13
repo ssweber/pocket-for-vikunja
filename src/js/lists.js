@@ -1,4 +1,4 @@
-// The lists Pocket shows, and the copies it keeps for opening without a connection.
+// How Pocket's lists are built, ordered and drawn, and the copies kept for opening without a connection.
 import {store} from './util.js';
 import {isSet} from './dates.js';
 import {hasOwnOrder, stepsOf} from './checklists.js';
@@ -12,33 +12,30 @@ export const saved = {
 // Open tasks in a list: dated first, soonest first, then undated, by priority and then newest first.
 export const soonestFirst = tasks => [...tasks.filter(t => isSet(t.due_date)).sort((a,b) => new Date(a.due_date) - new Date(b.due_date)),
   ...tasks.filter(t => !isSet(t.due_date)).sort((a,b) => (b.priority||0) - (a.priority||0) || b.id - a.id)];
-/* What a finger can do on a screen's rows, besides ticking, claiming, opening and swiping their progress, which every
-   row has (parent-tasks-plan, part 1: a row acts the same everywhere). Swiped left at 0%, a row's Delete, on every
-   screen. Held: on a project's list, moved up or down to its place; on Today, which is in the order things are due,
-   moved to another date (`reschedule`: app/throw.js; without it, a hold there does nothing); search's results have
-   no order of their own. A task's sheet gives its subtasks
-   delete and reorder (sheet/task.html). Each list (`g`) has these as its options, and a row writes them on itself for the
-   gesture code (rowGestures). Today's rows are on one line (`line`: rowWhen, app/views.js). Anything with open subtasks
-   or steps is a stacked card (`cards`: cardOf, app/cards.js; parent-tasks-plan, part 2), collapsed on Today ('today':
-   what brought it is cards.js) and in search ('found'), open on a project's list ('list'); never on a list of done
-   tasks (listGroups). */
+/* A screen's row options, beyond what every row does (tick, claim, open, swipe progress). `delete`: swiping left at
+   0% deletes. `reorder`: holding a row lets it move up or down, on a project's list, which has an order. `reschedule`:
+   holding a row on Today, which is ordered by date, moves it to another date (app/throw.js). Search results have no
+   order, so a hold there does nothing. `line`: Today's rows are one line (rowWhen, app/views.js). `cards`: a task with
+   open subtasks or steps is a stacked card (cardOf, app/cards.js), collapsed on Today ('today') and in search
+   ('found'), open on a project's list ('list'), and never on a list of done tasks. A list's options live on its group
+   `g`, and each row writes them on its element for the gesture code (rowGestures). A task's sheet gives its subtasks
+   delete and reorder in sheet/task.html. */
 export const screenRows = name => ({project: {cards: 'list', delete: true, reorder: true}, search: {cards: 'found', delete: true}, today: {cards: 'today', line: true, delete: true, reschedule: true}}[name] || {});
-/* A task's own row, leading its sheet (sheet/task-card.html: parent-tasks-plan, 6b): deleted from there (the sheet
-   closing on the list), not moved; `own`, so its tick, swipe and title are the sheet's. Under its title only when it's
-   due and how soon (OWN_META: due, priority, repeats, a reminder to come): its project, run or parent are in the path
-   over it, and its labels, comments and files in the sheet under it. */
+/* Options for a task's own row at the top of its sheet (sheet/task-card.html). It can be deleted there, which closes
+   the sheet, but not moved. `own` makes its tick, swipe and title act on the sheet's task. Under its title it shows
+   only OWN_META (due date, priority, repeats, next reminder): its project, run or parent are in the path above it, and
+   its labels, comments and files in the sheet below. */
 export const SHEET_ROW = {depth: {}, delete: true, own: true};
 export const OWN_META = ['due', 'prio', 'rep', 'rem'];
-/* A run's own row, atop its screen in the header's place for its name (parent-tasks-plan, the run's row): its ring, its
-   name, who it's for in its slot, and nothing under its name, so the screen's top is no taller than the name and "For
-   you" were. `top`: its ring and its swipe finish the run (runRing, runRowGesture), its tap opens its sheet. */
+/* Options for a run's own row at the top of its screen, where the header's name was: its ring, its name and who it's
+   for, with nothing under the name, so the top is no taller than before. `top`: its ring and swipe finish the run
+   (runRing, runRowGesture), and a tap opens its sheet. */
 export const RUN_ROW = {depth: {}, top: true};
-/* What a list with cards shows, in its order (`tasks`, each subtask under its parent, `depth` by id: nestSubtasks): each
-   task at the top, and, under one that isn't a card (`isCard`), its subtasks as rows of their own, indented; a card's
-   are on it, so they're left out. */
+/* The rows of a list with cards. `tasks` and `depth` come from nestSubtasks. A card's subtasks are drawn on the card,
+   so they are left out. Any other task's subtasks follow it as indented rows. */
 export const listItems = (tasks, depth, isCard) => {
   const out = [];
-  let under = -1;                                // the depth of the card whose subtasks are being passed over
+  let under = -1;                                // the depth of the card whose subtasks are being skipped
   for (const t of tasks) {
     const d = depth[t.id] || 0;
     if (under >= 0 && d > under) continue;
@@ -47,17 +44,15 @@ export const listItems = (tasks, depth, isCard) => {
   }
   return out;
 };
-/* A row's list's options, as the gesture code reads them off the row's element (data-gestures, progress.js), which
-   can't reach the list's `g`: "delete" (swiped left at 0%, its Delete), "reorder" (held and moved up or down among its
-   siblings), "reschedule" (held, four dates around the finger: app/throw.js). */
+// A list's gesture options as a string for the row's data-gestures attribute, since the gesture code (progress.js)
+// reads the element and can't reach the list's `g`.
 export const rowGestures = g => ['delete', 'reorder', 'reschedule'].filter(k => g?.[k]).join(' ');
-// The tasks a task is a subtask of: one waiting to be sent names its parent in `parent`.
+// The ids of a task's parents. A task not yet sent names its parent in `parent`.
 export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parenttask || []).map(x => x.id);
-/* A list with each subtask straight after its parent, when the parent is in the same list, in the parent's order (a run's
-   steps as on its screen), and depth: task id -> how many parents up it has there; kids: task id -> its subtasks there,
-   in that order. The others stay where they were, or, given `order` (a project's List view: positionOrder, in
-   order.js), are put in it, and so are an ordinary task's subtasks. A task waiting to be sent names its parent in
-   `parent`, and goes after the rest. */
+/* Nest subtasks under their parents. Returns {tasks: the list with each subtask straight after its parent when the
+   parent is in the list, depth: task id -> how many parents above it in the list, kids: task id -> its subtasks in
+   order}. A template's or run's subtasks follow its own order line. Given `order` (positionOrder, order.js), top-level
+   tasks and other subtasks are sorted by it. Without it they stay as they came. */
 export const nestSubtasks = (tasks, order = null) => {
   const ids = new Map(tasks.map(t => [t.id, t])), kids = new Map(), top = [];
   for (const t of tasks) {
@@ -73,65 +68,62 @@ export const nestSubtasks = (tasks, order = null) => {
   const out = [], depth = {};
   const walk = (t, d) => { if (t.id in depth) return; depth[t.id] = d; out.push(t); for (const k of kids.get(t.id) || []) walk(k, d + 1); };
   for (const t of top) walk(t, 0);
-  for (const t of tasks) walk(t, 0);             // tasks that are each other's subtasks: nothing above them to go under
+  for (const t of tasks) walk(t, 0);             // tasks that are each other's subtasks have no top-level parent to follow
   return {tasks: out, depth, kids};
 };
-/* The parents a project's open list shows though they're done: a task done with subtasks still open (ticked done in
-   Vikunja's web app, say, or a subtask opened again under it). Each is shown struck through, over those subtasks, so
-   they aren't left at the top level as if they had none. `tasks`: what its List view gave, open tasks and the subtasks
-   of those, done ones too. The ids of those parents, in project `pid`, that aren't open on it. */
+/* The ids of done parents that a project's open list shows anyway, struck through over their open subtasks, so those
+   subtasks don't sit at the top level as if they had no parent. A parent ends up done with open subtasks when it is
+   ticked in Vikunja's web app, or a subtask is reopened under it. `tasks` is what the List view gave: open tasks and
+   their subtasks, done ones included. Only parents in project `pid` count. */
 export const doneParentIds = (tasks, pid) => {
   const open = new Set(tasks.filter(t => !t.done).map(t => t.id)), out = new Set();
   for (const t of tasks) if (!t.done) for (const p of t.related_tasks?.parenttask || []) if (p.done && p.project_id === pid && !open.has(p.id)) out.add(p.id);
   return [...out];
 };
-/* A screen's groups as its copy is kept on the phone: a project's Done section with its count and not its tasks, which
-   are loaded when it's opened, as they are without a copy. Thousands of them would fill the phone's storage, and be
-   drawn again with the copy. */
+/* A screen's groups as saved on the phone. A project's Done group keeps its count but not its tasks, which are loaded
+   when it is opened. Thousands of done tasks would fill the phone's storage and be drawn again on every open. */
 export const keptGroups = groups => groups.map(g => g.key === 'done' ? {...g, tasks: [], loaded: false, loading: false} : g);
-/* A list of done tasks is shown a part at a time, the most recently done first (performance-plan, part 9): a project's
-   Done the latest DONE_PART, search's done matches FOUND_PART, and a row at its end for the next (moreOf, app/views.js).
-   Nobody scrolls through thousands: they come to tick one back, or to see what was done lately. */
+/* Done tasks are shown a part at a time, most recently done first: DONE_PART in a project's Done, FOUND_PART among
+   search's done matches, with a row at the end for the next part (moreOf, app/views.js). Nobody scrolls through
+   thousands. They come to untick one, or to see what was done lately. */
 export const DONE_PART = 100, FOUND_PART = 50;
-/* A screen's rows drawn a few at a time (performance-plan, part 5), so its first screenful takes the same time however
-   long its lists are: the first FIRST_ROWS at once, enough to fill a phone, then the rest in batches after the first
-   paint, across the screen's lists in order (drawFrom, app/views.js). `to`: how many of the screen's rows are drawn; a
-   list `before` rows down the screen draws what's left of them. */
+/* Rows are drawn in batches, so the first screenful takes the same time however long the lists are: FIRST_ROWS at
+   once, enough to fill a phone, then the rest after the first paint, list by list (drawFrom, app/views.js). drawnOf
+   gives the part of `list` to draw when `to` rows of the screen are drawn and `before` rows come before this list. */
 export const FIRST_ROWS = 20;
 export const drawnOf = (list, before, to) => to >= before + list.length ? list : list.slice(0, Math.max(0, to - before));
-/* How long a batch of rows takes to draw, `drawn` rows into what's being drawn: a frame's work (FRAME_MS) for the first
-   few screens (NEAR_ROWS), which a finger may scroll to at once, so the list keeps up with it; then about a second's
-   (LATER_MS), so the rest is drawn in a few long batches with taps and scrolls answered between them. Every frame
-   costs a phone some time of its own, which thousands of rows in small batches add up to: Done's 2,000 took twice as
-   long as drawing them at once (scratchpad/perf, a phone's screen at 4x CPU). */
+/* How much work a batch of rows gets, `drawn` rows in: a frame's worth (FRAME_MS) for the first few screens
+   (NEAR_ROWS), which a finger may scroll to at once, then about a second's (LATER_MS), so the rest is drawn in a few
+   long batches with taps and scrolls answered between them. Each frame has a fixed cost on a phone, so thousands of
+   rows in small batches add up: 2,000 done tasks took twice as long that way as drawing them at once (measured at 4x
+   CPU slowdown). */
 export const FRAME_MS = 40, LATER_MS = 1000, NEAR_ROWS = 3 * FIRST_ROWS;
 export const batchMs = drawn => drawn < NEAR_ROWS ? FRAME_MS : LATER_MS;
-// How many rows the next batch draws, from the last (`rows`, which took `ms` to draw): about `budget` of work, at least a
-// few rows, and no more than twice the last.
+// How many rows the next batch draws, from the last batch (`rows` rows in `ms`): about `budget` ms of work, at least 4
+// rows, and at most twice the last.
 export const nextBatch = (rows, ms, budget) => Math.max(4, Math.min(rows * 2, Math.round(rows * budget / Math.max(ms, 1))));
-/* Whether two groups of listGroups show the same: each field the same, a list (its tasks, items, heads) item by item, a
-   map of lists (kids) list by list, an object (depth) entry by entry. Then the one drawn already is kept, so a list
-   worked out again, by a load that changed nothing in it, say, gives its rows nothing to do: each row reads its group. */
+/* Whether two groups from listGroups would draw the same: every field equal, lists item by item, maps of lists (kids)
+   list by list, objects (depth) entry by entry. When they would, the group already drawn is kept, so a reload that
+   changed nothing gives the rows nothing to do. */
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 const sameField = (a, b) => a === b || (Array.isArray(a) ? Array.isArray(b) && sameList(a, b)
   : a instanceof Map ? b instanceof Map && a.size === b.size && [...a].every(([k, v]) => b.has(k) && sameField(v, b.get(k)))
   : !!a && !!b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(b) && !(b instanceof Map) && sameKeys(a, b, (x, y) => x === y));
 const sameKeys = (a, b, same) => { const ks = Object.keys(a); return ks.length === Object.keys(b).length && ks.every(k => k in b && same(a[k], b[k])); };
 export const sameGroup = (a, b) => !!a && !!b && sameKeys(a, b, sameField);
-/* `to`, an object kept and watched, made the same as `from` an entry at a time. What a row reads of it by its own id
-   (g.depth[t.id], waiting.claims[t.id]) is then asked again only when its own entry changed, where a new object in
-   its place would ask every row on the screen. */
+/* Copy `from` into `to`, a watched object, one entry at a time. A row that reads one entry by its id (g.depth[t.id],
+   waiting.claims[t.id]) is then redrawn only when its own entry changes, where replacing the object would redraw every
+   row on the screen. */
 export function intoKeys(to, from, raw = x => x){
   const was = raw(to);
   for (const k of Object.keys(was)) if (!(k in from)) delete to[k];
   for (const k of Object.keys(from)) if (was[k] !== from[k]) to[k] = from[k];
   return to;
 }
-/* A group as the screen draws it (shownGroups, app/sending.js): `to`, one object kept while the screen is the same,
-   with group `from` (listGroups') written into it, each field only if it changed (sameField), its depths (`depth`,
-   by task id) and its subtasks (`kids`, a Map by task id) entry by entry. So a row, which reads its list's options
-   off it (g.cards, g.depth[t.id], a card its g.kids.get(t.id)), is asked again only about what changed for it. `to`
-   is read as it is (`raw`), not as Alpine watches it: what's compared here isn't something the caller shows. */
+/* Write group `from` into `to`, the watched object the screen draws (shownGroups, app/sending.js), changing only the
+   fields that differ, and `depth` and `kids` entry by entry. A row reading g.cards, g.depth[t.id] or g.kids.get(t.id)
+   is then redrawn only when that changed. `raw` reads `to` without Alpine recording the reads: the comparison here is not
+   something a screen shows, so nothing should re-run when `to` changes. */
 export function intoGroup(to, from, raw = x => x){
   const was = raw(to);
   for (const k of Object.keys(was)) if (!(k in from)) delete to[k];
@@ -147,10 +139,10 @@ export function intoGroup(to, from, raw = x => x){
   return to;
 }
 export const viewKey = r => r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
-/* The order in each of Today's groups: Overdue the most urgent first, then the longest overdue; Today and the next 7
-   days soonest first; "Added today, no date" newest first, a task not sent yet (no `created`) before them all. A task
-   just added or sent goes straight to where the next load will put it, rather than to the bottom first. A card goes by
-   what brought it (`at`: a task's {due_date, created}, a card's those of what brought it, cards.js). */
+/* Sort comparisons for Today's groups: Overdue by priority, then longest overdue first; Today and Next 7 days soonest
+   first; "Added today, no date" newest first, with unsent tasks (no `created`) before all. A task just added sorts
+   where the next load will put it, not at the bottom. `at` gives the {due_date, created} to sort a task by, so a card
+   can go by the subtask that put it on Today (todayAt). */
 const made = t => t.created ? +new Date(t.created) : Infinity;
 export const todayOrder = (at = t => t) => {
   const due = t => +new Date(at(t).due_date), born = t => made(at(t));
@@ -161,7 +153,7 @@ export const todayOrder = (at = t => t) => {
     nodate: (a, b) => born(b) - born(a),
   };
 };
-// What Today places a task by: its own dates, or a card's, those of what brought it (`cards`: by task id, cards.js).
+// The dates Today sorts a task by: its own, or for a card those of the subtask that put it there (`cards` by task id, from todayItems).
 export const todayAt = (cards = {}) => t => cards[t.id] ? {due_date: cards[t.id].when, created: cards[t.id].made || t.created} : t;
 // Today's groups. "Added today, no date" keeps tasks added without a date in view until midnight, so they don't vanish into a project.
 export const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},

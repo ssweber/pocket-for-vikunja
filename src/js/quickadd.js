@@ -1,29 +1,29 @@
-// Quick add: what a typed line says, as Vikunja reads it, and pasted lists.
+/* Quick add: reads a typed line the way Vikunja's Quick Add Magic does (default mode,
+   https://vikunja.io/help/quick-add-magic/), so the same text makes the same task in both apps, and reads a pasted
+   list into lines. tests/parse.mjs holds the phrases, adapted from Vikunja's own tests. Where Pocket deliberately
+   differs, the test says so. */
 import {dueInfo, fmtTime} from './dates.js';
 
-/* Follows Vikunja's Quick Add Magic (default mode, https://vikunja.io/help/quick-add-magic/) so the same text makes
-   the same task in both apps. tests/parse.mjs holds the phrases, adapted from Vikunja's own tests; where Pocket
-   deliberately differs, the test says so. */
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const WEEKDAY_RE = `${WEEKDAYS.join('|')}|${WEEKDAYS.map(w => w.slice(0,3)).join('|')}`;
 const weekdayIndex = w => WEEKDAYS.findIndex(d => d.startsWith(w.toLowerCase().slice(0,3)));
 export const NUMBER_WORDS = {one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10};
 const LEAD_IN = /\b(in|by|on|before|until)\s+$/i;          // a word just before a date that goes with it
-const DROP_LEAD = /(?:\b(?:in|by|on|before|until)\s+)?(?:\bthe\s+)?$/i;   // ...removed along with the date, with a "the"
+const DROP_LEAD = /(?:\b(?:in|by|on|before|until)\s+)?(?:\bthe\s+)?$/i;   // the lead-in and a "the", removed along with the date
 const END = '(?=\\s|$|[,.!?;:])';                          // a phrase has to end at a word boundary
 // Ambiguous numeric dates follow the phone's region: 10/12 is October 12 in the US and 10 December in most other places.
 const DAY_FIRST = (() => { try { return new Intl.DateTimeFormat().formatToParts(new Date(2000, 11, 31)).find(p => p.type !== 'literal')?.type === 'day'; } catch { return false; } })();
 export const projectName = typed => typed.replace(/[_-]/g, ' ').trim();
 function tokenRe(prefix, flags = 'g'){ return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags); }
-/* Take one @username out of a title, quoted or not, once that person is assigned. Vikunja's quick add does the same. */
+// Take one @username out of a title, quoted or not, once that person is assigned. Vikunja does the same.
 export function removeAssignee(title, prefix, name){
   const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return title.replace(new RegExp(`(^|\\s)\\${prefix}(?:"${n}"|'${n}'|${n})(?=\\s|$)`, 'gi'), '$1').replace(/\s{2,}/g, ' ').trim();
 }
-// Set a date's time from "HH:MM" (Vikunja's "default due time" setting; noon unless the user changed it).
+// Set a date's time from "HH:MM". The default is Vikunja's default due time setting, noon unless the user changed it.
 export function atTime(d, hhmm = '12:00'){ const [h, m] = String(hhmm).split(':').map(Number); d.setHours(h || 0, m || 0, 0, 0); return d; }
 const dayFrom = (now, n) => { const d = new Date(now); d.setDate(d.getDate() + n); d.setHours(0, 0, 0, 0); return d; };
-const laterThisWeek = now => [5, 6, 0].includes(now.getDay()) ? 0 : 2;      // Friday to Sunday: today; otherwise in two days
+const laterThisWeek = now => [5, 6, 0].includes(now.getDay()) ? 0 : 2;      // Friday to Sunday: today. Otherwise in two days
 // Day words, with Vikunja's meanings. Longer phrases first ("later next week" before "next week").
 const DAY_WORDS = [
   ['later\\s+next\\s+week', now => dayFrom(now, laterThisWeek(now) + 7)],
@@ -36,11 +36,11 @@ const DAY_WORDS = [
   ['today', now => dayFrom(now, 0)],
   ['tomorrow', now => dayFrom(now, 1)],
 ].map(([src, day, time]) => ({re: new RegExp(`(^|\\s)(?:${src})${END}`, 'i'), day, time}));
-// A time after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and bare "17th" only count
-// at the start or end, so "The 9/11 Report" and "13th floor" stay as they are.
-// A checklist step's T#20m after it, hidden by parseCapture, doesn't count.
+// A time after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and a bare "17th" only count at
+// the start or the end, so "The 9/11 Report" and "13th floor" stay as they are. A checklist step's hidden T#20m after
+// the date doesn't count.
 const TIME_TAIL = '(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?(?:\\s+[\\uE000-\\uF8FF]+)*\\s*$';
-// "2021-07-06", "6/7/21", "27/1", "01.02": a date, or null. No year means the next time that date comes round.
+// "2021-07-06", "6/7/21", "27/1" or "01.02" as a date, or null. Without a year, the next time that date comes round.
 function numericDate(token, now){
   let y, m, d, a, b, x;
   if ((x = token.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/))) [y, m, d] = [+x[1], +x[2], +x[3]];
@@ -63,23 +63,22 @@ function ordinalDate(day, now){
   }
   return null;
 }
-// Prefixes for each of Vikunja's Quick Add Magic modes (the user's setting); "disabled" turns parsing off.
+// The prefixes of each Quick Add Magic mode (the user's setting). "disabled" turns parsing off.
 export const QUICK_ADD_PREFIXES = {vikunja: {project: '+', label: '*', assignee: '@'}, todoist: {project: '#', label: '@', assignee: '+'}};
-/* A figure at the end of a line, "(50%)" or "50%", is the task's own progress, 1 to 100, as a swipe would set it (100 is
-   done). Pocket's own: Vikunja's quick add has no word for progress, so it's read whichever mode is set. The end of the
-   line is the end of its title once the other words are read, so "Tables 50% tomorrow *hire" has one; only people
-   (`tail`, a pattern for " @sam @jo") may follow it, as they stay in the title until they're assigned. Something has
-   to come before it: "50%" alone is a title. {start, end, pct} in `title`, or null. */
+/* A figure at the end of a line, "(50%)" or "50%", is the task's own progress, 1 to 100 (100 is done). This is
+   Pocket's own: Vikunja's quick add has no word for progress, so it is read in every mode. It is read once the other
+   words are out, so "Tables 50% tomorrow *hire" has one. Only people (`tail`, a pattern for " @sam @jo") may follow
+   it, since they stay in the title until assigned. "50%" alone is a title. Returns {start, end, pct} in `title`, or
+   null. */
 function endFigure(title, tail = ''){
   const m = title.match(new RegExp(`\\s(?:\\((\\d{1,3})%\\)|(\\d{1,3})%)(?=${tail}\\s*$)`)), pct = m ? +(m[1] ?? m[2]) : 0;
   return pct >= 1 && pct <= 100 && title.slice(0, m.index).trim() ? {start: m.index + 1, end: m.index + m[0].length, pct} : null;
 }
 /* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat, pct, marks}.
-   pct: its own progress, from a figure at its end (endFigure); 0 for none.
-   marks: the words that were read, as [{start, end, kind, name}] positions in `text`, one per phrase; kind is one of the
-   `ignore` keys below, and name the person, for @username.
-   opts: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off; their words stay in the title:
-   project, labels, assignees, priority, repeat, due, progress), now, dueTime ("HH:MM"). */
+   `pct` is the task's own progress from a figure at the end, 0 for none. `marks` are the words that were read, as
+   [{start, end, kind, name}] positions in `text`, one per phrase; `kind` is one of the `ignore` keys, `name` the
+   person for @username. `opts`: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off, whose
+   words stay in the title: project, labels, assignees, priority, repeat, due, progress), now, dueTime ("HH:MM"). */
 export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now = new Date(), dueTime = '12:00'} = {}){
   const out = {title: text, project: null, projectMiss: null, labels: [], assignees: [], priority: 0, due: null, dueLabel: '', dueFromRepeat: false, repeat: null, repeatWarn: '', pct: 0, marks: []};
   const P = QUICK_ADD_PREFIXES[mode];
@@ -88,27 +87,27 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
     if (f) Object.assign(out, {pct: f.pct, title: (text.slice(0, f.start) + text.slice(f.end)).trim(), marks: [{start: f.start, end: f.end, kind: 'progress'}]});
     return out;
   }
-  // A checklist step's T#20m, T#40m:roast and {#roast} stay as they are, and nothing reads them as a date, a time or a
-  // project: each is swapped for a run of one private-use character, the same length, and put back at the end.
+  // A checklist step's T#20m, T#40m:roast and {#roast} must not be read as a date, a time or a project. Each is
+  // swapped for a run of one private-use character of the same length, and put back at the end.
   const stepTokens = [];
   const hide = tok => String.fromCharCode(0xE000 + stepTokens.push(tok) - 1).repeat(tok.length);
   const unhide = t => t.replace(/([\uE000-\uF8FF])\1*/g, (run, c) => stepTokens[c.charCodeAt(0) - 0xE000] ?? run);
-  /* Quotes round the start of the text hold its title, read as typed, and the words after them are read as usual:
-     "Lunch friday" @sam 2026-10-16 is "Lunch friday", Sam's, due the 16th. With nothing after them, everything is
-     turned off, as in Vikunja: "delete mails up to january 30th". The words after are Pocket's own: Vikunja has no
-     way to keep one word from being read, and a copied list needs one (share.js). The title ends at the first such
-     quote with a space, or the end, after it. It's hidden as a step's words are, its quotes with it. */
+  /* Quotes around the start of the text hold the title as typed, and the words after them are read as usual:
+     "Lunch friday" @user 2026-10-16 is "Lunch friday", assigned, due the 16th. With nothing after the quotes, nothing
+     is read, as in Vikunja. Reading the words after them is Pocket's own: Vikunja has no way to keep one word from
+     being read, and a Markdown copy needs one (share.js). The title ends at the first closing quote followed by a
+     space or the end. It is hidden like a step's token, quotes included. */
   const held = text.match(/^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/);
   if (held) text = held[1] + String.fromCharCode(0xE000 + stepTokens.push(held[3].trim()) - 1).repeat(held[3].length + 2) + text.slice(held[0].length);
   text = text.replace(/(^|\s)(T#(?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+(?::[a-z][\w-]*)?)(?=\s|$|["'])/gi, (_, sp, tok) => sp + hide(tok))
     .replace(/\{#[a-z][\w-]*\}/gi, hide);
-  // Repeats Vikunja can't do, on weekdays only or on two or more days of the week, stay in the title as they are, and
-  // no part of them is read as anything else ("every monday and thursday" isn't every Monday); a chip says so.
+  // Repeats Vikunja can't do, on weekdays only or on two or more days of the week, stay in the title whole, so no part
+  // of them is read as anything else ("every monday and thursday" isn't every Monday). A chip says so.
   if (!ignore.repeat) text = text.replace(new RegExp(`(^|\\s)((?:every|each)\\s+(?:week\\s?days?|working\\s+days?|week\\s?ends?|(?:${WEEKDAY_RE})(?:\\s*(?:,|and|&|\\+)\\s*(?:${WEEKDAY_RE}))+))(?=\\s|$|[,.!?;:])`, 'i'),
     (_, sp, phrase) => { out.repeatWarn = phrase; return sp + hide(phrase); });
   out.title = text;
-  // Every change to the title goes through edit(). `from` keeps where each character of the title was in `text`, and
-  // `read` what each removed one was read as, so the words can be marked where they were typed.
+  // Every change to the title goes through edit(). `from` maps each character of the title to its index in `text`,
+  // and `read` records what each removed character was read as, so the words can be marked where they were typed.
   const from = Array.from({length: text.length}, (_, i) => i), read = new Map();
   const edit = (start, end, insert, kind) => {
     if (kind) for (let i = start; i < end; i++) if (from[i] >= 0) read.set(from[i], kind);
@@ -118,7 +117,7 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   const cut = (start, end, kind) => edit(start, end, ' ', kind);
   const drop = (m, kind) => edit(m.index + m[1].length, m.index + m[0].length, '', kind);      // a token, keeping the space before it
   let m;
-  // "@ 3pm" is a time, as in Vikunja. The last one first, so the earlier positions stay valid.
+  // "@ 3pm" is a time, as in Vikunja. Last match first, so earlier positions stay valid.
   for (const x of [...out.title.matchAll(/(^|\s)@\s+(?=\d)/g)].reverse()) edit(x.index + x[1].length, x.index + x[0].length, 'at ');
 
   // project +name: only the first one counts
@@ -134,8 +133,8 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
     for (const x of found) { const l = unhide(x[2] || x[3] || x[4]); if (!out.labels.includes(l)) out.labels.push(l); }
     for (const x of found.reverse()) drop(x, 'labels');
   }
-  // assignees @username stay in the title for now: createTask takes out each one that gets assigned, as Vikunja does.
-  // A space is needed before the @, so email addresses are left alone.
+  // @username stays in the title for now. createTask removes each one that gets assigned, as Vikunja does. A space is
+  // needed before the @, so email addresses are left alone.
   const people = [];
   if (!ignore.assignees) for (const x of out.title.matchAll(tokenRe(P.assignee))) {
     const u = unhide(x[2] || x[3] || x[4]);
@@ -156,12 +155,12 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
         biannually: [6, 'month'], semiannually: [6, 'month'], biennially: [2, 'year']}[m[2].toLowerCase()];
     }
     if (unit) {
-      // "every month" repeats on the same day each month (Vikunja's monthly mode); Vikunja's own quick add uses 30 days.
+      // "every month" uses Vikunja's monthly mode, the same day each month. Vikunja's own quick add uses 30 days.
       out.repeat = unit === 'month' && n === 1 ? {after: 0, mode: 1, label: 'Every month'}
         : {after: n * {hour: 3600, day: 86400, week: 604800, month: 30 * 86400, year: 365 * 86400}[unit], mode: 0, label: n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`};
       cut(m.index + m[1].length, m.index + m[0].length, 'repeat');
     } else if ((m = out.title.match(new RegExp(`(^|\\s)(?:every|each)\\s+(${WEEKDAY_RE})${END}`, 'i')))) {
-      repeatDay = weekdayIndex(m[2]);                                           // Pocket extra: "every monday"
+      repeatDay = weekdayIndex(m[2]);                                           // Pocket's own: "every monday"
       out.repeat = {after: 604800, mode: 0, label: 'Every ' + WEEKDAYS[repeatDay][0].toUpperCase() + WEEKDAYS[repeatDay].slice(1)};
       cut(m.index + m[1].length, m.index + m[0].length, 'repeat');
     }
@@ -170,10 +169,10 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   // due date. The date leaves the title along with a word that introduces it: "Call Bob in May" -> "Call Bob".
   if (!ignore.due) {
     const dropDate = (start, end) => cut(start - out.title.slice(0, start).match(DROP_LEAD)[0].length, end, 'due');
-    let day = null, time = null, m;                     // day: a date at midnight; time: "HH:MM" or a full date from chrono
+    let day = null, time = null, m;                     // day: a date at midnight. time: "HH:MM", or a full date from chrono
     for (const w of DAY_WORDS) if ((m = out.title.match(w.re))) { day = w.day(now); time = w.time || null; dropDate(m.index + m[1].length, m.index + m[0].length); break; }
     if (!day && (m = out.title.match(new RegExp(`(^|\\s)(?:(?:next|this|on)\\s+)?(${WEEKDAY_RE})${END}`, 'i')))) {
-      day = dayFrom(now, (weekdayIndex(m[2]) - now.getDay() + 7) % 7);           // the coming one; today counts
+      day = dayFrom(now, (weekdayIndex(m[2]) - now.getDay() + 7) % 7);           // the coming one, today included
       dropDate(m.index + m[1].length, m.index + m[0].length);
     }
     if (!day) {                                                                 // numeric date, first or last word
@@ -185,7 +184,7 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
         }
       }
     }
-    // "17th" at the end, or "the 17th" anywhere; not "sep 17th", which is chrono's.
+    // "17th" at the end, or "the 17th" anywhere. Not "sep 17th", which chrono reads.
     const afterMonth = m => /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+$/i.test(out.title.slice(0, m.index + m[1].length));
     if (!day && ((m = out.title.match(new RegExp(`(^|\\s)(\\d{1,2})(?:st|nd|rd|th)(?=${TIME_TAIL})`, 'i'))) && !afterMonth(m)
              || (m = out.title.match(new RegExp(`(^|\\s)(?:the|on the|on)\\s+(\\d{1,2})(?:st|nd|rd|th)${END}`, 'i'))) && !afterMonth(m))) {
@@ -204,8 +203,8 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
         // A month name on its own ("March madness") only counts after in/by/on/before/until: "call Bob in May".
         && !(/^[a-z]+\.?$/i.test(r.text) && r.start.isCertain('month') && !r.start.isCertain('day') && !LEAD_IN.test(out.title.slice(0, r.index))));
       const timeOnly = r => r.start.isCertain('hour') && !r.start.isCertain('day') && !r.start.isCertain('weekday') && !r.start.isCertain('month');
-      /* A bare hour is daytime, as people mean it on the go: "at 5" is 5 PM, 1 to 7 being the afternoon or evening.
-         (Vikunja's own quick add reads it as 5 AM.) "5am", "5pm", "17:00" and "05:00" are as written. */
+      /* A bare hour from 1 to 7 is afternoon or evening, as people mean it on the go: "at 5" is 5 PM. Vikunja's own
+         quick add reads it as 5 AM. "5am", "5pm", "17:00" and "05:00" are as written. */
       const daytime = r => {
         const d = r.start.date(), h = d.getHours();
         if (r.start.isCertain('hour') && !r.start.isCertain('meridiem') && h >= 1 && h <= 7 && !/(^|\D)0\d/.test(r.text)) d.setHours(h + 12);
@@ -214,8 +213,8 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
       const dated = !day && results.find(r => !timeOnly(r));
       if (dated) {
         day = daytime(dated);
-        // Without a year, chrono takes a date earlier than now as next year's, by the time it assumes for it (noon): so
-        // today's date typed in the afternoon would be next year. Today's is today.
+        // Without a year, chrono assumes noon and takes a date earlier than that as next year's, so today's date
+        // typed in the afternoon would be next year. Today's date is today.
         const thisYear = new Date(day); thisYear.setFullYear(now.getFullYear());
         if (!dated.start.isCertain('year') && day.getFullYear() > now.getFullYear() && thisYear.toDateString() === now.toDateString()) day = thisYear;
         if (dated.start.isCertain('hour')) time = day;
@@ -248,7 +247,7 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   }
   if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
   if (out.due && out.timeRead && !/\d:\d\d/.test(out.dueLabel)) out.dueLabel += ' ' + fmtTime(out.due);   // as "Oct 12 3:30 PM"
-  // Its own progress: a figure at the end of what's left, before the people in it.
+  // The task's own progress: a figure at the end of what's left, before any @people.
   const figure = !ignore.progress && endFigure(out.title, ignore.assignees ? '' : `(?:\\s+\\${P.assignee}(?:"[^"]+"|'[^']+'|\\S+))*`);
   if (figure) { out.pct = figure.pct; cut(figure.start, figure.end, 'progress'); }
 
@@ -262,38 +261,35 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   out.marks = [...out.marks, ...people].sort((a, b) => a.start - b.start);
   return out;
 }
-/* Pasted lists: one task per line. What email and notes apps put in front of an item is taken off: "> " quote marks,
+/* Pasted lists: one task per line. What email and notes apps put in front of an item comes off: "> " quote marks,
    bullets, "1." / "1)" numbering and checkboxes. A marker needs a space after it, so "*label" and "+project" at the
-   start of a line still work. An empty checkbox, or a ✓ (often just a bullet), is an open item's. */
+   start of a line still work. An empty checkbox, or a ✓ (often just a bullet), marks an open item. */
 const QUOTE_MARKS = /^(?:>\s*)+/, BULLET = /^(?:[-*•◦▪‣–—+]\s+|\d{1,3}[.)]\s+|\(\d{1,3}\)\s+)/, OPEN_BOX = /^(?:\[ ?\]|[☐✓✔])\s*/;
-/* A line that says it's done: a ticked checkbox after its bullet, "- [x] eggs", "☑ eggs"; or, Pocket's own, an x at
-   its very start with a space after it: "x eggs", "x - eggs", "x- eggs". A capital X too, "X eggs", as a phone's
-   keyboard makes a line's first letter a capital: a title that starts so, "X marks the spot", is had by tapping its
-   chip off. With no space it's a word, "x-ray the pipe". */
+/* A line that says it is done: a ticked checkbox after its bullet, "- [x] eggs" or "☑ eggs", or, Pocket's own, an x at
+   the very start with a space after it: "x eggs", "x - eggs", "x- eggs". A capital X counts too, since a phone's
+   keyboard capitalises the first letter. A title that really starts with one, "X marks the spot", is had by tapping
+   the chip off. Without a space the x is a word: "x-ray the pipe". */
 const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/, DONE_X = /^[xX](?:\s+-|-)?\s+/;
-/* A heading, as Markdown notes write one and a task's copy starts with (share.js): "## Pack the van" is a task, and
-   the lines under it, up to the next heading, are its subtasks. A heading with more #s is under the one before it
-   with fewer. One #, "# Café · 12 open · 5 done", is the name of the whole list, as a project's copy starts with:
-   it's left out. */
+/* A heading, as Markdown notes and a task's Markdown copy write one (share.js): "## Pack the van" is a task, and the
+   lines under it up to the next heading are its subtasks. A heading with more #s goes under the one before it with
+   fewer. A single #, "# Café · 12 open · 5 done", names the whole list, as a project's copy starts, and is left out. */
 const HEADING = /^(#{1,6})\s+/;
-/* A box's text, read as a list: {lines, ticked, one, first, names}. `lines`, one for each line that becomes a task, in order:
-   {text: its words, without what was in front of them; at: where they start in the box's text; done: whether it says
-   it's done; mark: [start, end] of what said so, in the box's text; under: the line it's under, by its place in
-   `lines`, or null}. `ticked`: how many lines say they're done, kept or not; `one`: whether the box holds a single
-   line, not a list; `first`: whether the first line is a parent as the list is written, with lines under it;
-   `names`: the lines left out as the list's name (one #), their words. Alone in the box, such a line names no list:
-   it's a title, as typed.
-   A line that says it's done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
-   single line keeps the marker's words in its title, as any chip tapped off does, and a list leaves those lines out,
-   the lines under one going under what it was under.
-   Which line is under which is read from the list: its headings, and its indenting, as in Vikunja's web app: a line
-   indented more than the line above it is under it, to any depth, in spaces or tabs of any width (a tab counts as
-   four spaces). And, in quick add (`colon`), from a first line ending with a colon, "Groceries:", as a list starts in
-   a message: it's the parent of every line with none, its colon taken off. Quick add's ↳ Under first line changes
-   that: `nest`, the first line is the parent of every line with none; `flat`, they're all tasks of their own, a
-   first line's colon staying in its title.
-   `steps`: a run's box and a template's steps, where a step is done by doing it: a ticked checkbox's line is left
-   out, an x is a word, and so is a heading's #. */
+/* A box's text read as a list: {lines, ticked, one, first, names}. `lines` has one entry per line that becomes a
+   task, in order: {text (its words, without the markers), at (where they start in the box's text), done, mark
+   ([start, end] of what said done), under (the index in `lines` of the line it goes under, or null)}. `ticked` counts
+   the lines that say they are done, kept or not. `one`: the box holds a single line. `first`: the first line is a
+   parent as written, with lines under it. `names`: the words of the lines left out as the list's name. A single #
+   line alone in the box is a title as typed.
+   A line that says it is done arrives done, in quick add and the subtask boxes. With `done` off (its chip tapped): a
+   single line keeps the marker's words in its title, and a list leaves those lines out, with the lines under one
+   going under its parent.
+   Nesting is read from the headings and from the indenting, as in Vikunja's web app: a line indented more than the
+   line above it goes under it, to any depth, in spaces or tabs of any width (a tab counts as four spaces). In quick
+   add (`colon`), a first line ending with a colon, "Groceries:", is the parent of every line with none, its colon
+   removed, as a list in a message starts. Quick add's "Under first line" changes that: `nest` makes the first line
+   the parent of every line with none, `flat` makes every line its own task and keeps the first line's colon.
+   `steps`: a checklist's steps, where a step is done by doing it: a ticked line is left out, an x is a word, and so
+   is a heading's #. */
 export function readList(text, {steps = false, done = true, nest = false, flat = false, colon = false} = {}){
   const rows = [];
   let at = 0, ticked = 0;
@@ -303,7 +299,7 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
     const take = re => { const m = raw.slice(i).match(re); if (m) i += m[0].length; return m; };
     take(QUOTE_MARKS);
     const hash = i, level = steps ? 0 : take(HEADING)?.[1].length || 0;
-    // (A list's name says nothing of itself: what follows its # is its words.)
+    // A list's name is never marked done. The words after its # are its text.
     let from = i, said = !steps && level !== 1 && take(DONE_X);
     if (!said && level !== 1) { take(BULLET); from = i; said = take(DONE_BOX); }
     if (!said && level !== 1) take(OPEN_BOX);
@@ -314,17 +310,17 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
     at += raw.length + 1;
   }
   const full = rows.filter(r => r.text), one = full.length === 1, lines = [], names = [];
-  // What the next line may be under, the nearest last: the headings over it ({level, k: its place in lines}), and,
-  // since the last heading, the lines above it that are indented less ({indent, k}).
+  // What the next line may go under, nearest last: the headings above it ({level, k: index in lines}) and, since the
+  // last heading, the lines above it that are indented less ({indent, k}).
   const heads = [], above = [];
   for (const r of full) {
-    // The list's name: left out, and nothing is under it. Alone, it's a title as typed, its # with it.
+    // The list's name is left out, and nothing goes under it. Alone in the box, it is a title as typed, # included.
     if (r.level === 1 && one) { lines.push({text: r.typed, at: r.typedAt, done: false, mark: null, under: null}); continue; }
     if (r.level === 1) { names.push(r.text); heads.length = 0; above.length = 0; continue; }
     if (r.level) { while (heads.length && heads.at(-1).level >= r.level) heads.pop(); above.length = 0; }
     else while (above.length && above.at(-1).indent >= r.indent) above.pop();
     const under = steps ? null : above.at(-1)?.k ?? heads.at(-1)?.k ?? null;
-    // A done line left out isn't over anything: what's under it goes under what it was under.
+    // A done line left out has nothing under it. Its lines go under its parent.
     if (r.done && (steps || (!done && !one))) continue;
     lines.push(r.done && !done ? {text: r.kept, at: r.keptAt, done: false, mark: null, under} : {text: r.text, at: r.at, done: r.done, mark: r.mark, under});
     (r.level ? heads : above).push({level: r.level, indent: r.indent, k: lines.length - 1});
@@ -334,5 +330,5 @@ export function readList(text, {steps = false, done = true, nest = false, flat =
   for (const [i, l] of lines.entries()) if (flat) l.under = null; else if ((nest || led) && i && l.under === null) l.under = 0;
   return {lines, ticked, one, first, names};
 }
-// The lines of a run's box, a template's steps and its name: their words, a ticked one left out.
+// The words of each line in a checklist's steps box, a ticked line left out.
 export const captureLines = text => readList(text, {steps: true}).lines.map(l => l.text);

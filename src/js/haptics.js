@@ -1,10 +1,8 @@
-/* A tick felt in the hand while a row is swiped or held, and as a tick is tapped: 'hold' as a hold picks it up, 'tick'
-   at each snap, 'done' (stronger) at 100%, a swipe's or a tap's (swipeFeel, tickFeel: progress.js). Everything felt
-   goes through here: Android has navigator.vibrate. Safari on iPhone has none, but since iOS 18 toggling a switch,
-   <input type="checkbox" switch>, gives a tick, also when its label is clicked from code. That's a trick, not something
-   Apple offers for this: it may stop working, or not work while a finger is moving, and then there's simply no tick.
-   The screen always shows one as well (the ring's pie steps, the green turns solid with its ✓), so nothing depends on
-   feeling it. */
+/* Haptic feedback: 'hold' when a hold picks a row up, 'tick' at each snap of a swipe, 'done' (stronger) at 100% or a
+   tap on the tick. Android has navigator.vibrate. Safari on iPhone has none, but since iOS 18 toggling a switch,
+   <input type="checkbox" switch>, gives a tick, even when its label is clicked from code. That is a trick, not
+   something Apple offers for this: it may stop working, or not work while a finger is moving, and then there is no
+   tick. The screen always shows the change as well, so nothing depends on feeling it. */
 const PATTERNS = {hold: 12, tick: 6, done: [14, 60, 24]};
 
 function iosTick(){
@@ -19,6 +17,6 @@ export function haptic(kind = 'tick'){
   try {
     if (navigator.vibrate) { navigator.vibrate(PATTERNS[kind]); return; }
     iosTick();
-    if (kind === 'done') setTimeout(iosTick, 90);       // two close together: the stronger one
-  } catch {}                                            // no tick, then: the screen shows one anyway
+    if (kind === 'done') setTimeout(iosTick, 90);       // two ticks close together make the stronger one
+  } catch {}                                            // no tick, then. The screen shows the change anyway.
 }

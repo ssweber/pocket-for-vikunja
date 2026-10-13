@@ -1,4 +1,4 @@
-// Small helpers used all over Pocket, and what it keeps on the phone in localStorage.
+// Small helpers used all over Pocket, and what Pocket keeps on the phone in localStorage.
 
 export const store = {
   get(k){ try{ return localStorage.getItem('pocket.'+k) }catch{ return null } },
@@ -11,22 +11,21 @@ export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','
 export const colorOf = hex => /^#?([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex || '') ? '#' + hex.replace('#','') : 'var(--muted)';
 export const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|text\/plain)$/;
 export const mimeOf = t => String(t || '').split(';')[0].trim().toLowerCase();
-// Vikunja's upload limit as it states it in /info ("20MB"), in bytes; null if it doesn't say.
+// Vikunja's upload limit as /info states it ("20MB"), in bytes. Null if it doesn't say.
 export function sizeLimit(text){
   const m = String(text || '').trim().match(/^(\d+(?:\.\d+)?)\s*([KMG]?)B?$/i);
   return m ? +m[1] * {'': 1, K: 1024, M: 1048576, G: 1073741824}[m[2].toUpperCase()] : null;
 }
 export const fmtSize = n => !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
-// Words in a list as a sentence has them: "you", "you and Jo", "you, Jo and Priya".
+// A list as a sentence writes it: "you", "you and Jo", "you, Jo and Priya".
 export const andList = words => words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
 export const PRIOS = [{n:0,label:'No priority'},{n:1,label:'Low'},{n:2,label:'Medium'},{n:3,label:'High'},{n:4,label:'Urgent'},{n:5,label:'Do now'}];
-/* Fit a text box to its text: as tall as what's in it and its borders, which scrollHeight leaves out, so nothing is
-   left to scroll inside it. A hidden box measures 0, so leave its height alone until it can be measured. It's measured
-   at its least height first, which, for long notes in a sheet, is far shorter: the sheet would lose its place (its
-   end pulled up past where it was scrolled to), so it's put back where it was. The page is too, for a box in the
-   page: a checklist's, at the foot of its steps, is where the page ends, so each letter typed past its first line
-   pulled the page down by the lines after it, and what was being typed went under the keyboard (in Safari, which
-   doesn't hold the page still itself). */
+/* Fit a text box to its text, so nothing scrolls inside it: scrollHeight plus the borders, which scrollHeight leaves
+   out. A hidden box measures 0, so its height is left alone. Measuring shrinks the box to its least height first,
+   which for long notes in a sheet is far shorter, and the sheet would lose its scroll position, so that position is
+   put back. The page's position is put back too, for a box in the page: a checklist's box at the foot of its steps is
+   where the page ends, so each letter typed past the first line pulled the page down and the text went under the
+   keyboard (in Safari, which doesn't hold the page still itself). */
 export const grow = ta => {
   const sc = ta.closest('#sheet .scroll'), top = sc ? sc.scrollTop : typeof scrollY === 'number' ? scrollY : null;
   ta.style.height = 'auto';
@@ -34,10 +33,10 @@ export const grow = ta => {
   if (sc) { if (sc.scrollTop !== top) sc.scrollTop = top; } else if (top !== null && scrollY !== top) scrollTo(scrollX, top);
 };
 export const cache = new Map();                       // task id -> latest task from the server
-/* What was being written and not sent yet, kept on the phone so closing Pocket doesn't lose it: 'comment:<task id>',
-   'sub:<task id>', 'desc:<task id>' (notes not saved yet), 'run' (notes on runs and steps, by task id), 'newtpl:<project
-   id>' and 'addsteps:<task id>' (steps being written). Cleared on a sign-out you choose, and kept through a session
-   that ends for when the same person is back. */
+/* Text written and not yet sent, kept on the phone so closing Pocket doesn't lose it. Keys: 'comment:<task id>',
+   'sub:<task id>', 'desc:<task id>' (notes not saved yet), 'run' (notes on runs and steps, by task id),
+   'newtpl:<project id>' and 'addsteps:<task id>' (steps being written). Cleared on a chosen sign-out, kept through a
+   session that expires for when the same person is back. */
 export const taskDrafts = {
   all(){ try { return JSON.parse(store.get('drafts')) || {}; } catch { return {}; } },
   get(k){ return this.all()[k]; },
@@ -50,15 +49,16 @@ export const taskDrafts = {
   clear(){ store.del('drafts'); },
 };
 export const userCache = new Map();                   // lowercased username -> user
-// An object Alpine watches, as it is: read without Alpine noting each read (in Node's tests, there's no Alpine).
+// The plain object behind one Alpine watches, so reads of it aren't tracked. Without Alpine (the unit tests), the
+// object itself.
 export const raw = x => globalThis.Alpine?.raw(x) ?? x;
-/* A value worked out once per change to what working it out reads: for a getter that many bindings read and that
-   costs something (a run's screen, runView: read about 45 times each time it's drawn). `fn` runs inside an effect of
-   Alpine's, which notes what it reads. When any of that changes, the value is old there and then, not a moment later
-   when Alpine runs its effects: whatever reads it straight after a change gets it worked out afresh. And what read it
-   before is told to read it again (`rev`). The effect's own scheduler is set for that, which Alpine's `effect`
-   doesn't offer: tests/unit/alpine.test.mjs checks it against Pocket's copy of Alpine, so an upgrade that changes it
-   fails there. Without Alpine (the unit tests), it's worked out each time it's read. */
+/* Cache a getter's value until something it read changes. For a getter that many bindings read and that costs
+   something (a run's screen reads runView about 45 times per draw). `fn` runs inside an Alpine effect, which records
+   what it reads. When any of that changes the value goes stale at once, not a moment later when Alpine runs its
+   effects, so whatever reads it straight after a change gets a fresh one. Earlier readers are told to read again
+   through `rev`. That needs the effect's own scheduler, which Alpine's `effect` doesn't expose:
+   tests/unit/alpine.test.mjs checks it against Pocket's copy of Alpine, so an upgrade that changes it fails there.
+   Without Alpine (the unit tests), the getter runs each time. */
 export function memo(fn){
   let old = true, value, run = null, rev = null;
   return function(){
@@ -72,26 +72,25 @@ export function memo(fn){
       catch (e) { old = true; run = null; throw e; }
       run.effect.scheduler = () => { if (!old) { old = true; rev.n++; } };
     }
-    void rev.n;                                        // read here, so read again once it's old
+    void rev.n;                                        // read here, so this reader runs again once the value is stale
     return value;
   };
 }
 export let app;                                       // the Alpine component, set in init()
 export const setApp = a => { app = a; };
-/* Whether things may move: not with less motion asked for on the phone (prefers-reduced-motion), when a change is only
-   shown, with no slide, fold or fade on the way. Everything that animates from code asks here, the one place; the
-   stylesheet asks for itself (its own @media rules). */
+/* Whether things may animate. False when the phone asks for less motion (prefers-reduced-motion): then a change is
+   shown with no slide, fold or fade. Every animation from code asks here. The stylesheet has its own @media rule. */
 export const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
-/* Collapse a list row before it's removed, so ticked-off tasks slide away instead of vanishing. */
+// Collapse a list row before it's removed, so a ticked task slides away instead of vanishing.
 export async function collapse(el){
   if (!el || !el.isConnected || !motion()) return;
   el.style.overflow = 'hidden';
   await el.animate([{height: el.offsetHeight + 'px', opacity: 1}, {height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px'}],
     {duration: 220, easing: 'ease-in', fill: 'forwards'}).finished.catch(() => {});
 }
-/* Rows gone from a list loaded afresh (settle) fold away as ticked rows do, but only a few, on the screen: with more
-   than FOLD_FEW there at once, or off it, they simply go. Every row is measured before any is changed, so the page is
-   laid out once, not once a row (3.5 s for 2,000 rows). */
+/* Rows gone from a freshly loaded list fold away like ticked rows, but only when few are on screen. More than FOLD_FEW
+   at once, or rows off screen, simply go. Every row is measured before any is changed, so the page is laid out once,
+   not once per row (3.5 s for 2,000 rows). */
 export const FOLD_FEW = 8;
 export async function collapseRows(els){
   if (!motion()) return;

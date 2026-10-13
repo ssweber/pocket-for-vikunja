@@ -1,8 +1,8 @@
-// Task notes and comments: HTML from Vikunja, made safe to show, and plain text.
+// Task notes and comments: Vikunja's HTML made safe to show, and turned to and from plain text.
 import {esc} from './util.js';
 
-// Task notes and comments are HTML written by anyone who shares the project, so only a small set of
-// formatting tags survives. Alpine runs directives found in x-html content, so attributes are stripped too.
+// Notes and comments are HTML written by anyone who shares the project, so only a small set of formatting tags
+// survives. Alpine runs directives found in x-html content, so attributes are stripped too.
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const ALLOWED = new Set(['p','br','b','strong','i','em','u','s','del','ul','ol','li','a','code','pre','blockquote','h1','h2','h3','h4','h5','h6','span','div','mark','hr','table','thead','tbody','tr','td','th']);
 const DROPPED = new Set(['script','style','iframe','frame','frameset','object','embed','template','form','input','label','textarea','select','button','noscript','link','meta','base','title']);
