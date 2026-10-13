@@ -4,8 +4,8 @@
      adds a subtask or a step, on Enter or the button.
 
      Nudging a row moves the box under that row (seatFoot), so the new task is added after it. A dashed placeholder
-     keeps the box's place at the bottom, and tapping it brings the box back. Nudging the last row changes nothing,
-     because the box is already under it. -->
+     keeps the box's place at the bottom, and tapping it brings the box back. The box at the bottom is already under
+     the last row, so nudging that row only highlights it. -->
 <!-- On a checklist the box also has Repeat, shown as its symbol alone. It adds a fresh copy of the step above the box,
      right after that step (repeatAbove, app/runs.js). -->
 <template x-for="fb in [footBox(where)].filter(Boolean)" :key="fb.w"><div class="addbox sub foot-box" :id="fb.id">

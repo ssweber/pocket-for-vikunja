@@ -331,7 +331,7 @@ function runSteps(){
    the dashed placeholder the bar leaves behind. `before` and `after` are the rows around it, in a list `g`.
    specFoot is the box at the end of a list. `fb` is what footBox() returns in the app (position under a row, hint
    text, Repeat). `time` is a step's time line under the box. `said` is the message about what was just done from the
-   box. */
+   box. `end` is the last row nudged, with the box at the bottom already under it. */
 // The row directly above a box seated among a list's rows.
 const rowOver = box => [...box.parentElement.querySelectorAll(':scope > .row')].filter(r => r.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
 const blankBox = f => ({text: '', caret: 0, focus: false, busy: false, ignore: {}, remind: false, ...f});
@@ -349,7 +349,11 @@ const specFoot = (spec, f = {}) => ({spec, where: f.g?.run ? 'run' : 'sheet', sa
   stepNo(t){ return [...this.before, ...this.after].findIndex(x => x.id === t.id) + 1; }, stepAt(t){ return this.stepNo(t) - 1; },
   stepShown(t){ return {title: t.title, text: t.when || '', problem: ''}; }, stepNote(t){ return t.note || ''; },
   // Seat the box under a row as seatFoot does, and give that row the class that highlights it.
-  init(){ this.$nextTick(() => { const box = this.fb.under && this.$el.querySelector('.foot-box'); if (box) { box.classList.add('inline'); rowOver(box)?.classList.add('sub-boxed'); } }); }});
+  init(){ this.$nextTick(() => {
+    const box = this.$el.querySelector('.foot-box');
+    if (box && this.fb.under) { box.classList.add('inline'); rowOver(box)?.classList.add('sub-boxed'); }
+    if (box && this.end) rowOver(box)?.classList.add('sub-boxed', 'at-end');
+  }); }});
 const specName = (spec, f = {}) => ({spec, bw: 'tname', b: blankBox(f.box), box(){ return this.b; }});
 
 document.addEventListener('alpine:init', () => directives(Alpine));
@@ -492,6 +496,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       footBox('A checklist’s steps on its screen: the box at their foot, with Repeat (the step above the box, again)', {g: runList, before: runSteps, fb: runFb}),
       footBox('Typed there', {g: runList, before: runSteps.slice(-3), fb: {...runFb, can: true}, box: {text: 'Sweep outside !2', focus: true}}),
       footBox('Under a step nudged, which Repeat then copies. The step on the card keeps its bold title', {g: runList, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step', repeat: {title: runSteps[2].title, can: true}}}),
+      footBox('The last step nudged: highlighted, with the box at the foot already under it', {g: runList, before: runSteps.slice(-3), fb: runFb, end: true}),
       footBox('What Repeat just did, said in the box; and Repeat off, for a step still waiting to be sent', {g: runList, before: runSteps.slice(-2), fb: {...runFb, repeat: {title: 'Stack the trays', can: false}},
         said: {n: 2, place: 'cap', text: 'Repeated “Take the croissants out”', action: {label: 'Undo', fn(){}}}})];
     this.specimenNames = [barBox('New template’s name: quick add’s box with nothing beside it, empty'),

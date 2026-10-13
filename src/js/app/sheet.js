@@ -561,14 +561,14 @@ export default {
     if (where === 'run') {
       const a = this.runAim;
       if (!a) return null;
-      const under = this.runBoxAt != null;
+      const under = this.runBoxAt != null && !this.runBoxEnd;
       const rest = 'Add steps, or paste a list';
       return {w: 'ins', id: 'run-box', in: 'run-in', under, steps: false, can: this.boxParsedLines('ins').some(p => p.title), repeat: {title: a.above.title, can: !a.above.pending},
         says: under ? 'Step' : rest, rest, add: 'Add steps', home: 'Add after the last step instead'};
     }
     const w = this.subBoxW;
     if (!w) return null;
-    const steps = this.isStepList, under = this.sheet.subAt != null, rest = steps ? 'Add steps, or paste a list' : 'Add subtasks, or paste a list';
+    const steps = this.isStepList, under = this.sheet.subAt != null && !this.sheet.subEnd, rest = steps ? 'Add steps, or paste a list' : 'Add subtasks, or paste a list';
     return {w, id: 'd-subbox', in: 'd-subin', under, steps, can: this.subBoxCan, repeat: null, says: under ? (steps ? 'Step' : 'Subtask') : rest, rest,
       add: steps ? 'Add steps' : 'Add subtasks', home: steps ? 'Add after the last step instead' : 'Add after the last subtask instead'};
   },
@@ -578,6 +578,8 @@ export default {
      never leaves the page, so its text and focus are kept. Its placeholder at the bottom stays, drawn dashed. Tapping
      the placeholder puts the box back at the bottom. So does scrolling the row out of sight while the box isn't being
      typed in. Nudging the row the box is already under changes nothing.
+     The box at the bottom is already under the last row. A nudge there only highlights the row, so that every nudge
+     shows it worked (subEnd, runBoxEnd). The box says what it says at the bottom, and there is no placeholder.
      seatFoot checks where the row is on each frame, the same way seatBox (quickadd.js) does for a list's box. Both go
      through seat.js. */
   nudgedSub(id){
@@ -585,16 +587,14 @@ export default {
     // A template's steps are done tasks, so a done step is still allowed. Nothing happens while a step is being edited,
     // because its edit box is in the way.
     if (!s || (s.done && !this.isStepList) || !this.subBoxW || this.sheet.stepEdit) return;
-    const at = this.underRow('#d-subtasks', s.id);
-    if (String(this.sheet.subAt ?? '') !== String(at ?? '')) haptic('tick');
-    this.sheet.subAt = at; this.sheet.subAfter = null;
+    if (String(this.sheet.subAt ?? '') !== String(s.id)) haptic('tick');
+    this.sheet.subAt = s.id; this.sheet.subAfter = null; this.sheet.subEnd = this.lastRow('#d-subtasks', s.id);
     this.$nextTick(() => this.seatFoot('sheet'));
   },
   // Handles a nudge on a checklist step (nudged, quickadd.js). The step on the card stays.
-  nudgedStep(s){ this.runBoxAt = this.underRow('#run-steps', s.id); this.$nextTick(() => this.seatFoot('run')); },
-  // Where the add box goes when a row in list `sel` is nudged. That is under the row, given as its id, or at the bottom
-  // (null) when the row is the last one.
-  underRow(sel, id){ return [...document.querySelectorAll(sel + ' > .row[data-id]')].at(-1)?.dataset.id === String(id) ? null : id; },
+  nudgedStep(s){ this.runBoxAt = s.id; this.runBoxEnd = this.lastRow('#run-steps', s.id); this.$nextTick(() => this.seatFoot('run')); },
+  // Whether the row with this id is the last one in list `sel`.
+  lastRow(sel, id){ return [...document.querySelectorAll(sel + ' > .row[data-id]')].at(-1)?.dataset.id === String(id); },
   footHome(where){
     if (where === 'run') this.runBoxAt = null; else { this.sheet.subAt = null; this.sheet.subAfter = null; }
     this.seatFoot(where);
@@ -611,16 +611,14 @@ export default {
     seatUnder(seats[where], {
       box: () => document.getElementById(boxId), cls: 'sub-boxed', prop: () => [document.getElementById(boxId).parentElement, '--sub-h'], sight,
       // Returns undefined when the row isn't drawn yet. A row just added is a frame or two away, so seatUnder waits. If
-      // the row is still missing after about a second, seatUnder treats it as lost. If the row is now last (just added
-      // at the end, or the rows after it deleted), the box goes to the bottom.
+      // the row is still missing after about a second, seatUnder treats it as lost.
       row: () => {
         const id = at();
-        if (id == null) return null;
-        const el = document.querySelector(`${list} > .row[data-id="${id}"]`);
-        if (!el) return undefined;
-        if (!later(el)) { foot(); return null; }
-        return el;
+        return id == null ? null : document.querySelector(`${list} > .row[data-id="${id}"]`) ?? undefined;
       },
+      // A row that is now last (nudged there, just added at the end, or the rows after it deleted) has the box at the
+      // bottom under it. The flag tells footBox, which can't see the page.
+      atEnd: el => { const end = !later(el); if (run) { if (this.runBoxEnd !== end) this.runBoxEnd = end; } else if (this.sheet.subEnd !== end) this.sheet.subEnd = end; return end; },
       lost: foot, home: () => this.footHome(where),
       place: (b, el) => el.offsetTop + el.offsetHeight + 'px',
       apply: (b, top) => { b.style.top = top; }, unplace: b => { if (b) b.style.top = ''; },

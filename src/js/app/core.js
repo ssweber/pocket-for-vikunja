@@ -14,7 +14,7 @@ export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest
 export const newStepBox = () => ({...newBox(), key: '+', keep: false, from: null});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], addBox: newStepBox(), newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
+  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, subEnd: false, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], addBox: newStepBox(), newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
   lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
 
 export default () => ({
@@ -96,6 +96,7 @@ export default () => ({
   runFrom: '',                                 // the last screen that wasn't a checklist, for the checklist's Back
   runInsert: newBox(),                          // the add box at the bottom of a checklist's screen (quick add's 'ins')
   runBoxAt: null,                              // step the add box is under on a checklist's screen, null for the bottom (runAim, runs.js; seatFoot, sheet.js)
+  runBoxEnd: false,                            // that step is the last one, so the box at the bottom is already under it
   runDrafts: taskDrafts.get('run') || {},     // notes being written on a checklist or its steps: task id -> text
   perms: saved.get('perms') || {},             // project id -> your access to it, as Vikunja's max_permission: 0 read, 1 write, 2 admin
   projectFrom: '',                             // the last screen that wasn't a project or a run, for a project's Back

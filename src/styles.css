@@ -664,6 +664,8 @@ a.sec-act{text-decoration:none}
 /* The same at the bottom of a sheet's list and of a checklist's steps (list-box.html; seatFoot, app/sheet.js) */
 #d-subtasks{position:relative}
 .sub-boxed{margin-bottom:var(--sub-h,0px)}
+/* The last row, nudged. The box at the bottom is already under it, so the row is only highlighted. */
+.sub-boxed.at-end{margin-bottom:0}
 .foot-box.inline{position:absolute;left:0;right:0}
 #run-steps{position:relative}
 .foot-box > .place-line{margin:0 0 8px}

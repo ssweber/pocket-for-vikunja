@@ -484,7 +484,7 @@ export default {
     const home = document.getElementById('cap-home'), foot = home?.offsetHeight ? home : this.$refs.captureBar;   // the add box's home at the bottom
     if (r.bottom <= top || r.top >= (run ? innerHeight : foot?.getBoundingClientRect().top ?? innerHeight)) return;   // a checklist screen has no bar there
     const was = run ? (this.runBoxAt == null ? null : this.actTask({task: this.runBoxAt})) : this.cursor?.id;
-    if (String(was ?? '') !== String((run ? this.underRow('#run-steps', t.id) : t.id) ?? '') && NUDGE_TICK) haptic('tick');
+    if (String(was ?? '') !== String(t.id) && NUDGE_TICK) haptic('tick');
     if (run) this.nudgedStep(t); else this.aim(t);
   },
   // The task's parent, if the parent is also on this list.

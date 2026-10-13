@@ -669,23 +669,27 @@ test('Repeat copies the step above the box right after it, whatever is on the ca
 });
 
 /* A nudge on a step's row (nudged, app/quickadd.js) moves the add box and nothing else. The fake page has the four
-   steps' rows, all in sight. navigator.vibrate stands in for the phone's vibration. */
+   steps' rows, all in sight. navigator.vibrate stands in for the phone's vibration. The box at the bottom is already
+   under the last step, so a nudge there is recorded as the end of the list, which highlights the row. */
 test('a nudge on a checklist’s step moves the add box under it and leaves the card’s step', () => {
   const app = runScreen(), felt = [], rows = [51, 52, 53, 54].map(id => ({ dataset: { id: String(id) }, getBoundingClientRect: () => ({ top: 100, bottom: 150 }) }));
-  Object.assign(app, { nudged: quickadd.nudged, nudgedStep: sheetPart.nudgedStep, underRow: sheetPart.underRow, route: { name: 'run' }, $refs: {}, $nextTick(){}, seatFoot(){} });
+  Object.assign(app, { nudged: quickadd.nudged, nudgedStep: sheetPart.nudgedStep, lastRow: sheetPart.lastRow, route: { name: 'run' }, $refs: {}, $nextTick(){}, seatFoot(){} });
   document.getElementById = () => null;
   document.querySelector = sel => rows.find(r => sel.includes(`data-id="${r.dataset.id}"`)) || null;
   document.querySelectorAll = () => rows;
   navigator.vibrate = p => felt.push(p);
   globalThis.innerHeight = 800;
   try {
-    const now = () => [app.runBoxAt, app.runView.step.title, felt.length];
+    const now = () => [app.runBoxAt, app.runBoxEnd, app.runView.step.title, felt.length];
     app.nudged('53');
-    assert.deepEqual(now(), [53, 'B', 1], 'the box goes under C, the card keeps B, and the phone vibrates');
+    assert.deepEqual(now(), [53, false, 'B', 1], 'the box goes under C, the card keeps B, and the phone vibrates');
     app.nudged('53');
-    assert.deepEqual(now(), [53, 'B', 1], 'nudging the same step again changes nothing and does not vibrate');
+    assert.deepEqual(now(), [53, false, 'B', 1], 'nudging the same step again changes nothing and does not vibrate');
     app.nudged('54');
-    assert.deepEqual(now(), [null, 'B', 2], 'under the last step is the bottom of the list');
+    assert.deepEqual(now(), [54, true, 'B', 2], 'the last step is nudged like any other, and the box at the bottom is already under it');
+    assert.deepEqual([app.runAim.above.title, app.runAim.before], ['D', null], 'what is added goes at the end, and Repeat copies the last step');
+    app.nudged('54');
+    assert.equal(felt.length, 2, 'nudging the last step again does not vibrate');
   } finally { delete document.getElementById; document.querySelector = () => null; delete document.querySelectorAll; delete navigator.vibrate; delete globalThis.innerHeight; }
 });
 

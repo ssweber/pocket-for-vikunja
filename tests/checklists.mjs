@@ -1468,6 +1468,13 @@ try {
     await touchDrag(guards, 30);
     await expect(page.locator(guards)).toHaveClass(/sub-boxed/);
     await expect(what).toHaveText(onCard);
+    // The box at the bottom is already under the last step. A nudge there highlights the step and leaves the box.
+    const last = '#run-steps > .row[data-id] >> nth=-1';
+    await page.locator(last).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await touchDrag(last, 30);
+    await expect(page.locator(last)).toHaveClass(/at-end/);
+    await expect(page.locator('#run-box')).not.toHaveClass(/\binline\b/);
+    await expect(page.locator('#run-box-place')).toHaveCount(0);
   });
 
   await step('add-a-step-after-the-last', async () => {

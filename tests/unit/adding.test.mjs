@@ -477,6 +477,9 @@ test('a list\'s add box under a row is labelled with what one line makes, and at
   const above = { title: 'Mop the floor', pending: false };
   assert.deepEqual(box({ runAim: { above }, runBoxAt: null }, 'run'), [false, 'Add steps, or paste a list', 'Add steps, or paste a list']);
   assert.deepEqual(box({ runAim: { above }, runBoxAt: 52 }, 'run'), [true, 'Step', 'Add steps, or paste a list']);
+  // Under the last row, the box is where it is at the bottom, so it says what it says there.
+  assert.deepEqual(box({ runAim: { above }, runBoxAt: 54, runBoxEnd: true }, 'run'), [false, 'Add steps, or paste a list', 'Add steps, or paste a list']);
+  assert.deepEqual(box({ subBoxW: 'sub', isStepList: false, sheet: { subAt: 9, subEnd: true } }), [false, 'Add subtasks, or paste a list', 'Add subtasks, or paste a list']);
 });
 
 /* The sheet's own box under a subtask (nudgedSub, app/sheet.js) decides where its lines go. */
