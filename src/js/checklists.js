@@ -167,9 +167,9 @@ export function parseStep(title){
   const out = {title: '', offset: null, name: null, ref: null, problems: []};
   const t = String(title || '').replace(STEP_TIME, (_, sp, tok) => {
     const m = tok.match(/^T#(-?)((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::(.*))?$/i);
-    if (!m) out.problems.push(`“${tok}” isn't a time: write it like T#20m or T#1h30m`);
-    else if (m[1]) out.problems.push(`“${tok}”: a step can't be due before another`);
-    else if (m[3] !== undefined && !NAME_OK.test(m[3])) out.problems.push(`“${tok}”: a name starts with a letter`);
+    if (!m) out.problems.push(`“${tok}” isn't a time (write it like T#20m or T#1h30m)`);
+    else if (m[1]) out.problems.push(`“${tok}”: a step's time can't be negative`);
+    else if (m[3] !== undefined && !NAME_OK.test(m[3])) out.problems.push(`“${tok}”: a step's name must start with a letter`);
     else if (out.offset !== null) out.problems.push('a step can have only one T# time');
     else {
       const ms = Math.round([...m[2].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce((n, u) => n + u[1] * STEP_UNITS[u[2].toLowerCase()], 0));
@@ -178,7 +178,7 @@ export function parseStep(title){
     }
     return sp;
   }).replace(STEP_NAME, (tok, name) => {
-    if (!NAME_OK.test(name)) out.problems.push(`“${tok}”: a name starts with a letter`);
+    if (!NAME_OK.test(name)) out.problems.push(`“${tok}”: a step's name must start with a letter`);
     else if (out.name) out.problems.push('a step can have only one {#name}');
     else out.name = name;
     return ' ';
@@ -195,7 +195,7 @@ export function stepProblems(titles){
     s.problems.forEach(say);
     if (s.ref && !steps.slice(0, i).some(x => sameName(x.name, s.ref)))
       say(steps.slice(i).some(x => sameName(x.name, s.ref)) ? `its time counts from “${s.ref}”, which has to be an earlier step` : `no step is named “${s.ref}”`);
-    if (s.name && steps.slice(0, i).some(x => sameName(x.name, s.name))) say(`“${s.name}” names an earlier step too`);
+    if (s.name && steps.slice(0, i).some(x => sameName(x.name, s.name))) say(`an earlier step is also named “${s.name}”`);
   });
   return out;
 }
@@ -331,7 +331,7 @@ export function draftSteps(rows, before = [], clean = t => t){
     if (r.fixed) return;
     const j = stepFrom(steps, i), from = fromOf(r, i), lost = !!from && !at.has(from) && steps[i].offset !== null;
     info.set(r.key, {i, saved: saved[i], offset: steps[i].offset, name: steps[i].name, text: infos[i].text, lost,
-      problem: infos[i].problem || (lost ? 'the step it counts from isn\'t in this template any more: pick one' : ''),
+      problem: infos[i].problem || (lost ? 'the step it counts from was removed, so pick another' : ''),
       phrase: phrase[i]?.text || '', kept: !!(phrase[i] && r.keep), from: j === null || j < 0 ? '' : steps[i].ref ? all[j].key : '',
       choices: all.slice(0, i).map(x => ({key: x.key, title: clean(parseStep(x.text).title)}))});
   });

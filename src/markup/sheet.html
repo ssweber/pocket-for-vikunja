@@ -10,7 +10,7 @@
     <div class="grab"><i></i></div>
     <!-- The ⋯ menu for the task as a whole: share its progress, open it in Vikunja, and, with write access, move it up
          or down its list, turn a subtask into its own task, use it as a checklist template, or delete it -->
-    <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-more" aria-label="More for this task" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
+    <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-more" aria-label="Task options" :aria-expanded="String(sheet.menu)" @click="sheet.menu = !sheet.menu"><svg class="i"><use href="#i-more"/></svg></button></template>
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
     <!-- Escape closes the menu before the sheet, wherever the focus is (escapeKey) -->
     <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" x-init="$nextTick(() => $el.querySelector('[role=menuitem]')?.focus())" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)">

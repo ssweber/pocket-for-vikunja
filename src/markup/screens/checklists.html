@@ -45,7 +45,7 @@
         </div></template>
         <!-- The last few finished checklists, to look back at or reopen from their ⋯ -->
         <template x-if="cl.finished?.length"><div>
-          <div class="cl-sub">Finished lately</div>
+          <div class="cl-sub">Recently finished</div>
           <div class="list">
             <template x-for="r in cl.finished" :key="r.id"><div class="row cl-done" :data-id="r.id">
               <button class="body" @click="openRun(r.id)"><div class="title" x-text="r.title"></div>

@@ -23,6 +23,6 @@
     <!-- include markup/place-line.html -->
   </template>
   <!-- Steps are added to a checklist on its screen, where they are marked as added to this checklist alone -->
-  <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">Open the checklist. Add a step in the box under its steps. New steps belong to this checklist alone.</p></template>
+  <template x-if="checklistRole === 'run' && canEdit"><p class="note" id="d-run-steps-note" style="padding:12px 14px;margin:0">Open the checklist. Add a step in the box under its steps. New steps are added to this checklist only.</p></template>
   <!-- include markup/list-box.html -->
 </div>

@@ -140,7 +140,7 @@ try {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.click('#btn-setup-checklists', { timeout: 15000 });
     await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 30000 });
-    await said('checklists', 'Set up Checklists, with an example template');
+    await said('checklists', 'Created the Checklists project, with an example template');
     const made = (await api('/projects')).items.filter(p => p.title === 'Checklists' && /pocket:checklists/i.test(p.description || '')).pop();
     try {
       if (!made) throw new Error('no project Checklists, for checklists');
@@ -184,7 +184,7 @@ try {
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
     await page.click('#btn-project');
     await page.click('#p-use-checklists');
-    await said('sheet:top', 'Now for checklists');
+    await said('sheet:top', 'This project is now used for checklists');
     await page.waitForSelector('nav.tabs.icons a[data-tab=checklists]');
     if (!await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('three tabs, but with their names showing');
     if (await page.$eval('nav.tabs a[aria-current=page] .lbl', el => el.getBoundingClientRect().width < 2)) throw new Error('the tab you\'re on lost its name');
@@ -604,7 +604,7 @@ try {
     await expect(page.locator('#step-note-form button')).toBeDisabled();
     await expect(page.locator('#run-steps .row:nth-of-type(3) .note-mark')).toHaveAttribute('aria-label', 'A comment');   // its row says it has one
     await expect(page.locator('#run .h3:has-text("Comments on this checklist")')).toBeVisible();
-    await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment for this checklist, and the next');
+    await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment, also shown next time');
     await expect(page.locator('#run-note-form button')).toBeDisabled();
     await page.fill('#run-note', '   ');
     await expect(page.locator('#run-note-form button')).toBeDisabled();
@@ -659,10 +659,10 @@ try {
     await page.waitForSelector('#btn-refresh.trouble[aria-label="1 couldn\'t be sent"]');
     await toastGone().catch(() => {});
     await page.click('#run-steps .row:nth-of-type(1) .check');
-    await said('step', 'Waiting: something done before it');
+    await said('step', 'Not sent. Vikunja refused an earlier change');
     if (!(await task(id)).done) throw new Error('the untick went before the tick it waits on');
     await page.click('#btn-refresh');
-    await page.waitForSelector('#outbox-rows .ob-row.failed:has-text("Done: Check the guards at 3pm"):has-text("Vikunja turned it down")');
+    await page.waitForSelector('#outbox-rows .ob-row.failed:has-text("Done: Check the guards at 3pm"):has-text("Vikunja refused it")');
     await page.click('#outbox-rows .ob-row.failed .ob-retry');
     await page.waitForSelector('#outbox-status:has-text("Everything has reached Vikunja")', { timeout: 15000 });
     await page.click('#btn-sheet-close');
@@ -864,7 +864,7 @@ try {
     await page.waitForSelector('#d-subtasks .row');
     // A run's sheet has its Comments (its screen's "Comments on this run"); a step is added on its screen.
     await expect(page.locator('#d-comments')).toBeVisible();
-    await expect(page.locator('#d-run-steps-note')).toHaveText('Open the checklist. Add a step in the box under its steps. New steps belong to this checklist alone.');
+    await expect(page.locator('#d-run-steps-note')).toHaveText('Open the checklist. Add a step in the box under its steps. New steps are added to this checklist only.');
     await page.click('#d-subtasks .row:nth-of-type(2) .body');
     await page.waitForSelector('#d-assignees');
     if (await page.$('#d-repeat')) throw new Error('Repeats on a run\'s step');
@@ -1084,7 +1084,7 @@ try {
       await toastGone().catch(() => {});
       await ring.click();
       await expect(page.locator('#complete h2')).toHaveText('Finish this checklist with 3 steps not done?');
-      await expect(page.locator('#complete-note')).toHaveText(`“${dayless(title)}” is finished, and its 3 steps not done stay that way: ${want[0]}, ${want[1]} and ${want[2]}.`);
+      await expect(page.locator('#complete-note')).toHaveText(`These 3 steps stay not done: ${want[0]}, ${want[1]} and ${want[2]}.`);
       await expect(page.locator('#complete-open-run')).toBeVisible();
       await page.click('#complete-yes');
       await until('the run was never finished', async () => (await api('/tasks/' + id)).done);
@@ -1691,7 +1691,7 @@ try {
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name');
     // Empty, each box says what it reads: in the name, @user is who its runs are for.
-    await page.waitForSelector('.nt-name .box-chips .hint:has-text("who its checklists are for")');
+    await page.waitForSelector('.nt-name .box-chips .hint:has-text("assigns its checklists")');
     /* One add box (rows-and-sheet-fixes-plan, part 5): the name holds one line, so Shift+Enter is Enter there (it goes
        on to the steps' box), and a step being changed is saved by it; the steps' box takes a list, as every list's box
        does, so Shift+Enter breaks the line there. Each is as tall as its words, with nothing to scroll inside it. */
@@ -1713,12 +1713,12 @@ try {
     await page.focus('#nt-name');
     // A date isn't read in the name, and a chip says so.
     await page.keyboard.type(`${name} every day at 7`);
-    await page.waitForSelector('.nt-name .box-chips .chip.quiet:has-text("Dates stay in its name")');
+    await page.waitForSelector('.nt-name .box-chips .chip.quiet:has-text("Dates stay in the name")');
     await page.fill('#nt-name', '');
     await page.keyboard.type(other ? `${name} @${OTHER}` : `${name} !2`);
     await page.waitForSelector(`.nt-name .box-chips .chip:has-text("${other ? '@' + OTHER : 'Priority 2'}")`);
     await page.focus('#d-subin');
-    await page.waitForSelector('#d-subbox-chips .hint:has-text("who does it")');
+    await page.waitForSelector('#d-subbox-chips .hint:has-text("assigns the step")');
     // A step being written looks up its @people as every add box does: no such person, and a chip says so before
     // it's made, the name left unmarked.
     await page.keyboard.type(`Sweep up @nobody${stamp}`);
@@ -1773,7 +1773,7 @@ try {
     await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, steps[2].id, { timeout: 5000 });
     await page.waitForTimeout(300);                                          // past the moment the box left speaks up
     await page.fill(`#step-edit-${steps[2].id}`, '');
-    await expect(page.locator('.step-in .box-chips .hint'), 'a step opened from another doesn\'t know it has the focus').toContainText('who does it');
+    await expect(page.locator('.step-in .box-chips .hint'), 'a step opened from another doesn\'t know it has the focus').toContainText('assigns the step');
     await page.press(`#step-edit-${steps[2].id}`, 'Escape');
     await expect(page.locator('#d-subtasks .step-box')).toHaveCount(0);
     // Who a step is for, tapped off it while it's changed.
@@ -1906,7 +1906,7 @@ try {
     await page.waitForSelector(`${dailyRow} .cl-when:has-text("Due now, since"):has-text("then every day")`, { timeout: 15000 });
     await page.evaluate(() => { location.hash = '#/today'; });
     const row = `#view .row:has(> .body .title:has-text("${DAILY}"))`;
-    await page.waitForSelector(`${row} .title .sr:has-text("Checklist: tap to start")`, { state: 'attached', timeout: 15000 });
+    await page.waitForSelector(`${row} .title .sr:has-text("Checklist. Tap to start.")`, { state: 'attached', timeout: 15000 });
     if (await page.$(`${row} button.check`)) throw new Error('it has a tick on Today');
     // With only it overdue, there's no Move all to today: it would move nothing.
     const overdue = await page.$$eval('.sec.overdue ~ .list .row', els => els.length).catch(() => 0);
@@ -1914,7 +1914,7 @@ try {
     await page.click(`${row} > .body`);
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
     const note = await page.textContent('#start-note');
-    if (!/^This is the .*: starting it moves Daily .* on to /.test(note)) throw new Error('note: ' + note);
+    if (!/^This is the checklist due .*\. Starting it moves Daily .* to /.test(note)) throw new Error('note: ' + note);
     // For its assignees.
     if (other) for (const u of [me.username, OTHER]) if (await page.getAttribute(`#start-for .chip[data-user="${u}"]`, 'aria-pressed') !== 'true') throw new Error(`not for ${u}`);
     const before = new Set(((await api('/tasks/' + daily.id)).related_tasks?.copiedto || []).map(t => t.id));
@@ -1943,7 +1943,7 @@ try {
     const later = minute(Date.now() + 3 * 864e5);
     await setDaily({ due_date: later.toISOString() });
     const { run, tpl, note } = await startDaily();
-    if (!/is next due .*: this checklist doesn't move it on/.test(note)) throw new Error('note: ' + note);
+    if (!/is next due .*\. Starting this checklist doesn't change that date/.test(note)) throw new Error('note: ' + note);
     if (tpl.done || !sameTime(tpl.due_date, later.toISOString())) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
     if (run.due_date && !run.due_date.startsWith('0001')) throw new Error('run due ' + run.due_date);
   });
@@ -1982,7 +1982,7 @@ try {
   await step('without-a-repeat-a-start-ends-it', async () => {
     await setDaily({ due_date: minute(Date.now() - 600e3).toISOString(), repeat_after: 0, repeat_mode: 0 });
     const { tpl, note } = await startDaily();
-    if (!note.includes("doesn't come round again")) throw new Error('note: ' + note);
+    if (!note.includes("doesn't repeat")) throw new Error('note: ' + note);
     if (!tpl.done || (tpl.due_date && !tpl.due_date.startsWith('0001'))) throw new Error(`template done ${tpl.done}, due ${tpl.due_date}`);
     await page.evaluate(() => { location.hash = '#/checklists'; });
     await page.waitForSelector(dailyRow, { timeout: 15000 });
@@ -2011,7 +2011,7 @@ try {
     // Repeats picked with no date gives it one, and says which.
     await toastGone().catch(() => {});
     await page.selectOption('#d-repeat', 'week');
-    await said('sheet:due', 'It repeats from');
+    await said('sheet:due', 'Pocket set the due date to');
     await until('a repeat with no date never came round', async () => { const t = await api('/tasks/' + daily.id); return !t.done && t.repeat_after === 604800; }, 15000);
     await page.click('#d-due-clear');
     await until('never done once more', async () => (await api('/tasks/' + daily.id)).done, 15000);
@@ -2044,7 +2044,7 @@ try {
     await page.evaluate(id => { location.hash = '#/project/' + id; }, project.id);
     await page.click('#btn-project');
     await page.click('#p-stop-checklists');
-    await said('sheet:top', 'No longer for checklists');
+    await said('sheet:top', 'This project is no longer used for checklists');
     if (/pocket:checklists/i.test((await api('/projects/' + project.id)).description)) throw new Error('the marker is still there');
     if (!checklistsBefore && await page.isVisible('nav.tabs a[data-tab=checklists]')) throw new Error('the Checklists tab is still there');
   });

@@ -310,7 +310,7 @@ test('a step added during a run is asked about once before it\'s deleted: by its
     const s = step({ added: 'Inserted', pending: 'e1' });
     Object.assign(app, { runAdded: null, dropStep: async () => true });
     assert.equal(app.askDeleteStep(s), false);
-    assert.deepEqual(asked, ['Delete “Take the croissants out”? It was added to this checklist alone: the template\'s steps stay as they are.']);
+    assert.deepEqual(asked, ['Delete “Take the croissants out”? This step was added to this checklist only. The template doesn\'t change.']);
     assert.deepEqual([app.askDeleteStep(step({})), app.askDeleteStep(step({ added: 'Inserted', done: true })), asked.length], [false, false, 1], 'a template\'s step, or a done one: not asked, not deleted');
     assert.deepEqual([await app.deleteAddedStep(s), asked.length], [false, 2], 'its ×: asked, and said no');
     assert.deepEqual([await app.deleteAddedStep(s, false, true), asked.length], [true, 2], 'asked beforehand: deleted, not asked again');

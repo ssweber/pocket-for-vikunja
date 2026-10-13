@@ -175,16 +175,16 @@ test('a waiting line cancelled: the lines under it go under what it was under, a
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1), line('Tables', {}, 0)]);
   await send(app, e);
   // Each waiting row's Cancel says what becomes of the lines under it, a later parent's too.
-  assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Pack the van: the lines under it become tasks of their own',
-    'Cancel Load chairs: the line under it goes under “Pack the van”', 'Cancel Stack them', 'Cancel Tables']);
+  assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Pack the van. The lines under it become their own tasks.',
+    'Cancel Load chairs. The line under it moves under “Pack the van”.', 'Cancel Stack them', 'Cancel Tables']);
   await app.cancelPending(e.id, 1);
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Pack the van', null], ['Stack them', 0], ['Tables', 0]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 1 line under it is now under “Pack the van”.');
   assert.equal(app.cap.text, 'Load chairs');
-  assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van: the lines under it become tasks of their own', 'two still wait under the first');
+  assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van. The lines under it become their own tasks.', 'two still wait under the first');
   await app.cancelPending(e.id, 0);
   assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Stack them', null], ['Tables', null]]);
-  assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now tasks of their own.');
+  assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now their own tasks.');
   assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Stack them', 'Cancel Tables']);
   // One kept from before, its first line cancelled: the rest are tasks of their own, as they were then.
   const old = entry([oldLine('Order cups'), oldLine('Small'), oldLine('Large')], { nest: true });
@@ -237,18 +237,18 @@ test('one line that says it\'s done: a Done chip, its marker marked; tapped off,
 test('a list with lines that say they\'re done: one chip counts them; tapped, they\'re left out, and tapped again they\'re back', () => {
   const app = boxes();
   app.cap.text = 'Groceries\n- [x] Eggs\n- [ ] Milk tomorrow\nx Bread';
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 arrive done', '4 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
   assert.deepEqual(marksOf(app, 'cap'), ['done:[x]', 'due:tomorrow', 'done:x']);
   assert.deepEqual(linesOf(app, 'cap'), [['Groceries', false], ['Eggs', true], ['Milk', false], ['Bread', true]]);
-  tap(app, 'cap', 'arrive done');
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 ticked off already: left out', '2 tasks', 'Café']);
+  tap(app, 'cap', 'will be added as done');
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 already ticked, left out', '2 tasks', 'Café']);
   assert.deepEqual(marksOf(app, 'cap'), ['due:tomorrow']);
   assert.deepEqual(linesOf(app, 'cap'), [['Groceries', false], ['Milk', false]]);
   tap(app, 'cap', 'left out');
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 arrive done', '4 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
   // A subtask box reads them the same way.
   app.sheet.sub.text = '[x] Load chairs\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 arrives done', '2 subtasks']);
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '2 subtasks']);
   assert.deepEqual(linesOf(app, 'sub'), [['Load chairs', true], ['Tables', false]]);
 });
 
@@ -256,13 +256,13 @@ const under = (app, w) => app.boxParsedLines(w).map(p => p.under);
 test('a pasted list with headings: each a task over its lines, the chip counting them; ↳ Under first line shows on, and tapped off makes them all tasks', () => {
   const app = boxes();
   app.cap.text = '## Pack the van (38%)\n- Load chairs\n- [x] Tables\n## Set the hall\n- Lights (50%)';
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 arrives done', '2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '2 tasks + 3 subtasks', 'Café']);
   assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3]);
   assert.deepEqual(app.boxParsedLines('cap').map(p => [p.title, p.pct]), [['Pack the van', 0], ['Load chairs', 0], ['Tables', 0], ['Set the hall', 0], ['Lights', 50]], 'a parent\'s figure is dropped');
   assert.equal(app.nestOn, true, 'the first line is a parent as the list is written');
   app.tapNest();
   assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null, null, null]]);
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 arrives done', '5 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '5 tasks', 'Café']);
   app.tapNest();
   assert.deepEqual([app.nestOn, under(app, 'cap')], [true, [null, 0, 0, null, 3]], 'tapped again: as written');
   // A list with no markers: off until it's tapped, as before.
@@ -278,7 +278,7 @@ test('a pasted list with headings: each a task over its lines, the chip counting
 test('in a subtask box, a heading\'s lines go under it, and it goes under the open task', () => {
   const app = boxes();
   app.sheet.sub.text = '## Chairs\n- Stack them\n- [x] Count them\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 arrives done', '4 subtasks']);
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '4 subtasks']);
   assert.deepEqual(app.boxItems('sub').map(x => [x.raw, x.under]), [['Chairs', null], ['Stack them', 0], ['x Count them', 0], ['Tables', 0]]);
 });
 
@@ -297,7 +297,7 @@ test('a pasted list with indented lines: each under the line above it that\'s in
 test('a project\'s copy pasted: its heading, one #, is the list\'s name, left out, and a chip says so', () => {
   const app = boxes();
   app.cap.text = '# Café · 3 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables (50%)';
-  assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name: left out', '2 tasks + 1 subtask', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name, so it is left out', '2 tasks + 1 subtask', 'Café']);
   assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under, x.p.pct]), [['Order milk', null, 0], ['Pack the van', null, 0], ['Tables', 1, 50]]);
   assert.equal(app.nestOn, false, 'the first line that\'s a task isn\'t a parent');
   // Alone in the box, a # line names no list: it's a task, as typed.
@@ -308,10 +308,10 @@ test('a project\'s copy pasted: its heading, one #, is the list\'s name, left ou
 test('a first line ending with a colon is the parent of the rest in quick add, its colon taken off; ↳ Under first line tapped off keeps it', () => {
   const app = boxes();
   app.cap.text = 'Groceries:\nmilk\n- [x] eggs';
-  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 arrives done', '1 task + 2 subtasks', 'Café'], true]);
+  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 will be added as done', '1 task + 2 subtasks', 'Café'], true]);
   assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under]), [['Groceries', null], ['milk', 0], ['eggs', 0]]);
   app.tapNest();
-  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 arrives done', '3 tasks', 'Café'], false]);
+  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 will be added as done', '3 tasks', 'Café'], false]);
   assert.deepEqual(app.boxItems('cap').map(x => [x.p.title, x.under]), [['Groceries:', null], ['milk', null], ['eggs', null]]);
   // A subtask box has no ↳ Under first line to tap it off with: the colon is a title's there.
   app.sheet.sub.text = 'Groceries:\nmilk';
@@ -457,7 +457,7 @@ test('a tick never moves the box: another row ticked, and ticked back, leaves it
 test('a run\'s box leaves a ticked line out, with nothing to tap, and an x is a word there', () => {
   const app = boxes();
   app.runInsert.text = 'x Wipe the counter\n[x] Mop\nLock up';
-  assert.deepEqual(app.chips('ins').map(c => [c.text, c.kind]), [['1 line ticked off already: left out', undefined], ['2 steps', undefined]]);
+  assert.deepEqual(app.chips('ins').map(c => [c.text, c.kind]), [['1 line is already ticked, so it is left out', undefined], ['2 steps', undefined]]);
   assert.deepEqual(linesOf(app, 'ins'), [['x Wipe the counter', false], ['Lock up', false]]);
 });
 

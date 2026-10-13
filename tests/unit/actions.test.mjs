@@ -375,7 +375,7 @@ test('Move all to today: each overdue task to today at its own time, or the next
   assert.equal(v.task(1).due_date, at(7, 15), 'its time has passed today: the next whole hour');
   assert.equal(v.task(2).due_date, at(7, 18, 30));
   assert.equal(v.task(3).due_date, at(6, 8), 'a repeating task stays');
-  assert.equal(app.toasts.at(-1).msg, 'Moved 2 to today. 1 repeating task stays: tick it to move on to the next date.');
+  assert.equal(app.toasts.at(-1).msg, 'Moved 2 to today. 1 repeating task stays. Tick it to move it to its next date.');
   assert.equal(app.toast.place, 'overdue', 'said under the Overdue heading');
   await app.toast.action.fn();
   assert.equal(v.task(1).due_date, at(5, 9));
@@ -621,11 +621,11 @@ test('a row moved to a new date goes there at its own time, at once, said on its
   seen.add(3);
   await moveTo(app, app.tasks[3], null, null);
   assert.deepEqual([v.task(3).due_date, key(3)], [ZERO, 'nodate'], 'its date taken off: under Added today, no date, made today');
-  assert.deepEqual(said(app), ['Took its date off', 'Undo', 3, 'cap']);
+  assert.deepEqual(said(app), ['Removed its due date', 'Undo', 3, 'cap']);
   await moveTo(app, app.tasks[4], null, null);
   assert.equal(v.task(4).due_date, ZERO);
   assert.equal(shown(4), false, 'made before today, with no date: off Today');
-  assert.deepEqual(said(app), ['Took its date off', 'Undo', null, 'cap']);
+  assert.deepEqual(said(app), ['Removed its due date', 'Undo', null, 'cap']);
 });
 
 test('every date changed by a hold has an Undo, which puts back the date and the time it had', async c => {
@@ -787,7 +787,7 @@ test('a subtask made its own task leaves its parent, goes right after it, and th
   assert.deepEqual(moves, [['position', 12, 7, 1000.01]], 'right after its old parent: its list not on screen to say what\'s next, a little after it');
   assert.deepEqual([app.sheet.task.related_tasks.parenttask, app.tasks[12].related_tasks.parenttask, app.canOwn], [[], [], false], 'on its sheet and its row');
   assert.deepEqual(patches(v).at(-1), [10, { percent_done: 1 }], 'its old parent\'s progress, without it');
-  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['Now its own task, no longer under “Pack the van”', 'sheet:top', 'Undo']);
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['No longer a subtask of “Pack the van”', 'sheet:top', 'Undo']);
   await app.toast.action.fn();
   assert.deepEqual([v.task(12).related_tasks.parenttask.map(p => p.id), v.task(10).related_tasks.subtask.map(s => s.id)], [[10], [11, 12]], 'Undo: under it again');
   assert.deepEqual([moves.at(-1), patches(v).at(-1)], [['position', 12, 7, 200], [10, { percent_done: 0.5 }]], 'where it was among the subtasks, and counted again');

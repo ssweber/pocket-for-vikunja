@@ -140,10 +140,10 @@ export default {
     const p = this.prefixes;
     if (!p) return 'Quick add shortcuts are turned off in your Vikunja settings';
     const tags = `${p.label}label  !1–5`;
-    if (w === 'tname') return `${p.assignee}user: who its checklists are for  ${tags} · a due date and Repeats are set after creating it`;
-    if (w === 'ins') return `${p.assignee}user: who does it  ${tags} · a pasted list is a step a line`;
-    if (this.isStepBox(w)) return `${p.assignee}user: who does it  ${tags} · “in 20 min”: due 20 minutes after the previous step`;
-    const base = this.boxBase(w), dates = base.due ? 'dates stay as words in a checklist project' : 'tomorrow · fri at 2 · Oct 12 · every week';
+    if (w === 'tname') return `${p.assignee}user assigns its checklists  ${tags} · set a due date and Repeats after creating it`;
+    if (w === 'ins') return `${p.assignee}user assigns the step  ${tags} · paste a list to add one step per line`;
+    if (this.isStepBox(w)) return `${p.assignee}user assigns the step  ${tags} · “in 20 min” makes it due 20 minutes after the previous step`;
+    const base = this.boxBase(w), dates = base.due ? 'dates stay in the title in a checklist project' : 'tomorrow · fri at 2 · Oct 12 · every week';
     return `${base.project ? '' : p.project + 'project  '}${p.label}label  ${p.assignee}user  !1–5  ${dates} · tap a chip to undo it`;
   },
   /* Show unsupported dates and project names as muted chips so people can see that those words remain literal. Run
@@ -153,11 +153,11 @@ export default {
     if (!base.due && !base.project) return out;
     const ph = this.isStepBox(w) && readStepPhrase(line), rest = ph ? line.slice(0, ph.index) + line.slice(ph.index + ph.length) : line;
     const raw = parseCapture(rest, this.projects, {...this.parseOpts, ignore: {}});
-    if (base.due && (raw.due || raw.repeat)) out.push({key: 'ign-d', cls: 'quiet', text: w === 'tname' ? 'Dates stay in its name: a due date and Repeats are set after creating it'
-      : w === 'ins' ? 'Dates stay as words: a step added to a checklist has no time' : this.isSubBox(w) ? 'Dates stay as words here: a subtask in a checklist project may become a step'
-      : 'Dates stay as words: a step is due a time after the one before, like “in 20 min”'});
-    if (base.project && (raw.project || raw.projectMiss)) out.push({key: 'ign-p', cls: 'quiet', text: this.isSubBox(w) ? `${this.prefixes.project}project stays as words: a subtask goes in its task's project`
-      : `${this.prefixes.project}project stays as words: a checklist's steps are in its project`});
+    if (base.due && (raw.due || raw.repeat)) out.push({key: 'ign-d', cls: 'quiet', text: w === 'tname' ? 'Dates stay in the name. Set a due date and Repeats after creating the template.'
+      : w === 'ins' ? 'Dates stay in the title. A step added to a checklist has no due time.' : this.isSubBox(w) ? 'Dates stay in the title. A subtask in a checklist project may become a step.'
+      : 'Dates stay in the title. Write a step\'s time as a delay, like “in 20 min”.'});
+    if (base.project && (raw.project || raw.projectMiss)) out.push({key: 'ign-p', cls: 'quiet', text: this.isSubBox(w) ? `${this.prefixes.project}project stays in the title. A subtask goes in its parent's project.`
+      : `${this.prefixes.project}project stays in the title. A checklist's steps are in its project.`});
     return out;
   },
 
@@ -351,11 +351,11 @@ export default {
        toggles whether they are included. Run and template boxes omit those lines without a toggle. */
     const list = this.boxList(w), ticked = list.ticked, left = !!b.ignore?.done;
     // A list's name, one #, as a project's copy starts with: left out, and said so.
-    if (list.names.length) photos.push({key: 'nm', cls: 'quiet', text: list.names.length === 1 ? 'The # line is the list’s name: left out' : `${list.names.length} # lines are list names: left out`});
-    if (ticked && !this.readsDone(w)) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? '' : 's'} ticked off already: left out`});
+    if (list.names.length) photos.push({key: 'nm', cls: 'quiet', text: list.names.length === 1 ? 'The # line is the list’s name, so it is left out' : `${list.names.length} # lines are list names, so they are left out`});
+    if (ticked && !this.readsDone(w)) photos.push({key: 'tk', text: `${ticked} line${ticked === 1 ? ' is' : 's are'} already ticked, so ${ticked === 1 ? 'it is' : 'they are'} left out`});
     else if (ticked && list.one) photos.push({key: 'tk', kind: 'done', text: 'Done', off: left});
-    else if (ticked) photos.push({key: 'tk', kind: 'done', text: left ? `${ticked} ticked off already: left out` : `${ticked} arrive${ticked === 1 ? 's' : ''} done`,
-      hint: left ? `Tap to add ${ticked === 1 ? 'it' : 'them'}, done` : `Tap to leave ${ticked === 1 ? 'this line' : 'these lines'} out`});
+    else if (ticked) photos.push({key: 'tk', kind: 'done', text: left ? `${ticked} already ticked, left out` : `${ticked} will be added as done`,
+      hint: left ? `Tap to add ${ticked === 1 ? 'it' : 'them'} as done` : `Tap to leave ${ticked === 1 ? 'this line' : 'these lines'} out`});
     const parsed = this.boxParsed(w), p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()), out = [], n = list.lines.length;
     out.push(...photos);
     // A pasted list: how many, where they go, and anyone in it who can't see that project, before it's sent.
@@ -388,8 +388,8 @@ export default {
     // Offer a reminder only for an explicit future time and when Vikunja can send reminder emails. The chip starts
     // off.
     if (all.due && all.timeRead && all.due > new Date() && !off('due') && this.remindersReach) out.push({key: 'rem', kind: 'remind', cls: 'toggle', pressed: b.remind,
-      text: '🔔 Remind me', hint: b.remind ? 'Tap for no reminder' : 'Tap to have Vikunja email you a reminder at this time', action: () => { b.remind = !b.remind; }});
-    if (all.repeatWarn) out.push({key: 'rw', cls: 'warn', text: `Vikunja can't repeat “${all.repeatWarn}”: it stays in the title`});
+      text: '🔔 Remind me', hint: b.remind ? 'Tap to turn the reminder off' : 'Tap to have Vikunja email you a reminder at this time', action: () => { b.remind = !b.remind; }});
+    if (all.repeatWarn) out.push({key: 'rw', cls: 'warn', text: `Vikunja can't repeat “${all.repeatWarn}”, so it stays in the title`});
     if (all.repeat) out.push({key: 'rep', kind: 'repeat', text: '↻ ' + all.repeat.label + (all.dueFromRepeat ? ', from ' + all.dueLabel : ''), off: off('repeat')});
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
     // Its own progress, from a figure at its end; 100% is done.
@@ -401,8 +401,8 @@ export default {
     // A step being changed: the people and labels it has, to tap off it.
     if (w === 'edit') out.push(...this.stepHasChips());
     const to = this.boxPid(w);
-    if (this.boxIn && (w === 'under' || w === 'cap') && !this.cursorListView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja: what you add goes last'});
-    if (to && !this.canWrite(to)) out.push({key: 'ro', cls: 'warn', text: `${this.projById.get(to)?.title || 'This project'} is shared with you to read only: it can't be added to`});
+    if (this.boxIn && (w === 'under' || w === 'cap') && !this.cursorListView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja, so new tasks go last'});
+    if (to && !this.canWrite(to)) out.push({key: 'ro', cls: 'warn', text: `${this.projById.get(to)?.title || 'This project'} is read only. You can't add tasks to it.`});
     return out;
   },
 

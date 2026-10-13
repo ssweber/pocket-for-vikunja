@@ -10,8 +10,8 @@ const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
    when the title says it, or null when none are left and there is no row. */
 export function moreDone(left, per){
   if (!(left > 0)) return null;
-  if (left <= per) return {title: `Show the last ${left === 1 ? 'one' : left}, done before these`, note: ''};
-  return {title: `Show ${per} more, done before these`, note: `${left.toLocaleString()} more not shown`};
+  if (left <= per) return {title: `Show the last ${left === 1 ? 'one' : left}`, note: ''};
+  return {title: `Show ${per} done earlier`, note: `${left.toLocaleString()} more not shown`};
 }
 
 // A change Vikunja didn't save, and why, in a few words.
@@ -19,7 +19,7 @@ export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' 
 // A move Vikunja turned down. When an API token without the right permission caused it (api.js), the message names
 // the permission.
 export const notMoved = e => e?.code === 'token' ? 'Not moved: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.'
-  : 'Not moved: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja turned it down');
+  : 'Not moved: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
 
 /* Where tasks just added went, said by the add box when they aren't on the screen being looked at (a task due next
    month added on Today, or one for another project). `n` lines were added, `subs` of them subtasks of the others, to
@@ -48,7 +48,7 @@ export const notMovedBack = (k, still) => `${plural(k, 'task')} couldn't be move
    is the date's name as its chip has it ("Today", "Tomorrow", "Mon 12"), or null when the date was taken off. A card
    whose subtask `kept` (its title) is due sooner stays where it was, and the message says so: "Moved to Friday. Its
    subtask “Buy paint” is due sooner, so it stays here." */
-export const movedTo = (day, kept = null) => (day ? `Moved to ${dayWord(day)}` : 'Took its date off')
+export const movedTo = (day, kept = null) => (day ? `Moved to ${dayWord(day)}` : 'Removed its due date')
   + (kept ? `. Its subtask “${kept}” ${day ? 'is due sooner' : 'has a date'}, so it stays here.` : '');
 // A day's name inside a sentence: "today", "tomorrow", "Friday".
 export const dayWord = day => /^(Today|Tomorrow)$/.test(day) ? day.toLowerCase() : day;
@@ -72,8 +72,8 @@ export const headText = n => n ? `Done, but ${n === 1 ? '1 subtask is' : n + ' s
 /* The name of a waiting row's Cancel button, for a screen reader. It says what becomes of the `n` lines waiting under
    the row: they go under `over` (the title of what the row was under), or, for a row at the top, become tasks of their
    own, as cancelPending (app/sending.js) does. */
-export const cancelName = (title, n = 0, over = '') => 'Cancel ' + title + (!n ? '' : `: the line${n === 1 ? '' : 's'} under it `
-  + (over ? `${n === 1 ? 'goes' : 'go'} under “${over}”` : n === 1 ? 'becomes a task of its own' : 'become tasks of their own'));
+export const cancelName = (title, n = 0, over = '') => 'Cancel ' + title + (!n ? '' : `. The line${n === 1 ? '' : 's'} under it `
+  + (over ? `${n === 1 ? 'moves' : 'move'} under “${over}”.` : n === 1 ? 'becomes its own task.' : 'become their own tasks.'));
 // A checklist's step done or skipped without a connection, and when the change is sent.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
 
@@ -107,7 +107,7 @@ export function namesText(names, most = 3){
 export function completeAsk({title, run = false, names = [], stay = 0}){
   const n = names.length, which = namesText(names);
   if (run) return {head: `Finish this checklist with ${plural(n, 'step')} not done?`, yes: 'Finish checklist',
-    body: `“${title}” is finished, and ${n === 1 ? 'its step not done stays' : `its ${n} steps not done stay`} that way: ${which}.`};
+    body: `${n === 1 ? 'This step stays' : `These ${n} steps stay`} not done: ${which}.`};
   const stays = !stay ? '' : stay === 1 ? 'The one that repeats stays as it is.' : `The ${stay} that repeat stay as they are.`;
   const goes = !n ? '' : n === 1 ? `Its open subtask will be marked done too: ${which}.` : `Its ${n} open subtasks will be marked done too: ${which}.`;
   return {head: `Complete “${title}”?`, body: [goes, stays].filter(Boolean).join(' '), yes: n ? `Complete all ${n + 1}` : 'Complete it'};

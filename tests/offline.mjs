@@ -407,7 +407,7 @@ try {
     await page.route('**/api/v2/tasks/*/attachments', cutOff);
     await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
-    await placeSays(page, 'cap', 'no room left on this phone to keep this until there\'s a connection. Keep Pocket open');
+    await placeSays(page, 'cap', 'storage is full, so Pocket can\'t save this for later. Keep Pocket open');
     await page.waitForSelector(`.row:has(.title:has-text("${T('S')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`, { state: 'attached' });
     cut = false;
     await online();

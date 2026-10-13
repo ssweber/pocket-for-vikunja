@@ -65,7 +65,7 @@
             @click="setRunFor(u)" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
         </div>
       </div></template>
-      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.run.run.id)">Reopen checklist, back under In progress</button></template>
+      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.run.run.id)">Reopen checklist</button></template>
       <div class="card cl-card" style="margin-top:14px">
         <p>The checklist is a task in Vikunja, with its steps as subtasks.</p>
         <button class="btn ghost block" id="r-open-task" @click="openTask(view.run.run.id)">Open as a task</button>

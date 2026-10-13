@@ -244,7 +244,7 @@ test('the other screens aren’t loaded in the background while a screen’s row
 });
 
 /* A list of done tasks shown a part at a time (performance-plan, part 9): a project's Done its latest 100, its heading
-   counting them all, and a row at its end for 100 more, done before these, read from where it's shown to; search's
+   counting them all, and a row at its end for 100 done earlier, read from where it's shown to; search's
    done matches the same, 50 at a time. */
 function doneVikunja(n){
   const v = { done: Array.from({ length: n }, (_, k) => ({ id: k + 1, title: 'done ' + (k + 1), done: true, project_id: 5 })), asked: [] };
@@ -262,20 +262,20 @@ function doneApp(route){
   return app;
 }
 
-test('a project\'s Done shows its latest 100, counts them all, and a row shows 100 more, done before these', async () => {
+test('a project\'s Done shows its latest 100, counts them all, and a row shows 100 done earlier', async () => {
   const v = doneVikunja(250), app = doneApp({ name: 'project', id: 5 });
   const g = app.doneGroup(null, 250, true);
   app.view.groups = [{ key: 'open', tasks: [] }, g];
   await app.loadDoneSection(g);
   assert.deepEqual([g.tasks.length, g.tasks[0].id, g.count], [100, 1, 250], 'the most recently done first; its count all of them');
   assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 1/50', '/projects/5/tasks 2/50'], 'one part, not the whole list');
-  assert.deepEqual(app.moreOf('done'), { title: 'Show 100 more, done before these', note: '150 more not shown' });
+  assert.deepEqual(app.moreOf('done'), { title: 'Show 100 done earlier', note: '150 more not shown' });
 
   v.asked = [];
   await app.showMore('done');
   assert.deepEqual(ids(g.tasks), Array.from({ length: 200 }, (_, k) => k + 1), 'the next 100 after them');
   assert.deepEqual(v.asked.sort(), ['/projects/5/tasks 3/50', '/projects/5/tasks 4/50']);
-  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 50, done before these', note: '' });
+  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 50', note: '' });
 
   // One ticked back, and two done elsewhere since: the next part read from where it's shown to, none twice.
   g.tasks.splice(5, 1); g.count--; v.done.splice(5, 1);
@@ -284,7 +284,7 @@ test('a project\'s Done shows its latest 100, counts them all, and a row shows 1
   assert.equal(new Set(ids(g.tasks)).size, g.tasks.length, 'none twice');
   assert.equal(g.tasks.length, 249);
   assert.equal(g.count, 251, 'counted as Vikunja counts them now');
-  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 2, done before these', note: '' }, 'the two done since, not yet on it');
+  assert.deepEqual(app.moreOf('done'), { title: 'Show the last 2', note: '' }, 'the two done since, not yet on it');
 
   const kept = keptGroups([g])[0];
   assert.deepEqual([kept.tasks.length, kept.count], [0, 251], 'the kept copy: its count, none of its tasks');
@@ -322,7 +322,7 @@ test('search\'s done matches show 50, counted all, with a row for 50 more', asyn
   const g = app.view.groups.find(x => x.key === 'done');
   assert.deepEqual([g.tasks.length, g.count, g.title], [50, 120, 'Done']);
   assert.ok(v.asked.includes('/tasks 1/50'));
-  assert.deepEqual(app.moreOf('done'), { title: 'Show 50 more, done before these', note: '70 more not shown' });
+  assert.deepEqual(app.moreOf('done'), { title: 'Show 50 done earlier', note: '70 more not shown' });
   await app.showMore('done');
   await app.showMore('done');
   assert.deepEqual(ids(g.tasks), Array.from({ length: 120 }, (_, k) => k + 1));

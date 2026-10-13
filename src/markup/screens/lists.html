@@ -40,7 +40,7 @@
       <template x-for="line in placeLines('projects')" :key="line.n">
         <!-- include markup/place-line.html -->
       </template>
-      <template x-if="!projects.length"><div><div class="empty"><b>No projects yet.</b>Make one here, or in Vikunja on the web.</div>
+      <template x-if="!projects.length"><div><div class="empty"><b>No projects yet.</b>Create one here, or in Vikunja's web app.</div>
         <div class="list"><div class="row cl-new"><button class="body" id="btn-new-project" @click="openNewProject()"><svg class="i"><use href="#i-plus"/></svg><span class="title">New project</span></button></div></div></div></template>
       <template x-if="favorites.length"><div>
         <div class="sec">Favorites</div>

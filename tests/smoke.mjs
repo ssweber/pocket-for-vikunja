@@ -552,7 +552,7 @@ try {
     // already arrives done, which a chip says; the next line's marks are on its own words.
     await page.fill('#in-capture', `- [x] Pocket smoke napkins\n- Pocket smoke list tomorrow @nobody${stamp}\n- Pocket smoke cups`);
     await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody${stamp}")`, { timeout: 10000 });
-    await expect(page.locator('#cap-chips .chip', { hasText: '1 arrives done' })).toBeVisible();
+    await expect(page.locator('#cap-chips .chip', { hasText: '1 will be added as done' })).toBeVisible();
     await expect(page.locator('#cap-chips .chip', { hasText: '3 tasks' })).toBeVisible();
     const marked = await page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
     if (!marked.includes('due:tomorrow')) throw new Error('marks: ' + JSON.stringify(marked));
@@ -664,7 +664,7 @@ try {
     await page.fill('#d-subin', `Pocket smoke sub E +Elsewhere ${stamp}`);
     await page.waitForTimeout(300);
     if (await page.$('#d-subbox-chips .chip[data-kind=project], #d-subbox-chips .chip[data-kind=new-project]')) throw new Error('+project was read in a subtask');
-    await page.waitForSelector('#d-subbox-chips .chip.quiet:has-text("stays as words")');            // and says so
+    await page.waitForSelector('#d-subbox-chips .chip.quiet:has-text("stays in the title")');            // and says so
     await page.fill('#d-subin', '');
     const t = ((await (await api('/tasks?q=' + encodeURIComponent('sub D'))).json()).items || []).find(x => x.title.includes('sub D tomorrow') && x.title.endsWith(String(stamp)));
     if (!t || t.priority !== 2 || (t.due_date && !t.due_date.startsWith('0001'))) throw new Error('saved as ' + JSON.stringify(t && { title: t.title, priority: t.priority, due: t.due_date }));
@@ -685,7 +685,7 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click(opener(parentTitle));
     await page.waitForSelector(`${row} .claim.mine .av`, { timeout: 10000 });
-    if (!(await page.getAttribute(`${row} .claim`, 'aria-label')).startsWith("You're doing")) throw new Error('says ' + await page.getAttribute(`${row} .claim`, 'aria-label'));
+    if (!(await page.getAttribute(`${row} .claim`, 'aria-label')).includes("is assigned to you")) throw new Error('says ' + await page.getAttribute(`${row} .claim`, 'aria-label'));
     await page.click(`${row} .claim`);
     await page.waitForSelector(`${row} .claim .me`);
     for (let i = 0; (await people()).length; i++) { if (i > 40) throw new Error('never let go'); await new Promise(r => setTimeout(r, 250)); }
@@ -1112,13 +1112,13 @@ try {
     const p = `Pocket smoke packed ${stamp}`, sub = n => `Pocket smoke pack ${n} ${stamp}`, chip = page.locator('#cap-chips .chip[data-kind=done]');
     await page.fill('#in-capture', `${p} tomorrow\n- [x] ${sub('A')}\n- [ ] ${sub('B')} (50%)\nx ${sub('C')}\n- ${sub('D')}`);
     await page.click('#cap-nest');
-    await expect(chip).toHaveText('2 arrive done');
+    await expect(chip).toHaveText('2 will be added as done');
     await chipsSay('1 task + 4 subtasks');
     await chip.click();
-    await expect(chip).toHaveText('2 ticked off already: left out');
+    await expect(chip).toHaveText('2 already ticked, left out');
     await chipsSay('1 task + 2 subtasks');
     await chip.click();
-    await expect(chip).toHaveText('2 arrive done');
+    await expect(chip).toHaveText('2 will be added as done');
     await page.click('#f-capture .go');
     const ring = page.locator(`#view ${cardOf(p)} > .card-head > .ring`);
     await expect(ring.locator('.n')).toHaveText('2/4', { timeout: 20000 });
@@ -1170,7 +1170,7 @@ try {
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     await page.fill('#d-subin', `${sub('A')}\n  ${sub('A1')}\n    x ${sub('A2')}\n${sub('B')}`);
     await expect(page.locator('#d-subbox-chips .chip', { hasText: '4 subtasks' })).toBeVisible();
-    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 arrives done');
+    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 will be added as done');
     await page.click('#d-subbox form .go');
     // Its own two; the others are under the first of them.
     const rows = page.locator('#d-subtasks .row:not(.pending) .title');
@@ -1377,7 +1377,7 @@ try {
       await loaded(page);
       await page.waitForSelector(`${cardOf(p.title)} > .card-rows > ${K}`, { timeout: 15000 });
       // Claimed from its row, and let go again.
-      const claim = page.getByRole('button', { name: `Tap to say you'll do ${o.title}` }), mine = page.getByRole('button', { name: `You're doing ${o.title}. Tap to let it go` });
+      const claim = page.getByRole('button', { name: `Tap to assign ${o.title} to yourself` }), mine = page.getByRole('button', { name: `${o.title} is assigned to you. Tap to unassign yourself.` });
       await claim.click();
       await expect(mine.locator('.av')).toBeVisible();
       await synced(page);
@@ -1466,7 +1466,7 @@ try {
       await expect(page.locator(`${K} > .del-gap`)).toContainText('Deleted');
       await expect(page.locator(K).getByRole('button', { name: 'Restore ' + k.title })).toBeVisible();
       await expect(page.locator(`${K} > .body`)).toBeHidden();
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${k.title}. Restore is in its place`);
+      await expect(page.locator('#said')).toHaveText(`Deleted ${k.title}. Restore is where the row was.`);
       if (await page.$('#toast.show')) throw new Error('deleting said: ' + await page.textContent('#toast-msg'));
       if (await page.locator(K).evaluate(el => el.offsetHeight) !== kh) throw new Error('its height changed');
       if (!await get(k.id)) throw new Error('sent while it can be restored');
@@ -1514,7 +1514,7 @@ try {
       if (!seen.at(-1).deleted || !seen.at(-1).gap) throw new Error('no gap where it was: ' + JSON.stringify(seen.at(-1)));
       await expect(page.locator(`${K} > .body`)).toBeHidden();
       if (!await get(k.id)) throw new Error('deleted while it could be restored');
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${k.title}. Restore is in its place`);   // (kept to send, so marked)
+      await expect(page.locator('#said')).toHaveText(`Deleted ${k.title}. Restore is where the row was.`);   // (kept to send, so marked)
       await later(3000);
       await expect(page.locator(K)).toHaveCount(0);
       await synced(page);
@@ -1556,7 +1556,7 @@ try {
       await page.waitForSelector('#sheet', { state: 'hidden' });
       await page.waitForSelector(`${cardOf(p.title)}.deleted`);
       await expect(page.locator(cardOf(p.title)).getByRole('button', { name: 'Restore ' + p.title })).toBeVisible();
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is in its place`);
+      await expect(page.locator('#said')).toHaveText(`Deleted ${p.title}. Restore is where the row was.`);
       await later(3000);
       await expect(page.locator(cardOf(p.title))).toHaveCount(0);
       await synced(page);
@@ -1610,7 +1610,7 @@ try {
       if ((await asked()).length !== 2) throw new Error('asked ' + (await asked()).length + ' times');
       await expect(page.locator(card).getByRole('button', { name: 'Restore ' + p.title })).toBeVisible();
       await expect(uncovered(page, '.row-red')).toHaveCount(0);
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${p.title}. Restore is in its place`);
+      await expect(page.locator('#said')).toHaveText(`Deleted ${p.title}. Restore is where the row was.`);
       await later(3000);
       await expect(page.locator(card)).toHaveCount(0);
       await synced(page);
@@ -2024,7 +2024,7 @@ try {
       await swipeRow(page, A, 'open');
       await tapDelete(A);
       await expect(page.locator(A)).toHaveClass(/\bdeleted\b/);
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${a.title}. Restore is in its place`);
+      await expect(page.locator('#said')).toHaveText(`Deleted ${a.title}. Restore is where the row was.`);
       await later(3000);
       await expect(page.locator(`${A}, ${B}`)).toHaveCount(0);
       await synced(page);
@@ -2125,10 +2125,10 @@ try {
       if (!sameTime(await due(b), mondayAt(22))) throw new Error('up: ' + await due(b));
       // Down, the same short move: its date off, with its Undo, which gives it back its date and its time.
       await flickOnToday(C, -4, 50, 'none');
-      await expect(movedLine('Took its date off')).toBeVisible();
+      await expect(movedLine('Removed its due date')).toBeVisible();
       await synced(page);
       if (!(await due(c)).startsWith('0001')) throw new Error('down: ' + await due(c));
-      await movedLine('Took its date off').getByRole('button', { name: 'Undo' }).click();
+      await movedLine('Removed its due date').getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(c), c.due_date)) throw new Error('Undo of No date left it due ' + await due(c));
       // Left, one that's overdue: today, its time gone by, so later today.
@@ -2155,13 +2155,13 @@ try {
       await expect(dateChip('none')).toHaveClass(/\bon\b/);
       if (await page.evaluate(() => scrollY) !== scrolled) throw new Error('the page scrolled under the finger');
       await touch('touchEnd', fx, fy + 50);
-      await expect(movedLine('Took its date off')).toBeVisible();
+      await expect(movedLine('Removed its due date')).toBeVisible();
       await synced(page);
       if (!(await due(a)).startsWith('0001')) throw new Error('by a finger, down: ' + await due(a));
       await noToast(page);
       // Its Undo is there for a few seconds, then gone, on its row or by the add box.
       await later(5000);
-      await expect(movedLine('Took its date off')).toHaveCount(0);
+      await expect(movedLine('Removed its due date')).toHaveCount(0);
     } finally { await page.mouse.up(); for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
   await step('a-hold-on-today-without-a-move-leaves-its-dates-open-to-tap', async () => {
@@ -2232,7 +2232,7 @@ try {
       // No date,
       await openDates(C, c);
       await dateChip('none').click();
-      await expect(movedLine('Took its date off')).toBeVisible();
+      await expect(movedLine('Removed its due date')).toBeVisible();
       await synced(page);
       if (!(await due(c)).startsWith('0001')) throw new Error('No date tapped: ' + await due(c));
       // and Today, for one that's overdue.
@@ -2299,7 +2299,7 @@ try {
       await expect(page.locator('.row-line, .place-line[data-place="cap"]')).toHaveCount(0);
       const at = await holdOnToday(R), seen = await datesSeen();
       if (!Object.values(seen.chips).every(k => k.dim)) throw new Error('a repeating task\'s dates aren\'t all dimmed: ' + JSON.stringify(seen.chips));
-      await expect(page.locator('.throw .throw-why')).toHaveText('It repeats: tick it to move on to its next date.');
+      await expect(page.locator('.throw .throw-why')).toHaveText('This task repeats. Tick it to move it to its next date.');
       const why = await page.locator('.throw .throw-why').boundingBox();
       if (why.x < 0 || why.x + why.width > seen.width || why.y < seen.top) throw new Error('the line saying why is off the screen: ' + JSON.stringify(why));
       await page.mouse.move(at.x + 50, at.y, { steps: 4 });
@@ -2316,7 +2316,7 @@ try {
       const menu = page.getByRole('dialog', { name: `Move “${r.title}” to another day` });
       await expect(menu).toBeVisible();
       await expect(menu).toHaveAttribute('aria-describedby', 'throw-why');
-      await expect(page.locator('#throw-why')).toHaveText('It repeats: tick it to move on to its next date.');
+      await expect(page.locator('#throw-why')).toHaveText('This task repeats. Tick it to move it to its next date.');
       for (const b of await menu.getByRole('button').all()) await expect(b).toHaveAttribute('aria-disabled', 'true');
       const k = await dateChip('tomorrow').boundingBox();
       await page.mouse.click(k.x + k.width / 2, k.y + k.height / 2);
@@ -2649,7 +2649,7 @@ try {
       await tapDelete(C);
       await expect(page.locator(C)).toHaveClass(/\bdeleted\b/);
       await expect(page.locator(C).getByRole('button', { name: 'Restore ' + c.title })).toBeVisible();
-      await expect(page.locator('#said')).toHaveText(`Deleted: ${c.title}. Restore is in its place`);
+      await expect(page.locator('#said')).toHaveText(`Deleted ${c.title}. Restore is where the row was.`);
       await later(3000);
       await expect(page.locator(C)).toHaveCount(0);
       await synced(page);
@@ -2906,7 +2906,7 @@ try {
     await elsewhere('Theirs again');
     await page.click('#btn-sheet-close');
     // Said on its row, with Open, to see both.
-    const seeBoth = rowLine(page, 'changed elsewhere').getByRole('button', { name: 'Open' });
+    const seeBoth = rowLine(page, 'Someone changed them').getByRole('button', { name: 'Open' });
     await expect(seeBoth).toBeVisible({ timeout: 15000 });
     await noToast(page);
     if (!(await notes()).includes('Theirs again')) throw new Error('written over on close: ' + await notes());
@@ -3562,7 +3562,7 @@ ${footName('Hooks')}`);
     await boxUnder(footName('Van'));
     await onlyLit(subRow('Hooks'));
     await box.fill(`${footName('Tarp')} +Elsewhere`);                            // +project stays in its title
-    await expect(page.locator('#cap-chips')).toContainText('+project stays as words: a subtask goes in its task\'s project');
+    await expect(page.locator('#cap-chips')).toContainText('+project stays in the title. A subtask goes in its parent\'s project.');
     await box.press('Enter');
     const want = [footName('Van'), ...['Rope', 'Straps', 'Chairs', 'Ladder', 'Hooks'].map(n => 'Subtask: ' + footName(n)), `Subtask: Tarp ${stamp} +Elsewhere`,
       'Subtask: ' + footName('Tables'), footName('Lights')];
@@ -3935,11 +3935,11 @@ ${footName('Hooks')}`);
     // A project's copy: its heading, one #, is the list's name, left out, which a chip says; its open tasks are read,
     // each with its open subtasks. (Not sent: they'd be the same tasks again.)
     await page.fill('#in-capture', projectCopy);
-    await expect(page.locator('#cap-chips .chip', { hasText: 'The # line is the list’s name: left out' })).toBeVisible();
+    await expect(page.locator('#cap-chips .chip', { hasText: 'The # line is the list’s name, so it is left out' })).toBeVisible();
     if (!(await page.textContent('#cap-chips')).includes('2 tasks + 3 subtasks')) throw new Error('a project\'s copy, chips: ' + await page.textContent('#cap-chips'));
     await page.fill('#in-capture', vanCopy);
     await expect(page.locator('#cap-nest')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 arrives done');
+    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 will be added as done');
     if (!(await page.textContent('#cap-chips')).includes('1 task + 4 subtasks')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(title)} > .card-head > .ring .n`)).toHaveText('1/4', { timeout: 20000 });
@@ -4300,7 +4300,7 @@ ${footName('Hooks')}`);
       await expect(parentLink).toHaveText(P.title);
       await page.click('#d-more');
       await item.click();
-      await expect(line).toContainText(`Now its own task, no longer under “${P.title}”`, { timeout: 15000 });
+      await expect(line).toContainText(`No longer a subtask of “${P.title}”`, { timeout: 15000 });
       await expect(parentLink).toHaveCount(0);
       await synced(page);
       if (JSON.stringify(await linked()) !== JSON.stringify([[], [A.id]])) throw new Error('in Vikunja, its tasks over it and its old task\'s subtasks: ' + JSON.stringify(await linked()));
@@ -4540,7 +4540,7 @@ ${footName('Hooks')}`);
     await expect(doneSec).toHaveText('Done (105)');
     await doneSec.click();
     await expect(doneRows).toHaveCount(100, { timeout: 15000 });
-    await expect(moreRow).toHaveText('Show the last 5, done before these');
+    await expect(moreRow).toHaveText('Show the last 5');
     await moreRow.click();
     await expect(doneRows).toHaveCount(105);
     await expect(moreRow).toHaveCount(0);
@@ -4577,7 +4577,7 @@ ${footName('Hooks')}`);
     if (await page.locator('#view .done-sec ~ .list .row').count()) throw new Error('done rows once loaded');
     await doneSec.click();
     await expect(doneRows).toHaveCount(100, { timeout: 15000 });
-    await expect(moreRow).toHaveText('Show the last 5, done before these');
+    await expect(moreRow).toHaveText('Show the last 5');
     await doneSec.click();
   });
   /* Search's done matches: the 50 done most recently, the heading counting them all, and the same row for 50 more. */
@@ -4587,11 +4587,11 @@ ${footName('Hooks')}`);
     const found = page.locator('#view div:has(> .sec:has-text("Done")) .row[data-id]');
     await expect(found).toHaveCount(50, { timeout: 15000 });
     await expect(page.locator('#view .sec:has-text("Done") .n')).toHaveText('105');
-    await expect(moreRow.locator('.title')).toHaveText('Show 50 more, done before these');
+    await expect(moreRow.locator('.title')).toHaveText('Show 50 done earlier');
     await expect(moreRow.locator('.note')).toHaveText('55 more not shown');
     await moreRow.click();
     await expect(found).toHaveCount(100);
-    await expect(moreRow).toHaveText('Show the last 5, done before these');
+    await expect(moreRow).toHaveText('Show the last 5');
     await moreRow.click();
     await expect(found).toHaveCount(105);
     await expect(moreRow).toHaveCount(0);

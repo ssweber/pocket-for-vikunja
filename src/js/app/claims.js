@@ -21,9 +21,9 @@ export default {
     const names = all.map(u => u.id === me?.id ? 'you' : this.nameOf(u)).join(', ');
     if (done || !this.canWrite(t.project_id)) return all.length ? {id, run, users, more, can: false, label: `Assigned to ${names}: ${title}`} : null;
     const others = all.filter(u => u.id !== me?.id).map(u => this.nameOf(u)).join(', ');
-    if (mine) return {id, run, users, more, can: true, mine: true, label: `You're doing ${title}${others ? ', with ' + others : ''}. Tap to let it go`};
+    if (mine) return {id, run, users, more, can: true, mine: true, label: `${title} is assigned to you${others ? ' and ' + others : ''}. Tap to unassign yourself.`};
     if (all.length) return {id, run, users, more, can: false, label: `${names} ${all.length > 1 ? 'are' : 'is'} doing ${title}`};
-    return {id, run, users: [], more: 0, can: true, label: `Tap to say you'll do ${title}`};
+    return {id, run, users: [], more: 0, can: true, label: `Tap to assign ${title} to yourself`};
   },
   /* Show who a run or repeating template is for, using the same pictures as a done task. Change these assignees in
      the sheet, so the slot has no action. */

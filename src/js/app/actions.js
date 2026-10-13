@@ -112,7 +112,7 @@ export default {
         const err = {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'};
         const undo = async () => {
           try {
-            if (!await this.unchanged(t)) { this.say(`Not undone: “${t.title}” was changed since`, err); return; }
+            if (!await this.unchanged(t)) { this.say(`Not undone: “${t.title}” has changed since then`, err); return; }
             Object.assign(t, await this.saveTask(t.id, {...back, ...undoExtra}));
           } catch (e) { this.say('Not undone: ' + e.message, err); }
           this.render();
@@ -398,7 +398,7 @@ export default {
       } catch (e) { this.say('Not undone: ' + (e instanceof NetError ? 'no connection' : e.message), {place: 'sheet:top', cls: 'failed'}); }
       await fresh();
     };
-    this.say(`Now its own task, no longer under ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
+    this.say(`No longer a subtask of ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
   },
   // Whether Move all to today has anything to move: not a repeating task, nor a checklist that comes round.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
@@ -410,8 +410,8 @@ export default {
     // On a card, its task and subtasks that are overdue themselves (overdueTasks).
     const overdue = this.overdueTasks, tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
     const tpl = overdue.filter(t => hasTemplateLabel(t)).length, stay = overdue.length - tasks.length - tpl;
-    const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}: tick ${stay === 1 ? 'it' : 'them'} to move on to the next date.`,
-      tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}: start ${tpl === 1 ? 'it' : 'them'} to move on to the next time.`].filter(Boolean).join(' ');
+    const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}. Tick ${stay === 1 ? 'it' : 'them'} to move ${stay === 1 ? 'it to its' : 'them to their'} next date.`,
+      tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}. Start ${tpl === 1 ? 'it' : 'them'} to move ${tpl === 1 ? 'it to its' : 'them to their'} next date.`].filter(Boolean).join(' ');
     if (!tasks.length && stays) { this.say(movedText(0, 0, stays), {place: 'overdue'}); return; }
     if (!tasks.length || this.movingOverdue) return;
     this.movingOverdue = true;
@@ -619,7 +619,7 @@ export default {
   // What deleting the open task deletes: its subtasks go with it, a template's steps too, and a run's.
   get deleteLabel(){
     const n = this.subtasks.length, role = this.checklistRole;
-    if (role === 'run') return 'Delete run';
+    if (role === 'run') return 'Delete checklist';
     if (role === 'template') return n ? `Delete template and its ${n} step${n === 1 ? '' : 's'}` : 'Delete template';
     return n ? `Delete task and its ${n} subtask${n === 1 ? '' : 's'}` : 'Delete task';
   },
@@ -638,7 +638,7 @@ export default {
     let tree;
     try { tree = await this.taskTree(t.id); } catch (e) { this.say('Not deleted: ' + e.message, {place: 'sheet:top', cls: 'failed'}); return; }
     const n = tree.length - 1;
-    if (!confirm(`Delete the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Checklists already started keep theirs.` : '?') + ' This can\'t be undone here.')) return;
+    if (!confirm(`Delete the template “${t.title}”` + (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Checklists already started keep their steps.` : '?') + ' This can\'t be undone in Pocket.')) return;
     await shared.saveChain;
     try {
       await this.deleteTree(tree);
@@ -660,7 +660,7 @@ export default {
   async removeTask(t, tree = null){
     const d = await this.holdDelete(t, d => {
       const undo = () => this.undoDelete(d.id), gone = () => this.sendHeld(d.id);
-      if (this.rowEl(t.id)) return this.markRow(t.id, {kind: 'deleted', ids: d.ids, undo, gone, said: `Deleted: ${t.title}. Restore is in its place`});
+      if (this.rowEl(t.id)) return this.markRow(t.id, {kind: 'deleted', ids: d.ids, undo, gone, said: `Deleted ${t.title}. Restore is where the row was.`});
       const title = t.title.length > 40 ? t.title.slice(0, 38) + '…' : t.title;
       this.notify(`Deleted “${title}”` + (d.n ? ` + ${d.n} subtask${d.n === 1 ? '' : 's'}` : ''), {label: 'Undo', fn: undo, gone});
     }, tree);

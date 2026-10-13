@@ -61,7 +61,7 @@ export default {
   // Who a run is for: any number of people, at least one.
   toggleFor(st, u){
     const on = st.forIds.includes(u.id);
-    if (on && st.forIds.length === 1) { this.say('A checklist is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
+    if (on && st.forIds.length === 1) { this.say('A checklist needs at least one person. Tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
     st.forIds = on ? st.forIds.filter(id => id !== u.id) : [...st.forIds, u.id];
   },
   /* Use today's due date when starting a repeating template, even before its due time. Starting an 8:00 checklist
@@ -73,11 +73,11 @@ export default {
     if (!t || !comesRound(t)) return '';
     const due = new Date(t.due_date), today = +startOfDay(due) === +startOfDay();
     const at = d => d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
-    if (!this.tickOf(t)) return `${t.title} is next due ${at(due)}: this checklist doesn't move it on.`;
-    const one = today ? `the ${due.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})} one` : `the one due ${at(due)}`;
+    if (!this.tickOf(t)) return `${t.title} is next due ${at(due)}. Starting this checklist doesn't change that date.`;
+    const one = today ? `at ${due.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}` : at(due);
     const next = vikunjaNext(t);
-    if (next === null) return `This is ${one}: starting it marks ${t.title} done, and it doesn't come round again.`;
-    return `This is ${one}: starting it moves ${t.title} on to ${at(new Date(nextAfter(t, next)))}.`;
+    if (next === null) return `This is the checklist due ${one}. Starting it marks ${t.title} done. ${t.title} doesn't repeat.`;
+    return `This is the checklist due ${one}. Starting it moves ${t.title} to ${at(new Date(nextAfter(t, next)))}.`;
   },
   get startProgress(){ const s = this.starting; return s ? `Setting up… ${Math.round(100 * s.done / s.total)}%` : 'Setting up…'; },
   /* Queue the start so a lost connection resumes creation where it stopped. Time the first step from the Start
@@ -162,7 +162,7 @@ export default {
     } catch (error) {
       if (passing(error) || error.status === 401 || error.status >= 500) { await sync.save(j); return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401}; }
       await sync.remove(j.id);
-      error.what = 'Clearing up a start called off';
+      error.what = 'Cleaning up a cancelled start';
       return {...none, status: 'error', error};
     }
   },
@@ -215,7 +215,7 @@ export default {
     const e = this.sheet.runEdit, run = this.view.run?.run;
     if (!run) return;
     const was = e.forIds, on = was.includes(u.id);
-    if (on && was.length === 1) { this.say('A checklist is for at least one person: tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
+    if (on && was.length === 1) { this.say('A checklist needs at least one person. Tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
     const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
@@ -230,7 +230,7 @@ export default {
   // Delete a run, from its ⋯ or its sheet: its steps go too, so none is left behind as a task of its own.
   async confirmDeleteRun(run){
     const n = run.steps.length;
-    if (!confirm(`Delete “${run.title}” and its ${n} step${n === 1 ? '' : 's'}? Their comments and photos go too, for everyone. This can't be undone.`)) return;
+    if (!confirm(`Delete “${run.title}” and its ${n} step${n === 1 ? '' : 's'} for everyone? Their comments and photos are deleted too. This can't be undone.`)) return;
     this.closeSheet(true);
     await this.deleteRun(run.id, {deleted: true});
   },
@@ -451,7 +451,7 @@ export default {
     store.del('saved.run.' + id); saved.set('runs.recent', (saved.get('runs.recent') || []).filter(x => x !== id));
     if (this.view.run?.run.id === id) this.view.run = null;
     this.leaveRun();
-    this.notify('That checklist isn\'t there any more.');
+    this.notify('That checklist no longer exists.');
   },
   // Where Back goes, by name: from a run, the screen before it; from a project, the list it was opened from.
   get backName(){
@@ -531,7 +531,7 @@ export default {
     if (op !== 'undone') this.unlockSound();
     // Someone else's ✅ can't be taken off: Vikunja lets each person take back only their own.
     const others = op === 'undone' ? (s.by || []).filter(u => u.id !== this.user?.id).map(u => this.nameOf(u)) : [];
-    if (others.length && !confirm(`${others.join(' and ')} marked “${s.title}” done. Their ✅ stays on it in Vikunja, as only they can take it off. Mark it not done?`)) return false;
+    if (others.length && !confirm(`${others.join(' and ')} marked “${s.title}” done. Only they can remove their ✅ in Vikunja, so it stays. Mark the step not done anyway?`)) return false;
     const typed = op === 'undone' ? '' : (this.runDrafts[s.id] || '').trim();
     if (typed) this.runDrafts[s.id] = '';
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));
@@ -588,7 +588,7 @@ export default {
       for (const e of all) {
         if (e.failed || stopped.has(e.task)) {                               // waits behind one turned down
           if (e.id !== id) continue;
-          this.say(`Waiting: something done before it on “${parseStep(e.label || 'it').title}” was turned down. Tap the warning sign at the top to try that again.`, {place: 'step', cls: 'failed'});
+          this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”. Tap the warning sign at the top to try that change again.`, {place: 'step', cls: 'failed'});
           last = {status: 'offline', reached: true};
           break;
         }
@@ -616,7 +616,7 @@ export default {
       }
       // Keep a run finished by someone else if an offline untick arrives after that finish.
       if (a.op === 'undone' && a.run && a.task !== a.run && !a.stage && (await api('/tasks/' + a.run)).done)
-        throw Object.assign(new ApiError(409, 'the checklist was finished meanwhile, so the step stays done'), {drop: true});
+        throw Object.assign(new ApiError(409, 'the checklist was finished in the meantime, so the step stays done'), {drop: true});
       while (a.stage < stages.length) {
         const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
         if (stages[a.stage] === 'note' && out?.id) comment = out;
@@ -637,7 +637,7 @@ export default {
       // A move turned down goes back at once, on the screen, rather than waiting to be tried again.
       if (a.op === 'position') error.drop = true;
       if (error.status === 403 && /mark/i.test(stages[a.stage] || '') && this.mode === 'token')
-        error.message = 'your API token can\'t record who did a step: make one with Reactions ticked, as the guide says';
+        error.message = 'your API token can\'t record who did a step. Create a token with Reactions ticked. The guide lists the permissions';
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
       if (a.stage > 0 && ['done', 'undone'].includes(stages[0])) error.saved = stages[0] === 'done' ? 'it\'s marked done' : 'it\'s marked not done';
       if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
@@ -659,12 +659,12 @@ export default {
   },
   // What an act was, for a message: "A tick on “Check the milk fridge”".
   actWhat(a){
-    const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '';
-    return {note: 'A comment' + on, doneNote: 'A tick and its comment' + on, skip: 'A skip' + on,
-      done: 'A tick' + on, undone: 'An untick' + on, progress: 'Progress' + on, finish: 'Finishing the checklist', reopen: 'Reopening the checklist',
-      claim: 'Saying you’ll do' + (title ? ` “${parseStep(title).title}”` : ' it'), unclaim: 'Letting go of' + (title ? ` “${parseStep(title).title}”` : ' it'),
+    const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '', step = title ? `“${parseStep(title).title}”` : 'a step';
+    return {note: 'A comment' + on, doneNote: `Marking ${step} done, with its comment`, skip: 'A skip' + on,
+      done: 'A tick' + on, undone: `Marking ${step} not done`, progress: 'Progress' + on, finish: 'Finishing the checklist', reopen: 'Reopening the checklist',
+      claim: 'Assigning' + (title ? ` “${parseStep(title).title}”` : ' it') + ' to you', unclaim: 'Unassigning you from' + (title ? ` “${parseStep(title).title}”` : ' it'),
       position: 'Moving' + (title ? ` “${title}”` : ' a task'),
-      delete: 'Deleting' + (title ? ` “${parseStep(title).title}”` : ' a task')}[a.op] || 'Something done offline';
+      delete: 'Deleting' + (title ? ` “${parseStep(title).title}”` : ' a task')}[a.op] || 'A change made offline';
   },
   /* Restore text from an unsent action and set error.back. If its task was deleted, put the text in error.words so
      the message can preserve it. */
@@ -679,7 +679,7 @@ export default {
     } else this.runDrafts[a.task] = add(this.runDrafts[a.task]);
     error.back = true;
   },
-  wordsBack(e){ return e.back ? ' Its words are back in the box.' : e.words ? ` It said: “${e.words}”` : ''; },
+  wordsBack(e){ return e.back ? ' Its text is back in the box.' : e.words ? ` It said: “${e.words}”` : ''; },
   // Find a comment whose reply was lost by matching your text since this attempt.
   async findNote(task, html, triedAt, at){
     const since = triedSince(triedAt, at), text = htmlToText(html);
@@ -814,7 +814,7 @@ export default {
     }
   },
   // The question before a step added during the run is deleted, from its × or its row's Delete: whether to.
-  askDeleteStep(s){ return !!s?.added && !s.done && confirm(`Delete “${s.title}”? It was added to this checklist alone: the template's steps stay as they are.`); },
+  askDeleteStep(s){ return !!s?.added && !s.done && confirm(`Delete “${s.title}”? This step was added to this checklist only. The template doesn't change.`); },
   /* Delete an open inserted or repeated step and its pending actions. Template steps must be skipped instead. undo
      skips confirmation and messages for Repeat's Undo, and asked records confirmation before a swipe. Return
      whether the step was removed. */
@@ -847,8 +847,8 @@ export default {
     });
     if (tried) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
-    if (!quiet) this.say(gone ? 'It was sent already: delete it on the checklist if it isn\'t needed.'
-      : tried && this.pending.some(e => e.id === id) ? 'Not inserted. What reached Vikunja of it is taken out once Pocket reaches it.' : 'Not sent.', {place: ['sheet:top', 'step']});
+    if (!quiet) this.say(gone ? 'It was already sent. Delete it from the checklist if you don\'t need it.'
+      : tried && this.pending.some(e => e.id === id) ? 'Not inserted. Pocket removes the part that reached Vikunja once it is back online.' : 'Not sent.', {place: ['sheet:top', 'step']});
     if (this.route.name === 'run') this.render();
     return gone;
   },
@@ -864,7 +864,7 @@ export default {
     } catch (error) {
       if (passing(error) || error.status === 401 || error.status >= 500) { await sync.save(j); return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401}; }
       await sync.remove(j.id);
-      error.what = `Taking out “${j.title}”`;
+      error.what = `Removing “${j.title}”`;
       return {...none, status: 'error', error};
     }
   },

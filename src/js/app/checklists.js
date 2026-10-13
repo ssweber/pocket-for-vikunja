@@ -103,7 +103,7 @@ export default {
   },
   async archiveProject(){
     const p = this.sheet.project;
-    if (!p || !confirm(`Archive “${p.title}”? It's hidden here and in Vikunja, with its tasks, until it's unarchived in Vikunja on the web.`)) return;
+    if (!p || !confirm(`Archive “${p.title}”? Pocket and Vikunja hide the project and its tasks until you unarchive it in Vikunja's web app.`)) return;
     try {
       await api('/projects/' + p.id, {method: 'PATCH', body: {is_archived: true}});
       this.setProjects(this.projects.filter(x => x.id !== p.id)); saved.set('projects', this.projects);
@@ -141,7 +141,7 @@ export default {
       this.setProjects(this.projects.map(x => x.id === p.id ? next : x)); saved.set('projects', this.projects);
       if (this.view.project?.id === p.id) this.view.project = next;
       if (this.sheet.project?.id === p.id) this.sheet.project = next;
-      this.say(on ? 'Now for checklists. Its templates and checklists are under Checklists.' : 'No longer for checklists', {place: 'sheet:top'});
+      this.say(on ? 'This project is now used for checklists. Its templates and checklists are under Checklists.' : 'This project is no longer used for checklists.', {place: 'sheet:top'});
     } catch (e) { this.say('Not changed: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
@@ -158,7 +158,7 @@ export default {
       let made = true;
       try { await this.addExample(p); } catch { made = false; }
       this.go('#/checklists');
-      this.say(made ? 'Set up Checklists, with an example template to try.' : 'Set up Checklists, but the example template couldn\'t be created: add one with New template.', {place: 'checklists', cls: made ? '' : 'failed'});
+      this.say(made ? 'Created the Checklists project, with an example template to try.' : 'Created the Checklists project. The example template couldn\'t be created. Tap New template to add one.', {place: 'checklists', cls: made ? '' : 'failed'});
     } catch (e) { this.say(e instanceof NetError ? 'Setting up checklists needs a connection to Vikunja.' : 'Not set up: ' + e.message, {place: 'setup', cls: 'failed'}); }
     finally { this.settingUp = false; }
   },
@@ -169,11 +169,11 @@ export default {
     const made = await this.createLines([title], {pid: p.id, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
     if (made.error) throw made.error;
     const t = {id: made.ids[0], title, project_id: p.id, labels: [], due_date: null};
-    await patiently(() => patchTask(t.id, {description: '<p>An example to try: tap Start and tick its steps off. Then edit it into a template of your own, or delete it from its ⋯.</p>'}));
+    await patiently(() => patchTask(t.id, {description: '<p>This is an example. Tap Start and tick off its steps. Then edit it to make your own template, or delete it from its ⋯ menu.</p>'}));
     const r = await this.createLines(steps, {parent: t, ignore: {...STEP_IGNORE, labels: true, assignees: true, priority: true}});
     if (r.error) throw r.error;
     await patiently(() => api(`/tasks/${r.ids[0]}/assignees`, {method: 'POST', body: {user_id: this.user.id}})).catch(() => {});
-    await patiently(() => patchTask(r.ids[2], {description: '<p>Due 18 minutes after the croissants go in. Notes and photos on a step show on it in every checklist.</p>'})).catch(() => {});
+    await patiently(() => patchTask(r.ids[2], {description: '<p>Due 18 minutes after the croissants go in. Every checklist shows a step\'s notes and photos on that step.</p>'})).catch(() => {});
     await this.markTemplate(t, r.ids);
   },
   // Whether Getting started shows on Checklists: for a project's admin (who can share it), until they hide it.
@@ -227,11 +227,11 @@ export default {
   get comesRoundNote(){
     const t = this.sheet.task;
     if (!t || this.checklistRole !== 'template') return '';
-    if (t.done || !isSet(t.due_date)) return repeats(t) ? `Give it a date to have it come round ${repeatWords(t)}, on Today. Until then, start it from Checklists.`
-      : 'Without a date, start it from Checklists whenever it\'s needed. Give it one to have it show on Today then.';
+    if (t.done || !isSet(t.due_date)) return repeats(t) ? `This template repeats ${repeatWords(t)} once it has a date. Set a date to make it appear on Today. Until then, start it from Checklists.`
+      : 'With no date, start this template from Checklists when you need it. Set a date to make it appear on Today.';
     const on = onText(new Date(t.due_date));
-    return repeats(t) ? `It shows on Today ${on}, then ${repeatWords(t)}. Starting a checklist moves it on to the next time.`
-      : `It shows on Today ${on}, just once: starting a checklist ends it. Pick Repeats to have it come round.`;
+    return repeats(t) ? `This template is due ${on}, then ${repeatWords(t)}. Today lists it from a week before. Starting a checklist on or after the due day moves it to its next date.`
+      : `This template is due ${on}, once. Today lists it from a week before. Starting a checklist on or after the due day marks it done. Choose Repeats to make it repeat.`;
   },
   // Whether a due template shows on the user's Today: for its assignees, or with none, for anyone who can start it.
   templateFor(t){
@@ -255,7 +255,7 @@ export default {
       if (made) await sync.save({...e, cancelled: true}); else await sync.remove(id);
     });
     this.refreshPending();
-    if (gone) { this.say('It had started already. Delete it from its ⋯ if it isn\'t needed.', {place: ['sheet:top', 'checklists']}); this.render(); return; }
+    if (gone) { this.say('The checklist had already started. Delete it from its ⋯ menu if you don\'t need it.', {place: ['sheet:top', 'checklists']}); this.render(); return; }
     if (made) { await sync.lock(() => this.sendEntry(id)); this.refreshPending(); }
     this.say('Not started', {place: ['sheet:top', 'checklists']});
     this.render();
@@ -304,8 +304,8 @@ export default {
       cache.set(full.id, full);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
       this.say(!comesRound(full) ? 'Template created. Start it here or under Checklists.'
-        : `Template created. ${this.scheduleText(full)}: it appears on Today then, and starting it `
-          + (repeats(full) ? 'advances it to the next occurrence.' : 'ends it, as it doesn\'t repeat.'), {place: 'sheet:top'});
+        : `Template created. ${this.scheduleText(full)}. Starting it on or after the due day `
+          + (repeats(full) ? 'moves it to its next date.' : 'marks it done, because it doesn\'t repeat.'), {place: 'sheet:top'});
     } catch (e) { this.say('Template not created: ' + e.message, {place: 'sheet:top', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
@@ -531,7 +531,7 @@ export default {
     const e = this.sheet.stepEdit, st = e && this.subtasks.find(s => s.id === e.id), P = this.prefixes;
     if (!st || !P) return [];
     const drop = e.drop || {}, people = this.sheet.subPeople[st.id] || st.assignees || [], labels = this.sheet.subLabels[st.id] || st.labels || [];
-    const chip = (k, text) => ({key: 'had-' + k, kind: 'had', text, off: !!drop[k], hint: drop[k] ? `Tap to keep ${text} on this step` : `Tap to take ${text} off this step`,
+    const chip = (k, text) => ({key: 'had-' + k, kind: 'had', text, off: !!drop[k], hint: drop[k] ? `Tap to keep ${text} on this step` : `Tap to remove ${text} from this step`,
       action: () => { e.drop = {...e.drop, [k]: !e.drop?.[k]}; }});
     return [...people.map(u => chip('u' + u.id, P.assignee + u.username)), ...labels.filter(l => !isTemplateLabel(l)).map(l => chip('l' + l.id, P.label + l.title))];
   },

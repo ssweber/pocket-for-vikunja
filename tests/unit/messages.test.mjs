@@ -14,12 +14,12 @@ import { component } from './fake.mjs';
 /* The row at the end of a list of done tasks shown a part at a time (performance-plan, part 9): the next part, and how
    many are left; fewer left than a part, the last of them; none, no row. */
 test('the row for more done tasks says what its tap shows, and how many are left', () => {
-  assert.deepEqual(moreDone(2900, 100), { title: 'Show 100 more, done before these', note: `${(2900).toLocaleString()} more not shown` });
-  assert.deepEqual(moreDone(101, 100), { title: 'Show 100 more, done before these', note: '101 more not shown' });
-  assert.deepEqual(moreDone(100, 100), { title: 'Show the last 100, done before these', note: '' }, 'a part left: the last of them');
-  assert.deepEqual(moreDone(12, 100), { title: 'Show the last 12, done before these', note: '' });
-  assert.deepEqual(moreDone(1, 50), { title: 'Show the last one, done before these', note: '' });
-  assert.deepEqual(moreDone(60, 50), { title: 'Show 50 more, done before these', note: '60 more not shown' }, 'search: 50 at a time');
+  assert.deepEqual(moreDone(2900, 100), { title: 'Show 100 done earlier', note: `${(2900).toLocaleString()} more not shown` });
+  assert.deepEqual(moreDone(101, 100), { title: 'Show 100 done earlier', note: '101 more not shown' });
+  assert.deepEqual(moreDone(100, 100), { title: 'Show the last 100', note: '' }, 'a part left: the last of them');
+  assert.deepEqual(moreDone(12, 100), { title: 'Show the last 12', note: '' });
+  assert.deepEqual(moreDone(1, 50), { title: 'Show the last one', note: '' });
+  assert.deepEqual(moreDone(60, 50), { title: 'Show 50 done earlier', note: '60 more not shown' }, 'search: 50 at a time');
   assert.equal(moreDone(0, 100), null, 'none left: no row');
   assert.equal(moreDone(-3, 100), null, 'more shown than counted (done since): no row');
 });
@@ -159,9 +159,9 @@ test('on a run, what\'s written on a step or the run is a comment, as Vikunja ca
   Object.assign(a, { pending: [], failed: [], view: { groups: [], run: null }, actTitle: () => 'Unlock the door' });
   assert.equal(a.actText({ op: 'note', task: 1 }), 'A comment on “Unlock the door”');
   assert.equal(a.actText({ op: 'doneNote', task: 1 }), 'Done, with a comment: Unlock the door');
-  assert.equal(a.dropText({ op: 'note', task: 1 }), 'The comment isn\'t posted: its words go back where you wrote them.');
+  assert.equal(a.dropText({ op: 'note', task: 1 }), 'The comment isn\'t posted. Its text goes back into the comment box.');
   assert.equal(a.actWhat({ op: 'note', task: 1, run: 5 }), 'A comment on “Unlock the door”');
-  assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'A tick and its comment on “Unlock the door”');
+  assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'Marking “Unlock the door” done, with its comment');
 });
 
 test('the question a parent’s ring asks names what goes with it in a sentence: the first three, then how many more', () => {
@@ -176,18 +176,18 @@ test('the question a parent’s ring asks names what goes with it in a sentence:
   assert.equal(completeAsk({title: 'Pack the van', names: ['A', 'B', 'C', 'D', 'E'], stay: 1}).body,
     'Its 5 open subtasks will be marked done too: A, B, C and 2 more. The one that repeats stays as it is.');
   assert.deepEqual(completeAsk({title: 'Closing up', run: true, names: ['Mop', 'Lock up']}),
-    {head: 'Finish this checklist with 2 steps not done?', body: '“Closing up” is finished, and its 2 steps not done stay that way: Mop and Lock up.', yes: 'Finish checklist'});
-  assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, '“Closing up” is finished, and its step not done stays that way: Mop.');
+    {head: 'Finish this checklist with 2 steps not done?', body: 'These 2 steps stay not done: Mop and Lock up.', yes: 'Finish checklist'});
+  assert.equal(completeAsk({title: 'Closing up', run: true, names: ['Mop']}).body, 'This step stays not done: Mop.');
 });
 
 test('a task held on Today and moved says where it went; a card kept by its subtask, why; an Undo, what couldn\'t go back', () => {
   assert.equal(movedTo('Friday'), 'Moved to Friday');
   assert.equal(movedTo('Today'), 'Moved to today');
   assert.equal(movedTo('Mon 12'), 'Moved to Mon 12');
-  assert.equal(movedTo(null), 'Took its date off');
+  assert.equal(movedTo(null), 'Removed its due date');
   assert.equal(notMovedBack(1, null), '1 task couldn\'t be moved back (changed since, or not saved) and is still without a date.');
   assert.equal(movedTo('Tomorrow', 'Buy paint'), 'Moved to tomorrow. Its subtask “Buy paint” is due sooner, so it stays here.');
-  assert.equal(movedTo(null, 'Buy paint'), 'Took its date off. Its subtask “Buy paint” has a date, so it stays here.');
+  assert.equal(movedTo(null, 'Buy paint'), 'Removed its due date. Its subtask “Buy paint” has a date, so it stays here.');
   assert.equal(dayWord('Friday'), 'Friday');
   assert.equal(notMovedBack(1, 'today'), '1 task couldn\'t be moved back (changed since, or not saved) and is still due today.');
   assert.equal(notMovedBack(2, 'Friday'), '2 tasks couldn\'t be moved back (changed since, or not saved) and are still due Friday.');
@@ -207,10 +207,10 @@ test('a run says who started it and when, with the day when it was another day o
 
 test('a waiting row\'s Cancel says what becomes of the lines waiting under it', () => {
   assert.equal(cancelName('Pack the van'), 'Cancel Pack the van');
-  assert.equal(cancelName('Pack the van', 2), 'Cancel Pack the van: the lines under it become tasks of their own');
-  assert.equal(cancelName('Pack the van', 1), 'Cancel Pack the van: the line under it becomes a task of its own');
-  assert.equal(cancelName('Load chairs', 1, 'Pack the van'), 'Cancel Load chairs: the line under it goes under “Pack the van”');
-  assert.equal(cancelName('Load chairs', 3, 'Pack the van'), 'Cancel Load chairs: the lines under it go under “Pack the van”');
+  assert.equal(cancelName('Pack the van', 2), 'Cancel Pack the van. The lines under it become their own tasks.');
+  assert.equal(cancelName('Pack the van', 1), 'Cancel Pack the van. The line under it becomes its own task.');
+  assert.equal(cancelName('Load chairs', 1, 'Pack the van'), 'Cancel Load chairs. The line under it moves under “Pack the van”.');
+  assert.equal(cancelName('Load chairs', 3, 'Pack the van'), 'Cancel Load chairs. The lines under it move under “Pack the van”.');
 });
 
 test('a Markdown copy says both things it\'s for: notes, and Pocket\'s add box, where it makes the same tasks', () => {

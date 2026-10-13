@@ -68,7 +68,7 @@ export default {
     const pid = lines.length === 1 ? this.boxPid('cap') : this.defaultProjectId();
     const first = parsed.project?.id || pid;
     if (!first) { this.say('Create a project in Vikunja first', {place: 'cap', cls: 'failed'}); return; }
-    if (!this.canWrite(first)) { this.say(`${this.projById.get(first)?.title || 'That project'} is shared with you to read only: pick another with +project.`, {place: 'cap', cls: 'failed'}); return; }
+    if (!this.canWrite(first)) { this.say(`${this.projById.get(first)?.title || 'That project'} is read only. Type +project to pick another project.`, {place: 'cap', cls: 'failed'}); return; }
     // Parse every line now, so dates mean what they meant when typed. Each line records which line it is under. Lines
     // under another keep their order in the project's List view, each placed after the one before, since Vikunja would
     // otherwise put each new one first. When the box in a project's list has been moved out a level (boxOut,
@@ -318,13 +318,13 @@ export default {
     }
     if (lost.length) {
       const f = lost[0], loose = (f.tasks || []).map(t => `“${t.title}”`);
-      this.notify(`Subtasks of “${f.parent.title}” added offline couldn't be put under it: ${f.error.message}.`
-        + (loose.length ? ` ${loose.join(', ')} ${loose.length === 1 ? 'was' : 'were'} added as tasks of their own.` : '')
+      this.notify(`Subtasks of “${f.parent.title}” added offline couldn't be added under it: ${f.error.message}.`
+        + (loose.length ? ` ${loose.join(', ')} ${loose.length === 1 ? 'is now its own task' : 'are now their own tasks'}.` : '')
         + (f.unsent.length ? ` Not added: ${f.unsent.join('; ')}.` : ''));
     } else if (failed.length) {
       // Said by the box it's back in: quick add's, or the subtask box in its task's sheet.
-      this.say(`${subs.length ? 'A subtask' : 'A task'} added offline couldn't be added: ${failed[0].error.message}. It's back in the box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
-    } else if (other.length) this.notify(`${other[0].error.what || 'Something done offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : this.wordsBack(other[0].error)));
+      this.say(`${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message}. Its text is back in the add box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
+    } else if (other.length) this.notify(`${other[0].error.what || 'A change made offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : this.wordsBack(other[0].error)));
     else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length || other.length) this.render();
   },
@@ -489,7 +489,7 @@ export default {
     const box = parent ? (this.sheet.task?.id === parent.id ? this.sheet.sub : null) : this.cap;
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
     const lines = `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now `;
-    this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'a task' : 'tasks'} of ${rest === 1 ? 'its' : 'their'} own.`)].filter(Boolean).join(' '), {place});
+    this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'its own task' : 'their own tasks'}.`)].filter(Boolean).join(' '), {place});
   },
   // Don't upload a waiting photo or file after all. Its row goes at once; one already uploading finishes first.
   async cancelFile(entryId, key){

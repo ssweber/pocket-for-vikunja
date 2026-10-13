@@ -98,7 +98,7 @@ export default {
   // Shown on the Today heading, so "Friday" on a task can be read against today.
   get todayDate(){ return new Date(this.groupedAt || Date.now()).toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}); },
   get emptyText(){
-    if (this.route.name === 'today') return {title: 'Nothing due this week.', body: `Today is ${this.todayDate}. Add a task below — try “Call Ana tomorrow !3”.`};
+    if (this.route.name === 'today') return {title: 'Nothing due this week.', body: `Today is ${this.todayDate}. Add a task below — try “Call the plumber tomorrow !3”.`};
     if (this.route.name === 'search') return this.searchQ.trim()
       ? {title: `No tasks match “${this.searchQ.trim()}”.`, body: 'Searching looks at titles and notes, in open and done tasks.'}
       : {title: 'Search your tasks.', body: 'Finds open and done tasks in all your projects by words in their title or notes, or by number, like #12.'};
@@ -176,7 +176,7 @@ export default {
     /* Show a repeating template's Start action and project instead of labels and counts, so matching names in
        different projects are clear. The slot shows who its runs are for. */
     if (comesRound(t) && this.checklistIds.has(t.project_id)) {
-      out.push({key: 'tpl', text: !this.canWrite(t.project_id) ? 'Checklist' : this.tickOf(t) ? 'Checklist: tap to start' : 'Checklist, for then'});
+      out.push({key: 'tpl', text: !this.canWrite(t.project_id) ? 'Checklist' : this.tickOf(t) ? 'Checklist. Tap to start.' : 'Checklist, not due yet'});
       const tp = this.projById.get(t.project_id);
       if (tp && this.route.name !== 'project') out.push({key: 'p', color: colorOf(tp.hex_color), text: tp.title});
       return out;
@@ -260,7 +260,7 @@ export default {
       }
       if (r.name === 'run' && e.runGone) { this.runGone(r.id); return; }
       // A project that's gone (deleted elsewhere): back to the list of them.
-      if (r.name === 'project' && e instanceof ApiError && e.status === 404) { await this.loadProjects().catch(() => {}); this.go('#/projects'); this.notify('That project isn\'t there any more.'); return; }
+      if (r.name === 'project' && e instanceof ApiError && e.status === 404) { await this.loadProjects().catch(() => {}); this.go('#/projects'); this.notify('That project no longer exists.'); return; }
       // A refresh that fails says so, unless it would hide a message still being read; what's on screen stays.
       if (!this.view.loading) { if (!(this.toast.show && this.toast.until - Date.now() > 1500)) this.notify((r.name === 'search' ? 'Couldn\'t search: ' : 'Couldn\'t refresh: ') + e.message); return; }
       Object.assign(this.view, {loading: false, error: errText(e)});
@@ -646,10 +646,10 @@ export default {
       if (np.checklists) { this.perms[p.id] = 2; saved.set('perms', this.perms); }
       // Its screen, open, shows it was made; for checklists, Checklists says so too.
       this.go(np.checklists ? '#/checklists' : '#/project/' + p.id);
-      if (np.checklists) this.say(`Made ${p.title}, for checklists.`, {place: 'checklists'}); else this.said = `Made ${p.title}`;
+      if (np.checklists) this.say(`Created ${p.title}, for checklists.`, {place: 'checklists'}); else this.said = `Created ${p.title}`;
     } catch (e) {
       np.busy = false;
-      this.say(e instanceof NetError ? 'Offline. A project can be made once you\'re back online.' : 'Not made: ' + e.message, {place: 'sheet:top', cls: 'failed'});
+      this.say(e instanceof NetError ? 'Offline. You can create a project once you\'re back online.' : 'Not created: ' + e.message, {place: 'sheet:top', cls: 'failed'});
     }
   },
   async createProject(name){

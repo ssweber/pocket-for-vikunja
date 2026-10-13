@@ -2,7 +2,7 @@
      and on Checklists while it is empty (screens/checklists.html). Set up checklists makes a project called Checklists
      with an example template (setUpChecklists, app/checklists.js). What went wrong is said under the button. -->
 <div class="card cl-card setup-card" id="setup-checklists">
-  <p><b>Checklists</b> are step-by-step lists people work through again and again, like opening up or a weekly clean. Each one started is ticked off step by step, and shows who did what.</p>
+  <p><b>Checklists</b> are step-by-step lists people work through again and again, like opening up or a weekly clean. Each checklist you start is ticked off step by step and records who did each step.</p>
   <button class="btn block" id="btn-setup-checklists" :disabled="settingUp" @click="setUpChecklists()" x-text="settingUp ? 'Setting up…' : 'Set up checklists'"></button>
   <template x-for="line in placeLines('setup')" :key="line.n">
     <!-- include markup/place-line.html -->

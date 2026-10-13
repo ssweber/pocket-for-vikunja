@@ -150,8 +150,8 @@ export const sync = {
 sync.ready = sync.start();
 // A copy the database can store. Parts of an entry can be Alpine's reactive proxies, which it can't.
 const plain = o => JSON.parse(JSON.stringify(o));
-export const NO_ROOM = 'There\'s no room left on this phone to keep this until there\'s a connection. Keep Pocket open until it\'s sent.';
-export const KEPT = ' It\'s kept: tap the warning sign at the top to try again.';
+export const NO_ROOM = 'This phone\'s storage is full, so Pocket can\'t save this for later. Keep Pocket open until it is sent.';
+export const KEPT = ' It is saved. Tap the warning sign at the top to try again.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
 export const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
   labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind, done: !!p.done, pct: p.pct || 0});
@@ -426,7 +426,7 @@ export const ACT_STEPS = {
      (the lower id) keeps it, as both phones work that out the same way. */
   claim: async a => {
     const others = async () => ((await api('/tasks/' + a.task)).assignees || []).filter(u => u.id !== a.user);
-    const taken = list => Object.assign(new ApiError(409, `${andList(list.map(u => u.name || u.username))} said they'd do it just now`), {drop: true});
+    const taken = list => Object.assign(new ApiError(409, `${andList(list.map(u => u.name || u.username))} ${list.length === 1 ? 'was' : 'were'} assigned to it just now`), {drop: true});
     const before = await others();
     if (before.length) throw taken(before);
     await api(`/tasks/${a.task}/assignees`, {method: 'POST', body: {user_id: a.user}}).catch(e => { if (e.code !== ALREADY.assignee) throw e; });

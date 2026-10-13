@@ -18,7 +18,7 @@
     <template x-if="sheet.editingDesc"><div class="desc-edit">
       <textarea id="d-desc-in" aria-label="Notes" x-model="sheet.descDraft" x-init="$nextTick(() => $el.focus())" x-grow="sheet.descDraft"></textarea>
       <template x-if="sheet.descUnsaved"><p class="note" id="d-desc-unsaved" style="margin:6px 2px">Not saved yet. These notes stay on this phone until they're saved.</p></template>
-      <template x-if="sheet.descConflict !== null"><p class="note" id="d-desc-conflict" style="margin:6px 2px; white-space:pre-wrap">These notes were changed elsewhere while you wrote. The notes in Vikunja now:
+      <template x-if="sheet.descConflict !== null"><p class="note" id="d-desc-conflict" style="margin:6px 2px; white-space:pre-wrap">Someone changed these notes while you were writing. Vikunja now has:
 <span x-text="sheet.descConflict || '(none)'"></span>
 Tap Save to replace Vikunja's notes with yours. Tap Cancel to keep Vikunja's notes.</p></template>
       <template x-if="RICH.test(sheet.task.description || '')"><p class="note" style="margin:6px 2px">These notes have formatting. Saving here keeps the text but drops links and lists.</p></template>

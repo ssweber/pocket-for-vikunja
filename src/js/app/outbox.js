@@ -19,10 +19,10 @@ export default {
     for (const e of [...this.failed, ...this.pending].sort(byWhen)) {
       const when = whenText(e.at);
       if (e.kind === 'run') {
-        const what = (e.cancelled ? 'Calling off the start of ' : 'Starting ') + e.template.title;
+        const what = (e.cancelled ? 'Cancelling the start of ' : 'Starting ') + e.template.title;
         rows.push({key: e.id, text: what, when, drop: e.cancelled ? null : ['cancelStart', e.id]});
       } else if (e.kind === 'step') {
-        const text = e.cancelled ? `Taking out ${quoted(e.title)}, not inserted after all` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
+        const text = e.cancelled ? `Removing ${quoted(e.title)}, because its insert was cancelled` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
         rows.push({key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id]});
       } else if (e.kind === 'act') {
         rows.push({key: e.id, text: this.actText(e), when, failed: e.failed?.message || '', retry: !!e.failed,
@@ -49,8 +49,8 @@ export default {
   },
   get outboxStatus(){
     if (this.flushing) return 'Sending…';
-    if (this.pending.length) return this.offline ? 'No connection: these are sent when Pocket reaches Vikunja.' : 'Waiting for Vikunja: Pocket tries again every 30 seconds.';
-    if (this.failed.length) return 'Vikunja turned these down. Try again once what it said is put right, or don\'t send them.';
+    if (this.pending.length) return this.offline ? 'No connection. Pocket sends these when it reaches Vikunja.' : 'Waiting for Vikunja. Pocket tries again every 30 seconds.';
+    if (this.failed.length) return 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Don\'t send it.';
     return 'Everything has reached Vikunja.';
   },
   // Expose sending, waiting or idle to tests. A busy add box counts as sending before its entry is queued.
@@ -60,7 +60,7 @@ export default {
   // Use Pocket's connection message when retrying offline.
   async tryNow(){
     await this.flush();
-    if (this.pending.length && this.offline) { this.say('Still no connection to Vikunja: it\'s all kept, and sent once Pocket reaches it.', {place: 'sheet:top', cls: 'failed'}); return; }
+    if (this.pending.length && this.offline) { this.say('Still offline. Your changes are saved and go to Vikunja when you\'re back online.', {place: 'sheet:top', cls: 'failed'}); return; }
     this.refresh();
   },
   /* Describe a queued run action, including a skip reason and whether the step was repeated. */
@@ -68,7 +68,7 @@ export default {
     const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title + (this.isRepeat(a.task) ? ' (repeated)' : '');
     const why = a.op === 'skip' && htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
     return {done: `Done: ${t}`, doneNote: `Done, with a comment: ${t}`, skip: `Skipped: ${t}` + (why ? ` (${why})` : ''), undone: `Not done: ${t}`, note: `A comment on “${t}”`,
-      progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `You'll do “${t}”`, unclaim: `Letting go of “${t}”`,
+      progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `Assigning “${t}” to you`, unclaim: `Unassigning you from “${t}”`,
       delete: `Deleting “${t}”` + (a.ids?.length > 1 ? `, with ${a.ids.length - 1} subtask${a.ids.length === 2 ? '' : 's'}` : ''), position: `Moving “${t}” in its list`}[a.op] || t;
   },
   // Whether a run's step is one repeated during the run, as last loaded.
@@ -85,11 +85,11 @@ export default {
   // Explain what dropping this action leaves in Vikunja before asking for confirmation.
   dropText(a){
     const t = quoted(a.label || this.actTitle(a.task) || 'it'), part = a.stage > 0;
-    return {done: part ? `${t} stays marked done in Vikunja, without the rest.` : `${t} stays not done in Vikunja.`,
-      undone: part ? `${t} stays not done in Vikunja, without the rest.` : `${t} stays done in Vikunja.`,
+    return {done: part ? `${t} stays marked done in Vikunja. The rest of the change is not sent.` : `${t} stays not done in Vikunja.`,
+      undone: part ? `${t} stays not done in Vikunja. The rest of the change is not sent.` : `${t} stays done in Vikunja.`,
       finish: 'The checklist stays open in Vikunja.', reopen: 'The checklist stays finished in Vikunja.',
-      claim: `${t} stays without you on it.`, unclaim: `You stay on ${t}.`, progress: `${t} keeps the progress it has in Vikunja.`,
-      note: 'The comment isn\'t posted: its words go back where you wrote them.', delete: `${t} stays in Vikunja.`, position: `${t} stays where it was in Vikunja's list.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
+      claim: `You are not assigned to ${t}.`, unclaim: `${t} stays assigned to you.`, progress: `${t} keeps the progress it has in Vikunja.`,
+      note: 'The comment isn\'t posted. Its text goes back into the comment box.', delete: `${t} stays in Vikunja.`, position: `${t} stays where it was in Vikunja's list.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
   },
   // Retry a rejected action before sending the actions queued behind it.
   async retryAct(id){
@@ -114,11 +114,11 @@ export default {
       await sync.remove(id);
     });
     this.refreshPending();
-    if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It\'s being sent: it can\'t be stopped now.', {place: 'sheet:top'}); return; }
+    if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
     this.giveBack(a, said);
     if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
-    this.say('Not sent.' + (said.back ? ' Its words are back where you wrote them.' : ''), {place: 'sheet:top'});
+    this.say('Not sent.' + (said.back ? ' Its text is back where you wrote it.' : ''), {place: 'sheet:top'});
     this.flush();                                                           // what waited behind it
   },
 };

@@ -357,7 +357,7 @@ const steps = [['Check the guards', 'Check the guards', null, null, null, 0], ['
   ['Overflow T#999999999999999999999d', 'Overflow', null, null, null, 1], ['Nbsp\u00a0T#20m', 'Nbsp', 20 * 6e4, null, null, 0], ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1]];
 // stepProblems over a template's steps: [titles, what each problem says]
 const templates = [[['A {#a}', 'B T#5m:a', 'C T#1h'], []], [['A T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
-  [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['names an earlier step too']],
+  [['A {#a} T#5m:a'], ['which has to be an earlier step']], [['A {#a}', 'B {#A}'], ['an earlier step is also named']],
   [['A', 'B T#5m:nope'], ['no step is named']], [['A T#5', 'B'], ["isn't a time"]]];
 // A step's time in words, read while steps are written in Pocket: [text, offset in ms or null]
 const phrases = [['Check the oil in 10 min', 6e5], ['Baste after an hour', 36e5], ['Pull the jeans 20 minutes later', 12e5], ['Carve 1h 30m after', 54e5],

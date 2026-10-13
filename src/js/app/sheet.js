@@ -79,8 +79,8 @@ export default {
       // Said on the task's row once the sheet has gone. If not saved, with Open, to see them.
       const row = {id: t.id, stays: true}, open = {label: 'Open', fn: () => this.openTask(t.id)};
       this.saveTask(t.id, null, now => this.notesPatch(now, v, base)).then(() => { taskDrafts.delete('desc:' + t.id); this.say('Notes saved', {row}); },
-        e => this.say(e.notes !== undefined ? 'Notes not saved: they were changed elsewhere while you wrote. Yours are kept: open the task to see both.'
-          : e instanceof NetError ? 'Notes not saved: no connection. They\'re kept on this phone: open the task to save them later.' : 'Notes not saved: ' + e.message + '. They\'re kept, to save later.',
+        e => this.say(e.notes !== undefined ? 'Notes not saved. Someone changed them while you were writing. Your version is kept. Open the task to see both.'
+          : e instanceof NetError ? 'Notes not saved. No connection. They stay on this phone. Open the task to save them later.' : 'Notes not saved: ' + e.message + '. They stay on this phone to save later.',
           {row: {...row, cls: 'failed'}, action: open}));
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [['comment', sh.commentDraft], ['sub', sh.sub.text]]) taskDrafts.set(k + ':' + t.id, v);
@@ -180,7 +180,7 @@ export default {
       if (tpl) patch.done = false;
       // Say which date was picked, since it may surprise: the next time of day set as this person's default due time in Vikunja.
       const label = dueInfo(patch.due_date).label, when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(patch.due_date));
-      this.say(`It repeats from ${when}: change the date above if that's not when.`, {place: 'sheet:due', ms: 8000});
+      this.say(`Pocket set the due date to ${when}, because a repeat needs one. Change the date above if that's wrong.`, {place: 'sheet:due', ms: 8000});
     }
     this.save(patch);
   },
@@ -286,7 +286,7 @@ export default {
   notesPatch(now, text, base){
     const has = this.notesText(now).trim();
     if (base !== null && base !== undefined && has !== base.trim() && has !== text.trim())
-      throw Object.assign(new Error('the notes were changed elsewhere while you wrote'), {notes: has, now});
+      throw Object.assign(new Error('someone changed the notes while you were writing'), {notes: has, now});
     return {description: this.notesHtml(now, text)};
   },
   // Notes kept on the phone and opened again: if Vikunja's have changed since editing began, both are shown.
@@ -314,7 +314,7 @@ export default {
         Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
       }
       // Said under the notes, which stay in the box.
-      this.say(seen !== null ? 'Not saved: the notes were changed elsewhere while you wrote. Both are shown: save again to replace them with yours.'
+      this.say(seen !== null ? 'Not saved. Someone changed the notes while you were writing. Both versions are shown. Save again to replace theirs with yours.'
         : notSaved(e), {place: 'sheet:notes', cls: 'failed', ms: null});
     }
   },
@@ -331,7 +331,7 @@ export default {
     // At a set time: its day and time, even at noon or midnight, and whether it is past.
     if (!r.relative_to) { const d = new Date(r.reminder); return isSet(r.reminder) ? `${dueInfo(startOfDay(d).toISOString()).label} ${fmtTime(d)}${d < new Date() ? ' (past)' : ''}` : ''; }
     const s = Math.abs(r.relative_period || 0), from = {due_date: 'due', start_date: 'the start', end_date: 'the end'}[r.relative_to] || r.relative_to;
-    const unset = !isSet(this.sheet.task?.[r.relative_to]) ? ' (no date: it won\'t go off)' : '';
+    const unset = !isSet(this.sheet.task?.[r.relative_to]) ? ' (no date, so it won\'t be sent)' : '';
     if (!s) return (r.relative_to === 'due_date' ? 'At due' : 'At ' + from) + unset;
     const [n, unit] = [[86400, 'day'], [3600, 'hour'], [60, 'min']].find(([n]) => s % n === 0 && s >= n) || [1, 'sec'];
     const k = s / n;
@@ -442,7 +442,7 @@ export default {
       if (this.sheet.task?.id === id) { this.sheet.comments = list; this.sheet.commentsNote = ''; }
     } catch (e) {
       if (this.sheet.task?.id !== id) return;
-      if (e instanceof NetError) { this.sheet.comments ||= []; this.sheet.commentsNote = 'Offline: the comments show once Pocket reaches Vikunja. One written now is posted then.'; }
+      if (e instanceof NetError) { this.sheet.comments ||= []; this.sheet.commentsNote = 'Offline. Comments load when Pocket reaches Vikunja. A comment you write now is posted then.'; }
       else this.sheet.commentsNote = errText(e);
     }
   },
@@ -461,7 +461,7 @@ export default {
   // the wrong limit.
   tooBig(files){
     const max = sizeLimit(this.info?.max_file_size), big = max ? files.filter(f => f.size > max) : [];
-    return big.length ? `${big.map(f => `${f.name} (${fmtSize(f.size)})`).join(', ')} ${big.length === 1 ? 'is' : 'are'} too big: your Vikunja takes files up to ${this.info.max_file_size}.` : '';
+    return big.length ? `${big.map(f => `${f.name} (${fmtSize(f.size)})`).join(', ')} ${big.length === 1 ? 'is' : 'are'} too big. Your Vikunja accepts files up to ${this.info.max_file_size}.` : '';
   },
   // From the sheet's "Add a photo or file". The files go through the outbox, so without a connection they wait on the
   // phone, shown in the sheet, and upload once Pocket reaches Vikunja again.

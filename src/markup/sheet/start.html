@@ -4,7 +4,7 @@
       <template x-if="sheet.loading"><div class="loading">Loading…</div></template>
       <template x-if="sheet.error"><div class="err" x-html="sheet.error"></div></template>
       <template x-if="sheet.start?.template"><div>
-        <div class="h3">For<span class="n">Tap everyone it's for</span></div>
+        <div class="h3">For<span class="n">Tap each person this checklist is for</span></div>
         <!-- At least one person. The template's assignees are picked to start with. -->
         <div class="card who-pick" id="start-for" role="group" aria-label="Who the checklist is for">
           <template x-for="u in sheet.start.people" :key="u.id"><button type="button" class="chip toggle" :data-user="u.username" :aria-pressed="String(sheet.start.forIds.includes(u.id))"
@@ -12,7 +12,7 @@
         </div>
         <template x-if="startNote"><p class="note" id="start-note" x-text="startNote"></p></template>
         <!-- The checklist's name. The words typed take the place of "#3" between the template's name and the day. -->
-        <label class="field" style="margin-top:14px"><span>Name, if you like, such as Saturday</span>
+        <label class="field" style="margin-top:14px"><span>Name (optional), such as Saturday</span>
           <input id="start-name" x-model="sheet.start.name" :placeholder="'#' + sheet.start.next" autocomplete="off" enterkeyhint="go"
                  @keydown.enter.prevent="startRun()"></label>
         <p class="note" id="start-title" style="margin-top:-6px" x-text="'Called “' + runTitle(sheet.start.template.title, sheet.start.name.trim() || '#' + sheet.start.next, new Date()) + '”'"></p>
