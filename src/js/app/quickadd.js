@@ -3,7 +3,7 @@ import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {parentIds, saved} from '../lists.js';
-import {clearOf, placeAfter, placeFirst} from '../order.js';
+import {clearOf, listViewOf, placeAfter, placeFirst} from '../order.js';
 import {NUDGE_TICK} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {parseCapture, projectName, QUICK_ADD_PREFIXES, readList} from '../quickadd.js';
@@ -406,7 +406,7 @@ export default {
     // A step being changed: the people and labels it has, to tap off it.
     if (w === 'edit') out.push(...this.stepHasChips());
     const to = this.boxPid(w);
-    if (this.canLevel && (w === 'under' || w === 'cap') && !this.view.listView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja: what you add goes last'});
+    if (this.boxIn && (w === 'under' || w === 'cap') && !this.cursorListView) out.push({key: 'noplace', cls: 'quiet', text: 'This project has no List view in Vikunja: what you add goes last'});
     if (to && !this.canWrite(to)) out.push({key: 'ro', cls: 'warn', text: `${this.projById.get(to)?.title || 'This project'} is shared with you to read only: it can't be added to`});
     return out;
   },
@@ -521,7 +521,7 @@ export default {
   get capTarget(){
     if (this.capW === 'ins') return null;                              // a run's screen has its own box, under its steps (list-box.html)
     const t = this.cursorTask, p = this.cursorParent;
-    return t && !this.cursor.out ? {to: p.title, after: t !== p && this.view.listView ? t.title : ''} : null;
+    return t && !this.cursor.out ? {to: p.title, after: t !== p && this.cursorListView ? t.title : ''} : null;
   },
   get capPlaceholder(){ return this.cursorTask ? (this.cursor.out ? 'Task' : 'Subtask') : this.capHomeSays; },   // in the list, its place says the rest
   // What the box says at the bottom, empty. While it's in the list, the dashed place it left there says the same, where
@@ -535,13 +535,21 @@ export default {
     const c = this.capTarget;
     return !c ? '' : c.step ? `Add a step after “${c.after}”` : `Add a subtask to ${c.to}${c.after ? ', after ' + c.after : ''}`;
   },
-  /* Where the next `n` subtasks from the box go in the project's List view: right after the cursor's row, if it's a
+  /* The List view the box's places are in: the project's, on its list; on Today, the cursor's project's, which Today
+     read its cards' positions from (readCards, app/cards.js), so a subtask added there goes where the project will
+     show it. Null where there's none. */
+  get cursorListView(){
+    if (this.route.name === 'project') return this.view.listView;
+    const p = this.cursorParent;
+    return p ? listViewOf(this.projById.get(p.project_id))?.id || null : null;
+  },
+  /* Where the next `n` subtasks from the box go in the project's List view (cursorListView): right after the cursor's row, if it's a
      subtask (the one nudged, or the last added from the box, waiting or sent), else ahead of the task's first, as the
      box is right under the task; null if the project has no List view. The task's subtasks are those Vikunja gave it, those on the list under it (one just
      sent) and those still waiting to be sent, so its last is the last on screen. */
   cursorPlaces(n){
     const t = this.cursorTask, p = this.cursorParent;
-    if (!this.view.listView) return null;
+    if (!this.cursorListView) return null;
     const at = x => (x.pending ? x.position : this.positions[x.id]) || 0;
     const listed = (this.view.groups.find(g => g.key === 'open')?.tasks || []).filter(x => parentIds(x).includes(p.id));
     const ids = new Set([...(p.related_tasks?.subtask || []), ...listed].map(x => x.id));

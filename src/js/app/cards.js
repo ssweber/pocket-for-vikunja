@@ -10,7 +10,7 @@ import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, repeats, shortDue} from '../dates.js';
 import {hasTemplateLabel, parseStep, runWithoutDay, stepsOf, whereNext} from '../checklists.js';
 import {pctOf, workedOut} from '../progress.js';
-import {countdown, openSubs, runTop, urgentFirst} from '../cards.js';
+import {cardRows, countdown, openSubs, runTop, urgentFirst} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {completeAsk} from '../messages.js';
 
@@ -35,14 +35,17 @@ export default {
     if (!kind || t.pending || (t.done && !this.leaving[t.id] && !closing.has(t.id)) || hasTemplateLabel(t)) return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     let steps = all.filter(s => !done(s) || this.leaving[s.id]);
-    if (!steps.length) return all.length ? this.closingCard(t, g, run, all) : null;
+    // The subtasks added to it from Today's box this visit, each where the box was (addedRows), a waiting one too.
+    const added = kind === 'today' ? this.addedRows(t) : [];
+    if (!steps.length && !added.length) return all.length ? this.closingCard(t, g, run, all) : null;
     // (One given a subtask from Today's box is a card until the screen is left, whatever its date: what was added is in sight.)
-    if (kind === 'today' && !this.view.cards?.[t.id] && !this.cardKept[t.id]) return null;
+    if (kind === 'today' && !this.view.cards?.[t.id] && !added.length) return null;
     // A run's top row is its next step, by its own rule, then the rest in its order; a task's, the most urgent.
     if (run) { const k = runTop(steps, this.cardPage[t.id], this.runPick(all, done)); steps = [steps[k], ...steps.filter((_, i) => i !== k)]; }
     else steps = [...steps].sort(urgentFirst(this.rowNow(), positionOrder(this.positions)));
-    const n = steps.length, open = n > 1 && !!this.cardOpen[t.id];
-    const card = {id: t.id, run, step: steps[0], steps, rows: open ? steps : steps.slice(0, 1), n, peek: !open && n > 1 ? steps[1] : null, more: n - 1,
+    const n = steps.length + added.filter(a => !steps.some(s => s.id === a.t.id)).length, open = n > 1 && !!this.cardOpen[t.id];
+    const r = cardRows(steps, added, open);
+    const card = {id: t.id, run, step: r.step, steps: r.list, rows: r.rows, n, peek: r.peek, more: r.more,
       open, folds: true, all, ring: this.ringOf(t), closes: false, project: t.project_id};
     // (its group: under Today's heading, "Today" goes unsaid; on Today, a row held carries the card to another day)
     card.g = {depth: {}, card, line: g.line, key: g.key, delete: true, reschedule: g.reschedule};
@@ -187,8 +190,16 @@ export default {
   // A tick or a slide on a card's row: a run's card stays on its top row until that has gone, then goes by its rule from
   // there (runTop). (A task's top row is the most urgent, which a tick doesn't change.)
   pinCard(c){ if (c?.step) this.cardPage[c.id] = c.step.id; },
-  // Leaving the screen: every card back on its next step, and collapsed.
-  resetCards(){ this.cardPage = {}; this.cardOpen = {}; this.cardKept = {}; shownStep.clear(); },
+  /* The subtasks added to a card from Today's box this visit (cardAdded), as its rows (cardRows, cards.js): one still
+     on its way by its waiting row, one sent by its task, each with the row it went under; one done, or taken off, is
+     gone. */
+  addedRows(t){
+    const rows = this.cardAdded[t.id] || [], waiting = rows.some(a => typeof a.id === 'string') ? this.pendingTasks : [];
+    return rows.map(a => ({t: typeof a.id === 'string' ? waiting.find(x => x.id === a.id) : this.tasks[a.id], after: a.after}))
+      .filter(a => a.t && (a.t.pending || !a.t.done || this.leaving[a.t.id]));
+  },
+  // Leaving the screen: every card back on its next step, sorted as Today has it, and collapsed.
+  resetCards(){ this.cardPage = {}; this.cardOpen = {}; this.cardAdded = {}; shownStep.clear(); },
   /* Its footer's More tapped: the card opens in place, every open subtask listed, the rows below pushed down by that tap. It's
      watched (watchCard) to collapse again once it's off the screen. */
   openCard(c){ this.cardOpen[c.id] = true; },

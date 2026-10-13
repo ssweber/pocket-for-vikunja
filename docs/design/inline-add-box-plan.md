@@ -47,9 +47,16 @@ One behaviour on every screen: a project's list, Today, a task's sheet, a checkl
 
 ## 3. Today
 
-- Nudging a plain task adds its first subtask, and the task becomes a card. Nudging a card's row adds under that row.
-- A card is folded to its next subtask, and a new subtask with no date sorts last. It stays in sight in its card
-  until the screen is left.
+- A nudge works as on a project's list (the user, 2026-10-13: "I like the uniformity it brings"). Nudging a plain
+  task puts the box under it, to add its first subtask, and the task becomes a card; nudging a card's row adds under
+  that row. The subtask lands where the box was, lit, and the next goes under it.
+- The place sent is the project's: Today reads each card's project List view for its positions already, so a subtask
+  added from Today goes first, or after the nudged row, as the project's list will show it. A project with no List
+  view says so under the box, as on its list.
+- The card stays collapsed. The row added sits where the box was, over or under the most urgent row, and each add
+  grows the card by one row, until the screen is left. Then Today sorts the card as it always does, a subtask with no
+  date last: "leave it where it is for now", as a ticked row stays until the batch clears. No label on the row: the
+  light says it was just added, and the empty date slot that it has none.
 
 ## 4. A checklist's screen
 
@@ -143,9 +150,10 @@ specimen and the README's pictures wait for the user's look. Tried in desktop Ch
   before and after; without that it was 28,466.
 - **New template's steps are rows shaped for the task row** (`newStepRow`: an id for the row, a key for how the steps
   read together), kept in `sheet.newTpl.rows`, and changed in place: the row is what its box changes.
-- **Today gives no place.** It has no one List view, and shows a subtask only once it's sent, on its task's card: the
-  box stays where it was put, the card opens so what was added is in sight, and a task with no date is a card too,
-  until the screen is left (`cardKept`).
+- **Today's place is the project's.** The box's places come from the cursor's project List view (`cursorListView`),
+  which Today read for its cards (`readCards`), so a subtask added from Today goes first, or after the nudged row, as
+  on the project's list. Its row is on the card at once, waiting, where the box was, and the box moves under it
+  (`cardAdded`, `cardRows`); the card is sorted again when the screen is left (`resetCards`).
 - **A new line's place is never one another task has** (`clearOf`, `order.js`). Vikunja moves two tasks with the same
   position apart, which put a task's first two subtasks in the wrong order in a new project.
 

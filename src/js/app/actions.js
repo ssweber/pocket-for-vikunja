@@ -606,10 +606,17 @@ export default {
     const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
     const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
       parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
+    // On Today, each line that's the task's own subtask takes a row on its card at once, waiting, where the box is:
+    // after the cursor's row, or on top under the header, and each after the one before (cardAdded; cardRows, cards.js).
+    if (today) {
+      if (!this.cardAdded[parent.id]) this.cardAdded[parent.id] = [];
+      const rows = this.cardAdded[parent.id];
+      let after = this.cursor?.under != null ? this.cursor.id : null;
+      items.forEach((x, i) => { if (x.under === null) { rows.push({id: `pending-${entry.id}-${i}`, after}); after = rows.at(-1).id; } });
+    }
     // From the add box, the light follows what's added, and the next go after it: the last that's the task's own
     // subtask, not one under it (aimAdded, quickadd.js).
-    // (Not on Today, which shows a subtask only once it's sent, on its task's card: the box stays where it is.)
-    if (foot && !today) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
+    if (foot) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
     const here = () => foot || this.sheet.task?.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
     // The next can be sent while this one is on its way (the outbox sends them in turn): `adding` counts them.
     b.adding++; b.text = '';
@@ -622,17 +629,14 @@ export default {
       const {kept, full} = await keeping;
       const r = await sync.lock(() => this.sendEntry(entry.id));
       if (foot) this.refreshPending();                                    // the waiting rows, and the rows sent, swapped at once
+      // On Today, the tasks sent take their waiting rows' places on the card (cardAdded), kept so the light is on them (aimSent).
+      if (today) for (const {child, problems, arrived, was, place, ...x} of r.tasks || []) { this.keep(x); for (const a of this.cardAdded[parent.id] || []) { if (a.id === was) a.id = x.id; if (a.after === was) a.after = x.id; } }
       this.placeSent(r.tasks || []);
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
       if (r.ids?.length && foot) {
         this.flash(r.ids);
-        // Its row's count of subtasks, with these.
-        // On Today its card opens, so what was added is in sight, whatever its place among the others, until the
-        // screen is left (resetCards); a task that had no subtask is a card from now, read again.
-        this.readTask(parent.id).then(t => {
-          if (t) { cache.set(t.id, t); this.keep(t); }
-          if (today && this.route.name === 'today') { this.cardKept[parent.id] = true; this.cardOpen[parent.id] = true; this.render(); }
-        }).catch(() => {});
+        // Its row's count of subtasks, with these, read again. (On Today its card has them where they were added already.)
+        this.readTask(parent.id).then(t => { if (t) { cache.set(t.id, t); this.keep(t); } }).catch(() => {});
       } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;
         try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}

@@ -224,6 +224,8 @@ export default {
     if (this.view.loading || this.view.route !== location.hash) return;
     let placed = false;
     for (const {child, problems, arrived, was, place, ...t} of tasks) {
+      // A subtask sent with its place among its siblings, which Vikunja keeps: known wherever it was added from, Today's card too.
+      if (t.parent && place > 0) this.positions[t.id] = t.position > 0 ? t.position : place;
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
       // It said it's done, or how far along it is: ticked on its row, or its tick showing how far. One that repeats is
@@ -400,7 +402,7 @@ export default {
     const r = this.route;
     if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
     if (r.name !== 'today') return null;
-    // A subtask only once it's loaded, on its task's card (cards.js): Today never shows one as a row of its own.
+    // A subtask is never a row of its own on Today: it's on its task's card, waiting there where it was added (cardRows, cards.js).
     if (t.child || t.parent) return null;
     if (!isSet(t.due_date)) return 'nodate';
     const d = new Date(t.due_date), t0 = startOfDay();

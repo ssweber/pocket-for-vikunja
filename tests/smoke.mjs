@@ -3682,30 +3682,65 @@ ${footName('Hooks')}`);
     await onlyLit(itemById(T.Van.id));
     await synced(page);
   });
-  /* On Today the box adds a task until a row is nudged: then it's under that row, adding the task's first subtask, and
-     the task is a card with it, kept in sight until the screen is left (inline-add-box-plan, part 3). A tap on its
-     place at the bottom brings it home. */
+  /* On Today the box adds a task until a row is nudged: then it's under that row, adding a subtask, as on a project's
+     list (inline-add-box-plan, part 3). Under a card's header the subtask lands on top, over the card's most urgent
+     row, waiting, and the box moves under it, so the next goes under that: the card grows a row each time, until the
+     screen is left; then it's sorted as Today has it, the dateless rows under More. Their places are the project's:
+     first, in the order typed. A plain task nudged is a card of the subtask added to it. A tap on the box's place at
+     the bottom brings it home. */
   await step('a-nudge-on-today-moves-the-add-box-under-the-row-to-add-a-subtask-there', async () => {
-    const d = await make(`Pocket smoke nudge ${stamp}`, { due_date: todayAt(23) }), subTitle = `Pocket smoke nudge sub ${stamp}`;
-    let sub = null;
+    const d = await make(`Pocket smoke nudge ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke nudge due ${stamp}`, { due_date: todayAt(22) });
+    const plain = await make(`Pocket smoke nudge plain ${stamp}`, { due_date: todayAt(21) });
+    const a = `Pocket smoke nudge sub A ${stamp}`, b = `Pocket smoke nudge sub B ${stamp}`, c = `Pocket smoke nudge sub C ${stamp}`, made = [];
+    const lv = (await (await api(`/projects/${d.project_id}`)).json()).views.filter(v => v.view_kind === 'list').sort((x, y) => x.position - y.position || x.id - y.id)[0].id;
+    const find = async t => ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
+    const places = async ids => Object.fromEntries((await (await api(`/projects/${d.project_id}/views/${lv}/tasks?filter=` + encodeURIComponent('id in ' + ids.join(', ')))).json()).map(t => [t.id, t.position]));
+    const card = cardOf(d.title), rows = () => page.$$eval(`${card} .card-rows > .row .title > span:not(.sr)`, es => es.map(e => e.textContent.trim()));
+    const same = (got, want, what) => { if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`); };
     try {
+      await api(`/tasks/${d.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+      await api(`/tasks/${k.id}/position`, { method: 'PUT', headers: json, body: JSON.stringify({ project_view_id: lv, position: 1000 }) });
       await refreshToday();
-      await expect(page.locator(rowOf(d.title))).toBeVisible({ timeout: 15000 });
-      await page.locator(rowOf(d.title)).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-      await touchDrag(rowOf(d.title), 30);
+      await expect(page.locator(card)).toBeVisible({ timeout: 15000 });
+      await page.locator(card).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await touchDrag(`${card} > .card-head`, 30);
       await expect(page.locator('#sheet')).toBeHidden();
       if (await cursorId() !== d.id) throw new Error('the box went under ' + await cursorId());
       await boxUnder(d.title);
-      await expect(page.locator(rowOf(d.title))).toHaveClass(/\baimed\b/);
-      await box.fill(subTitle);
+      await expect(page.locator(card)).toHaveClass(/\baimed\b/);
+      await box.fill(a);
       await box.press('Enter');
-      await expect(page.locator(`${cardOf(d.title)} .card-rows > .row .title:has-text("${subTitle}")`)).toBeVisible({ timeout: 15000 });
+      await expect(page.locator(`${card} .card-rows > .row:first-child .title`)).toContainText(a, { timeout: 15000 });
       await synced(page);
-      sub = ((await (await api('/tasks?q=' + encodeURIComponent(subTitle))).json()).items || []).find(t => t.title === subTitle);
-      if (!sub?.related_tasks?.parenttask?.some(p => p.id === d.id)) throw new Error('not a subtask of the row nudged: ' + JSON.stringify(sub?.related_tasks));
+      const A = await find(a); made.push(A);
+      if (!A?.related_tasks?.parenttask?.some(p => p.id === d.id)) throw new Error('not a subtask of the card nudged: ' + JSON.stringify(A?.related_tasks));
+      if (await cursorId() !== A.id) throw new Error('the box did not follow the subtask added: under ' + await cursorId());
+      await boxUnder(d.title);
+      await box.fill(b);
+      await box.press('Enter');
+      await expect(page.locator(`${card} .card-rows > .row:nth-child(2) .title`)).toContainText(b, { timeout: 15000 });
+      await synced(page);
+      const B = await find(b); made.push(B);
+      same(await rows(), [a, b, k.title], 'the rows added where the box was, over the most urgent, the card a row taller each time');
+      const at = await places([A.id, B.id, k.id]);
+      if (!(at[A.id] < at[B.id] && at[B.id] < at[k.id])) throw new Error('not first in the project, in the order typed: ' + JSON.stringify(at));
+      await expect(page.locator(`${card} > .card-more`)).toHaveCount(0);        // every row in sight: no More
+      await touchDrag(rowOf(plain.title), 30);
+      await boxUnder(plain.title);
+      await box.fill(c);
+      await box.press('Enter');
+      await expect(page.locator(`${cardOf(plain.title)} .card-rows > .row .title:has-text("${c}")`)).toBeVisible({ timeout: 15000 });
+      await synced(page);
+      made.push(await find(c));
       await home.click();
       await boxHome();
-    } finally { for (const t of [sub, d]) if (t) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+      // Left and back: the card is sorted as Today has it, the most urgent on top and the dateless rows under More.
+      await refreshToday();
+      await expect(page.locator(card)).toBeVisible({ timeout: 15000 });
+      same(await rows(), [k.title], 'back on Today: collapsed to the most urgent');
+      await page.click(`${card} > .card-more`);
+      same(await rows(), [k.title, a, b], 'opened: the dateless rows last, in their order in the project');
+    } finally { for (const t of [...made, k, d, plain]) if (t) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
 
   let vanCopy = '', vanId = 0, projectCopy = '';  // the task's Markdown copy, the task, and its project's copy, for the step that pastes them back

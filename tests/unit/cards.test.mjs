@@ -4,7 +4,7 @@
 import { component, fakeVikunja } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardGroup, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
+import { cardGroup, cardRows, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo, shortTime } from '../../src/js/dates.js';
 import { listItems, nestSubtasks, rowGestures, RUN_ROW } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
@@ -110,12 +110,49 @@ test('a run’s step’s countdown, to the minute, within a day', () => {
 // done, first, then Chairs, Tables and Lights.
 const today = (...more) => {
   const app = component(cards, views, alerts, tasks, leaving, ...more);
-  Object.assign(app, { cardPage: {}, cardOpen: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, stepPct: s => Math.round((s.percent_done || 0) * 100), checklistIds: new Set(), waitingByTask: new Map() });
+  Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, stepPct: s => Math.round((s.percent_done || 0) * 100), checklistIds: new Set(), waitingByTask: new Map() });
   const parent = app.keep(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
   for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.keep(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
   return { app, parent, g: { cards: 'today', line: true } };
 };
+
+test('a card’s rows with the subtasks added from Today’s box where the box was: on top under the header, or under the row nudged, each under the one before', () => {
+  const s = [['Chairs', 1], ['Tables', 2], ['Lights', 3]].map(([title, id]) => ({ id, title })), t = id => ({ id, title: 'new ' + id });
+  let r = cardRows(s, [{ t: t('p1'), after: null }], false);
+  assert.deepEqual([r.rows.map(x => x.title), r.step.title, r.peek.title, r.more], [['new p1', 'Chairs'], 'Chairs', 'Tables', 2], 'under the header: on top, over the most urgent, the rest under More');
+  r = cardRows(s, [{ t: t('p1'), after: null }, { t: t('p2'), after: 'p1' }], false);
+  assert.deepEqual(r.rows.map(x => x.title), ['new p1', 'new p2', 'Chairs'], 'the next under the one before');
+  r = cardRows(s, [{ t: t('p1'), after: 1 }], false);
+  assert.deepEqual(r.rows.map(x => x.title), ['Chairs', 'new p1'], 'under the row nudged');
+  r = cardRows(s, [{ t: t('p1'), after: 2 }], true);
+  assert.deepEqual([r.rows.map(x => x.title), r.list.length, r.peek, r.more], [['Chairs', 'Tables', 'new p1', 'Lights'], 4, null, 0], 'opened: every row, the added one after its row');
+  r = cardRows(s, [{ t: s[2], after: null }], false);
+  assert.deepEqual([r.rows.map(x => x.title), r.more], [['Lights', 'Chairs'], 1], 'one sent, and among the subtasks since: once, where it was added');
+  r = cardRows(s, [{ t: t('p1'), after: 'gone' }], false);
+  assert.deepEqual(r.rows.map(x => x.title), ['new p1', 'Chairs'], 'the row it went under gone: on top');
+  r = cardRows([], [{ t: t('p1'), after: null }], false);
+  assert.deepEqual([r.rows.map(x => x.title), r.step.title, r.peek, r.more], [['new p1'], 'new p1', null, 0], 'a task with no subtask before: a card of the one added');
+});
+
+test('on Today, a subtask added from the box is on its card at once, waiting, where the box was, then by its task; gone when the screen is left', () => {
+  const { app, parent, g } = today();
+  Object.defineProperty(app, 'pendingTasks', { get: () => [{ id: 'pending-e-0', pending: true, title: 'Rope', parent: 10 }], configurable: true });
+  app.cardAdded = { 10: [{ id: 'pending-e-0', after: null }] };
+  let c = app.cardOf(parent, g);
+  assert.deepEqual([c.rows.map(s => s.title), c.rows[0].pending, c.n, c.more, c.peek.title], [['Rope', 'Chairs'], true, 4, 2, 'Tables'], 'the waiting row on top, over the most urgent, the card a row taller');
+  app.cardAdded[10][0].id = 15;
+  app.keep(task(15, { title: 'Rope', related_tasks: under(10) }));
+  c = app.cardOf(parent, g);
+  assert.deepEqual([c.rows.map(s => s.title), c.rows[0].pending, c.n], [['Rope', 'Chairs'], undefined, 4], 'sent: its task in its place');
+  app.cardAdded[10].push({ id: 'pending-e-1', after: 15 });
+  Object.defineProperty(app, 'pendingTasks', { get: () => [{ id: 'pending-e-1', pending: true, title: 'Tape', parent: 10 }], configurable: true });
+  assert.deepEqual(app.cardOf(parent, g).rows.map(s => s.title), ['Rope', 'Tape', 'Chairs'], 'the next under it');
+  app.view.cards = {};
+  assert.equal(app.cardOf(parent, g).rows.length, 3, 'a card for what was added to it, whatever brought it');
+  app.resetCards();
+  assert.equal(app.cardOf(parent, g), null, 'the screen left: as Today had it');
+});
 
 test('a card: its open subtasks, the most urgent first, collapsed to its top row with More under it, and its ring', () => {
   const { app, parent, g } = today(), c = app.cardOf(parent, g);

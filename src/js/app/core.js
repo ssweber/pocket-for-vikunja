@@ -80,7 +80,7 @@ export default () => ({
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a run's card id -> the step a tick left on its top row (app/cards.js)
-  cardKept: {},                                // a task's id -> true: a card on Today from when a subtask was added to it there, until the screen is left
+  cardAdded: {},                               // a task's id -> the subtasks added to it from Today's box this visit, each {id: its task's, or its waiting row's, after: the row it went under, null: on top}, until the screen is left (cardRows)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // a task or step whose progress is being slid, which you'll be doing: its id -> true (claimOnSlide)
   // What's waiting to be sent for each task, by its id, for a row to ask about its own (keyWaiting, sending.js): its

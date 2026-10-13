@@ -68,6 +68,19 @@ export const urgentFirst = (now, order) => {
   const rank = t => !isSet(t.due_date) ? 3 : isLate(t.due_date, new Date(now)) ? 0 : due(t) < next && due(t) >= day ? 1 : 2;
   return (a, b) => rank(a) - rank(b) || (due(a) < Infinity ? due(a) - due(b) : 0) || order(a, b);
 };
+/* A card's rows on Today, with the subtasks added to it from the box this visit where the box was, until the screen
+   is left (inline-add-box-plan, part 3): `sorted`, its open subtasks, the most urgent first; `added`, each {t, after:
+   the id of the row the box was under, null under the header}, in the order typed, put after that row, or on top
+   when it has gone. Collapsed, the card shows the most urgent and the added rows, where they are among them; opened,
+   every row. {list: all of them in the card's order, rows, step: the most urgent, peek: the first row More hides,
+   more: how many}. */
+export function cardRows(sorted, added, open){
+  const list = sorted.filter(s => !added.some(a => a.t.id === s.id));
+  for (const a of added) { const i = a.after == null ? -1 : list.findIndex(x => x.id === a.after); list.splice(i + 1, 0, a.t); }
+  const step = sorted.find(s => !added.some(a => a.t.id === s.id)) || list[0] || null;
+  const rows = open ? list : list.filter(x => x === step || added.some(a => a.t === x));
+  return {list, rows, step, peek: !open ? list.find(x => !rows.includes(x)) || null : null, more: list.length - rows.length};
+}
 /* The top of a run's card, of its open `steps` in its order: the step a tick or a slide left it on (`pinned`: its id,
    pinCard) while it's still there, done or not, waiting for the batch; else the run's own rule (`pick`: whereNext,
    checklists.js), given the step that has gone, or null, and giving the id of the step to show. Its index; the first

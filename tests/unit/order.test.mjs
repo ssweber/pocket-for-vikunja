@@ -290,12 +290,17 @@ test('only a task on this project\'s open list that you can change can be the cu
   app.route = { name: 'today' };
   const list = app.view;
   app.view = { groups: [{ key: 'overdue', tasks: [] }, { key: 'today', tasks: [van] }], listView: null };
+  app.projById = new Map([[1, { id: 1, title: 'Move', views: [{ id: 5, view_kind: 'list', position: 1 }] }]]);
   app.aim(van);
   assert.deepEqual([app.cursor, app.capW, app.boxIn, app.canLevel], [{ id: 10, under: null }, 'under', true, false]);
   assert.equal(app.boxLevel(true), false, 'no level out on Today');
-  assert.equal(app.cursorPlaces(1), null, 'nor a place to give: Today has no one List view');
+  // Its places are the project's: its List view, which Today read its cards' positions from.
+  assert.deepEqual([app.cursorListView, app.cursorPlaces(1)], [5, [50]], 'under the task: ahead of its first subtask, in the project\'s List view');
   app.aim(chairs);
   assert.deepEqual([app.cursor, app.cursorParent], [{ id: 11, under: 10 }, van], 'a card\'s row: under its task');
+  assert.deepEqual(app.cursorPlaces(1), [150], 'after that row');
+  app.projById.get(1).views = [];
+  assert.deepEqual([app.cursorListView, app.cursorPlaces(1)], [null, null], 'a project with no List view: no place to give');
   app.aim(app.tasks[20]);
   assert.equal(app.cursor, null, 'a task Today doesn\'t show');
   app.view = list;
