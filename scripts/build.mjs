@@ -15,8 +15,9 @@
 //                                            stays, and src/vendor/alpine-3.17.4.js is minified into that file next
 //                                            to the page (see vendor() below)
 // A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The markup's comments and
-// indentation are removed (see lean() below). The page is also written compressed, as index.html.br and index.html.gz,
-// for main.go to send to browsers that accept them (see compressed()).
+// indentation are removed (see lean() below), and a template inside another template keeps its content in a template
+// of its own (see shared()). The page is also written compressed, as index.html.br and index.html.gz, for main.go to
+// send to browsers that accept them (see compressed()).
 //
 // The page is one file, so a phone never mixes a new page with old code. sw.js and main.go need nothing more. Edit
 // src/, never pocket/app/index.html. The build overwrites that file, and CI checks that it matches the build of src/.
@@ -55,10 +56,33 @@ export function include(file, seen = [], words = []){
    in it. Each row of a list is a copy of its template, so a comment or an indent in a row's markup is copied once for
    every row drawn. White space on one line is kept, because between two inline elements it shows as a space. Quoted
    attributes are left as they are. */
-export const lean = html => html.replace(/<!--[\s\S]*?-->|<(?:[^>"']|"[^"]*"|'[^']*')*>|[^<]+/g, part =>
+const PARTS = /<!--[\s\S]*?-->|<(?:[^>"']|"[^"]*"|'[^']*')*>|[^<]+|</g;   // a comment, a tag, or the text between two
+export const lean = html => html.replace(PARTS, part =>
   part.startsWith('<!--') ? ''
   : part[0] === '<' ? part.replace(/"[^"]*"|'[^']*'|\s+/g, s => /^\s/.test(s) ? ' ' : s)
   : /^\s*\n\s*$/.test(part) ? '' : part);
+
+/* Moves the content of each x-if and x-for template nested in another template into a template of its own, just
+   before the page's scripts, and names that template on the nested one (data-from="part-1"). Alpine clones a template
+   with everything in it, so a list's row was cloned with the content of every template inside the row, used or not.
+   Pocket's Alpine clones the content of the template named (src/vendor, marked "Pocket:"). Templates with the same
+   content share one, so the page holds each part of the row once however many lists include the row. */
+export function shared(html){
+  const ids = new Map(), stack = [[]];
+  for (const part of html.match(PARTS) || []) {
+    if (/^<template[\s>]/.test(part)) { stack.at(-1).push(part); stack.push([]); continue; }
+    if (part !== '</template>') { stack.at(-1).push(part); continue; }
+    if (stack.length < 2) throw new Error('A </template> closes no <template>');
+    const content = stack.pop().join(''), out = stack.at(-1), open = out.pop();
+    if (stack.length < 2 || !content || !/\sx-(if|for)=/.test(open)) { out.push(open, content, part); continue; }
+    if (!ids.has(content)) ids.set(content, 'part-' + (ids.size + 1));
+    out.push(`${open.slice(0, -1)} data-from="${ids.get(content)}">`, part);
+  }
+  if (stack.length > 1) throw new Error('A <template> is not closed');
+  const page = stack[0], at = page.findIndex(part => /^<script[\s>]|^<\/body>/.test(part));
+  page.splice(at < 0 ? page.length : at, 0, ...[...ids].map(([content, id]) => `<template id="${id}">${content}</template>`));
+  return page.join('');
+}
 
 export async function css(file){
   const r = await esbuild.build({ entryPoints: [file], bundle: true, minify: true, write: false, logLevel: 'silent' });
@@ -79,7 +103,7 @@ async function js(file){
 }
 
 async function build(){
-  let page = lean(include(join(SRC, 'index.html'))), map = null;
+  let page = shared(lean(include(join(SRC, 'index.html')))), map = null;
   const tag = /<link rel="stylesheet" href="([^"]+)">|<script type="module" src="([^"]+)"><\/script>/g;
   const parts = [];
   for (const m of page.matchAll(tag)) {

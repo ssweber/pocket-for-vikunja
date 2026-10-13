@@ -222,6 +222,9 @@ cannot delete. The checklists test needs a token that can create and update proj
   swapped with the next row each time the list is drawn. Put it before the template.
 - **The build removes the markup's comments and indentation** (`lean`, `scripts/build.mjs`). Two inline elements on
   separate lines get no space between them. Write them on one line, with the space, to keep it.
+- **An `x-if` or `x-for` template inside another template is empty in the built page.** The build moves its content
+  to a `<template id="part-N">` and names that template on it (`data-from`; `shared`, `scripts/build.mjs`), so a row
+  is not cloned with the content of every template inside it. Only `x-if` and `x-for` read `data-from`.
 - **`:text-is()` matches the innermost element** with that text. Prefer `getByRole` with a name, or `:has-text`.
 - **`toContainText` is case-sensitive;** `:has-text` is not. Given a regular expression, `toHaveText` does not fold
   the markup's line breaks into spaces.
@@ -276,15 +279,16 @@ gets a place there. Git ignores it, and nothing in `pocket/app/` refers to it.
 
 Both libraries are kept in the repo, not loaded from a CDN.
 
-- **Alpine** is kept readable, as published, in `src/vendor/alpine-<version>.js`, with two patches for long lists,
+- **Alpine** is kept readable, as published, in `src/vendor/alpine-<version>.js`, with three patches for long lists,
   each change marked with a comment starting `Pocket:`: the scheduler (commit 70f4fdd), whose queue was quadratic,
-  and `x-for` (commit aea10ac), which keeps the rows at the start of a list that have not moved.
-  `tests/unit/alpine.test.mjs` checks both, and that `memo` can still set an effect's own scheduler. The build
+  `x-for` (commit aea10ac), which keeps the rows at the start of a list that have not moved, and `x-for` and `x-if`
+  (commit 6f31fc3), which clone the content of the template theirs names (`data-from`).
+  `tests/unit/alpine.test.mjs` checks all three, and that `memo` can still set an effect's own scheduler. The build
   minifies it into `pocket/app/alpine-<version>-pocket.<N>.min.js`, which the `<script>` tag in `src/index.html`
   names. To upgrade, or to change a patch: replace the file with the new version's `dist/cdn.js`, commit it as
-  published, redo each `Pocket:` change (`git show 70f4fdd aea10ac`), run `npm run test:unit`, give the `<script>`
-  tag the new version and the next `N`, delete the old file from `pocket/app/`, and measure a long list before and
-  after.
+  published, redo each `Pocket:` change (`git show 70f4fdd aea10ac 6f31fc3`), run `npm run test:unit`, give the
+  `<script>` tag the new version and the next `N`, delete the old file from `pocket/app/`, and measure a long list
+  before and after.
 - **chrono** is `pocket/app/chrono-<version>.en.min.js`, the English-only build, from
   `https://cdn.jsdelivr.net/npm/chrono-node@<version>/en/+esm`. Rename it and update the `import` line above the
   Alpine `<script>` tag in `src/index.html`.

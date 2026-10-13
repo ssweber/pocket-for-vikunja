@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
-import { compressed, lean, onlyParts } from '../../scripts/build.mjs';
+import { compressed, lean, onlyParts, shared } from '../../scripts/build.mjs';
 
 test('a part marked "only" is kept where the include names it, and left out everywhere else', () => {
   const row = '<div class="row">\n  <!-- only step -->\n  <span class="n"></span>\n  <!-- /only -->\n  <button></button>\n  <!-- only other -->\n  <i></i>\n  <!-- /only -->\n</div>\n';
@@ -17,6 +17,16 @@ test('the page is built without its comments and indentation, and keeps white sp
   assert.equal(lean('<div class="row">\n  <!-- why -->\n  <b>a</b> <i>b</i>\n  <span>one\n    two</span>\n</div>\n'), '<div class="row"><b>a</b> <i>b</i><span>one\n    two</span></div>');
   assert.equal(lean('<p\n   :class="{a: x > 1,\n            b: y}"   hidden>'), '<p :class="{a: x > 1,\n            b: y}" hidden>', 'between attributes a space, inside one nothing changes');
   assert.equal(lean('<p x-text="\'<!-- kept -->\'"></p>'), '<p x-text="\'<!-- kept -->\'"></p>');
+});
+
+test('an x-if or x-for template inside another template names a template that holds its content, one for each different content', () => {
+  const row = '<template x-for="t in rows"><div><template x-if="t.a"><b>a</b></template><template x-if="t.b"><b>a</b></template>'
+    + '<template x-if="t.c"><i><template x-for="u in t.d"><u></u></template></i></template><template x-teleport="body"><p></p></template></div></template>';
+  assert.equal(shared('<body>' + row + '<script></script></body>'), '<body><template x-for="t in rows"><div><template x-if="t.a" data-from="part-1"></template><template x-if="t.b" data-from="part-1"></template>'
+    + '<template x-if="t.c" data-from="part-3"></template><template x-teleport="body"><p></p></template></div></template>'
+    + '<template id="part-1"><b>a</b></template><template id="part-2"><u></u></template><template id="part-3"><i><template x-for="u in t.d" data-from="part-2"></template></i></template><script></script></body>');
+  assert.equal(shared('<template x-if="a"><b></b></template>'), '<template x-if="a"><b></b></template>', 'a template in no other keeps its content');
+  assert.throws(() => shared('<template x-if="a"><b></b>'), /not closed/);
 });
 
 test('the page is written as .br and .gz files that decode to it, with no time or operating system in the gzip header', () => {
