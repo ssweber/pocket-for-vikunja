@@ -152,3 +152,38 @@ Opening a screen is what it was (`npm run perf`): Today to Big, to every row dra
 it took 18,999 and 19,464 before and 20,951, 21,284 and 21,033 after: about 2 s longer in each run, at the edge of
 what runs differ by, and not looked into. What a row asks of the component as its list opens is left as measured
 (`isRunTask` 15 times a row, `cardOf` 5, `ringOf` 4, `rowMeta` twice: 9% of opening a long list at most).
+
+## Markup and CSS, 2026-10-13
+
+Drawing a long list is script, not layout. As Big's 660 rows draw, Chrome counts about 1,380 ms of script, 60 ms of
+style and 30 ms of layout. So nothing was done about layout. Four changes to the markup and the stylesheet, each
+measured on the fast profile as it went in (the script time while Big draws, and the nodes in the list once drawn):
+
+| Change                                                            | Script, ms | Nodes   |
+|-------------------------------------------------------------------|------------|---------|
+| Before (379dda4)                                                  | 1,380      | 501,000 |
+| The page built without comments and indentation                   | 1,350      | 327,000 |
+| An item that holds a card marked by a class, not `:has()`         | 1,180      | 327,000 |
+| A nested template's content kept once, and named (`data-from`)    | 1,030      | 26,000  |
+| Each list's copy of the row with only the parts that list shows   | 1,000      | 23,000  |
+
+Of the stylesheet's 21 `:has()` rules, only the five that began `.item:has(> .day-card)` cost anything. Chrome checked
+them on every node Alpine inserted. Deleting the other 16 from the page changed nothing.
+
+`npm run perf`, back to back on seed M through `up.mjs --at`, before (379dda4) and after (HEAD). The seed was three
+days old, so Today had 68 rows. Milliseconds to the first row / to fresh, fast the median of 3 runs, phone of 2:
+
+| Step                   | fast, before | fast, after | phone, before  | phone, after   |
+|------------------------|--------------|-------------|----------------|----------------|
+| Open Today (kept copy) | 183 / 321    | 172 / 299   | 1,882 / 4,199  | 1,706 / 4,475  |
+| Open Today (no copy)   | 273 / 394    | 277 / 388   | 2,383 / 3,925  | 2,375 / 3,970  |
+| Today -> Big           | 99 / 1,528   | 113 / 1,189 | 1,187 / 18,835 | 1,164 / 16,133 |
+| Open Done              | 93 / 211     | 89 / 193    | 1,119 / 2,811  | 1,196 / 2,389  |
+
+Big is fresh 22% sooner on the fast profile and 14% sooner on the phone profile. A short screen is as it was.
+
+`npm run perf:rows -- list` on Big, fast, the median of 3: a tick 56 and 46, the batch clearing 331 and 312, a subtask
+added 131 and 110. `counts`: Big opening works out 24,451 bindings where it worked out 27,147, a template's sheet of
+20 steps 571 where it worked out 711, and a tick one more than before (the item's class).
+
+All of it was measured in Chrome. An iPhone runs WebKit, where `:has()` may cost more or less.
