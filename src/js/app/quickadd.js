@@ -70,9 +70,22 @@ export default {
      list leaves those lines out); a run's box and a template's boxes leave a ticked line out, as a step is done by
      doing it. Which line is under which is read from the list too, in quick add as its ↳ Under first line has it. */
   readsDone(w){ return w === 'cap' || this.isSubBox(w); },
+  /* A box's text is read once for how it is now (its text, the chips tapped off, ↳, quick add's mode) and kept, since
+     its chips, its marks and what it sends each ask many times for one drawing (scratchpad/parse-count.mjs: a line
+     read 28 times, parsed 14). {list, first, firstAll, lines}, each worked out when first asked. */
+  boxRead(w){
+    const b = this.box(w), key = [b.text, JSON.stringify(b.ignore), !!b.nest, !!b.flat, this.quickAddMode, this.dueTime, JSON.stringify(this.boxBase(w))].join('\0');
+    const had = reads.get(w);
+    if (had && had.key === key && had.projects === this.projects) return had;
+    const r = {key, projects: this.projects, list: null, first: null, firstAll: null, lines: null};
+    reads.set(w, r);
+    return r;
+  },
   boxList(w){
+    const r = this.boxRead(w);
+    if (r.list) return r.list;
     const b = this.box(w), cap = w === 'cap';
-    return readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap} : {steps: true});
+    return r.list = readList(b.text, this.readsDone(w) ? {done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap} : {steps: true});
   },
   /* Quick add's ↳ Under first line, for a pasted list. It shows on by itself when the first line is a parent as the
      list is written (a heading over its lines, lines indented under it, or its colon, "Groceries:"): tapped off, the
@@ -94,8 +107,10 @@ export default {
   get parseOpts(){ return {mode: this.quickAddMode, dueTime: this.dueTime}; },
   // A box's first (or only) line; with `all`, ignoring none of the chips tapped off.
   boxParsed(w, all = false){
+    const r = this.boxRead(w), k = all ? 'firstAll' : 'first';
+    if (r[k]) return r[k];
     const base = this.boxBase(w);
-    return parseCapture(this.boxLines(w)[0] || '', this.projects, {...this.parseOpts, ignore: all ? base : {...base, ...this.box(w).ignore}});
+    return r[k] = parseCapture(this.boxLines(w)[0] || '', this.projects, {...this.parseOpts, ignore: all ? base : {...base, ...this.box(w).ignore}});
   },
   get parsed(){ return this.boxParsed('cap'); },
   /* Each line of a box, parsed: a pasted list in quick add goes to one project (parseList); subtasks are read one by one.
@@ -103,11 +118,13 @@ export default {
      lines under it has no progress of its own, so a figure at its end is taken off and dropped: a parent's is worked
      out from its subtasks (design rule 5). */
   boxParsedLines(w){
+    const r = this.boxRead(w);
+    if (r.lines) return r.lines;
     const list = this.boxList(w).lines, lines = list.map(l => l.text), first = this.boxParsed(w);
     const parsed = w === 'cap' ? (lines.length > 1 ? this.parseList(lines, first).parsed : [first])
       : lines.map((l, i) => i ? parseCapture(l, this.projects, {...this.parseOpts, ignore: this.boxBase(w)}) : first);
     const parents = new Set(list.map(l => l.under));
-    return parsed.map((p, i) => ({...p, done: !!list[i]?.done, under: list[i]?.under ?? null, ...parents.has(i) && {pct: 0}}));
+    return r.lines = parsed.map((p, i) => ({...p, done: !!list[i]?.done, under: list[i]?.under ?? null, ...parents.has(i) && {pct: 0}}));
   },
   // A box's lines for the outbox (itemsOf, sync.js): each with its words, to put back in the box if it isn't added,
   // still saying it's done, as it was read, and the line it's under.
