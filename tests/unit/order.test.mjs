@@ -114,17 +114,21 @@ test('the box walks through eligible rows and keeps its level when adding top-le
   } finally { document.querySelectorAll = before; }
 });
 
-test('a sheet box skips done subtasks and stops at the first row and at the bottom', () => {
+test('a sheet box skips done subtasks and stops at the first row and at the last', () => {
   const before = document.querySelectorAll, rows = [{id: 1}, {id: 2, done: true}, {id: 3}];
-  const app = {subBoxW: 'sub', route: {name: 'project'}, sheet: {subAt: null}, subList: rows, isStepList: false, $nextTick(){},
-    nudgedSub(id){ this.sheet.subAt = id; }, footHome(){ this.sheet.subAt = null; }};
+  // nudgedSub stands in for the real one (app/sheet.js), which records whether the row is the last one.
+  const app = {subBoxW: 'sub', route: {name: 'project'}, sheet: {subAt: null, subEnd: false}, subList: rows, isStepList: false, $nextTick(){},
+    nudgedSub(id){ this.sheet.subAt = id; this.sheet.subEnd = id === '3'; }, footHome(){ this.sheet.subAt = null; }};
   document.querySelectorAll = () => rows.map(t => ({dataset: {id: String(t.id)}}));
   try {
     const move = dir => quickadd.boxMove.call(app, 'sub', dir);
+    move(-1); assert.equal(app.sheet.subAt, '1', 'from the bottom, which is under the last row, the box goes up past the done row');
     move(-1); assert.equal(app.sheet.subAt, '1');
+    move(1); assert.equal(app.sheet.subAt, '3', 'moving onto the last row highlights it, as a nudge does');
+    move(1); assert.equal(app.sheet.subAt, '3', 'moving down from the last row changes nothing');
     move(-1); assert.equal(app.sheet.subAt, '1');
-    move(1); assert.equal(app.sheet.subAt, null);
-    move(1); assert.equal(app.sheet.subAt, null);
+    app.sheet.subAt = null;
+    move(1); assert.equal(app.sheet.subAt, null, 'at rest at the bottom, moving down changes nothing');
   } finally { document.querySelectorAll = before; }
 });
 

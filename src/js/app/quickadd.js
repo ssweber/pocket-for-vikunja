@@ -635,8 +635,8 @@ export default {
     this.$nextTick(() => this.boxEl(w)?.focus({preventScroll: true}));
   },
   /* Move the box up or down the eligible rows in display order. Task order doesn't change, and the draft and focus
-     stay. In a sheet or a checklist, the box at the end of the list already adds after the last row, so reaching the
-     last row sends the box to the end (footHome). */
+     stay. In a sheet or a checklist, the box at the end of the list is already under the last row. Moving onto that
+     row highlights it, as a nudge does, and moving down from it changes nothing. */
   boxMove(w, dir, start = null){
     const run = w === 'ins', sheet = w === this.subBoxW, cap = ['cap', 'under'].includes(w) && ['today', 'project'].includes(this.route.name);
     if (!run && !sheet && !cap) return false;
@@ -655,7 +655,7 @@ export default {
     if (cap) {
       if (el) { this.aim(this.tasks[id(el)]); if (out) this.boxLevel(true); }
       else this.boxBack();
-    } else if (!el || to === rows.length - 1) this.footHome(run ? 'run' : 'sheet');
+    } else if (!el) { if (!(run ? this.runBoxEnd : this.sheet.subEnd)) this.footHome(run ? 'run' : 'sheet'); }
     else if (run) {
       const s = this.runView.steps.find(s => String(s.id) === id(el));
       if (s) this.nudgedStep(s);
