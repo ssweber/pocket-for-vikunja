@@ -78,9 +78,9 @@ export default () => ({
   cardAdded: {},                               // task id -> subtasks added on Today this visit, as {id, after}, with null after for the top (cardRows)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // task id -> temporary claim during a progress gesture (claimOnSlide)
-  // Index the latest pending claim or release and the number of waiting files by task id, so rows read only their
-  // own state.
-  waiting: {claims: {}, files: {}},
+  // Index the latest pending claim or release, tick, progress and the number of waiting files by task id, so rows
+  // read only their own state.
+  waiting: {claims: {}, files: {}, ticks: {}, pcts: {}},
   // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
   // hint.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},

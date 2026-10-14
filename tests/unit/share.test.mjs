@@ -14,6 +14,7 @@ import runs from '../../src/js/app/runs.js';
 import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import views from '../../src/js/app/views.js';
+import sending from '../../src/js/app/sending.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
 const on = (d, h = 0) => new Date(2026, 9, d, h).toISOString();
@@ -297,6 +298,7 @@ test('the text shared from a checklist\'s screen matches its ring, counting a ti
   for (const x of [run, ...steps]) app.tasks[x.id] = x;
   app.view = { groups: [], run: { run: { id: 50, title: 'Closing up', done: false, project_id: 5, assignees: [], created_by: { id: 1 }, comments: [] }, steps, at: null, last: null } };
   app.pending = [{ kind: 'act', id: 9, run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // "Lock up" was ticked and the tick is not sent yet
+  sending.keyWaiting.call(app);
   const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');
   assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);

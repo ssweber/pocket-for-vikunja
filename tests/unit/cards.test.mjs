@@ -19,6 +19,7 @@ import runs from '../../src/js/app/runs.js';
 import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
+import sending from '../../src/js/app/sending.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import { countText, runShows, whereNext } from '../../src/js/checklists.js';
@@ -785,4 +786,22 @@ test('the ring of a checklist with steps not done asks first and leaves them not
   await app.ringTap(app.tasks[10], ROW);
   assert.equal(v.task(10).done, false, 'tapping the ring of a done parent that has an open subtask opens the parent again');
   assert.equal(v.task(11).done, false);
+});
+
+/* Keeps a change waiting to be sent from redrawing every row (rule 10, docs/development.md). A ring reads the ticks and
+   progress waiting for its own steps, by task id (keyWaiting), not by searching the outbox. */
+test('a change waiting to be sent recalculates only the rings of the checklists whose steps it changes', c => {
+  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(runs, cards));
+  Object.assign(app, { checklistIds: new Set([7]), pending: [] });
+  const finished = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, project_id: 7, title: 'Closing up', done: true, description: '',
+    related_tasks: { copiedfrom: [{ id: 99 }], subtask: [{ id: 100 + i, done: false, description: '' }] } }));
+  const worked = [];
+  for (const t of finished) Alpine.effect(() => { app.rowRing(t, { depth: {} }); worked.push(t.id); });
+  worked.length = 0;
+  app.pending.push({ kind: 'act', op: 'note', task: 999, run: 998 });
+  sending.keyWaiting.call(app); flush();
+  assert.deepEqual(worked, [], 'a comment on another checklist recalculates no ring');
+  app.pending.push({ kind: 'act', op: 'done', task: 103, run: 4 });
+  sending.keyWaiting.call(app); flush();
+  assert.deepEqual([worked, app.ringOf(finished[3]).done], [[4], 1], 'a tick waiting to be sent recalculates its own checklist\'s ring');
 });

@@ -38,6 +38,7 @@ is a new 0.x.y.
 ### Fixed
 
 - A `pocket:` line that Vikunja's web app partly formats, such as one with a link in it, is now hidden and kept whole.
+- A change waiting to be sent redraws only the rings it changes, not every checklist's ring.
 
 ### What Pocket writes into Vikunja
 

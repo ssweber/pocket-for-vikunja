@@ -509,16 +509,10 @@ export default {
     if (this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) return false;
     return !this.isRunTask(t) || this.route.name === 'project';
   },
-  // A step as done or not, counting ticks still waiting to be sent.
-  stepDone(id, done){
-    const last = this.pending.filter(e => e.kind === 'act' && e.task === id && ['done', 'doneNote', 'skip', 'undone'].includes(e.op)).pop();
-    return last ? last.op !== 'undone' : done;
-  },
-  // A step's progress, counting progress still waiting to be sent.
-  stepPct(s){
-    const last = this.pending.filter(e => e.kind === 'act' && e.task === s.id && e.op === 'progress').pop();
-    return last ? last.pct : pctOf(s);
-  },
+  // A step as done or not, counting ticks still waiting to be sent (keyWaiting).
+  stepDone(id, done){ return this.waiting.ticks[id] ?? done; },
+  // A step's progress, counting progress still waiting to be sent (keyWaiting).
+  stepPct(s){ return this.waiting.pcts[s.id] ?? pctOf(s); },
   // Compute a parent's progress from its subtasks or run steps. Use stored progress for other tasks.
   shownPct(t){
     const r = this.ringOf(t);

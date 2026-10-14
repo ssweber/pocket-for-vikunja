@@ -350,18 +350,21 @@ export default {
     this.keyWaiting();
     this.markSlow();
   },
-  /* What is waiting for each task, by task id (`waiting`): its last claim or unclaim, and how many photos and files
-     wait to upload. Each key is written separately (intoKeys) when the outbox changes, so a row that reads its own
+  /* What is waiting for each task, by task id (`waiting`): its last claim or unclaim, its last tick or untick, its last
+     progress, and how many photos and files wait to upload. Each key is written separately (intoKeys) when the outbox changes, so a row that reads its own
      task's entry (peopleOf, rowMeta) redraws only when that entry changes. Without this, every row searched the
      whole outbox whenever anything in it changed, and adding a task to a long list made every row search it twice. */
   keyWaiting(){
-    const claims = {}, files = {};
+    const claims = {}, files = {}, ticks = {}, pcts = {};
     for (const e of this.pending) {
       if (e.kind === 'act' && (e.op === 'claim' || e.op === 'unclaim')) claims[e.task] = e.op;
+      if (e.kind === 'act' && ['done', 'doneNote', 'skip', 'undone'].includes(e.op)) ticks[e.task] = e.op !== 'undone';
+      if (e.kind === 'act' && e.op === 'progress') pcts[e.task] = e.pct;
       const id = e.taskId || e.items?.[0]?.taskId;
       if (id) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) files[id] = (files[id] || 0) + 1;
     }
     intoKeys(this.waiting.claims, claims, raw); intoKeys(this.waiting.files, files, raw);
+    intoKeys(this.waiting.ticks, ticks, raw); intoKeys(this.waiting.pcts, pcts, raw);
   },
   // Decide which entries have waited long enough to look waiting (slowness), and schedule the next check for when
   // another entry will have. An entry that looks waiting keeps looking waiting until it is sent.
