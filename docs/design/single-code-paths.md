@@ -5,7 +5,7 @@ Several questions in Pocket have more than one answer, depending on which code p
 - **How does a change reach Vikunja?** Checklists, adds and deletes go through the outbox. About 50 other places write
   directly. Each kind of change is defined in up to six places across four files.
 - **What happens when a reply is lost?** Vikunja's creates aren't safe to send twice, so Pocket guesses after the fact
-  (`findSent`, `findCopy`, `findNote`, `hasAttachment`), and resumes multi-step changes stage by stage.
+  (`findSent`, `findCopy`, `findNote`, `hasAttachment`, `claims`, `landed`).
 - **Can Undo trust what it puts back?** Two Undos check for a change made elsewhere. The rest don't.
 - **What kind of task is this?** Template and checklist are decided by four different tests.
 - **Which Today group does a date go in?** The rule is written out six times.
@@ -13,54 +13,85 @@ Several questions in Pocket have more than one answer, depending on which code p
 
 This plan gives each question one answer, in one place, and makes lint keep it that way. It is a refactor, not a
 feature. Delete each old path in the same phase that replaces it. Keep no shims, and no "legacy" branch beside the new
-one, except the one named under Older outbox entries. Read `AGENTS.md` and `docs/development.md` first. Delete this
-file when the last phase is done, and move the rules that last into `development.md`.
+one, except the two named below (older outbox entries, and sign-in with an API token if the relay can't serve it).
+Read `AGENTS.md` and `docs/development.md` first. Delete this file when the last phase is done, and move the rules that
+last into `development.md`.
 
 Line numbers and counts drift. Run the greps given below again before each phase.
 
-## 0. The gate: can the plugin make writes safe to repeat?
+## 0. Retries without guessing: a keyed relay
 
-Part 1 has two forms. Which one is built depends on a spike that has been written but not yet run.
+Every write Pocket makes goes to Vikunja's `/api/v2` with an `Idempotency-Key` header, following the IETF httpapi
+draft. Vikunja doesn't support that header yet. Until it does, Pocket's plugin relays the write:
 
-**The idea.** Pocket's plugin runs inside Vikunja, so it can do what Vikunja's API can't. Each change Pocket makes is
-sent to the plugin with a key. The plugin runs the whole change in one database transaction and stores its reply under
-(user, key) in the same transaction. A request sent again with the same key gets the stored reply and changes nothing.
-So a lost reply is never a guess, and a change either happened in full or not at all.
+- Pocket sends the write to `/api/v1/plugins/pocket/v2/<path>` instead of `/api/v2/<path>`, with the key.
+- The plugin forwards it to Vikunja's own `/api/v2/<path>`, with the user's `Authorization` header. Vikunja checks
+  permissions, applies an API token's scopes and sends events exactly as for a direct request.
+- The plugin stores Vikunja's answer under (user, key). A request sent again with that key gets the stored answer, and
+  Vikunja sees the write once.
 
-**What reading Vikunja 2.7's source established:**
+When Vikunja supports the header, Pocket sends to `/api/v2` with the same header, and the relay is deleted. Pocket
+asks for that upstream with `docs/design/upstream-idempotency-key.md`.
 
-- A plugin can register routes that need the user to be signed in (`NewAuthenticatedRouterPlugin`), at
-  `/api/v1/plugins/...`. It can add tables of its own (`NewMigrationPlugin`), and Vikunja runs their migrations at
-  start.
-- Under Yaegi a plugin can call only what `pkg/yaegi_symbols` exposes. That includes `db.NewSession`,
-  `events.DispatchPending` and `CleanupPending`, `user.GetCurrentUserFromDB`, and the model types Pocket needs:
-  `Task`, `TaskComment`, `LabelTaskBulk`, `BulkAssignees`, `TaskRelation`, `Reaction`, `TaskAttachment`,
-  `BulkTaskCreation`. Their `CanCreate`, `Create`, `CanUpdate` and `Update` methods come with them.
-- `handler.DoCreate`, which Vikunja's own API uses, is not exposed. A plugin repeats its five steps instead: open a
-  session, check `CanCreate`, `Create`, commit, then `DispatchPending`. Events (webhooks, notifications, mentions) are
-  queued inside the model methods and sent on commit, so a plugin that does this sends them as the API would.
-- The `Create` and `Update` signatures haven't changed since v1.0. Vikunja's API calls every model through them.
+Why a relay and not a plugin that calls Vikunja's models: the relay depends only on the public v2 API, plain
+`net/http`, and the plugin system. Permissions, token scopes and events stay Vikunja's. Its interface is the one
+Vikunja would offer, so nothing in Pocket changes when it is removed except the base address.
 
-**The spike** is on the branch `spike/keyed-create`. `pocket/keyed.go` adds one route, a keyed task create, and the
-`pocket_keys` table. `scripts/spike-keyed.mjs` checks it against `npm run dev`:
+### What the relay does
 
-1. a keyed create makes a task;
-2. the same key returns the same task and makes no second one;
+As the draft says:
+
+- no key: 400;
+- a key whose first request is still running: 409, with `Retry-After`;
+- a key reused for a different method, path or body: 422;
+- a key already answered: that answer again, with `Idempotent-Replayed: true`. A refusal (4xx) is stored and replayed
+  like a success.
+
+And beyond the draft:
+
+- **A 5xx or a failed forward isn't stored,** so the request can be sent again. Vikunja rolls back a request that fails
+  that way.
+- **The forward doesn't use the request's context.** If the phone hangs up, the write still finishes and its answer
+  is stored for the retry.
+- **The gap.** The write commits in Vikunja's transaction, and the answer is stored in a second one. If Vikunja stops
+  between the two, the key stays pending. A request with that key more than 2 minutes later gets 409 with
+  `Idempotency-Unknown: true`. The outbox shows that entry as failed, for the user to send or drop. The window is a few
+  milliseconds on the server, against today's window of any dropped connection.
+- **Keys are kept 30 days.** An outbox entry still unsent after 30 days is marked failed instead of sent, because its
+  key may be gone.
+- **The table, `pocket_relay`,** is plain SQL that SQLite, Postgres and MySQL accept. A Go struct would be a type Yaegi
+  makes at runtime, and xorm may not read it. It holds each stored answer, which includes task content, for 30 days.
+
+### The spike
+
+The relay is on the branch `spike/relay`: `pocket/relay.go`, checked by `scripts/spike-relay.mjs` against
+`npm run dev`. The script checks that:
+
+1. a relayed create makes a task;
+2. the same key gets the stored answer and makes no second task;
 3. five requests with one key at the same moment make one task;
-4. a project the user can't write to is refused, and nothing is created;
-5. events fire: a mention in the description notifies the mentioned user;
-6. what an API token gets when it calls the route (reported, not checked).
+4. a reused key gets 422, and a missing key 400;
+5. a project the user can't write to is refused, the refusal is replayed, and nothing is created;
+6. events fire: a mention in the description notifies the mentioned user;
+7. a repeating task ticked twice with one key moves on one day, not two.
 
-**Open questions the spike answers:**
+It also reports whether an API token can reach a plugin route. Vikunja limits a token to the routes its permissions
+list. If a plugin route can't be on that list, Pocket's API-token sign-in can't use the relay. Then that sign-in keeps
+today's `find…` checks until Vikunja supports the header, and the relay serves the session sign-in only.
 
-- Do the model calls run under Yaegi as they do compiled?
-- Can an API token reach a plugin route? Vikunja limits a token to the routes its permissions list. If plugin routes
-  can't be listed, Pocket's API-token sign-in can't use the plugin, and that sign-in needs the fallback.
-- Does the plain-SQL table work on SQLite, Postgres and MySQL? The spike uses SQL rather than a Go struct, because a
-  struct defined in the plugin is a type Yaegi makes at runtime, and xorm may not read it.
+`relay.go` type-checks against stand-ins for Vikunja's packages, but hasn't run inside Vikunja. Run the spike first,
+on SQLite and on Postgres.
 
-**If checks 1 to 5 pass,** build part 1 with the plugin (1A). **If any fails,** build part 1 with Vikunja's v2
-endpoints (1B). Either way, parts 2 to 5 and the op registry are the same.
+### Traps in the relay
+
+- **Rate limits.** With `ratelimit.kind: ip`, every relayed request comes from 127.0.0.1 and shares one limit. Check
+  how Vikunja counts a relayed request, and say in the guide what to set.
+- **Where Vikunja listens.** The relay reaches Vikunja at `service.unixsocket` if set, or else `service.interface`,
+  with `0.0.0.0` read as 127.0.0.1. A Vikunja that serves TLS itself needs `https` here.
+- **MySQL's `TEXT`** holds 64 KB. A large answer, such as a task with many comments, needs `MEDIUMTEXT` there.
+- **Body size.** The relay accepts 50 MB, so attachments can go through it. A reverse proxy in front may allow less.
+- **Yaegi.** Only what `pkg/yaegi_symbols` exposes can be called, plus Go's standard library. Each file in `pocket/` is
+  evaluated on its own, in name order, so a file can't use a name another file defines unless that file comes first.
 
 ## 1. Every change is an op, sent through the outbox
 
@@ -73,11 +104,11 @@ Each kind of change is one object in `src/js/ops/`, with everything about it in 
 ```js
 export const due = {
   apply(app, a){ … },             // show the change on screen at once (rule 4)
+  steps: [ … ],                   // the v2 requests, in order, each sent with its own key
   invert(a){ … },                 // the op that undoes it, built from what this one recorded (part 2)
   merge(older, newer){ … },       // pruning, below
   waiting: 'dues',                // the key a row reads in `waiting` (rule 10)
   text, refused, dropped,         // the words, from messages.js
-  send: …,                        // 1A: the plugin op's name. 1B: the stages, as ACT_STEPS has them now
 };
 ```
 
@@ -85,50 +116,27 @@ A method in `src/js/app/` calls `this.act({op, task, ...})`. Nothing else sends 
 `runs.js` into `app/acts.js`, with `giveBack`. A unit test checks that every op defines every field, so no op is
 missing its words in the outbox sheet.
 
-### 1A. With the plugin
+### Keys and steps
 
-- **One route,** `POST /api/v1/plugins/pocket/do`, body `{key, op, args}`. The plugin has one Go function per op. Each
-  runs in one transaction, through the model methods and their permission checks, as the spike does.
-- **The outbox entry is `{key, op, args}`.** The key is made when the entry is made, so every retry sends the same
-  one. There are no stages. An entry is sent until the plugin answers, then removed. `stage`, `tried`, `triedAt`,
-  `arriving` and `fails` go.
-- **What the plugin's ops do in one transaction,** each replacing client code:
+- **An entry gets a key when it is made,** and each of its requests a key made from it: the entry's key, the step's
+  index, and the part (one label, one person). So a retry of any request sends the key it was first sent with.
+- **Steps stay,** because some changes take several requests (a task, then its link under a parent, then its
+  progress). But each step is now one keyed request, sent until it is answered. There is nothing to look for after a
+  lost reply. `tried`, `triedAt`, `arriving`, `findSent`, `findCopy`, `findNote`, `hasAttachment`, `claims` and the
+  lost-reply half of `landed` go.
+- **`api()` gets a `key` option.** With a key, it sends to the relay and adds the header. Once Vikunja supports the
+  header, the option sends to `/api/v2`, and only that line changes.
 
-  | Op | Replaces |
-  |---|---|
-  | `addTask`: a task, its labels and people, its link under a parent, done or progress | `LINE_STEPS`, `createTask`, `findSent`, `claims` |
-  | `addTasks`: a pasted list, with its lines under each other | the loop in `sendEntry`, and the progress written afterwards |
-  | `startChecklist`: copy, steps, links, order, assignees, unlabel, tick the template | `RUN_STEPS`, `findCopy`, `duplicate` |
-  | `insertStep` | `INSERT_STEPS` |
-  | `tick` and `untick`: done, the ✅, and the parent's progress | `toggleDone`, `signTick`, `writeFigure`, the repeating-task double tick |
-  | `due`, `edit`, `project`, `link`, `unlink`, `assign`, `label`, `delete` | the direct writes in actions.js and sheet.js |
-  | `comment` | `findNote` |
-  | `undo`: reads, compares and writes back in the transaction (part 2) | `unchanged()` and every undo closure |
+### Fewer steps with v2's set-style endpoints
 
-- **Attachments** stay on v2's upload with `hasAttachment`, until the spike shows the plugin can take a multipart
-  body and store a file through `TaskAttachment`.
-- **`api()` calls `/api/v2`.** The plugin is at `/api/v1/plugins`, so `api()` gets an option for that base. It keeps
-  signing the request and renewing the session.
-- **Keys are kept 30 days,** then deleted by the plugin on start and once a day. An outbox entry still unsent after
-  30 days would lose that protection. So it is marked failed instead of sent, and the outbox sheet offers Try again
-  or Don't send it, as for any refused change.
-- **The trust promise changes.** The plugin now writes what the user does in Pocket, as that user, with Vikunja's own
-  permission checks, plus the `pocket_keys` table. Update `main.go`'s header, the Privacy and security section of
-  `docs/guide.md`, and the release notes. Admins review the plugin before installing it, so they need to hear this.
-
-### 1B. Without the plugin
-
-The stage machinery stays, and uses v2's endpoints that are safe to send twice:
+These say what the end state is, so they replace several requests with one:
 
 | v2 endpoint | Replaces |
 |---|---|
 | `PUT /tasks/{task}/labels/bulk` sets the exact label set | adding labels one by one, and the `ALREADY` codes for them |
 | `PUT /tasks/{task}/assignees/bulk` sets the exact assignees | the same for people |
 | `PUT /tasks/bulk` applies the same fields to many tasks, all or nothing | Move all as one request per distinct new date |
-| `POST /projects/{project}/tasks/bulk` creates up to 100 tasks, all or nothing | a pasted list as one request. A lost reply means finding one batch. |
-
-Creating one task, a comment, a checklist copy and an attachment keep their `find…` checks. So does `done` on a
-repeating task. Everything else in this part applies as written.
+| `POST /projects/{project}/tasks/bulk` creates up to 100 tasks, all or nothing | the top-level lines of a pasted list as one request |
 
 ### What moves
 
@@ -138,15 +146,14 @@ Found with `grep -n "this\.saveTask(\|this\.saveEach(\|this\.save(\|api(.*method
 |---|---|---|
 | Tick, untick, progress | `toggleDone`, `tickRunStep`, `tickRunTask`, `arrivedDone`, `setProgress`, `sheetDone`, `sheetProgress`, `closeSubtasks`, `reopen`, `writeFigure` | `tick`, `untick`, `progress`. A plain task gets the ✅ as a step does, wherever it was ticked, including `x` lines in quick add. |
 | Dates | `reschedule`, `moveOverdueToToday`, `undoMoves`, the sheet's date and repeat edits | `due`, `repeat` |
-| Sheet fields | `save` and its callers (title, priority, notes, reminders) | `edit`. Notes, reminders and step order need the copy Vikunja has now. In 1A the plugin reads it in the transaction. In 1B the op names a rebase kind (`notes`, `reminders`, `order`), because a function can't be stored in IndexedDB. |
+| Sheet fields | `save` and its callers (title, priority, notes, reminders) | `edit`. Notes, reminders and step order need the copy Vikunja has now, so the op names a rebase kind (`notes`, `reminders`, `order`) that its step applies when it is sent. A function can't be stored in IndexedDB. |
 | Project | `moveTask` | `project`, with the subtasks, in one op |
 | Subtask links | `ownTask`, `linkSubtask` callers | `link`, `unlink` |
 | People and labels | `addAssignee`, `removeAssignee`, `addLabelTo`, `removeLabelFrom`, `LINE_STEPS.label`, the template label in checklists.js | `assign`, `label`, each setting the whole set |
 | Delete | `deleteTasks`, `deleteTree`, the deletes in runs.js and checklists.js | `delete`, held as now. A template is deleted after its confirm with no hold. |
-| Checklists | renames, `saveRun`, the step edits in checklists.js and runs.js, answers in asks.js | the same ops |
+| Checklists | `RUN_STEPS`, `INSERT_STEPS`, renames, `saveRun`, the step edits in checklists.js and runs.js, answers in asks.js | `startChecklist`, `insertStep` and the same ops as above |
 
-`saveTask` and `shared.saveChain` go. In 1B `saveTask` survives as the stage that patches a task, with `landed` and
-`rebase`, and nothing else calls it.
+`saveTask` and `shared.saveChain` go. Patching a task is a step like any other.
 
 ### What stays direct
 
@@ -157,8 +164,7 @@ allowlist with a comment saying why. Nothing else goes on the list.
 
 ### Pruning
 
-`sync.add` coalesces when it queues an op. It only touches entries that haven't been sent (in 1A, never sent. In 1B,
-`!stage && !tried`) and aren't held.
+`sync.add` coalesces when it queues an op. It only touches entries that haven't sent a request yet and aren't held.
 
 - A new `tick` or `untick` on a task cancels an unsent opposite one on that task. Both entries go.
 - A new `due`, `progress` or `edit` replaces an unsent op of the same kind on the same task and fields. It keeps the
@@ -169,15 +175,12 @@ Test it in `tests/unit/` with a fake outbox. Ticking and unticking ten times whi
 
 ### Older outbox entries
 
-Entries an older Pocket saved are in IndexedDB on users' phones, some half sent. They can't be turned into keyed ops
-safely, because the old code may have done part of the change already. So the old sender stays for one release, and
-sends only entries in the old format. The release after that deletes it. Name the release in the commit that adds the
-new format.
+Entries an older Pocket saved are in IndexedDB on users' phones, some half sent. They have no keys, and the old code
+may have done part of the change already. So the old sender stays for one release, and sends only entries in the old
+format. The release after that deletes it. Name the release in the commit that adds the new format.
 
 ### Traps
 
-- **A repeating task ticked twice skips a date.** 1A: the plugin ticks once per key. 1B: the `tick` stage reads
-  Vikunja's copy after a cut-off try, as `landed` and `LINE_STEPS.arrive` do now.
 - **Ops wait behind a refused op on the same task** (`heldTasks`). Move all queues one op per task, so one refusal
   holds back only that task.
 - **Ids not yet sent.** An op on a waiting row has a string task id (`pending-…`). The sender already waits for the
@@ -188,9 +191,8 @@ new format.
   `npm run perf:rows -- counts` before and after.
 - **`data-sync`.** The tests wait on `sendState`. It reads `writing`, which `saveTask` counts today. Ops sent outside
   `flush` don't set `flushing`, so the sender must count itself as busy, or the tests read `idle` too early.
-- **Yaegi** (1A). Only what `pkg/yaegi_symbols` exposes can be called. Each file in `pocket/` is evaluated on its own,
-  in name order, so a file can't use a name another file defines unless that file comes first. Keep the plugin's own
-  types out of xorm, and use plain SQL for its table.
+- **409 from the relay** means wait and send again, after `Retry-After`. With `Idempotency-Unknown`, it means the entry
+  is marked failed for the user. Neither is a refusal.
 
 ## 2. Undo checks before it writes back
 
@@ -203,9 +205,8 @@ Found with `grep -n "label: 'Undo'\|const undo\|undo: async" src/js/app/*.js`.
 
 - **Undo is an op,** made by the op's `invert` from what the first op recorded: `was`, the value each field had, and
   `set`, the value it wrote.
-- **The check runs when it is sent,** not when it is tapped, so an Undo queued offline is checked against Vikunja's
-  copy as it is then. In 1A the plugin reads, compares and writes in one transaction, so nothing can change in
-  between. In 1B the stage reads Vikunja's copy first.
+- **The check runs when it is sent,** not when it is tapped. Its first step reads Vikunja's copy, so an Undo queued
+  offline is checked against the task as it is then.
 - **Per field, not per task.** `unchanged()` compares `updated`, so any edit to any field blocks the whole Undo. A
   field that still has `set` goes back to `was`. A field changed elsewhere is left alone.
 - **One message** for a field left alone: "Not undone: “title” has changed since then", on the row, or in the outbox
@@ -285,7 +286,8 @@ rule replaces the first.
 
 | Part | Rule | Off for |
 |---|---|---|
-| Writes | `no-restricted-syntax`: a call to `api` whose argument object has a `method` property, any call to `patchTask`, calls to `this.saveTask` and `this.saveEach` | `src/js/sync.js`, `src/js/app/acts.js`, and the allowlist |
+| Writes | `no-restricted-syntax`: a call to `api` whose argument object has a `method` property, any call to `patchTask`, calls to `this.saveTask` and `this.saveEach` | `src/js/sync.js`, `src/js/app/acts.js`, `src/js/ops/`, and the allowlist |
+| Keys | `no-restricted-syntax`: a call to `api` with a `method` other than `GET` and no `key` | `src/js/api.js`, and the allowlist |
 | Undo | `no-restricted-syntax`: a call to `this.unchanged` | nothing, once `unchanged()` is gone |
 | Roles | `no-restricted-imports` with `importNames` for the predicates in `checklists.js` | `src/js/checklists.js` |
 | Today's groups | `no-restricted-syntax`: a call to `addDays` whose second argument is the literal `8` | `src/js/lists.js` |
@@ -298,31 +300,35 @@ are turned on in the phase that finishes their part.
 
 Each phase is its own commits on `dev`, and leaves the app working. Each passes `npm run lint`, `npm run test:unit`
 and `npm run test:local`. Each phase that moves an op adds a case to `tests/offline.mjs`: make the change offline,
-reload Pocket, reconnect, and check Vikunja's copy. In 1A it also sends each op twice with one key and checks that
-Vikunja changed once.
+reload Pocket, reconnect, and check Vikunja's copy. It also sends each request of the op twice with its key, and
+checks that Vikunja changed once.
 
-0. **The gate.** Run `scripts/spike-keyed.mjs` on the `spike/keyed-create` branch, on SQLite and on Postgres. Record
-   the results here, choose 1A or 1B, and delete the branch.
-1. **Ground.** The op registry and `app/acts.js`. The writes lint rule with the full allowlist. Nothing the user sees
-   changes.
+0. **The spike.** Run `scripts/spike-relay.mjs` on the `spike/relay` branch, on SQLite and on Postgres. Record the
+   results and the API-token answer here. If a check fails, stop and rethink part 0 before going on. Then merge
+   `relay.go` into `dev` as the plugin's relay, and delete the branch.
+1. **Ground.** The op registry, `app/acts.js`, and the `key` option in `api()`. The writes lint rule with the full
+   allowlist. Nothing the user sees changes.
 2. **Roles.** Settle the decision in part 3 first. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
 3. **Today's groups.** Add `dayGroup`, move all six places, and turn on its rule.
-4. **The transport.** 1A: the `do` route, the `pocket_keys` table and key cleanup, `addTask` end to end, and the old
-   sender kept for old entries only. 1B: the v2 set-style endpoints.
+4. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints and
+   bulk create. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Keep the old sender for old entries.
 5. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
 6. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
 7. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js.
-8. **Deletes.** Delete `deleteTasks` and `deleteTree`.
-9. **Checklists.** 1A: `startChecklist` and `insertStep` in the plugin. Delete `RUN_STEPS`, `INSERT_STEPS` and
-   `findCopy`. Then renames, step edits, answers and template step order. Remove the last non-permanent files from the
-   writes allowlist. Delete `unchanged()` and turn on the Undo rule.
+8. **Deletes and comments.** Delete `deleteTasks`, `deleteTree` and `findNote`.
+9. **Checklists and files.** `startChecklist` and `insertStep` as keyed ops. Delete `findCopy`, `duplicate`'s
+   bookkeeping and `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last
+   non-permanent files from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
 10. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
-11. **Clean up.** Update `development.md`. Rule 3 becomes "Every change is an op sent through the outbox". Add a rule
-    that a task's kind comes from `role()`, and one that Today's groups come from `dayGroup`. Rule 6 now has lint
-    behind it. In 1A, add the plugin's ops to the map. Update `docs/guide.md`. Delete this file.
+11. **Clean up.** Update `development.md`. Rule 3 becomes "Every change is an op sent through the outbox, each request
+    with a key". Add a rule that a task's kind comes from `role()`, and one that Today's groups come from `dayGroup`.
+    Rule 6 now has lint behind it. Update `main.go`'s header and the Privacy and security section of `docs/guide.md`
+    for the relay and its table. Delete this file.
 12. **One release later.** Delete the old outbox sender and the old entry format.
+13. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
+    a migration that drops `pocket_relay`. Raise the minimum Vikunja version.
 
 ## Out of scope
 
