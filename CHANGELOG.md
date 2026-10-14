@@ -22,6 +22,7 @@ is a new 0.x.y.
 - A Copy button beside ⋯ on a project, a checklist and a task copies its progress as text in one tap.
 - Today has a folded Done today group with what you finished today, and its Copy gives it as text
   ([guide](docs/guide.md#tasks)).
+- Typing `+` in an add box suggests your projects, as `@` and `*` suggest people and labels.
 
 ### Changed
 
@@ -34,6 +35,9 @@ is a new 0.x.y.
   place of the last few.
 - In Pocket, only a template's maker or a project admin can change it, and someone with read access sees why they
   can't start a checklist from it ([guide](docs/guide.md#checklists)).
+- The start of a project's name, as in `+gar`, picks a project only when no other project's name starts the same way.
+  Otherwise the add box offers to create the project.
+- A label's chip says "new label" when sending the task will create that label.
 
 ### Fixed
 

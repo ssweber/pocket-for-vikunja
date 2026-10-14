@@ -57,7 +57,7 @@ export const directives = Alpine => {
      sheet's subtask box and the boxes a template is typed in.
 
      - The box stays as tall as its text.
-     - It records its caret index on each input, click and key (box.caret), because @ and * suggest for the word at
+     - It records its caret index on each input, click and key (box.caret), because @, * and + suggest for the word at
        the caret.
      - The marks behind its text (.cap-marks, the element before it) scroll along with it.
      - On focus it sets box.focus. On blur it clears box.focus 150ms later, unless the box has focus again by then.
@@ -66,7 +66,7 @@ export const directives = Alpine => {
        checklist's box on a checklist's screen.
      - Enter sends the text, or takes the top suggestion (boxEnter). While an input method is composing a word, Enter
        picks from the input method's own list instead.
-     - Typing @ or * loads the suggestions: people who can be assigned, or labels.
+     - Typing @ or * loads the people or labels it suggests. The projects that + suggests are already loaded.
      - Half a second after typing pauses, it checks the @usernames in the text (checkAccess). The check finds out
        whether each person exists and can see the project the lines go to, so chips can warn before sending. It
        checks again only when the names or the project change.

@@ -180,6 +180,8 @@ add({ text: "Lorem Ipsum +'project with long name'", title: 'Lorem Ipsum', proje
 add({ text: 'Lorem Ipsum +"project with long name"', title: 'Lorem Ipsum', project: 'project with long name' });
 add({ text: 'Lorem Ipsum +project1 +project2 +project3', title: 'Lorem Ipsum +project2 +project3', project: 'project1' });
 add({ text: 'Lorem Ipsum +today', title: 'Lorem Ipsum', project: 'today', date: null });
+add({ text: 'Lorem Ipsum +TOD', title: 'Lorem Ipsum', project: 'today', pocket: true, why: 'the start of one project\'s name finds it, in any case' });
+add({ text: 'Lorem Ipsum +proj', title: 'Lorem Ipsum', project: 'proj', pocket: true, why: 'the start of several projects\' names finds none, so the box offers to create it' });
 
 // ---------- priority ----------
 for (const p of [1, 2, 3, 4, 5]) add({ text: `Lorem Ipsum !${p}`, title: 'Lorem Ipsum', priority: p });

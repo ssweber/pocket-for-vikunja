@@ -466,6 +466,38 @@ test('a checklist\'s add box leaves out a ticked line without a chip to tap, and
   assert.deepEqual(linesOf(app, 'ins'), [['x Wipe the counter', false], ['Lock up', false]]);
 });
 
+test('typing +project suggests the projects you can add to, Enter takes the first, and a subtask box suggests none', () => {
+  const app = boxes(), el = { value: '', focus(){}, setSelectionRange(){} };
+  app.projects = [...app.projects, { id: 6, title: 'Garden' }, { id: 7, title: 'Garage' }, { id: 8, title: 'Gardening club' }, { id: 9, title: 'Home Depot' }];
+  Object.assign(app, { canWrite: id => id !== 8, boxEl: () => el });
+  const type = (w, text) => Object.assign(app.box(w), { text, focus: true, caret: text.length });
+  type('cap', 'Buy seeds +GAR');
+  assert.deepEqual(chipsOf(app, 'cap'), ['+Garage  ↵', '+Garden'], 'a project you can only read is left out');
+  app.boxEnter('cap');
+  assert.equal(app.cap.text, 'Buy seeds +Garage ');
+  // A name with a space is quoted, and an underscore stands for the space while typing.
+  type('cap', 'Buy paint +home_d');
+  app.boxEnter('cap');
+  assert.equal(app.cap.text, 'Buy paint +"Home Depot" ');
+  // A word that names a project exactly shows its chip, not suggestions.
+  type('cap', 'Buy seeds +garden');
+  assert.equal(chipsOf(app, 'cap')[0], 'Garden');
+  // The start of more than one name picks no project. The task would go to the default project, and the box offers
+  // to create the project instead.
+  type('cap', 'Buy seeds +gar ');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '+ Create project “gar”']);
+  type('sub', 'Tie up the tomatoes +gar');
+  assert.equal(app.suggestions('sub'), null);
+});
+
+test('a label Vikunja does not have yet says so on its chip, once the labels have loaded', () => {
+  const app = boxes();
+  app.cap.text = 'Call the bank *urgent *urg';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*urgent', '*urg']);
+  Object.assign(app, { labels: [{ id: 1, title: 'Urgent' }], labelsLoaded: true });
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*urgent', '*urg · new label']);
+});
+
 /* A list's box (footBox, app/sheet.js). At the bottom of the list its label says what the box takes. Under a row, the
    label says what one line makes, and `rest` is the label the box has at the bottom. This holds for a task's subtasks,
    a template's steps and a checklist's steps. */

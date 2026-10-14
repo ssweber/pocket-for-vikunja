@@ -129,10 +129,11 @@ export function parseCapture(text, projects, {mode = 'vikunja', ignore = {}, now
   // "@ 3pm" is a time, as in Vikunja. The last match is edited first, so earlier positions stay valid.
   for (const x of [...out.title.matchAll(/(^|\s)@\s+(?=\d)/g)].reverse()) edit(x.index + x[1].length, x.index + x[0].length, 'at ');
 
-  // project +name: only the first one is read
+  // project +name: only the first one is read. The start of a name finds a project only when no other project's name
+  // starts the same way, so a task never goes to a project by chance.
   if (!ignore.project && (m = out.title.match(tokenRe(P.project, '')))) {
-    const typed = unhide(m[2] || m[3] || m[4]), name = projectName(typed).toLowerCase();
-    const hit = projects.find(p => p.title.toLowerCase() === name) || projects.find(p => p.title.toLowerCase().startsWith(name));
+    const typed = unhide(m[2] || m[3] || m[4]), name = projectName(typed).toLowerCase(), starts = projects.filter(p => p.title.toLowerCase().startsWith(name));
+    const hit = projects.find(p => p.title.toLowerCase() === name) || (starts.length === 1 ? starts[0] : null);
     if (hit) out.project = hit; else out.projectMiss = typed;
     drop(m, 'project');
   }

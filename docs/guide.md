@@ -23,8 +23,8 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 
 | Syntax | Sets |
 |---|---|
-| `+orders` or `+"Café"` | Project, by full name or prefix |
-| `*suppliers` or `*"call back"` | Label, created if it doesn't exist |
+| `+orders` or `+"Café"` | Project, by full name, or by the start of a name only one project has. Typing `+` suggests projects. |
+| `*suppliers` or `*"call back"` | Label, created if it doesn't exist. Its chip then says **new label**. |
 | `@user` | Assignee, by username |
 | `!1` to `!5` | Priority |
 | `today`, `tomorrow`, `fri`, `next monday`, `in 3 days`, `end of month`, `Oct 12`, `2026-10-12`, `10/12` | Due date. Numeric dates are read only at the start or end of the text, so "Table 4/5 wobbles" is left alone. |

@@ -760,7 +760,7 @@ main.bare{padding-bottom:calc(env(safe-area-inset-bottom) + 28px)}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:14px;padding:5px 10px;border-radius:var(--r-chip);background:var(--accent-soft);color:var(--ink);border:0;white-space:nowrap}
 .chip.warn{background:color-mix(in srgb,var(--today) 20%,transparent)}
 .chip:not(.tap){cursor:default}
-/* .quiet marks text the box didn't recognise. .suggest is an option offered after @ or *. It is outlined, unlike a
+/* .quiet marks text the box didn't recognise. .suggest is an option offered after @, * or +. It is outlined, unlike a
    chip for text the box did recognise. */
 .chip.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);white-space:normal}
 .chip.suggest{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);border:0;color:var(--ink)}

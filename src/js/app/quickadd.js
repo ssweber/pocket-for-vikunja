@@ -1,4 +1,4 @@
-// Parse add boxes, suggest people and labels, check project access, and position the box under its target row.
+// Parse add boxes, suggest people, labels and projects, check project access, and position the box under its target row.
 import {app, colorOf, esc, userCache} from '../util.js';
 import {api, ApiError, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
@@ -245,30 +245,36 @@ export default {
     return this.boxParsed(w).project?.id || (auto && !this.box(w).ignore?.autoProject ? auto.id : this.boxHome(w));
   },
 
-  /* ---------- suggestions for the @username or *label at the cursor ---------- */
-  // {kind: 'assignee' | 'label', prefix, q, start, end}: the word being typed, from its prefix to the end of the word.
+  /* ---------- suggestions for the @username, *label or +project at the cursor ---------- */
+  // {kind: 'assignee' | 'label' | 'project', prefix, q, start, end}: the word being typed, from its prefix to the end
+  // of the word. A box that leaves +project in the title suggests no projects.
   boxToken(w){
     const P = this.prefixes, b = this.box(w);
     if (!P || !b.focus) return null;
     const text = b.text, at = Math.min(b.caret, text.length), tail = text.slice(at).match(/^\S*/)[0];
-    for (const kind of ['assignee', 'label']) {
+    for (const kind of this.boxBase(w).project ? ['assignee', 'label'] : ['assignee', 'label', 'project']) {
       const m = text.slice(0, at).match(new RegExp(`(^|\\s)\\${P[kind]}(?:"([^"]*)|([^\\s"]*))$`));
       if (m) return {kind, prefix: P[kind], q: m[2] ?? m[3] ?? '', start: m.index + m[1].length, end: at + tail.length};
     }
     return null;
   },
-  /* People with access to the target project come first, then others who share your projects. A word that already
-     matches a person or label exactly gets no suggestions, so its parsed chip shows instead. */
+  /* People with access to the target project come first, then others who share your projects. Only projects you can
+     add tasks to are suggested. A word that already matches a person, label or project exactly gets no suggestions,
+     so its parsed chip shows instead. */
   suggestions(w){
     const tk = this.boxToken(w);
     if (!tk) return null;
-    const q = tk.q.toLowerCase();
-    if (q && (tk.kind === 'label' ? this.labels.some(l => l.title.toLowerCase() === q) : (this.people || []).some(x => x.user.username.toLowerCase() === q))) return null;
+    const q = (tk.kind === 'project' ? projectName(tk.q) : tk.q).toLowerCase();
+    const names = tk.kind === 'label' ? this.labels.map(l => l.title) : tk.kind === 'project' ? this.projects.map(p => p.title) : (this.people || []).map(x => x.user.username);
+    if (q && names.some(n => n.toLowerCase() === q)) return null;
     const score = (...names) => Math.min(...names.map(n => (n || '').toLowerCase()).map(n => n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9));
     let out;
     if (tk.kind === 'label') {
       out = this.labels.map(l => ({l, s: score(l.title)})).filter(x => x.s < 9).sort((a, b) => a.s - b.s || a.l.title.localeCompare(b.l.title))
         .map(({l}) => ({key: 's' + l.id, kind: 'suggest', cls: 'suggest', color: colorOf(l.hex_color), text: tk.prefix + l.title, hint: 'Use this label', action: () => this.useSuggestion(w, tk, l.title)}));
+    } else if (tk.kind === 'project') {
+      out = this.projects.filter(p => this.canWrite(p.id)).map(p => ({p, s: score(p.title)})).filter(x => x.s < 9).sort((a, b) => a.s - b.s || a.p.title.localeCompare(b.p.title))
+        .map(({p}) => ({key: 's' + p.id, kind: 'suggest', cls: 'suggest', color: colorOf(p.hex_color), text: tk.prefix + p.title, hint: 'Use this project', action: () => this.useSuggestion(w, tk, p.title)}));
     } else {
       const pid = this.boxParsed(w).project?.id || this.boxHome(w);
       out = (this.people || []).map(x => ({x, s: score(x.user.username, x.user.name), away: !x.pids.has(pid)})).filter(y => y.s < 9)
@@ -406,7 +412,9 @@ export default {
     if (all.priority) out.push({key: 'prio', kind: 'priority', text: 'Priority ' + all.priority, off: off('priority')});
     // A percentage at the end of the line sets the task's progress. 100% marks it done.
     if (all.pct) out.push({key: 'pct', kind: 'progress', cls: 'num', text: all.pct < 100 ? all.pct + '%' : '100%: done', off: off('progress')});
-    all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: this.prefixes.label + l, off: off('labels')}));
+    // Sending creates a label Vikunja doesn't have yet. Its chip says so, so a mistyped name shows before sending.
+    const isNew = l => this.labelsLoaded && !this.labels.some(x => x.title.toLowerCase() === l.toLowerCase());
+    all.labels.forEach((l, i) => out.push({key: 'l' + i, kind: 'labels', text: this.prefixes.label + l + (isNew(l) ? ' · new label' : ''), off: off('labels')}));
     all.assignees.forEach((u, i) => out.push({key: 'a' + i, kind: 'assignees', text: this.prefixes.assignee + u, off: off('assignees')}));
     warn.forEach((text, i) => out.push({key: 'w' + i, cls: 'warn', text}));
     out.push(...this.ignoredChips(w, this.boxLines(w)[0] || ''));
