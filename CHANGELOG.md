@@ -43,7 +43,8 @@ is a new 0.x.y.
 
 - Each ask is a `pocket:ask` line in a step's notes.
 - Each answer comment has a `Label: value` line for each answer, then the line `pocket:answer`.
-- Ticking a task in a shared project adds the user's ✅ reaction to it, and unticking it takes the ✅ off.
+- Ticking a task in a shared project, finishing a checklist, or adding a task already done adds the user's ✅
+  reaction to it, and unticking or reopening it takes the ✅ off.
 
 ## 0.1.0 (2026-10-13)
 

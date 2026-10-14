@@ -63,7 +63,7 @@ export default {
         }
       }
       cache.set(id, saved); this.syncTask(saved);
-      if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done) this.signTick(saved);
+      if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done && !hasTemplateLabel(before) && !hasTemplateLabel(this.tasks[id])) this.signTick(saved);
       return saved;
     }).finally(() => { saveMark(id, -1); this.writing--; });
     shared.saveChain = run.catch(() => {});

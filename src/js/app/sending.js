@@ -260,6 +260,7 @@ export default {
      given, until the batch clears. Then it shows as open at its next date, or leaves Today if that date is 8 or more
      days from today. Tapping its tick before then puts its date back. */
   arrivedDone(t, now){
+    if (now.done) this.signTick(now);
     const said = doneText(0, 0, t.title), failed = e => this.say('Not undone: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}});
     if (!now.done) {
       const was = t.due_date, beyond = () => this.route.name === 'today' && !(new Date(now.due_date) < addDays(startOfDay(), 8));
@@ -458,11 +459,12 @@ export default {
     if (this.route.name === 'today') {
       // Show every group, even in a list saved offline before the "Added today, no date" group existed. In a list
       // saved on an earlier day, that group keeps only tasks created today (for a card, judged by the task that
-      // brought it).
+      // brought it), and Done today only tasks done today. A task just ticked may not have its time yet.
       const t0 = startOfDay(), at = todayAt(this.view.cards);
       base = todayGroups().map(g => {
         const b = base.find(x => x.key === g.key) || g;
-        return g.key === 'nodate' ? {...b, tasks: b.tasks.filter(t => new Date(at(t).created) >= t0)} : b;
+        return g.key === 'nodate' ? {...b, tasks: b.tasks.filter(t => new Date(at(t).created) >= t0)}
+          : g.key === 'donetoday' ? {...b, tasks: b.tasks.filter(t => !isSet(t.done_at) || new Date(t.done_at) >= t0)} : b;
       });
     } else if (!extra.length) return base;
     if (!base.length && this.route.name === 'project' && this.view.project) base = [{key:'open', cls:'', title:'Open', tasks:[]}];

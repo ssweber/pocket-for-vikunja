@@ -443,7 +443,7 @@ export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act'
 /* Each act's parts, in order. `figure` comes last. A change to a run's step, or a deleted subtask, changes the
    parent's progress. That progress is written in the same entry, so while offline it waits with the change. */
 export const ACTS = {progress: ['progress', 'figure'], done: ['done', 'mark', 'figure'], skip: ['done', 'markSkip', 'note', 'figure'], undone: ['undone', 'unmark', 'figure'], note: ['note'], answer: ['note'],
-  finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note', 'figure'], claim: ['claim'], unclaim: ['unclaim'], delete: ['delete', 'figure'], position: ['position']};
+  finish: ['done', 'mark'], reopen: ['undone', 'unmark'], doneNote: ['done', 'mark', 'note', 'figure'], claim: ['claim'], unclaim: ['unclaim'], delete: ['delete', 'figure'], position: ['position']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),
   undone: a => patchTask(a.task, {done: false}),

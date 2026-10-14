@@ -54,6 +54,15 @@ test('tapping a row\'s title does what suits the row: show a step, edit the shee
   assert.deepEqual(calls, [], 'a task waiting to be sent opens nothing');
   app.tapRow(step({ i: 1, pending: true }), RUN);
   assert.deepEqual(calls, [['step', 1, true]], 'a step waiting to be sent still shows on the card');
+  // A template's step opens its edit box only for someone who may change the template, or in New template
+  calls.length = 0;
+  Object.assign(app, { editStep: t => calls.push(['edit step', t.id]), sheet: { kind: 'task' }, canEdit: false });
+  app.tapRow({ id: 10 }, { depth: {}, step: true });
+  Object.assign(app, { sheet: { kind: 'newtpl' } });
+  app.tapRow({ id: 11 }, { depth: {}, step: true });
+  Object.assign(app, { sheet: { kind: 'task' }, canEdit: true });
+  app.tapRow({ id: 12 }, { depth: {}, step: true });
+  assert.deepEqual(calls, [['edit step', 11], ['edit step', 12]]);
 });
 
 /* Tapping a ring (tapRing). A checklist's own ring at the top of its screen has its own tap. Any other ring calls
@@ -798,8 +807,11 @@ test('in New template, each line from the add box becomes a step row after the r
 });
 
 test('a finished checklist under Checklists shows when it finished, how many steps were skipped and how many comments it has', () => {
-  const app = component(views, claims), at = '2026-10-13T18:40:00Z', when = new Date(at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const app = component(views, claims), at = '2026-10-13T18:40:00Z', when = new Date(at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const g = { depth: {}, ended: { 5: { skipped: 1, comments: 3 }, 6: { skipped: 0, comments: 0 } } };
   assert.deepEqual(app.rowMeta({ id: 5, done: true, done_at: at }, g).map(m => [m.key, m.text, m.label]), [['at', when, 'Finished ' + when], ['skip', '1 skipped', undefined], ['com', '3', '3 comments']]);
   assert.deepEqual(app.rowMeta({ id: 6, done: true, done_at: at }, g).map(m => m.key), ['at'], 'nothing skipped and no comments says nothing more');
+  // A checklist finished today shows the time alone. One finished on another day has its date, since a week holds the same weekday twice.
+  const now = new Date();
+  assert.equal(app.rowMeta({ id: 6, done: true, done_at: now.toISOString() }, g)[0].text, now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
 });

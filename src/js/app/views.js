@@ -2,7 +2,7 @@
 import {cache, collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
 import {askMeta, asksMeta, stepAsks} from '../asks.js';
 import {allPages, api, ApiError, errText, LOADED, NetError, partOf, why} from '../api.js';
-import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
+import {addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay} from '../dates.js';
 import {CHECKLIST_MARK, comesRound, DONE_MARK, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
@@ -123,7 +123,7 @@ export default {
      A pending row has no saved task to open. */
   tapRow(t, g){
     if (g.run) return this.showStep(t.i, true);
-    if (g.step) return this.editStep(t);
+    if (g.step) return this.sheet.kind === 'newtpl' || this.canEdit ? this.editStep(t) : null;
     if (t.pending) return;
     if (g.own) return this.editTitle();
     return g.sheet || g.top ? this.openTask(t.id) : this.openRow(t);
@@ -169,9 +169,10 @@ export default {
         files && {key: 'att', cls: 'note-mark num strong', icon: 'clip', text: String(files), label: files === 1 ? 'A file attached' : files + ' files attached'},
         t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}, ...askMeta(t)].filter(Boolean);
     }
-    // A finished checklist under Checklists: when it finished, how many steps were skipped and how many comments it has
+    // A finished checklist under Checklists: when it finished (the time alone if today), how many steps were skipped and
+    // how many comments it has
     if (g?.ended) {
-      const e = g.ended[t.id] || {}, at = new Date(t.done_at).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'});
+      const e = g.ended[t.id] || {}, d = new Date(t.done_at), at = +startOfDay(d) === +startOfDay() ? fmtTime(d) : d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
       return [{key: 'at', cls: 'num', text: at, label: 'Finished ' + at}, e.skipped && {key: 'skip', cls: 'num', text: e.skipped + ' skipped'},
         e.comments && {key: 'com', cls: 'note-mark num strong', icon: 'comment', text: String(e.comments), label: e.comments === 1 ? 'A comment' : e.comments + ' comments'}].filter(Boolean);
     }

@@ -896,3 +896,40 @@ test('Done today holds what the user ticked, what is assigned to them, what is i
     [{ project_id: 8 }, true], [{ project_id: 7 }, false], [{ project_id: 7, run: true, created_by: mine }, true], [{ project_id: 7, run: true, created_by: other }, false]];
   assert.deepEqual(cases.map(([t]) => app.doneByMe(t)), cases.map(([, want]) => want));
 });
+
+test('Done today keeps only what was done today, also in a copy of Today saved on an earlier day', () => {
+  const app = component(tasks, actions, cards, alerts, sending), now = new Date(), yesterday = new Date(now - 864e5).toISOString();
+  Object.assign(app, { route: { name: 'today' }, pending: [], view: { groups: todayGroups(), cards: {} } });
+  app.view.groups.find(g => g.key === 'donetoday').tasks = [{ id: 1, done: true, done_at: yesterday }, { id: 2, done: true, done_at: now.toISOString() }, { id: 3, done: true }];
+  assert.deepEqual(app.listBase.find(g => g.key === 'donetoday').tasks.map(t => t.id), [2, 3], 'a task just ticked, with no time yet, stays');
+});
+
+test('a template gets no ✅ when it is saved done, even if Vikunja\'s reply leaves its labels out', async c => {
+  const label = [{ id: 4, title: 'template' }], v = fakeVikunja([{ id: 1, title: 'TEMPLATE: Opening up', done: false, project_id: 7, labels: label }]), app = listed(c);
+  app.seenBy = { 7: 2 };
+  const t = app.keep(v.task(1));
+  cache.set(1, { ...v.task(1) });
+  delete v.task(1).labels;                       // the reply to the save has no labels
+  await app.saveTask(1, { done: true });
+  await settled();
+  assert.equal(t.done, true);
+  assert.equal(v.task(1).reactions, undefined);
+});
+
+test('finishing a checklist puts the user\'s ✅ on it, and reopening it takes the ✅ off', async () => {
+  const v = fakeVikunja([{ id: 1, title: 'Closing up · Oct 14', done: false }]);
+  component(tasks, actions);
+  for (const stage of ACTS.finish) await ACT_STEPS[stage]({ op: 'finish', task: 1, run: 1 });
+  assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].map(u => u.id)], [true, [1]]);
+  for (const stage of ACTS.reopen) await ACT_STEPS[stage]({ op: 'reopen', task: 1, run: 1 });
+  assert.deepEqual([v.task(1).done, v.task(1).reactions['✅']], [false, []]);
+});
+
+test('a task that quick add made already done gets the user\'s ✅, as a tick would', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Order the cups', done: true, project_id: 7 }]), app = component(tasks, actions, leaving, sending);
+  c.mock.timers.enable({ apis: ['setTimeout'] });
+  app.seenBy = { 7: 2 };
+  app.arrivedDone(app.keep(v.task(1)), v.task(1));
+  await settled();
+  assert.deepEqual(v.task(1).reactions['✅'].map(u => u.id), [1]);
+});

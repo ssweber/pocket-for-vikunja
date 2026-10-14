@@ -971,6 +971,10 @@ try {
       await expect(p.locator('#d-title')).toHaveAttribute('readonly');
       await expect(p.locator('#d-subbox, #sheet .foot-box')).toHaveCount(0);
       await expect(p.locator('#d-readonly')).toHaveCount(0);
+      // Tapping a step doesn't open its edit box
+      await p.locator('#d-subtasks .row.step .body').first().click();
+      await p.waitForTimeout(300);
+      await expect(p.locator('#d-subtasks .row.editing')).toHaveCount(0);
       await p.click('#d-more');
       await expect(p.locator('#d-menu')).toBeVisible();
       await expect(p.locator('#d-delete')).toHaveCount(0);
@@ -1019,6 +1023,8 @@ try {
     await page.click('#run-finish', { timeout: 15000 });
     await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
     await until('the checklist was never finished again', async () => (await api('/tasks/' + first.id)).done);
+    // Finishing puts the user's ✅ on the checklist, which Done today goes by. Undo took the first one off.
+    await until('the finished checklist has no ✅ by you', async () => ((await api(`/tasks/${first.id}?expand=reactions`)).reactions?.['✅'] || []).filter(u => u.id === me.id).length === 1);
     // It is listed under Finished in the last 7 days, in the row In progress uses. Its ring says 3/3, since a skipped step
     // counts as done there. Beside the time, the row says how many steps were skipped and how many comments it has.
     const title = (await api('/tasks/' + first.id)).title, ended = page.locator('.cl-finished .row').filter({ has: page.locator('.title', { hasText: title }) });
