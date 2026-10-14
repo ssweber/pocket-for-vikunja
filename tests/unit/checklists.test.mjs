@@ -99,3 +99,23 @@ test('a checklist\'s screen keeps a step\'s title in the template, taken from th
   assert.equal(s.added, '');
   assert.equal(s.percent_done, 0);
 });
+
+test('a template and its steps change only for the person who made it or a project admin, and read access can\'t start one', async () => {
+  const { component } = await import('./fake.mjs'), { default: runs } = await import('../../src/js/app/runs.js');
+  const app = component(runs), tpl = { id: 1, project_id: 7, created_by: { id: 1 } };
+  Object.assign(app, { user: { id: 2 }, perms: { 7: 1 }, sheet: { task: tpl }, checklistRole: 'template', parentTask: null });
+  const say = () => [app.canEdit, app.templateNote.split('. ').slice(1).join('. ')];
+  assert.deepEqual(say(), [false, 'Only the person who made this template or a project admin can change it.'], 'write access, someone else\'s template');
+  app.user = { id: 1 };
+  assert.deepEqual(say(), [true, 'Tap to edit. Hold to reorder. Swipe left to delete.'], 'its maker');
+  Object.assign(app, { user: { id: 2 }, perms: { 7: 2 } });
+  assert.equal(app.canEdit, true, 'a project admin');
+  Object.assign(app, { perms: {} });
+  assert.equal(app.canEdit, true, 'access not loaded yet counts as admin, as it counts as write');
+  Object.assign(app, { perms: { 7: 1 }, sheet: { task: { id: 9, project_id: 7, created_by: { id: 2 } } }, checklistRole: 'tplstep', parentTask: tpl });
+  assert.equal(app.canEdit, false, 'a template\'s step goes by its template\'s maker, not its own');
+  Object.assign(app, { sheet: { task: { id: 3, project_id: 7, created_by: { id: 1 } } }, checklistRole: 'run' });
+  assert.equal(app.canEdit, true, 'a checklist started from it stays open to everyone with write');
+  Object.assign(app, { perms: { 7: 0 }, sheet: { task: tpl }, checklistRole: 'template' });
+  assert.deepEqual([app.canEdit, app.templateNote], [false, 'Read only. You can see this template, but not start a checklist from it. Ask the project\'s owner for write access.']);
+});

@@ -28,8 +28,8 @@
       <!-- Checklist actions: start a checklist from a template, or open the checklist a step belongs to -->
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
         <template x-if="checklistRole === 'template'"><div>
-          <p>Every checklist you start from this template copies these steps. Tap to edit. Hold to reorder. Swipe left to delete.</p>
-          <button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a checklist</button>
+          <p x-text="templateNote"></p>
+          <template x-if="canWrite(sheet.task.project_id)"><button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a checklist</button></template>
         </div></template>
         <template x-if="checklistRole === 'tplstep'"><div>
           <p>This step belongs to a template. Change its name or due time there. Notes here are copied into every checklist.</p>
@@ -71,7 +71,8 @@
         <p class="note" style="margin:0 2px">Checklists already started keep the asks they started with.</p>
       </div></template>
 
-      <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Read only.</p></template>
+      <!-- A template says why it can't be changed in its checklist card instead (templateNote) -->
+      <template x-if="!canEdit && checklistRole !== 'template'"><p class="ro-note" id="d-readonly">Read only.</p></template>
       <!-- x-if, not x-show: x-show switches a frame late, so a step opened from its template would flash the
            template's date and steps -->
       <!-- A template's schedule is Vikunja's repeat settings, plus the reminder emails before each repeat -->

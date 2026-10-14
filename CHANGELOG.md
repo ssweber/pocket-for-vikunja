@@ -32,6 +32,8 @@ is a new 0.x.y.
   count.
 - Checklists lists every checklist finished in the last 7 days, with its ring, its skipped steps and its comments, in
   place of the last few.
+- In Pocket, only a template's maker or a project admin can change it, and someone with read access sees why they
+  can't start a checklist from it ([guide](docs/guide.md#checklists)).
 
 ### Fixed
 

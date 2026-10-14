@@ -206,7 +206,10 @@ export default {
     const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
     const checklists = await Promise.all(ws.map(async p => {
       const since = new Date(Date.now() - FINISHED_DAYS * 864e5).toISOString();
-      const [templates, open, done] = await Promise.all([
+      const [, templates, open, done] = await Promise.all([
+        // The user's access, read again each time, since it decides who may start a checklist or change a template.
+        // Other projects keep the access Pocket read once (loadPerms).
+        api('/projects/' + p.id).then(full => { this.perms[p.id] = full.max_permission ?? 1; }).catch(() => {}),
         // Templates: done ones, and open ones with a due date.
         labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `labels in ${labels.join(', ')}`})) : [],
         this.openTasks(p.id),
@@ -223,7 +226,7 @@ export default {
         runs: open.filter(isRun).map(own),
         finished: finished.map(own), ended: endedOf(finished, [...done, ...open])};
     }));
-    saved.set('templates', templatesKept);
+    saved.set('templates', templatesKept); saved.set('perms', this.perms);
     return checklists;
   },
   /* The schedule message for a template under Checklists, shown after its steps. Examples: "Next: Wed, Oct 7, 8:00 AM,

@@ -469,7 +469,25 @@ export default {
   },
   // Allow changes unless the project is known to be shared read-only.
   canWrite(pid){ const v = this.perms[pid]; return v === undefined || v === null || v >= 1; },
-  get canEdit(){ return !!this.sheet.task && this.canWrite(this.sheet.task.project_id); },
+  /* A template and its steps can be changed only by the person who made the template or a project admin. Vikunja
+     lets anyone with write change them, so this guards against slips in Pocket only. */
+  get canEdit(){
+    const t = this.sheet.task, role = this.checklistRole;
+    if (!t || !this.canWrite(t.project_id)) return false;
+    return !['template', 'tplstep'].includes(role) || this.ownsTemplate(role === 'tplstep' ? this.parentTask : t);
+  },
+  // The line in a template's checklist card: what starting does, and what the user can do with the template.
+  get templateNote(){
+    const t = this.sheet.task;
+    if (t && !this.canWrite(t.project_id)) return 'Read only. You can see this template, but not start a checklist from it. Ask the project\'s owner for write access.';
+    return 'Every checklist you start from this template copies these steps. ' + (this.canEdit ? 'Tap to edit. Hold to reorder. Swipe left to delete.' : 'Only the person who made this template or a project admin can change it.');
+  },
+  // Whether the user made template `t`, or is an admin of its project. Unknown access counts as admin, as it counts
+  // as write in canWrite, until the project's access has loaded.
+  ownsTemplate(t){
+    const full = t && (this.tasks[t.id] || cache.get(t.id) || t), p = full && this.perms[full.project_id];
+    return !!full && (p == null || p >= 2 || full.created_by?.id === this.user?.id);
+  },
   /* Load project permissions in small background batches because Vikunja's project list omits them. Cache each
      result, or reload all with force. */
   async loadPerms(force = false){

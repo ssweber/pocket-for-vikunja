@@ -951,6 +951,47 @@ try {
     }
   });
 
+  /* Someone with write who didn't make a template sees it read only, with Start, and its ⋯ menu can't delete it. With
+     read access only, the template can't be started either, and its card says so. */
+  if (other) await step('only-the-maker-or-an-admin-changes-a-template', async () => {
+    const theirs = await context.browser().newContext({ viewport: { width: 390, height: 844 } });
+    await hintSeen(theirs);
+    const p = await theirs.newPage(), note = p.locator('#d-checklist p');
+    p.on('pageerror', e => errors.push('(other) ' + e));
+    const open = async () => {
+      await p.click('nav.tabs a[data-tab=checklists]');
+      await p.locator('.cl-tpl .body').filter({ hasText: TEMPLATE }).click({ timeout: 15000 });
+      await expect(p.locator('#d-title')).toHaveValue(TEMPLATE);
+    };
+    try {
+      await signIn(p, otherToken);
+      await open();
+      await expect(note).toHaveText('Every checklist you start from this template copies these steps. Only the person who made this template or a project admin can change it.');
+      await expect(p.locator('#d-start')).toBeVisible();
+      await expect(p.locator('#d-title')).toHaveAttribute('readonly');
+      await expect(p.locator('#d-subbox, #sheet .foot-box')).toHaveCount(0);
+      await expect(p.locator('#d-readonly')).toHaveCount(0);
+      await p.click('#d-more');
+      await expect(p.locator('#d-menu')).toBeVisible();
+      await expect(p.locator('#d-delete')).toHaveCount(0);
+      await p.click('#d-more');
+      await p.click('#btn-sheet-close');
+      // With read access only. Pocket reads a project's access again when the page loads.
+      await api(`/projects/${project.id}/users/${OTHER}`, { method: 'PUT', body: JSON.stringify({ permission: 0 }) });
+      await p.reload();
+      await loaded(p);
+      await open();
+      await expect(note).toHaveText('Read only. You can see this template, but not start a checklist from it. Ask the project\'s owner for write access.', { timeout: 15000 });
+      await expect(p.locator('#d-start')).toHaveCount(0);
+    } catch (e) {
+      await p.screenshot({ path: `${OUT}/checklists-fail-lock.png` });
+      throw e;
+    } finally {
+      await theirs.close();
+      await api(`/projects/${project.id}/users/${OTHER}`, { method: 'PUT', body: JSON.stringify({ permission: 1 }) });
+    }
+  });
+
   await step('finish-a-run', async () => {
     // Opened from Checklists, so finishing goes back there. The checklist's row there is a project row. It shows who
     // the checklist is for and its ring, which shows progress. So it has no count of done steps, no next step under

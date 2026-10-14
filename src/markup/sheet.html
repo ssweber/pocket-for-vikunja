@@ -39,7 +39,8 @@
       <!-- For a subtask. It becomes a separate task in the same project (ownTask). Not for a checklist's step or a
            template's step. -->
       <template x-if="canOwn"><button role="menuitem" id="d-own-task" @click="sheet.menu = false; ownTask()">Turn into its own task</button></template>
-      <template x-if="canEdit && checklistRole === 'candidate' && subtasks.length"><button role="menuitem" id="d-make-template" :disabled="sheet.checklistBusy" @click="sheet.menu = false; makeTemplate()">
+      <!-- Only the task's maker or a project admin can make it a template, since only they can change it then -->
+      <template x-if="canEdit && checklistRole === 'candidate' && subtasks.length && ownsTemplate(sheet.task)"><button role="menuitem" id="d-make-template" :disabled="sheet.checklistBusy" @click="sheet.menu = false; makeTemplate()">
         <span>Use as checklist template</span><small>Its subtasks become the steps of every checklist started from it, in this order.</small></button></template>
       <template x-if="canEdit"><button role="menuitem" class="danger" id="d-delete" @click="sheet.menu = false; deleteTask()" x-text="deleteLabel"></button></template>
     </div></template>
