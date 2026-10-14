@@ -933,3 +933,15 @@ test('a task that quick add made already done gets the user\'s ✅, as a tick wo
   await settled();
   assert.deepEqual(v.task(1).reactions['✅'].map(u => u.id), [1]);
 });
+
+test('the ✅ requests go out in the order the ticks saved, so a slow untick doesn\'t take off the next tick\'s ✅', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Order the cups', done: false, project_id: 7 }]), app = listed(c), request = globalThis.fetch;
+  app.seenBy = { 7: 2 };
+  app.keep(v.task(1));
+  let release;
+  globalThis.fetch = (url, args) => url.endsWith('/reactions/delete') && !release ? new Promise(r => { release = () => request(url, args).then(r); }) : request(url, args);
+  for (const done of [true, false, true]) { await app.saveTask(1, { done }); await settled(); }
+  release();
+  for (let i = 0; i < 5; i++) await settled();
+  assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].map(u => u.id)], [true, [1]]);
+});

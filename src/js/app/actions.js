@@ -23,6 +23,9 @@ const HELD_MS = 60e3;
 // discarded, because the save's reply may be newer (readTask).
 const saving = new Map();
 const saveMark = (id, open) => { const s = saving.get(id) || {n: 0, open: 0}; s.n++; s.open += open; saving.set(id, s); };
+// The ✅ requests, sent one after another in the order their ticks saved. Otherwise a slow untick's request could
+// arrive after the next tick's and take that ✅ off.
+let marks = Promise.resolve();
 export const reminderKey = r => r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
 // A relative reminder is saved as its reference date and offset, so it keeps following that date.
 export const plainReminders = t => (t?.reminders || []).map(r => r.relative_to ? {relative_to: r.relative_to, relative_period: r.relative_period || 0} : {reminder: r.reminder});
@@ -74,7 +77,7 @@ export default {
      can see needs none, since everything in it is theirs. A ✅ that fails to save leaves the tick as it is. */
   signTick(t){
     if (this.seenBy?.[t.project_id] === 0 || hasTemplateLabel(t)) return;
-    api(`/tasks/${t.id}/reactions${t.done ? '' : '/delete'}`, {method: 'POST', body: {value: DONE_MARK}}).catch(() => {});
+    marks = marks.then(() => api(`/tasks/${t.id}/reactions${t.done ? '' : '/delete'}`, {method: 'POST', body: {value: DONE_MARK}}).catch(() => {}));
   },
   /* On Today, a task ticked there joins Done today when the batch clears, so Copy includes it at once. A checklist's
      step doesn't, since its checklist stands for it. */

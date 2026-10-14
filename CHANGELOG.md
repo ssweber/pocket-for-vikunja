@@ -39,6 +39,7 @@ is a new 0.x.y.
 
 - A `pocket:` line that Vikunja's web app partly formats, such as one with a link in it, is now hidden and kept whole.
 - A change waiting to be sent redraws only the rings it changes, not every checklist's ring.
+- Ticking a shared task again soon after unticking it keeps your ✅, so the task stays in Done today after a reload.
 
 ### What Pocket writes into Vikunja
 
