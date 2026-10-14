@@ -149,6 +149,8 @@ export default {
   /* Build metadata for each row context. Sheet subtasks show due dates, while the sheet's own row omits details
      already shown elsewhere in the sheet. A checklist's top row uses its assignee slot. Checklist steps show how
      they were added, their comments and their timing. One-line rows omit extra labels and counts. */
+  // A step's files, with those still uploading. Read by the step's id, so an upload redraws only its own row.
+  stepFiles(t){ return (t.attachments?.length || 0) + (this.waiting.files[t.id] || 0); },
   rowMeta(t, g){
     if (g?.top) return [];
     // A template step's row shows when it is due in a checklist, or what is wrong with it, and the first line of its notes.
@@ -159,9 +161,14 @@ export default {
         note && {key: 'note', cls: 'step-note', text: note}].filter(Boolean);
     }
     if (g?.own) return this.rowMeta(t, {depth: {}}).filter(m => OWN_META.includes(m.key));
-    if (g?.run) return [t.added && {key: 'added', cls: 'added', text: t.added},
-      t.notes.length && {key: 'notes', cls: 'note-mark num', icon: 'comment', text: String(t.notes.length), label: t.notes.length === 1 ? 'A comment' : t.notes.length + ' comments'},
-      t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}, ...askMeta(t)].filter(Boolean);
+    if (g?.run) {
+      const files = this.stepFiles(t);
+      return [t.added && {key: 'added', cls: 'added', text: t.added},
+        // The latest comment's first line, cut to fit, so a skip's reason or a problem reads without opening the step
+        t.said && {key: 'said', cls: 'step-said', icon: 'comment', text: t.said.text ? t.said.who + ': ' + t.said.text : t.said.who + ' commented', label: 'Latest comment, by ' + t.said.who + (t.said.text ? ': ' + t.said.text : '')},
+        files && {key: 'att', cls: 'note-mark num step-files', icon: 'clip', text: String(files), label: files === 1 ? 'A file attached' : files + ' files attached'},
+        t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}, ...askMeta(t)].filter(Boolean);
+    }
     const out = [], due = dueInfo(t.due_date), card = g?.card;
     // A done task stays on the open list while it has open subtasks. Show a message that says why.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id)) out.push({key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length)});

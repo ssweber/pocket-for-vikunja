@@ -142,13 +142,16 @@ test('the sheet\'s own row shows only the due date, priority, repeat and upcomin
   assert.deepEqual(app.rowMeta(t, SHEET_ROW).map(m => m.key), ['due', 'prio', 'rep', 'rem']);
 });
 
-test('under a step\'s title the row shows Inserted or Repeated, the comments and a countdown until it is done', () => {
+test('under a step\'s title the row shows Inserted or Repeated, the latest comment, its files and a countdown until it is done', () => {
   const app = component(views, claims);
   assert.deepEqual(app.rowMeta(step({}), RUN), []);
-  const meta = app.rowMeta(step({ added: 'Inserted', notes: [{}, {}], dueText: '5m late', late: true }), RUN);
-  assert.deepEqual(meta.map(m => [m.key, m.cls, m.text]), [['added', 'added', 'Inserted'], ['notes', 'note-mark num', '2'], ['due', 'due num overdue', '5m late']]);
-  assert.equal(meta[1].label, '2 comments');
-  assert.equal(app.rowMeta(step({ notes: [{}] }), RUN)[0].label, 'A comment');
+  const meta = app.rowMeta(step({ added: 'Inserted', said: { who: 'Sam', text: 'Skipped: no milk yet' }, attachments: [{}], dueText: '5m late', late: true }), RUN);
+  assert.deepEqual(meta.map(m => [m.key, m.cls, m.text]), [['added', 'added', 'Inserted'], ['said', 'step-said', 'Sam: Skipped: no milk yet'], ['att', 'note-mark num step-files', '1'], ['due', 'due num overdue', '5m late']]);
+  assert.deepEqual([meta[1].label, meta[2].label], ['Latest comment, by Sam: Skipped: no milk yet', 'A file attached']);
+  app.waiting.files[7] = 2;
+  assert.equal(app.rowMeta(step({ attachments: [{}] }), RUN)[0].label, '3 files attached', 'files still uploading count too');
+  delete app.waiting.files[7];
+  assert.equal(app.rowMeta(step({ said: { who: 'Sam', text: '' } }), RUN)[0].text, 'Sam commented', 'a comment with no text, such as a photo, says who');
   assert.deepEqual(app.rowMeta(step({ done: true, dueText: 'Due in 3m' }), RUN), [], 'a done step has no countdown');
 });
 

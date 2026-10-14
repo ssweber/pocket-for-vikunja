@@ -5,7 +5,7 @@ import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, commentShown, comesRound, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, commentShown, comesRound, isAnswer, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {stepAnswers} from '../asks.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
@@ -356,13 +356,16 @@ export default {
         if (a.op === 'note' || a.op === 'answer' || a.op === 'claim' || a.op === 'unclaim') continue;
         waiting = true; slow = this.slow.includes(a.id); done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
+      // The step's row shows the latest comment's first line. Answers to its asks show on the row already.
+      const talk = [...(s.comments || []).filter(c => !isAnswer(c.comment)).map(noteOf), ...acts.filter(a => this.actTask(a) === s.id && ['note', 'skip', 'doneNote'].includes(a.op)).map(waitingNote)].at(-1);
+      const said = talk ? {who: talk.author, text: htmlToText(talk.comment || '').split('\n').map(l => l.trim()).find(Boolean) || ''} : null;
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
       const slot = done ? this.doneSlot(by, people, slow ? 'wait' : skipped ? 'skip' : 'done')
         : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done, r.run.id);
       // Show who completed or skipped the step, with their picture and reaction badge.
       const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))
         : new Date(doneAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'})) : '';
-      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), ...stepAnswers(s, acts.filter(a => a.op === 'answer' && this.actTask(a) === s.id), me), attachments: s.attachments, done, skipped, waiting, slow, notes, doneAt, slot, by, pct,
+      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), ...stepAnswers(s, acts.filter(a => a.op === 'answer' && this.actTask(a) === s.id), me), attachments: s.attachments, done, skipped, waiting, slow, notes, said, doneAt, slot, by, pct,
         added: s.added || '', pending: s.pending || null, slowAdd: !!s.pending && this.slow.includes(s.pending), from: s.from || null, tpl: s.tpl,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (slow ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at)};
     });

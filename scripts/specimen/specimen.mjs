@@ -309,7 +309,7 @@ function runSteps(){
     step({title: 'Turn on the espresso machine', tpl: 'Turn on the espresso machine {#machine}', ...doneBy(me, 40)}),
     step({title: 'Grind the beans', assignees: [jamie], ...doneBy(jamie, 30)}),
     step({title: 'Wipe the steam wand', done: true, done_at: at(-20 * MIN), reactions: {'⏭️': [sam]}, comments: [note(1, sam, 19, 'Skipped: no milk yet')]}),
-    step({title: 'Put the croissants in', tpl: 'Put the croissants in {#oven}', ...doneBy(me, 2)}),
+    step({title: 'Put the croissants in', tpl: 'Put the croissants in {#oven}', ...doneBy(me, 2), attachments: [{id: 41, file: {name: 'tray.jpg', size: 9e5}}, {id: 42, file: {name: 'oven.jpg', size: 8e5}}]}),
     step({title: 'Take the croissants out', tpl: 'Take the croissants out T#18m:oven', assignees: [me], comments: [note(2, jamie, 50, 'Use the top shelf')]}),
     step({title: 'Check the milk', added: 'Inserted', tpl: null}),
     step({title: 'Wipe the steam wand', added: 'Repeated'}),

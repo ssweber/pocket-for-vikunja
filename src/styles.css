@@ -591,6 +591,11 @@ a.sec-act{text-decoration:none}
 .step-extra .comment.last .who{color:var(--today)}
 .note-mark{display:inline-flex;align-items:center;gap:3px;color:var(--muted)}
 .note-mark svg.i{width:14px;height:14px}
+/* A step's latest comment takes what is left of its line, cut short, beside the file count and the countdown */
+#run-steps .meta:has(> .step-said){flex-wrap:nowrap}
+.step-said{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--ink)}
+.step-said svg.i{color:var(--accent)}
+.note-mark.step-files{color:var(--accent);font-weight:650}
 .start-who{color:var(--muted);font-size:14px;white-space:nowrap}
 .step-who.waiting{color:var(--muted)}
 .step-acts{display:flex;gap:10px;margin-top:16px}

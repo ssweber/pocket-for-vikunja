@@ -28,6 +28,8 @@ is a new 0.x.y.
 - Reordering in a task's menu says "Up one place" and "Down one place", because "move" in Vikunja means moving to
   another project.
 - The ⋯ menu item that opens the phone's share sheet says "Share as text".
+- A checklist's step shows its latest comment, cut to one line, and how many files are attached, in place of a comment
+  count.
 
 ### Fixed
 

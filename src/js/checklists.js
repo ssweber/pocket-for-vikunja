@@ -405,7 +405,8 @@ export async function inBatches(list, n, fn){
 }
 const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
 // A comment as shown. An answer comment's last line, pocket:answer, is Pocket's and is left out.
-export const commentShown = html => /pocket:answer/i.test(html || '') ? notesOnly(html) : html;
+export const isAnswer = html => /pocket:answer/i.test(html || '');
+export const commentShown = html => isAnswer(html) ? notesOnly(html) : html;
 export const noteOf = c => ({id: c.id, comment: commentShown(c.comment), author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
 /* Split a run's title into {template, day, name, old}. Returns null for a title not in that shape. runTitle writes
    "Opening up · Oct 8 · #2", which is the template's name, the day, and then a number or the name typed.

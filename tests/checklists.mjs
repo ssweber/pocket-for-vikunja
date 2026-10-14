@@ -603,7 +603,9 @@ try {
     await page.locator('#step-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#step-extra .comment:has-text("Looks good")');
     await expect(page.locator('#step-note-form button')).toBeDisabled();
-    await expect(page.locator('#run-steps .row:nth-of-type(3) .note-mark')).toHaveAttribute('aria-label', 'A comment');   // the row shows it has a comment
+    // The step's row shows the latest comment, with who wrote it
+    await expect(page.locator('#run-steps .row:nth-of-type(3) .step-said')).toHaveAttribute('aria-label', /^Latest comment, by .+: Looks good$/);
+    await expect(page.locator('#run-steps .row:nth-of-type(3) .step-said')).toContainText('Looks good');
     await expect(page.locator('#run .h3:has-text("Comments on this checklist")')).toBeVisible();
     await expect(page.locator('#run-note')).toHaveAttribute('placeholder', 'Comment, also shown next time');
     await expect(page.locator('#run-note-form button')).toBeDisabled();
