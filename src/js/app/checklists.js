@@ -213,7 +213,9 @@ export default {
         // Everything done in the last FINISHED_DAYS: the checklists finished then, and the steps that tell how each went
         allPages(`/projects/${p.id}/tasks?` + new URLSearchParams([['filter', `done = true && done_at >= '${since}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'],
           ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']]))]);
+      // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there
       const finished = done.filter(t => this.isRunTask(t));
+      for (const s of done) if (!this.isRunTask(s)) own(s);
       return {project: {id: p.id, title: p.title},
         templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,

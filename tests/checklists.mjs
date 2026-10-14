@@ -699,7 +699,8 @@ try {
       await page.reload();
       await page.waitForSelector(`${row1} .did[aria-label^="Done by"]`, { timeout: 15000 })
         .catch(async () => { const t = await task(id); throw new Error(`not shown as done: ${await page.$eval(`${row1} .did`, e => e.getAttribute('aria-label')).catch(() => 'no ✅ or ⏭️')}; done_at ${t.done_at}, notes ${JSON.stringify((t.comments || []).map(c => [c.created, c.comment]))}`); });
-      if (await page.$(`${row1} .meta:has-text("Skipped")`)) throw new Error('still shows as skipped');
+      // The row's latest comment is still their skip's reason, which is not a mark that the step is skipped
+      if (await page.$(`${row1} .meta > :not(.step-said):has-text("Skipped")`)) throw new Error('still shows as skipped');
     } finally { await as(`/tasks/${id}/reactions/delete`, { value: '⏭️' }).catch(() => {}); }
   });
 
@@ -979,7 +980,7 @@ try {
     await until('the checklist was never finished again', async () => (await api('/tasks/' + first.id)).done);
     // It is listed under Finished in the last 7 days, in the row In progress uses. Its ring says 3/3, since a skipped step
     // counts as done there. Beside the time, the row says how many steps were skipped and how many comments it has.
-    const title = (await api('/tasks/' + first.id)).title, ended = page.locator('.cl-finished .row').filter({ has: page.locator(`.title:text-is("${title}")`) });
+    const title = (await api('/tasks/' + first.id)).title, ended = page.locator('.cl-finished .row').filter({ has: page.locator('.title', { hasText: title }) });
     await expect(ended).toBeVisible({ timeout: 15000 });
     await expect(ended.locator('> .ring .n')).toHaveText('3/3');
     await expect(ended.locator('.meta')).toContainText('1 skipped');
