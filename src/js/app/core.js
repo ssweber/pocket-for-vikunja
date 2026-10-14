@@ -14,7 +14,7 @@ export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest
 export const newStepBox = () => ({...newBox(), key: '+', keep: false, from: null});
 export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
   titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
-  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, subEnd: false, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], addBox: newStepBox(), newProj: null, runEdit: null, stepEdit: null, from: null, projEdit: null, complete: null,
+  project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, subEnd: false, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], addBox: newStepBox(), newProj: null, runEdit: null, stepEdit: null, asksEdit: null, from: null, projEdit: null, complete: null,
   lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
 
 export default () => ({

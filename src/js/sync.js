@@ -1,7 +1,7 @@
 // The outbox: everything waiting to go to Vikunja, kept on the phone, and the steps each kind of change is sent in.
 import {andList, app, ZERO} from './util.js';
 import {api, ApiError, passing, patchTask} from './api.js';
-import {DONE_MARK, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, SKIP_MARK, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
+import {copiedNotes, DONE_MARK, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, SKIP_MARK, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
 import {repeats} from './dates.js';
 import {removeAssignee} from './quickadd.js';
 
@@ -322,7 +322,7 @@ export const RUN_STEPS = [
       // affects only runs started after the change.
       await patchTask(s.taskId, {title: s.title, done: false, due_date: s.due || ZERO, repeat_after: 0, repeat_mode: 0,
         ...(s.remind ?? s.timed) && {reminders: [{relative_to: 'due_date', relative_period: 0}]},
-        ...s.tpl != null && s.desc != null && {description: withStepLine(notesOnly(s.desc), s.tpl)}});
+        ...s.tpl != null && s.desc != null && {description: withStepLine(copiedNotes(s.desc), s.tpl)}});
       s.ready = true;
     }
   }},
@@ -395,7 +395,7 @@ export const INSERT_STEPS = [
   }},
   // The step starts not done, with no due date, and it doesn't repeat or remind. It is done when someone does it.
   {name: 'mark', done: j => !!j.marked, async run(j){
-    const desc = withAdded(j.tpl != null ? withStepLine(notesOnly(j.desc), j.tpl) : notesOnly(j.desc));
+    const notes = copiedNotes(j.desc), desc = withAdded(j.tpl != null ? withStepLine(notes, j.tpl) : notes);
     // A repeated step's title is its template step's title without T#. An inserted step's title is the one quick add
     // sent, without @people.
     await patchTask(j.taskId, {...(j.from || j.tpl != null) && {title: j.title}, done: false, due_date: ZERO, repeat_after: 0, repeat_mode: 0, reminders: [], description: desc});
@@ -442,7 +442,7 @@ export function slowness(entries, now, offline){
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
 /* Each act's parts, in order. `figure` comes last. A change to a run's step, or a deleted subtask, changes the
    parent's progress. That progress is written in the same entry, so while offline it waits with the change. */
-export const ACTS = {progress: ['progress', 'figure'], done: ['done', 'mark', 'figure'], skip: ['done', 'markSkip', 'note', 'figure'], undone: ['undone', 'unmark', 'figure'], note: ['note'],
+export const ACTS = {progress: ['progress', 'figure'], done: ['done', 'mark', 'figure'], skip: ['done', 'markSkip', 'note', 'figure'], undone: ['undone', 'unmark', 'figure'], note: ['note'], answer: ['note'],
   finish: ['done'], reopen: ['undone'], doneNote: ['done', 'mark', 'note', 'figure'], claim: ['claim'], unclaim: ['unclaim'], delete: ['delete', 'figure'], position: ['position']};
 export const ACT_STEPS = {
   done: a => patchTask(a.task, {done: true}),

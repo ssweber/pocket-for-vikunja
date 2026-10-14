@@ -38,6 +38,39 @@
         <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="checklistRole === 'run' ? openRun(sheet.task.id) : openRun(parentTask.id, sheet.task.id)">Open the checklist</button></template>
       </div></template>
 
+      <!-- What a template step asks to record (app/asks.js). Each ask is a label, a type, and that type's fields, with
+           what keeps it from being saved under it. Save asks writes the asks into the step's notes as pocket:ask lines,
+           in place of the ones there. -->
+      <template x-if="checklistRole === 'tplstep'"><div x-effect="initAskRows()">
+        <div class="h3" id="d-asks-h">Asks</div>
+        <div class="card" id="d-asks">
+          <template x-for="line in placeLines('sheet:asks')" :key="line.n">
+            <!-- include markup/place-line.html -->
+          </template>
+          <template x-for="b in askBad" :key="b.line"><p class="note ask-bad" x-text="'“' + b.line + '”: ' + b.why + '. Saving asks removes this line.'"></p></template>
+          <template x-for="(r, i) in sheet.asksEdit?.rows || []" :key="r.key"><div class="ask-edit">
+            <template x-if="canEdit"><button type="button" class="icon-btn plain ask-x" :aria-label="'Remove the ask ' + (r.label || i + 1)" @click="dropAskRow(i)"><svg class="i"><use href="#i-close"/></svg></button></template>
+            <label class="field ask-name"><span x-text="sheet.asksEdit.rows.length === 1 ? 'Label, optional for a step’s only ask' : 'Label'"></span><input x-model="r.label" :disabled="!canEdit" :placeholder="sheet.asksEdit.rows.length === 1 ? (tplStep?.title || sheet.task.title) : ''"></label>
+            <div class="seg" role="group" aria-label="What it records">
+              <template x-for="ty in [['number', 'Number'], ['yes-no', 'Yes or no'], ['choice', 'Choice'], ['text', 'Text']]" :key="ty[0]"><button type="button" :disabled="!canEdit" :aria-pressed="String(r.type === ty[0])" @click="r.type = ty[0]" x-text="ty[1]"></button></template>
+            </div>
+            <template x-if="r.type === 'number'"><div class="ask-pair">
+              <label class="field"><span>Unit</span><input x-model="r.unit" :disabled="!canEdit"></label>
+              <label class="field"><span>Expected from</span><input x-model="r.low" inputmode="decimal" :disabled="!canEdit"></label>
+              <label class="field"><span>to</span><input x-model="r.high" inputmode="decimal" :disabled="!canEdit"></label>
+            </div></template>
+            <template x-if="r.type === 'choice'"><label class="field"><span>Options, one per line</span><textarea rows="2" x-model="r.options" x-grow="r.options" :disabled="!canEdit"></textarea></label></template>
+            <template x-for="m in [askRowsMade[i]].filter(m => m?.problem)" :key="0"><p class="ask-bad" x-text="m.problem"></p></template>
+          </div></template>
+          <template x-if="canEdit"><button type="button" class="ask-add" id="d-ask-add" @click="addAskRow()"><svg class="i"><use href="#i-plus"/></svg>Add an ask</button></template>
+          <template x-if="asksChanged"><div class="ask-foot">
+            <button type="button" class="btn ghost" @click="resetAskRows()">Cancel</button>
+            <button type="button" class="btn" id="d-asks-save" :disabled="askRowsMade.some(m => m.problem)" @click="saveAskRows()">Save asks</button>
+          </div></template>
+        </div>
+        <p class="note" style="margin:0 2px">Checklists already started keep the asks they started with.</p>
+      </div></template>
+
       <template x-if="!canEdit"><p class="ro-note" id="d-readonly">Read only.</p></template>
       <!-- x-if, not x-show: x-show switches a frame late, so a step opened from its template would flash the
            template's date and steps -->
@@ -86,7 +119,7 @@
         <template x-if="sheet.commentsNote"><p class="note" style="padding:12px 14px;margin:0" x-html="sheet.commentsNote"></p></template>
         <template x-if="!sheet.comments && !sheet.commentsNote"><div class="loading" style="padding:16px">Loading…</div></template>
         <template x-for="c in sheet.comments || []" :key="c.id">
-          <div class="comment"><div class="who"><b x-text="c.author?.name || c.author?.username || 'Someone'"></b> · <span class="num" x-text="new Date(c.created).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div>
+          <div class="comment"><div class="who"><b x-text="c.author?.name || c.author?.username || 'Someone'"></b> · <span class="num" x-text="new Date(c.created).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})"></span></div><div class="desc" style="padding:0" x-html="sanitize(commentShown(c.comment))"></div>
             <button class="icon-btn plain copy-btn" aria-label="Copy this comment" @click="copyComment(c)"><svg class="i"><use href="#i-copy"/></svg></button></div>
         </template>
         <template x-for="c in pendingComments" :key="c.id">

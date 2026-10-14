@@ -316,6 +316,10 @@ function runSteps(){
     step({title: 'Restock the cups', assignees: [jamie], percent_done: .5}),
     step({title: 'Unlock the door', tpl: 'Unlock the door T#30m:machine'}),
     step({title: 'Sweep the floor', tpl: 'Sweep the floor T#10m'}),
+    step({title: 'Check the walk-in cooler', tpl: 'Check the walk-in cooler', description: '<p>Read the probe on the top shelf.</p><p>pocket:ask Temp: number °C 0..5</p>'
+      + '<p>pocket:ask Seal intact: yes-no</p><p>pocket:ask Belt: choice Good | Worn | Replace</p><p>pocket:ask Shelf: choice Top | Second | Third | Fourth | Floor</p><p>pocket:ask Notes: text</p>'}),
+    step({title: 'Check the freezer', tpl: 'Check the freezer', description: '<p>pocket:ask number °C -18..-15</p>', ...doneBy(me, 3),
+      comments: [note(3, me, 3, '-17 °C</p><p>pocket:answer')]}),
     step({title: 'Count the till', assignees: [jamie, sam]}),
   ];
   list[6].from = list[2].id;
@@ -390,7 +394,11 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const finished = this.runView.steps;
     // The step card for three steps: one of yours counting down, one Jamie is on that is half done, and one done by
     // Jamie (tapped in the list). Each is the runView value at that point, used to draw step-card.html.
-    this.specimenRunCards = [7, 1, 4].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
+    // Then a step that asks to record five things, two typed in and not yet sent, the temperature outside its range, and
+    // a done step whose one answer was sent.
+    const [cooler, freezer] = s.steps.filter(x => /^Check the (walk-in|freezer)/.test(x.title));
+    Object.assign(this.runDrafts, {[cooler.id + ':temp']: '7.5', [cooler.id + ':seal intact']: 'Yes'});
+    this.specimenRunCards = [7, 1, 4, s.steps.indexOf(cooler), s.steps.indexOf(freezer)].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
     // A photo added to the first of those steps and still uploading. The card shows a line for it, with a × that cancels the upload.
     this.pending.push({id: 'specimen-photo', taskId: s.steps[7].id, at: new Date().toISOString(), items: [], files: [{key: 'specimen-photo-1', name: 'oven-dial.jpg', type: 'image/jpeg', size: 48213}]});
     const steps = this.runView.steps;

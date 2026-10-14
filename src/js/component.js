@@ -4,7 +4,7 @@ import {colorOf, fmtSize, grow, PRIOS, ZERO} from './util.js';
 import {INSTALLED} from './api.js';
 import {fromLocalInput, isSet, toLocalInput} from './dates.js';
 import {RICH, sanitize} from './html.js';
-import {addedText, durText} from './checklists.js';
+import {addedText, commentShown, durText} from './checklists.js';
 import {runTitle} from './sync.js';
 import {rowGestures, RUN_ROW, SHEET_ROW} from './lists.js';
 import {quarterOn, QUARTERS} from './progress.js';
@@ -18,6 +18,7 @@ import quickadd from './app/quickadd.js';
 import sending from './app/sending.js';
 import checklists from './app/checklists.js';
 import runs from './app/runs.js';
+import asks from './app/asks.js';
 import claims from './app/claims.js';
 import alerts from './app/alerts.js';
 import sheet from './app/sheet.js';
@@ -31,7 +32,7 @@ import throwing from './app/throw.js';
 
 
 // The markup's Alpine expressions use these by name, so main.js makes them globals.
-export const globals = {addedText, colorOf, durText, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize, SHEET_ROW,
+export const globals = {addedText, colorOf, commentShown, durText, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize, SHEET_ROW,
   toLocalInput, ZERO};
 
 // Pocket's own directives: x-style, x-grow and x-box.
@@ -119,7 +120,7 @@ export const directives = Alpine => {
 
 // The component is core.js's data plus the methods of each part. Getters are copied as getters. A spread ({...auth})
 // would call each getter once and keep its value.
-const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
+const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, asks, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
 export const pocket = () => {
   const component = core();
   for (const part of parts) Object.defineProperties(component, Object.getOwnPropertyDescriptors(part));

@@ -11,6 +11,7 @@ import leaving from '../../src/js/app/leaving.js';
 import progress from '../../src/js/app/progress.js';
 import { rowGestures, screenRows, SHEET_ROW } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
+import asks from '../../src/js/app/asks.js';
 import checklists from '../../src/js/app/checklists.js';
 import cards from '../../src/js/app/cards.js';
 import quickadd from '../../src/js/app/quickadd.js';
@@ -108,7 +109,7 @@ test('a deleted row or card is a gap and tapping it restores it, but a done row 
    tickStep, from its box or its card's Done. A step done by a swipe does not vibrate a second time, because the
    swipe already vibrated when it passed its full point. */
 test('tapping a tick makes the phone vibrate, but a step done by a swipe does not vibrate twice', async () => {
-  const felt = [], app = component(views, claims, leaving, runs);
+  const felt = [], app = component(views, claims, leaving, runs, asks);
   navigator.vibrate = p => felt.push(p);
   try {
     Object.assign(app, { toggleSubtask(){}, toggleDone(){}, sheetDone(){}, unlockSound(){}, runDrafts: {}, act: async () => ({}), view: { run: { at: 0 } }, markRow(){} });

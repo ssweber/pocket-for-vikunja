@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter */
+/* global parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -22,8 +22,8 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
 const CHRONO = (await readdir(resolve(ROOT, 'pocket/app'))).find(f => /^chrono-.*\.js$/.test(f));
 const PAGE = `<!doctype html><script type="module">
 import * as chrono from '/pocket/app/${CHRONO}'; window.chrono = chrono;
-const quickadd = await import('/src/js/quickadd.js'), checklists = await import('/src/js/checklists.js'), dates = await import('/src/js/dates.js');
-Object.assign(window, quickadd, checklists, dates);
+const quickadd = await import('/src/js/quickadd.js'), checklists = await import('/src/js/checklists.js'), dates = await import('/src/js/dates.js'), asks = await import('/src/js/asks.js');
+Object.assign(window, quickadd, checklists, dates, asks);
 </script>`;
 const http = createServer(async (req, res) => {
   let file = '';
@@ -464,6 +464,28 @@ const unknownLines = await page.evaluate(() => {
   const from = '<p>pocket:later 7</p><p>Mind the hot plate</p><p>pocket: keys</p><p>pocket:step Taste T#5m</p>';
   return [notesOnly(from), withLinesOf('<p>New note</p>', from)];
 });
+// Asks are read from a description's lines with their formatting ignored, because Vikunja's editor turns typed marks
+// and links into tags. A line in a list is not an ask. An answer comment's lines are read the same way.
+const asksRead = await page.evaluate(() => {
+  const read = stepAsks('<p>Read the probe.</p><p>pocket:ask Where: choice see <a href="https://example.com">https://example.com</a> | <em>draft</em> | <code>code</code></p>'
+    + '<ul><li>pocket:ask Belt: choice A | B</li></ul><p>Notes<br>pocket:ask Temp: number °C 0..5</p>');
+  // A checklist's copy of a step drops the lines that place the step, and keeps its asks and any other line in place.
+  const tpl = '<p>Read the probe.</p><p>pocket:ask Temp: number °C 0..5</p><p>pocket:step Old title</p><p>pocket:added</p><p>pocket:ask Seal: yes-no</p><p>pocket:later 7</p>';
+  return [read.asks.map(a => [a.label, a.options || a.unit]), read.bad, textLines('<p>Temp: 7 °C</p><p>Notes: Door open — again…</p><p>pocket:answer</p>'),
+    withStepLine(copiedNotes(tpl), 'Check the cooler'),
+    // The asks editor replaces the ask lines, also one with formatting or on a line of its own in a paragraph, and
+    // leaves the rest. A line in a list is not an ask.
+    withAskLines('<p>Notes</p><p>pocket:ask Where: choice see <a href="https://example.com">it</a> | <em>draft</em></p><p>Tail<br>pocket:ask Old: text</p>'
+      + '<ul><li>pocket:ask Kept: text</li></ul>', ['pocket:ask Temp: number °C 0..5']),
+    // An answer waiting to be sent counts over an older one from Vikunja.
+    // A line of Pocket's that the editor split with formatting is left out of the notes whole, and editing the notes in
+    // Pocket keeps it whole.
+    notesOnly('<p>Read.</p><p>pocket:ask Where: choice see <a href="https://example.com">it</a> | <em>draft</em></p><p>pocket:order 3<br>Bring cash</p>'),
+    withLinesOf('<p>New</p>', '<p>Read.</p><p>pocket:ask Where: choice see <a href="https://example.com">it</a> | <em>draft</em></p>'),
+    (({answers}) => [answers.temp.text, answers.temp.off, answers.temp.waiting, answers.seal.text, answers.seal.author, answers.seal.mine])(stepAnswers(
+      {description: '<p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal: yes-no</p>', comments: [{id: 1, comment: '<p>Temp: 7 °C</p><p>Seal: yes</p><p>pocket:answer</p>',
+        author: {id: 2, name: 'Jamie'}, created: '2026-10-14T09:00:00Z'}]}, [{html: '<p>Temp: 3 °C</p><p>pocket:answer</p>', at: '2026-10-14T09:05:00Z'}], {id: 1, name: 'Me'}))];
+});
 // Templates. A task is a template if it is done, or not done with a due date, but not if it is a copy being set up as
 // a checklist. Also covered are the template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja
 // moves it to when it is ticked, as checked on Vikunja 2.7.
@@ -555,11 +577,16 @@ if (!same(runOrder, [[3, 9], [9, 3], [9, 12, 3, 20]])) { failed++; console.log(`
 if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9], [3, 20, 9, 12], [3, 9, 12, 20]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
 if (!same(addeds, ['Inserted', 'Repeated', '', '<p>Mind the hot plate</p>'])) { failed++; console.log(`FAIL steps added during a run: ${JSON.stringify(addeds)}`); }
 if (!same(unknownLines, ['<p>Mind the hot plate</p><p>pocket: keys</p>', '<p>New note</p><p>pocket:step Taste T#5m</p><p>pocket:later 7</p>'])) { failed++; console.log(`FAIL a line from a newer Pocket: ${JSON.stringify(unknownLines)}`); }
+if (!same(asksRead, [[['Where', ['see https://example.com', 'draft', 'code']], ['Temp', '°C']], [], ['Temp: 7 °C', 'Notes: Door open — again…', 'pocket:answer'],
+  '<p>Read the probe.</p><p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal: yes-no</p><p>pocket:later 7</p><p>pocket:step Check the cooler</p>',
+  '<p>Notes</p><p>Tail</p><ul><li>pocket:ask Kept: text</li></ul><p>pocket:ask Temp: number °C 0..5</p>',
+  '<p>Read.</p><p>Bring cash</p>', '<p>New</p><p>pocket:ask Where: choice see it | draft</p>', ['3 °C', false, true, 'Yes', 'Jamie', false]]))
+  { failed++; console.log(`FAIL asks and answers read from HTML: ${JSON.stringify(asksRead)}`); }
 const roundsWant = [true, true, false, false, false, false, false, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
   'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a checklist starts', '',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z', null];
 if (!same(rounds, roundsWant)) { failed++; console.log(`FAIL templates that come round: ${JSON.stringify(rounds)}`); }
-const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 2, total = cases.length + lists.length + reads.length + wf;
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 6, total = cases.length + lists.length + reads.length + wf;
 console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length + reads.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;

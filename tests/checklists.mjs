@@ -1680,6 +1680,87 @@ try {
     if (!(await Promise.all([tpl.id, a.id, b.id].map(gone))).every(Boolean)) throw new Error('the template or a step is still there');
   });
 
+  await step('asks-on-a-step', async () => {
+    // A template step's asks are written in the step's sheet, as pocket:ask lines in its notes. A checklist started from
+    // it shows a field for each ask, Save sends the answers in a comment, and Done sends what changed before the tick.
+    const make = (title, f = {}) => api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title, ...f }) });
+    const name = `Cooler ${stamp}`, tpl = await make(name), a = await make('Check the cooler', { done: true, description: '<p>Read the probe.</p>' }), b = await make('Wipe up', { done: true });
+    const label = (await api('/labels?s=template')).items?.find(l => l.title === 'template') || (await api('/labels')).items?.find(l => l.title === 'template');
+    for (const st of [a, b]) await api(`/tasks/${tpl.id}/relations`, { method: 'POST', body: JSON.stringify({ other_task_id: st.id, relation_kind: 'subtask' }) });
+    await api(`/tasks/${tpl.id}/labels`, { method: 'POST', body: JSON.stringify({ label_id: label.id }) });
+    await api('/tasks/' + tpl.id, { method: 'PATCH', body: JSON.stringify({ done: true, description: `<p>pocket:order ${a.id} ${b.id}</p>` }) });
+    let run = null;
+    try {
+      await page.evaluate(() => { location.hash = '#/today'; });
+      await page.evaluate(() => { location.hash = '#/checklists'; });
+      await page.click(`.cl-tpl:has(.title:text-is("${name}")) .body`, { timeout: 15000 });
+      await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
+      await page.click(`#step-notes-${a.id}`);
+      await page.waitForSelector('#d-asks');
+      const row = n => page.locator('#d-asks .ask-edit').nth(n);
+      await page.click('#d-ask-add');
+      await row(0).locator('.ask-name input').fill('Temp');
+      await row(0).getByLabel('Unit').fill('°C');
+      await row(0).getByLabel('Expected from').fill('5');
+      await row(0).getByLabel('to', { exact: true }).fill('0');
+      // A row that can't be saved says why, and Save asks waits until it can.
+      await expect(row(0).locator('.ask-bad')).toHaveText('The range starts above where it ends');
+      await expect(page.locator('#d-asks-save')).toBeDisabled();
+      await row(0).getByLabel('Expected from').fill('0');
+      await row(0).getByLabel('to', { exact: true }).fill('5');
+      await page.click('#d-ask-add');
+      await row(1).locator('.ask-name input').fill('Seal');
+      await row(1).getByRole('button', { name: 'Yes or no' }).click();
+      await page.click('#d-asks-save');
+      await said('sheet:asks', 'Asks saved');
+      const notes = (await api('/tasks/' + a.id)).description;
+      if (notes !== '<p>Read the probe.</p><p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal: yes-no</p>') throw new Error('the step\'s notes are ' + notes);
+      await expect(page.locator('#d-desc')).not.toContainText('pocket:');
+      await page.click('#d-open-template');
+      await expect(page.locator('#d-subtasks .row:nth-of-type(1) .meta')).toContainText('Asks: Temp, Seal', { timeout: 10000 });
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+
+      // The checklist's copy of the step keeps its asks, and its card has a field for each.
+      await page.click(`.cl-tpl:has(.title:text-is("${name}")) .cl-start`, { timeout: 15000 });
+      await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+      await page.click('#start-go');
+      await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+      run = +(await page.evaluate(() => location.hash)).split('/').pop();
+      const copy = (await subtasks(run)).find(s => s.title === 'Check the cooler');
+      await expect(page.locator('#step-asks .ask-label')).toHaveText([/^Temp/, /^Seal/]);
+      await expect(page.locator('#run-steps .row:nth-of-type(1) .meta')).toContainText('Asks: Temp, Seal');
+
+      // A number outside its range is flagged as it is typed, and saved as typed. Save sends both answers in one comment.
+      await page.getByLabel('Temp', { exact: true }).fill('7,5');
+      await expect(page.locator('#step-asks .answer-note')).toHaveText('Outside the expected 0 to 5 °C');
+      await page.locator('#step-asks').getByRole('button', { name: 'Yes', exact: true }).click();
+      await expect(page.locator('#step-save-answers')).toHaveText('Save 2 answers');
+      await page.click('#step-save-answers');
+      await synced(page);
+      await expect(page.locator('#step-save-answers')).toHaveCount(0);
+      const comments = async () => ((await task(copy.id)).comments || []).map(c => c.comment);
+      if (JSON.stringify(await comments()) !== JSON.stringify(['<p>Temp: 7.5 °C</p><p>Seal: Yes</p><p>pocket:answer</p>'])) throw new Error('the answers sent are ' + JSON.stringify(await comments()));
+      if ((await task(copy.id)).done) throw new Error('Save marked the step done');
+      await expect(page.locator('#step-extra .comment').first()).not.toContainText('pocket:answer');
+
+      // Done sends only the answer that changed, as its own comment, then marks the step done.
+      await page.getByLabel('Temp', { exact: true }).fill('4');
+      await page.click('#step-done');
+      await synced(page);
+      const done = await task(copy.id);
+      if (!done.done || JSON.stringify((done.comments || []).map(c => c.comment).sort()) !== JSON.stringify(['<p>Temp: 4 °C</p><p>pocket:answer</p>', '<p>Temp: 7.5 °C</p><p>Seal: Yes</p><p>pocket:answer</p>']))
+        throw new Error(`done ${done.done}, comments ${JSON.stringify(done.comments?.map(c => c.comment))}`);
+      await expect(page.locator('#run-steps .row:nth-of-type(1) .meta')).toContainText('Temp 4 °C');
+      await expect(page.locator('#run-steps .row:nth-of-type(1) .meta')).toContainText('Seal Yes');
+      await page.click('#run-steps .row:nth-of-type(1) .body');
+      await expect(page.locator('#step-asks .ask-label .by').first()).toHaveText(/^You · /);
+      await expect(page.getByLabel('Temp', { exact: true })).toHaveValue('4');
+    } finally {
+      for (const id of [...(run ? (await subtasks(run)).map(s => s.id) : []), run, a.id, b.id, tpl.id].filter(Boolean)) await api('/tasks/' + id, { method: 'DELETE' }).catch(() => {});
+    }
+  });
+
   await step('make-a-template-from-the-menu', async () => {
     // A task with subtasks in a project for checklists can be made a template from its ⋯ menu. An ordinary task's sheet shows no card offering that.
     const make = async (title) => api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title }) });

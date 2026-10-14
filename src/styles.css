@@ -595,6 +595,44 @@ a.sec-act{text-decoration:none}
 .step-acts{display:flex;gap:10px;margin-top:16px}
 .step-acts .btn{min-height:60px}
 .step-acts .go-on{flex:1;max-width:360px}
+/* What a step asks to record (step-card.html). A number is set large, as a reading. A picked option is tinted, so Done
+   stays the one solid button. */
+.ask{margin-top:12px}
+.ask-label{display:flex;align-items:baseline;gap:8px;font-size:15px;font-weight:650;margin:0 2px 6px;overflow-wrap:anywhere}
+.ask-label .by{margin-left:auto;font-size:13px;font-weight:400;color:var(--muted);white-space:nowrap}
+.asks-save{margin-top:14px}
+.answer-in:disabled,.answer-opts button:disabled{opacity:.7}
+.meta .ans{color:var(--ink)}
+.meta .ans.off{color:var(--today);font-weight:600}
+.meta .ans.none{font-style:italic}
+/* The asks editor on a template step's sheet (sheet/task.html) */
+.ask-edit{position:relative;padding:12px 14px 14px}
+.ask-edit + .ask-edit{border-top:1px solid var(--line)}
+.ask-edit .field{margin-bottom:10px}
+.ask-name{margin-right:40px}
+.ask-x{position:absolute;top:8px;right:6px}
+.ask-edit .seg{margin:0 0 12px}
+.ask-edit .seg button{font-size:14px;padding:8px 4px}
+.ask-pair{display:flex;gap:10px}
+.ask-pair .field{flex:1;min-width:0}
+.ask-bad{margin:2px 2px 0;font-size:14px;font-weight:600;color:var(--overdue);overflow-wrap:anywhere}
+#d-asks > .ask-bad{margin:0;padding:12px 14px;font-weight:400}
+.ask-add{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;padding:12px 14px;border:0;border-top:1px solid var(--line);background:transparent;color:var(--accent);font-weight:650;font-size:17px;text-align:left}
+#d-asks > .ask-add:first-child{border-top:0}
+.ask-foot{display:flex;gap:10px;justify-content:flex-end;padding:0 14px 14px}
+.answer-line{display:flex;align-items:center;gap:10px}
+.answer-in{flex:1;min-width:0;height:56px;padding:0 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);font-size:22px;font-weight:650;outline:0;font-variant-numeric:tabular-nums}
+.answer-in:focus{border-color:var(--accent)}
+.answer-in.text,.answer-pick{font-size:17px;font-weight:400}
+.answer-pick{width:100%}
+.answer-unit{font-size:17px;color:var(--muted);overflow-wrap:anywhere}
+.answer-sign{flex:none;width:56px;height:56px;padding:0;font-size:22px}
+.answer-note{font-size:14px;color:var(--muted);margin:6px 2px 0}
+.answer-note.off{color:var(--today);font-weight:600}
+.answer-note.bad{color:var(--overdue);font-weight:600}
+.answer-opts{display:flex;flex-wrap:wrap;gap:8px}
+.answer-opts button{flex:1 1 28%;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:52px;padding:6px 10px;border-radius:12px;border:1.5px solid var(--line);background:transparent;font-size:17px;font-weight:650;overflow-wrap:anywhere}
+.answer-opts button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}
 .step-added{font-size:14px;color:var(--muted);margin-bottom:4px}
 #run-steps .meta .added{color:var(--muted)}
 .row .step-del{margin:-1px 0;width:34px;height:34px;color:var(--danger)}

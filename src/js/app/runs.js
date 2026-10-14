@@ -5,8 +5,9 @@ import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, comesRound, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, commentShown, comesRound, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
+import {stepAnswers} from '../asks.js';
 import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {completeAsk, sentLater, startedText} from '../messages.js';
@@ -329,7 +330,7 @@ export default {
     if (!r) return null;
     const me = this.user, myName = me?.name || me?.username || 'You';
     const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.run.id);
-    const waitingNote = a => ({id: a.id, comment: a.html, author: myName, when: 'Waiting to send'});
+    const waitingNote = a => ({id: a.id, comment: commentShown(a.html), author: myName, when: 'Waiting to send'});
     // Place pending inserted or repeated steps before their original successor, or after their predecessor if that
     // successor is gone. Omit cancelled steps.
     const base = [...r.steps];
@@ -350,9 +351,9 @@ export default {
       const doers = () => by.map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
       for (const a of acts) if (this.actTask(a) === s.id) {
-        if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote') notes.push(waitingNote(a));
+        if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote' || a.op === 'answer') notes.push(waitingNote(a));
         if (a.op === 'progress') { pct = a.pct; continue; }
-        if (a.op === 'note' || a.op === 'claim' || a.op === 'unclaim') continue;
+        if (a.op === 'note' || a.op === 'answer' || a.op === 'claim' || a.op === 'unclaim') continue;
         waiting = true; slow = this.slow.includes(a.id); done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
       }
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
@@ -361,7 +362,7 @@ export default {
       // Show who completed or skipped the step, with their picture and reaction badge.
       const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))
         : new Date(doneAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'})) : '';
-      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), attachments: s.attachments, done, skipped, waiting, slow, notes, doneAt, slot, by, pct,
+      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), ...stepAnswers(s, acts.filter(a => a.op === 'answer' && this.actTask(a) === s.id), me), attachments: s.attachments, done, skipped, waiting, slow, notes, doneAt, slot, by, pct,
         added: s.added || '', pending: s.pending || null, slowAdd: !!s.pending && this.slow.includes(s.pending), from: s.from || null, tpl: s.tpl,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (slow ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at)};
     });
@@ -534,10 +535,13 @@ export default {
     if (others.length && !confirm(`${others.join(' and ')} marked “${s.title}” done. Only they can remove their ✅ in Vikunja, so it stays. Mark the step not done anyway?`)) return false;
     const typed = op === 'undone' ? '' : (this.runDrafts[s.id] || '').trim();
     if (typed) this.runDrafts[s.id] = '';
+    // Done also sends what is typed or picked in the step's fields, as its own comment, before the tick.
+    const answers = op === 'done' ? this.takeAnswers(s) : '';
     if (op === 'skip') html = textToHtml('Skipped' + (typed ? ': ' + typed : ''));
     if (op === 'done' && typed) { op = 'doneNote'; html = textToHtml(typed); }
     if (current && op !== 'undone') { r.at = this.nextStep(s); if (r.last) r.last.held = null; }
     if (!felt) haptic(tickFeel(op === 'undone'));
+    if (answers) await this.act({op: 'answer', task: s.id, html: answers});
     await this.act({op, task: s.id, html});
   },
   /* Advance to the next open step, or an earlier timed step that is due, wrapping to the first open step. Return
@@ -660,7 +664,7 @@ export default {
   // Name an action for a message, for example "A tick on “Check the milk fridge”".
   actWhat(a){
     const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '', step = title ? `“${parseStep(title).title}”` : 'a step';
-    return {note: 'A comment' + on, doneNote: `Marking ${step} done, with its comment`, skip: 'A skip' + on,
+    return {note: 'A comment' + on, answer: 'Answers' + on, doneNote: `Marking ${step} done, with its comment`, skip: 'A skip' + on,
       done: 'A tick' + on, undone: `Marking ${step} not done`, progress: 'Progress' + on, finish: 'Finishing the checklist', reopen: 'Reopening the checklist',
       claim: 'Assigning' + (title ? ` “${parseStep(title).title}”` : ' it') + ' to you', unclaim: 'Unassigning you from' + (title ? ` “${parseStep(title).title}”` : ' it'),
       position: 'Moving' + (title ? ` “${title}”` : ' a task'),
@@ -708,7 +712,7 @@ export default {
     if (a.op === 'finish' || a.op === 'reopen') { r.run.done = a.op === 'finish'; return; }
     const s = r.steps.find(x => x.id === a.task), me = this.user;
     if (s && a.op === 'progress') { s.percent_done = a.pct / 100; return; }
-    if (s && a.op !== 'note') {
+    if (s && a.op !== 'note' && a.op !== 'answer') {
       const rs = {...s.reactions}, without = m => (rs[m] || []).filter(u => u.id !== me?.id);
       rs[DONE_MARK] = without(DONE_MARK); rs[SKIP_MARK] = without(SKIP_MARK);
       if (a.op !== 'undone') rs[a.op === 'skip' ? SKIP_MARK : DONE_MARK].push(me);

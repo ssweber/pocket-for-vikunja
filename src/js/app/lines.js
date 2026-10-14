@@ -24,7 +24,7 @@ const SCREEN = {
 };
 // The places in a task's sheet, each below the part of the sheet it is about. Any other sheet shows its message at
 // the top.
-const TASK_SHEET = ['top', 'due', 'notes', 'files', 'subtasks', 'comments', 'props'];
+const TASK_SHEET = ['top', 'due', 'notes', 'files', 'asks', 'subtasks', 'comments', 'props'];
 const flashTimers = {};
 
 export default {

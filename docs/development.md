@@ -41,6 +41,7 @@ Each file in `src/js/` starts with a comment saying what it is for. By what you 
 | Quick add: parsing a line or a pasted list, the add boxes, the box under a row | `quickadd.js`, `app/quickadd.js`, `app/seat.js` |
 | What is waiting to be sent, and sending it | `sync.js`, `app/sending.js`, `app/outbox.js` |
 | Checklists: templates, checklists in progress, timed steps | `checklists.js`, `app/checklists.js`, `app/runs.js`, `app/alerts.js` |
+| What a step asks to record: the fields on its card, the answers, and the editor on a template step | `asks.js`, `app/asks.js` |
 | A task's sheet | `app/sheet.js`, `markup/sheet/` |
 | A project's task order | `order.js` |
 | Due dates, as stored and as shown | `dates.js` |

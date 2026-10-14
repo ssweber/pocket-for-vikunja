@@ -65,10 +65,15 @@ export const placeBefore = (ids, id, before, after = null) => {
 };
 // The description with its line matching `re` set to `text`, or removed when `text` is null. The rest of the
 // description is untouched.
+// The nodes of the line a text node starts: the node and its siblings up to the next line break. Vikunja's editor
+// splits a line into several nodes when it formats part of it, as it does a link.
+const restOf = n => { const out = [n]; if (!n.previousSibling || n.previousSibling.nodeName === 'BR') for (let x = n.nextSibling; x && x.nodeName !== 'BR'; x = x.nextSibling) out.push(x); return out; };
 function withLine(html, re, text){
   const root = parseFragment(html || ''), [line, ...extra] = markLines(root, re);
   for (const n of text !== null ? extra : [line, ...extra].filter(Boolean)) {
-    const p = n.parentNode, br = [n.nextSibling, n.previousSibling].find(x => x?.nodeName === 'BR');
+    const p = n.parentNode;
+    restOf(n).slice(1).forEach(x => x.remove());
+    const br = [n.nextSibling, n.previousSibling].find(x => x?.nodeName === 'BR');
     n.remove(); br?.remove();
     if (p !== root && !p.textContent.trim() && !p.querySelector('img, hr, table')) p.remove();   // the paragraph is now empty
   }
@@ -86,6 +91,9 @@ export const withAdded = html => withLine(html, ADDED_LINE, 'pocket:added');
 const ANY_LINE = /^pocket:\S/i, KNOWN_LINES = [ORDER_LINE, RUN_LINE, STEP_LINE, ADDED_LINE];
 // The notes alone, without Pocket's lines.
 export const notesOnly = html => withLine(html || '', ANY_LINE, null);
+// A step's notes as a checklist copies them: without the lines that place a step in a template or a checklist, which
+// the copy gets anew. Every other line stays where it is, so a step's asks, and a newer Pocket's lines, come along.
+export const copiedNotes = html => KNOWN_LINES.reduce((h, re) => withLine(h, re, null), html || '');
 // `html` with Pocket's lines copied over from the description `from`.
 export function withLinesOf(html, from){
   const order = stepOrder(from), step = stepLine(from);
@@ -95,7 +103,7 @@ export function withLinesOf(html, from){
   if (isAddedDesc(from)) html = withAdded(html);
   const root = parseFragment(html), kept = new Set(markLines(root, ANY_LINE).map(n => n.nodeValue.trim()));
   for (const n of markLines(parseFragment(from || ''), ANY_LINE)) {
-    const text = n.nodeValue.trim();
+    const text = restOf(n).map(x => x.textContent).join('').trim();
     if (KNOWN_LINES.some(re => re.test(text)) || kept.has(text)) continue;
     const p = root.ownerDocument.createElement('p'); p.textContent = text; root.append(p); kept.add(text);
   }
@@ -396,7 +404,9 @@ export async function inBatches(list, n, fn){
   return out;
 }
 const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
-export const noteOf = c => ({id: c.id, comment: c.comment, author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
+// A comment as shown. An answer comment's last line, pocket:answer, is Pocket's and is left out.
+export const commentShown = html => /pocket:answer/i.test(html || '') ? notesOnly(html) : html;
+export const noteOf = c => ({id: c.id, comment: commentShown(c.comment), author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
 /* Split a run's title into {template, day, name, old}. Returns null for a title not in that shape. runTitle writes
    "Opening up · Oct 8 · #2", which is the template's name, the day, and then a number or the name typed.
 
