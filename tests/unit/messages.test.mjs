@@ -166,6 +166,15 @@ test('on a checklist, a note on a step or the checklist is called a comment, as 
   assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'Marking “Unlock the door” done, with its comment');
 });
 
+test('dropping a finish or a reopen says what Vikunja has, also when only its first part was sent', () => {
+  const a = component(outbox, runs);
+  Object.assign(a, { pending: [], failed: [], view: { groups: [], run: null }, actTitle: () => 'Closing up' });
+  assert.deepEqual([0, 1].map(stage => a.dropText({ op: 'finish', task: 1, stage })),
+    ['The checklist stays open in Vikunja.', 'The checklist stays finished in Vikunja. The rest of the change is not sent.']);
+  assert.deepEqual([0, 1].map(stage => a.dropText({ op: 'reopen', task: 1, stage })),
+    ['The checklist stays finished in Vikunja.', 'The checklist stays open in Vikunja. The rest of the change is not sent.']);
+});
+
 test('the question a parent\'s ring asks lists the tasks that close with it, naming the first three and counting the rest', () => {
   assert.equal(namesText(['Load chairs']), 'Load chairs');
   assert.equal(namesText(['Load chairs', 'Book the hall']), 'Load chairs and Book the hall');

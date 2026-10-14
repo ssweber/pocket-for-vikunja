@@ -3,7 +3,7 @@ import {andList, cache, store, taskDrafts, TZ} from '../util.js';
 import {allPages, api, NetError, patchTask, why} from '../api.js';
 import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
-import {CHECKLIST_MARK, comesRound, draftSteps, endedOf, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
+import {allComments, CHECKLIST_MARK, comesRound, draftSteps, endedOf, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
@@ -213,12 +213,15 @@ export default {
         // Templates: done ones, and open ones with a due date.
         labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `labels in ${labels.join(', ')}`})) : [],
         this.openTasks(p.id),
-        // Everything done in the last FINISHED_DAYS: the checklists finished then, and the steps that tell how each went
+        // Everything done in the last FINISHED_DAYS: the checklists finished then, and the steps that tell how each went.
+        // A known gap: a step done before that, in a checklist finished since, is left out of its skips and comments.
         allPages(`/projects/${p.id}/tasks?` + new URLSearchParams([['filter', `done = true && done_at >= '${since}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'],
-          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']]))]);
-      // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there
-      const finished = done.filter(t => this.isRunTask(t));
+          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']])).then(list => Promise.all(list.map(allComments)))]);
+      // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there. That
+      // includes its open steps, or a step done on this phone and undone elsewhere would still count as done.
+      const finished = done.filter(t => this.isRunTask(t)), ids = new Set(finished.map(t => t.id));
       for (const s of done) if (!this.isRunTask(s)) own(s);
+      for (const s of open) if (s.related_tasks?.parenttask?.some(x => ids.has(x.id))) own(s);
       return {project: {id: p.id, title: p.title},
         templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,
@@ -569,6 +572,8 @@ export default {
     // A New template row already holds its text. If it was left empty, remove it.
     if (e?.key) { this.sheet.stepEdit = null; if (!e.text.trim()) this.dropDraftRow('new', this.draftRows('new').findIndex(r => r.key === e.key)); return; }
     if (!e || !st || st.id !== e.id) return;
+    // The user's access can arrive while the box is open, and it may not let them change this template.
+    if (!this.canEdit) { this.sheet.stepEdit = null; this.say('Not changed. Only the person who made this template or a project admin can change it.', {place: 'sheet:subtasks', cls: 'failed'}); return; }
     const d = this.stepEditDraft(i), drops = Object.keys(e.drop || {}).filter(k => e.drop[k]);
     const todo = d ? this.subtasks.map((s, k) => ({s, was: s.title, title: d.titles[k]})).filter(x => x.title !== x.was) : [];
     if (!todo.length && !drops.length) { this.sheet.stepEdit = null; return; }

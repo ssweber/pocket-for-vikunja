@@ -15,6 +15,7 @@ import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import views from '../../src/js/app/views.js';
 import sending from '../../src/js/app/sending.js';
+import { todayGroups } from '../../src/js/lists.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
 const on = (d, h = 0) => new Date(2026, 9, d, h).toISOString();
@@ -302,6 +303,13 @@ test('the text shared from a checklist\'s screen matches its ring, counting a ti
   const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');
   assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);
+});
+
+test('Done today\'s Copy leaves out a task done yesterday, in a copy of Today saved then, as the screen does', () => {
+  const app = component(sending, sharing), yesterday = new Date(Date.now() - 864e5).toISOString();
+  Object.assign(app, { route: { name: 'today' }, pending: [], projById: new Map(), view: { groups: todayGroups(), cards: {} }, shareTitle: t => t.title, shareRing: () => null, copyOut: text => text });
+  app.view.groups.find(g => g.key === 'donetoday').tasks.push({ id: 1, title: 'Fix the till', done: true, done_at: yesterday }, { id: 2, title: 'Order the cups', done: true, done_at: new Date().toISOString() });
+  assert.deepEqual(app.copyDoneToday().split('\n').slice(1), ['✓ Order the cups']);
 });
 
 test('Done today\'s Copy gives the day, then each done task with its project, and a checklist with its steps done of all', () => {

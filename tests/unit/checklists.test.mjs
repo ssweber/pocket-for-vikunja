@@ -119,3 +119,46 @@ test('a template and its steps change only for the person who made it or a proje
   Object.assign(app, { perms: { 7: 0 }, sheet: { task: tpl }, checklistRole: 'template' });
   assert.deepEqual([app.canEdit, app.templateNote], [false, 'Read only. You can see this template, but not start a checklist from it. Ask the project\'s owner for write access.']);
 });
+
+// Checklists for a project with checklist `run` finished today, and `open` its open tasks. `more` answers any other
+// path.
+const loaded = async (run, open, more = () => null) => {
+  const { component } = await import('./fake.mjs'), parts = await Promise.all(['tasks', 'checklists', 'runs', 'cards'].map(p => import(`../../src/js/app/${p}.js`)));
+  const app = component(...parts.map(p => p.default)), json = x => new Response(JSON.stringify(x), { status: 200 });
+  Object.assign(app, { checklistProjects: [{ id: 7, title: 'Checklists' }], checklistIds: new Set([7]), perms: {}, pending: [], loadLabels: async () => [] });
+  globalThis.fetch = async url => {
+    const u = new URL(url), f = u.searchParams.get('filter');
+    return json(more(u.pathname) ?? (f?.startsWith('done = true') ? { items: [run], total_pages: 1 } : f === 'done = false' ? { items: open, total_pages: 1 } : { id: 7, max_permission: 2 }));
+  };
+  return app;
+};
+const finishedRun = (subtask, more = {}) => ({ id: 1, project_id: 7, title: 'Closing up', done: true, done_at: new Date().toISOString(), description: '',
+  related_tasks: { copiedfrom: [{ id: 99 }], subtask }, ...more });
+
+test('a finished checklist\'s ring counts its steps as Vikunja has them, also a step done on this phone and undone elsewhere', async () => {
+  const step = { id: 2, project_id: 7, title: 'Mop', done: false, description: '', related_tasks: { parenttask: [{ id: 1 }] } }, run = finishedRun([step]);
+  const app = await loaded(run, [step]);
+  app.keep({ ...step, done: true });                                       // this phone last saw it done
+  const [cl] = await app.readChecklists(t => app.keep(t));
+  assert.equal(app.ringOf(cl.finished[0]).done, 0);
+});
+
+test('a finished checklist counts all its comments, past the 50 that Vikunja sends with the task', async () => {
+  const note = i => ({ id: i, comment: '<p>Note</p>' }), run = finishedRun([], { comments: Array.from({ length: 50 }, (_, i) => note(i)) });
+  const app = await loaded(run, [], path => path.endsWith('/tasks/1/comments') ? { items: Array.from({ length: 55 }, (_, i) => note(i)), total_pages: 1 } : null);
+  const [cl] = await app.readChecklists(t => t);
+  assert.equal(cl.ended[1].comments, 55);
+});
+
+test('a template\'s step being edited isn\'t saved when the user\'s access arrives and doesn\'t let them change the template', async () => {
+  const { component } = await import('./fake.mjs'), { default: runs } = await import('../../src/js/app/runs.js'), { default: checklists } = await import('../../src/js/app/checklists.js');
+  const app = component(runs, checklists), step = { id: 2, title: 'Mop', done: true, project_id: 7 }, saves = [];
+  const tpl = { id: 1, title: 'TEMPLATE: Closing up', done: true, project_id: 7, created_by: { id: 1 }, labels: [{ title: 'template' }], related_tasks: { subtask: [step] } };
+  Object.assign(app, { user: { id: 2 }, perms: {}, subtasks: [step], checklistIds: new Set([7]), sheet: { task: tpl, kind: 'task', stepEdit: null },
+    saveTask: async (id, patch) => { saves.push(id); return patch; } });
+  app.sheet.stepEdit = { id: 2, text: 'Mop the floor', ignore: {} };
+  app.perms[7] = 1;                                                        // write, and someone else made the template
+  await app.saveStepEdit(0);
+  assert.deepEqual([saves, app.sheet.stepEdit, step.title], [[], null, 'Mop']);
+  assert.equal(app.toast.msg, 'Not changed. Only the person who made this template or a project admin can change it.');
+});

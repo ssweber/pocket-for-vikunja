@@ -96,9 +96,10 @@ export default {
   },
   // Copy the same text straight to the clipboard, from the Copy button beside ⋯. A message says so at `place`.
   copyProgress(what, place){ const doc = this.shareDoc(what); if (doc) return this.copyOut(shareText(doc), place, COPIED.text); },
-  // Copy Done today's done tasks as text, each with its project. A row unticked there since it loaded is left out.
+  /* Copy Done today's done tasks as text, each with its project. A row unticked there since it loaded is left out. It
+     reads listBase, as the screen does, so a copy of Today saved yesterday doesn't copy yesterday's tasks. */
   copyDoneToday(){
-    const g = this.view.groups.find(x => x.key === 'donetoday');
+    const g = this.listBase.find(x => x.key === 'donetoday');
     if (!g) return;
     const items = g.tasks.filter(t => t.done).map(t => ({title: this.shareTitle(t), project: this.projById.get(t.project_id)?.title, ring: this.shareRing(t)}));
     return this.copyOut(doneTodayText(items), 'donetoday', COPIED.text);

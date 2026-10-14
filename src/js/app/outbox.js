@@ -89,7 +89,8 @@ export default {
     const t = quoted(a.label || this.actTitle(a.task) || 'it'), part = a.stage > 0;
     return {done: part ? `${t} stays marked done in Vikunja. The rest of the change is not sent.` : `${t} stays not done in Vikunja.`,
       undone: part ? `${t} stays not done in Vikunja. The rest of the change is not sent.` : `${t} stays done in Vikunja.`,
-      finish: 'The checklist stays open in Vikunja.', reopen: 'The checklist stays finished in Vikunja.',
+      finish: part ? 'The checklist stays finished in Vikunja. The rest of the change is not sent.' : 'The checklist stays open in Vikunja.',
+      reopen: part ? 'The checklist stays open in Vikunja. The rest of the change is not sent.' : 'The checklist stays finished in Vikunja.',
       claim: `You are not assigned to ${t}.`, unclaim: `${t} stays assigned to you.`, progress: `${t} keeps the progress it has in Vikunja.`,
       note: 'The comment isn\'t posted. Its text goes back into the comment box.', delete: `${t} stays in Vikunja.`, position: `${t} stays where it was in Vikunja's list.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
   },

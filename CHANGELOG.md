@@ -40,6 +40,11 @@ is a new 0.x.y.
 - A `pocket:` line that Vikunja's web app partly formats, such as one with a link in it, is now hidden and kept whole.
 - A change waiting to be sent redraws only the rings it changes, not every checklist's ring.
 - Ticking a shared task again soon after unticking it keeps your ✅, so the task stays in Done today after a reload.
+- Done today's Copy leaves out yesterday's tasks, as the screen does, in a copy of Today saved yesterday.
+- A finished checklist's ring counts a step undone on another phone, and its comment count includes comments past
+  the first 50.
+- Dropping a finish or a reopen that only partly reached Vikunja says what Vikunja now has.
+- A template step being edited isn't saved if the user's access arrives and doesn't let them change the template.
 
 ### What Pocket writes into Vikunja
 
