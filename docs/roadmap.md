@@ -56,6 +56,9 @@ template for every list, with the parts a given list does not show left in it.
 - A release is made on GitHub: **Releases → Draft a new release**, a new tag on `main` like `v0.1.0`, and
   **Publish**. The tag is the version. `.github/workflows/release.yml` writes it into `Version()` in `main.go` and
   attaches `pocket-v0.1.0.zip`, the folder to install. In the repo the version stays `0.0.0-dev`.
+- `CHANGELOG.md` gets a line under Unreleased for each change a user would notice, in the commit that makes it. A
+  change to what Pocket writes into Vikunja is listed on its own. At a release, Unreleased becomes the version and
+  the date, and the release notes start from it.
 - `.github/workflows/ci.yml` checks the build, runs ESLint and every test on each pull request to `main` and each
   push to it, not on every push to `dev`.
 

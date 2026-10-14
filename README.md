@@ -17,7 +17,7 @@ Pocket is unofficial. Report problems here, not to Vikunja.
 
 ## What it adds
 
-**Checklists.** Pocket creates step-by-step checklists from a task template. Each checklist records who completed each step and when. Steps can have timers relative to the previous step, and templates can recur on a schedule. Checklists are ordinary Vikunja tasks and appear in the web app.
+**Checklists.** Pocket creates step-by-step checklists from a task template. Each checklist records who completed each step and when. Steps can have timers relative to the previous step, and templates can recur on a schedule. A step can ask for answers, such as a temperature or a yes or no, and each answer is saved as a comment that an export can read. Checklists are ordinary Vikunja tasks and appear in the web app.
 
 **Quick add.** Type a task using Vikunja's quick-add syntax: `+project`, `@user`, `*label`, `!priority`, and natural-language dates. Pocket shows what it parsed before you submit. Paste a list and each line becomes a task. Indented lines become subtasks.
 
@@ -65,7 +65,7 @@ Timers sound while Pocket is open. When it's closed, reminders arrive by Vikunja
 
 ## Documentation
 
-The [guide](docs/guide.md) covers the full quick-add syntax, behavior you might not expect, checklist templates, step times, offline behavior, API tokens, and troubleshooting.
+The [guide](docs/guide.md) covers the full quick-add syntax, behavior you might not expect, checklist templates, asks, step times, offline behavior, API tokens, and troubleshooting.
 
 ## Development
 

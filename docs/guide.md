@@ -7,6 +7,7 @@ Pocket's syntax, the behaviour you might not expect, and the server setup. The [
 - [Assigning](#assigning)
 - [Checklists](#checklists)
 - [Timed steps](#timed-steps)
+- [Asks](#asks)
 - [Step times](#step-times)
 - [Reminders](#reminders)
 - [Offline](#offline)
@@ -83,7 +84,7 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 **Setup.** Under Projects, **Set up checklists** creates a project with an example template. Or mark an existing project with **Use for checklists** in its **⋯**. Share the project in Vikunja's web app with **Read & write**. Vikunja defaults to *Read only*, which lets people see checklists but not tick steps.
 
-**Templates.** Steps are parsed like quick add (`@user`, `*front`, `!3`) except for dates. Step timing is separate (see **Timed steps**). Tap a step to edit it. Hold to reorder. Swipe left to delete. **Notes and photos** under a step are copied into every checklist, as are the template's own notes, attachments, labels and assignees. An existing task with subtasks becomes a template with **Use as checklist template**.
+**Templates.** Steps are parsed like quick add (`@user`, `*front`, `!3`) except for dates. Step timing is separate (see **Timed steps**). Tap a step to edit it. Hold to reorder. Swipe left to delete. **Notes, photos and asks** under a step are copied into every checklist, as are the template's own notes, attachments, labels and assignees. An existing task with subtasks becomes a template with **Use as checklist template**.
 
 **Checklists.** A checklist can be started offline. A name entered on start, such as "Saturday", replaces the number in its title. A comment typed on a step is posted with **Done**, or recorded as the reason with **Skip**. **Last time** shows the comments from the previous completed checklist. To finish early, tap the checklist's ring. The remaining steps stay incomplete.
 
@@ -93,7 +94,7 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 **Completion record.** Done is a ✅ reaction and skipped is ⏭️, so the web app shows "Done by … at 4:46 PM". Vikunja only lets users remove their own reactions, so un-ticking someone else's step asks first and leaves their reaction in place.
 
-**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Pocket keeps its own records as lines in descriptions. Leave them in place. `pocket:checklists` in a project's description marks the project. `pocket:order 12 15 13` in a template's or checklist's description is the step order. Steps it doesn't list sort last. `pocket:run` marks a checklist, `pocket:step Preheat T#10m` on a step is the template step it was copied from, and `pocket:added` marks a step inserted or repeated while the checklist was running. Pocket hides any line starting with `pocket:` from the notes and keeps it when the notes are edited.
+**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Pocket keeps its own records as lines in descriptions. Leave them in place. `pocket:checklists` in a project's description marks the project. `pocket:order 12 15 13` in a template's or checklist's description is the step order. Steps it doesn't list sort last. `pocket:run` marks a checklist, `pocket:step Preheat T#10m` on a step is the template step it was copied from, and `pocket:added` marks a step inserted or repeated while the checklist was running. `pocket:ask …` on a step is an ask, and `pocket:answer` ends an answer comment (see [Asks](#asks)). Pocket hides any line starting with `pocket:` from the notes and keeps it when the notes are edited.
 
 ## Timed steps
 
@@ -111,6 +112,42 @@ Pocket stores the timer in the step's title using PLC duration syntax, which is 
 - A timer must refer to an earlier step, and names must be unique. Pocket checks this on edit, reorder and start.
 - Checklist steps get their titles with `T#` and `{#…}` removed.
 - A step inserted during a checklist has no timer and isn't "the previous step" for the one after it. A step timed from a repeated step counts from whichever copy was done last.
+
+## Asks
+
+A template step can ask for answers, such as a temperature or whether a seal is intact. Every checklist started from the template shows a field for each ask on the step's card.
+
+**Writing asks.** Open the template, tap the step, then tap **Notes, photos and asks ›**. Under **Asks**, tap **Add an ask**, give it a label and a type, and tap **Save asks**. A step with one ask can leave its label empty. The step's title is the label then.
+
+**Answering.** Type or pick each answer on the step's card. **Save** sends the answers without marking the step done. **Done** sends whatever hasn't been sent, then marks the step done. To correct an answer, change it and tap **Save**. The newest answer counts, and the older ones stay as comments.
+
+- A number outside its expected range is saved as typed and shown in amber.
+- Asks don't block Done. A done step's missing answer says "Not recorded". Skip saves no answers.
+- Changing a template's asks affects only checklists started afterwards.
+
+**In Vikunja's web app.** An ask is a line in the step's notes, and it can be typed there:
+
+| Line | Records |
+| --- | --- |
+| `pocket:ask Notes: text` | A line of text |
+| `pocket:ask Temp: number °C 0..5` | A number. The unit and the range are optional and can come in either order. |
+| `pocket:ask Seal intact: yes-no` | Yes or No |
+| `pocket:ask Belt: choice Good \| Worn \| Replace` | One of the options |
+
+- The label is everything before the first `: `.
+- A range is `0..5`, `..5`, `0..` or `-18..-15`. Both ends are included.
+- Pocket ignores a line it can't read. The template's row for that step says which line.
+- The web app's editor turns some typed characters into symbols, such as `--` into a dash. Paste a line to keep it exactly as written.
+
+**Answers in Vikunja.** Each answer comment has one `Label: value` line per answer, then the line `pocket:answer`:
+
+```
+Temp: 7.5 °C
+Seal intact: Yes
+pocket:answer
+```
+
+A number is written with a full stop for decimals, then its unit. The comment's author and time say who answered and when. To export answers, for example with an n8n flow, read the comments that end with `pocket:answer` and the asks in the step's notes. Vikunja sends a webhook to a private address only with `outgoingrequests.allownonroutableips: true` in its config.
 
 ## Step times
 
