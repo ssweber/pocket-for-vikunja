@@ -3,7 +3,7 @@ import {cache, collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
 import {askMeta, asksMeta, stepAsks} from '../asks.js';
 import {allPages, api, ApiError, errText, LOADED, NetError, partOf, why} from '../api.js';
 import {addDays, dueInfo, isSet, repeats, shortDue, startOfDay} from '../dates.js';
-import {CHECKLIST_MARK, comesRound, hasTemplateLabel, templateName} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, DONE_MARK, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
@@ -18,7 +18,7 @@ import {pendingSaves} from './sheet.js';
 export let renderSeq = 0;
 let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
 const PRELOAD_AGE = 60e3;                        // skip background reloads for copies newer than this
-// The projects whose Done section is open, remembered on this phone: project id -> true.
+// The projects whose Done section is open, remembered on this phone: project id -> true, and `today` for Done today.
 const doneOpen = {
   all(){ try { return JSON.parse(store.get('done.open')) || {}; } catch { return {}; } },
   set(id, open){ const a = this.all(); if (open) a[id] = true; else delete a[id]; store.set('done.open', JSON.stringify(a)); },
@@ -297,7 +297,8 @@ export default {
   drawAll(){ drawSeq++; this.drawTo = Infinity; this.drawing = false; removeEventListener('scroll', nearEnd); nearEnd = null; },
   /* Return the rows or cards drawn so far from an unwatched list. Otherwise x-for would read every drawn item
      through Alpine again for every batch. */
-  drawn(g){ return drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo); },
+  // A folded group draws no rows. Done today has its tasks while folded, and hidden rows would still be on the page.
+  drawn(g){ return g.fold && !g.open ? [] : drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo); },
   /* Cache Today, projects and Checklists for opening while they reload, including background loads. Keep copies
      separate for each account. */
   savedView(r){
@@ -310,7 +311,7 @@ export default {
   showSaved(r, s){
     this.keptRows(s.steps || []);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
-    const groups = keptGroups(s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks), ...g.key === 'done' && {open}}));
+    const groups = keptGroups(s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks), ...g.key === 'done' && {open}, ...g.key === 'donetoday' && {open: !!doneOpen.all().today}}));
     const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || [])}));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
     Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
@@ -398,17 +399,26 @@ export default {
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});
     // Also open steps you claimed in a checklist someone else started. These may have no due date yet.
     const qMine = new URLSearchParams({filter: `done = false && assignees in ${this.user?.username}`, filter_timezone: TZ, expand: 'comment_count'});
-    const [all, allAdded, {index: runs, mine, open = []}, claimed] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
-      this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : []]);
+    const qDone = new URLSearchParams([['filter', `done = true && done_at >= '${t0.toISOString()}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'], ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comment_count']]);
+    const [all, allAdded, {index: runs, mine, open = []}, claimed, doneAll] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
+      this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : [], allPages('/tasks?' + qDone).catch(() => [])]);
     const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
     const theirs = claimed.filter(t => !isSet(t.due_date) && runs[this.stepRun(t)] === false);
     const {rows, cards} = todayItems({tasks, added, mine, claimed: theirs}, this.user, t => this.isRunTask(t));
     const read = cards.size ? await this.readCards(cards, [...tasks, ...added, ...mine, ...claimed, ...open]) : {parents: [], steps: [], positions: {}};
-    return {rows, cards, ...read};
+    return {rows, cards, done: this.withoutTemplates(doneAll, true).filter(t => this.doneByMe(t)), ...read};
+  },
+  /* Whether Done today lists `t`, a task done today. Vikunja doesn't record who ticked a task, so Pocket puts the
+     user's ✅ on what they tick (signTick, actions.js), as on a checklist's step. A task ticked in Vikunja's web app has
+     none, so it counts only when it is assigned to the user, is in a project only they can see, or is a checklist they
+     started. */
+  doneByMe(t){
+    const me = this.user?.id, has = us => (us || []).some(u => u.id === me);
+    return has(t.reactions?.[DONE_MARK]) || has(t.assignees) || this.seenBy?.[t.project_id] === 0 || (this.isRunTask(t) && t.created_by?.id === me);
   },
   /* Group Today's tasks using own for either visible or background task objects. Place cards by what brought them
      onto Today, or use their original rows if the parent cannot be read. Return {groups, cards, steps, positions}. */
-  todayFrom({rows, cards, parents, steps, positions}, own){
+  todayFrom({rows, cards, parents, steps, positions, done = []}, own){
     const groups = todayGroups(), at = Object.fromEntries(groups.map(g => [g.key, g])), dated = [], shown = {}, seen = new Set();
     const put = (t, key) => { if (seen.has(t.id)) return; seen.add(t.id); if (key === 'dated') dated.push(own(t)); else at[key].tasks.push(own(t)); };
     const byId = new Map(parents.map(p => [p.id, p]));
@@ -419,6 +429,7 @@ export default {
     for (const {t, key} of rows) put(t, key);
     for (const [id, c] of cards) if (!byId.has(id)) for (const t of c.from) put(t, isSet(t.due_date) ? 'dated' : this.stepRun(t) ? 'runs' : 'nodate');
     this.placeDated(groups, dated, shown);
+    Object.assign(at.donetoday, {tasks: done.map(own), open: !!doneOpen.all().today});
     return {groups, cards: shown, steps: steps.map(own), positions};
   },
   /* Load open project tasks in List view order with subtasks under each parent. Count Done separately and load its
@@ -508,8 +519,11 @@ export default {
     const tasks = this.withoutTemplates(list, true);
     return {tasks, total, skip: list.length - tasks.length};
   },
-  // Open or close the Done section, loading it the first time it opens. Pocket remembers each project's choice.
+  // Open or close the Done section, loading it the first time it opens. Pocket remembers each project's choice, and
+  // Today's for Done today, which loads with Today.
   toggleDoneSection(){
+    const today = this.route.name === 'today' && this.view.groups.find(x => x.key === 'donetoday');
+    if (today) { today.open = !today.open; doneOpen.set('today', today.open); return; }
     const p = this.view.project, g = this.view.groups.find(x => x.key === 'done');
     if (!p || !g) return;
     g.open = !g.open; doneOpen.set(p.id, g.open);

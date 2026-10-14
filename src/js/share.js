@@ -103,6 +103,15 @@ export function shareText(doc, now = new Date()){
   return [head, ...textLines(items, 0, {long: count(items) > COLLAPSE.lines, bars: false, now})].join('\n');
 }
 
+/* What was done today, for Done today's Copy. Each item is {title, project, ring}, in the order Done today shows them.
+   A checklist says how many steps were done, as its ring does. For example:
+     Done today · Wed, Oct 14
+     ✓ Fix the till drawer · Café
+     ✓ Opening up · Oct 14 · 9 of 11 done */
+export function doneTodayText(items, now = new Date()){
+  const day = now.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'});
+  return [`Done today · ${day}`, ...items.map(it => '✓ ' + [it.title, it.project, it.ring && `${it.ring.done} of ${it.ring.total} done`].filter(Boolean).join(' · '))].join('\n');
+}
 
 /* ---------- Markdown in quick add's words ---------- */
 const two = n => String(n).padStart(2, '0');

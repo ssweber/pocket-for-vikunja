@@ -9,7 +9,9 @@
           <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
           <template x-if="g.key === 'overdue' && overdueMovable"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div></template>
         <template x-if="g.fold"><div class="sec" :class="g.cls"><button type="button" class="sec-fold" :id="'sec-' + g.key" :aria-expanded="String(g.open)" @click="toggleDoneSection()">
-          <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count.toLocaleString() + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button></div></template>
+          <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count.toLocaleString() + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button>
+          <!-- Copies what was done today as text, folded or not -->
+          <template x-if="g.key === 'donetoday'"><button type="button" class="sec-act" id="btn-copy-done" @click="copyDoneToday()">Copy</button></template></div></template>
         <!-- Messages about the list as a whole, under its heading, such as what Move all to today did -->
         <template x-for="line in placeLines(g.key)" :key="line.n">
           <!-- include markup/place-line.html -->

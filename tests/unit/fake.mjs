@@ -31,7 +31,7 @@ export function fakeVikunja(tasks = []){
     if (typeof trouble === 'number') return reply({ message: `HTTP ${trouble} from the fake` }, trouble);
     const id = +(req.path.match(/^\/tasks\/(\d+)$/) || [])[1], t = v.tasks.get(id);
     const into = +(req.path.match(/^\/projects\/(\d+)\/tasks$/) || [])[1], over = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/relations$/) || [])[1]);
-    const cut = req.path.match(/^\/tasks\/(\d+)\/relations\/(\w+)\/(\d+)$/);
+    const cut = req.path.match(/^\/tasks\/(\d+)\/relations\/(\w+)\/(\d+)$/), react = req.path.match(/^\/tasks\/(\d+)\/reactions(\/delete)?$/);
     let res;
     if (into && method === 'POST') {
       const made = { id: Math.max(100, ...v.tasks.keys()) + 1, done: false, percent_done: 0, due_date: '0001-01-01T00:00:00Z', ...req.body, project_id: into,
@@ -48,6 +48,11 @@ export function fakeVikunja(tasks = []){
       const drop = (x, k, id) => { const r = v.tasks.get(x)?.related_tasks; if (r?.[k]) r[k] = r[k].filter(s => s.id !== id); };
       if (!v.tasks.get(+a)?.related_tasks?.[kind]?.some(s => s.id === +b)) res = reply({ message: 'The task relation does not exist.' }, 404);
       else { drop(+a, kind, +b); drop(+b, back, +a); res = reply({ message: 'Successfully deleted.' }); }
+    } else if (react && method === 'POST' && v.tasks.has(+react[1])) {
+      // Reactions by the signed-in user, id 1, as {value: [users]}
+      const rs = v.tasks.get(+react[1]).reactions ||= {}, by = (rs[req.body.value] || []).filter(u => u.id !== 1);
+      rs[req.body.value] = react[2] ? by : [...by, { id: 1, username: 'me' }];
+      res = reply(req.body);
     } else if (req.path === '/tasks' && method === 'GET') res = reply({ items: [...v.tasks.values()].filter(x => x.title === new URL(url).searchParams.get('q')) });
     else if (!id) res = reply({ message: `the fake has no ${method} ${req.path}` }, 404);
     else if (!t) res = reply({ message: 'The task does not exist.' }, 404);

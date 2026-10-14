@@ -860,3 +860,39 @@ test('a template, a checklist and their steps cannot move to another project, an
   app.canEdit = false;
   assert.equal(app.canMove, false);
 });
+
+const settled = () => new Promise(r => setImmediate(r));
+test('a tick puts the user\'s ✅ on the task and an untick takes it off, except in a project only they can see and on a repeating task', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Order the cups', done: false, project_id: 7 }, { id: 2, title: 'Book the dentist', done: false, project_id: 8 },
+    { id: 3, title: 'Water the plants', done: false, project_id: 7, due_date: '2026-10-07T09:00:00Z', repeat_after: DAY }]), app = listed(c);
+  app.seenBy = { 7: 2, 8: 0 };
+  for (const id of [1, 2, 3]) await app.toggleDone(app.keep(v.task(id)), null, { quiet: true });
+  await settled();
+  assert.deepEqual([1, 2, 3].map(id => v.task(id).reactions?.['✅']?.map(u => u.id) || null), [[1], null, null]);
+  await app.toggleDone(app.tasks[1], null, { quiet: true });
+  await settled();
+  assert.deepEqual(v.task(1).reactions['✅'], [], 'unticking takes the ✅ off');
+});
+
+test('a task ticked on Today joins Done today when the batch clears, newest first, and a checklist\'s step does not', async c => {
+  const v = fakeVikunja([{ id: 1, title: 'Order the cups', done: false }, { id: 2, title: 'Fix the till', done: true }, { id: 3, title: 'Take the croissants out', done: false }]), app = listed(c);
+  app.route = { name: 'today' };
+  app.stepRun = t => t.id === 3 ? 9 : null;
+  app.tickRunStep = async t => { t.done = true; };
+  app.view.groups = [{ key: 'today', tasks: [app.keep(v.task(1))] }, { key: 'donetoday', tasks: [app.keep(v.task(2))] }];
+  await app.toggleDone(app.tasks[1], ROW);
+  assert.deepEqual(app.view.groups[1].tasks.map(t => t.id), [2], 'Done today waits for the batch');
+  await app.clearBatch(true);
+  assert.deepEqual(app.view.groups.map(g => g.tasks.map(t => t.id)), [[], [1, 2]]);
+  app.intoDoneToday([3]);
+  assert.deepEqual(app.view.groups[1].tasks.map(t => t.id), [1, 2]);
+});
+
+test('Done today holds what the user ticked, what is assigned to them, what is in a project only they see, and checklists they started', () => {
+  const app = component(views);
+  Object.assign(app, { user: { id: 1 }, seenBy: { 7: 2, 8: 0 }, isRunTask: t => !!t.run });
+  const mine = { id: 1 }, other = { id: 2 };
+  const cases = [[{ project_id: 7, reactions: { '✅': [mine] } }, true], [{ project_id: 7, reactions: { '✅': [other] } }, false], [{ project_id: 7, assignees: [mine] }, true],
+    [{ project_id: 8 }, true], [{ project_id: 7 }, false], [{ project_id: 7, run: true, created_by: mine }, true], [{ project_id: 7, run: true, created_by: other }, false]];
+  assert.deepEqual(cases.map(([t]) => app.doneByMe(t)), cases.map(([, want]) => want));
+});

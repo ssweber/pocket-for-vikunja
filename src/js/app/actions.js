@@ -8,7 +8,7 @@ import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.j
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
 import {dayWord, doneText, movedText, movedTo, movedToProject, notReordered, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
-import {hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
+import {DONE_MARK, hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
@@ -63,10 +63,24 @@ export default {
         }
       }
       cache.set(id, saved); this.syncTask(saved);
+      if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done) this.signTick(saved);
       return saved;
     }).finally(() => { saveMark(id, -1); this.writing--; });
     shared.saveChain = run.catch(() => {});
     return run;
+  },
+  /* Put the user's ✅ on a task they tick, and take it off when they untick it, as a checklist's step has. Vikunja
+     doesn't record who ticked a task, and Done today finds the user's ticks by it (doneByMe). A project only the user
+     can see needs none, since everything in it is theirs. A ✅ that fails to save leaves the tick as it is. */
+  signTick(t){
+    if (this.seenBy?.[t.project_id] === 0 || hasTemplateLabel(t)) return;
+    api(`/tasks/${t.id}/reactions${t.done ? '' : '/delete'}`, {method: 'POST', body: {value: DONE_MARK}}).catch(() => {});
+  },
+  /* On Today, a task ticked there joins Done today when the batch clears, so Copy includes it at once. A checklist's
+     step doesn't, since its checklist stands for it. */
+  intoDoneToday(ids){
+    const g = this.route.name === 'today' && this.view.groups.find(x => x.key === 'donetoday');
+    for (const id of g ? ids : []) { const t = this.tasks[id]; if (t?.done && !this.stepRun(t) && !g.tasks.includes(t)) g.tasks.unshift(t); }
   },
   // Read a task after the queued saves finish. Returns null if a save ran during the read, because that reply is
   // newer.
@@ -166,7 +180,7 @@ export default {
       if (was && !moves()) { this.said = 'Not done: ' + t.title; return; }
       this.markRow(t.id, {kind: was ? 'open' : 'done', ids, undo, said: was ? 'Not done: ' + t.title : text,
         out: () => over ? closed : this.bothWays && !moves() ? [] : ids,
-        gone: () => { if (over) this.moveInSearch(t, closed); else if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) ids.forEach(id => this.removeRow(id)); }});
+        gone: () => { if (over) this.moveInSearch(t, closed); else if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) { ids.forEach(id => this.removeRow(id)); this.intoDoneToday(ids); } }});
     } catch (e) {
       t.done = was;
       // The list row comes back after the message. The sheet's own task has no row to bring back, so its message
@@ -241,7 +255,7 @@ export default {
     const moves = () => !!this.searchGroups(t), steps = () => stepsOf(t).map(s => s.id);
     if (was && !moves()) { this.said = said; return; }
     this.markRow(t.id, {kind: was ? 'open' : 'done', undo, said, out: () => this.bothWays && !moves() ? [] : [t.id],
-      gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) [t.id, ...steps()].forEach(id => this.removeRow(id)); }});
+      gone: () => { if (this.bothWays) this.moveInSearch(t, [t.id]); else if (t.done) { [t.id, ...steps()].forEach(id => this.removeRow(id)); this.intoDoneToday([t.id]); } }});
   },
   /* Tick a checklist step through the outbox, which records who did it and works offline. A list row waits for the
      batch to clear. In a sheet the step stays visible as done. */

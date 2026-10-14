@@ -5,7 +5,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
-import { bar, dueStamp, dueWords, firstName, markdownText, progress, repeatPhrase, shareText } from '../../src/js/share.js';
+import { bar, doneTodayText, dueStamp, dueWords, firstName, markdownText, progress, repeatPhrase, shareText } from '../../src/js/share.js';
 import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee } from '../../src/js/quickadd.js';
 import { component } from './fake.mjs';
 import sharing from '../../src/js/app/sharing.js';
@@ -300,4 +300,10 @@ test('the text shared from a checklist\'s screen matches its ring, counting a ti
   const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');
   assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);
+});
+
+test('Done today\'s Copy gives the day, then each done task with its project, and a checklist with its steps done of all', () => {
+  const text = doneTodayText([{ title: 'Fix the till drawer', project: 'Café' }, { title: 'Opening up · Oct 14', project: 'Checklists', ring: { done: 9, total: 11, pct: 82 } }, { title: 'No project' }],
+    new Date(2026, 9, 14, 15));
+  assert.equal(text, ['Done today · Wed, Oct 14', '✓ Fix the till drawer · Café', '✓ Opening up · Oct 14 · Checklists · 9 of 11 done', '✓ No project'].join('\n'));
 });

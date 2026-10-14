@@ -165,6 +165,7 @@ export const todayOrder = (at = t => t) => {
 // todayItems). Any other task uses its own.
 export const todayAt = (cards = {}) => t => cards[t.id] ? {due_date: cards[t.id].when, created: cards[t.id].made || t.created} : t;
 // Today's groups. "Added today, no date" shows tasks added without a date until midnight, so they don't vanish into a
-// project.
+// project. "Done today" is folded at the bottom, as a project's Done is (doneByMe, app/views.js).
 export const todayGroups = () => [{key:'overdue', cls:'overdue', title:'Overdue', tasks:[]}, {key:'today', cls:'today', title:'Today', tasks:[]},
-  {key:'runs', cls:'', title:'Checklists', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]}];
+  {key:'runs', cls:'', title:'Checklists', tasks:[]}, {key:'nodate', cls:'', title:'Added today, no date', tasks:[]}, {key:'week', cls:'', title:'Next 7 days', tasks:[]},
+  {key:'donetoday', cls:'done-sec', title:'Done today', fold:true, open:false, tasks:[]}];

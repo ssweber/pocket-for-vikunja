@@ -20,6 +20,8 @@ is a new 0.x.y.
   answers ([guide](docs/guide.md#asks)).
 - A task can move to another project from its ⋯ menu, taking its subtasks along, with Undo.
 - A Copy button beside ⋯ on a project, a checklist and a task copies its progress as text in one tap.
+- Today has a folded Done today group with what you finished today, and its Copy gives it as text
+  ([guide](docs/guide.md#tasks)).
 
 ### Changed
 
@@ -35,6 +37,7 @@ is a new 0.x.y.
 
 - Each ask is a `pocket:ask` line in a step's notes.
 - Each answer comment has a `Label: value` line for each answer, then the line `pocket:answer`.
+- Ticking a task in a shared project adds the user's ✅ reaction to it, and unticking it takes the ✅ off.
 
 ## 0.1.0 (2026-10-13)
 

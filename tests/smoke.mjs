@@ -1314,6 +1314,46 @@ try {
       await api('/tasks/' + a.id, { method: 'PATCH', headers: json, body: JSON.stringify({ done: false }) });
     } finally { for (const t of [b, c]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
+
+  await step('a-task-ticked-on-today-joins-done-today-which-copies-as-text', async () => {
+    const me = await (await api('/user')).json(), t = await make(`Pocket smoke done today ${stamp}`, { due_date: todayAt(23) }), home = await (await api('/projects/' + home2)).json();
+    const fold = page.locator('#sec-donetoday'), R = `#view .done-sec ~ .list ${rowOf(t.title)}`;
+    try {
+      await toastGone();
+      await refreshToday();
+      await tick(t.title);
+      await later(3100);
+      await expect(page.locator(rowOf(t.title))).toHaveCount(0);
+      // Pocket puts the user's ✅ on the task, since Vikunja doesn't record who ticked it.
+      await synced(page);
+      await expect.poll(async () => (await get(t.id)).reactions?.['✅']?.map(u => u.id)).toEqual([me.id]);
+      // Done today is folded at the bottom of Today, with its count, and its rows are drawn once it is opened.
+      await expect(fold).toHaveAttribute('aria-expanded', 'false');
+      await expect(fold).toContainText(/Done today \(\d+\)/);
+      await fold.click();
+      await expect(page.locator(R)).toBeVisible();
+      // Copy gives the day, then each done task with its project.
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(APP).origin });
+      await page.click('#btn-copy-done');
+      await placeSays(page, 'donetoday', 'Copied. Paste it into a message');
+      const text = await page.evaluate(() => navigator.clipboard.readText()).then(x => x.replace(/\r\n/g, '\n'));
+      if (!text.startsWith('Done today · ') || !text.split('\n').includes(`✓ ${t.title} · ${home.title}`)) throw new Error('the copied text: ' + text);
+      // Unticking it there leaves it in place, open, and takes the ✅ off. The copy leaves it out.
+      await page.getByRole('button', { name: 'Mark not done: ' + t.title, exact: true }).click();
+      await expect(page.locator(`${R} .check`)).toHaveAttribute('aria-label', 'Mark done: ' + t.title);
+      await synced(page);
+      await expect.poll(async () => (await get(t.id)).reactions?.['✅'] || []).toEqual([]);
+      await page.click('#btn-copy-done');
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toContain(t.title);
+      // Reloaded, the task is back under its date.
+      await refreshToday();
+      await expect(page.locator(R)).toHaveCount(0);
+      await expect(page.locator(rowOf(t.title))).toHaveCount(1);
+    } finally {
+      if (await fold.getAttribute('aria-expanded').catch(() => null) === 'true') await fold.click();
+      await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
   await step('with-less-motion-rows-ticked-go-without-folding', async () => {
     const d = await make(`Pocket smoke tick D ${stamp}`, { due_date: todayAt(23) }), D = rowOf(d.title);
     try {

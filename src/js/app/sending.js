@@ -271,7 +271,7 @@ export default {
     const ids = [t.id], moves = () => !!this.searchGroups(t);
     this.markRow(t.id, {kind: 'done', ids, said, undo: async () => { await this.toggleDone(t, null, {quiet: true}); this.render(); },
       out: () => this.bothWays && !moves() ? [] : ids,
-      gone: () => { if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) this.removeRow(t.id); }});
+      gone: () => { if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) { this.removeRow(t.id); this.intoDoneToday(ids); } }});
   },
   // Find the task that an earlier, cut-off try added, if it was added. It has the same title, is in this project, was
   // created by this user since that try, and is not one of the entry's other tasks or a task Pocket added for another
@@ -428,6 +428,8 @@ export default {
     return this.listBase.map(g => {
       const out = {...g, ...can, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null), before};
       if (g.key === 'done') out.cards = null;
+      // Done today's rows are plain rows with their count in the heading. A done task has no date to hold it to.
+      if (g.key === 'donetoday') Object.assign(out, {cards: null, reschedule: false, count: out.tasks.length});
       if (out.cards) out.items = listItems(out.tasks, out.depth, t => !!this.cardOf(t, out));
       before += (out.cards ? out.items : out.tasks).length;
       const was = lastGroups.get(g.key);

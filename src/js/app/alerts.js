@@ -46,14 +46,14 @@ export default {
   // Regroup Today's dated tasks for the time now, without asking Vikunja. Returns them.
   regroupToday(){
     const groups = this.view.groups, dated = groups.filter(g => ['overdue', 'today', 'week'].includes(g.key)).flatMap(g => g.tasks);
-    if (groups.length === 5) this.placeDated(groups, dated);
+    if (['overdue', 'today', 'week'].every(k => groups.some(g => g.key === k))) this.placeDated(groups, dated);
     return dated;
   },
   /* Put each dated task in its group: Overdue once its time has passed (for a task due on a day with no time, once that
      day is over), Today, or the next 7 days. A card goes by the earliest date among its task and its open subtasks
      (`cards`). The app icon shows the overdue count. */
   placeDated(groups, tasks, cards = this.view.cards || {}){
-    const [overdue, today, , , week] = groups, now = new Date(), t1 = +addDays(startOfDay(), 1);   // addDays handles a 23- or 25-hour day
+    const [overdue, today, week] = ['overdue', 'today', 'week'].map(k => groups.find(g => g.key === k)), now = new Date(), t1 = +addDays(startOfDay(), 1);   // addDays handles a 23- or 25-hour day
     const at = todayAt(cards), order = todayOrder(at);
     for (const g of [overdue, today, week]) g.tasks = [];
     for (const t of tasks) { const due = at(t).due_date; (isLate(due, now) ? overdue : new Date(due) < t1 ? today : week).tasks.push(t); }

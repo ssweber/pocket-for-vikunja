@@ -83,7 +83,7 @@ test('a list is saved under a key so it can open offline', () => {
 });
 
 test('Today\'s groups come in a fixed order, and each call returns new lists', () => {
-  assert.deepEqual(todayGroups().map(g => g.key), ['overdue', 'today', 'runs', 'nodate', 'week']);
+  assert.deepEqual(todayGroups().map(g => g.key), ['overdue', 'today', 'runs', 'nodate', 'week', 'donetoday']);
   assert.notEqual(todayGroups()[0].tasks, todayGroups()[0].tasks);
 });
 

@@ -7,7 +7,7 @@ import {hasOwnOrder, parseStep, stepsOf} from '../checklists.js';
 import {positionOrder} from '../order.js';
 import {pctOf, workedOut} from '../progress.js';
 import {COPIED} from '../messages.js';
-import {markdownText, shareText} from '../share.js';
+import {doneTodayText, markdownText, shareText} from '../share.js';
 
 /* Copy `text` to the clipboard. Where the Clipboard API isn't allowed (an older browser, a page not in focus), it
    selects the text in a hidden textarea and copies with execCommand instead. Returns whether it worked. */
@@ -96,6 +96,13 @@ export default {
   },
   // Copy the same text straight to the clipboard, from the Copy button beside ⋯. A message says so at `place`.
   copyProgress(what, place){ const doc = this.shareDoc(what); if (doc) return this.copyOut(shareText(doc), place, COPIED.text); },
+  // Copy Done today's done tasks as text, each with its project. A row unticked there since it loaded is left out.
+  copyDoneToday(){
+    const g = this.view.groups.find(x => x.key === 'donetoday');
+    if (!g) return;
+    const items = g.tasks.filter(t => t.done).map(t => ({title: this.shareTitle(t), project: this.projById.get(t.project_id)?.title, ring: this.shareRing(t)}));
+    return this.copyOut(doneTodayText(items), 'donetoday', COPIED.text);
+  },
   // Copy the open task, or the project on screen, as a Markdown list that Pocket can read back. It is written in quick
   // add's syntax, with the user's own prefixes and default due time.
   copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {mode: this.quickAddMode, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },
