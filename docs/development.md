@@ -231,6 +231,8 @@ cannot delete. The checklists test needs a token that can create and update proj
 - **`toContainText` is case-sensitive;** `:has-text` is not. Given a regular expression, `toHaveText` does not fold
   the markup's line breaks into spaces.
 - **`.sec + .list` misses a group's list** when its heading has a message under it. Use `.sec ~ .list`.
+- **Vikunja leaves a task's reactions out** unless the request asks with `?expand=reactions`. A test that checks a
+  ✅ or a ⏭️ reads the task that way.
 - **Vikunja keeps times in whole seconds.** Two changes less than a second apart can carry the same `updated`, and a
   due time set by a test comes back rounded down.
 - **Vikunja on Postgres returns a task's subtasks in no set order.** A test sorts them by id and finds one by its
