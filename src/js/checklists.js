@@ -181,6 +181,16 @@ export function skippedBy(s){
   const since = Date.parse(s.done_at), marked = new Set((s.reactions?.[SKIP_MARK] || []).map(u => u.id));
   return (s.comments || []).filter(c => marked.has(c.author?.id) && Date.parse(c.created) >= since && /^skipped\b/i.test(htmlToText(c.comment))).pop()?.author || null;
 }
+/* How each finished checklist went, by its id: {skipped, comments}. `tasks` are the project's done and open tasks,
+   among them the checklists' steps. A comment counts when it is not a step's answers, which show on the step itself.
+   An open task has only its count of comments. */
+export function endedOf(finished, tasks){
+  const talk = t => t.comments ? t.comments.filter(c => !isAnswer(c.comment)).length : t.comment_count || 0;
+  return Object.fromEntries(finished.map(r => {
+    const steps = tasks.filter(s => s.related_tasks?.parenttask?.some(x => x.id === r.id));
+    return [r.id, {skipped: steps.filter(s => skippedBy(s)).length, comments: steps.reduce((n, s) => n + talk(s), talk(r))}];
+  }));
+}
 // What quick add doesn't parse in a step. Dates are ignored, because a step's time is its T#. The project is ignored,
 // because every step must stay in its template's project for Pocket's plugin. A trailing percentage ("Fill to 50%")
 // is ignored, because a step starts with no progress.

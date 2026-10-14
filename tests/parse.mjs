@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers */
+/* global endedOf, parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -486,6 +486,15 @@ const asksRead = await page.evaluate(() => {
       {description: '<p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal: yes-no</p>', comments: [{id: 1, comment: '<p>Temp: 7 °C</p><p>Seal: yes</p><p>pocket:answer</p>',
         author: {id: 2, name: 'Jamie'}, created: '2026-10-14T09:00:00Z'}]}, [{html: '<p>Temp: 3 °C</p><p>pocket:answer</p>', at: '2026-10-14T09:05:00Z'}], {id: 1, name: 'Me'}))];
 });
+// How a finished checklist went: its skipped steps, and its comments without the answers to asks. A step's comments
+// are read as HTML. An open step has only its count of comments.
+const ended = await page.evaluate(() => {
+  const under = {parenttask: [{id: 1}]}, at = '2026-10-13T10:00:00Z';
+  const skipped = {id: 2, done: true, done_at: at, related_tasks: under, reactions: {'⏭️': [{id: 9}]}, comments: [{comment: '<p>Skipped: no milk</p>', author: {id: 9}, created: '2026-10-13T10:00:01Z'}]};
+  const answered = {id: 3, done: true, done_at: at, related_tasks: under, comments: [{comment: '<p>Temp: 4 °C</p><p>pocket:answer</p>'}]};
+  const open = {id: 4, done: false, related_tasks: under, comment_count: 2}, other = {id: 5, done: true, related_tasks: {parenttask: [{id: 99}]}, comments: [{comment: '<p>x</p>'}]};
+  return endedOf([{id: 1, comments: [{comment: '<p>Line 2 ran slow</p>'}]}], [skipped, answered, open, other]);
+});
 // Templates. A task is a template if it is done, or not done with a due date, but not if it is a copy being set up as
 // a checklist. Also covered are the template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja
 // moves it to when it is ticked, as checked on Vikunja 2.7.
@@ -586,6 +595,7 @@ const roundsWant = [true, true, false, false, false, false, false, 'Opening up',
   'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a checklist starts', '',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z', null];
+if (!same(ended, {1: {skipped: 1, comments: 4}})) { failed++; console.log(`FAIL how a finished checklist went: ${JSON.stringify(ended)}`); }
 if (!same(rounds, roundsWant)) { failed++; console.log(`FAIL templates that come round: ${JSON.stringify(rounds)}`); }
 const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 6, total = cases.length + lists.length + reads.length + wf;
 console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length + reads.length} are pasted lists, ${wf} are checklist steps and markers)`);

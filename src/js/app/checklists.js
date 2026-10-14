@@ -1,9 +1,9 @@
 // Checklist projects and templates: reading them, making a template, and writing and editing its steps.
 import {andList, cache, store, taskDrafts, TZ} from '../util.js';
-import {allPages, api, items, NetError, patchTask, why} from '../api.js';
+import {allPages, api, NetError, patchTask, why} from '../api.js';
 import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
-import {CHECKLIST_MARK, comesRound, draftSteps, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, draftSteps, endedOf, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
@@ -11,6 +11,8 @@ import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 import {newBox, newStepBox} from './core.js';
 
+/* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
+export const FINISHED_DAYS = 7;
 // Templates as last loaded, kept so a checklist can be started offline. This maps a template id to the fields a start
 // needs, with the steps in order.
 let templatesKept = {};
@@ -188,11 +190,11 @@ export default {
   },
   // The share page for a project in Vikunja's web app. Sharing is done there.
   shareUrl(pid){ return `${this.server}/projects/${pid}/settings/share`; },
-  openTasks(pid){ return allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ})); },
+  openTasks(pid){ return allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'})); },
   // Load each checklist project with its templates and open checklists.
   async loadChecklists(seq){
     const checklists = await this.readChecklists(t => this.keep(t));
-    if (seq !== renderSeq || !await this.settle(checklists.flatMap(cl => cl.runs.map(t => t.id)), seq)) return;
+    if (seq !== renderSeq || !await this.settle(checklists.flatMap(cl => [...cl.runs, ...cl.finished].map(t => t.id)), seq)) return;
     this.view.checklists = checklists;
     saved.set('checklists', {checklists, at: new Date().toISOString()});
   },
@@ -203,18 +205,21 @@ export default {
     const ws = this.checklistProjects;
     const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
     const checklists = await Promise.all(ws.map(async p => {
-      const [templates, open, finished] = await Promise.all([
+      const since = new Date(Date.now() - FINISHED_DAYS * 864e5).toISOString();
+      const [templates, open, done] = await Promise.all([
         // Templates: done ones, and open ones with a due date.
         labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `labels in ${labels.join(', ')}`})) : [],
         this.openTasks(p.id),
-        // Recently finished checklists, taken from one page of the newest done tasks.
-        api(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', sort_by: 'done_at', order_by: 'desc', per_page: 50})).then(items)]);
+        // Everything done in the last FINISHED_DAYS: the checklists finished then, and the steps that tell how each went
+        allPages(`/projects/${p.id}/tasks?` + new URLSearchParams([['filter', `done = true && done_at >= '${since}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'],
+          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']]))]);
+      const finished = done.filter(t => this.isRunTask(t));
       return {project: {id: p.id, title: p.title},
         templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,
             done: t.done, labels: t.labels, due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}; }),
         runs: open.filter(isRun).map(own),
-        finished: finished.filter(t => this.isRunTask(t)).slice(0, 5).map(t => ({id: t.id, title: t.title, done_at: t.done_at, forText: this.forText(t)}))};
+        finished: finished.map(own), ended: endedOf(finished, [...done, ...open])};
     }));
     saved.set('templates', templatesKept);
     return checklists;

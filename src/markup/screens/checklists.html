@@ -33,7 +33,7 @@
         </div>
         <template x-if="cl.runs.length || startingIn(cl.project.id).length"><div>
           <div class="cl-sub">In progress</div>
-          <div class="list">
+          <div class="list cl-runs">
             <template x-for="e in startingIn(cl.project.id)" :key="e.id"><div class="row pending waits"><div class="body"><div class="title" x-text="'Starting ' + (e.name ? runTitle(e.template.title, e.name, new Date(e.at)) : e.template.title)"></div>
               <div class="meta"><span x-text="offline ? 'Waiting for a connection' : 'Setting up…'"></span><span x-text="forText({assignees: e.for})"></span></div></div>
               <button class="icon-btn plain" :aria-label="'Don\'t start ' + e.template.title" @click="cancelStart(e.id)"><svg class="i"><use href="#i-close"/></svg></button></div></template>
@@ -43,16 +43,17 @@
             </template></template>
           </div>
         </div></template>
-        <!-- The last few finished checklists. The user can look back at them, or reopen one from its ⋯ menu. -->
+        <!-- The checklists finished in the last 7 days (FINISHED_DAYS), newest first, as the same row as In progress:
+             its ring, when it finished, and how many steps were skipped and comments left (g.ended, rowMeta). Older ones
+             are in the project's Done. -->
         <template x-if="cl.finished?.length"><div>
-          <div class="cl-sub">Recently finished</div>
-          <div class="list">
-            <template x-for="r in cl.finished" :key="r.id"><div class="row cl-done" :data-id="r.id">
-              <button class="body" @click="openRun(r.id)"><div class="title" x-text="r.title"></div>
-                <div class="meta"><span class="num" x-text="'Finished ' + new Date(r.done_at).toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'})"></span><template x-if="r.forText"><span x-text="r.forText"></span></template></div></button>
-              <svg class="i chev" style="align-self:center;color:var(--muted)"><use href="#i-chev"/></svg>
-            </div></template>
+          <div class="cl-sub">Finished in the last 7 days</div>
+          <div class="list cl-finished">
+            <template x-for="g in [{depth: {}, ended: cl.ended || {}}]" :key="0"><template x-for="t in cl.finished" :key="t.id">
+              <!-- include markup/task-row.html list -->
+            </template></template>
           </div>
+          <a class="cl-older" :href="'#/project/' + cl.project.id + '?done=1'">Open Done for older ones</a>
         </div></template>
       </div></template>
     </div></template>

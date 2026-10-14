@@ -30,6 +30,8 @@ is a new 0.x.y.
 - The ⋯ menu item that opens the phone's share sheet says "Share as text".
 - A checklist's step shows its latest comment, cut to one line, and how many files are attached, in place of a comment
   count.
+- Checklists lists every checklist finished in the last 7 days, with its ring, its skipped steps and its comments, in
+  place of the last few.
 
 ### Fixed
 

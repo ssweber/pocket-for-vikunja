@@ -977,8 +977,15 @@ try {
     await page.click('#run-finish', { timeout: 15000 });
     await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
     await until('the checklist was never finished again', async () => (await api('/tasks/' + first.id)).done);
-    await page.waitForSelector(`.cl-done .title:text-is("${(await api('/tasks/' + first.id)).title}")`, { timeout: 15000 });
-    if (await page.isVisible(`.cl-run:has(.title:has-text("${(await api('/tasks/' + first.id)).title}"))`)) throw new Error('the checklist is still in progress');
+    // It is listed under Finished in the last 7 days, in the row In progress uses. Its ring says 3/3, since a skipped step
+    // counts as done there. Beside the time, the row says how many steps were skipped and how many comments it has.
+    const title = (await api('/tasks/' + first.id)).title, ended = page.locator('.cl-finished .row').filter({ has: page.locator(`.title:text-is("${title}")`) });
+    await expect(ended).toBeVisible({ timeout: 15000 });
+    await expect(ended.locator('> .ring .n')).toHaveText('3/3');
+    await expect(ended.locator('.meta')).toContainText('1 skipped');
+    await expect(ended.locator('.meta .note-mark')).toHaveAttribute('aria-label', /^\d+ comments$/);
+    await expect(page.locator('.cl-finished ~ .cl-older')).toHaveAttribute('href', new RegExp(`#/project/${(await api('/tasks/' + first.id)).project_id}\\?done=1$`));
+    if (await page.isVisible(`.cl-runs .cl-run:has(.title:has-text("${title}"))`)) throw new Error('the checklist is still in progress');
   });
 
   let third;

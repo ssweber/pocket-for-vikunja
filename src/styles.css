@@ -519,6 +519,7 @@ button.ring::after{content:"";position:absolute;inset:calc(50% - 24px)}
 .getting-started .gs-hide{margin-top:10px;font-size:14px;color:var(--muted)}
 .setup-card p{margin:0 0 12px}
 .cl-sub{margin:14px 2px 6px;color:var(--muted);font-size:15px;font-weight:650}
+.cl-older{display:inline-block;margin:2px 2px 0;padding:12px 0;color:var(--accent);font-size:14px;font-weight:650;text-decoration:none}
 .cl-hint{padding:14px;color:var(--muted);font-size:15px}
 a.sec-act{text-decoration:none}
 .start-due{flex-basis:100%;color:var(--muted);font-size:14px;margin-top:-6px}
@@ -595,7 +596,7 @@ a.sec-act{text-decoration:none}
 #run-steps .meta:has(> .step-said){flex-wrap:nowrap}
 .step-said{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--ink)}
 .step-said svg.i{color:var(--accent)}
-.note-mark.step-files{color:var(--accent);font-weight:650}
+.note-mark.strong{color:var(--accent);font-weight:650}   /* a count worth a look: a step's files, a checklist's comments */
 .start-who{color:var(--muted);font-size:14px;white-space:nowrap}
 .step-who.waiting{color:var(--muted)}
 .step-acts{display:flex;gap:10px;margin-top:16px}

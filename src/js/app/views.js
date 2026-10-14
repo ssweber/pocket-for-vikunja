@@ -166,8 +166,14 @@ export default {
       return [t.added && {key: 'added', cls: 'added', text: t.added},
         // The latest comment's first line, cut to fit, so a skip's reason or a problem reads without opening the step
         t.said && {key: 'said', cls: 'step-said', icon: 'comment', text: t.said.text ? t.said.who + ': ' + t.said.text : t.said.who + ' commented', label: 'Latest comment, by ' + t.said.who + (t.said.text ? ': ' + t.said.text : '')},
-        files && {key: 'att', cls: 'note-mark num step-files', icon: 'clip', text: String(files), label: files === 1 ? 'A file attached' : files + ' files attached'},
+        files && {key: 'att', cls: 'note-mark num strong', icon: 'clip', text: String(files), label: files === 1 ? 'A file attached' : files + ' files attached'},
         t.dueText && !t.done && {key: 'due', cls: 'due num' + (t.late ? ' overdue' : ''), text: t.dueText}, ...askMeta(t)].filter(Boolean);
+    }
+    // A finished checklist under Checklists: when it finished, how many steps were skipped and how many comments it has
+    if (g?.ended) {
+      const e = g.ended[t.id] || {}, at = new Date(t.done_at).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'});
+      return [{key: 'at', cls: 'num', text: at, label: 'Finished ' + at}, e.skipped && {key: 'skip', cls: 'num', text: e.skipped + ' skipped'},
+        e.comments && {key: 'com', cls: 'note-mark num strong', icon: 'comment', text: String(e.comments), label: e.comments === 1 ? 'A comment' : e.comments + ' comments'}].filter(Boolean);
     }
     const out = [], due = dueInfo(t.due_date), card = g?.card;
     // A done task stays on the open list while it has open subtasks. Show a message that says why.
@@ -319,7 +325,8 @@ export default {
     this.keptRows(s.steps || []);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
     const groups = keptGroups(s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks), ...g.key === 'done' && {open}, ...g.key === 'donetoday' && {open: !!doneOpen.all().today}}));
-    const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || [])}));
+    // A copy saved before finished checklists were whole tasks has them as summaries, which a row can't draw.
+    const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || []), finished: this.keptRows((cl.finished || []).filter(t => t.related_tasks))}));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
     Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
     // Restore the tasks' positions in the project's List view, unless this session has newer ones from a move.
@@ -366,7 +373,7 @@ export default {
      Return whether this load is still current. */
   async settle(ids, seq){
     if (this.view.loading) return seq === renderSeq;
-    const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => cl.runs || [])].map(t => t.id);
+    const now = new Set(ids), shown = [...this.view.groups.flatMap(g => g.tasks), ...this.view.checklists.flatMap(cl => [...cl.runs || [], ...cl.finished || []])].map(t => t.id);
     const gone = shown.filter(id => !now.has(id) && !this.lines[id] && !this.leaving[id]), was = new Set(shown), arrived = ids.filter(id => !was.has(id));
     // Find the elements in one pass over the page, not once per removed row. Closing a project's Done section can
     // remove 2,000 rows.

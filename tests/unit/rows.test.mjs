@@ -146,7 +146,7 @@ test('under a step\'s title the row shows Inserted or Repeated, the latest comme
   const app = component(views, claims);
   assert.deepEqual(app.rowMeta(step({}), RUN), []);
   const meta = app.rowMeta(step({ added: 'Inserted', said: { who: 'Sam', text: 'Skipped: no milk yet' }, attachments: [{}], dueText: '5m late', late: true }), RUN);
-  assert.deepEqual(meta.map(m => [m.key, m.cls, m.text]), [['added', 'added', 'Inserted'], ['said', 'step-said', 'Sam: Skipped: no milk yet'], ['att', 'note-mark num step-files', '1'], ['due', 'due num overdue', '5m late']]);
+  assert.deepEqual(meta.map(m => [m.key, m.cls, m.text]), [['added', 'added', 'Inserted'], ['said', 'step-said', 'Sam: Skipped: no milk yet'], ['att', 'note-mark num strong', '1'], ['due', 'due num overdue', '5m late']]);
   assert.deepEqual([meta[1].label, meta[2].label], ['Latest comment, by Sam: Skipped: no milk yet', 'A file attached']);
   app.waiting.files[7] = 2;
   assert.equal(app.rowMeta(step({ attachments: [{}] }), RUN)[0].label, '3 files attached', 'files still uploading count too');
@@ -795,4 +795,11 @@ test('in New template, each line from the add box becomes a step row after the r
   assert.equal(app.stepShown(till).title, 'Count the till');
   till.ignore = { priority: true };
   assert.equal(app.stepShown(till).title, 'Count the till !4');
+});
+
+test('a finished checklist under Checklists shows when it finished, how many steps were skipped and how many comments it has', () => {
+  const app = component(views, claims), at = '2026-10-13T18:40:00Z', when = new Date(at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const g = { depth: {}, ended: { 5: { skipped: 1, comments: 3 }, 6: { skipped: 0, comments: 0 } } };
+  assert.deepEqual(app.rowMeta({ id: 5, done: true, done_at: at }, g).map(m => [m.key, m.text, m.label]), [['at', when, 'Finished ' + when], ['skip', '1 skipped', undefined], ['com', '3', '3 comments']]);
+  assert.deepEqual(app.rowMeta({ id: 6, done: true, done_at: at }, g).map(m => m.key), ['at'], 'nothing skipped and no comments says nothing more');
 });
