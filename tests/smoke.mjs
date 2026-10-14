@@ -1326,7 +1326,9 @@ try {
       await expect(page.locator(rowOf(t.title))).toHaveCount(0);
       // Pocket puts the user's ✅ on the task, since Vikunja doesn't record who ticked it.
       await synced(page);
-      await expect.poll(async () => (await get(t.id)).reactions?.['✅']?.map(u => u.id)).toEqual([me.id]);
+      // Vikunja leaves a task's reactions out unless they are asked for.
+      const reactions = async () => (await (await api(`/tasks/${t.id}?expand=reactions`)).json()).reactions?.['✅'] || [];
+      await expect.poll(async () => (await reactions()).map(u => u.id)).toEqual([me.id]);
       // Done today is folded at the bottom of Today, with its count, and its rows are drawn once it is opened.
       await expect(fold).toHaveAttribute('aria-expanded', 'false');
       await expect(fold).toContainText(/Done today \(\d+\)/);
@@ -1342,7 +1344,7 @@ try {
       await page.getByRole('button', { name: 'Mark not done: ' + t.title, exact: true }).click();
       await expect(page.locator(`${R} .check`)).toHaveAttribute('aria-label', 'Mark done: ' + t.title);
       await synced(page);
-      await expect.poll(async () => (await get(t.id)).reactions?.['✅'] || []).toEqual([]);
+      await expect.poll(reactions).toEqual([]);
       await page.click('#btn-copy-done');
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toContain(t.title);
       // Reloaded, the task is back under its date.
@@ -2380,6 +2382,9 @@ try {
     // keeps its place relative to the others. Directions still count from the touch, wherever the set went. On a short
     // screen the test makes the screen even shorter if Today has so few tasks that the last row isn't next to the add box.
     const first = await make(`Pocket smoke hold first ${stamp}`, { due_date: new Date(2001, 0, 1, 9).toISOString() }), last = await make(`Pocket smoke hold last ${stamp}`, { due_date: dayAt(7, 23) });
+    // Done today's heading, under the last row once earlier tests have ticked tasks, would leave room below that row.
+    // It is hidden here, so the last row sits by the add box.
+    const noDone = await page.addStyleTag({ content: '#view .done-sec{display:none}' });
     try {
       await toastGone();
       await page.setViewportSize({ width: 390, height: 420 });
@@ -2404,7 +2409,7 @@ try {
         await page.mouse.up();
         await expect(page.locator('.throw')).toHaveCount(0);
       }
-    } finally { await page.mouse.up(); await page.setViewportSize({ width: 390, height: 844 }); for (const t of [first, last]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
+    } finally { await page.mouse.up(); await noDone.evaluate(el => el.remove()); await page.setViewportSize({ width: 390, height: 844 }); for (const t of [first, last]) await api('/tasks/' + t.id, { method: 'DELETE' }); }
   });
   /* Swiping progress on a task that no one is doing claims it for the user. Their picture appears, and the claim is
      sent once the swipe is released with a change. Nothing changes while the row is held. Releasing where the swipe
