@@ -12,9 +12,8 @@ Several questions in Pocket have more than one answer, depending on which code p
 - **What does Pocket say?** Rule 6 puts the words in `messages.js`. About 76 messages are written inline.
 
 This plan gives each question one answer, in one place, and makes lint keep it that way. It is a refactor, not a
-feature. Delete each old path in the same phase that replaces it. Keep no shims, and no "legacy" branch beside the new
-one, except the two named below (older outbox entries, and sign-in with an API token if the relay can't serve it).
-Read `AGENTS.md` and `docs/development.md` first. Delete this file when the last phase is done, and move the rules that
+feature. Delete each old path in the same phase that replaces it. Nobody uses Pocket yet, so keep no shims, no "legacy"
+branch beside the new one, and nothing for data an older Pocket saved. Read `AGENTS.md` and `docs/development.md` first. Delete this file when the last phase is done, and move the rules that
 last into `development.md`.
 
 Line numbers and counts drift. Run the greps given below again before each phase.
@@ -26,7 +25,7 @@ draft. Vikunja doesn't support that header yet. Until it does, Pocket's plugin r
 
 - Pocket sends the write to `/api/v1/plugins/pocket/v2/<path>` instead of `/api/v2/<path>`, with the key.
 - The plugin forwards it to Vikunja's own `/api/v2/<path>`, with the user's `Authorization` header. Vikunja checks
-  permissions, applies an API token's scopes and sends events exactly as for a direct request.
+  permissions and sends events exactly as for a direct request.
 - The plugin stores Vikunja's answer under (user, key). A request sent again with that key gets the stored answer, and
   Vikunja sees the write once.
 
@@ -34,7 +33,7 @@ When Vikunja supports the header, Pocket sends to `/api/v2` with the same header
 asks for that upstream with `docs/design/upstream-idempotency-key.md`.
 
 Why a relay and not a plugin that calls Vikunja's models: the relay depends only on the public v2 API, plain
-`net/http`, and the plugin system. Permissions, token scopes and events stay Vikunja's. Its interface is the one
+`net/http`, and the plugin system. Permissions and events stay Vikunja's. Its interface is the one
 Vikunja would offer, so nothing in Pocket changes when it is removed except the base address.
 
 ### What the relay does
@@ -75,9 +74,8 @@ The relay is on the branch `spike/relay`: `pocket/relay.go`, checked by `scripts
 6. events fire: a mention in the description notifies the mentioned user;
 7. a repeating task ticked twice with one key moves on one day, not two.
 
-It also reports whether an API token can reach a plugin route. Vikunja limits a token to the routes its permissions
-list. If a plugin route can't be on that list, Pocket's API-token sign-in can't use the relay. Then that sign-in keeps
-today's `find…` checks until Vikunja supports the header, and the relay serves the session sign-in only.
+Pocket signs in only with Vikunja's own session (part 6), so whether an API token can reach a plugin route doesn't
+matter. The script's last note, which reports that, can be ignored.
 
 `relay.go` type-checks against stand-ins for Vikunja's packages, but hasn't run inside Vikunja. Run the spike first,
 on SQLite and on Postgres.
@@ -173,11 +171,11 @@ allowlist with a comment saying why. Nothing else goes on the list.
 
 Test it in `tests/unit/` with a fake outbox. Ticking and unticking ten times while offline leaves zero or one entry.
 
-### Older outbox entries
+### The outbox's format
 
-Entries an older Pocket saved are in IndexedDB on users' phones, some half sent. They have no keys, and the old code
-may have done part of the change already. So the old sender stays for one release, and sends only entries in the old
-format. The release after that deletes it. Name the release in the commit that adds the new format.
+The new entry format replaces the old one outright. Raise the IndexedDB version in `sync.open`, and clear the
+`outbox`, `files` and `claims` stores in the upgrade. Delete `claims` once nothing reads it, and the code that moves
+entries from localStorage. There is no old sender.
 
 ### Traps
 
@@ -278,6 +276,22 @@ Found with `grep -c "this.say(\`\|this.say('\|this.notify(\`\|this.notify('" src
   in `messages.js`, so the sweep has only old strings left.
 - **Tests** in `tests/unit/messages.test.mjs` for each new function, singular and plural.
 
+## 6. Sign in with Vikunja's session only
+
+Pocket also signs in with an API token. Nobody depends on that, and it costs code in many places: a second sign-in
+form, a second way to keep and renew the token, and handling for tokens that lack a permission. Delete it.
+
+Found with `grep -rn "'token'\|API token" src/js src/markup`.
+
+- **Sign-in:** the token tab and form in `markup/login.html`, `submitToken` and the `'token'` method in `auth.js`, and
+  `mode` and `token` in `core.js`. A server with no password sign-in shows its single sign-on buttons.
+- **Requests:** `tokenWorks` and the 401 that becomes a 403 in `api.js`. `sharedToken` stays. It is Vikunja's own
+  session token, which Vikunja's web app also keeps under `token` in localStorage, so the grep finds it too.
+- **Missing permissions:** the token wording in `notReordered` (messages.js) and in `sendAct` (runs.js), and
+  `accessBlocked` with the "Pocket can't check" path in `canSee` and `LINE_STEPS.prepare`.
+- **Docs:** the API tokens section of `docs/guide.md`, and the troubleshooting lines about token permissions.
+- **Tests:** the token sign-in and the token-permission cases.
+
 ## Enforcing it
 
 `eslint.config.js` already bans `fetch` outside `api.js`. Add the rest the same way. Every selector goes in the
@@ -304,15 +318,15 @@ reload Pocket, reconnect, and check Vikunja's copy. It also sends each request o
 checks that Vikunja changed once.
 
 0. **The spike.** Run `scripts/spike-relay.mjs` on the `spike/relay` branch, on SQLite and on Postgres. Record the
-   results and the API-token answer here. If a check fails, stop and rethink part 0 before going on. Then merge
+   results here. If a check fails, stop and rethink part 0 before going on. Then merge
    `relay.go` into `dev` as the plugin's relay, and delete the branch.
-1. **Ground.** The op registry, `app/acts.js`, and the `key` option in `api()`. The writes lint rule with the full
-   allowlist. Nothing the user sees changes.
+1. **Ground.** Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
+   writes lint rule with the full allowlist.
 2. **Roles.** Settle the decision in part 3 first. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
 3. **Today's groups.** Add `dayGroup`, move all six places, and turn on its rule.
 4. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints and
-   bulk create. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Keep the old sender for old entries.
+   bulk create. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
 5. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
 6. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
@@ -326,8 +340,7 @@ checks that Vikunja changed once.
     with a key". Add a rule that a task's kind comes from `role()`, and one that Today's groups come from `dayGroup`.
     Rule 6 now has lint behind it. Update `main.go`'s header and the Privacy and security section of `docs/guide.md`
     for the relay and its table. Delete this file.
-12. **One release later.** Delete the old outbox sender and the old entry format.
-13. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
+12. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
     a migration that drops `pocket_relay`. Raise the minimum Vikunja version.
 
 ## Out of scope
