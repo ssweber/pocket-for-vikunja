@@ -13,6 +13,7 @@ const rowsOf = id => [...document.querySelectorAll(`:is(.row:not(.own), .day-car
 // ("sheet:notes") exist while the sheet is open.
 const SCREEN = {
   overdue: a => a.route.name === 'today',
+  project: a => a.route.name === 'project',              // under a project's title
   done: a => a.route.name === 'project',                 // under a project's Done heading
   more: a => ['project', 'search'].includes(a.route.name),   // under the row that shows more done tasks (showMore)
   cap: a => ['today', 'project'].includes(a.route.name) || (a.route.name === 'run' && !!a.runAim),   // by the add box

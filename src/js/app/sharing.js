@@ -94,6 +94,8 @@ export default {
     }
     await this.copyOut(text, 'sheet:top', COPIED.text);
   },
+  // Copy the same text straight to the clipboard, from the Copy button beside ⋯. A message says so at `place`.
+  copyProgress(what, place){ const doc = this.shareDoc(what); if (doc) return this.copyOut(shareText(doc), place, COPIED.text); },
   // Copy the open task, or the project on screen, as a Markdown list that Pocket can read back. It is written in quick
   // add's syntax, with the user's own prefixes and default due time.
   copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {mode: this.quickAddMode, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },

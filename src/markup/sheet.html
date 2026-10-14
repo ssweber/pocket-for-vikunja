@@ -8,6 +8,8 @@
       <template x-if="sheet.task.identifier && !checklistRole?.match(/template|tplstep|run|step/)"><span class="num task-id" id="d-id" x-text="sheet.task.identifier"></span></template>
     </div></template></div>
     <div class="grab"><i></i></div>
+    <!-- Copies the progress text that Share as text in the ⋯ menu sends -->
+    <template x-if="sheet.kind === 'task' && sheet.task"><button class="icon-btn" id="d-copy" aria-label="Copy progress" @click="copyProgress('task', 'sheet:top')"><svg class="i"><use href="#i-copy"/></svg></button></template>
     <!-- The ⋯ menu for the task as a whole. It can share the task's progress and open it in Vikunja. With write
          access it can also move the task to another project or up and down its list, turn a subtask into its own
          task, use the task as a checklist template, or delete it. -->
@@ -15,7 +17,7 @@
     <button class="icon-btn" id="btn-sheet-close" aria-label="Close" @click="closeSheet()"><svg class="i"><use href="#i-close"/></svg></button>
     <!-- Escape closes the menu before the sheet, wherever the focus is (escapeKey) -->
     <template x-if="sheet.menu && sheet.task"><div class="menu" id="d-menu" role="menu" x-init="$nextTick(() => $el.querySelector('[role=menuitem]')?.focus())" @click.outside="$event.target.closest('#d-more') || (sheet.menu = false)">
-      <button role="menuitem" id="d-share-text" @click="sheet.menu = false; shareProgress('task')">Share progress as a text</button>
+      <button role="menuitem" id="d-share-text" @click="sheet.menu = false; shareProgress('task')">Share as text</button>
       <!-- Not for a checklist opened as a task, which can only be shared as text (share.js) -->
       <template x-if="checklistRole !== 'run'"><button role="menuitem" id="d-copy-md" @click="sheet.menu = false; copyMarkdown('task')">Copy as a Markdown list</button></template>
       <a role="menuitem" id="d-open-vikunja" :href="vikunjaUrl('task')" target="_blank" rel="noopener" @click="sheet.menu = false">Open in Vikunja ↗</a>

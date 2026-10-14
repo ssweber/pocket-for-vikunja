@@ -626,13 +626,18 @@ try {
     await page.waitForSelector(`${row} .claim.mine .av`);
     await page.click('#btn-run-more');
     // A checklist offers only the text, with no Markdown copy, because the record of who did each step can't be turned back into tasks.
-    await expect(page.locator('#r-sharing button')).toHaveText(['Share progress as a text']);
+    await expect(page.locator('#r-sharing button')).toHaveText(['Share as text']);
     await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
     await page.click('#r-share-text');
     await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: run.title, text: [`${run.title}  ▰▰▱ 67% · 1 skipped`,
       `✓ Check the guards at 3pm · ${my}`, `– Warm up the press · skipped by ${my}`, `○ First article check · ${my}`].join('\n') }]);
     await expect(page.locator('#r-open-vikunja')).toHaveAttribute('href', `${SERVER}/tasks/${first.id}`);
     await page.click('#btn-sheet-close');
+    // Copy beside the checklist's ⋯ copies the same text, and says so at the top of the checklist.
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
+    await page.click('#btn-copy');
+    await placeSays(page, 'run', 'Copied. Paste it into a message');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()).then(t => t.replace(/\r\n/g, '\n'))).toBe(await page.evaluate(() => window.shared[0].text));
     await page.click(`${row} .claim`);                                       // release the claim again
     await page.waitForSelector(`${row} .claim .me`);
     await synced(page);

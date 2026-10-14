@@ -3900,7 +3900,7 @@ ${footName('Hooks')}`);
     const text = [`Pack the van ${stamp}  ▰▱▱▱ 38%`, '✓ Load chairs', '◐ Tables 50%', `○ Sound system · ${my}`, '○ Lights'].join('\n');
     await page.evaluate(() => { window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
     const menu = async () => { if (!await page.locator('#d-menu').isVisible()) await page.click('#d-more'); return page.locator('#d-menu'); };
-    await (await menu()).getByRole('menuitem', { name: 'Share progress as a text' }).click();
+    await (await menu()).getByRole('menuitem', { name: 'Share as text' }).click();
     await expect.poll(() => page.evaluate(() => window.shared)).toEqual([{ title: `Pack the van ${stamp}`, text }]);
     await expect(page.locator('#d-menu')).toHaveCount(0);
     // Without a share sheet, the text is copied to the clipboard, and a message says so where the user shared from.
@@ -3909,9 +3909,16 @@ ${footName('Hooks')}`);
     const clip = () => page.evaluate(() => navigator.clipboard.readText()).then(t => t.replace(/\r\n/g, '\n'));
     await page.evaluate(() => navigator.clipboard.writeText(''));
     await page.evaluate(() => { navigator.share = undefined; });
-    await (await menu()).getByRole('menuitem', { name: 'Share progress as a text' }).click();
+    await (await menu()).getByRole('menuitem', { name: 'Share as text' }).click();
     await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
     await expect.poll(clip).toBe(text);
+    // Copy beside ⋯ copies the same text in one tap, with no share sheet.
+    await page.evaluate(() => { navigator.clipboard.writeText(''); window.shared = []; navigator.share = async d => { window.shared.push(d); }; });
+    await page.click('#d-copy');
+    await expect.poll(clip).toBe(text);
+    await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
+    expect(await page.evaluate(() => window.shared)).toEqual([]);
+    await page.evaluate(() => { navigator.share = undefined; });
     // The Markdown list uses quick add's syntax, so pasting it back recreates the task. The task is a heading without
     // a percentage, because the percentage is worked out from the subtasks. Each subtask is a line.
     await (await menu()).getByRole('menuitem', { name: 'Copy as a Markdown list' }).click();
@@ -3945,6 +3952,10 @@ ${footName('Hooks')}`);
     projectCopy = await clip();
     await expect(page.locator('#p-open-vikunja')).toHaveAttribute('href', `${SERVER}/projects/${proj.id}`);
     await page.click('#btn-sheet-close');
+    // Copy beside the project's ⋯ copies the shared text, and says so under the project's title.
+    await page.click('#btn-copy');
+    await placeSays(page, 'project', 'Copied. Paste it into a message');
+    await expect.poll(clip).toBe(await page.evaluate(() => window.shared[0].text));
   });
   /* A copied task can be pasted back. Its Markdown, pasted into quick add's box, makes the same task again with the
      same subtasks, including whether each is done, how far along it is and who is assigned. The percentage is not

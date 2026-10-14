@@ -4,7 +4,7 @@
       <!-- Share or copy the project's open tasks, or open its page in Vikunja. Anyone who can see the project can do
            this, offline too. -->
       <div class="card share-card" id="p-sharing">
-        <button type="button" id="p-share-text" @click="shareProgress('project')">Share progress as a text</button>
+        <button type="button" id="p-share-text" @click="shareProgress('project')">Share as text</button>
         <button type="button" id="p-copy-md" @click="copyMarkdown('project')">Copy as a Markdown list</button>
         <a id="p-open-vikunja" :href="vikunjaUrl('project')" target="_blank" rel="noopener">Open in Vikunja ↗</a>
       </div>
@@ -52,7 +52,7 @@
            Markdown copy, because pasting a Markdown list creates tasks again, and a checklist's record of who did what
            would be lost that way. -->
       <div class="card share-card" id="r-sharing">
-        <button type="button" id="r-share-text" @click="shareProgress('run')">Share progress as a text</button>
+        <button type="button" id="r-share-text" @click="shareProgress('run')">Share as text</button>
         <a id="r-open-vikunja" :href="vikunjaUrl('run')" target="_blank" rel="noopener">Open in Vikunja ↗</a>
       </div>
       <template x-if="sheet.runEdit"><div>

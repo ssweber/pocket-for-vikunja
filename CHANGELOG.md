@@ -19,11 +19,13 @@ is a new 0.x.y.
 - A template step can ask for a number, yes or no, a choice or a line of text, and each checklist's card records the
   answers ([guide](docs/guide.md#asks)).
 - A task can move to another project from its ⋯ menu, taking its subtasks along, with Undo.
+- A Copy button beside ⋯ on a project, a checklist and a task copies its progress as text in one tap.
 
 ### Changed
 
 - Reordering in a task's menu says "Up one place" and "Down one place", because "move" in Vikunja means moving to
   another project.
+- The ⋯ menu item that opens the phone's share sheet says "Share as text".
 
 ### Fixed
 
