@@ -10,6 +10,8 @@ Several questions in Pocket have more than one answer, depending on which code p
 - **What kind of task is this?** Template and checklist are decided by four different tests.
 - **Which Today group does a date go in?** The rule is written out six times.
 - **What does Pocket say?** Rule 6 puts the words in `messages.js`. About 76 messages are written inline.
+- **Which copy of a task is right?** A task can be on screen from six copies: `tasks`, `cache`, `sheet.task`, the
+  screens saved on the phone, the subtasks inside a task, and `view.run`. Each has its own way of staying current.
 
 This plan gives each question one answer, in one place, and makes lint keep it that way. It is a refactor, not a
 feature. Delete each old path in the same phase that replaces it. Nobody uses Pocket yet, so keep no shims, no "legacy"
@@ -56,8 +58,12 @@ And beyond the draft:
   between the two, the key stays pending. A request with that key more than 2 minutes later gets 409 with
   `Idempotency-Unknown: true`. The outbox shows that entry as failed, for the user to send or drop. The window is a few
   milliseconds on the server, against today's window of any dropped connection.
-- **Keys are kept 30 days.** An outbox entry still unsent after 30 days is marked failed instead of sent, because its
-  key may be gone.
+- **The relay decides how long keys are kept,** 30 days for now, and refuses an expired key instead of running it.
+  Every key is a UUIDv7, which holds the time it was made. A key older than the relay keeps keys gets 409 with
+  `Idempotency-Unknown: true`, as for the gap. So does a key made more than a day in the future, by a phone whose
+  clock is wrong. The outbox has no rule about age of its own, and the relay can change how long it keeps keys
+  without breaking old entries. A phone's clock that is a day slow can still slip a key past the check. That margin
+  is why the relay keeps keys for weeks, not hours.
 - **The table, `pocket_relay`,** is plain SQL that SQLite, Postgres and MySQL accept. A Go struct would be a type Yaegi
   makes at runtime, and xorm may not read it. It holds each stored answer, which includes task content, for 30 days.
 
@@ -73,6 +79,9 @@ The relay is on the branch `spike/relay`: `pocket/relay.go`, checked by `scripts
 5. a project the user can't write to is refused, the refusal is replayed, and nothing is created;
 6. events fire: a mention in the description notifies the mentioned user;
 7. a repeating task ticked twice with one key moves on one day, not two.
+
+Add an eighth check before running it: a key older than the relay keeps keys, and a key from the future, both get
+409 with `Idempotency-Unknown`, and nothing is created.
 
 Pocket signs in only with Vikunja's own session (part 6), so whether an API token can reach a plugin route doesn't
 matter. The script's last note, which reports that, can be ignored.
@@ -101,7 +110,7 @@ Each kind of change is one object in `src/js/ops/`, with everything about it in 
 
 ```js
 export const due = {
-  apply(app, a){ … },             // show the change on screen at once (rule 4)
+  apply(t, a){ … },               // the task as it will be: a task in, a new task out (rule 4, part 7)
   steps: [ … ],                   // the v2 requests, in order, each sent with its own key
   invert(a){ … },                 // the op that undoes it, built from what this one recorded (part 2)
   merge(older, newer){ … },       // pruning, below
@@ -114,6 +123,9 @@ A method in `src/js/app/` calls `this.act({op, task, ...})`. Nothing else sends 
 `runs.js` into `app/acts.js`, with `giveBack`. A unit test checks that every op defines every field, so no op is
 missing its words in the outbox sheet.
 
+`apply` is pure. It reads only the task and the op, and changes neither. The screen shows what `apply` returns
+(part 7). An `apply` that changed the screen itself would have to be rewritten for every op when part 7 is built.
+
 ### Keys and steps
 
 - **An entry gets a key when it is made,** and each of its requests a key made from it: the entry's key, the step's
@@ -122,6 +134,11 @@ missing its words in the outbox sheet.
   progress). But each step is now one keyed request, sent until it is answered. There is nothing to look for after a
   lost reply. `tried`, `triedAt`, `arriving`, `findSent`, `findCopy`, `findNote`, `hasAttachment`, `claims` and the
   lost-reply half of `landed` go.
+- **A request's body is fixed before it is first sent.** The relay answers 422 to a key sent with a different body.
+  A step whose body depends on Vikunja's copy (a rebase kind, or Undo's check in part 2) reads that copy and builds
+  the body once, saves it in the entry, and then sends it. A retry sends the saved body. It never reads again, because
+  after a lost reply Vikunja's copy already has the change, and a new body would be refused, or read as a change made
+  elsewhere.
 - **`api()` gets a `key` option.** With a key, it sends to the relay and adds the header. Once Vikunja supports the
   header, the option sends to `/api/v2`, and only that line changes.
 
@@ -202,15 +219,18 @@ teammate's edit overwrites that edit without saying so.
 Found with `grep -n "label: 'Undo'\|const undo\|undo: async" src/js/app/*.js`.
 
 - **Undo is an op,** made by the op's `invert` from what the first op recorded: `was`, the value each field had, and
-  `set`, the value it wrote.
+  `set`, the value Vikunja stored. `set` comes from Vikunja's answer, not from what Pocket sent, because Vikunja
+  changes some values as it saves them (a description's HTML, a date's format). Compared with the value sent, the
+  field would look changed elsewhere.
+- **An Undo of an op not yet sent** removes the op from the outbox. Nothing is sent. Pruning already does this for a
+  tick and its untick.
 - **The check runs when it is sent,** not when it is tapped. Its first step reads Vikunja's copy, so an Undo queued
   offline is checked against the task as it is then.
 - **Per field, not per task.** `unchanged()` compares `updated`, so any edit to any field blocks the whole Undo. A
   field that still has `set` goes back to `was`. A field changed elsewhere is left alone.
 - **One message** for a field left alone: "Not undone: “title” has changed since then", on the row, or in the outbox
   sheet if the row is gone.
-- **A repeating task's Undo** puts back `due_date`, `start_date`, `end_date` and absolute reminders. Its `set` is
-  Vikunja's copy after the tick, because Vikunja moved the dates.
+- **A repeating task's Undo** puts back `due_date`, `start_date`, `end_date` and absolute reminders.
 
 The inline undo closures in `toggleDone`, `arrivedDone`, `reopenedHead`, `undoMoves`, `moveTask` and `ownTask` go, and
 so does `unchanged()`.
@@ -292,6 +312,73 @@ Found with `grep -rn "'token'\|API token" src/js src/markup`.
 - **Docs:** the API tokens section of `docs/guide.md`, and the troubleshooting lines about token permissions.
 - **Tests:** the token sign-in and the token-permission cases.
 
+## 7. One store: Vikunja's copy, with the outbox on top
+
+A task can be on screen from six copies, and each has its own way of staying current:
+
+- `keep` (tasks.js) writes the fields that changed into `tasks`, and keeps a ticked task done while it leaves.
+- `cache` holds Vikunja's last copy, for Undo to compare with and for putting back a failed save.
+- `readTask` (actions.js) throws a fetched copy away if a save started during the fetch, counted in `saving`.
+- The sheet keeps `sheet.task`, and hides the replies that arrive while its saves run.
+- `keptRows` decides, row by row, whether a saved screen's copy is newer than the one in `tasks`.
+- A checklist's screen keeps its checklist and steps in `view.run`.
+
+The roadmap lists these under "Copies of a task that are not the store's yet". This part makes them one store.
+
+### The base and the overlay
+
+- **The base** is Vikunja's copy of each task Pocket has loaded, by id. It replaces `cache` and the tasks inside the
+  saved screens.
+- **The overlay** is the ops in the outbox that Vikunja hasn't answered yet.
+- **A row shows the base with its task's ops applied,** in order, through each op's `apply` (part 1). This is a
+  `memo` per task id, so a new op on one task redraws that task's rows only (rule 10). `tasks` becomes this memo.
+- **A screen holds ids,** in Vikunja's order, with each waiting task's id where it will be. The saved copy of a screen
+  is its ids. The sheet, a card and a checklist's screen read tasks from the store by id.
+- **A task is waiting when it has an op in the overlay.** Nothing else records it.
+
+### Writing into the base
+
+- **By field.** Vikunja leaves fields out of a related task, such as a subtask's people and labels. A copy replaces
+  only the fields it has. The store records which fields of each task have been loaded, so a row can tell an empty
+  field from one never loaded.
+- **An answered op's echo goes into the base, and the op leaves the overlay, in one change.** If the op left first,
+  the row would show the old value for a moment.
+- **A late fetch is ignored for a task changed since it started.** A fetch started before an op was answered may
+  carry the task as it was before the op. The store records when each task's last echo arrived. A fetch started
+  before that leaves the task's base as it is. `updated` can't decide this alone: ticking a subtask changes the
+  parent's ring but not the parent's `updated`. This replaces `readTask` and `saving`.
+- **A ticked task stays done while it leaves.** `keep` does this today, for a repeating task whose answer has it open
+  at its next date. Once the tick op leaves the overlay, the row would reopen. Keep the rule in the memo: a task
+  marked as leaving done shows done.
+
+### Pruning the base
+
+The base keeps a task while something points to it:
+
+- an id on a kept screen;
+- an op in the outbox;
+- the task open in the sheet, its parent and its subtasks, and the steps of the checklist on screen.
+
+Everything else is removed. The sweep runs when a fresh load replaces a screen's ids, and once when Pocket opens. A
+task Vikunja answers with 404 is removed once no op points to it. `forget`, `forgetTree` and `forgotten` go.
+
+The kept screens are Today, Lists, Checklists and the last 5 projects opened. They bound the base's size, so nothing
+expires by age. A project opened rarely loads fresh, as one never opened does now.
+
+### Traps
+
+- **Rule 10.** The memo must return the same object while neither the base nor the ops for that id changed. Run
+  `npm run perf:rows -- counts` before and after.
+- **Where the base is kept.** The saved screens are in localStorage, which a screen reads at once. The outbox is in
+  IndexedDB, which is asynchronous. Measure the time to the first row before choosing. If IndexedDB delays it, keep
+  the base in localStorage, under the kept screens' bound.
+- **Ids not yet sent.** A task waiting to be created has a `pending-…` id and no base. Its row is the create op
+  applied to nothing. When the create is answered, the base gets the real id, and every screen's ids swap it in the
+  same change.
+- **Rule 8.** A screen opened from its saved ids draws at once from the base. The fresh load replaces the ids, and a
+  row it adds or removes follows rule 8 as now.
+- **The format.** The base replaces the saved screens' format. Clear them on upgrade, as part 1 clears the outbox.
+
 ## Enforcing it
 
 `eslint.config.js` already bans `fetch` outside `api.js`. Add the rest the same way. Every selector goes in the
@@ -306,6 +393,7 @@ rule replaces the first.
 | Roles | `no-restricted-imports` with `importNames` for the predicates in `checklists.js` | `src/js/checklists.js` |
 | Today's groups | `no-restricted-syntax`: a call to `addDays` whose second argument is the literal `8` | `src/js/lists.js` |
 | Messages | `no-restricted-syntax`: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said` | `src/js/messages.js` |
+| Store | `no-restricted-syntax`: an assignment to a member of `this.tasks`, any use of `this.sheet.task` or `this.view.run`, and an import of `cache` | `src/js/app/store.js` |
 
 The writes allowlist starts as every file that writes today. Each phase removes the files it finishes. The other rules
 are turned on in the phase that finishes their part.
@@ -321,26 +409,35 @@ checks that Vikunja changed once.
    results here. If a check fails, stop and rethink part 0 before going on. Then merge
    `relay.go` into `dev` as the plugin's relay, and delete the branch.
 1. **Ground.** Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
-   writes lint rule with the full allowlist.
+   writes lint rule with the full allowlist. The store's core (part 7) in `app/store.js`: the base, the overlay and
+   the memo, with each op's echo written into the base. Only the ops built from here on read it. Without it, each op
+   in phases 4 to 9 would first change `tasks` itself, and be rewritten for part 7.
 2. **Roles.** Settle the decision in part 3 first. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
 3. **Today's groups.** Add `dayGroup`, move all six places, and turn on its rule.
 4. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints and
    bulk create. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
-5. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
+5. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`. A late fetch is ignored as part
+   7 says, so delete `readTask` and `saving`.
 6. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
-7. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js.
+7. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js. The sheet reads
+   its task from the store, so delete `sheet.task`.
 8. **Deletes and comments.** Delete `deleteTasks`, `deleteTree` and `findNote`.
 9. **Checklists and files.** `startChecklist` and `insertStep` as keyed ops. Delete `findCopy`, `duplicate`'s
    bookkeeping and `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last
    non-permanent files from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
-10. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
-11. **Clean up.** Update `development.md`. Rule 3 becomes "Every change is an op sent through the outbox, each request
-    with a key". Add a rule that a task's kind comes from `role()`, and one that Today's groups come from `dayGroup`.
-    Rule 6 now has lint behind it. Update `main.go`'s header and the Privacy and security section of `docs/guide.md`
-    for the relay and its table. Delete this file.
-12. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
+   A checklist's screen reads its steps from the store, so delete `view.run`.
+10. **The store.** Screens hold ids, the saved screens become the base, and the sweep prunes it (part 7). Delete
+    `keep`, `keptRows`, `cache` and `forgotten`, and turn on the store rule.
+11. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
+12. **Clean up.** Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied,
+    read from the store by id". Rule 3 becomes "Every change is an op sent through the outbox, each request with a
+    key". Add a rule that a task's kind comes from `role()`, and one that Today's groups come from `dayGroup`. Rule 6
+    now has lint behind it. Delete "Copies of a task that are not the store's yet" from `roadmap.md`. Update
+    `main.go`'s header and the Privacy and security section of `docs/guide.md` for the relay and its table. Delete
+    this file.
+13. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
     a migration that drops `pocket_relay`. Raise the minimum Vikunja version.
 
 ## Out of scope

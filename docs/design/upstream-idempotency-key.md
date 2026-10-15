@@ -36,6 +36,10 @@ the same key, without running the write again. As the draft describes:
 
 Keys could be kept for a configurable time, such as 24 hours, and the expiry documented as the draft asks.
 
+An expired key looks like a new one, so a client retrying late would make the duplicate the header exists to
+prevent. A client can send a UUIDv7 key, which holds the time it was made. Vikunja could then refuse a key older than
+it keeps keys, with `409 Conflict`, instead of running the write again. The client can then ask the user what to do.
+
 If Vikunja stores the key in the same transaction as the write, a request either happened, with its key stored, or
 didn't happen at all. A client then never has to guess.
 
