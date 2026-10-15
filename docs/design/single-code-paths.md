@@ -707,7 +707,9 @@ go.
   tasks (`taskTree`) reads the store, so a subtask already being deleted is neither counted nor asked about. The
   `figure` stage skips a parent with a waiting delete. Found on the phone on 2026-10-15. The user swiped a subtask on
   Today, then its parent. Pocket asked to delete both, and the subtask's delete failed when it read the parent's
-  progress after the parent had gone.
+  progress after the parent had gone. Swiping the parent had also taken the subtask's row from the subtask's mark
+  (`markRow` → `dropMark`), so nothing sent that held delete until Pocket was hidden. A held delete must never lose
+  the mark that sends it.
 - `position` keeps its own way, because a position belongs to a project's view, not to a task.
 
 `waiting.ticks`, `waiting.pcts` and `waiting.claims` go where a row can read the task instead. The waiting and slow
