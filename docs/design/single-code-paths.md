@@ -280,8 +280,9 @@ Found with `grep -on "hasTemplateLabel(\|isTemplate(\|isRun(\|isRunTask(\|isRunS
 - **Tests.** A table in `tests/unit/checklists.test.mjs` with one row per shape: label or not, Checklists project or
   not, a parent or not, done, dated, copied from a template, with a run line. Write it first, against each current
   predicate, so the differences show as failing rows.
-- **Decide before building:** a task labelled "template" outside a Checklists project. Recommended: an ordinary task,
-  as its sheet treats it now. Then Move all moves it, a tick adds the ✅, and it can stack as a card.
+- **Decided on 2026-10-15:** a task labelled "template" outside a Checklists project is an ordinary task, as its sheet
+  treats it now. Move all moves it, a tick adds the ✅, it can be held and moved to a date, it can stack as a card, its
+  subtasks follow the List view, and editing its title adds no "TEMPLATE: ".
 
 ## 4. One rule for Today's groups
 
@@ -432,6 +433,7 @@ Checked on Vikunja 2.7.0 on 2026-10-15:
   assignees, a position, an attachment, and the step times Pocket's plugin writes (`main.go` says so). So the
   changed-tasks query catches edits elsewhere to titles, dates, done, progress, notes and priority, and new comments.
   A claim, a ✅, a label or a new subtask made elsewhere shows once a screen that has the task loads again.
+  `docs/design/upstream-task-updated.md` asks Vikunja to change that.
 - **A field Vikunja wasn't asked for comes back as `null`.** `reactions` is `null` unless the request asks for
   `expand=reactions`. Taking it as "the task has no reactions" would remove every ✅. So the store takes only the
   fields its request asked for, and a list read without `expand=reactions` leaves `reactions` alone.
@@ -492,12 +494,14 @@ checks that Vikunja changed once.
    `spike/relay` as files, not by merging that branch, whose copies of `docs/design/` are older. Delete `spike/relay`
    once this branch is merged.
 1. **Ground.** Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
-   writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies, the
-   waiting ops and the memo, with each op's answer written into the copies. Only the ops built from here on read it.
-   Without it, each op in phases 4 to 9 would first change `tasks` itself, and be rewritten for part 7.
+   writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies and the
+   waiting ops, with each op's answer written into the copies, and `withWaiting` put on the rows with `keep`. Only the
+   ops built from here on use it. Without it, each op in phases 4 to 9 would first change `tasks` itself, and be
+   rewritten for part 7. The memo waits for phase 10, when rows read it and it can be measured.
    Built so far: part 6, `api()`'s `key` option with `uuid7()`, and the writes rule. Left: the registry, `app/acts.js`
-   and the store's core, as "Phase 1 in detail" proposes.
-2. **Roles.** Settle the decision in part 3 first. Write the table test, add `roleOf` and `this.role`, move every
+   and the store's core, as "Phase 1 in detail" says. Before the first op ships, install `relay.go` on the user's own
+   Vikunja and check one relayed create there: that the relay reaches Vikunja, and which database it uses.
+2. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
 3. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
 4. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
@@ -527,8 +531,8 @@ checks that Vikunja changed once.
 
 ## Phase 1 in detail
 
-Proposed on 2026-10-15, while the user was away. Nothing here is built yet. Each choice names what it replaces, so
-it can be argued with.
+Agreed with the user on 2026-10-15: the store's core goes through `keep` until phase 10, and Try again after
+`Idempotency-Unknown` sends with a new key. `api()`'s `key` option and `uuid7()` are built.
 
 ### An entry and its keys
 
