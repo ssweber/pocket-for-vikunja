@@ -635,10 +635,9 @@ Pruning (phase 7), Undo as an op (phase 6), the late-read rule (phase 4) and eve
 
 For whoever carries on. Read this, then phase 4.
 
-- **Where the work is.** Phases 0, 1 and 2 are on the branch `single-code-paths`, built in a git worktree at
-  `scratchpad/wt`. Nothing is pushed. `dev` is at the plan's own commits. The `pocket` folder from the branch is
-  installed on the user's server (Cloudron, Postgres), and passed `scripts/relay-check.js` and a phone check online
-  and offline.
+- **Where the work is.** Phases 0, 1 and 2 are on `dev`, which is ahead of `origin/dev` and not pushed. They were
+  built on a branch and fast-forwarded onto `dev`. The `pocket` folder at that point is installed on the user's server
+  (Cloudron, Postgres), and passed `scripts/relay-check.js` and a phone check online and offline.
 - **How it has been built.** One build agent at a time, each with a written brief: the parts of this plan it needs,
   `AGENTS.md`, `docs/development.md`, the exact scope, "nothing on screen changes" where that holds, the checks, and
   "list every choice the brief didn't settle". The briefs used so far are in `scratchpad/ground/brief-*.md`. Every
