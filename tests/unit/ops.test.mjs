@@ -148,20 +148,32 @@ test('a change the relay can\'t vouch for is kept as failed, and Try again sends
    it is offline, an act's first request isn't tried, and flush sends a read first to find out. */
 const offlineTick = async (t, mark) => {
   const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
-  mark(app);
+  mark(app, v);
   const r = await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
   return { v, app, r };
 };
-for (const [how, mark] of [['Pocket has found no connection', app => { app.offline = true; }], ['the browser says it is offline', () => Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })]])
+// The act starts flush, whose read fails here, as it would with no connection.
+const noConnection = (app, v) => { app.offline = true; v.trouble = q => q.path === '/user' ? 'offline' : null; };
+// Fire the flush an act started (setTimeout is mocked here), and let its requests settle.
+const settle = async (t, done = () => false) => { t.mock.timers.tick(1); for (let i = 0; i < 200 && !done(); i++) await new Promise(ok => setImmediate(ok)); };
+for (const [how, mark] of [['Pocket has found no connection', noConnection], ['the browser says it is offline', () => Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })]])
   test(`a tick made while ${how} is not tried, and can be dropped`, async t => {
     t.after(() => { delete navigator.onLine; });
     const { v, app, r } = await offlineTick(t, mark);
-    assert.deepEqual([r.status, v.requests.length, app.pending[0].sent, app.offline], ['offline', 0, undefined, true]);
+    await settle(t);
+    assert.deepEqual([r.status, v.requests.filter(q => q.path !== '/user').length, app.pending[0].sent, app.offline], ['offline', 0, undefined, true]);
     assert.deepEqual(app.outboxRows[0].drop, ['dropAct', app.pending[0].id], 'Waiting to send offers Don\'t send it');
     globalThis.confirm = () => true;
     await app.dropAct(app.pending[0].id);
-    assert.deepEqual([sync.all(1).length, v.requests.length, v.task(7).done], [0, 0, undefined]);
+    assert.deepEqual([sync.all(1).length, v.requests.filter(q => q.path !== '/user').length, v.task(7).done], [0, 0, undefined]);
   });
+
+test('a tick made just after a brief drop is sent once a read gets through, without waiting for the 30-second timer', async t => {
+  const { v, app, r } = await offlineTick(t, app => { app.offline = true; });
+  assert.equal(r.status, 'offline');
+  await settle(t, () => !sync.all(1).length);
+  assert.deepEqual([v.requests.map(q => q.method + ' ' + q.path).slice(0, 2), v.task(7).done, sync.all(1).length, app.offline], [['GET /user', 'PATCH /tasks/7'], true, 0, false]);
+});
 
 test('flush while offline sends a read first, and sends the waiting tick only once the read is answered', async t => {
   const { v, app } = await offlineTick(t, app => { app.offline = true; });

@@ -88,8 +88,12 @@ export default {
         a.task = id; await c.save();
       }
       // A request that gets no answer may still have reached Vikunja, and after it the act can't be dropped. So an act
-      // not yet sent waits while Pocket knows it is offline, and flush sends it once a read gets through.
-      if (!a.sent && (this.offline || navigator.onLine === false)) { this.offline = true; return {...none, status: 'offline', reached: false}; }
+      // not yet sent waits while Pocket knows it is offline, and flush sends it once a read gets through. Flush runs
+      // now, outside the outbox lock, so a tick made after a brief drop doesn't wait for the 30-second timer.
+      if (!a.sent && (this.offline || navigator.onLine === false)) {
+        if (navigator.onLine !== false) setTimeout(() => this.flush());
+        this.offline = true; return {...none, status: 'offline', reached: false};
+      }
       // A busy Vikunja is retried a few times. With keys, sending a stage again is safe.
       while (a.stage < op.stages.length) {
         await patiently(() => op.stages[a.stage](a, c.start()));
