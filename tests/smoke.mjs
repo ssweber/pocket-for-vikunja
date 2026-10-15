@@ -50,8 +50,11 @@ const errors = [];
 /* Moves the page's clock forward by `ms` at once. Timers that fall due run (a toast disappearing, Today's minute tick).
    Then the clock is reset to real time, which is what Vikunja's dates use. */
 const later = async ms => { await page.clock.fastForward(Math.max(0, Math.round(ms))); await page.clock.setSystemTime(Date.now()); };
-// The browser logs the refused move and the connection reset that two tests cause on purpose, so they are ignored here.
-const meant = m => /ERR_CONNECTION_RESET/.test(m.text()) || (/status of 403/.test(m.text()) && /\/position$/.test(m.location()?.url || ''));
+/* The browser logs the refused move and the connection reset that two tests cause on purpose, so they are ignored
+   here. So is a 404 for a task in `goneOnPurpose`, which a test has Pocket read or delete after it is gone. */
+const goneOnPurpose = [];
+const meant = m => /ERR_CONNECTION_RESET/.test(m.text()) || (/status of 403/.test(m.text()) && /\/position$/.test(m.location()?.url || ''))
+  || (/status of 404/.test(m.text()) && goneOnPurpose.some(id => (m.location()?.url || '').endsWith('/tasks/' + id)));
 page.on('console', m => m.type() === 'error' && !meant(m) && errors.push(m.text() + (m.location()?.url ? ' at ' + m.location().url : '')));
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
@@ -1685,6 +1688,37 @@ try {
       if (await get(k.id) || await get(p.id)) throw new Error('the task was never deleted');
     } finally {
       await page.evaluate(() => { if (window.__confirm) window.confirm = window.__confirm; });
+      for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
+  /* Deleting a subtask on Today and then its parent, both while Restore shows, deletes both. The parent's deletion
+     deletes the subtask too, and is sent first. The subtask's deletion then finds the subtask and its parent gone, and
+     that is not an error. */
+  await step('a-subtask-and-then-its-parent-deleted-on-today-are-both-deleted', async () => {
+    const p = await make(`Pocket smoke gone parent ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke gone kid ${stamp}`, { due_date: todayAt(23) });
+    await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
+    const card = cardOf(p.title), K = `${card} > .card-rows > ${rowOf(k.title)}`, missing = [];
+    const see = r => r.status() === 404 && missing.push(r.request().method() + ' ' + new URL(r.url()).pathname);
+    const failed = () => page.evaluate(() => Alpine.$data(document.body).failed.map(f => ({ task: f.task, op: f.op, stage: f.stage, message: f.failed.message })));
+    goneOnPurpose.push(k.id, p.id);
+    page.on('response', see);
+    try {
+      await toastGone();
+      await refreshToday();
+      await page.waitForSelector(K, { timeout: 15000 });
+      await swipeRow(page, K, 'delete');
+      await expect(page.locator(K)).toHaveClass(/\bdeleted\b/);
+      await swipeRow(page, `${card} > .card-head`, 'delete');                  // the page accepts the question about the subtask
+      await expect(page.locator(card)).toHaveClass(/\bdeleted\b/);
+      await later(3000);
+      await expect(page.locator(card)).toHaveCount(0);
+      await expect.poll(async () => !!(await get(k.id) || await get(p.id))).toBe(false);
+      // The parent's mark took over the subtask's row, so the subtask's deletion is still held. Leaving Pocket sends it.
+      await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+      await synced(page).catch(async e => { throw new Error(`${e.message}. Refused: ${JSON.stringify(await failed())}. Answered 404: ${missing.join(', ')}`); });
+    } finally {
+      page.off('response', see);
       for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });

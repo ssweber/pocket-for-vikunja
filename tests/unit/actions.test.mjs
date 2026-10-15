@@ -485,6 +485,13 @@ test('deleting a subtask writes its parent\'s calculated progress in the same en
   assert.equal(OPS.delete.stages.at(-1), figure);
 });
 
+test('a subtask\'s deletion whose parent is already gone writes no progress, and is not an error', async () => {
+  const v = fakeVikunja([{ id: 2, title: 'Pack the cups' }]), app = component(tasks, actions);
+  const a = { id: uuid7(), op: 'delete', task: 2, ids: [2], up: 1, stage: 1 };
+  await figure(a, stageContext(a, app).start());
+  assert.deepEqual(v.requests.map(r => r.method + ' ' + r.path), ['GET /tasks/1'], 'the parent is read, answers 404, and nothing is patched');
+});
+
 /* Deleting a task with subtasks asks for confirmation first. askDelete reads which tasks go with it and asks on its
    own, so a row swiped to delete asks before it slides away (swipeDelete, app/progress.js). The deletion that follows
    does not ask again. */

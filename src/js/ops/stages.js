@@ -20,8 +20,12 @@ export const comment = async (a, c) => { const out = await c.send(`/tasks/${a.ta
    one the relay holds for this key. */
 export const figure = async (a, c) => {
   const up = a.up ?? (a.run && a.task !== a.run ? a.run : null);
-  const body = up && await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
-  if (!body) return;
-  const t = await c.send('/tasks/' + up, {method: 'PATCH', body}) || await c.read('/tasks/' + up);
-  cache.set(t.id, t); c.app.syncTask(t);
+  if (!up) return;
+  // A parent deleted in the meantime, by Pocket or in the web app, is not an error.
+  try {
+    const body = await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
+    if (!body) return;
+    const t = await c.send('/tasks/' + up, {method: 'PATCH', body}) || await c.read('/tasks/' + up);
+    cache.set(t.id, t); c.app.syncTask(t);
+  } catch (e) { if (e.status !== 404) throw e; }
 };
