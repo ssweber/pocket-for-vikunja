@@ -26,12 +26,12 @@ export default {
   /* A task as an item of the shared text (share.js), with its subtasks under it in the order Pocket shows them. `t` is
      the copy on screen. If `t` doesn't list its subtasks, they are read from the full task Pocket has stored for it,
      if any. A parent's progress is the one its ring shows (shareRing). */
-  shareItem(t, seen, people = null){
+  shareItem(t, seen){
     seen.add(t.id);
     const full = t.related_tasks?.subtask ? t : this.tasks[t.id] || copyOf(t.id) || t;
     const subs = (this.hasOwnOrder(full) ? stepsOf(full) : [...(full.related_tasks?.subtask || [])].sort(positionOrder(this.positions)))
       .filter(s => !seen.has(s.id) && !this.hiddenRows.has(s.id)).map(s => this.subRow(s));
-    return {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, people || t.assignees || full.assignees || []),
+    return {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || full.assignees || []),
       ...this.shareWords(t, full), ring: this.shareRing(full), items: subs.map(s => this.shareItem(s, seen))};
   },
   /* The other things a Markdown copy writes for a task (share.js, quickWords): priority, label names and repeat.
@@ -53,7 +53,7 @@ export default {
       const t = this.sheetTask;
       if (!t) return null;
       const seen = new Set([t.id]), item = {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || []),
-        ...this.shareWords(t), ring: this.shareRing(t), items: this.subtasks.map(s => this.shareItem(s, seen, this.sheet.subPeople[s.id]))};
+        ...this.shareWords(t), ring: this.shareRing(t), items: this.subtasks.map(s => this.shareItem(s, seen))};
       // Subtasks still waiting to be sent come after them.
       for (const p of this.pendingSubtasks) item.items.push({title: p.title, done: !!p.done, pct: pctOf(p), due: p.due_date, ...this.shareWords(p), items: []});
       return {kind: 'task', ...item};

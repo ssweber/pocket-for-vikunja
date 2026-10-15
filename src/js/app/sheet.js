@@ -13,7 +13,7 @@ import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 import {seats, seatUnder} from './seat.js';
-import {copyOf, TASK} from './tasks.js';
+import {copyOf} from './tasks.js';
 import {haptic} from '../haptics.js';
 
 // The sheet's latest save. Saves run one after another, so its answer comes last, and only it says Saved.
@@ -140,7 +140,7 @@ export default {
     const mine = this.sheet, cached = copyOf(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
-      // If the task was changed while this loaded, Vikunja's copy keeps the newer answer (put).
+      // If the task was changed while this loaded, Vikunja's copy keeps the newer answer (read).
       const t = await this.readCopy(id);
       if (this.sheet !== mine) return;
       if (t) { this.showTask(t); this.checkNotes(t); }
@@ -252,7 +252,7 @@ export default {
     const shown = this.change(w => w.edit(id, patch)), mine = lastSave = {};
     this.sheet.savedMsg = 'Saving…';
     return this.saveTask(id, patch, rebase).then(saved => {
-      this.change(() => shown.ok(saved));
+      this.change(() => shown.ok());
       if (mine !== lastSave || this.sheet.id !== id) return;
       const repeated = patch.done === true && !saved.done;
       this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
@@ -324,7 +324,7 @@ export default {
       const seen = e.notes ?? null;
       taskDrafts.set('desc:' + t.id, {text: v, base});
       if (here()) {
-        if (e.now) { this.change(w => w.put([e.now], TASK)); this.showTask(e.now); }
+        if (e.now) this.showTask(e.now);                                    // saveTask has read it into the copy
         Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
       }
       // The message appears under the notes, which stay in the box.

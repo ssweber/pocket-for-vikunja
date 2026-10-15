@@ -280,7 +280,7 @@ test('the text shared from a task\'s sheet matches its ring, with a segment per 
   const subs = [sub(2, { percent_done: .5 }), sub(3), sub(4, { done: true }), sub(5, { percent_done: .25 })];
   const t = { id: 1, title: 'Paint the back wall', done: false, percent_done: 0, due_date: NONE, project_id: 5, assignees: [], related_tasks: { subtask: subs } };
   for (const x of [t, ...subs]) app.tasks[x.id] = x;
-  Object.assign(app, { sheet: { id: 1, subPeople: {} }, subtasks: subs, pendingSubtasks: [] });
+  Object.assign(app, { sheet: { id: 1 }, subtasks: subs, pendingSubtasks: [] });
   const ring = app.ringOf(t), head = shareText(app.shareDoc('task'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [44, 1, 4], '(50 + 0 + 100 + 25) / 4');
   assert.equal(head, `Paint the back wall  ${'▰'.repeat(ring.done)}${'▱'.repeat(ring.total - ring.done)} ${ring.pct}%`);

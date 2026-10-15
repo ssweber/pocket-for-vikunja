@@ -251,7 +251,7 @@ export default {
      the open subtasks. */
   async readCards(cards, known){
     const have = new Map(known.map(t => [t.id, t])), positions = {}, ids = [...cards.keys()], at = started();
-    const keep = list => { this.change(w => w.put(list, TASK_COUNT, at)); for (const t of list) have.set(t.id, t); };
+    const keep = list => { this.change(w => w.read(list, TASK_COUNT, at)); for (const t of list) have.set(t.id, t); };
     const q = list => '/tasks?' + new URLSearchParams({filter: 'id in ' + list.join(', '), filter_timezone: TZ, expand: 'comment_count'});
     const quietly = p => p.catch(e => { if (e instanceof NetError) throw e; return []; });
     const byProject = new Map();

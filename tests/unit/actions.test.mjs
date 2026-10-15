@@ -4,7 +4,7 @@ import { fakeVikunja, component, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks, { copyOf, TASK } from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
 import acts, { stageContext } from '../../src/js/app/acts.js';
@@ -39,7 +39,7 @@ const ticks = v => patches(v).filter(([, b]) => !('percent_done' in b && Object.
 const ROW = {};
 const listed = t => { t.mock.timers.enable({ apis: ['setTimeout'] }); return component(tasks, actions, leaving); };
 // Open task `t` in the sheet, as openTask does once it has Vikunja's copy. The sheet holds the id and reads the row.
-const opened = (app, t, more = {}) => { app.change(w => w.put([structuredClone(t)], TASK)); app.row(structuredClone(t)); app.sheet = { ...more, id: t.id }; return app.sheetTask; };
+const opened = (app, t, more = {}) => { app.change(w => w.read([structuredClone(t)], TASK, started())); app.row(structuredClone(t)); app.sheet = { ...more, id: t.id }; return app.sheetTask; };
 
 test('ticking a parent leaves its subtasks as they are', async c => {
   const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = listed(c);
@@ -190,7 +190,7 @@ test('a tick that is not saved goes back, and the row shows why with Try again',
 test('a repeating task whose tick lost its reply is ticked once, not twice', async c => {
   const due = new Date(Date.now() + 36e5).toISOString();
   const v = fakeVikunja([{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]), app = listed(c);
-  app.change(w => w.put([structuredClone(v.task(1))], TASK));
+  app.change(w => w.read([structuredClone(v.task(1))], TASK, started()));
   v.trouble = r => r.method === 'PATCH' ? 'lost' : null;
   const t = app.row(v.task(1));
   await app.toggleDone(t, ROW);
@@ -939,7 +939,7 @@ test('a template gets no ✅ when it is saved done, even if Vikunja\'s reply lea
   Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
   Object.assign(app, { seenBy: { 7: 2, 8: 2 }, checklistIds: new Set([7]) });
   const t = app.row(v.task(1));
-  app.change(w => w.put([{ ...v.task(1) }], TASK));
+  app.change(w => w.read([{ ...v.task(1) }], TASK, started()));
   delete v.task(1).labels;                       // the reply to the save has no labels
   await app.saveTask(1, { done: true });
   await settled();

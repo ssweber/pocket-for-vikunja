@@ -1,10 +1,9 @@
 // Claims and assignee pictures on task and step rows. Claiming assigns the task to you.
-import {allPages, api, ApiError, NetError} from '../api.js';
+import {allPages, api, ApiError} from '../api.js';
 import {comesRound, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
-import {OPS} from '../ops/index.js';
-import {copyOf, started} from './tasks.js';
+import {started, TASK} from './tasks.js';
 
 const loading = new Set();                       // usernames whose picture is being fetched
 const tried = new Map();                         // username -> when the last picture request failed
@@ -41,14 +40,11 @@ export default {
     const all = [...by.map(u => ({...u, badge})), ...people.filter(u => !by.some(d => d.id === u.id))];
     return all.length ? {users: all.slice(0, 2), more: Math.max(0, all.length - 2), can: false} : null;
   },
-  /* Lay the task's waiting claims and the current progress gesture over `base`. Both are read by task id, so a claim
-     redraws only that task's rows. A row's own assignees already have the claims. A sheet's subtask has its people
-     from loadSubPeople, apart from the store, and needs them laid over. Laying a claim twice changes nothing. */
+  /* The task's assignees `base`, with the user added while a progress gesture claims it. The gesture is read by task
+     id, so it redraws only that task's rows. A waiting claim is in the row's own assignees already. */
   peopleOf(id, base){
-    const claims = this.opsOf(id).filter(a => a.op === 'claim' || a.op === 'unclaim');
-    let list = claims.reduce((t, a) => OPS[a.op].apply(t, a), {assignees: base || []}).assignees;
-    if (this.slideClaim[id] && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
-    return list;
+    const list = base || [];
+    return this.slideClaim[id] && this.user && !list.some(u => u.id === this.user.id) ? [...list, this.user] : list;
   },
   /* Claim an unassigned task when a progress gesture changes it. The user's picture shows during the gesture, and
      the claim is queued on release. Returns end(changed), so a cancelled gesture removes the picture without
@@ -68,27 +64,23 @@ export default {
     await this.act({op: slot.mine ? 'unclaim' : 'claim', task: slot.id, run: slot.run});
     if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true;   // Today shows what's assigned to you, so the list needs a refresh
   },
-  /* Load all subtask assignees in one request, because Vikunja leaves them out of related tasks. Offline, use
-     Vikunja's last copies. */
+  /* Read the subtasks of `t` in one request, because Vikunja leaves their assignees and labels out of related tasks.
+     The read goes into their copies, so the sheet's subtask rows show them. Offline, the rows keep Vikunja's last
+     copies. */
   async loadSubPeople(t){
-    const ids = (t.related_tasks?.subtask || []).map(s => s.id), mine = this.sheet;
+    const ids = (t.related_tasks?.subtask || []).map(s => s.id);
     if (!ids.length) return;
     try {
       const at = started(), list = await allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`}));
-      if (this.sheet !== mine) return;
-      for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; this.sheet.subLabels[s.id] = s.labels || []; }
-      this.change(w => w.put(list.filter(s => copyOf(s.id)), ['assignees'], at));
-    } catch (e) {
-      if (!(e instanceof NetError) || this.sheet !== mine) return;
-      for (const id of ids) if (copyOf(id)?.assignees) this.sheet.subPeople[id] ??= copyOf(id).assignees;
-    }
+      this.change(w => w.read(list, TASK, at));
+    } catch {}
   },
   /* Choose the claim slot for a task, a subtask or a checklist step. A checklist and a repeating template show who
      they are for. While a ticked row waits for the batch, it keeps its previous slot with taps disabled, so its
      title doesn't move. */
   rowSlot(t, g){
     if (g.run) return t.done ? null : t.slot;
-    if (g.sheet) return g.step && this.sheet.stepEdit?.id === t.id ? null : this.subSlots[t.id] || null;   // the step's edit box needs this space
+    if (g.sheet) return g.step && this.sheet.stepEdit?.id === t.id ? null : this.subSlot(t);   // the step's edit box needs this space
     if (t.pending) return null;
     if (g.top || this.isRunTask(t)) return this.forSlot(t);
     if (this.role(t) === 'template') return comesRound(t) ? this.forSlot(t) : null;
@@ -96,18 +88,11 @@ export default {
     const slot = this.claimSlot(t, this.peopleOf(t.id, t.assignees), was, this.stepRun(t));
     return slot && was !== t.done ? {...slot, can: false, label: (t.done ? 'Done: ' : 'Not done: ') + t.title} : slot;
   },
-  // The open task's subtask slots, keyed by id, for each row to read.
-  get subSlots(){
-    const out = {};
-    const run = this.checklistRole === 'run' ? this.sheet.id : null;
-    for (const st of this.subtasks) out[st.id] = this.claimSlot(st, this.peopleOf(st.id, this.sheet.subPeople[st.id]), st.done, run);
-    return out;
-  },
-  // Apply a sent claim or release to the sheet's subtask people, which are read apart from the store. Vikunja's copy has
-  // it already (answered, tasks.js).
-  claimSent(a){
-    const was = this.sheet.subPeople?.[a.task];
-    if (was) this.sheet.subPeople[a.task] = OPS[a.op].apply({assignees: was}, a).assignees;
+  /* The claim slot of subtask `st` in its parent's sheet. It reads that subtask's row only, so ticking one subtask
+     doesn't work out every subtask's slot again (rule 10). A New template's rows have none. */
+  subSlot(st){
+    if (this.sheet.kind !== 'task') return null;
+    return this.claimSlot(st, this.peopleOf(st.id, st.assignees), st.done, this.checklistRole === 'run' ? this.sheet.id : null);
   },
 
   /* ---------- people's pictures ---------- */

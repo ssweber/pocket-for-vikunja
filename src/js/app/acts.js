@@ -3,11 +3,11 @@ import {taskDrafts} from '../util.js';
 import {api, ApiError, passing, serverTime} from '../api.js';
 import {htmlToText} from '../html.js';
 import {parseStep, patiently} from '../checklists.js';
-import {actTaskId, held, heldTasks, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
+import {held, heldTasks, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, UNKNOWN} from '../messages.js';
 import {OPS} from '../ops/index.js';
-import {TASK} from './tasks.js';
+import {opsId, TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
 export const nextN = () => ++actCount;
@@ -21,11 +21,14 @@ export const keptTicks = () => ticks ||= saved.get('ticks') || {};
    and the part, counted from 0 each time the stage runs. So a stage sent again after a lost reply sends each request
    with the key it had, and the relay answers the ones already made from what it stored. `once` keeps a body built from
    a read in the entry, so a retry sends the same body. `a.key` replaces the entry's id after Try again. A stage puts
-   Vikunja's copy of the task in `task`, and a comment Vikunja made in `comment`. */
+   Vikunja's copy of the task in `task`, and a comment Vikunja made in `comment`. Both are kept in the entry (`a.got`),
+   so the answer has them when a later stage finishes on another try. */
 export function stageContext(a, app){
   let part = 0;
   const save = () => sync.save(a);
-  return {app, save, comment: null, task: null,
+  return {app, save,
+    get task(){ return a.got?.task ?? null; }, set task(t){ (a.got ||= {}).task = t; },
+    get comment(){ return a.got?.comment ?? null; }, set comment(x){ (a.got ||= {}).comment = x; },
     start(){ part = 0; return this; },
     async send(path, opts){
       if (!a.sent) { a.sent = true; await save(); }                         // from now on Don't send it can't stop it
@@ -106,7 +109,6 @@ export default {
         await c.save();
       }
       this.change(w => w.answered(a, c.task, c.comment));
-      if (a.op === 'claim' || a.op === 'unclaim') this.claimSent(a);
       if (a.op === 'position') this.positionSent(a);
       await sync.remove(a.id);
       if (!a.run && a.op === 'note' && this.sheet.id === a.task) this.loadComments(a.task);   // a comment from a task's sheet
@@ -124,7 +126,7 @@ export default {
       if (a.op === 'position' && !unknown) error.drop = true;
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
       if (a.stage > 0 && op.saved) error.saved = op.saved;
-      if (c.task) this.change(w => w.put([c.task], TASK));
+      if (c.task) this.change(w => w.answer([c.task], TASK));
       if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
       error.what = op.refused(a, a.label || this.actTitle(a.task));
       // Reload after a permanent rejection when no retry remains queued.
@@ -164,5 +166,5 @@ export default {
     saved.set('ticks', ticks);
     this.runNow = Date.now();                                              // Recompute the run because Alpine does not watch the saved local tick times.
   },
-  actTask(a){ return actTaskId(a); },
+  actTask(a){ return opsId(a.task); },
 };

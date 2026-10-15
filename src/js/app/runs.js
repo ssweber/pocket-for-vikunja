@@ -14,7 +14,7 @@ import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
-import {copyOf, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, opsId, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -221,7 +221,7 @@ export default {
       const saving = shared.saveChain.then(() => api(`/tasks/${run.id}/assignees/bulk`, {method: 'PUT', body: {assignees: e.forIds.map(id => ({id}))}}));
       shared.saveChain = saving.catch(() => {});
       await saving;
-      this.change(w => w.put([{id: run.id, assignees: who}], ['assignees'])); this.saveRun();
+      this.change(w => w.answer([{id: run.id, assignees: who}], ['assignees'])); this.saveRun();
       this.say(this.forText({assignees: who}).replace(/^For/, 'Now for'), {place: 'sheet:top'});
     } catch (err) { e.forIds = was; this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
@@ -255,7 +255,7 @@ export default {
   // Load a checklist with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
     const at = started(), run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
-    this.change(w => w.put([run], TASK_COMMENTS, at));
+    this.change(w => w.read([run], TASK_COMMENTS, at));
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a started checklist. Open it from its project instead.');
     /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
        push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
@@ -334,14 +334,14 @@ export default {
     const base = r.steps.map(id => this.tasks[id]).filter(Boolean).map(plainStep);
     for (const e of this.pending) if (e.kind === 'step' && !e.cancelled && e.run === r.id && !base.some(s => s.id === e.taskId)) {
       const k = base.findIndex(s => s.id === e.before), a = k < 0 ? base.findIndex(s => s.id === e.after) : -1, id = 'pending-' + e.id;
-      base.splice(k >= 0 ? k : a >= 0 ? a + 1 : base.length, 0, this.withOps(id, {id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
+      base.splice(k >= 0 ? k : a >= 0 ? a + 1 : base.length, 0, this.withOps(opsId(id), {id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
         assignees: [], attachments: [], reactions: {}, comments: [], tpl: e.tpl ?? null, from: e.from, added: e.from || e.tpl != null ? 'Repeated' : 'Inserted', pending: e.id}));
     }
     const steps = base.map((s, i) => {
       const skipper = skippedBy(s), done = s.done, skipped = !!skipper, pct = Math.round((s.percent_done || 0) * 100);
       // The step waits while a tick, a skip or an untick of it is in the outbox. It looks waiting (slow) once the last
       // of them has waited long enough.
-      const tick = this.opsOf(s.id).filter(a => TICKS.includes(a.op)).at(-1), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
+      const tick = this.opsOf(opsId(s.id)).filter(a => TICKS.includes(a.op)).at(-1), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
       let doneAt = s.done_at;
       const kept = keptTicks()[s.id];
       // Compare whole seconds because tick replies include nanoseconds but later task reads do not.
@@ -652,7 +652,11 @@ export default {
     const save = () => sync.save(j), c = {save, taken: new Set()}, none = {ids: [], tasks: [], problems: [], uploaded: 0};
     if (j.cancelled) return this.unsendStep(j, c, none);
     try {
-      for (const step of INSERT_STEPS) while (!step.done(j)) { await patiently(() => step.run(j, c)); await save(); }
+      for (const step of INSERT_STEPS) while (!step.done(j)) {
+        await patiently(() => step.run(j, c)); await save();
+        // Vikunja has made the step, so the ops on it are filed under its id from now on (opsId).
+        if (step.name === 'task') this.change(w => w.keyOps());
+      }
       await sync.remove(j.id);
       return {...none, status: 'sent', changed: 1};
     } catch (error) {
@@ -680,7 +684,7 @@ export default {
     const run = this.view.shownRun?.id;
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-      this.change(w => w.put([s], null));                                  // Vikunja deleted the step
+      this.change(w => w.answer([s], null));                               // Vikunja deleted the step
       if (run) this.writeFigure(run).catch(() => {});                      // recompute the checklist's stored progress without this step
       await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
       this.refreshPending();
@@ -727,7 +731,7 @@ export default {
   async refreshRunTask(id){
     try {
       const at = started(), t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
-      this.change(w => w.put([t], TASK_REACTIONS_COMMENTS, at));
+      this.change(w => w.read([t], TASK_REACTIONS_COMMENTS, at));
       this.saveRun();
     } catch {}
   },

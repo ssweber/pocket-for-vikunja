@@ -202,7 +202,7 @@ export default {
   shareUrl(pid){ return `${this.server}/projects/${pid}/settings/share`; },
   async openTasks(pid){
     const at = started(), list = await allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'}));
-    this.change(w => w.put(list, TASK_COUNT, at));
+    this.change(w => w.read(list, TASK_COUNT, at));
     return list;
   },
   // Load each checklist project with its templates and open checklists.
@@ -500,9 +500,9 @@ export default {
     const under = this.sheet.subAt;
     try {
       // The sheet's step rows read each step's own copy, so each answer goes into the store.
-      for (const {key, title} of d.renames) { const got = await patiently(() => patchTask(+key.slice(5), {title})); this.change(w => w.put([got], TASK)); }
+      for (const {key, title} of d.renames) { const got = await patiently(() => patchTask(+key.slice(5), {title})); this.change(w => w.answer([got], TASK)); }
       Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
-      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).then(got => this.change(w => w.put([got], TASK)), e => r.problems.push(e.message));
+      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).then(got => this.change(w => w.answer([got], TASK)), e => r.problems.push(e.message));
       // If the box is under a step, put the new steps after that step in the order line. Start from the order Vikunja
       // has now.
       if (under != null && r.ids.length) await patiently(() => this.saveTask(t.id, null, now => {
@@ -525,7 +525,7 @@ export default {
         this.sheet.addRows = [];
         // The steps added before it stopped are in Vikunja, so its copy of the template lists them.
         const c = copyOf(t.id), had = (c?.related_tasks?.subtask || []).filter(s => !r.ids.includes(s.id));
-        this.change(w => w.put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: [...had, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]}}], ['related_tasks']));
+        this.change(w => w.answer([{id: t.id, related_tasks: {...c?.related_tasks, subtask: [...had, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]}}], ['related_tasks']));
       } else {
         // If the box was under a step, move it under the last added step.
         this.sheet.addRows = [];
@@ -578,7 +578,7 @@ export default {
   stepHasChips(){
     const e = this.sheet.stepEdit, st = e && this.subtasks.find(s => s.id === e.id), P = this.prefixes;
     if (!st || !P) return [];
-    const drop = e.drop || {}, people = this.sheet.subPeople[st.id] || st.assignees || [], labels = this.sheet.subLabels[st.id] || st.labels || [];
+    const drop = e.drop || {}, people = st.assignees || [], labels = st.labels || [];
     const chip = (k, text) => ({key: 'had-' + k, kind: 'had', text, off: !!drop[k], hint: drop[k] ? `Tap to keep ${text} on this step` : `Tap to remove ${text} from this step`,
       action: () => { e.drop = {...e.drop, [k]: !e.drop?.[k]}; }});
     return [...people.map(u => chip('u' + u.id, P.assignee + u.username)), ...labels.filter(l => !isTemplateLabel(l)).map(l => chip('l' + l.id, P.label + l.title))];
@@ -603,7 +603,7 @@ export default {
     this.change(w => { for (const x of todo) x.shown = w.edit(x.s.id, {title: x.title}); });
     // Save the renamed steps in order, so a step this one counts from is named first.
     try {
-      for (const x of todo) { const got = await this.saveTask(x.s.id, {title: x.title}); this.change(() => x.shown.ok(got)); x.saved = true; this.sheet.dirty = true; }
+      for (const x of todo) { await this.saveTask(x.s.id, {title: x.title}); this.change(() => x.shown.ok()); x.saved = true; this.sheet.dirty = true; }
       if (p && (p.assignees.length || p.labels.length || p.priority)) {
         // Apply them to the existing step, the way quick add sends a line. A person who can't see the project stays in
         // the title.
@@ -615,8 +615,8 @@ export default {
       for (const k of drops) {
         const id = +k.slice(1);
         await patiently(() => api(`/tasks/${e.id}/${k[0] === 'u' ? 'assignees' : 'labels'}/${id}`, {method: 'DELETE'})).catch(err => { if (err.status !== 404) throw err; });
-        const had = k[0] === 'u' ? this.sheet.subPeople : this.sheet.subLabels;
-        if (had[e.id]) had[e.id] = had[e.id].filter(x => x.id !== id);
+        const field = k[0] === 'u' ? 'assignees' : 'labels', had = copyOf(e.id)?.[field];
+        if (had) this.change(w => w.answer([{id: e.id, [field]: had.filter(x => x.id !== id)}], [field]));
         this.sheet.dirty = true;
       }
       if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
@@ -662,8 +662,8 @@ export default {
       });
       const c = copyOf(t.id);
       this.change(w => {
-        w.put([st], null);                                                  // Vikunja deleted the step
-        w.put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id)}}], ['related_tasks']);
+        w.answer([st], null);                                               // Vikunja deleted the step
+        w.answer([{id: t.id, related_tasks: {...c?.related_tasks, subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id)}}], ['related_tasks']);
       });
       this.keepTemplate(t);
       this.sheet.dirty = true;

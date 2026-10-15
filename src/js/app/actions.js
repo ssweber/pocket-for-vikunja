@@ -13,7 +13,7 @@ import {dayGroup, parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync, uuid7} from '../sync.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
-import {copyOf, TASK} from './tasks.js';
+import {copyOf, started, TASK} from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.
@@ -42,14 +42,15 @@ function landed(now, body, before){
 export default {
   /* ---------- saving a change ---------- */
   // Save task changes one after another, and put Vikunja's answer into its copy, which shows it on the rows. Resolves
-  // to Vikunja's copy, or rejects if the save fails.
+  // to Vikunja's copy, or rejects if the save fails. The caller writes nothing more, since the copy has it.
   saveTask(id, patch, rebase){
     this.writing++;                                                         // counts until the reply arrives
     const run = shared.saveChain.then(async () => {
       // Only the changed fields are sent, so edits made elsewhere survive. A change to a whole field, such as a list
       // or a template's order notes, uses `rebase` instead. It applies the change to a fresh copy of the task and
-      // returns null when nothing is left to change.
-      let saved = rebase && await api('/tasks/' + id);
+      // returns null when nothing is left to change. That copy is a read, not an answer.
+      let saved = null;
+      if (rebase) { const at = started(); saved = await api('/tasks/' + id); this.change(w => w.read([saved], TASK, at)); }
       const before = saved || copyOf(id), body = rebase ? rebase(saved) : patch;
       if (body) {
         try { saved = await patchTask(id, body); }
@@ -60,8 +61,8 @@ export default {
           if (!now || !landed(now, body, before)) throw e;
           saved = now;
         }
+        this.change(w => w.answer([saved], TASK));
       }
-      this.change(w => w.put([saved], TASK));
       if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done && this.role(before) !== 'template' && this.role(this.tasks[id]) !== 'template') this.signTick(saved);
       return saved;
     }).finally(() => { this.writing--; });
@@ -84,7 +85,7 @@ export default {
   // saveTask, for a task the caller holds.
   async saveFor(t, patch){
     const e = this.change(w => w.edit(t.id, {}));
-    try { const got = await this.saveTask(t.id, patch); this.change(() => e.ok(got)); return got; } catch (x) { this.change(() => e.undo()); throw x; }
+    try { const got = await this.saveTask(t.id, patch); this.change(() => e.ok()); return got; } catch (x) { this.change(() => e.undo()); throw x; }
   },
   // Whether a task is still as Pocket last saved it. Undo checks this so it doesn't overwrite a change made elsewhere.
   async unchanged(t){ const now = await api('/tasks/' + t.id); return !t.updated || now.updated === t.updated; },
@@ -122,7 +123,7 @@ export default {
     const letGo = !was && inList ? this.holdRow(t.id, 'done') : null;
     try {
       const saved = await this.saveTask(t.id, {done: !was, ...patch});
-      this.change(() => ticked.ok(saved));
+      this.change(() => ticked.ok());
       if (sub) this.refigure(t, inSheet ? this.sheet.id : null);
       if (sheet) { this.sheet.dirty = true; this.unsay('sheet:top'); }      // clears the message from an earlier failed save
       if (!was && !saved.done) {                 // a repeating task moved to its next date, so Undo puts the old date back
@@ -478,7 +479,7 @@ export default {
     // A task due on that date goes in the same group as a task waiting to be sent with that date (pendingPlace).
     const want = this.pendingPlace({due_date: to.due}), kept = c && this.todayKey(t) !== want && c.when !== t.due_date
       ? this.cardSubs(t, false).filter(s => !s.done && isSet(s.due_date)).sort((a, b) => Date.parse(a.due_date) - Date.parse(b.due_date))[0] : null;
-    const saving = this.saveTask(t.id, {due_date: to.due}).then(got => { this.change(() => moving.ok(got)); return null; }, e => e);
+    const saving = this.saveTask(t.id, {due_date: to.due}).then(() => { this.change(() => moving.ok()); return null; }, e => e);
     // Undo waits for the save to finish, then puts the task back and highlights it.
     const back = this.undoMoves([m], to.label && dayWord(to.label), {place: 'cap'}, done => { if (done.length) { this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived'); } });
     const undo = {label: 'Undo', fn: async () => { if (!await saving) await back.fn(); }};
@@ -788,7 +789,7 @@ export default {
   },
   setAssignees(assignees, id = this.sheet.id){
     if (this.sheet.id === id) this.sheet.dirty = true;
-    if (copyOf(id)) this.change(w => w.put([{id, assignees}], ['assignees']));
+    if (copyOf(id)) this.change(w => w.answer([{id, assignees}], ['assignees']));
   },
   // Add a label, creating it with title first when l is null.
   async addLabelTo(t, l, title){
@@ -802,6 +803,6 @@ export default {
   },
   setLabels(labels, id = this.sheet.id){
     if (this.sheet.id === id) this.sheet.dirty = true;
-    if (copyOf(id)) this.change(w => w.put([{id, labels}], ['labels']));
+    if (copyOf(id)) this.change(w => w.answer([{id, labels}], ['labels']));
   },
 };

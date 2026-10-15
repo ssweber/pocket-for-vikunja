@@ -461,7 +461,7 @@ export default {
     return {el: row, swipe, reorder, start: t.done ? 100 : pctOf(t), width: row.clientWidth,
       finish: pct => {
         if (pct === null) return;
-        this.claimOnSlide(sheet ? this.subSlots[t.id] : this.rowSlot(t, {}))(true);
+        this.claimOnSlide(sheet ? this.subSlot(t) : this.rowSlot(t, {}))(true);
         const setting = this.setProgress(t, pct, sheet ? null : row, {sub: sheet || undefined});
         if (pct >= 100) sweep(row, setting, {right: true});     // setProgress already holds the row in place
         if (sheet) this.sheet.dirty = true;

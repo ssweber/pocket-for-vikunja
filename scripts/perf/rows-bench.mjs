@@ -271,7 +271,7 @@ async function scrollStart(when, delay){
 /* ---------- counted, not timed ---------- */
 // The component methods and getters that a row and a list call. counted() in lib.mjs counts each one while Big opens.
 const ASKED = ['rowRing', 'canTick', 'shownPct', 'rowMeta', 'rowWhen', 'rowSlot', 'isRunTask', 'isStepRow', 'cardOf', 'cardHead', 'cardEntered', 'hintOn', 'rowTitle', 'isGap', 'ringOf', 'claimSlot', 'peopleOf', 'stepRun',
-  'canWrite', 'listGroups', 'listBase', 'pendingTasks', 'hiddenRows', 'waitingByTask', 'subSlots', 'subtasks', 'templateSteps', 'runView'];
+  'canWrite', 'listGroups', 'listBase', 'pendingTasks', 'hiddenRows', 'waitingByTask', 'subSlot', 'subtasks', 'templateSteps', 'runView'];
 const fx = (page, reset = true) => page.evaluate(reset => { const r = window.__fx.read(); if (reset) window.__fx.reset(); return r; }, reset);
 const flat = c => ({ runs: c.runs, rows: c.rows, most: c.most, cls: c.cls, clsMost: c.clsMost, by: Object.entries(c.by).map(([k, n]) => `${k} ${n}`).join(', ') });
 async function counts(){
@@ -337,7 +337,7 @@ async function counts(){
   }
   // Open a task's sheet with subtasks, and a template's sheet with 20 steps, and count how often each list is built as the sheet opens.
   const sheet = async id => {
-    await page.evaluate(() => { window.__pf.stop = window.__pf.counted(['subSlots', 'subtasks', 'templateSteps']); window.__fx.reset(); });
+    await page.evaluate(() => { window.__pf.stop = window.__pf.counted(['subSlot', 'subtasks', 'templateSteps']); window.__fx.reset(); });
     await page.evaluate(id => window.__pf.app().openTask(id), id); await page.locator('#d-subtasks .row').first().waitFor(); await sleep(1500);
     return { ...flat(await fx(page)), ...Object.fromEntries(Object.entries(await page.evaluate(() => window.__pf.stop())).map(([k, c]) => [k, c.n])) };
   };

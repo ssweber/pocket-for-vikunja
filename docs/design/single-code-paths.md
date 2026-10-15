@@ -511,7 +511,7 @@ checks that Vikunja changed once.
 2. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
 3. **Roles.** Done. Add the table test, `roleOf` and `this.role`, move every caller, and turn on the roles rule.
    `known` also holds the Checklists projects' ids. `isTemplateLabel` stays exported, because it asks about a label.
-4. **The store's foundation.** Done on 2026-10-15, in five commits, and waits for the user's phone check before
+4. **The store's foundation.** Done on 2026-10-15, in six commits, and waits for the user's phone check before
    phase 5. Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
    `tasks[id]`, its only writer. Every read and every direct save writes into the copies by field, so today's
    `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by id, so
@@ -546,6 +546,13 @@ checks that Vikunja changed once.
    and records the answer time for every answer, a deletion's included. Only `change` calls `show`. Lint keeps
    `this.opsOn` (read through `opsOf`) and writes to `this.leaving` inside tasks.js. A unit test fails when two parts
    of the component define the same name.
+   4f: the gaps a review of 4d and 4e found. `put` became two writers, `read(list, asked, at)` and
+   `answer(list, asked)`, and a read without its start time throws. The late-read rule covers every task with an
+   answer time. `opsId` decides which id an op is filed under, for keyOps and the checklist's screen alike. A
+   subtask's people and labels are on its row, so `subPeople`, `subLabels` and `claimSent` are gone, and `subSlot`
+   reads one step's row. An edit ended with `ok` takes its fields off older edits, and a failed save on a row marked
+   done goes back at once. A finished stage's task and comment are kept in the entry (`a.got`). Once a task has a
+   copy, `base` lays only Pocket's own fields under its row. A task Vikunja deleted loses its row in the same change.
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
    Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format. Old stored data is
    read as it is, or ignored if it can't be read. Pocket writes no upgrade code.
@@ -791,10 +798,11 @@ Phase 5 makes creates ops.
 ### Store invariants
 
 - Each fact has one home. A subtask's state is its own row.
-- Vikunja's copies have one door, `put`, which records the answer time.
+- Vikunja's copies have one door, `read` and `answer`, and an answer records its time.
 - A row is Vikunja's copy, then the waiting ops, then the edits still running. Nothing else is added without the
   user's agreement.
 - Every write happens inside `change`, which shows each task touched once.
+- A read and an answer are written by different writers, and a read always carries the time it started.
 - The edits are scaffolding. Phases 5 to 10 turn each direct save into an op, so that by phase 10 a row is Vikunja's
   copy with the waiting ops.
 
@@ -838,7 +846,8 @@ For whoever carries on. Read this, then phase 4.
   New words the user reads are proposed to the user before they ship. Discuss a phase's design with the user before
   building it, as was done for phase 1.
 - **Phases 3 and 4 are on `dev`.** Phase 4 was built in four commits, as "Phase 4 in detail" says, and a fifth (4e)
-  put every write inside `change`. It waits for the user's phone check, and phase 5 comes after it.
+  put every write inside `change`. A sixth (4f) closed the gaps a review of 4d and 4e found. It waits for the
+  user's phone check, and phase 5 comes after it.
 - **Known, and fixed by a later phase.**
   - `docs/roadmap.md` line 83 still says a checklist's progress calls `api()` itself (phase 13).
   - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.

@@ -1571,6 +1571,41 @@ try {
     await expect(page.locator('#run-box-place')).toHaveCount(0);
   });
 
+  await step('a-step-ticked-while-it-is-inserted-stays-ticked', async () => {
+    // On a slow connection, a step inserted in a checklist is made in Vikunja first, then set up. A tick on it before
+    // it is set up shows on its row, waiting, until the tick reaches Vikunja.
+    const { id } = await startRun(), row = page.locator('#run-steps .row:has-text("Slow step")');
+    const slow = async r => { if (r.request().method() === 'PATCH') await new Promise(ok => setTimeout(ok, 3000)); await r.fallback(); };
+    await page.route('**/v2/tasks/*', slow);
+    try {
+      // Vikunja has made the step once Pocket starts setting it up, with a PATCH of the new step.
+      const patched = [], seen = r => { if (r.method() === 'PATCH') patched.push(r.url()); };
+      page.on('request', seen);
+      const made = page.waitForResponse(r => /\/v2\/projects\/\d+\/tasks$/.test(r.url()) && r.request().method() === 'POST');
+      await page.fill('#run-in', 'Slow step');
+      await page.press('#run-in', 'Enter');
+      const sid = (await (await made).json()).id;
+      await expect.poll(() => patched.some(u => u.endsWith('/tasks/' + sid))).toBe(true);
+      page.off('request', seen);
+      await row.locator('> .check').click();
+      await expect(row).toHaveClass(/\bdone\b/, { timeout: 1000 });          // at once, while the step is still being set up
+      await later(3000);
+      await expect(row.locator('> .check')).toHaveClass(/\bwait\b/);
+      // Until Vikunja has the tick, the row is ticked and looks waiting. The page is read before Vikunja, so a row no
+      // longer waiting means its tick has arrived.
+      await until('the tick never reached Vikunja', async () => {
+        // As the step's set-up ends, its row is drawn again, and its tick comes a frame after the row.
+        const shown = await row.evaluate(el => [el.classList.contains('done'), el.querySelector(':scope > .check')?.classList.contains('wait')]);
+        if (shown[1] === undefined) return false;
+        const s = (await subtasks(id)).find(x => x.title === 'Slow step'), there = !!s && (await task(s.id)).done;
+        if (!shown[0] || (!shown[1] && !there)) throw new Error(`the step showed ${shown[0] ? 'ticked, not waiting' : 'not ticked'} before its tick reached Vikunja`);
+        return there;
+      }, 30000);
+    } finally { await page.unroute('**/v2/tasks/*', slow); }
+    await synced(page);
+    await expect(row).toHaveClass(/\bdone\b/);
+  });
+
   await step('add-a-step-after-the-last', async () => {
     // With every step done and the checklist not finished, the box points at the last step, and what is added goes at the end.
     const { id } = await startRun();

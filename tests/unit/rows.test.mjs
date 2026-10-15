@@ -3,7 +3,7 @@
 import { component } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import sending from '../../src/js/app/sending.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { started, TASK } from '../../src/js/app/tasks.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';
@@ -392,8 +392,10 @@ test('waiting claims and files are kept by task, and only that task\'s row is up
   const { Alpine, flush } = watching(c), me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' };
   const app = Alpine.reactive(component(tasks, claims, sending));
   Object.assign(app, { user: me, pending: [], failed: [] });
+  app.change(w => w.read([5, 6].map(id => ({ id, title: 'Task ' + id, assignees: [priya] })), TASK, started()));
+  for (const id of [5, 6]) app.row({ id });
   const asked = {}, seen = {};
-  for (const id of [5, 6]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; seen[id] = [app.peopleOf(id, [priya]).map(u => u.username), app.waiting.files[id] || 0]; });
+  for (const id of [5, 6]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; seen[id] = [app.peopleOf(id, app.tasks[id].assignees).map(u => u.username), app.waiting.files[id] || 0]; });
   const act = (task, op) => ({ kind: 'act', id: op + task, task, op, user: me.id, who: me, items: [] });
   const outbox = list => { app.pending = list; app.change(w => w.keyOps()); app.keyWaiting(); flush(); };
   outbox([act(5, 'claim')]);

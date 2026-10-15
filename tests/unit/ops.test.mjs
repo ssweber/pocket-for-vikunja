@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
 import acts, { stageContext } from '../../src/js/app/acts.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
@@ -119,7 +119,7 @@ const sender = (t, list) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja(list), app = component(tasks, acts, sending, outbox, runs);
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
-    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
+    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, positionSent(){} });
   Object.defineProperty(app, 'toast', { value: {} });
   return { v, app };
 };
@@ -230,4 +230,20 @@ test('a tick whose reply was lost is sent again with its key once flush finds th
   const patches = v.requests.filter(q => q.method === 'PATCH');
   assert.deepEqual([v.requests[1].path, v.requests[2], patches[1].key, patches[1].replayed], ['/user', patches[1], patches[0].key, true]);
   assert.deepEqual([reached(v, 'PATCH', /^\/tasks\/7$/).length, v.task(7).done, sync.all(1).length], [1, true, 0]);
+});
+
+/* What a finished stage got from Vikunja is kept in the entry, as a body built once is. A tick with a comment whose
+   last stage is cut off is sent again in a new try, and its answer still has the comment Vikunja made and Vikunja's
+   copy of the step. */
+test('a tick with a comment that finishes on a later try still answers with the comment and the step Vikunja made', async t => {
+  const { v, app } = sender(t, [{ id: 1, title: 'Closing', related_tasks: { subtask: [{ id: 2 }] } }, { id: 2, title: 'Mop the floor', done: false, comments: [], reactions: {} }]);
+  app.change(w => w.read([{ id: 2, title: 'Mop the floor', done: false, comments: [], reactions: {}, updated: 'before' }], TASK_REACTIONS_COMMENTS, started()));
+  let cut = true;
+  v.trouble = r => r.method === 'GET' && r.path === '/tasks/1' && cut ? (cut = false, 'offline') : null;
+  const r = await app.act({ op: 'doneNote', task: 2, run: 1, html: '<p>Bucket is in the shed</p>' });
+  assert.deepEqual([r.status, app.pending[0].stage], ['offline', 3], 'the tick, its ✅ and its comment are sent, and the progress is not');
+  await app.sendActs(app.pending[0].id);
+  assert.equal(sync.all(1).length, 0);
+  const posted = v.task(2).comments[0];
+  assert.deepEqual([copyOf(2).comments.map(c => [c.id, !!c.waiting]), copyOf(2).updated], [[[posted.id, false]], v.task(2).updated]);
 });

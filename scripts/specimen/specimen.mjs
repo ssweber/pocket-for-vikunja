@@ -58,8 +58,8 @@ function sections(){
   // A checklist step counting down, with the reminder Pocket gave it for that. It shows no 🔔 because the countdown already says it, while a task's reminder shows one.
   const timed = task({title: 'Take the croissants out', project_id: 2, due_date: at(18 * 6e4), reminders: [{reminder: at(18 * 6e4)}], related_tasks: {parenttask: [{id: run.id, title: run.title}], copiedfrom: [{id: 903}]}});
   const parent = task({title: 'Deep clean', related_tasks: {subtask: [
-    task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR)}),
-    task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3}), task({id: 804, title: 'Done, by two people', done: true})]}});
+    task({id: 801, title: 'Nobody yet: + me claims it'}), task({id: 802, title: 'Yours: tap to let it go', due_date: at(3 * HOUR), assignees: [me]}),
+    task({id: 803, title: 'Someone else\'s', due_date: at(-2 * HOUR), priority: 3, assignees: [jamie]}), task({id: 804, title: 'Done, by two people', done: true, assignees: [jamie, sam]})]}});
   // Today's stacked cards (cards.js). The cards are:
   // - a high-priority task with five subtasks, one done and four open (one of them yours), opened with its footer's More
   // - a checklist with a step counting down
@@ -149,7 +149,7 @@ function sections(){
      `parts` lists which parts of the rest of the sheet are drawn under the card. */
   const photo = (id, name, size) => ({id, file: {name, size}});
   const notes = '<p>Use the green from the shed: <strong>two coats</strong>, a day apart.</p><ul><li>Sand the old paint off first</li><li>Tape round the letterbox</li></ul>';
-  const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, related_tasks: {parenttask: [{id: 1200}]}}),
+  const fence = task({title: 'Paint the side fence', related_tasks: {subtask: [task({id: 1201, title: 'Sand it', percent_done: .5, assignees: [me], related_tasks: {parenttask: [{id: 1200}]}}),
     task({id: 1202, title: 'Tape the edges', assignees: [jamie], related_tasks: {parenttask: [{id: 1200}]}}), task({id: 1203, title: 'First coat', due_date: dayAt(1, 0), related_tasks: {parenttask: [{id: 1200}]}}),
     task({id: 1204, title: 'Second coat', related_tasks: {parenttask: [{id: 1200}]}})]}, description: '<p>The side facing the car park.</p>'});
   fence.id = 1200;
@@ -163,7 +163,7 @@ function sections(){
     {spec: 'A subtask’s sheet with no notes or photos: its parent in the path over the card; the card is its row, “Add notes”, and “Add a photo or file”', parts: [],
       task: task({title: 'Buy masking tape', related_tasks: {parenttask: [{id: 1200, title: 'Paint the side fence'}]}})},
     {spec: 'A parent’s sheet: its ring for a tick (one subtask of four at 50%, so 13%), and its subtasks below, the real rows; no Progress line in Details, as its progress is worked out',
-      parts: ['subtasks', 'details'], subPeople: {1201: [me], 1202: [jamie]}, task: fence},
+      parts: ['subtasks', 'details'], task: fence},
     {spec: 'The card’s row swiped right from 25%, still held at 50%: only the row moves; its notes and photo stay', parts: [], state: {reveal: .22},
       task: task({title: 'Restock the napkins', percent_done: .25, assignees: [me], description: '<p>The big packs, from the cash and carry.</p>', attachments: [photo(3, 'shelf.jpg', 0.9e6)]})},
     {spec: 'A parent’s sheet with its subtasks swiped, still held: the first right from 50% to 75%, the last left onto its Delete; what each uncovers lies under its row, inside the card’s rounded corners',
@@ -390,7 +390,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.setProjects(projects);
     // A task's sheet open on a task with subtasks, so the subtask rows can show who is doing each.
     this.row(s.parent);
-    this.sheet = {...blankSheet('task'), id: s.parent.id, subPeople: {801: [], 802: [me], 803: [jamie], 804: [jamie, sam]}};
+    this.sheet = {...blankSheet('task'), id: s.parent.id};
     // A checklist's screen open on its fifth step, with a tick on the last step waiting to be sent. The steps use the
     // task row too (g.run), each as the screen works it out (runView).
     const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, jamie], created_by: me, comments: [], description: '',

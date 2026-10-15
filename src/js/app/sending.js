@@ -147,9 +147,9 @@ export default {
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
-          made: t => { this.change(w => w.put([t], CREATED)); taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
+          made: t => { this.change(w => w.answer([t], CREATED)); taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
         // A task that arrived done, or with progress, shows that on its row (placeSent).
-        if (t.arrived) { this.change(w => w.put([t.arrived.now], TASK)); for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived; }
+        if (t.arrived) { this.change(w => w.answer([t.arrived.now], TASK)); for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived; }
         ids.push(item.taskId);
       }
       // A line with lines under it gets its progress from them, if any of them arrived done or with progress. This is

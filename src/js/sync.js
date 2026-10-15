@@ -434,6 +434,4 @@ export function slowness(entries, now, offline){
 }
 // The tasks with an act that Vikunja rejected. Later acts on those tasks wait, so an untick never arrives before its
 // tick.
-// The task id an act is for. A step inserted offline is known only by its entry id until Vikunja creates it.
-export const actTaskId = a => typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) ?? a.task : a.task;
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
