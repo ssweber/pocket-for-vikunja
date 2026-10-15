@@ -452,6 +452,8 @@ checks that Vikunja changed once.
    writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies, the
    waiting ops and the memo, with each op's answer written into the copies. Only the ops built from here on read it.
    Without it, each op in phases 4 to 9 would first change `tasks` itself, and be rewritten for part 7.
+   Built so far: part 6, `api()`'s `key` option with `uuid7()`, and the writes rule. Left: the registry, `app/acts.js`
+   and the store's core, as "Phase 1 in detail" proposes.
 2. **Roles.** Settle the decision in part 3 first. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
 3. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
