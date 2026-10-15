@@ -493,7 +493,7 @@ checks that Vikunja changed once.
 0. **The spike.** Done on 2026-10-15, on the branch `single-code-paths`: `relay.go` and `tests/relay.mjs` came from
    `spike/relay` as files, not by merging that branch, whose copies of `docs/design/` are older. Delete `spike/relay`
    once this branch is merged.
-1. **Ground.** Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
+1. **Ground.** Done, and checked on the user's phone and server on 2026-10-15. Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
    writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies and the
    waiting ops, with each op's answer written into the copies, and `withWaiting` put on the rows with `keep`. Only the
    ops built from here on use it. Without it, each op in phases 5 to 10 would first change `tasks` itself, and be
@@ -630,6 +630,39 @@ user on 2026-10-15.
 ### What phase 1 leaves alone
 
 Pruning (phase 7), Undo as an op (phase 6), the late-read rule (phase 4) and every direct write outside the acts.
+
+## State on 2026-10-15
+
+For whoever carries on. Read this, then phase 4.
+
+- **Where the work is.** Phases 0, 1 and 2 are on the branch `single-code-paths`, built in a git worktree at
+  `scratchpad/wt`. Nothing is pushed. `dev` is at the plan's own commits. The `pocket` folder from the branch is
+  installed on the user's server (Cloudron, Postgres), and passed `scripts/relay-check.js` and a phone check online
+  and offline.
+- **How it has been built.** One build agent at a time, each with a written brief: the parts of this plan it needs,
+  `AGENTS.md`, `docs/development.md`, the exact scope, "nothing on screen changes" where that holds, the checks, and
+  "list every choice the brief didn't settle". The briefs used so far are in `scratchpad/ground/brief-*.md`. Every
+  commit passed `npm run lint`, `npm run test:unit`, `test:parse` and the full `test:local` first. Check lint's exit
+  code itself, not through a pipe. A change to `pocket/*.go` also runs `DB=sqlite` and `DB=mysql npm run test:local`.
+  New words the user reads are proposed to the user before they ship. Discuss a phase's design with the user before
+  building it, as was done for phase 1.
+- **Next: phase 3 (roles),** then **phase 4 (the store's foundation).** Phase 4 is the riskiest. Write "Phase 4 in
+  detail" first, as phase 1 has, and agree it with the user. Points it must answer:
+  - `keep`'s rule that a task marked as leaving done shows done moves into the memo.
+  - Reads differ in fields (a sheet's read has no `comment_count`, a checklist's has `comments`, a PATCH answer has
+    `reactions: null`), so every write into the copies takes only the fields its request asked for.
+    `answered` (tasks.js) already merges an answer and keeps the old value for a `null`.
+  - The saved screens still hold whole tasks until phase 11, so opening Pocket fills the copies from them.
+  - Rule 10: count bindings before and after (`npm run perf:rows -- counts`).
+  - The user checks it on the phone before phase 5.
+- **Known, and fixed by a later phase.**
+  - A checklist tick dropped from Waiting to send still shows as ticked until a reload (phase 4).
+  - Every op is in `SHOWN_OWN_WAY` and the bridge carries none (phase 4 deletes both).
+  - `docs/roadmap.md` line 83 still says a checklist's progress calls `api()` itself (phase 13).
+  - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.
+  - Part 2 of `today-moves.md`, the gap where a moved row was, is built after phase 6.
+- **For the user.** Two issue drafts to file upstream: `upstream-idempotency-key.md` and `upstream-task-updated.md`.
+  Delete the branch `spike/relay` once this work is on `dev`.
 
 ## Out of scope
 
