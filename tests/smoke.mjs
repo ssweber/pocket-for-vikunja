@@ -1351,6 +1351,32 @@ try {
       await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
+  // Only a Checklists project has templates, so a task labelled "template" anywhere else is an ordinary task.
+  await step('a-task-labelled-template-outside-checklists-is-an-ordinary-task', async () => {
+    const me = await (await api('/user')).json(), due = new Date(); due.setDate(due.getDate() - 2); due.setHours(9, 0, 0, 0);
+    const t = await make(`TEMPLATE: Pocket smoke labelled ${stamp}`, { due_date: due.toISOString() }), R = rowOf(t.title);
+    const found = (await (await api('/labels?s=template')).json()).items?.find(l => l.title === 'template');
+    const l = found || await (await api('/labels', { method: 'POST', headers: json, body: JSON.stringify({ title: 'template' }) })).json();
+    try {
+      await api(`/tasks/${t.id}/labels`, { method: 'POST', headers: json, body: JSON.stringify({ label_id: l.id }) });
+      await toastGone();
+      await refreshToday();
+      // The row shows the whole title, "TEMPLATE: " included, and Move all to today moves it. Undo puts it back.
+      await expect(page.locator(`.sec.overdue ~ .list ${R}`)).toBeVisible();
+      await page.click('#btn-overdue-today');
+      await expect(page.locator(`.sec.today ~ .list ${R}`)).toBeVisible();
+      await synced(page);
+      if (new Date((await get(t.id)).due_date).getTime() === due.getTime()) throw new Error('Move all left the task where it was');
+      await placeLine(page, 'overdue').getByRole('button', { name: 'Undo' }).click();
+      await expect(page.locator(`.sec.overdue ~ .list ${R}`)).toBeVisible();
+      await synced(page);
+      // A tick puts the user's ✅ on it, as on any task.
+      await tick(t.title);
+      await later(3100);
+      await synced(page);
+      await expect.poll(async () => ((await (await api(`/tasks/${t.id}?expand=reactions`)).json()).reactions?.['✅'] || []).map(u => u.id)).toEqual([me.id]);
+    } finally { await api('/tasks/' + t.id, { method: 'DELETE' }); }
+  });
   await step('with-less-motion-rows-ticked-go-without-folding', async () => {
     const d = await make(`Pocket smoke tick D ${stamp}`, { due_date: todayAt(23) }), D = rowOf(d.title);
     try {

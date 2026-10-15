@@ -3,7 +3,7 @@ import {cache, collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
 import {askMeta, asksMeta, stepAsks} from '../asks.js';
 import {allPages, api, ApiError, errText, LOADED, NetError, partOf, why} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay} from '../dates.js';
-import {CHECKLIST_MARK, comesRound, DONE_MARK, hasTemplateLabel, templateName} from '../checklists.js';
+import {CHECKLIST_MARK, comesRound, DONE_MARK, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
 import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, TODAY_DAYS, todayGroups, viewKey} from '../lists.js';
@@ -106,7 +106,7 @@ export default {
     return {title: 'All clear.', body: 'New tasks you add now land in this project.'};
   },
   // A row's title: a template's without its "TEMPLATE: ".
-  rowTitle(t){ return hasTemplateLabel(t) ? templateName(t.title) : t.title; },
+  rowTitle(t){ return this.role(t) === 'template' ? templateName(t.title) : t.title; },
   // Send a row's tick to the action for its place: a checklist step, the sheet's own task, a sheet subtask or a list
   // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once.
   tickRow(t, g, row){
@@ -419,7 +419,7 @@ export default {
       this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : [], allPages('/tasks?' + qDone).catch(() => [])]);
     const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
     const theirs = claimed.filter(t => !isSet(t.due_date) && runs[this.stepRun(t)] === false);
-    const {rows, cards} = todayItems({tasks, added, mine, claimed: theirs}, this.user, t => this.isRunTask(t));
+    const {rows, cards} = todayItems({tasks, added, mine, claimed: theirs}, this.user, t => this.role(t));
     const read = cards.size ? await this.readCards(cards, [...tasks, ...added, ...mine, ...claimed, ...open]) : {parents: [], steps: [], positions: {}};
     return {rows, cards, done: this.withoutTemplates(doneAll, true).filter(t => this.doneByMe(t)), ...read};
   },
@@ -637,7 +637,7 @@ export default {
     if (seq !== renderSeq) return;
     const finished = found.list;
     searched = s;
-    const parents = opened.filter(t => openSubs(t).length && !hasTemplateLabel(t));
+    const parents = opened.filter(t => openSubs(t).length && this.role(t) !== 'template');
     const read = parents.length ? await this.readCards(new Map(parents.map(t => [t.id, {project: t.project_id}])), [...opened, ...finished]) : {steps: [], positions: {}};
     if (seq !== renderSeq) return;
     for (const t of read.steps) { cache.set(t.id, t); this.keep(t); }

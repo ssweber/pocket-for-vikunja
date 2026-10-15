@@ -429,7 +429,7 @@ test('in a project only you can see, there is no "+ me" or picture of you, and a
 
 test('a checklist step\'s box is square on every screen, and a subtask\'s box is round', () => {
   const app = component(runs), step = { id: 9 }, sub = { id: 10 };
-  app.stepRun = t => t.id === 9 ? 3 : null;
+  app.role = t => t.id === 9 ? 'step' : null;
   assert.equal(app.isStepRow(step, RUN), true);
   assert.equal(app.isStepRow(step, { depth: {} }), true, 'a step you claimed is a step row on Today');
   assert.equal(app.isStepRow(sub, { depth: {} }), false);
@@ -643,7 +643,7 @@ test('who can see each project is loaded, kept on the phone and loaded again lat
    can't change shows nothing. */
 test('holding a row on Today shows its dates, but a repeating task, a template or a checklist shows why it cannot move', () => {
   const app = component(progress, throwing), held = [];
-  Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, isRunTask: t => t.id === 4, stepRun: t => t.id === 5 ? 4 : null,
+  Object.assign(app, { lines: {}, leaving: {}, canWrite: pid => pid !== 9, role: t => ({ 3: 'template', 4: 'run', 5: 'step' })[t.id] ?? null,
     tasks: { 9: { id: 9, project_id: 1 } }, throwOf: (t, el, why) => (held.push([t.id, el.name, why]), { lift(){} }) });
   const row = { name: 'row', closest: () => null }, card = { name: 'card', dataset: { id: '9' } };
   for (const t of [{ id: 1, done: true }, { id: 1, pending: true }, { id: 1, project_id: 9 }]) assert.equal(app.rescheduleOf(t, row), null, 'a done, waiting or read-only task shows no dates');

@@ -433,7 +433,7 @@ export default {
     const hidden = this.hiddenRows, order = this.route.name === 'project' ? positionOrder(this.positions) : null, can = screenRows(this.route.name);
     let before = 0;
     return this.listBase.map(g => {
-      const out = {...g, ...can, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null), before};
+      const out = {...g, ...can, ...nestSubtasks(g.tasks.filter(t => !hidden.has(t.id)), g.key === 'open' ? order : null, t => this.hasOwnOrder(t)), before};
       if (g.key === 'done') out.cards = null;
       // Done today's rows are plain rows with their count in the heading. A done task has no date to hold it to.
       if (g.key === 'donetoday') Object.assign(out, {cards: null, reschedule: false, count: out.tasks.length});

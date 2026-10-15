@@ -3,7 +3,7 @@
 // builds links to Vikunja's web app, and copies a task's notes or a comment.
 import {cache} from '../util.js';
 import {htmlToText} from '../html.js';
-import {hasOwnOrder, parseStep, stepsOf} from '../checklists.js';
+import {parseStep, stepsOf} from '../checklists.js';
 import {positionOrder} from '../order.js';
 import {pctOf, workedOut} from '../progress.js';
 import {COPIED} from '../messages.js';
@@ -29,7 +29,7 @@ export default {
   shareItem(t, seen, people = null){
     seen.add(t.id);
     const full = t.related_tasks?.subtask ? t : this.tasks[t.id] || cache.get(t.id) || t;
-    const subs = (hasOwnOrder(full) ? stepsOf(full) : [...(full.related_tasks?.subtask || [])].sort(positionOrder(this.positions)))
+    const subs = (this.hasOwnOrder(full) ? stepsOf(full) : [...(full.related_tasks?.subtask || [])].sort(positionOrder(this.positions)))
       .filter(s => !seen.has(s.id) && !this.hiddenRows.has(s.id));
     return {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, people || t.assignees || full.assignees || []),
       ...this.shareWords(t, full), ring: this.shareRing(full), items: subs.map(s => this.shareItem(s, seen))};

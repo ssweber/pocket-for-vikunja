@@ -5,7 +5,7 @@ import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, commentShown, comesRound, isAnswer, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, commentShown, comesRound, isAnswer, countText, DONE_MARK, durText, inBatches, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {stepAnswers} from '../asks.js';
 import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
@@ -457,11 +457,8 @@ export default {
     if (this.route.name === 'run') return {today: 'Today', project: 'the project', search: 'search'}[routeOf(this.runFrom || '').name] || 'checklists';
     return {today: 'Today', search: 'search', checklists: 'checklists'}[routeOf(this.projectFrom || '').name] || 'projects';
   },
-  // A checklist run, done or not: a copy of a template, in a checklist project, not under another task.
-  isRunTask(t){
-    const r = t?.related_tasks || {};
-    return !!t && this.checklistIds.has(t.project_id) && (!!r.copiedfrom?.length || isRunDesc(t.description)) && !r.parenttask?.length && !hasTemplateLabel(t);
-  },
+  // A checklist run, done or not.
+  isRunTask(t){ return this.role(t) === 'run'; },
   // Allow changes unless the project is known to be shared read-only.
   canWrite(pid){ const v = this.perms[pid]; return v === undefined || v === null || v >= 1; },
   /* A template and its steps can be changed only by the person who made the template or a project admin. Vikunja
@@ -494,15 +491,12 @@ export default {
     } catch {}
   },
   // The run a task is a step of, or null.
-  stepRun(t){
-    const r = t?.related_tasks || {};
-    return this.checklistIds.has(t?.project_id) && isRunStepTask(t) && !hasTemplateLabel(t) ? r.parenttask[0].id : null;
-  },
+  stepRun(t){ return this.role(t) === 'step' ? t.related_tasks.parenttask[0].id : null; },
   // A list row has a tick unless it is a template. A checklist has one only in its project's own list.
   canTick(t){
     if (!this.canWrite(t.project_id)) return false;
-    if (this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) return false;
-    return !this.isRunTask(t) || this.route.name === 'project';
+    const role = this.role(t);
+    return role !== 'template' && (role !== 'run' || this.route.name === 'project');
   },
   // A step as done or not, counting ticks still waiting to be sent (keyWaiting).
   stepDone(id, done){ return this.waiting.ticks[id] ?? done; },
@@ -515,12 +509,12 @@ export default {
   },
   /* Use square ticks for run steps wherever they appear. Steps go through the run's outbox and record who
      completed them, so they must look different from ordinary tasks. */
-  isStepRow(t, g){ return !!g.run || (g.sheet ? this.checklistRole === 'run' : !!this.stepRun(t)); },
+  isStepRow(t, g){ return !!g.run || (g.sheet ? this.checklistRole === 'run' : this.role(t) === 'step'); },
   goProject(id){ this.closeSheet(true); this.go('#/project/' + id); },
   // Open a checklist or one of its steps on the checklist screen, an open template in Start, and other tasks in a sheet.
   openRow(t){
     if (this.isRunTask(t)) return this.openRun(t.id);
-    if (this.checklistIds.has(t.project_id) && isTemplate(t) && !t.done) return this.openStart(t.id);
+    if (this.role(t) === 'template' && comesRound(t)) return this.openStart(t.id);
     const run = this.stepRun(t);
     if (run) return this.openRun(run, t.id);
     this.openTask(t.id);

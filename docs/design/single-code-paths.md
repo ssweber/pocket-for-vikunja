@@ -507,13 +507,13 @@ checks that Vikunja changed once.
    the first op ships, install `relay.go` on the user's own Vikunja and check one relayed create there: that the
    relay reaches Vikunja, and which database it uses.
 2. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
-3. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every
-   caller, and turn on the roles rule.
+3. **Roles.** Done. Add the table test, `roleOf` and `this.role`, move every caller, and turn on the roles rule.
+   `known` also holds the Checklists projects' ids. `isTemplateLabel` stays exported, because it asks about a label.
 4. **The store's foundation.** Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
-   `tasks[id]`, its only writer. Every read and every direct save writes into the copies by field, so
-   today's `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by
-   id, so `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The
-   bridge's `SHOWN_OWN_WAY` and `keep`'s callers go, and so does each of the 13 ops' own way of showing itself where the store
+   `tasks[id]`, its only writer. Every read and every direct save writes into the copies by field, so today's
+   `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by id, so
+   `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The bridge's
+   `SHOWN_OWN_WAY` and `keep`'s callers go, and so does each of the 13 ops' own way of showing itself where the store
    now shows it (`applyAct`, the acts `workOutRun` lays over a checklist's steps). Measure rule 10 before and after
    (`npm run perf:rows -- counts`). Turn on the store rule, except for `cache`, which phase 11 removes. This is the
    phase most likely to show a problem on the phone, so the user checks it there before phase 5.

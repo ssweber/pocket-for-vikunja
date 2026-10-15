@@ -3,7 +3,7 @@ import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO} from 
 import {allPages, api, errText, items, NetError} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
-import {hasOwnOrder, hasTemplateLabel, notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
+import {notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf} from '../checklists.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {atTime} from '../quickadd.js';
 import {notSaved} from '../messages.js';
@@ -210,7 +210,7 @@ export default {
      after a move, and until then in the order they were made. */
   get subtasks(){
     const t = this.sheet.task, hidden = this.hiddenRows;
-    const subs = hasOwnOrder(t) ? stepsOf(t) : [...(t?.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
+    const subs = this.hasOwnOrder(t) ? stepsOf(t) : [...(t?.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
     return subs.filter(s => !hidden.has(s.id));
   },
   /* Read the positions of the open task's subtasks in its project's List view. The request asks the view for the task
@@ -218,7 +218,7 @@ export default {
      itself isn't done. Once the positions are read, the subtasks can be moved (subView). */
   async loadSubOrder(t){
     const subs = t?.related_tasks?.subtask || [], lv = listViewOf(this.projById.get(t?.project_id));
-    if (!subs.length || hasOwnOrder(t) || !lv) return;
+    if (!subs.length || this.hasOwnOrder(t) || !lv) return;
     try {
       const filter = 'id in ' + [t.id, ...subs.map(s => s.id)].join(', ');
       const got = await allPages(`/projects/${t.project_id}/views/${lv.id}/tasks?` + new URLSearchParams({filter, expand: 'subtasks'}));
@@ -269,7 +269,7 @@ export default {
   saveTitle(){
     const t = this.sheet.task, v = (this.sheet.title || '').trim();
     if (!t) return;
-    if (v && v !== this.rowTitle(t)) this.save({title: hasTemplateLabel(t) ? templateTitle(v) : v}); else this.sheet.title = this.rowTitle(t);
+    if (v && v !== this.rowTitle(t)) this.save({title: this.role(t) === 'template' ? templateTitle(v) : v}); else this.sheet.title = this.rowTitle(t);
   },
   // The notes as text (notesText), and as HTML to save (notesHtml). The description also holds Pocket's own lines, such
   // as a template's order line. They are left out of the text while the notes are edited, and kept when the notes are

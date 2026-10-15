@@ -1,7 +1,7 @@
 // ESLint looks for mistakes only (a name that isn't defined, a variable never used, an import assigned to), not style,
 // and that only api.js talks to Vikunja, only util.js asks whether less motion is wanted, only lists.js decides how
-// many days Today shows, and only the files in WRITERS write to Vikunja directly: npm run lint, which also runs
-// scripts/check.mjs. CI runs it too.
+// many days Today shows, only checklists.js decides what kind of task a task is, and only the files in WRITERS write to
+// Vikunja directly: npm run lint, which also runs scripts/check.mjs. CI runs it too.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -22,6 +22,9 @@ const RESTRICTED = [
   { selector: "CallExpression[callee.name='patchTask']", message: WRITE, allow: WRITERS },
   { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name=/^(saveTask|saveEach)$/]", message: WRITE, allow: WRITERS },
 ];
+// The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
+const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],
+  message: 'Ask roleOf() in src/js/checklists.js, or this.role(t), what kind of task a task is.' };
 const allows = (r, file) => r.allow.some(a => a.endsWith('/**') ? file.startsWith(a.slice(0, -2)) : a === file);
 const restricted = (file = '') => ['error', ...RESTRICTED.filter(r => !allows(r, file)).map(({ selector, message }) => ({ selector, message }))];
 
@@ -44,9 +47,11 @@ export default [
     rules: {
       'no-restricted-globals': ['error', { name: 'fetch', message: 'Ask Vikunja through api() in src/js/api.js, which signs the request and renews the session.' }],
       'no-restricted-syntax': restricted(),
+      'no-restricted-imports': ['error', { patterns: [ROLES] }],
     },
   },
   { files: ['src/js/api.js'], rules: { 'no-restricted-globals': 'off' } },
+  { files: ['src/js/checklists.js'], rules: { 'no-restricted-imports': 'off' } },
   ...[...new Set(RESTRICTED.flatMap(r => r.allow))].map(file => ({ files: [file], rules: { 'no-restricted-syntax': restricted(file) } })),
   {
     // Node, and functions the tests run in the page.

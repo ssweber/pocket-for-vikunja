@@ -71,7 +71,7 @@ test('tasks that are each other\'s subtasks are each shown once', () => {
 
 test('a template\'s steps are sorted by id when it has no order line', () => {
   const tpl = { id: 1, labels: [{ title: 'template' }], description: '', related_tasks: { subtask: [{ id: 9 }, { id: 3 }] } };
-  const { tasks } = nestSubtasks([tpl, parentOf(9, 1), parentOf(3, 1)]);
+  const { tasks } = nestSubtasks([tpl, parentOf(9, 1), parentOf(3, 1)], null, t => t.id === 1);
   assert.deepEqual(ids(tasks), [1, 3, 9]);
 });
 

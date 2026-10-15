@@ -365,7 +365,7 @@ test('a project\'s list sorts tasks and subtasks by position, and a checklist\'s
   assert.deepEqual(depth, { 20: 0, 10: 0, 12: 1, 11: 1, 13: 1 });
   // A checklist (a copy of a template) keeps its steps in its own order line. Without one, the steps are in the order they were created.
   const run = { ...parent, related_tasks: { ...parent.related_tasks, copiedfrom: [{ id: 1 }] }, description: '' };
-  assert.deepEqual(ids(nestSubtasks([run, sub(11), sub(12), sub(13)], positionOrder(pos)).tasks), [10, 11, 12, 13]);
+  assert.deepEqual(ids(nestSubtasks([run, sub(11), sub(12), sub(13)], positionOrder(pos), t => t.id === 10).tasks), [10, 11, 12, 13]);
 });
 
 test('a task\'s siblings are the tasks under the same parent, each with its subtasks, and never another parent\'s', () => {

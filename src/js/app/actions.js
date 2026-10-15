@@ -8,7 +8,7 @@ import {dueInfo, isSet, movedDue, repeats} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
 import {dayWord, doneText, movedText, movedTo, movedToProject, notReordered, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
-import {DONE_MARK, hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
+import {DONE_MARK, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {dayGroup, parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync, uuid7} from '../sync.js';
@@ -66,7 +66,7 @@ export default {
         }
       }
       cache.set(id, saved); this.syncTask(saved);
-      if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done && !hasTemplateLabel(before) && !hasTemplateLabel(this.tasks[id])) this.signTick(saved);
+      if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done && this.role(before) !== 'template' && this.role(this.tasks[id]) !== 'template') this.signTick(saved);
       return saved;
     }).finally(() => { saveMark(id, -1); this.writing--; });
     shared.saveChain = run.catch(() => {});
@@ -76,7 +76,7 @@ export default {
      doesn't record who ticked a task, and Done today finds the user's ticks by it (doneByMe). A project only the user
      can see needs none, since everything in it is theirs. A ✅ that fails to save leaves the tick as it is. */
   signTick(t){
-    if (this.seenBy?.[t.project_id] === 0 || hasTemplateLabel(t)) return;
+    if (this.seenBy?.[t.project_id] === 0 || this.role(t) === 'template') return;
     marks = marks.then(() => api(`/tasks/${t.id}/reactions${t.done ? '' : '/delete'}`, {method: 'POST', body: {value: DONE_MARK}}).catch(() => {}));
   },
   /* On Today, a task ticked there joins Done today when the batch clears, so Copy includes it at once. A checklist's
@@ -194,7 +194,7 @@ export default {
   /* Save a parent's computed percent_done after one of its subtasks changes, in the same save chain. It reads the
      parent first and saves only if the percentage changed, without a message. Templates are skipped. Actions on a
      checklist do this in their last outbox stage instead. */
-  writeFigure(id){ return this.saveTask(id, null, now => hasTemplateLabel(now) ? null : figurePatch(now)); },
+  writeFigure(id){ return this.saveTask(id, null, now => this.role(now) === 'template' ? null : figurePatch(now)); },
   // Find a task's parent from the task itself, from the open sheet, or from the subtask relations of the loaded tasks.
   parentIdOf(t){
     const own = parentIds(t)[0], has = p => p?.related_tasks?.subtask?.some(s => s.id === t.id);
@@ -444,14 +444,14 @@ export default {
     this.say(`No longer a subtask of ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {place: 'sheet:top', action: {label: 'Undo', fn: undo}});
   },
   // Whether Move all to today has anything to move. Repeating tasks and repeating checklists don't count.
-  get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && !hasTemplateLabel(t)); },
+  get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && this.role(t) !== 'template'); },
   /* Move overdue tasks to today, keeping their time of day. Repeating tasks and repeating checklists stay, because
      moving them would change their schedule. The result shows under Overdue with an Undo that restores each date.
      `reschedule` uses the same save and Undo for one held row. */
   async moveOverdueToToday(){
     // A card counts its own task and those of its subtasks that are overdue themselves (overdueTasks).
-    const overdue = this.overdueTasks, tasks = overdue.filter(t => !repeats(t) && !hasTemplateLabel(t));
-    const tpl = overdue.filter(t => hasTemplateLabel(t)).length, stay = overdue.length - tasks.length - tpl;
+    const overdue = this.overdueTasks, tasks = overdue.filter(t => !repeats(t) && this.role(t) !== 'template');
+    const tpl = overdue.filter(t => this.role(t) === 'template').length, stay = overdue.length - tasks.length - tpl;
     const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}. Tick ${stay === 1 ? 'it' : 'them'} to move ${stay === 1 ? 'it to its' : 'them to their'} next date.`,
       tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}. Start ${tpl === 1 ? 'it' : 'them'} to move ${tpl === 1 ? 'it to its' : 'them to their'} next date.`].filter(Boolean).join(' ');
     if (!tasks.length && stays) { this.say(movedText(0, 0, stays), {place: 'overdue'}); return; }
@@ -557,7 +557,7 @@ export default {
      cross-project subtasks are left out. So are template steps and checklist steps, which keep their order in notes. */
   orderOf(t, where){
     if (!t || t.pending || t.done || this.lines[t.id] || this.leaving[t.id] || !this.canWrite(t.project_id)) return null;
-    const under = p => !!p && !hasOwnOrder(p) && p.project_id === t.project_id;
+    const under = p => !!p && !this.hasOwnOrder(p) && p.project_id === t.project_id;
     if (where === 'sheet') return this.sheet.subView && under(this.sheet.task) ? {sibs: this.subtasks, view: this.sheet.subView} : null;
     const g = this.route.name === 'project' && this.view.listView && this.view.project?.id === t.project_id && this.listGroups.find(x => x.key === 'open');
     if (g && g.tasks.some(x => x.id === t.id)) {
@@ -694,8 +694,7 @@ export default {
   // Only saved, writable tasks can be deleted by swiping. Checklists, their steps and templates have their own ways
   // to delete.
   canDelete(t, sheet){
-    return !t.pending && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t) && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t))
-      && !(sheet && ['run', 'template'].includes(this.checklistRole));
+    return !t.pending && this.canWrite(t.project_id) && !['run', 'step', 'template'].includes(this.role(t)) && !(sheet && ['run', 'template'].includes(this.checklistRole));
   },
   /* Delete a task and its descendants, asking first if it has any. The deletion is held in the outbox while the
      marked rows keep a Restore gap until the batch clears. Restore removes the held entry, so no task has to be

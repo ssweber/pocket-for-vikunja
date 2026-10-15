@@ -1,9 +1,9 @@
 // Checklist projects and templates: reading them, making a template, and writing and editing its steps.
-import {andList, cache, store, taskDrafts, TZ} from '../util.js';
+import {andList, cache, memo, raw, store, taskDrafts, TZ} from '../util.js';
 import {allPages, api, NetError, patchTask, why} from '../api.js';
 import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
-import {allComments, CHECKLIST_MARK, comesRound, draftSteps, endedOf, hasTemplateLabel, isChecklistDesc, isTemplate, isRun, isRunDesc, isRunStepTask, isTemplateLabel, notesOnly, parseStep, patiently, problemText, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
+import {allComments, CHECKLIST_MARK, comesRound, draftSteps, endedOf, isChecklistDesc, isTemplateLabel, notesOnly, parseStep, patiently, problemText, roleOf, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
@@ -14,8 +14,11 @@ import {newBox, newStepBox} from './core.js';
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
 // Templates as last loaded, kept so a checklist can be started offline. This maps a template id to the fields a start
-// needs, with the steps in order.
-let templatesKept = {};
+// needs, with the steps in order. Until Checklists loads, it is the copy saved on the phone.
+let templatesKept = null;
+const kept = () => templatesKept ||= saved.get('templates') || {};
+// A memo of each task's role, by task id (role).
+const roles = new Map();
 const keepTemplate = t => { templatesKept[t.id] = {id: t.id, title: t.title, project_id: t.project_id, labels: t.labels, done: t.done, due_date: t.due_date,
   repeat_after: t.repeat_after, repeat_mode: t.repeat_mode, assignees: t.assignees || [], related_tasks: {subtask: stepsOf(t).map(s => ({id: s.id, title: s.title}))}}; };
 // A time as it appears in a template's schedule message, formatted as Today does: "6:00 PM" today, "tomorrow 8:00 AM",
@@ -36,36 +39,42 @@ export default {
   // Keep a template as its sheet shows it now, so a checklist started offline sees a step that was just moved, added or
   // removed.
   keepTemplate(t){
-    if (!isTemplate(t)) return;
-    templatesKept = {...saved.get('templates'), ...templatesKept};
+    if (!this.readyTemplate(t)) return;
+    templatesKept = {...saved.get('templates'), ...kept()};
     keepTemplate(t); saved.set('templates', templatesKept);
   },
   isChecklistProject(p){ return isChecklistDesc(p?.description); },
   // The highlighted tab. A checklist highlights Checklists, and a project highlights Projects.
   get tab(){ return ['checklists', 'run'].includes(this.route.name) ? 'checklists' : this.route.name === 'today' ? 'today' : 'projects'; },
-  /* The role of the open task in a checklist project: 'template', 'tplstep' (a step of a template), 'run' (a
-     checklist), 'step' (a step of a checklist) or 'candidate' (a task that could become a template). Vikunja returns
-     related tasks without labels, so the parent of a step is checked against the parent's own copy as last loaded. */
-  get checklistRole(){
-    const t = this.sheet.task, r = t?.related_tasks || {};
-    if (!t || !this.checklistIds.has(t.project_id)) return null;
-    if (isTemplate(t)) return 'template';
-    const p = r.parenttask?.[0];
-    if (p) return isRunStepTask(t) ? 'step' : hasTemplateLabel(cache.get(p.id)) || templatesKept[p.id] ? 'tplstep' : null;
-    return (r.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t) ? 'run' : 'candidate';
+  /* What a task is in Checklists (roleOf). Many bindings ask about a row's task, so its role is a memo for each task
+     id (memo, util.js). The memo doesn't see the cache or the kept templates change, so it can miss a parent that
+     Pocket learns later is a template. No row asks for 'tplstep'. Any other copy of a task, or a task asked about with
+     the list it is in, gets its role worked out each time. */
+  role(t, list = null){
+    if (!this.checklistIds.has(t?.project_id)) return null;
+    const id = t.id;
+    if (list || raw(t) !== raw(this.tasks[id])) return roleOf(t, this.known(list));
+    if (!roles.has(id)) roles.set(id, memo(function(){ return roleOf(this.tasks[id], this.known()); }));
+    return roles.get(id).call(this);
   },
+  // What Pocket has seen of a task's parent, which Vikunja leaves out of the task (roleOf).
+  known(list = null){ return {checklistIds: this.checklistIds, cache, kept: kept(), list}; },
+  // A template that Checklists lists and a checklist can start from. A template Make template didn't finish, or a copy
+  // still being set up as a checklist, isn't.
+  readyTemplate(t){ return this.role(t) === 'template' && (t.done || comesRound(t)); },
+  // Whether a task orders its subtasks by its own order line, as templates and runs do. Other tasks order them by the
+  // project's List view (order.js).
+  hasOwnOrder(t){ return ['template', 'run'].includes(this.role(t)); },
+  // The role of the open task in the sheet. A template that isn't ready gets the sheet of a candidate, so Make template
+  // can finish it.
+  get checklistRole(){ const t = this.sheet.task, role = this.role(t); return role === 'template' && !this.readyTemplate(t) ? 'candidate' : role; },
   /* Remove from a list what belongs on Checklists: done templates and their steps. This is used for a project's Done
      and for search. An open template with a due date stays, because it is due. With `runSteps`, the steps of a
-     checklist are removed too, because they show on the checklist's screen. Vikunja returns a task's parent without
-     labels, so Pocket recognises a step's template from what it has at hand (a template in the same list, a kept
-     template, or a title starting "TEMPLATE:") and never fetches it. */
+     checklist are removed too, because they show on the checklist's screen. A step's template can be in the same
+     list, so role() is given the list. */
   withoutTemplates(list, runSteps = false){
-    const ids = this.checklistIds;
-    if (!ids.size) return list;
-    const here = new Set(list.filter(isTemplate).map(t => t.id)), kept = {...saved.get('templates'), ...templatesKept};
-    const tpl = p => here.has(p.id) || !!kept[p.id] || hasTemplateLabel(cache.get(p.id)) || /^\s*template:/i.test(p.title || '');
-    return list.filter(t => !ids.has(t.project_id)
-      || !(t.done && isTemplate(t) || (t.related_tasks?.parenttask || []).some(tpl) || runSteps && this.stepRun(t)));
+    if (!this.checklistIds.size) return list;
+    return list.filter(t => { const r = this.role(t, list); return !(t.done && r === 'template' || r === 'tplstep' || runSteps && r === 'step'); });
   },
   // What a project's open list shows: a checklist in progress, as a card with its open steps. The steps of a finished
   // checklist are left out. So a checklist finished with steps not done appears only in Done, not as a card over them.
@@ -223,10 +232,10 @@ export default {
       for (const s of done) if (!this.isRunTask(s)) own(s);
       for (const s of open) if (s.related_tasks?.parenttask?.some(x => ids.has(x.id))) own(s);
       return {project: {id: p.id, title: p.title},
-        templates: templates.filter(isTemplate).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
+        templates: templates.filter(t => this.readyTemplate(t)).map(t => ({...t, name: templateName(t.title)})).sort((a, b) => a.name.localeCompare(b.name))
           .map(t => { keepTemplate(t); return {id: t.id, title: t.name, steps: (t.related_tasks?.subtask || []).length,
             done: t.done, labels: t.labels, due_date: t.due_date, repeat_after: t.repeat_after, repeat_mode: t.repeat_mode}; }),
-        runs: open.filter(isRun).map(own),
+        runs: open.filter(t => !t.done && this.isRunTask(t)).map(own),
         finished: finished.map(own), ended: endedOf(finished, [...done, ...open])};
     }));
     saved.set('templates', templatesKept); saved.set('perms', this.perms);
@@ -289,7 +298,7 @@ export default {
     if (!ws.length) return {index: {}, mine: [], open: []};
     try {
       const index = {}, mine = [], open = (await Promise.all(ws.map(p => this.openTasks(p.id)))).flat();
-      for (const t of open) if (isRun(t)) {
+      for (const t of open) if (!t.done && this.isRunTask(t)) {
         index[t.id] = t.created_by?.id === this.user?.id || (t.assignees || []).some(u => u.id === this.user?.id);
         if (index[t.id]) mine.push(t);
       }
@@ -301,12 +310,13 @@ export default {
   // assigned to the user. A task there that is not part of a checklist shows as it would in any other project.
   inToday(t, runs){
     if (!this.checklistIds.has(t.project_id)) return true;
-    if (hasTemplateLabel(t)) return comesRound(t) && this.templateFor(t);  // a due template, not a checklist being set up
+    const role = this.role(t);
+    if (role === 'template') return comesRound(t) && this.templateFor(t);   // a due template, not a checklist being set up
     if ((t.assignees || []).some(u => u.id === this.user?.id)) return true;
     const parent = t.related_tasks?.parenttask?.[0]?.id;
     if (t.id in runs) return runs[t.id];
     if (parent in runs) return runs[parent];
-    return !isRun(t) && !isRunStepTask(t);                                 // a checklist Pocket doesn't know, or one of its steps, is hidden
+    return role !== 'run' && role !== 'step';                               // a checklist Pocket doesn't know, or one of its steps, is hidden
   },
 
   /* Make the open task a template. Label it "template" and mark its steps done, so none of them is a to-do anywhere.
@@ -330,7 +340,7 @@ export default {
     finally { this.sheet.checklistBusy = false; }
   },
   async markTemplate(t, stepIds){
-    if (!hasTemplateLabel(t)) {
+    if (!(t.labels || []).some(isTemplateLabel)) {
       const all = (await this.loadLabels(true)).filter(isTemplateLabel);
       let l = all.find(x => x.created_by?.id === this.user?.id) || all[0];
       if (!l) { l = await api('/labels', {method: 'POST', body: {title: 'template'}}); this.labels.push(l); }
@@ -623,7 +633,7 @@ export default {
   // The data for a template step's own sheet: its number among the template's steps, and when it is due. Both are read
   // from the template's steps.
   get tplStep(){
-    const t = this.sheet.task, p = this.parentTask, tpl = p && (cache.get(p.id) || templatesKept[p.id]);
+    const t = this.sheet.task, p = this.parentTask, tpl = p && (cache.get(p.id) || kept()[p.id]);
     if (!tpl) return null;
     const steps = stepsOf(tpl), i = steps.findIndex(s => s.id === t?.id);
     if (i < 0) return null;

@@ -4,7 +4,6 @@
    middle, which opens the phone's own date picker. ../throw.js decides which dates are offered and where the chips
    sit. holdOf and cardHold (progress.js) use this file through rescheduleOf. */
 import {dateValue, THROW, THROW_STAYS, throwDate, throwEnd, throwFlick, throwLayout, throwPick, throwTargets} from '../throw.js';
-import {hasTemplateLabel} from '../checklists.js';
 import {isSet, repeats} from '../dates.js';
 import {haptic} from '../haptics.js';
 import {motion} from '../util.js';
@@ -71,7 +70,7 @@ export default {
      a message that gives the reason. */
   rescheduleOf(t, el){
     if (!t || t.pending || t.done || this.leaving[t.id] || this.lines[t.id] || !this.canWrite(t.project_id)) return null;
-    const why = this.isRunTask(t) || this.stepRun(t) ? 'run' : hasTemplateLabel(t) ? 'checklist' : repeats(t) ? 'repeats' : null;
+    const role = this.role(t), why = role === 'run' || role === 'step' ? 'run' : role === 'template' ? 'checklist' : repeats(t) ? 'repeats' : null;
     return this.throwOf(t, el, why);
   },
   /* The hold gesture that holdToSlide (progress.js) drives. It calls lift(x, y) as soon as the phone vibrates for the

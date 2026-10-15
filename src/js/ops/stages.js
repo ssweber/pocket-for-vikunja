@@ -1,7 +1,7 @@
 // The requests several ops share. Each is a stage, `(a, c) => Promise`, which app/acts.js runs with `c`: `c.send` is a
 // write with its own key, `c.read` a plain read, and `c.once` a body built once and kept in the entry.
 import {cache} from '../util.js';
-import {DONE_MARK, hasTemplateLabel, SKIP_MARK} from '../checklists.js';
+import {DONE_MARK, SKIP_MARK} from '../checklists.js';
 import {figurePatch} from '../progress.js';
 
 // Change some of the task's fields and return Vikunja's copy, which is also the op's answer (c.task). When nothing
@@ -20,7 +20,7 @@ export const comment = async (a, c) => { const out = await c.send(`/tasks/${a.ta
    one the relay holds for this key. */
 export const figure = async (a, c) => {
   const up = a.up ?? (a.run && a.task !== a.run ? a.run : null);
-  const body = up && await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return hasTemplateLabel(now) ? null : figurePatch(now); });
+  const body = up && await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
   if (!body) return;
   const t = await c.send('/tasks/' + up, {method: 'PATCH', body}) || await c.read('/tasks/' + up);
   cache.set(t.id, t); c.app.syncTask(t);

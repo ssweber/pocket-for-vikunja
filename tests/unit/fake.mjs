@@ -111,7 +111,7 @@ export function fakeVikunja(tasks = []){
 
 /* A fake component made from the parts of the app that are passed in (their methods, as component.js combines them).
    The rest of the app is stubbed. Messages are recorded in `toasts`, with the `row` and `place` each was shown at.
-   There is no screen, so these are just the values the caller asked for. No task counts as a checklist. Rows marked
+   There is no screen, so these are just the values the caller asked for. No task has a role in Checklists. Rows marked
    done or deleted (leaving.js) are in `leaving`, when that part is passed in. The component is signed in with the
    shared session's token, already confirmed as the user's, so a change is sent without asking Vikunja who it is. */
 export function component(...parts){
@@ -124,7 +124,7 @@ export function component(...parts){
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; }, unsay(){},
     get toast(){ return this.toasts.at(-1); },
-    render(){}, flush(){}, regroupToday(){}, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
+    render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   cache.clear();

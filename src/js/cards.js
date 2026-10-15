@@ -3,7 +3,7 @@
    where it sits and which subtask is on top. It has no DOM code, so the unit tests can check it. app/cards.js draws
    the cards. */
 import {isSet} from './dates.js';
-import {durText, hasTemplateLabel} from './checklists.js';
+import {durText} from './checklists.js';
 import {dayGroup} from './lists.js';
 
 // A task's open subtasks, as listed in its own related_tasks.
@@ -16,7 +16,7 @@ const later = (a, b) => !a ? b : !b ? a : Date.parse(b) > Date.parse(a) ? b : a;
 
 /* What Today shows. `tasks` are the open tasks due by the end of the coming week. `added` are the open tasks made
    today. `mine` are your checklists in progress. `claimed` are the steps you're on in someone else's checklist.
-   `isRun(t)` returns true when a task is a checklist. Each of these puts something on Today:
+   `role(t)` is what the task is in Checklists (roleOf, checklists.js). Each of these puts something on Today:
    - A due task with no open subtasks appears as itself, a row (`key` 'dated').
    - A due task with open subtasks, or a due subtask, appears as its parent's card.
    - A subtask assigned to you, made today, with no date appears as its parent's card. Vikunja doesn't record when a
@@ -37,7 +37,7 @@ const later = (a, b) => !a ? b : !b ? a : Date.parse(b) > Date.parse(a) ? b : a;
    - `focus` is that subtask's id.
    - `project` is the card's project, as far as known.
    - `from` is the tasks that put the card on Today. They are shown as rows if the parent can't be read. */
-export function todayItems({tasks = [], added = [], mine = [], claimed = []}, me, isRun = () => false){
+export function todayItems({tasks = [], added = [], mine = [], claimed = []}, me, role = () => null){
   const cards = new Map(), rows = new Map();
   const card = (p, why, {when = null, made = null, focus = null} = {}) => {
     const c = cards.get(p.id) || {when: null, made: null, focus: null, project: p.project_id ?? null, from: []};
@@ -49,14 +49,14 @@ export function todayItems({tasks = [], added = [], mine = [], claimed = []}, me
   for (const t of tasks) {
     const p = parentOf(t);
     if (p) card(p, t, {when: t.due_date, focus: yours(t, me) ? t.id : null});
-    else if (openSubs(t).length && !hasTemplateLabel(t)) card(t, null, {when: t.due_date});
+    else if (openSubs(t).length && role(t) !== 'template') card(t, null, {when: t.due_date});
     else row(t, 'dated');
   }
   for (const t of added) {
     if (isSet(t.due_date)) continue;                       // a due task came in `tasks`
     const p = parentOf(t);
     if (p) { if (yours(t, me)) card(p, t, {made: t.created, focus: t.id}); }
-    else if (isRun(t) || t.created_by?.id !== me?.id) continue;
+    else if (role(t) === 'run' || t.created_by?.id !== me?.id) continue;
     else if (openSubs(t).length) card(t, null, {made: t.created});
     else row(t, 'nodate');
   }

@@ -452,7 +452,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.specimenRings = s.rings.map((r, i) => ({...r, id: i, g: {key: 'today', cards: 'today', line: true, depth: {}, delete: true, reschedule: true, items: r.rows.map(t => this.keep(t)), tasks: r.rows}}));
     // A project's open list, as listGroups makes it, with each subtask under its parent.
     Object.assign(this.positions, s.project.positions);
-    const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions))};
+    const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions), t => this.hasOwnOrder(t))};
     this.specimenProject = {...g, items: listItems(g.tasks, g.depth, t => !!this.cardOf(t, g))};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Jamie, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped right to 75%, late, waiting on another step, and a tick waiting to send',

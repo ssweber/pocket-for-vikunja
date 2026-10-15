@@ -1,7 +1,7 @@
 // Parse add boxes, suggest people, labels and projects, check project access, and position the box under its target row.
 import {app, colorOf, esc, userCache} from '../util.js';
 import {api, items, NetError, sharedToken} from '../api.js';
-import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
+import {inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {parentIds, saved} from '../lists.js';
 import {clearOf, listViewOf, placeAfter, placeFirst} from '../order.js';
 import {inTextField, NUDGE_TICK} from '../progress.js';
@@ -429,7 +429,7 @@ export default {
   canAim(t){
     const on = this.route.name;
     return !!t && (on === 'project' || on === 'today') && !t.pending && (!t.done || !!this.leaving[t.id]) && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
-      && !(this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) && !this.deleting.includes(t.id) && (this.onList(t) || (on === 'today' && !!this.listParent(t)));
+      && this.role(t) !== 'template' && !this.deleting.includes(t.id) && (this.onList(t) || (on === 'today' && !!this.listParent(t)));
   },
   // Whether the screen's list shows the task as a row or a card. On a project that means its open tasks, and on
   // Today any group.

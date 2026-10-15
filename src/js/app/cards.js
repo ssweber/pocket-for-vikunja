@@ -7,7 +7,7 @@
 import {colorOf, motion, PRIOS, TZ} from '../util.js';
 import {allPages, NetError} from '../api.js';
 import {dueInfo, isLate, isSet, repeats, shortDue} from '../dates.js';
-import {hasTemplateLabel, parseStep, runWithoutDay, stepsOf, whereNext} from '../checklists.js';
+import {parseStep, runWithoutDay, stepsOf, whereNext} from '../checklists.js';
 import {pctOf, workedOut} from '../progress.js';
 import {cardRows, countdown, openSubs, runTop, urgentFirst} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
@@ -32,7 +32,7 @@ export default {
   cardOf(t, g){
     const kind = g?.cards;
     if (kind === 'list') return this.listCard(t, g);
-    if (!kind || t.pending || (t.done && !this.leaving[t.id] && !closing.has(t.id)) || hasTemplateLabel(t)) return null;
+    if (!kind || t.pending || (t.done && !this.leaving[t.id] && !closing.has(t.id)) || this.role(t) === 'template') return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), done = s => this.subDone(s, run);
     let steps = all.filter(s => !done(s) || this.leaving[s.id]);
     // Subtasks added from Today's box during this visit (addedRows), including ones still waiting to be sent.
@@ -73,7 +73,7 @@ export default {
      waiting to be sent. When every subtask is done and none is waiting, the card is a closing card. */
   listCard(t, g){
     const rows = g.kids?.get(t.id) || [];
-    if (g.depth?.[t.id] || t.pending || hasTemplateLabel(t)) return null;
+    if (g.depth?.[t.id] || t.pending || this.role(t) === 'template') return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run), waiting = rows.filter(s => s.pending).length;
     if (!rows.length) return all.length && (!t.done || this.leaving[t.id] || closing.has(t.id)) && all.every(s => this.subDone(s, run)) ? this.closingCard(t, g, run, all) : null;
     const card = {id: t.id, run, step: rows[0], steps: rows, rows, n: rows.length, peek: null, more: rows.length - 1, open: true, folds: false,
@@ -94,7 +94,7 @@ export default {
      number of subtasks not done. `said` is the sentence a screen reader reads. `label` is the name of what tapping the
      ring does. */
   ringOf(t, waiting = 0){
-    if (!t || t.pending || hasTemplateLabel(t)) return null;
+    if (!t || t.pending || this.role(t) === 'template') return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run);
     if (!all.length && !waiting) return null;
     const w = workedOut([...all.map(s => ({done: this.subDone(s, run), pct: run ? this.stepPct(s) : pctOf(s)})), ...Array.from({length: waiting}, () => ({done: false, pct: 0}))]);

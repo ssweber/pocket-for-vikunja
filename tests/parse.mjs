@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global endedOf, parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, isTemplate, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers */
+/* global endedOf, parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, roleOf, comesRound, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -448,9 +448,8 @@ const lates = [['2021-06-24T09:30', '2021-06-24T10:00', true], ['2021-06-24T10:3
   ['2021-06-24T09:00', '2021-06-24T15:00', true], ['2021-06-23T00:00', '2021-06-24T08:00', true]];
 const lateResults = await page.evaluate(ls => ls.map(([due, now]) => isLate(new Date(due).toISOString(), new Date(now))), lates);
 // A started checklist's steps are ordered by the order line in its description, then by id, whatever order Vikunja
-// returns them in. Any other task's subtasks keep the order they came in.
+// returns them in.
 const runOrder = await page.evaluate(() => [stepsOf({related_tasks: {copiedfrom: [{id: 1}], subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
-  stepsOf({related_tasks: {subtask: [{id: 9}, {id: 3}]}}).map(s => s.id),
   stepsOf({description: '<p>pocket:run</p><p>pocket:order 9 12 3</p>', related_tasks: {subtask: [{id: 3}, {id: 12}, {id: 9}, {id: 20}]}}).map(s => s.id)]);
 // An inserted step goes before the step given. If that step is gone, it goes after the step it was inserted under.
 // If that step is gone too, it goes at the end. A step already in the list is not added twice.
@@ -497,15 +496,20 @@ const ended = await page.evaluate(() => {
   const open = {id: 4, done: false, related_tasks: under, comment_count: 2}, other = {id: 5, done: true, related_tasks: {parenttask: [{id: 99}]}, comments: [{comment: '<p>x</p>'}]};
   return endedOf([{id: 1, comments: [{comment: '<p>Line 2 ran slow</p>'}]}], [skipped, answered, open, other]);
 });
-// Templates. A task is a template if it is done, or not done with a due date, but not if it is a copy being set up as
-// a checklist. Also covered are the template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja
-// moves it to when it is ticked, as checked on Vikunja 2.7.
+// Templates. A task labelled "template" in a Checklists project is a template. One that is open with no date, or a copy
+// being set up as a checklist, never comes round. A run line makes a checklist, and a step or added
+// line makes a checklist's step (the rest of the roles are in tests/unit/checklists.test.mjs). Also covered are the
+// template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja moves it to when it is ticked, as
+// checked on Vikunja 2.7.
 const rounds = await page.evaluate(() => {
   const L = [{title: 'template'}], due = '2026-09-15T19:09:31Z', now = Date.parse('2026-10-06T18:09:31Z'), at = ms => ms === null ? null : new Date(ms).toISOString();
-  return [isTemplate({labels: L, done: true}), isTemplate({labels: L, done: false, due_date: due}),
-    isTemplate({labels: L, done: false, due_date: '0001-01-01T00:00:00Z'}), isTemplate({labels: L, done: false, due_date: due, related_tasks: {copiedfrom: [{id: 1}]}}),
-    isTemplate({labels: L, done: false, due_date: due, description: '<p>pocket:run</p>'}), isTemplate({labels: L, done: true, related_tasks: {parenttask: [{id: 1}]}}),
-    isTemplate({labels: [], done: true}),
+  const role = t => roleOf({project_id: 7, ...t}, {checklistIds: new Set([7])}), under = {parenttask: [{id: 1}]};
+  return [role({labels: L, done: true}), role({labels: L, done: false, due_date: due}),
+    role({labels: L, done: false, due_date: '0001-01-01T00:00:00Z'}), comesRound({labels: L, done: false, due_date: due, related_tasks: {copiedfrom: [{id: 1}]}}),
+    comesRound({labels: L, done: false, due_date: due, description: '<p>pocket:run</p>'}), role({labels: L, done: true, related_tasks: under}),
+    role({labels: [], done: true}), role({description: '<p>pocket:run</p>'}), role({labels: L, description: '<p>pocket:run</p>'}),
+    role({related_tasks: under, description: '<p>pocket:step Roast T#40m</p>'}), role({related_tasks: under, description: '<p>pocket:added</p>'}),
+    role({project_id: 5, description: '<p>pocket:run</p>'}),
     templateName('TEMPLATE: Opening up'), templateName('Opening up'), templateTitle('template: Opening up'),
     ...[{repeat_after: 86400}, {repeat_after: 3 * 86400}, {repeat_after: 604800}, {repeat_after: 1209600}, {repeat_mode: 1}, {repeat_after: 6 * 3600},
       {repeat_mode: 2, repeat_after: 86400}, {}].map(repeatWords),
@@ -584,7 +588,7 @@ orderWrites.forEach(([html, ids, want], i) => {
 lates.forEach(([due, now, want], i) => {
   if (lateResults[i] !== want) { failed++; console.log(`FAIL late ${JSON.stringify([due, now])}: ${lateResults[i]}`); }
 });
-if (!same(runOrder, [[3, 9], [9, 3], [9, 12, 3, 20]])) { failed++; console.log(`FAIL a run's steps by its order line then id, a task's as they are: ${JSON.stringify(runOrder)}`); }
+if (!same(runOrder, [[3, 9], [9, 12, 3, 20]])) { failed++; console.log(`FAIL a run's steps by its order line then id: ${JSON.stringify(runOrder)}`); }
 if (!same(placed, [[3, 20, 9, 12], [3, 9, 12, 20], [3, 20, 9], [3, 20, 9, 12], [3, 9, 12, 20]])) { failed++; console.log(`FAIL placing an inserted step: ${JSON.stringify(placed)}`); }
 if (!same(addeds, ['Inserted', 'Repeated', '', '<p>Mind the hot plate</p>'])) { failed++; console.log(`FAIL steps added during a run: ${JSON.stringify(addeds)}`); }
 if (!same(unknownLines, ['<p>Mind the hot plate</p><p>pocket: keys</p>', '<p>New note</p><p>pocket:step Taste T#5m</p><p>pocket:later 7</p>'])) { failed++; console.log(`FAIL a line from a newer Pocket: ${JSON.stringify(unknownLines)}`); }
@@ -593,7 +597,7 @@ if (!same(asksRead, [[['Where', ['see https://example.com', 'draft', 'code']], [
   '<p>Notes</p><p>Tail</p><ul><li>pocket:ask Kept: text</li></ul><p>pocket:ask Temp: number °C 0..5</p>',
   '<p>Read.</p><p>Bring cash</p>', '<p>New</p><p>pocket:ask Where: choice see it | draft</p>', ['3 °C', false, true, 'Yes', 'Jamie', false]]))
   { failed++; console.log(`FAIL asks and answers read from HTML: ${JSON.stringify(asksRead)}`); }
-const roundsWant = [true, true, false, false, false, false, false, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
+const roundsWant = ['template', 'template', 'template', false, false, null, 'candidate', 'run', 'template', 'step', 'step', null, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
   'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a checklist starts', '',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z', null];

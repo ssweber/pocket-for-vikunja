@@ -1,7 +1,7 @@
 // Claims and assignee pictures on task and step rows. Claiming assigns the task to you.
 import {cache} from '../util.js';
 import {allPages, api, ApiError, NetError} from '../api.js';
-import {comesRound, hasTemplateLabel, parseStep} from '../checklists.js';
+import {comesRound, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
 
@@ -89,7 +89,7 @@ export default {
     if (g.sheet) return g.step && this.sheet.stepEdit?.id === t.id ? null : this.subSlots[t.id] || null;   // the step's edit box needs this space
     if (t.pending) return null;
     if (g.top || this.isRunTask(t)) return this.forSlot(t);
-    if (this.checklistIds.has(t.project_id) && hasTemplateLabel(t)) return comesRound(t) ? this.forSlot(t) : null;
+    if (this.role(t) === 'template') return comesRound(t) ? this.forSlot(t) : null;
     const mark = this.leaving[t.id], was = mark === 'done' ? false : mark === 'open' ? true : t.done;
     const slot = this.claimSlot(t, this.peopleOf(t.id, t.assignees), was, this.stepRun(t));
     return slot && was !== t.done ? {...slot, can: false, label: (t.done ? 'Done: ' : 'Not done: ') + t.title} : slot;

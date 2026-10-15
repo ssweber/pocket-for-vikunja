@@ -42,7 +42,7 @@ export function stepOrder(html){
   const line = markLines(parseFragment(html || ''), ORDER_LINE)[0];
   return line ? (line.nodeValue.match(/\d+/g) || []).map(Number) : null;
 }
-export const isRunDesc = html => !!markLines(parseFragment(html || ''), RUN_LINE).length;
+const isRunDesc = html => !!markLines(parseFragment(html || ''), RUN_LINE).length;
 export const isAddedDesc = html => !!markLines(parseFragment(html || ''), ADDED_LINE).length;
 // "Inserted" or "Repeated" for a step added during its run, and '' for a step copied from the template.
 export const addedText = html => !isAddedDesc(html) ? '' : stepLine(html) !== null ? 'Repeated' : 'Inserted';
@@ -109,14 +109,16 @@ export function withLinesOf(html, from){
   }
   return root.innerHTML;
 }
+// The label that makes a task a template.
 export const isTemplateLabel = l => (l?.title || '').trim().toLowerCase() === 'template';
-export const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
-/* A template is labelled "template", is nobody's subtask, and is either done or open with a due date. An open
-   template is a Vikunja repeating task that repeats at its due time, and starting a run ticks it.
+const hasTemplateLabel = t => (t?.labels || []).some(isTemplateLabel);
+/* A template that Checklists lists and a checklist can start from: labelled "template", nobody's subtask, and either
+   done or open with a due date. An open template is a Vikunja repeating task that repeats at its due time, and
+   starting a run ticks it.
 
    A copy that is still being set up as a run also has the label, and is open with the template's date. Its "copied
-   from" link or run line shows that it is not a template. */
-export const isTemplate = t => !!t && hasTemplateLabel(t) && !t.related_tasks?.parenttask?.length
+   from" link or run line shows that it is not a template to start from. */
+const isTemplate = t => !!t && hasTemplateLabel(t) && !t.related_tasks?.parenttask?.length
   && (t.done || (isSet(t.due_date) && !t.related_tasks?.copiedfrom?.length && !isRunDesc(t.description)));
 // A repeating template: open, with a due date.
 export const comesRound = t => isTemplate(t) && !t.done;
@@ -158,20 +160,27 @@ export function nextAfter(t, from, now = Date.now()){
 // Add `n` months the way Go's AddDate does in Vikunja. It keeps the same day of the month and overflows into the next
 // month (Jan 31 → Mar 3).
 const addMonths = (ms, n) => { const d = new Date(ms); d.setUTCMonth(d.getUTCMonth() + n); return +d; };
-// An open run: a copy of a template that is nobody's subtask. A copy that still has the "template" label is still being
-// set up, so it is not a run yet.
-export const isRun = t => !t.done && !t.related_tasks?.parenttask?.length && (!!t.related_tasks?.copiedfrom?.length || isRunDesc(t.description)) && !hasTemplateLabel(t);
 // A run's step: a subtask that was copied from a template step, has a "pocket:step" line, or was added during the run.
-export const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t.related_tasks.copiedfrom?.length || stepLine(t.description) !== null || isAddedDesc(t.description));
-// Whether a task orders its subtasks by its own order line, as templates and runs do. Other tasks order them by the
-// project's List view (order.js).
-export const hasOwnOrder = t => { const r = t?.related_tasks || {}; return hasTemplateLabel(t) || (!!(r.copiedfrom?.length || isRunDesc(t?.description)) && !r.parenttask?.length); };
-// A task's subtasks. A template's or run's steps are in the order of its order line. Any other task's subtasks are in
-// the order Vikunja gives them.
-export function stepsOf(t){
-  const subs = t?.related_tasks?.subtask || [];
-  return hasOwnOrder(t) ? inOrder(subs, stepOrder(t?.description)) : subs;
+const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t.related_tasks.copiedfrom?.length || stepLine(t.description) !== null || isAddedDesc(t.description));
+/* What a task is in Checklists: 'template', 'tplstep' (a template's step), 'run' (a checklist), 'step' (a checklist's
+   step), 'candidate' (a task Make template can turn into a template) or null (an ordinary task). Only a task in a
+   Checklists project has a role, so a task labelled "template" anywhere else is an ordinary task.
+
+   Vikunja leaves the labels out of a subtask's parent, so `known` says what Pocket has seen of it: {checklistIds,
+   cache: Vikunja's last copies, kept: the templates kept from Checklists, list: the list being shown}. */
+export function roleOf(t, known = {}){
+  if (!t || !known.checklistIds?.has(t.project_id)) return null;
+  const r = t.related_tasks || {}, p = r.parenttask?.[0];
+  if (p) return isRunStepTask(t) ? 'step' : isTemplateParent(p, known) ? 'tplstep' : null;
+  // The label makes a template, even one Make template didn't finish or a copy still being set up as a run.
+  if (hasTemplateLabel(t)) return 'template';
+  return r.copiedfrom?.length || isRunDesc(t.description) ? 'run' : 'candidate';
 }
+// A parent is a template when Pocket has it as one, or when its title starts "TEMPLATE:" as Pocket names templates.
+const isTemplateParent = (p, {cache, kept, list}) => !!kept?.[p.id] || hasTemplateLabel(cache?.get(p.id))
+  || isTemplate(list?.find(x => x.id === p.id)) || /^\s*template:/i.test(p.title || '');
+// A template's or run's steps, in the order of its order line.
+export const stepsOf = t => inOrder(t?.related_tasks?.subtask || [], stepOrder(t?.description));
 export const DONE_MARK = '✅', SKIP_MARK = '⏭️';
 /* The user who skipped a done step, or null. That user left a ⏭️ and a comment starting "Skipped" since the step
    was last marked done. A ⏭️ can linger from an earlier skip, because only its owner can remove it. So the

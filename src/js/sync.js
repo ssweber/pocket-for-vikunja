@@ -340,7 +340,7 @@ export const RUN_STEPS = [
     j.assigned = true;
   }},
   // The copy has the template's labels, including "template". That label is removed last. Until then the run is not a
-  // run anywhere (isRun), so teammates can't start on it before it is complete. The label is looked up first because
+  // run anywhere (roleOf), so teammates can't start on it before it is complete. The label is looked up first because
   // Vikunja refuses to remove a label that isn't there.
   {name: 'unlabel', done: j => !!j.unlabeled, async run(j){
     for (const l of (await api('/tasks/' + j.runId)).labels || []) if (isTemplateLabel(l)) await api(`/tasks/${j.runId}/labels/${l.id}`, {method: 'DELETE'});

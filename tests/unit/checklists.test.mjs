@@ -4,7 +4,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { durText, inOrder, isRun, isRunStepTask, placeBefore, plainStep, problemText, runParts, runWithoutDay, stepFrom, stepInfos, stepProblems, stepsOf, stepWords, parseStep } from '../../src/js/checklists.js';
+import { durText, inOrder, placeBefore, plainStep, problemText, roleOf, runParts, runWithoutDay, stepFrom, stepInfos, stepProblems, stepsOf, stepWords, parseStep } from '../../src/js/checklists.js';
 import { runTitle } from '../../src/js/sync.js';
 
 const ids = list => list.map(s => s.id);
@@ -23,11 +23,8 @@ test('an inserted step goes before the step it was put before, else after the st
   assert.deepEqual(placeBefore([1, 9, 2], 9, 2, 1), [1, 9, 2], 'a step that is already in the order is not added again');
 });
 
-test('a template\'s steps are in order, and any other task\'s subtasks stay in Vikunja\'s order', () => {
-  const subtask = [{ id: 8 }, { id: 3 }];
-  assert.deepEqual(ids(stepsOf({ labels: [{ title: 'Template' }], related_tasks: { subtask } })), [3, 8]);
-  assert.deepEqual(ids(stepsOf({ related_tasks: { subtask, copiedfrom: [{ id: 1 }] } })), [3, 8], 'a checklist\'s steps are in order');
-  assert.deepEqual(ids(stepsOf({ related_tasks: { subtask } })), [8, 3]);
+test('a template\'s or checklist\'s steps with no order line are in id order', () => {
+  assert.deepEqual(ids(stepsOf({ related_tasks: { subtask: [{ id: 8 }, { id: 3 }] } })), [3, 8]);
   assert.deepEqual(stepsOf(null), []);
 });
 
@@ -64,13 +61,66 @@ test('a step\'s time is written in words, as Pocket shows it', () => {
   assert.equal(stepWords('Plate', titles), 'Plate');
 });
 
-test('a checklist and a checklist\'s step are recognised by their links', () => {
-  assert.equal(isRun({ done: false, related_tasks: { copiedfrom: [{ id: 1 }] } }), true);
-  assert.equal(isRun({ done: true, related_tasks: { copiedfrom: [{ id: 1 }] } }), false, 'a finished checklist is not a checklist in progress');
-  assert.equal(isRun({ done: false, labels: [{ title: 'template' }], related_tasks: { copiedfrom: [{ id: 1 }] } }), false, 'a template still being set up is not a checklist');
-  assert.equal(isRun({ done: false, related_tasks: { copiedfrom: [{ id: 1 }], parenttask: [{ id: 2 }] } }), false, 'a step is not a checklist');
-  assert.equal(isRunStepTask({ related_tasks: { parenttask: [{ id: 2 }], copiedfrom: [{ id: 1 }] } }), true);
-  assert.equal(isRunStepTask({ related_tasks: { parenttask: [{ id: 2 }] } }), false, 'a subtask of any other task is not a checklist step');
+/* What a task is in Checklists. Only a task in a Checklists project (7 here) has a role, so a task labelled "template"
+   anywhere else is an ordinary task. Vikunja leaves the labels out of a subtask's parent, so Pocket goes by what it has
+   seen of the parent: 100 is a template in the cache, 101 a template kept from Checklists, and 102 a template in the
+   same list. A parent titled "TEMPLATE: ..." counts too. The run, step and added lines need a browser, so their rows
+   are in tests/parse.mjs. */
+test('a task\'s role in Checklists comes from its project, its label, its links, its dates and its parent', () => {
+  const L = [{ title: 'template' }], DUE = '2026-10-20T09:00:00Z', copied = { copiedfrom: [{ id: 900 }] }, under = (id, title = 'Task') => ({ parenttask: [{ id, title }] });
+  const t = (project_id, f = {}) => ({ id: 1, title: 'Task', done: false, project_id, labels: [], description: '', due_date: '0001-01-01T00:00:00Z', related_tasks: {}, ...f });
+  const known = { checklistIds: new Set([7]), cache: new Map([[100, { id: 100, labels: L }]]), kept: { 101: { id: 101 } }, list: [{ id: 102, done: true, project_id: 7, labels: L, related_tasks: {} }] };
+  const rows = [
+    ['labelled, done', t(7, { labels: L, done: true }), 'template'],
+    ['labelled, open with a date (a template that repeats)', t(7, { labels: L, due_date: DUE }), 'template'],
+    ['labelled, open with no date (Make template didn\'t finish)', t(7, { labels: L }), 'template'],
+    ['labelled, copied, open with a date (a checklist being set up)', t(7, { labels: L, due_date: DUE, related_tasks: copied }), 'template'],
+    ['labelled, copied, open with no date', t(7, { labels: L, related_tasks: copied }), 'template'],
+    ['labelled, copied, done', t(7, { labels: L, done: true, related_tasks: copied }), 'template'],
+    ['copied, open', t(7, { related_tasks: copied }), 'run'],
+    ['copied, done (a finished checklist)', t(7, { done: true, related_tasks: copied }), 'run'],
+    ['open', t(7), 'candidate'],
+    ['done, with a date', t(7, { done: true, due_date: DUE }), 'candidate'],
+    ['a subtask copied from a step', t(7, { related_tasks: { ...under(200), ...copied } }), 'step'],
+    ['a labelled subtask copied from a step', t(7, { labels: L, related_tasks: { ...under(200), ...copied } }), 'step'],
+    ['a subtask copied from a step, under a template', t(7, { done: true, related_tasks: { ...under(100), ...copied } }), 'step'],
+    ['a subtask of a template in the cache', t(7, { done: true, related_tasks: under(100) }), 'tplstep'],
+    ['a subtask of a template kept from Checklists', t(7, { done: true, related_tasks: under(101) }), 'tplstep'],
+    ['a subtask of a template in the same list', t(7, { done: true, related_tasks: under(102) }), 'tplstep'],
+    ['a subtask of a parent titled "TEMPLATE: ..."', t(7, { done: true, related_tasks: under(103, 'TEMPLATE: Closing') }), 'tplstep'],
+    ['a subtask of an ordinary task', t(7, { related_tasks: under(104) }), null],
+    ['a labelled subtask of an ordinary task', t(7, { labels: L, related_tasks: under(104) }), null],
+    ['elsewhere: labelled, done', t(5, { labels: L, done: true }), null],
+    ['elsewhere: labelled, open with a date', t(5, { labels: L, due_date: DUE }), null],
+    ['elsewhere: copied, open', t(5, { related_tasks: copied }), null],
+    ['elsewhere: a subtask copied from a step', t(5, { related_tasks: { ...under(200), ...copied } }), null],
+    ['elsewhere: a labelled subtask', t(5, { labels: L, related_tasks: under(104) }), null],
+    ['elsewhere: a subtask of a parent titled "TEMPLATE: ..."', t(5, { related_tasks: under(103, 'TEMPLATE: Closing') }), null],
+    ['no task', null, null],
+  ];
+  assert.deepEqual(rows.map(([shape, task]) => [shape, roleOf(task, known)]), rows.map(([shape, , role]) => [shape, role]));
+});
+
+test('a template and a checklist order their steps by their own line, and a task labelled "template" elsewhere follows the List view', async () => {
+  const { component } = await import('./fake.mjs'), { default: checklists } = await import('../../src/js/app/checklists.js');
+  const app = component(checklists), L = [{ title: 'template' }];
+  app.checklistIds = new Set([7]);
+  const own = f => app.hasOwnOrder({ id: 1, done: true, project_id: 7, labels: [], description: '', related_tasks: {}, ...f });
+  assert.deepEqual([own({ labels: L }), own({ related_tasks: { copiedfrom: [{ id: 2 }] } }), own({}), own({ project_id: 5, labels: L })], [true, true, false, false]);
+});
+
+// A template that Make template didn't finish, or a copy still being set up as a checklist, has the sheet of a task that
+// can become a template, so Make template can finish it.
+test('a template that isn\'t ready to start has the sheet of a candidate', async () => {
+  const { component } = await import('./fake.mjs'), { default: checklists } = await import('../../src/js/app/checklists.js');
+  const app = component(checklists), L = [{ title: 'template' }], DUE = '2026-10-20T09:00:00Z';
+  app.checklistIds = new Set([7]);
+  const sheet = f => { app.sheet = { task: { id: 1, done: false, project_id: 7, labels: L, description: '', due_date: '0001-01-01T00:00:00Z', related_tasks: {}, ...f } }; return [app.role(app.sheet.task), app.checklistRole]; };
+  assert.deepEqual(sheet({ done: true }), ['template', 'template']);
+  assert.deepEqual(sheet({ due_date: DUE }), ['template', 'template'], 'a template that comes round');
+  assert.deepEqual(sheet({}), ['template', 'candidate'], 'open with no date');
+  assert.deepEqual(sheet({ due_date: DUE, related_tasks: { copiedfrom: [{ id: 2 }] } }), ['template', 'candidate'], 'a copy being set up');
+  assert.deepEqual(sheet({ labels: [] }), ['candidate', 'candidate']);
 });
 
 test('a checklist\'s title is its template\'s name, the day, then its number or typed name, and a title with the day last is still read', () => {

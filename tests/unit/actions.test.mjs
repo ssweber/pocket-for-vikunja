@@ -15,6 +15,7 @@ import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
+import checklists from '../../src/js/app/checklists.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
 import { cache } from '../../src/js/util.js';
@@ -719,8 +720,10 @@ test('moving a card changes only its task\'s date, and a card with a sooner subt
    first. */
 test('a title being edited is saved once when its sheet closes, however it closes, and an empty title is not saved', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
-  const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', project_id: 1 }, { id: 2, title: 'TEMPLATE: Opening', project_id: 1, done: true, labels: [{ id: 9, title: 'template' }] }]);
-  const app = component(tasks, actions, views, sheet);
+  const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', project_id: 1 }, { id: 2, title: 'TEMPLATE: Opening', project_id: 1, done: true, labels: [{ id: 9, title: 'template' }] },
+    { id: 3, title: 'Order cups', project_id: 2, labels: [{ id: 9, title: 'template' }] }]);
+  const app = component(tasks, actions, views, sheet, checklists);
+  app.checklistIds = new Set([1]);
   globalThis.history = { state: null, pushState(s){ this.state = s; }, replaceState(s){ this.state = s; } };
   document.getElementById = () => ({ querySelector: () => ({}) });
   Object.defineProperty(app, 'canEdit', { get: () => true });
@@ -754,6 +757,11 @@ test('a title being edited is saved once when its sheet closes, however it close
     app.sheet.title = 'Opening up';
     app.closeSheet(true);
     assert.deepEqual((await sent())[1], [2, { title: 'TEMPLATE: Opening up' }]);
+    // A task labelled "template" outside a Checklists project is an ordinary task, and its title is saved as typed.
+    open(3);
+    app.sheet.title = 'Order cups and lids';
+    app.closeSheet(true);
+    assert.deepEqual((await sent())[2], [3, { title: 'Order cups and lids' }]);
   } finally { delete document.activeElement; delete document.getElementById; delete globalThis.history; }
 });
 
@@ -913,8 +921,11 @@ test('Done today keeps only what was done today, also in a copy of Today saved o
 });
 
 test('a template gets no ✅ when it is saved done, even if Vikunja\'s reply leaves its labels out', async c => {
-  const label = [{ id: 4, title: 'template' }], v = fakeVikunja([{ id: 1, title: 'TEMPLATE: Opening up', done: false, project_id: 7, labels: label }]), app = listed(c);
-  app.seenBy = { 7: 2 };
+  const label = [{ id: 4, title: 'template' }], due = '2026-10-20T09:00:00Z';
+  const v = fakeVikunja([{ id: 1, title: 'TEMPLATE: Opening up', done: false, due_date: due, project_id: 7, labels: label }, { id: 2, title: 'Order cups', done: false, project_id: 8, labels: label }]);
+  const app = listed(c);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
+  Object.assign(app, { seenBy: { 7: 2, 8: 2 }, checklistIds: new Set([7]) });
   const t = app.keep(v.task(1));
   cache.set(1, { ...v.task(1) });
   delete v.task(1).labels;                       // the reply to the save has no labels
@@ -922,6 +933,10 @@ test('a template gets no ✅ when it is saved done, even if Vikunja\'s reply lea
   await settled();
   assert.equal(t.done, true);
   assert.equal(v.task(1).reactions, undefined);
+  app.keep(v.task(2));
+  await app.saveTask(2, { done: true });
+  await settled();
+  assert.deepEqual(v.task(2).reactions?.['✅']?.map(u => u.id), [1], 'a task labelled "template" outside a Checklists project gets the ✅');
 });
 
 test('finishing a checklist puts the user\'s ✅ on it, and reopening it takes the ✅ off', async () => {

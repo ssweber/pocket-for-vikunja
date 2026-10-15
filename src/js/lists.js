@@ -1,7 +1,7 @@
 // How Pocket's lists are built, sorted and drawn, and the copies saved so Pocket can open without a connection.
 import {store} from './util.js';
 import {addDays, isLate, isSet, startOfDay} from './dates.js';
-import {hasOwnOrder, stepsOf} from './checklists.js';
+import {stepsOf} from './checklists.js';
 
 // The lists Pocket last loaded, shown when it opens without a connection. Sign-out clears them.
 export const saved = {
@@ -57,17 +57,19 @@ export const parentIds = t => t.parent ? [t.parent] : (t.related_tasks?.parentta
    - `tasks` is the list with each subtask straight after its parent, when the parent is in the list.
    - `depth` maps a task id to how many parents it has above it in the list.
    - `kids` maps a task id to its subtasks, in order.
-   The subtasks of a template or checklist follow its order line. When `order` is given (positionOrder, order.js), it
-   sorts the top-level tasks and the other subtasks. Without it they stay in the order they came. */
-export const nestSubtasks = (tasks, order = null) => {
+   The subtasks of a parent that `own` says has its own order (a template or checklist) follow its order line. When
+   `order` is given (positionOrder, order.js), it sorts the top-level tasks and the other subtasks. Without it they
+   stay in the order they came. */
+export const nestSubtasks = (tasks, order = null, own = () => false) => {
   const ids = new Map(tasks.map(t => [t.id, t])), kids = new Map(), top = [];
   for (const t of tasks) {
     const p = parentIds(t).find(id => id !== t.id && ids.has(id));
     if (p === undefined) top.push(t); else kids.set(p, [...(kids.get(p) || []), t]);
   }
   for (const [p, list] of kids) {
-    if (order && !hasOwnOrder(ids.get(p))) { list.sort(order); continue; }
-    const line = stepsOf(ids.get(p)).map(s => s.id), at = t => { const i = line.indexOf(t.id); return i < 0 ? line.length : i; };
+    const parent = ids.get(p), mine = own(parent);
+    if (order && !mine) { list.sort(order); continue; }
+    const line = (mine ? stepsOf(parent) : parent.related_tasks?.subtask || []).map(s => s.id), at = t => { const i = line.indexOf(t.id); return i < 0 ? line.length : i; };
     list.sort((a, b) => at(a) - at(b));
   }
   if (order) top.sort(order);

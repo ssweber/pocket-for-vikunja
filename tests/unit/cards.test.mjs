@@ -70,7 +70,7 @@ test('an undated subtask created today brings its task’s card if it is yours, 
 
 test('under Checklists, your checklist in progress is a card, one with no open step is a row, and a claimed step brings its checklist', () => {
   const run = task(20, { related_tasks: subs([21, true], [22]) }), done = task(30, { related_tasks: subs([31, true]) });
-  const { rows, cards } = todayItems({ mine: [run, done], claimed: [task(41, { assignees: [me], related_tasks: under(40, 9) })] }, me, t => [20, 30, 40].includes(t.id));
+  const { rows, cards } = todayItems({ mine: [run, done], claimed: [task(41, { assignees: [me], related_tasks: under(40, 9) })] }, me, t => [20, 30, 40].includes(t.id) ? 'run' : null);
   assert.deepEqual(rows.map(r => [r.t.id, r.key]), [[30, 'runs']]);
   assert.equal(cardGroup(cards.get(20), true), 'runs');
   assert.equal(cards.get(40).focus, 41);
@@ -79,7 +79,10 @@ test('under Checklists, your checklist in progress is a card, one with no open s
 
 test('a repeating template is a row, and a checklist is started from it', () => {
   const tpl = task(50, { due_date: at(8, 9), labels: [{ title: 'template' }], related_tasks: subs([51, true], [52, true]) });
-  assert.deepEqual(ids(todayItems({ tasks: [tpl] }, me).rows), [50]);
+  assert.deepEqual(ids(todayItems({ tasks: [tpl] }, me, () => 'template').rows), [50]);
+  const open = { ...tpl, related_tasks: subs([51], [52, true]) };
+  assert.deepEqual([...todayItems({ tasks: [open] }, me, () => 'template').cards.keys()], [], 'a template with an open step is still a row');
+  assert.deepEqual([...todayItems({ tasks: [open] }, me).cards.keys()], [50], 'a task labelled "template" outside a Checklists project is a card like any other');
 });
 
 test('a card’s top row is the most urgent subtask: overdue, then due today, then the earliest date, then list order', () => {
@@ -200,12 +203,13 @@ test('More opens a card to every open subtask and Less collapses it, and a card 
 });
 
 test('in search, an open task with open subtasks is a collapsed card, and the subtasks found with it are on it', () => {
-  const { app, parent } = today(), g = { cards: 'found', delete: true };
-  app.route = { name: 'search' };
+  const { app, parent } = today(checklists), g = { cards: 'found', delete: true };
+  Object.assign(app, { route: { name: 'search' }, checklistIds: new Set([7]) });
   const c = app.cardOf(parent, g);
   assert.deepEqual([c.step.title, c.peek.title, c.g.line, c.g.delete], ['Chairs', 'Tables', undefined, true], 'the card’s rows keep their second line, as search rows do');
   assert.equal(app.cardOf({ ...parent, done: true }, g), null, 'a done task is not a card');
-  assert.equal(app.cardOf({ ...parent, labels: [{ title: 'template' }] }, g), null, 'a template is not a card');
+  assert.equal(app.cardOf({ ...parent, project_id: 7, due_date: at(8, 9), labels: [{ title: 'template' }] }, g), null, 'a template is not a card');
+  assert.notEqual(app.cardOf({ ...parent, labels: [{ title: 'template' }] }, g), null, 'a task labelled "template" outside a Checklists project is a card');
   assert.equal(app.cardOf(app.tasks[11], g), null, 'a task with no subtasks is not a card');
   const found = [parent, app.tasks[12], app.tasks[11], { id: 30 }, { id: 31 }, { id: 32 }];
   const depth = { 10: 0, 12: 1, 11: 1, 30: 0, 31: 1, 32: 2 };
@@ -800,7 +804,7 @@ test('the ring of a checklist with steps not done asks first and leaves them not
 /* Keeps a change waiting to be sent from redrawing every row (rule 10, docs/development.md). A ring reads the ticks and
    progress waiting for its own steps, by task id (keyWaiting), not by searching the outbox. */
 test('a change waiting to be sent recalculates only the rings of the checklists whose steps it changes', c => {
-  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(runs, cards));
+  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(runs, cards, checklists));
   Object.assign(app, { checklistIds: new Set([7]), pending: [] });
   const finished = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, project_id: 7, title: 'Closing up', done: true, description: '',
     related_tasks: { copiedfrom: [{ id: 99 }], subtask: [{ id: 100 + i, done: false, description: '' }] } }));
