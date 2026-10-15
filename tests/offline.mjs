@@ -565,6 +565,46 @@ try {
     }
   });
 
+  /* A screen is saved with Vikunja's copy of each task, never with what a waiting op shows on its row. The step's tick
+     can't reach Vikunja, and Today loads and is saved while the tick waits. After a reload offline, Today shows the
+     step ticked because the tick is in the outbox, while the saved Today still has the step not done. */
+  await step('a-saved-screen-shows-a-waiting-tick-from-the-outbox', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('saved checklists'), description: '<p>pocket:checklists</p>' });
+    const relay = '**/api/v1/plugins/pocket/v2/**', cut = r => r.abort('internetdisconnected');
+    try {
+      const run = await post(`/projects/${proj.id}/tasks`, { title: T('saved run'), description: '<p>pocket:run</p>' });
+      // A step's line in its notes makes it a checklist's step on Today, ticked through the outbox.
+      const stepOf = name => post(`/projects/${proj.id}/tasks`, { title: T(name), description: `<p>pocket:step ${T(name)}</p>` });
+      const steps = [await stepOf('saved one'), await stepOf('saved two')];
+      for (const st of steps) await post(`/tasks/${run.id}/relations`, { other_task_id: st.id, relation_kind: 'subtask' });
+      await page.reload();                                                   // so Pocket knows the project is for checklists
+      const tick = name => page.getByRole('button', { name: 'Mark done: ' + T(name) });
+      await expect(tick('saved one')).toBeVisible({ timeout: 15000 });
+      await page.route(relay, cut);
+      await tick('saved one').click();
+      const at = await page.evaluate(() => JSON.parse(localStorage.getItem('pocket.saved.today')).at);
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));   // Today loads again, and is saved
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pocket.saved.today')).at)).not.toBe(at);
+      const kept = () => page.evaluate(id => { const s = JSON.parse(localStorage.getItem('pocket.saved.today')); return [...s.steps, ...s.groups.flatMap(g => g.tasks)].find(t => t.id === id)?.done; }, steps[0].id);
+      if (await kept() !== false) throw new Error('the saved Today has the step as ' + await kept());
+      await context.setOffline(true);
+      await page.reload();
+      await expect(tick('saved two')).toBeVisible({ timeout: 15000 });
+      await expect(tick('saved one')).toHaveCount(0);                       // ticked, from the outbox
+      if (await kept() !== false) throw new Error('the saved Today has the step as ' + await kept());
+      await page.unroute(relay, cut);
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      await expect.poll(async () => (await (await api('/tasks/' + steps[0].id)).json()).done, { timeout: 20000 }).toBe(true);
+    } finally {
+      await page.unroute(relay, cut).catch(() => {});
+      await context.setOffline(false);
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
   await step('two-tabs-send-it-once', async () => {
     // A task added offline in one tab also shows as waiting in the other tab. Back online, both tabs try to send it, and it is added once.
     const other = await context.newPage();

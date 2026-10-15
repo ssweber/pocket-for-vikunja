@@ -63,13 +63,13 @@ test('a step\'s time is written in words, as Pocket shows it', () => {
 
 /* What a task is in Checklists. Only a task in a Checklists project (7 here) has a role, so a task labelled "template"
    anywhere else is an ordinary task. Vikunja leaves the labels out of a subtask's parent, so Pocket goes by what it has
-   seen of the parent: 100 is a template in the cache, 101 a template kept from Checklists, and 102 a template in the
+   seen of the parent: 100 is a template in Vikunja's copies, 101 a template kept from Checklists, and 102 a template in the
    same list. A parent titled "TEMPLATE: ..." counts too. The run, step and added lines need a browser, so their rows
    are in tests/parse.mjs. */
 test('a task\'s role in Checklists comes from its project, its label, its links, its dates and its parent', () => {
   const L = [{ title: 'template' }], DUE = '2026-10-20T09:00:00Z', copied = { copiedfrom: [{ id: 900 }] }, under = (id, title = 'Task') => ({ parenttask: [{ id, title }] });
   const t = (project_id, f = {}) => ({ id: 1, title: 'Task', done: false, project_id, labels: [], description: '', due_date: '0001-01-01T00:00:00Z', related_tasks: {}, ...f });
-  const known = { checklistIds: new Set([7]), cache: new Map([[100, { id: 100, labels: L }]]), kept: { 101: { id: 101 } }, list: [{ id: 102, done: true, project_id: 7, labels: L, related_tasks: {} }] };
+  const known = { checklistIds: new Set([7]), copyOf: id => id === 100 ? { id: 100, labels: L } : undefined, kept: { 101: { id: 101 } }, list: [{ id: 102, done: true, project_id: 7, labels: L, related_tasks: {} }] };
   const rows = [
     ['labelled, done', t(7, { labels: L, done: true }), 'template'],
     ['labelled, open with a date (a template that repeats)', t(7, { labels: L, due_date: DUE }), 'template'],
@@ -84,7 +84,7 @@ test('a task\'s role in Checklists comes from its project, its label, its links,
     ['a subtask copied from a step', t(7, { related_tasks: { ...under(200), ...copied } }), 'step'],
     ['a labelled subtask copied from a step', t(7, { labels: L, related_tasks: { ...under(200), ...copied } }), 'step'],
     ['a subtask copied from a step, under a template', t(7, { done: true, related_tasks: { ...under(100), ...copied } }), 'step'],
-    ['a subtask of a template in the cache', t(7, { done: true, related_tasks: under(100) }), 'tplstep'],
+    ['a subtask of a template in Vikunja\'s copies', t(7, { done: true, related_tasks: under(100) }), 'tplstep'],
     ['a subtask of a template kept from Checklists', t(7, { done: true, related_tasks: under(101) }), 'tplstep'],
     ['a subtask of a template in the same list', t(7, { done: true, related_tasks: under(102) }), 'tplstep'],
     ['a subtask of a parent titled "TEMPLATE: ..."', t(7, { done: true, related_tasks: under(103, 'TEMPLATE: Closing') }), 'tplstep'],

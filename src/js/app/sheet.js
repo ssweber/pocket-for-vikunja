@@ -1,5 +1,5 @@
 // A task's sheet: its details, labels and people, comments and attachments. What's done to the task is in actions.js.
-import {cache, fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO} from '../util.js';
+import {fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO} from '../util.js';
 import {allPages, api, errText, items, NetError} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {htmlToText, sanitize, textToHtml} from '../html.js';
@@ -13,6 +13,7 @@ import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 import {seats, seatUnder} from './seat.js';
+import {copyOf, put, TASK} from './tasks.js';
 import {haptic} from '../haptics.js';
 
 export let pendingSaves = 0;
@@ -135,13 +136,13 @@ export default {
     const desc = notesDraft(id);
     if (desc) Object.assign(this.sheet, {editingDesc: true, descDraft: desc.text, descBase: desc.base, descUnsaved: true});
     this.sheet.addBox.text = (taskDrafts.get('addsteps:' + id) || []).map(r => r.text).filter(x => x?.trim()).join('\n');   // steps typed under a template and not added yet
-    const mine = this.sheet, cached = cache.get(id);
+    const mine = this.sheet, cached = copyOf(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
       // If the task was changed while this loaded, the save returns a newer copy, and the older one is not used.
       const t = await this.readTask(id);
       if (this.sheet !== mine) return;
-      if (t) { cache.set(id, t); this.showTask(t); this.checkNotes(t); }
+      if (t) { put([t], TASK); this.showTask(t); this.checkNotes(t); }
       this.loadComments(id); this.loadSubPeople(t || cached || {id}); this.loadSubOrder(t || cached);
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
@@ -255,7 +256,7 @@ export default {
     }, e => {
       pendingSaves--;
       if (this.sheet.task?.id === id) {
-        this.sheet.savedMsg = ''; if (cache.get(id)) this.showTask(cache.get(id));
+        this.sheet.savedMsg = ''; if (copyOf(id)) this.showTask(copyOf(id));
         this.say(notSaved(e), {place: 'sheet:top', cls: 'failed', ms: null, action: {label: 'Try again', fn: () => this.save(patch, rebase)}});
       } else this.notify(notSaved(e));                                        // the sheet no longer shows this task
       return false;
@@ -317,7 +318,7 @@ export default {
       const seen = e.notes ?? null;
       taskDrafts.set('desc:' + t.id, {text: v, base});
       if (here()) {
-        if (e.now) { cache.set(t.id, e.now); this.showTask(e.now); }
+        if (e.now) { put([e.now], TASK); this.showTask(e.now); }
         Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
       }
       // The message appears under the notes, which stay in the box.

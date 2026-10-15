@@ -460,7 +460,8 @@ top. Check that holds for every op's `invert`.
   same change.
 - **Rule 8.** A screen opened from its saved ids draws at once from the copies. The fresh load replaces the ids, and a
   row it adds or removes follows rule 8 as now.
-- **The format.** The copies replace the saved screens' format. Clear them on upgrade, as part 1 clears the outbox.
+- **The format.** The copies replace the saved screens' format. Old stored data is read as it is, or ignored if it
+  can't be read. Pocket writes no upgrade code, since it is on only a few phones.
 
 ## Enforcing it
 
@@ -517,8 +518,12 @@ checks that Vikunja changed once.
    now shows it (`applyAct`, the acts `workOutRun` lays over a checklist's steps). Measure rule 10 before and after
    (`npm run perf:rows -- counts`). Turn on the store rule, except for `cache`, which phase 11 removes. This is the
    phase most likely to show a problem on the phone, so the user checks it there before phase 5.
+   Built so far: 4a. `put(list, asked)` and `copyOf(id)` in tasks.js, with a trusted-field list for each kind of
+   request (`TASK`, `TASK_COUNT` and the others), checked against Vikunja 2.7. `copies` replaces `cache`. The screens
+   are saved from the copies (`savedScreen`).
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
-   Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
+   Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format. Old stored data is
+   read as it is, or ignored if it can't be read. Pocket writes no upgrade code.
 6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
@@ -528,8 +533,8 @@ checks that Vikunja changed once.
     `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last non-permanent files
     from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
 11. **Screens hold ids.** The rest of part 7: the saved screens hold ids, and Vikunja's copies replace their tasks
-    (a new format, cleared on upgrade). The sweep prunes the copies, and the two requests in "Keeping the store
-    current" update them. Delete `keptRows`, `cache` and `forgotten`, and turn on the store rule in full.
+    (a new format, with old saved screens read as they are or ignored). The sweep prunes the copies, and the two
+    requests in "Keeping the store current" update them. Delete `keptRows`, `cache` and `forgotten`, and turn on the store rule in full.
 12. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
 13. **Clean up.** Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied,
     read from the store by id". Rule 3 becomes "Every change is an op sent through the outbox, each request with a
@@ -632,8 +637,8 @@ Pruning (phase 7), Undo as an op (phase 6), the late-read rule (phase 4) and eve
 ## Phase 4 in detail
 
 Agreed with the user on 2026-10-15, from a map of the code on `dev` after phase 2. `tasks` stays as a patched object,
-an edit in the sheet shows on its rows at once, the upgrade clears the saved screens, and the phone check comes once,
-after 4d.
+an edit in the sheet shows on its rows at once, and the phone check comes once, after 4d. Old stored data is read as
+it is, or ignored if it can't be read. Pocket writes no upgrade code, since it is on only a few phones.
 
 ### What the code does today
 
@@ -732,8 +737,9 @@ Clearing the batch calls `show(id)`.
 
 A screen is saved from Vikunja's copies, not from its rows, so a saved task never carries a waiting op's effect. When
 Pocket opens, a saved copy goes into the store where it is newer by `updated` than the copy there, or there is none,
-as `keptRows` decides today. The old saved screens hold rows with waiting ops' effects in them, so the upgrade clears
-them, as phase 1 cleared the outbox.
+as `keptRows` decides today. A screen saved before 4a holds rows, which may carry a waiting op's effect. It is read as
+it is, and the next load replaces it. Old stored data is read as it is, or ignored if it can't be read. Pocket writes
+no upgrade code, since it is on only a few phones.
 
 ### The sheet and a checklist's screen, by id
 

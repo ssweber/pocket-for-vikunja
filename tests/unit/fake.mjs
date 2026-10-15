@@ -1,7 +1,8 @@
 // A fake Vikunja behind fetch(), and a fake Alpine component. Together they run the app's methods (actions.js,
 // tasks.js) in Node. api() is Pocket's real one, so it signs, sends and reads replies as it does in the browser.
 import './browser.mjs';
-import { setApp, cache } from '../../src/js/util.js';
+import { setApp } from '../../src/js/util.js';
+import { dropCopies } from '../../src/js/app/tasks.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
 import { uuid7 } from '../../src/js/sync.js';
@@ -127,7 +128,7 @@ export function component(...parts){
     render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
-  cache.clear();
+  dropCopies();
   setApp(c);
   return c;
 }

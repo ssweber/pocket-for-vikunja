@@ -1,8 +1,9 @@
 // Signing in and out, and following the sign-in Pocket shares with Vikunja's web app.
-import {cache, esc, store, taskDrafts, userCache} from '../util.js';
+import {esc, store, taskDrafts, userCache} from '../util.js';
 import {api, ApiError, errText, INSTALLED, NetError, netHelp, seenToken, setOpening, setSeenToken, sharedToken, tokenHash} from '../api.js';
 import {sync} from '../sync.js';
 import {saved} from '../lists.js';
+import {dropCopies} from './tasks.js';
 
 let confirming = null;                           // app.confirmAccount() while it runs
 
@@ -81,7 +82,7 @@ export default {
   },
   forgetPeople(drafts = true){
     if (drafts) { this.runDrafts = {}; taskDrafts.clear(); store.del('drafts.user'); }
-    cache.clear(); this.tasks = {}; userCache.clear(); this.access = {}; this.userKnown = {}; this.people = null;
+    dropCopies(); this.tasks = {}; userCache.clear(); this.access = {}; this.userKnown = {}; this.people = null;
     this.labels = []; this.labelsLoaded = false;
   },
   /* Single sign-on goes through Vikunja. The provider only returns to Vikunja's /auth/openid/<key> page, which finishes

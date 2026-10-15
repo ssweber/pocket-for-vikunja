@@ -12,6 +12,7 @@ import {pctOf, workedOut} from '../progress.js';
 import {cardRows, countdown, openSubs, runTop, urgentFirst} from '../cards.js';
 import {listViewOf, positionOrder} from '../order.js';
 import {completeAsk} from '../messages.js';
+import {put, TASK_COUNT} from './tasks.js';
 
 const shownStep = new Map();                     // card id -> the step last on its top row, to tell when a new one arrives
 let cardIO = null;                               // the IntersectionObserver that collapses an opened card once it is off the screen
@@ -250,7 +251,7 @@ export default {
      the open subtasks. */
   async readCards(cards, known){
     const have = new Map(known.map(t => [t.id, t])), positions = {}, ids = [...cards.keys()];
-    const keep = list => { for (const t of list) have.set(t.id, t); };
+    const keep = list => { put(list, TASK_COUNT); for (const t of list) have.set(t.id, t); };
     const q = list => '/tasks?' + new URLSearchParams({filter: 'id in ' + list.join(', '), filter_timezone: TZ, expand: 'comment_count'});
     const quietly = p => p.catch(e => { if (e instanceof NetError) throw e; return []; });
     const byProject = new Map();

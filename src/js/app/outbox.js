@@ -1,9 +1,10 @@
 // The waiting-to-send button and sheet, including rejected changes that can be retried or dropped.
-import {cache, fmtSize} from '../util.js';
+import {fmtSize} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {isChild, itemDone, sendState, sync, underOf, uuid7} from '../sync.js';
 import {OPS} from '../ops/index.js';
 import {UNKNOWN} from '../messages.js';
+import {copyOf} from './tasks.js';
 
 const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 const whenText = at => {
@@ -37,7 +38,7 @@ export default {
           const text = x.taskId ? `Finishing ${quoted(x.p.title)}` : under ? `Subtask of ${quoted(under)}: ${x.p.title}` : `New task: ${x.p.title}`;
           rows.push({key: `${e.id}-${i}`, text, when, drop: x.taskId ? null : ['cancelPending', e.id, i]});
         });
-        const to = cache.get(e.taskId || e.items[0]?.taskId)?.title || e.items[0]?.p.title;
+        const to = copyOf(e.taskId || e.items[0]?.taskId)?.title || e.items[0]?.p.title;
         for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key))
           rows.push({key: f.key, text: `${/^image\//.test(f.type) ? 'Photo' : 'File'}${to ? ' for ' + quoted(to) : ''}, ${fmtSize(f.size)}`, when, drop: ['cancelFile', e.id, f.key]});
       }
@@ -70,13 +71,13 @@ export default {
   // Whether a step was repeated during its checklist, as last loaded.
   isRepeat(id){
     if (typeof id === 'string') return !!this.pending.find(e => 'pending-' + e.id === id && (e.from || e.tpl != null));
-    const s = this.view.run?.steps.find(x => x.id === id) || cache.get(id);
+    const s = this.view.run?.steps.find(x => x.id === id) || copyOf(id);
     return !!s && /repeated/i.test(addedText(s.description) || '');
   },
   actTitle(id){
     const r = this.view.run;
     if (typeof id === 'string') return this.pending.find(e => 'pending-' + e.id === id)?.title || '';   // a step still being inserted
-    return cache.get(id)?.title || r?.steps.find(x => x.id === id)?.title || (r?.run.id === id ? r.run.title : '') || '';
+    return copyOf(id)?.title || r?.steps.find(x => x.id === id)?.title || (r?.run.id === id ? r.run.title : '') || '';
   },
   /* Retry a rejected action before sending the actions queued behind it. It goes with a new key, because the relay
      would answer the old one with the refusal it stored. After Idempotency-Unknown, tapping Try again is the user

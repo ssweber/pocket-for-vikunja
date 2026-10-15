@@ -34,7 +34,6 @@ export const grow = ta => {
   if (ta.scrollHeight) ta.style.height = ta.scrollHeight + ta.offsetHeight - ta.clientHeight + 'px';
   if (sc) { if (sc.scrollTop !== top) sc.scrollTop = top; } else if (top !== null && scrollY !== top) scrollTo(scrollX, top);
 };
-export const cache = new Map();                       // task id -> latest task from the server
 /* Text the user wrote and has not sent, kept on the phone so closing Pocket doesn't lose it. Keys: 'comment:<task id>',
    'sub:<task id>', 'desc:<task id>' (notes not saved yet), 'run' (notes on checklists and steps, by task id),
    'newtpl:<project id>' and 'addsteps:<task id>' (steps being written). The drafts are cleared when the user signs

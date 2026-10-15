@@ -1,5 +1,5 @@
 // Start checklists and compute their steps, progress, countdowns and pending changes.
-import {andList, cache, memo, motion, raw, store, ZERO} from '../util.js';
+import {andList, memo, motion, raw, store, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
@@ -14,6 +14,7 @@ import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
+import {copyOf, dropCopy, put, putting, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -253,15 +254,15 @@ export default {
   // Load a checklist with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
     const run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
+    put([run], TASK_COMMENTS);
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a started checklist. Open it from its project instead.');
     /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
        push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
     const kept = this.view.run?.run.id === id ? this.view.run : null;
     const reading = kept?.last ? null : this.readLast(plainRun(run));
-    const steps = await inBatches(stepsOf(run), 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)));
+    const steps = await inBatches(stepsOf(run), 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`))).then(putting(TASK_REACTIONS_COMMENTS));
     const last = reading && await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))]);
     if (seq !== renderSeq) return;
-    for (const t of [run, ...steps]) cache.set(t.id, t);
     const keep = this.view.run?.run.id === id ? this.view.run : null;      // reloading the open checklist keeps its step and drafts
     if (!keep) { this.runInsert = newBox(); this.runBoxAt = null; }
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // index of the step opened from a list
@@ -477,7 +478,7 @@ export default {
   // Whether the user made template `t`, or is an admin of its project. Unknown access counts as admin, as it counts
   // as write in canWrite, until the project's access has loaded.
   ownsTemplate(t){
-    const full = t && (this.tasks[t.id] || cache.get(t.id) || t), p = full && this.perms[full.project_id];
+    const full = t && (this.tasks[t.id] || copyOf(t.id) || t), p = full && this.perms[full.project_id];
     return !!full && (p == null || p >= 2 || full.created_by?.id === this.user?.id);
   },
   /* Load project permissions in small background batches because Vikunja's project list omits them. Cache each
@@ -684,7 +685,7 @@ export default {
     const run = this.view.run?.run.id;
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-      cache.delete(s.id);
+      dropCopy(s.id);
       if (run) this.writeFigure(run).catch(() => {});                      // recompute the checklist's stored progress without this step
       await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
       this.refreshPending();
@@ -731,7 +732,7 @@ export default {
   async refreshRunTask(id){
     try {
       const t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
-      cache.set(id, t);
+      put([t], TASK_REACTIONS_COMMENTS);
       const r = this.view.run;
       if (!r) return;
       if (r.run.id === id) Object.assign(r.run, plainRun(t));

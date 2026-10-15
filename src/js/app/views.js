@@ -1,5 +1,5 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
-import {cache, collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
+import {collapseRows, colorOf, PRIOS, raw, store, TZ} from '../util.js';
 import {askMeta, asksMeta, stepAsks} from '../asks.js';
 import {allPages, api, ApiError, errText, LOADED, NetError, partOf, why} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay} from '../dates.js';
@@ -14,6 +14,7 @@ import {haptic} from '../haptics.js';
 import {tickFeel} from '../progress.js';
 import {shared} from './core.js';
 import {pendingSaves} from './sheet.js';
+import {put, putting, savedScreen, TASK_COUNT, TASK_COUNT_REACTIONS} from './tasks.js';
 
 export let renderSeq = 0;
 let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
@@ -354,11 +355,12 @@ export default {
         const kept = saved.get(k.key);
         if (location.hash === k.hash || (kept && Date.now() - Date.parse(kept.at) < PRELOAD_AGE)) continue;
         if (this.offline || saved.get('user')?.id !== this.user?.id) break;
-        try { saved.set(k.key, {...await k.load(), at: new Date().toISOString()}); } catch { /* retried after the next screen loads */ }
+        try { saved.set(k.key, savedScreen({...await k.load(), at: new Date().toISOString()})); } catch { /* retried after the next screen loads */ }
       }
     } finally { preloading = false; }
   },
-  // Describe a background load as {hash, key, load}. Keep Vikunja's task objects separate from those on screen.
+  // Describe a background load as {hash, key, load}. Keep Vikunja's task objects separate from those on screen. The
+  // reads put them in Vikunja's copies, which the screen is saved from.
   preloads(){
     const out = [{hash: '#/today', key: 'today', load: async () => this.todayFrom(await this.readToday(), t => t)}];
     const p = this.projById.get(saved.get('project.last')) || this.favorites[0];
@@ -399,12 +401,12 @@ export default {
   async loadToday(seq){
     const got = await this.readToday();
     if (seq !== renderSeq) return;
-    const {groups, cards, steps, positions} = this.todayFrom(got, t => { cache.set(t.id, t); return this.keep(t); });
+    const {groups, cards, steps, positions} = this.todayFrom(got, t => this.keep(t));
     if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
     this.todayDay = +startOfDay();
     Object.assign(this.positions, positions);
     Object.assign(this.view, {cards, groups: this.keepMarked(groups)});
-    saved.set('today', {groups, cards, steps, positions, at: new Date().toISOString()});
+    saved.set('today', savedScreen({groups, cards, steps, positions, at: new Date().toISOString()}));
   },
   /* Load Today's tasks and cards with their open subtasks before assigning date groups. */
   async readToday(){
@@ -415,8 +417,9 @@ export default {
     // Also open steps you claimed in a checklist someone else started. These may have no due date yet.
     const qMine = new URLSearchParams({filter: `done = false && assignees in ${this.user?.username}`, filter_timezone: TZ, expand: 'comment_count'});
     const qDone = new URLSearchParams([['filter', `done = true && done_at >= '${t0.toISOString()}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'], ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comment_count']]);
-    const [all, allAdded, {index: runs, mine, open = []}, claimed, doneAll] = await Promise.all([allPages('/tasks?' + q), allPages('/tasks?' + qNew), this.loadRunIndex(),
-      this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).catch(() => []) : [], allPages('/tasks?' + qDone).catch(() => [])]);
+    const counted = putting(TASK_COUNT);
+    const [all, allAdded, {index: runs, mine, open = []}, claimed, doneAll] = await Promise.all([allPages('/tasks?' + q).then(counted), allPages('/tasks?' + qNew).then(counted), this.loadRunIndex(),
+      this.checklistIds.size && this.user ? allPages('/tasks?' + qMine).then(counted).catch(() => []) : [], allPages('/tasks?' + qDone).then(putting(TASK_COUNT_REACTIONS)).catch(() => [])]);
     const tasks = all.filter(t => this.inToday(t, runs)), added = allAdded.filter(t => this.inToday(t, runs));
     const theirs = claimed.filter(t => !isSet(t.due_date) && runs[this.stepRun(t)] === false);
     const {rows, cards} = todayItems({tasks, added, mine, claimed: theirs}, this.user, t => this.role(t));
@@ -458,7 +461,6 @@ export default {
     // the latest DONE_PART.
     const d = await this.readProject(p, open && Math.max(DONE_PART, this.view.groups.find(g => g.key === 'done')?.tasks.length || 0));
     if (seq !== renderSeq) return;
-    for (const t of [...d.tasks, ...d.read]) cache.set(t.id, t);
     const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.keep(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
     // Animate Done rows as an opened section when replacing a count-only cache, rather than fading them in as new
     // tasks.
@@ -482,19 +484,19 @@ export default {
     let lv = listViewOf(p), tasks = null;
     // Look up project views again once if the cached List view was removed or cannot be read.
     for (let tries = 0; lv && !tasks && tries < 2; tries++) {
-      try { tasks = await allPages(`/projects/${p.id}/views/${lv.id}/tasks?expand=subtasks&` + new URLSearchParams(q)); }
+      try { tasks = await allPages(`/projects/${p.id}/views/${lv.id}/tasks?expand=subtasks&` + new URLSearchParams(q)).then(putting(TASK_COUNT)); }
       catch (e) {
         if (!(e instanceof ApiError && [403, 404].includes(e.status))) throw e;
         await this.loadProjects(); p = this.projById.get(id) || p;
         const again = listViewOf(p); lv = again && again.id !== lv.id ? again : null;
       }
     }
-    if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})); }
+    if (!tasks) { lv = null; tasks = await allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({...q, filter: 'done = false'})).then(putting(TASK_COUNT)); }
     /* Show a completed parent above its remaining open subtasks, reading missing parents in one request. Active
        checklists also show their steps as cards. Finished checklists belong in Done, and their unfinished steps
        stay off the open list. */
     const shown = this.onProjectList(tasks), headIds = doneParentIds(shown, p.id), given = new Map(tasks.map(t => [t.id, t])), missing = headIds.filter(id => !given.has(id));
-    const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).catch(() => []) : [];
+    const read = missing.length ? await allPages('/tasks?' + new URLSearchParams({...q, filter: 'id in ' + missing.join(', ')})).then(putting(TASK_COUNT)).catch(() => []) : [];
     const named = id => tasks.flatMap(t => t.related_tasks?.parenttask || []).find(x => x.id === id);
     const heads = headIds.map(id => given.get(id) || read.find(t => t.id === id) || named(id));
     const [n, finished] = await Promise.all([count, done]);
@@ -525,12 +527,11 @@ export default {
   async doneTasks(p, from = 0, n = DONE_PART){
     const path = `/projects/${p.id}/tasks?` + new URLSearchParams({filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'});
     if (this.checklistIds.has(p.id)) {
-      const list = this.withoutTemplates(await allPages(path), true);
-      for (const t of list) cache.set(t.id, t);
+      const list = this.withoutTemplates(await allPages(path).then(putting(TASK_COUNT)), true);
       return {tasks: list.slice(from, from + n), total: list.length, skip: 0};
     }
     const {items: list, total} = await partOf(path, from, n);
-    for (const t of list) cache.set(t.id, t);
+    put(list, TASK_COUNT);
     const tasks = this.withoutTemplates(list, true);
     return {tasks, total, skip: list.length - tasks.length};
   },
@@ -586,8 +587,8 @@ export default {
     const p = this.view.project;
     if (!p || this.route.name !== 'project') return;
     const groups = keptGroups(this.view.groups), ids = groups.flatMap(g => g.tasks.map(t => t.id)).filter(id => id in this.positions);
-    saved.set(viewKey(this.route), {groups, project: p, listView: this.view.listView, at: new Date().toISOString(),
-      positions: Object.fromEntries(ids.map(id => [id, this.positions[id]]))});
+    saved.set(viewKey(this.route), savedScreen({groups, project: p, listView: this.view.listView, at: new Date().toISOString(),
+      positions: Object.fromEntries(ids.map(id => [id, this.positions[id]]))}));
   },
   /* Check for a newer Pocket alongside refreshes. Reload only when no drafts or actions would be lost, otherwise
      try on the next refresh or return. The server answers the version check in a few bytes. */
@@ -633,16 +634,15 @@ export default {
     if (!s) { this.view.groups = []; return; }
     const open = new URLSearchParams({q: s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'});
     const again = s === searched ? this.view.groups.find(g => g.key === 'done')?.tasks.length || 0 : 0;
-    const [opened, found] = await Promise.all([allPages('/tasks?' + open), this.foundDone(s, 0, Math.max(FOUND_PART, again))]);
+    const [opened, found] = await Promise.all([allPages('/tasks?' + open).then(putting(TASK_COUNT)), this.foundDone(s, 0, Math.max(FOUND_PART, again))]);
     if (seq !== renderSeq) return;
     const finished = found.list;
     searched = s;
     const parents = opened.filter(t => openSubs(t).length && this.role(t) !== 'template');
     const read = parents.length ? await this.readCards(new Map(parents.map(t => [t.id, {project: t.project_id}])), [...opened, ...finished]) : {steps: [], positions: {}};
     if (seq !== renderSeq) return;
-    for (const t of read.steps) { cache.set(t.id, t); this.keep(t); }
+    for (const t of read.steps) this.keep(t);
     Object.assign(this.positions, read.positions);
-    for (const t of [...opened, ...finished]) cache.set(t.id, t);
     this.view.groups = this.keepMarked([
       {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.keep(t))},
       {key: 'done', cls: '', title: 'Done', per: FOUND_PART, skip: found.skip, count: counted(found, found.skip, null), tasks: found.tasks.map(t => this.keep(t))},
@@ -652,7 +652,7 @@ export default {
   /* Load n completed search matches from index from, returning {tasks, list, total, skip} like doneTasks. */
   async foundDone(s, from, n = FOUND_PART){
     const {items: list, total} = await partOf('/tasks?' + new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}), from, n);
-    for (const t of list) cache.set(t.id, t);
+    put(list, TASK_COUNT);
     const tasks = this.withoutTemplates(list);
     return {tasks, list, total, skip: list.length - tasks.length};
   },

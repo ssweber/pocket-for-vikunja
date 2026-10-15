@@ -167,7 +167,7 @@ const isRunStepTask = t => !!t?.related_tasks?.parenttask?.length && (!!t.relate
    Checklists project has a role, so a task labelled "template" anywhere else is an ordinary task.
 
    Vikunja leaves the labels out of a subtask's parent, so `known` says what Pocket has seen of it: {checklistIds,
-   cache: Vikunja's last copies, kept: the templates kept from Checklists, list: the list being shown}. */
+   copyOf: Vikunja's last copy of a task by id, kept: the templates kept from Checklists, list: the list being shown}. */
 export function roleOf(t, known = {}){
   if (!t || !known.checklistIds?.has(t.project_id)) return null;
   const r = t.related_tasks || {}, p = r.parenttask?.[0];
@@ -177,7 +177,7 @@ export function roleOf(t, known = {}){
   return r.copiedfrom?.length || isRunDesc(t.description) ? 'run' : 'candidate';
 }
 // A parent is a template when Pocket has it as one, or when its title starts "TEMPLATE:" as Pocket names templates.
-const isTemplateParent = (p, {cache, kept, list}) => !!kept?.[p.id] || hasTemplateLabel(cache?.get(p.id))
+const isTemplateParent = (p, {copyOf, kept, list}) => !!kept?.[p.id] || hasTemplateLabel(copyOf?.(p.id))
   || isTemplate(list?.find(x => x.id === p.id)) || /^\s*template:/i.test(p.title || '');
 // A template's or run's steps, in the order of its order line.
 export const stepsOf = t => inOrder(t?.related_tasks?.subtask || [], stepOrder(t?.description));

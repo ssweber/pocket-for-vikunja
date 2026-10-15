@@ -2,7 +2,6 @@
    or delete tasks. Actions on a checklist and its steps go through the outbox. Changing a subtask also updates the
    parent's computed progress. Reordering in a project writes List view positions. A template keeps its step order
    in its notes instead. */
-import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
 import {dueInfo, isSet, movedDue, repeats} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
@@ -14,6 +13,7 @@ import {dayGroup, parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync, uuid7} from '../sync.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
+import {copyOf, put, TASK} from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.
@@ -54,7 +54,7 @@ export default {
       // or a template's order notes, uses `rebase` instead. It applies the change to a fresh copy of the task and
       // returns null when nothing is left to change.
       let saved = rebase && await api('/tasks/' + id);
-      const before = saved || cache.get(id), body = rebase ? rebase(saved) : patch;
+      const before = saved || copyOf(id), body = rebase ? rebase(saved) : patch;
       if (body) {
         try { saved = await patchTask(id, body); }
         catch (e) {
@@ -65,7 +65,7 @@ export default {
           saved = now;
         }
       }
-      cache.set(id, saved); this.syncTask(saved);
+      put([saved], TASK); this.syncTask(saved);
       if (body && 'done' in body && saved.done === body.done && before?.done !== saved.done && this.role(before) !== 'template' && this.role(this.tasks[id]) !== 'template') this.signTick(saved);
       return saved;
     }).finally(() => { saveMark(id, -1); this.writing--; });
@@ -371,11 +371,11 @@ export default {
     const t = this.sheet.task, from = t?.project_id, kids = [], moved = [];
     if (!t || pid === from || !this.canMove) return;
     const walk = async (id, seen = new Set([t.id])) => {
-      const x = id === t.id ? t : (cache.get(id) || await api('/tasks/' + id));
+      const x = id === t.id ? t : (copyOf(id) || await api('/tasks/' + id));
       for (const sub of x.related_tasks?.subtask || []) if (!seen.has(sub.id)) { seen.add(sub.id); kids.push({id: sub.id, was: sub.project_id ?? from}); await walk(sub.id, seen); }
     };
     await this.save({project_id: pid});
-    if (cache.get(t.id)?.project_id !== pid) return;                        // the move failed
+    if (copyOf(t.id)?.project_id !== pid) return;                        // the move failed
     const undo = async () => {
       if (this.sheet.task?.id !== t.id || await this.save({project_id: from}) === false) return;   // save says why it failed
       const left = moved.length - (await this.saveEach(moved.map(k => [k, {project_id: k.was}]))).length;
@@ -404,7 +404,7 @@ export default {
     // Refresh the sheet and rows from Vikunja's copies. Recalculating each parent's progress reads that parent again.
     const fresh = async () => {
       const now = await this.readTask(t.id).catch(() => null) || await this.readTask(t.id).catch(() => null);
-      if (now) { cache.set(t.id, now); this.syncTask(now); if (this.sheet.task?.id === t.id) this.showTask(now); }
+      if (now) { put([now], TASK); this.syncTask(now); if (this.sheet.task?.id === t.id) this.showTask(now); }
       await Promise.all(parents.map(p => this.writeFigure(p.id).catch(() => {})));
       if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]);              // keeps the add box on the task at its new level
       this.sheet.dirty = true;
@@ -567,7 +567,7 @@ export default {
     }
     if (where !== 'own') return null;
     // Reorder among the parent's subtasks, as Vikunja last returned them.
-    const pid = t.related_tasks?.parenttask?.[0]?.id, parent = pid && (this.tasks[pid] || cache.get(pid));
+    const pid = t.related_tasks?.parenttask?.[0]?.id, parent = pid && (this.tasks[pid] || copyOf(pid));
     const subs = under(parent) && parent.related_tasks?.subtask, view = listViewOf(this.projById.get(t.project_id))?.id;
     if (!subs?.length || !view || subs.some(s => !(s.id in this.positions))) return null;
     return {sibs: [...subs].sort(positionOrder(this.positions)), view};
@@ -632,10 +632,10 @@ export default {
       if (r.ids?.length && foot) {
         this.flash(r.ids);
         // Reload the parent's subtask count. Today's card already holds the new rows in their insertion positions.
-        this.readTask(parent.id).then(t => { if (t) { cache.set(t.id, t); this.keep(t); } }).catch(() => {});
+        this.readTask(parent.id).then(t => { if (t) { put([t], TASK); this.keep(t); } }).catch(() => {});
       } else if (r.ids?.length && here()) {
         this.sheet.dirty = true;
-        try { const t = await this.readTask(parent.id); if (t) { cache.set(t.id, t); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
+        try { const t = await this.readTask(parent.id); if (t) { put([t], TASK); if (here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } } catch {}
         // Move the selection to the last added sheet subtask, so the next entry goes after it.
         const last = r.ids[items.findLastIndex(x => x.under === null)];
         if (here() && this.sheet.subAt != null && last) { this.sheet.subAt = last; this.sheet.subAfter = null; this.seatFoot('sheet'); }
@@ -712,7 +712,7 @@ export default {
   },
   // Whether a task has subtasks as far as the phone knows, judging by its own copy, the copy on screen, or the last
   // copy from Vikunja.
-  hasSubtasks(t){ return [t, this.tasks[t.id], cache.get(t.id)].some(x => x?.related_tasks?.subtask?.length); },
+  hasSubtasks(t){ return [t, this.tasks[t.id], copyOf(t.id)].some(x => x?.related_tasks?.subtask?.length); },
   /* Find the task and its descendants to delete, deepest first, and ask the user to confirm how many. Returns null
      if the user cancels or a read fails. A swipe asks before the row moves. */
   async askDelete(t){
@@ -763,8 +763,8 @@ export default {
     const walk = async (tid, from) => {
       if (seen.has(tid)) return;
       seen.add(tid);
-      // Offline, use the cached copy. A subtask that was never loaded can't be included in the deletion.
-      const t = tid === this.sheet.task?.id ? this.sheet.task : await api('/tasks/' + tid).catch(e => { if (e instanceof NetError) return cache.get(tid) || {id: tid}; throw e; });
+      // Offline, use Vikunja's last copy. A subtask that was never loaded can't be included in the deletion.
+      const t = tid === this.sheet.task?.id ? this.sheet.task : await api('/tasks/' + tid).catch(e => { if (e instanceof NetError) return copyOf(tid) || {id: tid}; throw e; });
       if (from && (t.related_tasks?.parenttask || []).some(p => p.id !== from)) return;
       for (const sub of t.related_tasks?.subtask || []) await walk(sub.id, tid);
       out.push(tid);
@@ -784,7 +784,7 @@ export default {
   },
 
   /* ---------- people and labels ---------- */
-  // Save assignee changes before applying them to the screen and cache.
+  // Save assignee changes before applying them to the screen and to Vikunja's copy.
   async addAssignee(t, u){
     await api(`/tasks/${t.id}/assignees`, {method:'POST', body:{user_id: u.id}});
     this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id);
@@ -795,7 +795,7 @@ export default {
   },
   setAssignees(assignees, id = this.sheet.task.id){
     if (this.sheet.task?.id === id) { this.sheet.task.assignees = assignees; this.sheet.dirty = true; }
-    const c = cache.get(id); if (c) c.assignees = assignees;
+    if (copyOf(id)) put([{id, assignees}], ['assignees']);
     this.syncTask({id, assignees});
   },
   // Add a label, creating it with title first when l is null.
@@ -810,7 +810,7 @@ export default {
   },
   setLabels(labels, id = this.sheet.task.id){
     if (this.sheet.task?.id === id) { this.sheet.task.labels = labels; this.sheet.dirty = true; }
-    const c = cache.get(id); if (c) c.labels = labels;
+    if (copyOf(id)) put([{id, labels}], ['labels']);
     this.syncTask({id, labels});
   },
 };

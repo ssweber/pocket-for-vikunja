@@ -4,7 +4,7 @@ import { fakeVikunja, component, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { copyOf, put, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
 import acts, { stageContext } from '../../src/js/app/acts.js';
@@ -18,7 +18,6 @@ import views from '../../src/js/app/views.js';
 import checklists from '../../src/js/app/checklists.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
-import { cache } from '../../src/js/util.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { figure } from '../../src/js/ops/stages.js';
@@ -189,7 +188,7 @@ test('a tick that is not saved goes back, and the row shows why with Try again',
 test('a repeating task whose tick lost its reply is ticked once, not twice', async c => {
   const due = new Date(Date.now() + 36e5).toISOString();
   const v = fakeVikunja([{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]), app = listed(c);
-  cache.set(1, structuredClone(v.task(1)));
+  put([structuredClone(v.task(1))], TASK);
   v.trouble = r => r.method === 'PATCH' ? 'lost' : null;
   const t = app.keep(v.task(1));
   await app.toggleDone(t, ROW);
@@ -352,7 +351,7 @@ test('saves to a task go one after another, in the order they were made', async 
   await Promise.all([app.saveTask(1, { title: 'B' }), app.saveTask(1, { title: 'C' })]);
   assert.deepEqual(order, ['sent {"title":"B"}', 'back {"title":"B"}', 'sent {"title":"C"}', 'back {"title":"C"}']);
   assert.equal(v.task(1).title, 'C');
-  assert.equal(cache.get(1).title, 'C', 'the cache keeps Vikunja\'s latest copy');
+  assert.equal(copyOf(1).title, 'C', 'Vikunja\'s copy is its latest');
 });
 
 test('deleting a task and its subtasks skips one already deleted, and stops at a refusal after counting what was deleted', async () => {
@@ -934,7 +933,7 @@ test('a template gets no ✅ when it is saved done, even if Vikunja\'s reply lea
   Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
   Object.assign(app, { seenBy: { 7: 2, 8: 2 }, checklistIds: new Set([7]) });
   const t = app.keep(v.task(1));
-  cache.set(1, { ...v.task(1) });
+  put([{ ...v.task(1) }], TASK);
   delete v.task(1).labels;                       // the reply to the save has no labels
   await app.saveTask(1, { done: true });
   await settled();

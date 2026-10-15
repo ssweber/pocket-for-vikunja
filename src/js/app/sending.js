@@ -1,5 +1,5 @@
 // Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
-import {cache, raw, userCache, ZERO} from '../util.js';
+import {raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {isSet, startOfDay} from '../dates.js';
 import {addedWhere, cancelName, doneText, notKnown} from '../messages.js';
@@ -9,6 +9,7 @@ import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT,
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 import {OPS} from '../ops/index.js';
+import {CREATED, put, savedScreen, TASK} from './tasks.js';
 
 let waitTimer;
 const lastGroups = new Map();                    // each group as listGroups last returned it, by key
@@ -145,9 +146,9 @@ export default {
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
-          made: t => { taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
+          made: t => { put([t], CREATED); taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
         // A task that arrived done, or with progress, shows that on its row (placeSent).
-        if (t.arrived) for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived;
+        if (t.arrived) { put([t.arrived.now], TASK); for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived; }
         ids.push(item.taskId);
       }
       // A line with lines under it gets its progress from them, if any of them arrived done or with progress. This is
@@ -169,7 +170,7 @@ export default {
         // Read the task again with its new attachments, for its row and its sheet.
         const t = await this.readTask(target).catch(() => null);
         if (t) {
-          cache.set(t.id, t); this.syncTask(t);
+          put([t], TASK); this.syncTask(t);
           for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
           if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
           const step = this.view.run?.steps.find(s => s.id === t.id);           // a photo added to a checklist step
@@ -251,7 +252,7 @@ export default {
     }
     // Also update the copy kept for opening offline.
     const k = viewKey(this.route), s = saved.get(k);
-    if (placed && s) saved.set(k, {...s, groups: keptGroups(this.view.groups)});
+    if (placed && s) saved.set(k, savedScreen({...s, groups: keptGroups(this.view.groups)}));
   },
   /* A task that arrived done (its line was marked done in quick add) is ticked on its row and leaves with the batch,
      the same as a task the user ticks there (toggleDone, actions.js). It leaves Today, or moves to Done in a
@@ -316,7 +317,7 @@ export default {
     const open = this.sheet.task?.id;
     if (open && tasks.some(t => t.parent === open)) this.readTask(open).then(t => {
       if (!t) return;
-      cache.set(t.id, t);
+      put([t], TASK);
       if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
     }).catch(() => {});
     // Text that couldn't be added goes back into the box it came from: quick add, or the subtask box if the task's

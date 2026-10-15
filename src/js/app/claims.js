@@ -1,9 +1,9 @@
 // Claims and assignee pictures on task and step rows. Claiming assigns the task to you.
-import {cache} from '../util.js';
 import {allPages, api, ApiError, NetError} from '../api.js';
 import {comesRound, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
+import {copyOf, put} from './tasks.js';
 
 const loading = new Set();                       // usernames whose picture is being fetched
 const tried = new Map();                         // username -> when the last picture request failed
@@ -67,18 +67,19 @@ export default {
     await this.act({op: slot.mine ? 'unclaim' : 'claim', task: slot.id, run: slot.run});
     if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true;   // Today shows what's assigned to you, so the list needs a refresh
   },
-  /* Load all subtask assignees in one request, because Vikunja leaves them out of related tasks. Offline, use the
-     cache. */
+  /* Load all subtask assignees in one request, because Vikunja leaves them out of related tasks. Offline, use
+     Vikunja's last copies. */
   async loadSubPeople(t){
     const ids = (t.related_tasks?.subtask || []).map(s => s.id), mine = this.sheet;
     if (!ids.length) return;
     try {
       const list = await allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`}));
       if (this.sheet !== mine) return;
-      for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; this.sheet.subLabels[s.id] = s.labels || []; if (cache.has(s.id)) cache.get(s.id).assignees = s.assignees; }
+      for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; this.sheet.subLabels[s.id] = s.labels || []; }
+      put(list.filter(s => copyOf(s.id)), ['assignees']);
     } catch (e) {
       if (!(e instanceof NetError) || this.sheet !== mine) return;
-      for (const id of ids) if (cache.get(id)?.assignees) this.sheet.subPeople[id] ??= cache.get(id).assignees;
+      for (const id of ids) if (copyOf(id)?.assignees) this.sheet.subPeople[id] ??= copyOf(id).assignees;
     }
   },
   /* Choose the claim slot for a task, a subtask or a checklist step. A checklist and a repeating template show who
@@ -101,14 +102,14 @@ export default {
     for (const st of this.subtasks) out[st.id] = this.claimSlot(st, this.peopleOf(st.id, this.sheet.subPeople[st.id]), st.done, run);
     return out;
   },
-  // Apply a sent claim or release to every copy on screen and in the cache.
+  // Apply a sent claim or release to every copy on screen and to Vikunja's copy.
   claimSent(a){
     const was = this.sheet.subPeople?.[a.task] ?? null, step = this.view.run?.steps.find(s => s.id === a.task);
     const set = list => [...(list || []).filter(u => u.id !== this.user?.id), ...a.op === 'claim' ? [this.user] : []];
     if (was !== null) this.sheet.subPeople[a.task] = set(was);
     if (this.sheet.task?.id === a.task) this.sheet.task.assignees = set(this.sheet.task.assignees);
     if (step) step.assignees = set(step.assignees);
-    const c = cache.get(a.task); if (c) c.assignees = set(c.assignees);
+    const c = copyOf(a.task); if (c) put([{id: a.task, assignees: set(c.assignees)}], ['assignees']);
     if (this.tasks[a.task]) this.syncTask({id: a.task, assignees: set(this.tasks[a.task].assignees)});
   },
 

@@ -1,13 +1,13 @@
 // Gathers what is on screen for share.js, which writes the text. It shares the progress of a task, a project or a
 // checklist, copies a task or a project as a Markdown list that Pocket can read back (not a checklist, see share.js),
 // builds links to Vikunja's web app, and copies a task's notes or a comment.
-import {cache} from '../util.js';
 import {htmlToText} from '../html.js';
 import {parseStep, stepsOf} from '../checklists.js';
 import {positionOrder} from '../order.js';
 import {pctOf, workedOut} from '../progress.js';
 import {COPIED} from '../messages.js';
 import {doneTodayText, markdownText, shareText} from '../share.js';
+import {copyOf} from './tasks.js';
 
 /* Copy `text` to the clipboard. Where the Clipboard API isn't allowed (an older browser, a page not in focus), it
    selects the text in a hidden textarea and copies with execCommand instead. Returns whether it worked. */
@@ -28,7 +28,7 @@ export default {
      if any. A parent's progress is the one its ring shows (shareRing). */
   shareItem(t, seen, people = null){
     seen.add(t.id);
-    const full = t.related_tasks?.subtask ? t : this.tasks[t.id] || cache.get(t.id) || t;
+    const full = t.related_tasks?.subtask ? t : this.tasks[t.id] || copyOf(t.id) || t;
     const subs = (this.hasOwnOrder(full) ? stepsOf(full) : [...(full.related_tasks?.subtask || [])].sort(positionOrder(this.positions)))
       .filter(s => !seen.has(s.id) && !this.hiddenRows.has(s.id));
     return {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, people || t.assignees || full.assignees || []),
