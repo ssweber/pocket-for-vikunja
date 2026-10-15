@@ -77,7 +77,7 @@ Add the moved gap to the specimen page (`scripts/specimen/`), which shows every 
 
 ### When
 
-After phase 5 of `single-code-paths.md`. That phase turns `reschedule`'s save and Undo into the `due` op and its
+After phase 6 (Dates) of `single-code-paths.md`. That phase turns `reschedule`'s save and Undo into the `due` op and its
 `invert`. Building the gap first would mean writing its Undo twice. The gap uses the op's Undo as it is.
 
 ## What else came up, and where it went

@@ -496,49 +496,55 @@ checks that Vikunja changed once.
 1. **Ground.** Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
    writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies and the
    waiting ops, with each op's answer written into the copies, and `withWaiting` put on the rows with `keep`. Only the
-   ops built from here on use it. Without it, each op in phases 4 to 9 would first change `tasks` itself, and be
-   rewritten for part 7. The memo waits for phase 10, when rows read it and it can be measured.
+   ops built from here on use it. Without it, each op in phases 5 to 10 would first change `tasks` itself, and be
+   rewritten for part 7. Phase 4 replaces the bridge with rows that read the store.
    Built so far: part 6, `api()`'s `key` option with `uuid7()`, and the writes rule. The registry, with the 13 ops
    `ACTS` had, and `app/acts.js`, which sends every request of an act through the relay with its key. Try again after
    `Idempotency-Unknown` (or any refusal) sends with a new key. IndexedDB is at version 3. The unit tests' fake
    Vikunja has the relay, and `offline.mjs` sends a checklist step's requests twice. The store's core: `opsOn`,
    `withWaiting`, `answered` (an op's answer goes into `cache` as the op leaves `opsOn`) and the bridge (`keyOps`).
    All 13 ops are in `SHOWN_OWN_WAY` (tasks.js), because `cache` and `tasks` still differ in fields no op touches,
-   such as `comment_count`. Phases 4 to 9 take each op off that list as they move its display to the store. While
+   such as `comment_count`. Phase 4 deletes that list, with the bridge. While
    Pocket knows it is offline, `sendAct` doesn't try an act's first request, and `flush` first reads `/user`. Before
    the first op ships, install `relay.go` on the user's own Vikunja and check one relayed create there: that the
    relay reaches Vikunja, and which database it uses.
-2. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every
+2. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
+3. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
-3. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
-4. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
-5. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`. A late fetch is ignored as part
-   7 says, so delete `readTask` and `saving`.
-6. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
+4. **The store's foundation.** Rows read Vikunja's copy with the waiting ops applied (`withWaiting`), through a `memo`
+   per task id, and `tasks` becomes that memo. Every read and every direct save writes into the copies by field, so
+   today's `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by
+   id, so `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The
+   bridge, `SHOWN_OWN_WAY` and `keep` go, and so does each of the 13 ops' own way of showing itself where the store
+   now shows it (`applyAct`, the acts `workOutRun` lays over a checklist's steps). Measure rule 10 before and after
+   (`npm run perf:rows -- counts`). Turn on the store rule, except for `cache`, which phase 11 removes. This is the
+   phase most likely to show a problem on the phone, so the user checks it there before phase 5.
+5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
+   Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
+6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
+7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
-7. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js. The sheet reads
-   its task from the store, so delete `sheet.task`.
-8. **Deletes and comments.** Delete `deleteTasks`, `deleteTree` and `findNote`.
-9. **Checklists and files.** `startRun` and `addStep` as keyed ops. Delete `findCopy`, `duplicate`'s
-   bookkeeping and `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last
-   non-permanent files from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
-   A checklist's screen reads its steps from the store, so delete `view.run`.
-10. **The store.** Screens hold ids, the saved screens become Vikunja's copies, the sweep prunes them, and the two
-    requests in "Keeping the store current" update them (part 7). Delete
-    `keep`, `keptRows`, `cache` and `forgotten`, and turn on the store rule.
-11. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
-12. **Clean up.** Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied,
+8. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js.
+9. **Deletes and comments.** Delete `deleteTasks` and `deleteTree`.
+10. **Checklists and files.** `startRun` and `addStep` as keyed ops. Delete `findCopy`, `duplicate`'s bookkeeping and
+    `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last non-permanent files
+    from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
+11. **Screens hold ids.** The rest of part 7: the saved screens hold ids, and Vikunja's copies replace their tasks
+    (a new format, cleared on upgrade). The sweep prunes the copies, and the two requests in "Keeping the store
+    current" update them. Delete `keptRows`, `cache` and `forgotten`, and turn on the store rule in full.
+12. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
+13. **Clean up.** Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied,
     read from the store by id". Rule 3 becomes "Every change is an op sent through the outbox, each request with a
     key". Add a rule that a task's kind comes from `role()`, and one that Today's groups come from `dayGroup`. Rule 6
     now has lint behind it. Delete "Copies of a task that are not the store's yet" from `roadmap.md`. Update
     `main.go`'s header and the Privacy and security section of `docs/guide.md` for the relay and its table. Delete
     this file.
-13. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
+14. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
     a migration that drops `pocket_relay`. Raise the minimum Vikunja version.
 
 ## Phase 1 in detail
 
-Agreed with the user on 2026-10-15: the store's core goes through `keep` until phase 10, and Try again after
+Agreed with the user on 2026-10-15: the store's core goes through `keep` until phase 4, and Try again after
 `Idempotency-Unknown` sends with a new key. `api()`'s `key` option and `uuid7()` are built.
 
 ### An entry and its keys
@@ -547,7 +553,7 @@ Agreed with the user on 2026-10-15: the store's core goes through `keep` until p
   from. A request's key is `<id>:<stage>:<part>`. No second field holds a key. Waiting rows keep their ids
   (`pending-<id>-<index>`), only longer.
 - **The acts' entries keep `kind: 'act'` and `op`** in phase 1. Captures, starts and inserted steps keep their kinds
-  and senders until phases 4 and 9 make them ops. Once every kind is an op, `kind` goes.
+  and senders until phases 5 and 10 make them ops. Once every kind is an op, `kind` goes.
 - **IndexedDB goes to version 3,** and the upgrade clears `outbox`, `files` and `claims`. `start()` loses the code that
   moves entries from localStorage.
 
@@ -572,7 +578,7 @@ the entry after each:
 ### What `api()` does with a key
 
 - With `key`, it sends to `/api/v1/plugins/pocket/v2<path>` with `Idempotency-Key: "<key>"`. Without, as now. A write
-  without a key is a lint error outside the allowlist (the keys rule, turned on in phase 9).
+  without a key is a lint error outside the allowlist (the keys rule, turned on in phase 10).
 - A refusal's reason is `detail`, then `message` (the relay's own refusals).
 - **409 without `Idempotency-Unknown`** (the first request is still running): wait `Retry-After` seconds, at most 3
   times, then treat it as no connection (`passing`), so the entry waits.
@@ -605,16 +611,13 @@ on top, but rows still read `tasks`, so nothing on screen changes yet:
 - When the waiting ops of a task change, `refreshPending` puts `withWaiting(id)` on its rows with `keep`. When an op is
   answered, its answer goes into `cache` and the op leaves `opsOn` in the same call, followed by one `keep`.
 
-That is the bridge for phases 4 to 9: an op never changes `tasks` itself, and its row shows what `apply` returns.
-Phase 10 makes rows read `withWaiting` through a `memo` per id, and `tasks`, `keep` and the bridge go. The memo is
-built then because it can only be measured once rows read it.
+Phase 4 makes rows read `withWaiting` through a `memo` per id, and `tasks`, `keep` and the bridge go, before any op
+needs the bridge. That order was chosen on 2026-10-15, after building the bridge showed it was half a store.
 
 **Found while building it:** `keep` replaces the row's task with the whole copy it is given, and deletes the fields
 that copy lacks. `cache` and `tasks` come from different reads (a sheet's read has no `comment_count`, a checklist's
 has `comments`), so even an op whose `apply` changes nothing would rewrite a row. So every op is in `SHOWN_OWN_WAY`
-for now. Before the first op goes on the bridge (phase 5's `due`), change the bridge to write only the fields the
-task's ops change: the fields where `withWaiting(id)` differs from `cache.get(id)`, and on an answer, those fields
-from the answer. This is the "by field" rule of part 7, used early.
+for now. Phase 4's store writes every copy by field (part 7), so the problem goes with the bridge.
 
 ### Sending only when online
 
@@ -626,9 +629,9 @@ user on 2026-10-15.
 
 ### What phase 1 leaves alone
 
-Pruning (phase 6), Undo as an op (phase 5), the late-read rule (phase 5) and every direct write outside the acts.
+Pruning (phase 7), Undo as an op (phase 6), the late-read rule (phase 4) and every direct write outside the acts.
 
 ## Out of scope
 
 A change to what the user sees came up alongside this plan: the Undo gap where a moved row was. It is decided and
-written up in `docs/design/today-moves.md`, and is built after phase 5.
+written up in `docs/design/today-moves.md`, and is built after phase 6.
