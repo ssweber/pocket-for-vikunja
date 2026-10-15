@@ -504,7 +504,8 @@ checks that Vikunja changed once.
    Vikunja has the relay, and `offline.mjs` sends a checklist step's requests twice. The store's core: `opsOn`,
    `withWaiting`, `answered` (an op's answer goes into `cache` as the op leaves `opsOn`) and the bridge (`keyOps`).
    All 13 ops are in `SHOWN_OWN_WAY` (tasks.js), because `cache` and `tasks` still differ in fields no op touches,
-   such as `comment_count`. Phases 4 to 9 take each op off that list as they move its display to the store. Before
+   such as `comment_count`. Phases 4 to 9 take each op off that list as they move its display to the store. While
+   Pocket knows it is offline, `sendAct` doesn't try an act's first request, and `flush` first reads `/user`. Before
    the first op ships, install `relay.go` on the user's own Vikunja and check one relayed create there: that the
    relay reaches Vikunja, and which database it uses.
 2. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every

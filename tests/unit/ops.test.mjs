@@ -133,7 +133,8 @@ test('a change the relay can\'t vouch for is kept as failed, and Try again sends
   v.trouble = r => r.method === 'PATCH' ? 'unknown' : null;
   const r = await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
   assert.deepEqual([r.status, app.failed.length, app.failed[0].failed.message], ['error', 1, UNKNOWN]);
-  assert.equal(app.toasts.at(-1).msg, 'A tick on “Wipe the till” may not have reached Vikunja. Tap the warning sign at the top to see why.');
+  assert.equal(app.toasts.at(-1).msg, 'A tick on “Wipe the till” may not have reached Vikunja. Tap the warning sign at the top.');
+  assert.equal(app.outboxRows[0].failed, 'Vikunja may or may not have this change. Check, then tap Try again if it\'s missing.');
   assert.ok(!v.task(7).done, 'the change wasn\'t made');
   const first = v.requests.find(q => q.method === 'PATCH').key;
   v.trouble = () => null;
@@ -141,4 +142,44 @@ test('a change the relay can\'t vouch for is kept as failed, and Try again sends
   const again = v.requests.filter(q => q.method === 'PATCH').at(-1).key;
   assert.notEqual(again.split(':')[0], first.split(':')[0], 'the key is new');
   assert.deepEqual([again.split(':').slice(1), v.task(7).done, sync.all(1).length], [['0', '0'], true, 0]);
+});
+
+/* A request that gets no answer may have reached Vikunja, and after it an act can't be dropped. So while Pocket knows
+   it is offline, an act's first request isn't tried, and flush sends a read first to find out. */
+const offlineTick = async (t, mark) => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  mark(app);
+  const r = await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  return { v, app, r };
+};
+for (const [how, mark] of [['Pocket has found no connection', app => { app.offline = true; }], ['the browser says it is offline', () => Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })]])
+  test(`a tick made while ${how} is not tried, and can be dropped`, async t => {
+    t.after(() => { delete navigator.onLine; });
+    const { v, app, r } = await offlineTick(t, mark);
+    assert.deepEqual([r.status, v.requests.length, app.pending[0].sent, app.offline], ['offline', 0, undefined, true]);
+    assert.deepEqual(app.outboxRows[0].drop, ['dropAct', app.pending[0].id], 'Waiting to send offers Don\'t send it');
+    globalThis.confirm = () => true;
+    await app.dropAct(app.pending[0].id);
+    assert.deepEqual([sync.all(1).length, v.requests.length, v.task(7).done], [0, 0, undefined]);
+  });
+
+test('flush while offline sends a read first, and sends the waiting tick only once the read is answered', async t => {
+  const { v, app } = await offlineTick(t, app => { app.offline = true; });
+  v.trouble = () => 'offline';
+  await app.flush();
+  assert.deepEqual([v.requests.map(q => q.method + ' ' + q.path), app.pending.length, app.offline], [['GET /user'], 1, true], 'nothing more after the read fails');
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual([v.requests.map(q => q.method + ' ' + q.path).slice(1, 3), v.task(7).done, sync.all(1).length, app.offline], [['GET /user', 'PATCH /tasks/7'], true, 0, false]);
+});
+
+test('a tick whose reply was lost is sent again with its key once flush finds the connection', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  lostOnce(v, 'PATCH', /^\/tasks\/7$/);
+  const r = await app.act({ op: 'done', task: 7, run: null });
+  assert.deepEqual([r.status, app.pending[0].sent, app.offline], ['offline', true, true]);
+  await app.flush();
+  const patches = v.requests.filter(q => q.method === 'PATCH');
+  assert.deepEqual([v.requests[1].path, v.requests[2], patches[1].key, patches[1].replayed], ['/user', patches[1], patches[0].key, true]);
+  assert.deepEqual([reached(v, 'PATCH', /^\/tasks\/7$/).length, v.task(7).done, sync.all(1).length], [1, true, 0]);
 });

@@ -30,6 +30,7 @@ test('a message for a change that was not saved gives the reason in a few words'
 test('a rejected reorder gives the reason', () => {
   assert.equal(notReordered(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not reordered: Forbidden');
   assert.equal(notReordered(new NetError('Failed to fetch')), 'Not reordered: no connection');
+  assert.equal(notReordered(Object.assign(new Error('never finished'), { status: 409, code: 'unknown' })), 'Not reordered: Vikunja may or may not have this change.');
 });
 
 test('a tick message says "Closed" with a count when a parent closed its open subtasks, and "Done:" otherwise', () => {

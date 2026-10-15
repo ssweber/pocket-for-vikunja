@@ -3,6 +3,7 @@ import {cache, fmtSize} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {isChild, itemDone, sendState, sync, underOf, uuid7} from '../sync.js';
 import {OPS} from '../ops/index.js';
+import {UNKNOWN} from '../messages.js';
 
 const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 const whenText = at => {
@@ -25,7 +26,9 @@ export default {
         const text = e.cancelled ? `Removing ${quoted(e.title)}, because its insert was cancelled` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
         rows.push({key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id]});
       } else if (e.kind === 'act') {
-        rows.push({key: e.id, text: OPS[e.op].text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed: e.failed?.message || '', retry: !!e.failed,
+        // A change the relay can't vouch for wasn't refused, so its reason stands alone.
+        const why = e.failed?.message, failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why;
+        rows.push({key: e.id, text: OPS[e.op].text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed, retry: !!e.failed,
           drop: e.failed || !e.sent ? ['dropAct', e.id] : null});
       } else {
         e.items.forEach((x, i) => {

@@ -293,6 +293,9 @@ export default {
     this.flushing = true;
     let sent = 0; const failed = [], other = [], tasks = [], problems = [];
     try {
+      // While Pocket knows it is offline, an act's first request isn't tried (sendAct). A plain read finds out whether
+      // Vikunja can be reached, and any answer clears `offline`.
+      if (this.offline) { await api('/user').catch(() => {}); if (this.offline || !this.signedIn) return; }
       await sync.lock(async () => {
         let actsWait = false;                                                 // after an act is kept offline, later acts wait behind it
         const all = sync.all(this.user?.id), stopped = heldTasks(all);        // acts on a task whose earlier act failed wait too

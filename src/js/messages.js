@@ -20,7 +20,7 @@ export function moreDone(left, per){
 // A change Vikunja didn't save, and why, in a few words.
 export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' : 'Not saved: ' + e.message;
 // A new place in the list that Vikunja refused. It doesn't say "moved", which means moving to another project.
-export const notReordered = e => 'Not reordered: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
+export const notReordered = e => 'Not reordered: ' + (e instanceof NetError ? 'no connection' : e?.code === 'unknown' ? UNSURE : e?.message || 'Vikunja refused it');
 // On the sign-in screen, when Vikunja offers neither a password nor single sign-on.
 export const NO_SIGN_IN = 'This server has password sign-in and single sign-on turned off. Ask its admin to turn one on.';
 
@@ -125,8 +125,9 @@ export const FINISHED_MEANWHILE = 'the checklist was finished in the meantime, s
 /* The plugin's relay answers 409 with Idempotency-Unknown when Vikunja stopped while making a change. Pocket can't
    tell whether the change was made, and only the user can check. So the change waits in Waiting to send, and Try
    again sends it as a new request. */
-export const UNKNOWN = 'Pocket can\'t tell whether Vikunja made this change. Check in Vikunja. If the change isn\'t there, tap Try again.';
-export const notKnown = what => `${what} may not have reached Vikunja. Tap the warning sign at the top to see why.`;
+const UNSURE = 'Vikunja may or may not have this change.';
+export const UNKNOWN = UNSURE + ' Check, then tap Try again if it\'s missing.';
+export const notKnown = what => `${what} may not have reached Vikunja. Tap the warning sign at the top.`;
 
 /* Who started a checklist, and when. A finished checklist's summary shows "Started by <name> at 6:02 AM", or for
    another day "Started by <name>, Oct 8, 6:02 AM". The top of the checklist's ⋯ sheet always includes the day (`day`).

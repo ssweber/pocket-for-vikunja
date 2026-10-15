@@ -533,6 +533,38 @@ try {
     }
   });
 
+  /* While Pocket is offline it doesn't try a tick's first request, so Waiting to send still offers Don't send it.
+     Tapping it leaves the step not done in Vikunja, also once Pocket is back online. */
+  await step('a-tick-made-offline-can-be-dropped', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('dropped checklists'), description: '<p>pocket:checklists</p>' });
+    try {
+      const run = await post(`/projects/${proj.id}/tasks`, { title: T('dropped run'), description: '<p>pocket:run</p>' });
+      const st = await post(`/projects/${proj.id}/tasks`, { title: T('not sent') });
+      await post(`/tasks/${run.id}/relations`, { other_task_id: st.id, relation_kind: 'subtask' });
+      await page.reload();                                                   // so Pocket knows the project is for checklists
+      await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+      await page.evaluate(id => { location.hash = '#/run/' + id; }, run.id);
+      await page.waitForSelector(`#step-title:text-is("${T('not sent')}")`, { timeout: 15000 });
+      await context.setOffline(true);
+      await page.click('#step-done');
+      await page.waitForSelector('#btn-refresh.waits');
+      await page.click('#btn-refresh');
+      const row = `#outbox-rows .ob-row:has-text("Done: ${T('not sent')}")`;
+      await page.click(`${row} .ob-drop`);                                   // the dialog is accepted by the handler at the top
+      await page.waitForSelector(row, { state: 'detached' });
+      await page.click('#btn-sheet-close');
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      const t = await (await api(`/tasks/${st.id}?expand=reactions`)).json();
+      if (t.done || (t.reactions?.['✅'] || []).length) throw new Error('Vikunja has the tick: ' + JSON.stringify([t.done, t.reactions]));
+    } finally {
+      await page.evaluate(() => { location.hash = '#/today'; });
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
   await step('two-tabs-send-it-once', async () => {
     // A task added offline in one tab also shows as waiting in the other tab. Back online, both tabs try to send it, and it is added once.
     const other = await context.newPage();
