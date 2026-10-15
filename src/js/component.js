@@ -19,6 +19,7 @@ import quickadd from './app/quickadd.js';
 import sending from './app/sending.js';
 import checklists from './app/checklists.js';
 import runs from './app/runs.js';
+import acts from './app/acts.js';
 import asks from './app/asks.js';
 import claims from './app/claims.js';
 import alerts from './app/alerts.js';
@@ -121,7 +122,7 @@ export const directives = Alpine => {
 
 // The component is core.js's data plus the methods of each part. Getters are copied as getters. A spread ({...auth})
 // would call each getter once and keep its value.
-const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, asks, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
+const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, acts, asks, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
 export const pocket = () => {
   const component = core();
   for (const part of parts) Object.defineProperties(component, Object.getOwnPropertyDescriptors(part));

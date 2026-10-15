@@ -1,7 +1,10 @@
 // The messages Pocket shows when something happens. lines.js decides where each is shown. These functions only build
 // the text, so the unit tests can check it.
+import {andList} from './util.js';
 import {NetError} from './api.js';
 import {dueInfo, fmtTime} from './dates.js';
+import {parseStep} from './checklists.js';
+import {htmlToText} from './html.js';
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
@@ -81,6 +84,49 @@ export const cancelName = (title, n = 0, over = '') => 'Cancel ' + title + (!n ?
 // The message after the user marks a checklist's step done or skipped without a connection. It says when the change
 // will be sent.
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
+
+/* The words for each op in the outbox (src/js/ops/), by op name. `title` is the task's title as Pocket knows it, or ''.
+   - text(a, title, repeated): the op's row in Waiting to send. `repeated` says the step was repeated in its checklist.
+   - refused(a, title): the op in a message saying Vikunja refused it, such as "A tick on “Unlock the door”".
+   - dropped(a, title): what Vikunja keeps after Don't send it. `a.stage` above 0 means the first request was sent.
+   - saved: what Vikunja already has when it refuses a later request, as in "couldn't be saved in full (it's marked
+     done)". */
+const named = title => parseStep(title).title;
+const row = (title, repeated) => named(title || 'a step') + (repeated ? ' (repeated)' : '');
+const on = title => title ? ` on “${named(title)}”` : '';
+const it = title => `“${named(title || 'it')}”`;
+const REST = ' The rest of the change is not sent.';
+const ticked = {saved: 'it\'s marked done', dropped: (a, title) => a.stage > 0 ? `${it(title)} stays marked done in Vikunja.${REST}` : `${it(title)} stays not done in Vikunja.`};
+const unticked = {saved: 'it\'s marked not done', dropped: (a, title) => a.stage > 0 ? `${it(title)} stays not done in Vikunja.${REST}` : `${it(title)} stays done in Vikunja.`};
+export const OP_WORDS = {
+  done: {...ticked, text: (a, title, r) => `Done: ${row(title, r)}`, refused: (a, title) => 'A tick' + on(title)},
+  doneNote: {...ticked, text: (a, title, r) => `Done, with a comment: ${row(title, r)}`, refused: (a, title) => `Marking ${title ? `“${named(title)}”` : 'a step'} done, with its comment`},
+  skip: {...ticked, refused: (a, title) => 'A skip' + on(title), text(a, title, r){
+    const why = htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
+    return `Skipped: ${row(title, r)}` + (why ? ` (${why})` : '');
+  }},
+  undone: {...unticked, text: (a, title, r) => `Not done: ${row(title, r)}`, refused: (a, title) => `Marking ${title ? `“${named(title)}”` : 'a step'} not done`},
+  finish: {saved: 'it\'s marked done', text: (a, title, r) => `Finishing “${row(title, r)}”`, refused: () => 'Finishing the checklist',
+    dropped: a => a.stage > 0 ? 'The checklist stays finished in Vikunja.' + REST : 'The checklist stays open in Vikunja.'},
+  reopen: {saved: 'it\'s marked not done', text: (a, title, r) => `Reopening “${row(title, r)}”`, refused: () => 'Reopening the checklist',
+    dropped: a => a.stage > 0 ? 'The checklist stays open in Vikunja.' + REST : 'The checklist stays finished in Vikunja.'},
+  progress: {text: (a, title, r) => `Progress: ${a.pct}% on “${row(title, r)}”`, refused: (a, title) => 'Progress' + on(title), dropped: (a, title) => `${it(title)} keeps the progress it has in Vikunja.`},
+  note: {text: (a, title, r) => `A comment on “${row(title, r)}”`, refused: (a, title) => 'A comment' + on(title), dropped: () => 'The comment isn\'t posted. Its text goes back into the comment box.'},
+  answer: {text: (a, title, r) => row(title, r), refused: (a, title) => 'Answers' + on(title), dropped: () => ''},
+  claim: {text: (a, title, r) => `Assigning “${row(title, r)}” to you`, refused: (a, title) => `Assigning ${title ? `“${named(title)}”` : 'it'} to you`, dropped: (a, title) => `You are not assigned to ${it(title)}.`},
+  unclaim: {text: (a, title, r) => `Unassigning you from “${row(title, r)}”`, refused: (a, title) => 'Unassigning you from ' + (title ? `“${named(title)}”` : 'it'), dropped: (a, title) => `${it(title)} stays assigned to you.`},
+  delete: {text: (a, title, r) => `Deleting “${row(title, r)}”` + (a.ids?.length > 1 ? `, with ${plural(a.ids.length - 1, 'subtask')}` : ''),
+    refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: (a, title) => `${it(title)} stays in Vikunja.`},
+  position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
+};
+// Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
+export const assignedJustNow = names => `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;
+export const FINISHED_MEANWHILE = 'the checklist was finished in the meantime, so the step stays done';
+/* The plugin's relay answers 409 with Idempotency-Unknown when Vikunja stopped while making a change. Pocket can't
+   tell whether the change was made, and only the user can check. So the change waits in Waiting to send, and Try
+   again sends it as a new request. */
+export const UNKNOWN = 'Pocket can\'t tell whether Vikunja made this change. Check in Vikunja. If the change isn\'t there, tap Try again.';
+export const notKnown = what => `${what} may not have reached Vikunja. Tap the warning sign at the top to see why.`;
 
 /* Who started a checklist, and when. A finished checklist's summary shows "Started by <name> at 6:02 AM", or for
    another day "Started by <name>, Oct 8, 6:02 AM". The top of the checklist's ⋯ sheet always includes the day (`day`).

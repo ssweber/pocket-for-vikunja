@@ -3348,10 +3348,10 @@ try {
   await step('a-move-turned-down-goes-back-and-says-why', async () => {
     // Vikunja rejects the move. The row goes back where it was and shows Vikunja's reason.
     const T = order.tasks, refuse = r => r.request().method() === 'PUT' ? r.fulfill({ status: 403, contentType: 'application/json', body: '{"detail":"Forbidden"}' }) : r.fallback();
-    await page.route('**/api/v2/tasks/*/position', refuse);
+    await page.route('**/v2/tasks/*/position', refuse);
     await dragTo(rowById(T.Charlie.id), rowById(T.Bravo.id), 'bottom');
     await expect(rowLine(page, 'Not reordered: Forbidden')).toBeVisible();
-    await page.unroute('**/api/v2/tasks/*/position', refuse);
+    await page.unroute('**/v2/tasks/*/position', refuse);
     await later(5000);                                                     // the message collapses and the row returns
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
     await synced(page);
@@ -4690,7 +4690,7 @@ ${footName('Hooks')}`);
     await loaded(page);
     let answer, asked = false; const late = new Promise(ok => { answer = ok; });
     const user = /\/api\/v2\/user(\?|$)/, slow = async r => { asked = true; await late; await r.fallback(); };
-    const sends = r => r.method() !== 'GET' && r.url().includes('/api/v2/') && sent.push(r.url());
+    const sends = r => r.method() !== 'GET' && r.url().includes('/v2/') && sent.push(r.url());
     await page.route(user, slow);
     page.on('request', sends);
     try {

@@ -489,21 +489,48 @@ try {
     if (JSON.stringify(await subs(T('H2'))) !== JSON.stringify([[T('H2a'), false]])) throw new Error('subtasks of the second heading: ' + JSON.stringify(await subs(T('H2'))));
   });
 
-  await step('waiting-work-from-an-older-pocket-moves-over', async () => {
-    // An older Pocket kept its outbox in localStorage. Opening this version moves the outbox to the database and sends it.
-    await context.setOffline(true);
-    await page.evaluate(([title, pid]) => {
-      const user = JSON.parse(localStorage.getItem('pocket.saved.user')).id;
-      const p = { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null };
-      localStorage.setItem('pocket.outbox', JSON.stringify([{ id: 'old1', user, at: new Date().toISOString(), nest: false, pid,
-        items: [{ raw: title, p, taskId: null, tried: false, linked: false }], files: [] }]));
-    }, [T('O'), home]);
-    await page.reload();
-    await page.waitForSelector(pendingRow(T('O')), { timeout: 15000 });
-    if (await page.evaluate(() => localStorage.getItem('pocket.outbox'))) throw new Error('the outbox is still in localStorage');
-    await context.setOffline(false);
-    await page.waitForSelector(pendingRow(T('O')), { state: 'detached', timeout: 20000 });
-    if ((await byTitle(T('O'))).length !== 1) throw new Error((await byTitle(T('O'))).length + ' copies');
+  /* A comment and a tick on a checklist's step wait offline, across a reload, and reach Vikunja once. Every request
+     goes through the plugin's relay with a key. The test reads the keys from the outbox, then sends two of the requests
+     again with their keys. The relay answers from what it kept, and Vikunja changes nothing. */
+  await step('a-checklist-step-ticked-offline-is-sent-once', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('checklists'), description: '<p>pocket:checklists</p>' });
+    try {
+      const run = await post(`/projects/${proj.id}/tasks`, { title: T('run'), description: '<p>pocket:run</p>' });
+      const st = await post(`/projects/${proj.id}/tasks`, { title: T('step') });
+      await post(`/tasks/${run.id}/relations`, { other_task_id: st.id, relation_kind: 'subtask' });
+      await page.reload();                                                   // so Pocket knows the project is for checklists
+      await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+      await page.evaluate(id => { location.hash = '#/run/' + id; }, run.id);
+      await page.waitForSelector(`#step-title:text-is("${T('step')}")`, { timeout: 15000 });
+      await context.setOffline(true);
+      await page.fill('#step-note', T('note'));
+      await page.click('#step-note-form button');
+      await page.click('#step-done');
+      await page.waitForSelector('#finish-card');                           // every step is done
+      await page.reload();
+      await page.waitForSelector('#finish-card', { timeout: 15000 });       // the tick still waits, after the reload
+      const outbox = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction('outbox').objectStore('outbox').getAll(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }));
+      const note = outbox.find(e => e.op === 'note' && e.task === st.id), tick = outbox.find(e => e.op === 'done' && e.task === st.id);
+      if (!note || !tick) throw new Error('waiting: ' + outbox.map(e => e.op).join(', '));
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      const kept = async () => {
+        const t = await (await api(`/tasks/${st.id}?expand=reactions`)).json(), got = await (await api(`/tasks/${st.id}/comments`)).json();
+        return [t.done, (t.reactions?.['✅'] || []).length, (Array.isArray(got) ? got : got.items || []).filter(c => c.comment.includes(T('note'))).length];
+      };
+      await expect.poll(kept, { timeout: 20000 }).toEqual([true, 1, 1]);
+      // The same requests again, each with the key Pocket sent it with: the comment, and the tick.
+      const again = (a, method, path, body) => fetch(SERVER + '/api/v1/plugins/pocket/v2' + path, { method, body: JSON.stringify(body),
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', 'Idempotency-Key': `"${a.key || a.id}:0:0"` } });
+      for (const r of [await again(note, 'POST', `/tasks/${st.id}/comments`, { comment: note.html }), await again(tick, 'PATCH', '/tasks/' + st.id, { done: true })])
+        if (r.headers.get('idempotent-replayed') !== 'true') throw new Error(`HTTP ${r.status}, not answered from what the relay kept: ${await r.text()}`);
+      if (JSON.stringify(await kept()) !== '[true,1,1]') throw new Error('Vikunja changed: ' + JSON.stringify(await kept()));
+    } finally {
+      await page.evaluate(() => { location.hash = '#/today'; });
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
   });
 
   await step('two-tabs-send-it-once', async () => {

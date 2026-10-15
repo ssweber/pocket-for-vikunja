@@ -1,26 +1,21 @@
 // Start checklists and compute their steps, progress, countdowns and pending changes.
-import {andList, cache, memo, motion, raw, store, taskDrafts, ZERO} from '../util.js';
+import {andList, cache, memo, motion, raw, store, ZERO} from '../util.js';
 import {allPages, api, ApiError, errText, items, NetError, passing, patchTask, serverTime, triedSince} from '../api.js';
 import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, commentShown, comesRound, isAnswer, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, SKIP_MARK, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, commentShown, comesRound, isAnswer, countText, DONE_MARK, durText, hasTemplateLabel, inBatches, isRunDesc, isRunStepTask, isTemplate, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {stepAnswers} from '../asks.js';
-import {ACT_STEPS, ACTS, held, heldTasks, INSERT_STEPS, KEPT, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
+import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
+import {keptTicks, nextN} from './acts.js';
 
-let actCount = 0;                                // orders things done in the same millisecond
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
-/* Keep local completion times for offline ticks so countdowns do not jump or chime again when Vikunja receives
-   them. Map each step to {here, there, kept}, using Vikunja's completion time to identify the tick. Expire these
-   records after a day. */
-let ticks = null;
-const keptTicks = () => ticks ||= saved.get('ticks') || {};
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
    when another step or countdown changes. */
 const lastSteps = new Map();
@@ -587,154 +582,6 @@ export default {
     if (r.status === 'error') return;
     if (this.route.name === 'run' && this.route.id === id) this.render(); else this.openRun(id);
   },
-  /* Queue every run action behind earlier pending actions so Vikunja receives them in order. */
-  async act(fields){
-    const run = fields.run ?? this.view.run?.run.id;
-    if (this.toast.show && this.toast.startOf && this.toast.startOf === run) this.toast.show = false;
-    if (this.places.run?.startOf === run) this.endPlace('run', this.places.run, false);
-    // Store the task's title so Waiting to send can name the action after a reload.
-    const entry = {id: randomId(), kind: 'act', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], stage: 0, fails: 0,
-      run: this.view.run?.run.id, label: this.actTitle(fields.task), ...fields};
-    const {kept, full} = await sync.add(entry, []);
-    return this.sendActs(entry.id, kept, full);
-  },
-  // Send through action `id` in order. Keep deletions held while Restore is still available.
-  async sendActs(id, kept = true, full = false){
-    this.refreshPending();
-    let last = {status: 'gone'};
-    await sync.lock(async () => {
-      const all = sync.all(this.user?.id).filter(e => e.kind === 'act' && (e.id === id || !held(e))), stopped = heldTasks(all);
-      for (const e of all) {
-        if (e.failed || stopped.has(e.task)) {                               // waits behind an earlier action Vikunja refused
-          if (e.id !== id) continue;
-          this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”. Tap the warning sign at the top to try that change again.`, {place: 'step', cls: 'failed'});
-          last = {status: 'offline', reached: true};
-          break;
-        }
-        last = await this.sendEntry(e.id);
-        if (last.kept) stopped.add(e.task);
-        // A failed move shows its own message on the row (reorder), so none here.
-        if (last.status === 'error' && e.op !== 'position') this.say(`${last.error.what || 'It'} couldn't be saved${last.error.saved ? ` in full (${last.error.saved})` : ''}: ${last.error.message}.` + (last.kept ? KEPT : this.wordsBack(last.error)), {place: 'step', cls: 'failed'});
-        if (last.status === 'offline' || e.id === id) break;
-      }
-    });
-    this.refreshPending();
-    if (last.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: 'step', cls: 'failed'}); }
-    return last;
-  },
-  async sendAct(a){
-    const save = () => sync.save(a), stages = ACTS[a.op] || [], none = {ids: [], tasks: [], problems: [], uploaded: 0};
-    let comment = null;
-    try {
-      // Wait for an offline step's real id. Reject its action if the step was never created.
-      if (typeof a.task === 'string') {
-        const key = a.task.replace(/^pending-/, ''), id = sync.taskOf(key);
-        if (!id && sync.entries.has(key)) return {...none, status: 'offline', reached: true};
-        if (!id) throw new ApiError(404, 'the step it was for couldn\'t be added');
-        a.task = id; await save();
-      }
-      // Keep a run finished by someone else if an offline untick arrives after that finish.
-      if (a.op === 'undone' && a.run && a.task !== a.run && !a.stage && (await api('/tasks/' + a.run)).done)
-        throw Object.assign(new ApiError(409, 'the checklist was finished in the meantime, so the step stays done'), {drop: true});
-      while (a.stage < stages.length) {
-        const out = await patiently(() => ACT_STEPS[stages[a.stage]](a, save));
-        if (stages[a.stage] === 'note' && out?.id) comment = out;
-        if (stages[a.stage] === 'done' && out?.done_at) this.keepTick(a, a.doneAt = out.done_at);
-        a.stage++;
-        await save();
-      }
-      this.applyAct(a, comment);
-      await sync.remove(a.id);
-      if (!a.run && a.op === 'note' && this.sheet.task?.id === a.task) this.loadComments(a.task);   // a comment from a task's sheet
-      if (a.op !== 'finish' && a.op !== 'reopen' && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
-      return {...none, status: 'sent', changed: 1};
-    } catch (error) {
-      if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++a.fails < 5)))) {
-        await save();
-        return {...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401};
-      }
-      // A refused move is reverted on screen at once instead of being retried later.
-      if (a.op === 'position') error.drop = true;
-      // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
-      if (a.stage > 0 && ['done', 'undone'].includes(stages[0])) error.saved = stages[0] === 'done' ? 'it\'s marked done' : 'it\'s marked not done';
-      if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
-      error.what = this.actWhat(a);
-      // Reload after a permanent rejection when no retry remains queued.
-      if (error.drop) {
-        await sync.remove(a.id);
-        if (this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
-        if (this.sheet.task && this.sheet.kind === 'task') this.loadSubPeople(this.sheet.task);
-        return {...none, status: 'error', error};
-      }
-      // Restore rejected note text to its draft. Keep other rejected actions under Waiting to send so a missed
-      // toast does not lose the retry.
-      if (a.op === 'note') { await sync.remove(a.id); this.giveBack(a, error); return {...none, status: 'error', error}; }
-      a.failed = {message: error.message, at: new Date().toISOString()}; a.fails = 0;
-      await save();
-      return {...none, status: 'error', error, kept: true};
-    }
-  },
-  // Name an action for a message, for example "A tick on “Check the milk fridge”".
-  actWhat(a){
-    const title = a.label || this.actTitle(a.task), on = title ? ` on “${parseStep(title).title}”` : '', step = title ? `“${parseStep(title).title}”` : 'a step';
-    return {note: 'A comment' + on, answer: 'Answers' + on, doneNote: `Marking ${step} done, with its comment`, skip: 'A skip' + on,
-      done: 'A tick' + on, undone: `Marking ${step} not done`, progress: 'Progress' + on, finish: 'Finishing the checklist', reopen: 'Reopening the checklist',
-      claim: 'Assigning' + (title ? ` “${parseStep(title).title}”` : ' it') + ' to you', unclaim: 'Unassigning you from' + (title ? ` “${parseStep(title).title}”` : ' it'),
-      position: 'Moving' + (title ? ` “${title}”` : ' a task'),
-      delete: 'Deleting' + (title ? ` “${parseStep(title).title}”` : ' a task')}[a.op] || 'A change made offline';
-  },
-  /* Restore text from an unsent action and set error.back. If its task was deleted, put the text in error.words so
-     the message can preserve it. */
-  giveBack(a, error){
-    const text = a.html ? htmlToText(a.html).replace(/^Skipped:?\s*/, '').trim() : '';
-    if (!text) return;
-    if (error.status === 404) { error.words = text; return; }
-    const add = (was = '') => [was.trim(), text].filter(Boolean).join('\n');
-    if (!a.run) {
-      taskDrafts.set('comment:' + a.task, add(taskDrafts.get('comment:' + a.task)));
-      if (this.sheet.task?.id === a.task) this.sheet.commentDraft = add(this.sheet.commentDraft);
-    } else this.runDrafts[a.task] = add(this.runDrafts[a.task]);
-    error.back = true;
-  },
-  wordsBack(e){ return e.back ? ' Its text is back in the box.' : e.words ? ` It said: “${e.words}”` : ''; },
-  // Find a comment whose reply was lost, by matching the author, the text and a creation time after this attempt.
-  async findNote(task, html, triedAt, at){
-    const since = triedSince(triedAt, at), text = htmlToText(html);
-    for (let page = 1; page <= 40; page++) {                                // newest first, back to the attempt
-      const data = await api(`/tasks/${task}/comments?order_by=desc&per_page=50&page=${page}`), list = items(data);
-      if (list.some(c => c.author?.id === this.user?.id && htmlToText(c.comment) === text && new Date(c.created).getTime() >= since)) return true;
-      if (!list.length || page >= (data?.total_pages || 1) || new Date(list[list.length - 1].created).getTime() < since) return false;
-    }
-    return false;
-  },
-  keepTick(a, there){
-    const here = serverTime(+new Date(a.at));
-    if (Date.parse(there) - here < 5000) return;                           // sent as it was done
-    ticks = Object.fromEntries(Object.entries(keptTicks()).filter(([, x]) => Date.now() - x.kept < 864e5));
-    ticks[a.task] = {here: new Date(here).toISOString(), there, kept: Date.now()};
-    saved.set('ticks', ticks);
-    this.runNow = Date.now();                                              // Recompute the run because Alpine does not watch the saved local tick times.
-  },
-  // Apply the sent action immediately so the screen does not revert while waiting for a reload.
-  applyAct(a, comment){
-    if (a.op === 'claim' || a.op === 'unclaim') { this.claimSent(a); return; }
-    if (a.op === 'delete') { this.forgetTree(a.ids); return; }
-    if (a.op === 'position') { this.positionSent(a); return; }
-    const r = this.view.run;
-    if (!r || r.run.id !== a.run) return;
-    if (a.op === 'finish' || a.op === 'reopen') { r.run.done = a.op === 'finish'; return; }
-    const s = r.steps.find(x => x.id === a.task), me = this.user;
-    if (s && a.op === 'progress') { s.percent_done = a.pct / 100; return; }
-    if (s && a.op !== 'note' && a.op !== 'answer') {
-      const rs = {...s.reactions}, without = m => (rs[m] || []).filter(u => u.id !== me?.id);
-      rs[DONE_MARK] = without(DONE_MARK); rs[SKIP_MARK] = without(SKIP_MARK);
-      if (a.op !== 'undone') rs[a.op === 'skip' ? SKIP_MARK : DONE_MARK].push(me);
-      Object.assign(s, {done: a.op !== 'undone', done_at: a.doneAt || new Date(serverTime(Date.now())).toISOString(), reactions: rs});
-    }
-    if (comment) { const on = s || r.run; on.comments = [...(on.comments || []), comment]; }
-  },
-  // The task id an action is for. A step inserted offline is known only by its entry id until Vikunja creates it.
-  actTask(a){ return typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) ?? a.task : a.task; },
 
   /* ---------- steps added during a run ---------- */
   /* Insert or repeat a step through the outbox. Show it in place and allow ticks while it waits offline. */
@@ -799,7 +646,7 @@ export default {
     if (!r) return;
     // If the step to insert before is itself waiting to be sent, use the step that one goes before.
     if (typeof fields.before === 'string') fields.before = this.pending.find(e => 'pending-' + e.id === fields.before)?.before ?? null;
-    const entry = {id: randomId(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: ++actCount, items: [], files: [], fails: 0,
+    const entry = {id: randomId(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: nextN(), items: [], files: [], fails: 0,
       run: r.run.id, runTitle: r.run.title, project: r.run.project_id, from: null, tpl: null, ...fields};
     const {kept, full} = await sync.add(entry, []);
     this.refreshPending();

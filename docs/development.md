@@ -40,7 +40,8 @@ Each file in `src/js/` starts with a comment saying what it is for. By what you 
 | Ticked or deleted rows leaving together | `batch.js`, `app/leaving.js` |
 | What Pocket says, and where | `messages.js`, `app/lines.js`, `app/toast.js` |
 | Quick add: parsing a line or a pasted list, the add boxes, the box under a row | `quickadd.js`, `app/quickadd.js`, `app/seat.js` |
-| What is waiting to be sent, and sending it | `sync.js`, `app/sending.js`, `app/outbox.js` |
+| What is waiting to be sent, and sending it | `sync.js`, `app/sending.js`, `app/outbox.js`, `app/acts.js` |
+| A kind of change sent through the outbox: its requests, what it does to the task, its words | `ops/` |
 | Checklists: templates, checklists in progress, timed steps | `checklists.js`, `app/checklists.js`, `app/runs.js`, `app/alerts.js` |
 | What a step asks to record: the fields on its card, the answers, and the editor on a template step | `asks.js`, `app/asks.js` |
 | A task's sheet | `app/sheet.js`, `markup/sheet/` |
@@ -93,8 +94,9 @@ change against them, and say where it bends one. The code's own rules:
    kinds need sits between `<!-- only run sheet -->` and `<!-- /only -->`, and the build leaves it out of every
    other copy (`scripts/build.mjs`).
 3. **The markup calls actions, never `api()`.** Each action makes the request, changes what is on screen and returns
-   the way to undo it. A run and its steps go through the outbox instead (`act`, `app/runs.js`). `fetch()` is only
-   in `api.js`, and lint enforces that.
+   the way to undo it. A run and its steps go through the outbox instead, as ops (`act`, `app/acts.js`, `ops/`),
+   each request with a key, so it is made once however often it is sent. `fetch()` is only in `api.js`, and lint
+   enforces that.
 4. **A change shows at once, as it will be.** It looks "waiting" only after `WAIT_MS`, or with no connection. A task
    not yet sent is already where it will be on its list, so it does not move once it is sent.
 5. **A ticked or deleted row stays where it is,** marked (`leaving`), until the batch clears: 3 seconds after the

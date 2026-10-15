@@ -1,12 +1,13 @@
 // Tests for what happens to a task (src/js/app/actions.js), against a fake Vikunja. They check what is sent, what is
 // on screen, and the undo. In a list, a row's tick waits for the batch to clear (leaving.js).
-import { fakeVikunja, component } from './fake.mjs';
+import { fakeVikunja, component, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
 import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
+import acts, { stageContext } from '../../src/js/app/acts.js';
 import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
 import lines from '../../src/js/app/lines.js';
@@ -17,7 +18,9 @@ import views from '../../src/js/app/views.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
 import { cache } from '../../src/js/util.js';
-import { ACT_STEPS, ACTS, sync } from '../../src/js/sync.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
+import { OPS } from '../../src/js/ops/index.js';
+import { figure } from '../../src/js/ops/stages.js';
 
 const DAY = 86400;
 const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
@@ -28,7 +31,8 @@ const family = () => {
   const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0.25, related_tasks: { subtask: subs } };
   return { parent, subs };
 };
-const patches = v => v.requests.filter(r => r.method === 'PATCH').map(r => [+r.path.split('/')[2], r.body]);
+// The patches Vikunja received. A request the relay answered from what it kept never reached Vikunja.
+const patches = v => v.requests.filter(r => r.method === 'PATCH' && !r.replayed).map(r => [+r.path.split('/')[2], r.body]);
 // The patches that are not a parent's calculated progress, which Pocket writes after its subtasks change (writeFigure).
 const ticks = v => patches(v).filter(([, b]) => !('percent_done' in b && Object.keys(b).length === 1));
 // A row in a list, for ticking from there. The test controls the batch's timer, so the batch doesn't clear by itself.
@@ -439,13 +443,17 @@ test('setting a subtask\'s progress in its own sheet writes its parent\'s progre
 
 test('a change to a checklist step goes through the outbox, and the same entry writes the checklist\'s progress last', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Opening', percent_done: 0, related_tasks: { subtask: [{ id: 2, done: true }, { id: 3, percent_done: 0.5 }] } }, { id: 2, done: true }, { id: 3, percent_done: 0.5 }]);
-  component(tasks, actions);
-  for (const op of ['progress', 'done', 'skip', 'undone', 'doneNote']) assert.equal(ACTS[op].at(-1), 'figure', op + ': the progress write is the last part');
-  assert.equal(ACT_STEPS.figure({ op: 'finish', task: 1, run: 1 }), null, 'a finished checklist has no progress to calculate');
-  await ACT_STEPS.figure({ op: 'done', task: 2, run: 1 });
+  const app = component(tasks, actions), send = a => figure(a, stageContext(a, app).start()), entry = () => ({ id: uuid7(), op: 'done', task: 2, run: 1, stage: 3 });
+  for (const op of ['progress', 'done', 'skip', 'undone', 'doneNote']) assert.equal(OPS[op].stages.at(-1), figure, op + ': the progress write is the last part');
+  await send({ id: uuid7(), op: 'finish', task: 1, run: 1, stage: 2 });
+  assert.equal(v.requests.length, 0, 'a finished checklist has no progress to calculate');
+  const a = entry();
+  await send(a);
   assert.deepEqual(patches(v), [[1, { percent_done: 0.75 }]], 'one step done and one at 50% give 75%');
-  await ACT_STEPS.figure({ op: 'done', task: 2, run: 1 });
-  assert.equal(patches(v).length, 1, 'sending again gives the same progress, so nothing is written');
+  await send(a);
+  assert.equal(patches(v).length, 1, 'the same entry sent again sends the same body with the same key, and the relay answers it');
+  await send(entry());
+  assert.equal(patches(v).length, 1, 'a new entry finds the progress already right, so nothing is written');
 });
 
 // The parts needed to send a deletion are what is waiting and the outbox's acts (runs.js), on the fake component.
@@ -454,7 +462,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 const deleting = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'keyWaiting', 'markSlow', 'sendEntry'),
-    pick(runs, 'sendActs', 'sendAct', 'applyAct', 'actWhat', 'actTitle', 'wordsBack', 'giveBack', 'refreshRunTask'));
+    pick(acts, 'sendActs', 'sendAct', 'applyAct', 'wordsBack', 'giveBack'), pick(outbox, 'actTitle'), pick(runs, 'refreshRunTask'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], canWrite: () => true, flushing: false, cap: {}, sheet: { task: null, sub: {} } });
   Object.defineProperty(app, 'syncState', Object.getOwnPropertyDescriptor(outbox, 'syncState'));
   globalThis.confirm = () => true;
@@ -473,7 +481,7 @@ test('deleting a subtask writes its parent\'s calculated progress in the same en
   await app.sendHeld(d.id);
   assert.deepEqual(deletes(v), [2]);
   assert.equal(v.task(1).percent_done, 1, 'the remaining subtask is done, so the parent is at 100%');
-  assert.deepEqual(ACTS.delete.at(-1), 'figure');
+  assert.equal(OPS.delete.stages.at(-1), figure);
 });
 
 /* Deleting a task with subtasks asks for confirmation first. askDelete reads which tasks go with it and asks on its
@@ -918,10 +926,10 @@ test('a template gets no ✅ when it is saved done, even if Vikunja\'s reply lea
 
 test('finishing a checklist puts the user\'s ✅ on it, and reopening it takes the ✅ off', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Closing up · Oct 14', done: false }]);
-  component(tasks, actions);
-  for (const stage of ACTS.finish) await ACT_STEPS[stage]({ op: 'finish', task: 1, run: 1 });
+  const app = component(tasks, actions);
+  await sendStages(app, { op: 'finish', task: 1, run: 1 });
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].map(u => u.id)], [true, [1]]);
-  for (const stage of ACTS.reopen) await ACT_STEPS[stage]({ op: 'reopen', task: 1, run: 1 });
+  await sendStages(app, { op: 'reopen', task: 1, run: 1 });
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅']], [false, []]);
 });
 

@@ -2,14 +2,11 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, movedToProject, namesText, notReordered, notMovedBack, notSaved, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, movedToProject, namesText, notReordered, notMovedBack, notSaved, OP_WORDS, sentLater, startedText } from '../../src/js/messages.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
 import { blankSheet } from '../../src/js/app/core.js';
-import outbox from '../../src/js/app/outbox.js';
-import runs from '../../src/js/app/runs.js';
-import { component } from './fake.mjs';
 
 /* The row at the end of a list of done tasks that is shown a part at a time. It offers the next part and says how many
    tasks are left. When fewer than a full part are left, it offers the last of them. When none are left, there is no
@@ -155,21 +152,18 @@ test('a tapped action runs once, and its message is removed without calling its 
 });
 
 test('on a checklist, a note on a step or the checklist is called a comment, as in Vikunja, in Waiting to send and its messages', () => {
-  const a = component(outbox, runs);
-  Object.assign(a, { pending: [], failed: [], view: { groups: [], run: null }, actTitle: () => 'Unlock the door' });
-  assert.equal(a.actText({ op: 'note', task: 1 }), 'A comment on “Unlock the door”');
-  assert.equal(a.actText({ op: 'doneNote', task: 1 }), 'Done, with a comment: Unlock the door');
-  assert.equal(a.dropText({ op: 'note', task: 1 }), 'The comment isn\'t posted. Its text goes back into the comment box.');
-  assert.equal(a.actWhat({ op: 'note', task: 1, run: 5 }), 'A comment on “Unlock the door”');
-  assert.equal(a.actWhat({ op: 'doneNote', task: 1, run: 5 }), 'Marking “Unlock the door” done, with its comment');
+  const t = 'Unlock the door';
+  assert.equal(OP_WORDS.note.text({ op: 'note' }, t), 'A comment on “Unlock the door”');
+  assert.equal(OP_WORDS.doneNote.text({ op: 'doneNote' }, t), 'Done, with a comment: Unlock the door');
+  assert.equal(OP_WORDS.note.dropped({ op: 'note' }, t), 'The comment isn\'t posted. Its text goes back into the comment box.');
+  assert.equal(OP_WORDS.note.refused({ op: 'note' }, t), 'A comment on “Unlock the door”');
+  assert.equal(OP_WORDS.doneNote.refused({ op: 'doneNote' }, t), 'Marking “Unlock the door” done, with its comment');
 });
 
 test('dropping a finish or a reopen says what Vikunja has, also when only its first part was sent', () => {
-  const a = component(outbox, runs);
-  Object.assign(a, { pending: [], failed: [], view: { groups: [], run: null }, actTitle: () => 'Closing up' });
-  assert.deepEqual([0, 1].map(stage => a.dropText({ op: 'finish', task: 1, stage })),
+  assert.deepEqual([0, 1].map(stage => OP_WORDS.finish.dropped({ op: 'finish', stage }, 'Closing up')),
     ['The checklist stays open in Vikunja.', 'The checklist stays finished in Vikunja. The rest of the change is not sent.']);
-  assert.deepEqual([0, 1].map(stage => a.dropText({ op: 'reopen', task: 1, stage })),
+  assert.deepEqual([0, 1].map(stage => OP_WORDS.reopen.dropped({ op: 'reopen', stage }, 'Closing up')),
     ['The checklist stays finished in Vikunja.', 'The checklist stays open in Vikunja. The rest of the change is not sent.']);
 });
 

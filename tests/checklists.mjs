@@ -656,11 +656,11 @@ try {
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await until('the step was never unticked again', async () => !(await task(id)).done);
     const refuse = r => r.request().method() === 'POST' ? r.fulfill({ status: 403, contentType: 'application/json', body: '{}' }) : r.fallback();
-    await page.route('**/api/v2/tasks/*/reactions', refuse);
+    await page.route('**/v2/tasks/*/reactions', refuse);
     await toastGone().catch(() => {});
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await said('step', 'couldn\'t be saved in full (it\'s marked done)');
-    await page.unroute('**/api/v2/tasks/*/reactions', refuse);
+    await page.unroute('**/v2/tasks/*/reactions', refuse);
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done', { timeout: 15000 });
     if (!(await task(id)).done) throw new Error('the step is not done in Vikunja');
     // Pocket keeps the rejected change to retry, and the header shows a warning. An untick in the meantime waits behind it, so it can't arrive first.
@@ -1325,7 +1325,7 @@ try {
     const run = runs[runs.length - 1], id = (await runStep(run, 1)).id;
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v2/tasks/*/comments', lose);
+    await page.route('**/v2/tasks/*/comments', lose);
     await page.fill('#step-note', 'Said once');
     await page.click('#step-note-form button');
     await online();
@@ -1333,7 +1333,7 @@ try {
     await page.waitForSelector('#step-extra .comment:has-text("Said once"):not(:has-text("Waiting to send"))', { timeout: 20000 });
     const n = ((await task(id)).comments || []).filter(c => c.comment.includes('Said once')).length;
     if (n !== 1) throw new Error(n + ' copies of the note');
-    await page.unroute('**/api/v2/tasks/*/comments', lose);
+    await page.unroute('**/v2/tasks/*/comments', lose);
   });
 
   /* A photo waiting to upload to a checklist step has "Don't upload", as a photo waiting on a task has. Cancelling

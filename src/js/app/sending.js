@@ -2,12 +2,13 @@
 import {cache, raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {isSet, startOfDay} from '../dates.js';
-import {addedWhere, cancelName, doneText} from '../messages.js';
+import {addedWhere, cancelName, doneText, notKnown} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
+import {OPS} from '../ops/index.js';
 
 let waitTimer;
 const lastGroups = new Map();                    // each group as listGroups last returned it, by key
@@ -331,8 +332,10 @@ export default {
     } else if (failed.length) {
       // The message shows in the box the text went back to: quick add, or the subtask box in the task's sheet.
       this.say(`${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message}. Its text is back in the add box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
-    } else if (other.length) this.notify(`${other[0].error.what || 'A change made offline'} couldn't be sent: ${other[0].error.message}.` + (other[0].kept ? KEPT : this.wordsBack(other[0].error)));
-    else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
+    } else if (other.length) {
+      const e = other[0].error, what = e.what || 'A change made offline';
+      this.notify(e.code === 'unknown' ? notKnown(what) : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e)));
+    } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || failed.length || other.length) this.render();
   },
 
@@ -350,21 +353,20 @@ export default {
     this.keyWaiting();
     this.markSlow();
   },
-  /* What is waiting for each task, by task id (`waiting`): its last claim or unclaim, its last tick or untick, its last
-     progress, and how many photos and files wait to upload. Each key is written separately (intoKeys) when the outbox changes, so a row that reads its own
-     task's entry (peopleOf, rowMeta) redraws only when that entry changes. Without this, every row searched the
-     whole outbox whenever anything in it changed, and adding a task to a long list made every row search it twice. */
+  /* What is waiting for each task, by task id (`waiting`): what the last op waiting on it says it sets (its last claim
+     or unclaim, tick or untick, progress: each op's `waiting`), and how many photos and files wait to upload. Each key
+     is written separately (intoKeys) when the outbox changes, so a row that reads its own task's entry (peopleOf,
+     rowMeta) redraws only when that entry changes. Without this, every row searched the whole outbox whenever
+     anything in it changed, and adding a task to a long list made every row search it twice. */
   keyWaiting(){
-    const claims = {}, files = {}, ticks = {}, pcts = {};
+    const out = {claims: {}, files: {}, ticks: {}, pcts: {}};
     for (const e of this.pending) {
-      if (e.kind === 'act' && (e.op === 'claim' || e.op === 'unclaim')) claims[e.task] = e.op;
-      if (e.kind === 'act' && ['done', 'doneNote', 'skip', 'undone'].includes(e.op)) ticks[e.task] = e.op !== 'undone';
-      if (e.kind === 'act' && e.op === 'progress') pcts[e.task] = e.pct;
+      const w = e.kind === 'act' && OPS[e.op]?.waiting;
+      if (w) out[w.key][e.task] = w.value(e);
       const id = e.taskId || e.items?.[0]?.taskId;
-      if (id) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) files[id] = (files[id] || 0) + 1;
+      if (id) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) out.files[id] = (out.files[id] || 0) + 1;
     }
-    intoKeys(this.waiting.claims, claims, raw); intoKeys(this.waiting.files, files, raw);
-    intoKeys(this.waiting.ticks, ticks, raw); intoKeys(this.waiting.pcts, pcts, raw);
+    for (const k in out) intoKeys(this.waiting[k], out[k], raw);
   },
   // Decide which entries have waited long enough to look waiting (slowness), and schedule the next check for when
   // another entry will have. An entry that looks waiting keeps looking waiting until it is sent.

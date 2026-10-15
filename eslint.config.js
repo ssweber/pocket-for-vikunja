@@ -10,8 +10,11 @@ import globals from 'globals';
 // selectors that file is allowed. An allowed path ending in /** allows every file under it.
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
 // The files that still write to Vikunja directly, not through the outbox. Each phase removes the files it finishes.
+// The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
+// c.send, which no selector here matches yet.
 const WRITERS = ['src/js/api.js', 'src/js/sync.js', 'src/js/app/actions.js', 'src/js/app/asks.js', 'src/js/app/auth.js',
-  'src/js/app/checklists.js', 'src/js/app/runs.js', 'src/js/app/sending.js', 'src/js/app/sheet.js', 'src/js/app/views.js'];
+  'src/js/app/checklists.js', 'src/js/app/runs.js', 'src/js/app/sending.js', 'src/js/app/sheet.js', 'src/js/app/views.js',
+  'src/js/ops/**', 'src/js/app/acts.js'];
 const RESTRICTED = [
   { selector: 'Literal[value=/prefers-reduced-motion/]', message: 'Ask motion() in src/js/util.js whether things may move.', allow: ['src/js/util.js'] },
   { selector: "CallExpression[callee.name='addDays'][arguments.1.value=8]", message: "Ask dayGroup() in src/js/lists.js which of Today's groups a date is in, or use TODAY_DAYS.", allow: ['src/js/lists.js'] },

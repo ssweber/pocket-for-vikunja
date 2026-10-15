@@ -1,7 +1,8 @@
-// The outbox: everything waiting to go to Vikunja, kept on the phone, and the steps each kind of change is sent in.
-import {andList, app, ZERO} from './util.js';
-import {api, ApiError, passing, patchTask} from './api.js';
-import {copiedNotes, DONE_MARK, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, SKIP_MARK, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
+// The outbox: everything waiting to go to Vikunja, kept on the phone, and the steps a capture, a checklist's start or
+// an inserted step is sent in. The requests of every other change are its op's stages (src/js/ops/).
+import {app, ZERO} from './util.js';
+import {api, passing, patchTask} from './api.js';
+import {copiedNotes, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
 import {repeats} from './dates.js';
 import {removeAssignee} from './quickadd.js';
 
@@ -29,12 +30,14 @@ export const sync = {
 
   open(){
     return this.db ||= new Promise((ok, no) => {
-      const r = indexedDB.open('pocket', 2);
+      const r = indexedDB.open('pocket', 3);
+      // Version 3 changed the format of an entry. The upgrade starts every store empty, and keeps nothing older.
       r.onupgradeneeded = () => {
         const db = r.result;
-        if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
-        if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', {keyPath: 'id'});
-        if (!db.objectStoreNames.contains('claims')) db.createObjectStore('claims', {keyPath: 'id'});
+        for (const [name, how] of [['files'], ['outbox', {keyPath: 'id'}], ['claims', {keyPath: 'id'}]]) {
+          if (db.objectStoreNames.contains(name)) db.deleteObjectStore(name);
+          db.createObjectStore(name, how);
+        }
       };
       // A newer Pocket in another tab may need to upgrade the database. Closing it here keeps that tab from waiting.
       r.onsuccess = () => { r.result.onversionchange = () => r.result.close(); ok(r.result); };
@@ -53,26 +56,15 @@ export const sync = {
       try { out = fn(get); } catch (e) { try { t.abort(); } catch {} no(e); }
     });
   },
-  // Load the entries that are waiting. Entries an older Pocket kept in localStorage are moved into the database.
+  // Load the entries that are waiting, and the record of which task was added for which line.
   async start(){
-    const old = (() => { try { return JSON.parse(localStorage.getItem('pocket.outbox') || '[]'); } catch { return []; } })();
-    const oldClaims = (() => { try { return JSON.parse(localStorage.getItem('pocket.claims') || '[]'); } catch { return []; } })();
     try {
-      if (old.length || oldClaims.length) {
-        await this.tx(['outbox', 'claims'], 'readwrite', s => {
-          for (const e of old) s('outbox').put(e);
-          for (const [id, c] of oldClaims) s('claims').put({id, ...c});
-        });
-      }
-      localStorage.removeItem('pocket.outbox'); localStorage.removeItem('pocket.claims');
       await this.reload();
       const day = Date.now() - 86400000;
       const claims = await this.tx(['claims'], 'readonly', s => s('claims').getAll());
       for (const c of claims) if (c.at > day) this.claimed.set(c.id, c);
       this.tx(['claims'], 'readwrite', s => { for (const c of claims) if (c.at <= day) s('claims').delete(c.id); }).catch(() => {});
-    } catch {
-      for (const e of old) { this.entries.set(e.id, e); this.volatile.add(e.id); }   // no database, so they wait in memory
-    }
+    } catch {}
     this.channel?.addEventListener('message', async () => { await this.reload().catch(() => {}); app?.refreshPending(); });
   },
   // Reload the entries from the database, and keep those that exist in memory only.
@@ -423,11 +415,6 @@ export const INSERT_STEPS = [
   // A new step at 0% lowers the run's progress. The progress is written once the step is in the run.
   {name: 'figure', done: j => !!j.figured, async run(j){ await app.writeFigure(j.run); j.figured = true; }},
 ];
-/* Acts are the changes a user makes on a run's screen. Each act is one outbox entry, and acts are sent in the order
-   they were made. Each part of an act can safely be sent twice. Setting a task done twice has the same result,
-   Vikunja keeps one reaction per person and mark, a user is assigned once, and a note whose reply was lost is looked
-   for before it is posted again. Claiming a subtask or a step (assigning yourself) is sent the same way from
-   anywhere. */
 /* Whether a deletion can still be restored. In the tab that made it, that lasts until its rows or its message leave
    the screen (sync.held). In another tab, or after a reload, it lasts until `until`. */
 export const held = e => sync.held.has(e.id) || e.until > Date.now();
@@ -448,42 +435,3 @@ export function slowness(entries, now, offline){
 // The tasks with an act that Vikunja rejected. Later acts on those tasks wait, so an untick never arrives before its
 // tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
-/* Each act's parts, in order. `figure` comes last. A change to a run's step, or a deleted subtask, changes the
-   parent's progress. That progress is written in the same entry, so while offline it waits with the change. */
-export const ACTS = {progress: ['progress', 'figure'], done: ['done', 'mark', 'figure'], skip: ['done', 'markSkip', 'note', 'figure'], undone: ['undone', 'unmark', 'figure'], note: ['note'], answer: ['note'],
-  finish: ['done', 'mark'], reopen: ['undone', 'unmark'], doneNote: ['done', 'mark', 'note', 'figure'], claim: ['claim'], unclaim: ['unclaim'], delete: ['delete', 'figure'], position: ['position']};
-export const ACT_STEPS = {
-  done: a => patchTask(a.task, {done: true}),
-  undone: a => patchTask(a.task, {done: false}),
-  progress: a => patchTask(a.task, {percent_done: a.pct / 100}),
-  mark: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: DONE_MARK}}),
-  markSkip: a => api(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value: SKIP_MARK}}),
-  /* If another user claimed the task in the meantime, that user keeps it. This happens when two users tap at once, or
-     when a claim waited offline. Pocket checks before and after assigning. When two users claim at the same moment,
-     the one who signed up to Vikunja first (the lower id) keeps it, because both phones make the same choice. */
-  claim: async a => {
-    const others = async () => ((await api('/tasks/' + a.task)).assignees || []).filter(u => u.id !== a.user);
-    const taken = list => Object.assign(new ApiError(409, `${andList(list.map(u => u.name || u.username))} ${list.length === 1 ? 'was' : 'were'} assigned to it just now`), {drop: true});
-    const before = await others();
-    if (before.length) throw taken(before);
-    await api(`/tasks/${a.task}/assignees`, {method: 'POST', body: {user_id: a.user}}).catch(e => { if (e.code !== ALREADY.assignee) throw e; });
-    const after = (await others()).filter(u => u.id < a.user);
-    if (after.length) { await api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(() => {}); throw taken(after); }
-  },
-  unclaim: a => api(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }),
-  // Set a task's position in its project's List view (a.view). Sending it again writes the same position. Vikunja's
-  // reply has the position it kept (a.got). That differs from the one sent when Vikunja renumbered the view.
-  position: async a => { a.got = (await api(`/tasks/${a.task}/position`, {method: 'PUT', body: {project_view_id: a.view, position: a.pos}}))?.position; },
-  // Delete a task and its subtasks (a.ids, deepest first). A task already deleted by a cut-off try is not an error.
-  delete: async a => { for (const id of a.ids) await api('/tasks/' + id, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; }); },
-  /* Write the parent's progress, calculated from its subtasks as Vikunja has them now, and only if it changed. The
-     parent is the run after one of its steps (a.run), or the parent of a deleted subtask (a.up). Sending it again
-     writes the same progress. */
-  figure: a => { const up = a.up ?? (a.run && a.task !== a.run ? a.run : null); return up ? app.writeFigure(up) : null; },
-  unmark: async a => { for (const value of [DONE_MARK, SKIP_MARK]) await api(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); },
-  note: async (a, save) => {
-    if (a.tried && await app.findNote(a.task, a.html, a.triedAt, a.at)) return;
-    a.tried = true; a.triedAt = Date.now(); await save();
-    await api(`/tasks/${a.task}/comments`, {method: 'POST', body: {comment: a.html}});
-  },
-};

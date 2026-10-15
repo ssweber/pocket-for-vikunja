@@ -1,8 +1,8 @@
 // The waiting-to-send button and sheet, including rejected changes that can be retried or dropped.
 import {cache, fmtSize} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
-import {htmlToText} from '../html.js';
-import {isChild, itemDone, sendState, sync, underOf} from '../sync.js';
+import {isChild, itemDone, sendState, sync, underOf, uuid7} from '../sync.js';
+import {OPS} from '../ops/index.js';
 
 const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 const whenText = at => {
@@ -25,8 +25,8 @@ export default {
         const text = e.cancelled ? `Removing ${quoted(e.title)}, because its insert was cancelled` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
         rows.push({key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id]});
       } else if (e.kind === 'act') {
-        rows.push({key: e.id, text: this.actText(e), when, failed: e.failed?.message || '', retry: !!e.failed,
-          drop: e.failed || (!e.stage && !e.tried) ? ['dropAct', e.id] : null});
+        rows.push({key: e.id, text: OPS[e.op].text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed: e.failed?.message || '', retry: !!e.failed,
+          drop: e.failed || !e.sent ? ['dropAct', e.id] : null});
       } else {
         e.items.forEach((x, i) => {
           if (itemDone(x, isChild(e, i))) return;
@@ -64,15 +64,6 @@ export default {
     if (this.pending.length && this.offline) { this.say('Still offline. Your changes are saved and go to Vikunja when you\'re back online.', {place: 'sheet:top', cls: 'failed'}); return; }
     this.refresh();
   },
-  /* Describe an action on a checklist that is waiting to be sent, including the reason for a skip and whether the
-     step was repeated. */
-  actText(a){
-    const t = parseStep(a.label || this.actTitle(a.task) || 'a step').title + (this.isRepeat(a.task) ? ' (repeated)' : '');
-    const why = a.op === 'skip' && htmlToText(a.html || '').replace(/^Skipped:?\s*/, '').trim();
-    return {done: `Done: ${t}`, doneNote: `Done, with a comment: ${t}`, skip: `Skipped: ${t}` + (why ? ` (${why})` : ''), undone: `Not done: ${t}`, note: `A comment on “${t}”`,
-      progress: `Progress: ${a.pct}% on “${t}”`, finish: `Finishing “${t}”`, reopen: `Reopening “${t}”`, claim: `Assigning “${t}” to you`, unclaim: `Unassigning you from “${t}”`,
-      delete: `Deleting “${t}”` + (a.ids?.length > 1 ? `, with ${a.ids.length - 1} subtask${a.ids.length === 2 ? '' : 's'}` : ''), position: `Moving “${t}” in its list`}[a.op] || t;
-  },
   // Whether a step was repeated during its checklist, as last loaded.
   isRepeat(id){
     if (typeof id === 'string') return !!this.pending.find(e => 'pending-' + e.id === id && (e.from || e.tpl != null));
@@ -84,22 +75,14 @@ export default {
     if (typeof id === 'string') return this.pending.find(e => 'pending-' + e.id === id)?.title || '';   // a step still being inserted
     return cache.get(id)?.title || r?.steps.find(x => x.id === id)?.title || (r?.run.id === id ? r.run.title : '') || '';
   },
-  // Explain what dropping this action leaves in Vikunja before asking for confirmation.
-  dropText(a){
-    const t = quoted(a.label || this.actTitle(a.task) || 'it'), part = a.stage > 0;
-    return {done: part ? `${t} stays marked done in Vikunja. The rest of the change is not sent.` : `${t} stays not done in Vikunja.`,
-      undone: part ? `${t} stays not done in Vikunja. The rest of the change is not sent.` : `${t} stays done in Vikunja.`,
-      finish: part ? 'The checklist stays finished in Vikunja. The rest of the change is not sent.' : 'The checklist stays open in Vikunja.',
-      reopen: part ? 'The checklist stays open in Vikunja. The rest of the change is not sent.' : 'The checklist stays finished in Vikunja.',
-      claim: `You are not assigned to ${t}.`, unclaim: `${t} stays assigned to you.`, progress: `${t} keeps the progress it has in Vikunja.`,
-      note: 'The comment isn\'t posted. Its text goes back into the comment box.', delete: `${t} stays in Vikunja.`, position: `${t} stays where it was in Vikunja's list.`}[{doneNote: 'done', skip: 'done'}[a.op] || a.op] || '';
-  },
-  // Retry a rejected action before sending the actions queued behind it.
+  /* Retry a rejected action before sending the actions queued behind it. It goes with a new key, because the relay
+     would answer the old one with the refusal it stored. After Idempotency-Unknown, tapping Try again is the user
+     saying the change wasn't made. Bodies built from a read are built again, from Vikunja's copy as it is now. */
   async retryAct(id){
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e?.failed) return;
-      delete e.failed; e.fails = 0;
+      delete e.failed; delete e.fixed; e.fails = 0; e.key = uuid7();
       await sync.save(e);
     });
     this.refreshPending();
@@ -108,12 +91,12 @@ export default {
   // Drop an action, but only before sending starts or after it was rejected. Any text it held goes back to its draft.
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
-    if (!a || !confirm(`Don't send it? ${this.dropText(a)}`)) return;
+    if (!a || !confirm(`Don't send it? ${OPS[a.op].dropped(a, a.label || this.actTitle(a.task))}`)) return;
     let gone = false, started = false;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
-      if (!e.failed && (e.stage || e.tried)) { started = true; return; }
+      if (!e.failed && e.sent) { started = true; return; }
       await sync.remove(id);
     });
     this.refreshPending();

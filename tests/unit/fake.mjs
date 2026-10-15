@@ -4,19 +4,31 @@ import './browser.mjs';
 import { setApp, cache } from '../../src/js/util.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
+import { uuid7 } from '../../src/js/sync.js';
+import { stageContext } from '../../src/js/app/acts.js';
+import { OPS } from '../../src/js/ops/index.js';
 
-const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+const reply = (body, status = 200, more = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...more } });
+const lost = () => new TypeError('network error');
 
 /* The fake keeps tasks by id and behaves as Vikunja does. GET, PATCH and DELETE /tasks/:id read and change a task. A
    repeating task marked done moves to its next date instead (vikunjaNext, which is where Pocket expects Vikunja to
    move it). A task that is read lists its current subtasks, without any that were deleted (related_tasks).
    POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
    another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does.
-   GET /tasks?q= finds a task by its title, which the outbox uses for a line (LINE_STEPS). Every request is recorded in
-   `requests`. `trouble(request)` makes a request fail: 'offline' (it never reaches Vikunja), 'lost' (it reaches Vikunja
-   but the reply is lost on the way back), or an HTTP status to answer with. */
+   GET /tasks?q= finds a task by its title, which the outbox uses for a line (LINE_STEPS). A task's comments, assignees
+   and position can be added to, and an assignee removed.
+
+   A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
+   /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
+   with Idempotent-Replayed, and changes nothing. With a different request it gets 422.
+
+   Every request is recorded in `requests`, with its `key`, and `replayed` when the relay answered it from what it
+   kept. `trouble(request)` makes a request fail: 'offline' (it never reaches Vikunja), 'lost' (it reaches Vikunja but
+   the reply is lost on the way back), 'unknown' (the relay's 409 with Idempotency-Unknown), or an HTTP status to
+   answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them. */
 export function fakeVikunja(tasks = []){
-  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), requests: [], trouble: () => null }, gone = new Set();
+  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), requests: [], relayed: new Map(), trouble: () => null }, gone = new Set();
   const withSubtasks = t => {
     const subs = t.related_tasks?.subtask;
     if (!subs) return t;
@@ -24,17 +36,43 @@ export function fakeVikunja(tasks = []){
     return t;
   };
   v.task = id => v.tasks.get(id);
-  globalThis.fetch = async (url, { method = 'GET', body } = {}) => {
-    const req = { method, path: new URL(url).pathname.replace(/^\/api\/v2/, ''), body: body ? JSON.parse(body) : undefined };
+  globalThis.fetch = async (url, { method = 'GET', headers = {}, body } = {}) => {
+    const key = headers['Idempotency-Key']?.replace(/^"|"$/g, '');
+    const req = { method, path: new URL(url).pathname.replace(/^\/api\/(v2|v1\/plugins\/pocket\/v2)/, ''), body: body ? JSON.parse(body) : undefined, key };
     v.requests.push(req);
     const trouble = v.trouble(req);
     if (trouble === 'offline') throw new TypeError('Failed to fetch');
+    if (trouble === 'unknown') return reply({ message: 'the first request with this Idempotency-Key never finished' }, 409, { 'Idempotency-Unknown': 'true' });
     if (typeof trouble === 'number') return reply({ message: `HTTP ${trouble} from the fake` }, trouble);
+    const fp = `${method} ${req.path}\n${body ?? ''}`, kept = key && v.relayed.get(key);
+    if (kept && kept.fp !== fp) return reply({ message: 'this Idempotency-Key was used for a different request' }, 422);
+    if (kept) {
+      req.replayed = true;
+      if (trouble === 'lost') throw lost();
+      return new Response(kept.text, { status: kept.status, headers: { 'Content-Type': 'application/json', 'Idempotent-Replayed': 'true' } });
+    }
     const id = +(req.path.match(/^\/tasks\/(\d+)$/) || [])[1], t = v.tasks.get(id);
     const into = +(req.path.match(/^\/projects\/(\d+)\/tasks$/) || [])[1], over = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/relations$/) || [])[1]);
     const cut = req.path.match(/^\/tasks\/(\d+)\/relations\/(\w+)\/(\d+)$/), react = req.path.match(/^\/tasks\/(\d+)\/reactions(\/delete)?$/);
+    const talk = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/comments$/) || [])[1]), placed = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/position$/) || [])[1]);
+    const who = req.path.match(/^\/tasks\/(\d+)\/assignees(?:\/(\d+))?$/), people = who && v.tasks.get(+who[1]);
     let res;
-    if (into && method === 'POST') {
+    if (talk && method === 'POST') {
+      const c = { id: 1000 + v.requests.length, comment: req.body.comment, author: { id: 1, username: 'me' }, created: new Date().toISOString() };
+      (talk.comments ||= []).push(c);
+      res = reply(c);
+    } else if (placed && method === 'PUT') {
+      placed.position = req.body.position;
+      res = reply({ task_id: placed.id, project_view_id: req.body.project_view_id, position: req.body.position });
+    } else if (people && method === 'POST') {
+      const uid = req.body.user_id, list = people.assignees ||= [];
+      if (list.some(u => u.id === uid)) res = reply({ code: 4021, message: 'This user is already assigned to that task.' }, 400);
+      else { list.push({ id: uid, username: 'user' + uid }); res = reply(req.body); }
+    } else if (people && method === 'DELETE') {
+      const list = people.assignees || [];
+      if (!list.some(u => u.id === +who[2])) res = reply({ message: 'This user is not assigned to that task.' }, 404);
+      else { people.assignees = list.filter(u => u.id !== +who[2]); res = reply({ message: 'Successfully deleted.' }); }
+    } else if (into && method === 'POST') {
       const made = { id: Math.max(100, ...v.tasks.keys()) + 1, done: false, percent_done: 0, due_date: '0001-01-01T00:00:00Z', ...req.body, project_id: into,
         created: new Date().toISOString(), created_by: { id: 1 }, related_tasks: {} };
       v.tasks.set(made.id, made);
@@ -64,7 +102,8 @@ export function fakeVikunja(tasks = []){
       Object.assign(t, req.body, next ? { done: false, due_date: new Date(next).toISOString() } : {}, { updated: new Date().toISOString() });
       res = reply(t);
     } else res = reply({ message: `the fake has no ${method} ${req.path}` }, 405);
-    if (trouble === 'lost') throw new TypeError('network error');
+    if (key && res.status < 500) v.relayed.set(key, { fp, status: res.status, text: await res.clone().text() });
+    if (trouble === 'lost') throw lost();
     return res;
   };
   return v;
@@ -91,4 +130,10 @@ export function component(...parts){
   cache.clear();
   setApp(c);
   return c;
+}
+
+// Send an op's stages one after another, as app/acts.js does, without the outbox around them.
+export async function sendStages(app, a){
+  a.id ||= uuid7();
+  for (a.stage = 0; a.stage < OPS[a.op].stages.length; a.stage++) await OPS[a.op].stages[a.stage](a, stageContext(a, app).start());
 }
