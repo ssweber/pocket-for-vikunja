@@ -772,9 +772,11 @@ bisected. The user checks the phone once, after 4d.
 - **4b. One writer.** `show`, `edit`, every direct field write moved, and the late-read rule. `readTask`, `saving`,
   `pendingSaves` and `keep`'s callers go. The store rule is on, except for `this.sheet.task` and `this.view.run`.
   Measure rule 10.
-- **4c. Ops through `apply`.** An op's answer, the grown `apply`s, and `workOutRun`'s overlay, `applyAct` and
-  `SHOWN_OWN_WAY` gone, and deletes shown by the store. This fixes the dropped tick that stays ticked. Measure rule 10.
-- **4d. By id.** The sheet and a checklist's screen. The store rule is on in full.
+- **4c. By id.** The sheet and a checklist's screen. The store rule is on in full. This comes before the ops, because
+  `workOutRun`'s overlay can't go while a checklist's screen holds its own copies.
+- **4d. Ops through `apply`.** An op's answer, the grown `apply`s, and `workOutRun`'s overlay, `applyAct`,
+  `SHOWN_OWN_WAY` and 4b's edits that wait on an op (`until`) gone, and deletes shown by the store. This fixes the
+  dropped tick that stays ticked on a checklist's screen. Measure rule 10.
 
 ### Tests
 
