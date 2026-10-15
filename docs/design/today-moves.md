@@ -1,55 +1,9 @@
 # Moving tasks on Today
 
-Two changes to how a task moves to another date on Today. Both were discussed and decided. Read `AGENTS.md`,
-`docs/development.md` and `docs/design-rules.md` first. Delete this file once both are built.
+A change to how a task moves to another date on Today. It was discussed and decided. Read `AGENTS.md`,
+`docs/development.md` and `docs/design-rules.md` first. Delete this file once it is built.
 
-## 1. A past time moves to today with no time
-
-### The problem
-
-Move all to today, and holding a row and throwing it to Today, both pick the new date with `movedDue` (dates.js). A
-time still to come today is kept. A time already past becomes the next whole hour, or 11:59 PM in the last hour of the
-day. So a task moved at 2:20 PM is due at 3:00 PM, and is late again at 3:01. Reopen Pocket after that, and the rows
-show as late and return to Overdue. To the user, Move all looks like it didn't work.
-
-### The decision
-
-A task whose time today has already passed becomes **due today with no time**. Pocket stores that as midnight, shows
-it with no time, and treats it as due all day (`isLate` only counts it late once the day is over). A time still to
-come today is kept, as now. Moves to any other day are unchanged.
-
-The cost, accepted: a reminder that counts from the due time (the 🔔 chip, or a step's timer) now points at midnight,
-which has passed, so it doesn't go off today.
-
-### The change
-
-- **`movedDue` in `src/js/dates.js`:** when the time on `day` has passed at `now`, return `startOfDay(day)`. Remove the
-  next-hour and 11:59 PM branches. Replace the comment above it with the reason: a past time would make the task late
-  again within the hour.
-- **The comment on `throwTargets` in `src/js/throw.js`** says "a time that has already passed becomes the next whole
-  hour". Change it to say the task becomes due today with no time.
-- **The Today chip's `dim`** stays correct. A task already due today with no time gets the same date back, so its
-  Today chip is dimmed, as for any move that changes nothing.
-
-### Tests
-
-In `tests/unit/dates.test.mjs`, the test named "a due date moved to another day keeps its time of day, and a time
-already past today becomes the next whole hour" changes:
-
-- Rename it to say a time already past today becomes today with no time.
-- A task due at 9 AM, moved to today at 2:20 PM, is due today at midnight (it was 3 PM).
-- A task due at 9 AM, moved to today at 11:10 PM, is due today at midnight (it was 11:59 PM).
-- The cases for another day, no time, no date, and a time still to come stay as they are.
-- Add: the moved date is not late at 11:59 PM that day (`isLate`).
-
-Run `tests/unit/throw.test.mjs` and the Move all tests in `tests/unit/actions.test.mjs`, and update any expectation
-that assumed the next whole hour.
-
-### When
-
-Now. It touches one function and its tests, and nothing in `single-code-paths.md` changes it.
-
-## 2. The Undo stays where the row left
+## The Undo stays where the row left
 
 ### The problem
 
@@ -132,8 +86,8 @@ After phase 5 of `single-code-paths.md`. That phase turns `reschedule`'s save an
 |---|---|
 | Does the outbox prune a quick tick and untick? Are reschedules batched? | `single-code-paths.md` part 1: pruning. Move all stays one op per task. |
 | Does adding a task with `x` add the ✅? | `single-code-paths.md` part 1: one tick op, used by quick add too |
-| Move all is unreliable | Part 1 of this file (the time), and `single-code-paths.md` part 1 (dates go through the outbox) |
-| The Undo shows at the destination | Part 2 of this file |
+| Move all is unreliable | `movedDue` (dates.js) gives a task whose time has passed today no time, and `single-code-paths.md` part 1 (dates go through the outbox) |
+| The Undo shows at the destination | This file |
 | Lost replies, and searching after the fact | `single-code-paths.md` part 0, the keyed relay, and `upstream-idempotency-key.md` |
 | Inconsistent Undo, task kinds, Today's groups, inline messages | `single-code-paths.md` parts 2 to 5 |
 | API-token sign-in, and outbox entries from an older Pocket | Deleted, `single-code-paths.md` part 6 and part 1 |

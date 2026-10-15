@@ -50,14 +50,11 @@ export function shortDue(due, now = new Date(), {underToday = false} = {}){
 export const toLocalInput = iso => { if (!isSet(iso)) return ''; const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 export const fromLocalInput = v => v ? new Date(v).toISOString() : ZERO;
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
-/* The due date for a task moved to `day`. It keeps its time of day, or has no time if it had none. If that time on
-   `day` has already passed, the due date is the next whole hour instead, or 11:59 PM in the day's last hour. That way
-   the task isn't late again at once. */
+/* The due date for a task moved to `day`. It keeps its time of day, or has no time if it had none. A time on `day`
+   that has already passed becomes no time, so the task is due all day. A later time would make it late again within
+   the hour. */
 export function movedDue(due, day, now = new Date()){
   const d = isSet(due) ? new Date(due) : startOfDay(day);
   d.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());
-  if (!isLate(d.toISOString(), now)) return d.toISOString();
-  const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
-  if (next.getDate() !== now.getDate()) next.setTime(new Date(now).setHours(23, 59, 0, 0));
-  return next.toISOString();
+  return (isLate(d.toISOString(), now) ? startOfDay(day) : d).toISOString();
 }

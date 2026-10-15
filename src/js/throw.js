@@ -42,7 +42,7 @@ export const nextWeekday = (today, w) => addDays(today, ((w - today.getDay()) % 
 /* THROW.targets for a task due `due` (an ISO date, or none) at `now`. Each target gets:
    - `day`: a Date, or null for No date.
    - `due`: the task's new due date, which keeps its time of day. For today, a time that has already passed becomes
-     the next whole hour.
+     no time, so the task is due all day.
    - `date`: "Mon 12", or '' for No date.
    - `label`: the text shown once the task has moved there ("Today", "Tomorrow" or the date), or null for No date.
    - `dim`: true when moving there would leave the date as it is. */

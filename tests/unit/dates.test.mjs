@@ -101,14 +101,15 @@ test('a task repeats if it repeats after an interval or every month', () => {
   assert.equal(repeats({ repeat_after: 0, repeat_mode: 0 }), false);
 });
 
-test('a due date moved to another day keeps its time of day, and a time already past today becomes the next whole hour', () => {
+test('a due date moved to another day keeps its time of day, and a time already past today becomes today with no time', () => {
   const now = new Date(2026, 9, 7, 14, 20), at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString(), fri = new Date(2026, 9, 9);
   assert.equal(movedDue(at(7, 16), fri, now), at(9, 16), 'the task is due on Friday at 4 PM, the same time as before');
   assert.equal(movedDue(at(5, 0), fri, now), at(9, 0), 'a task with no time has no time on Friday either');
   assert.equal(movedDue('0001-01-01T00:00:00Z', fri, now), at(9, 0), 'a task with no date is due on Friday with no time');
-  assert.equal(movedDue(at(5, 9), now, now), at(7, 15), 'moved to today with its time already past, it becomes the next whole hour');
+  assert.equal(movedDue(at(5, 9), now, now), at(7, 0), 'moved to today with its time already past, it is due today with no time');
   assert.equal(movedDue(at(5, 18, 30), now, now), at(7, 18, 30), 'moved to today with its time still to come, it keeps that time');
   assert.equal(movedDue(at(5, 0), now, now), at(7, 0), 'moved to today with no time, it is due today and not late');
   const late = new Date(2026, 9, 7, 23, 10);
-  assert.equal(movedDue(at(5, 9), late, late), at(7, 23, 59), 'in the last hour of the day, the new time is 11:59 PM');
+  assert.equal(movedDue(at(5, 9), late, late), at(7, 0), 'in the last hour of the day, it is due today with no time too');
+  assert.equal(isLate(movedDue(at(5, 9), now, now), new Date(2026, 9, 7, 23, 59)), false, 'the moved task is not late at 11:59 PM that day');
 });

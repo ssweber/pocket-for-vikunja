@@ -307,11 +307,9 @@ try {
     await noToast(page);
     if (new Date((await (await api('/tasks/' + daily.id)).json()).due_date).getTime() !== due.getTime()) throw new Error('the repeating task was moved');
     await api('/tasks/' + daily.id, { method: 'DELETE' });
-    // The task keeps its 9:00 time. If 9:00 has already passed today, it gets the next whole hour (11:59 PM in the day's last hour).
-    const now = new Date(), want = new Date(); want.setHours(9, 0, 0, 0);
-    const next = new Date(now); next.setHours(now.getHours() + 1, 0, 0, 0);
-    if (next.getDate() !== now.getDate()) next.setTime(new Date(now).setHours(23, 59, 0, 0));
-    if (want < now) want.setTime(next.getTime());
+    // The task keeps its 9:00 time. If 9:00 has already passed today, it is due today with no time.
+    const want = new Date(); want.setHours(9, 0, 0, 0);
+    if (want < new Date()) want.setHours(0, 0, 0, 0);
     const moved = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (moved.getTime() !== want.getTime()) throw new Error('moved to ' + moved);
     await placeLine(page, 'overdue').getByRole('button', { name: 'Undo' }).click();
@@ -2179,12 +2177,13 @@ try {
       await movedLine('Removed its due date').getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(c), c.due_date)) throw new Error('Undo of No date left the task due ' + await due(c));
-      // Left, on an overdue task, moves it to today. Its time has already passed, so it gets a later time today.
+      // Left, on an overdue task, moves it to today at 9:00. If 9:00 has already passed today, it is due today with no time.
       await flickOnToday(L, -50, 2, 'today');
       await expect(movedLine('Moved to today')).toBeVisible();
       await synced(page);
-      const moved = new Date(await due(late));
-      if (moved.toDateString() !== new Date().toDateString() || moved <= new Date()) throw new Error('after moving left: ' + moved.toISOString());
+      const moved = new Date(await due(late)), want = new Date(dayAt(0, 9));
+      if (want < new Date()) want.setHours(0, 0, 0, 0);
+      if (moved.getTime() !== want.getTime()) throw new Error('after moving left: ' + moved.toISOString());
       // A flick is released before 24px with no chip highlighted, but while moving fast. It counts by its direction.
       const from = await holdOnToday(C);
       await page.mouse.move(from.x + 18, from.y);

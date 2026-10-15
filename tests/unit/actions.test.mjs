@@ -360,7 +360,7 @@ test('deleting a task and its subtasks skips one already deleted, and stops at a
   assert.ok(!app.tasks[1] && !app.tasks[2] && app.tasks[3]);
 });
 
-test('Move all to today moves each overdue task to today at its time, or the next hour if that time has passed', async t => {
+test('Move all to today moves each overdue task to today at its time, or with no time if that time has passed', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
   const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
   const v = fakeVikunja([
@@ -372,7 +372,7 @@ test('Move all to today moves each overdue task to today at its time, or the nex
   app.view.groups = [{ key: 'overdue', tasks: [1, 2, 3].map(id => app.keep(v.task(id))) }];
   assert.equal(app.overdueMovable, true);
   await app.moveOverdueToToday();
-  assert.equal(v.task(1).due_date, at(7, 15), 'a time that has passed today moves to the next whole hour');
+  assert.equal(v.task(1).due_date, at(7, 0), 'a time that has passed today becomes today with no time');
   assert.equal(v.task(2).due_date, at(7, 18, 30));
   assert.equal(v.task(3).due_date, at(6, 8), 'a repeating task stays where it is');
   assert.equal(app.toasts.at(-1).msg, 'Moved 2 to today. 1 repeating task stays. Tick it to move it to its next date.');
@@ -610,7 +610,7 @@ test('moving a row to a new date keeps its time of day, moves it at once, and sh
   assert.deepEqual(said(app), ['Moved to Fri 9', 'Undo', 1, 'cap'], 'the message with Undo appears on the row, in its new position');
   assert.equal(app.toast.row.stays, true, 'the row returns once the message goes');
   await moveTo(app, app.tasks[2], new Date(), 'Today');
-  assert.deepEqual([v.task(2).due_date, key(2)], [at(7, 15), 'today'], 'an overdue task moves to today at the next whole hour, because its time has passed');
+  assert.deepEqual([v.task(2).due_date, key(2)], [at(7, 0), 'today'], 'an overdue task moves to today with no time, because its time has passed');
   assert.deepEqual(said(app), ['Moved to today', 'Undo', 2, 'cap']);
   await moveTo(app, app.tasks[3], new Date(), 'Today');
   assert.deepEqual([v.task(3).due_date, key(3)], [at(7, 0), 'today'], 'a task with no date moves to today with no time');
@@ -638,9 +638,9 @@ test('every date changed by a hold has an Undo that restores the date and time t
   await app.toast.action.fn();
   assert.deepEqual([v.task(1).due_date, key(1), app.flashed.arrived], [at(7, 16), 'today', [1]], 'the task is back today at 4 PM and highlighted where it was');
   await moveTo(app, app.tasks[2], new Date(), 'Today');
-  assert.equal(v.task(2).due_date, at(7, 15), 'a time that has passed moves to the next whole hour');
+  assert.equal(v.task(2).due_date, at(7, 0), 'a time that has passed becomes today with no time');
   await app.toast.action.fn();
-  assert.deepEqual([v.task(2).due_date, key(2)], [at(6, 9), 'overdue'], 'Undo makes the task overdue again at its old time, not at the hour it was given');
+  assert.deepEqual([v.task(2).due_date, key(2)], [at(6, 9), 'overdue'], 'Undo makes the task overdue again at its old time');
   await moveTo(app, app.tasks[1], null, null);
   assert.deepEqual([v.task(1).due_date, shown(1)], [ZERO, false], 'No date takes the task off Today');
   await app.toast.action.fn();

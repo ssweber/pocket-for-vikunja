@@ -28,13 +28,13 @@ test('left is Today, right is Tomorrow, up is next Monday and down is No date, o
   assert.equal(throwTargets(iso(9, 9), on(12, 23, 30)).find(t => t.id === 'week').date, 'Mon 19', 'on a late Monday, up is next Monday and never today');
 });
 
-test('a date that would change nothing is dimmed, the time of day is kept, and a time already past today becomes the next whole hour', () => {
+test('a date that would change nothing is dimmed, the time of day is kept, and a time already past today becomes no time', () => {
   const now = on(12, 14, 20), by = (due, id, at = now) => throwTargets(due, at).find(t => t.id === id);
   assert.equal(by(iso(12, 16), 'today').dim, true, 'for a task due later today, Today is dimmed but still shown');
   assert.equal(by(iso(12, 16), 'tomorrow').dim, false);
   assert.equal(by(iso(12, 16), 'tomorrow').due, iso(13, 16), 'tomorrow at 4 PM');
   assert.equal(by(iso(12, 9), 'today').dim, false, 'for a task due this morning that has passed, Today is not dimmed and moves it on');
-  assert.equal(by(iso(12, 9), 'today').due, iso(12, 15), 'the new time is the next whole hour');
+  assert.equal(by(iso(12, 9), 'today').due, iso(12, 0), 'the task is due today with no time');
   assert.equal(by(iso(9, 9), 'week').due, iso(19, 9), 'a task overdue since Friday moves to next Monday at 9 AM');
   assert.equal(by(iso(19, 0), 'week').dim, true, 'for a task due next Monday, Next week is dimmed');
   assert.equal(by(iso(12, 0), 'today').dim, true, 'for a task due today with no time, Today is dimmed');
@@ -116,7 +116,7 @@ test('a day picked in the phone\'s date picker keeps the task\'s time of day and
   assert.deepEqual(pick(iso(12, 0), '2026-11-03'), [new Date(2026, 10, 3).toISOString(), day(3, 10), false], 'a task with no time keeps no time');
   assert.deepEqual(pick(ZERO, '2026-10-22'), [iso(22, 0), day(22), false], 'a task with no date gets that day with no time');
   assert.deepEqual(pick(iso(12, 16), '2026-10-13'), [iso(13, 16), 'Tomorrow', false], 'tomorrow is labelled "Tomorrow"');
-  assert.deepEqual(pick(iso(9, 9), '2026-10-12'), [iso(12, 15), 'Today', false], 'today with its time already past becomes the next whole hour');
+  assert.deepEqual(pick(iso(9, 9), '2026-10-12'), [iso(12, 0), 'Today', false], 'today with its time already past becomes today with no time');
   assert.deepEqual(pick(iso(22, 16), '2026-10-22'), [iso(22, 16), day(22), true], 'the task\'s current day is dimmed');
   assert.equal(throwDate(iso(12, 16), '2027-01-04', now).label, new Date(2027, 0, 4).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }), 'a date in another year shows the year');
   assert.deepEqual([pick(iso(12, 16), '2026-10-11'), pick(iso(12, 16), ''), pick(iso(12, 16), 'soon')], [null, null, null], 'a past day, an empty value or an invalid value picks nothing');

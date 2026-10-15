@@ -477,6 +477,5 @@ checks that Vikunja changed once.
 
 ## Out of scope
 
-Two changes to what the user sees came up alongside this plan: the Undo gap where a moved row was, and the time Move
-all gives a task whose time today has passed. Both are decided and written up in `docs/design/today-moves.md`. The
-time fix can be built at any point. The gap is built after phase 5.
+A change to what the user sees came up alongside this plan: the Undo gap where a moved row was. It is decided and
+written up in `docs/design/today-moves.md`, and is built after phase 5.
