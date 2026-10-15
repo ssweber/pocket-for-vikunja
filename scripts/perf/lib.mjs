@@ -35,6 +35,12 @@ export async function proxyUp(profile){
   await new Promise(ok => proxy.stdout.once('data', ok));
   return { stop: () => proxy.kill(), stats: async () => (await fetch(PX + '/__stats')).json(), reset: () => fetch(PX + '/__reset') };
 }
+// Sign Pocket in as user perf, whom up.mjs creates.
+export async function signIn(page){
+  await page.getByLabel('Username or email').fill('perf');
+  await page.getByLabel('Password', { exact: true }).fill('perf-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+}
 // Call Vikunja directly as user perf, to restore what a measurement changed.
 export async function vikunja(method, path, body){
   const state = readState();
@@ -150,10 +156,7 @@ export async function phone(profile, { counting = false } = {}){
     if (first) {
       first = false;
       await page.locator('#auth-step').waitFor();
-      const tab = page.getByRole('button', { name: 'API token', exact: true });
-      if (await tab.isVisible()) await tab.click();
-      await page.getByLabel('API token').fill(state.token);
-      await page.getByRole('button', { name: 'Connect' }).click();
+      await signIn(page);
     }
     await page.locator('#app').waitFor();
     return { page, cdp };

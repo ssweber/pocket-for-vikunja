@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { arg, HERE, OUT, PROFILES } from './lib.mjs';
+import { arg, HERE, OUT, PROFILES, signIn } from './lib.mjs';
 
 const NAME = arg('profile', 'fast'), PROFILE = PROFILES[NAME], RUNS = +arg('runs', 3);
 if (!PROFILE) throw new Error('--profile ' + Object.keys(PROFILES).join(', '));
@@ -57,11 +57,8 @@ const quiet = ms => new Promise(r => setTimeout(r, ms));
 // Sign in once and open Big once, so Pocket saves and preloads it, then let the background loads finish.
 let page = await slowPage();
 await page.goto(APP);
-const tab = page.getByRole('button', { name: 'API token', exact: true });
 await page.locator('#auth-step').waitFor();
-if (await tab.isVisible()) await tab.click();
-await page.getByLabel('API token').fill(state.token);
-await page.getByRole('button', { name: 'Connect' }).click();
+await signIn(page);
 await page.locator('#app').waitFor();
 await page.evaluate(() => window.__perf.start());
 await settle(page);

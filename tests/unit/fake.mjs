@@ -3,6 +3,7 @@
 import './browser.mjs';
 import { setApp, cache } from '../../src/js/util.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
+import { setSeenToken, sharedToken } from '../../src/js/api.js';
 
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -72,11 +73,12 @@ export function fakeVikunja(tasks = []){
 /* A fake component made from the parts of the app that are passed in (their methods, as component.js combines them).
    The rest of the app is stubbed. Messages are recorded in `toasts`, with the `row` and `place` each was shown at.
    There is no screen, so these are just the values the caller asked for. No task counts as a checklist. Rows marked
-   done or deleted (leaving.js) are in `leaving`, when that part is passed in. The component is signed in with an API
-   token, so a change is not checked against the shared session first. */
+   done or deleted (leaving.js) are in `leaving`, when that part is passed in. The component is signed in with the
+   shared session's token, already confirmed as the user's, so a change is sent without asking Vikunja who it is. */
 export function component(...parts){
+  sharedToken.set('tk_test'); setSeenToken('tk_test');
   const c = {
-    server: 'http://vikunja.test', mode: 'token', token: 'tk_test', signedIn: true, offline: false, writing: 0,
+    server: 'http://vikunja.test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { task: null }, route: { name: 'today' }, toasts: [], leaving: {},
     waiting: { claims: {}, files: {}, ticks: {}, pcts: {} }, slideClaim: {}, dropping: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },

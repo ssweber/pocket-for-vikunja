@@ -12,20 +12,18 @@ export default {
   get providers(){ const o = this.info?.auth?.openid_connect; return o?.enabled ? o.providers || [] : []; },
   // Follow the shared session: adopt a token that appeared (a sign-in finished), and sign out when Vikunja did.
   sessionChanged(){
-    if (this.mode === 'token' && this.signedIn) return;                     // an API token doesn't follow Vikunja's sign-in
     const t = sharedToken.get();
     if (t && !this.signedIn) {
-      this.mode = 'session'; store.set('mode', 'session');
       try { this.ssoWindow?.close(); } catch {}
       this.ssoWindow = null; this.login.waiting = false;
       this.boot();
-    } else if (!t && this.signedIn && this.mode === 'session') {
+    } else if (!t && this.signedIn) {
       // Vikunja can clear the token for a moment while it renews it, so only a sign-out that lasts counts.
       clearTimeout(this.signOutCheck);
       this.signOutCheck = setTimeout(() => {
-        if (!sharedToken.get() && this.signedIn && this.mode === 'session') this.signOut('You signed out in Vikunja.', {tellServer: false});
+        if (!sharedToken.get() && this.signedIn) this.signOut('You signed out in Vikunja.', {tellServer: false});
       }, 2000);
-    } else if (t && t !== seenToken && this.signedIn && this.mode === 'session' && this.user) {
+    } else if (t && t !== seenToken && this.signedIn && this.user) {
       // A new token is usually Vikunja renewing the session. It can also be someone else signing in on Vikunja's web
       // app before Pocket saw the sign-out, and then Pocket starts over as that user. Until Pocket knows, api.js sends
       // no changes to Vikunja. If Vikunja can't be asked now, the next change or flush asks again.
@@ -61,7 +59,7 @@ export default {
   },
   // The saved user, if the token Pocket opens with is the one last confirmed as theirs. Else null.
   async keptUser(){
-    const u = saved.get('user'), who = saved.get('who'), t = this.mode === 'session' ? sharedToken.get() : this.token;
+    const u = saved.get('user'), who = saved.get('who'), t = sharedToken.get();
     return u && t && who?.id === u.id && who.hash === await tokenHash(t) ? u : null;
   },
   // Forget the last user's lists, caches and open task, and load the new user's. The last user's outbox entries stay,
@@ -83,7 +81,7 @@ export default {
   },
   forgetPeople(drafts = true){
     if (drafts) { this.runDrafts = {}; taskDrafts.clear(); store.del('drafts.user'); }
-    cache.clear(); this.tasks = {}; userCache.clear(); this.access = {}; this.userKnown = {}; this.accessBlocked = false; this.people = null;
+    cache.clear(); this.tasks = {}; userCache.clear(); this.access = {}; this.userKnown = {}; this.people = null;
     this.labels = []; this.labelsLoaded = false;
   },
   /* Single sign-on goes through Vikunja. The provider only returns to Vikunja's /auth/openid/<key> page, which finishes
@@ -102,9 +100,6 @@ export default {
   showLogin(err){
     this.screen = 'login';
     this.login.err = err || '';
-    // Offer the password form when Vikunja takes one. probe does this on a fresh start. This covers a sign-out when
-    // /info is already loaded.
-    if (this.info) this.login.method = this.passwordAllowed ? 'session' : 'token';
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, {tellServer = true} = {}){
@@ -122,14 +117,11 @@ export default {
       this.pending = []; this.failed = []; this.keyWaiting();
     }
     saved.clear();
-    if (this.mode === 'session') {
-      const t = sharedToken.get();
-      // eslint-disable-next-line no-restricted-globals -- not through api(), which could renew the session or sign out again
-      if (tellServer && t) fetch(this.server + '/api/v2/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
-      sharedToken.del();
-    }
-    this.token = ''; this.signedIn = false; this.user = null; this.mode = 'session';
-    store.del('token'); store.del('mode');
+    const t = sharedToken.get();
+    // eslint-disable-next-line no-restricted-globals -- not through api(), which could renew the session or sign out again
+    if (tellServer && t) fetch(this.server + '/api/v2/logout', {method:'POST', credentials:'include', headers: {Authorization: 'Bearer ' + t}}).catch(() => {});
+    sharedToken.del();
+    this.signedIn = false; this.user = null;
     // A sign-out the user chose drops drafts. A session that ended, or a sign-out in Vikunja's web app, keeps them for
     // the same user. boot clears them if someone else signs in.
     const keep = !!msg && !!me;
@@ -145,35 +137,22 @@ export default {
     try {
       this.info = await api('/info', {auth:false});
       this.login.showTotp = !!this.info.totp_enabled;
-      this.login.method = this.passwordAllowed ? 'session' : 'token';
-      this.$nextTick(() => (this.passwordAllowed ? this.$refs.inUser : this.$refs.inToken)?.focus());
+      if (this.passwordAllowed) this.$nextTick(() => this.$refs.inUser?.focus());
     } catch (err) {
       this.login.err = err instanceof NetError ? netHelp() : `Vikunja didn't answer as expected (${errText(err)}).`;
     }
   }); },
   async submitPassword(){ await this.busy(async () => {
-    this.mode = 'session';
     try {
       const body = {username: this.login.user.trim(), password: this.login.pass, long_token: true};
       const totp = this.login.totp.trim(); if (totp) body.totp_passcode = totp;
       const j = await api('/login', {method:'POST', body, auth:false});           // also sets Vikunja's refresh cookie
-      sharedToken.set(j.token); store.set('mode', 'session'); store.del('token');
+      sharedToken.set(j.token);
       this.login.pass = ''; this.login.totp = '';
       await this.boot();
     } catch (err) {
       if (err.code === 1017) { this.login.showTotp = true; this.$nextTick(() => this.$refs.inTotp.focus()); }
       this.login.err = err.code === 1017 ? 'Enter your two-factor code.' : errText(err);
-    }
-  }); },
-  async submitToken(){ await this.busy(async () => {
-    this.mode = 'token'; this.token = this.login.token.trim();
-    try {
-      await api('/user', {retry:false});
-      store.set('token', this.token); store.set('mode', 'token'); this.login.token = '';
-      await this.boot();
-    } catch (err) {
-      this.token = ''; this.mode = 'session';
-      this.login.err = err instanceof NetError ? netHelp() : 'That token didn\'t work. Check it hasn\'t expired and has “User” (under Other) ticked.';
     }
   }); },
 
@@ -208,12 +187,12 @@ export default {
       const owner = store.get('drafts.user');
       if (owner && owner !== String(user.id)) { taskDrafts.clear(); this.runDrafts = {}; }
       store.del('drafts.user');
-      if (this.mode === 'session') setSeenToken(sharedToken.get());             // this token is confirmed as this user's
+      setSeenToken(sharedToken.get());                                         // this token is confirmed as this user's
       // Another user's saved lists must never be shown, for example after they signed out somewhere Pocket didn't see.
       // Screens open from the saved copies (savedView), so those must belong to this account.
       if (saved.get('user')?.id !== user.id) { saved.clear(); this.perms = {}; this.seenBy = {}; }
       saved.set('user', user); if (info) saved.set('info', info);
-      this.keepWho(this.mode === 'session' ? sharedToken.get() : this.token, user.id);
+      this.keepWho(sharedToken.get(), user.id);
       confirmed();
       await this.loadProjects();
       this.refreshPending();

@@ -7,10 +7,8 @@ export class NetError extends Error {}
 // a 500 included, so a request Vikunja can't handle doesn't sit in the outbox for ever.
 export const TRANSIENT = new Set([408, 429, 502, 503, 504]);
 export const passing = e => e instanceof NetError || (e instanceof ApiError && TRANSIENT.has(e.status));
-/* Two ways to be signed in:
-   - 'session': Vikunja's own web sign-in (password or single sign-on), shared with Vikunja's web app on this device.
-     The token lives where Vikunja keeps it (localStorage "token") and is renewed with Vikunja's refresh cookie.
-   - 'token': an API token, kept by Pocket alone. */
+/* Pocket signs in with Vikunja's own session (password or single sign-on), shared with Vikunja's web app on this
+   device. The token lives where Vikunja keeps it (localStorage "token") and is renewed with Vikunja's refresh cookie. */
 export const sharedToken = {
   get(){ try { return localStorage.getItem('token') || ''; } catch { return ''; } },
   set(t){ try { localStorage.setItem('token', t); } catch {} },
@@ -89,10 +87,10 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
   }
   // A write goes only once Pocket knows the shared session still belongs to this person, since another tab may have
   // signed someone else in. Reads are fine. The token is read after the check, so it is the token that was checked.
-  if (auth && method !== 'GET' && app?.mode === 'session' && app.signedIn && app.user && sharedToken.get() !== seenToken
+  if (auth && method !== 'GET' && app?.signedIn && app.user && sharedToken.get() !== seenToken
     && !await app.confirmAccount()) throw new ApiError(401, 'Someone else is signed in now');
   const headers = {};
-  const token = app.mode === 'session' ? sharedToken.get() : app.token;
+  const token = sharedToken.get();
   if (auth && token) headers.Authorization = 'Bearer ' + token;
   const form = body instanceof FormData;                                       // for a file upload the browser sets the content type
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
@@ -101,21 +99,19 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
     // No answer in 20 seconds (2 minutes for a file) counts as no connection, so nothing waits for ever.
     res = await fetch(app.server + '/api/v2' + path, {
       method, headers, body: body === undefined || form ? body : JSON.stringify(body),
-      credentials: app.mode === 'session' ? 'include' : 'omit', signal: timeoutSignal(form ? 120e3 : 20e3),
+      credentials: 'include', signal: timeoutSignal(form ? 120e3 : 20e3),
     });
   } catch (e) { if (app) app.offline = true; throw new NetError(e.message) }
   // Reaching Vikunja again sends what is waiting in the outbox. A brief drop never fires the browser's "online" event.
   if (app?.offline) { app.offline = false; setTimeout(() => app.flush()); }
   const date = Date.parse(res.headers.get('date') || '');
   if (date) serverOffset = date - Date.now();
-  if (res.status === 401 && auth && retry && app.mode === 'session') {
+  if (res.status === 401 && auth && retry) {
     let renewed;
     try { renewed = await refreshSession(); } catch (e) { app.offline = true; throw e; }
     if (renewed) return api(path, {method, body, raw, auth, retry:false});
   }
   if (res.status === 401 && auth) {
-    // Vikunja also answers 401 when an API token lacks a permission, so check the token before signing out.
-    if (app.mode === 'token' && path !== '/user' && await tokenWorks()) throw new ApiError(403, 'Your API token doesn\'t allow this. Create one with the permissions listed on the sign-in screen.', 'token');
     app.signOut('Your session ended. Sign in again.', {tellServer: false}); throw new ApiError(401, 'Signed out');
   }
   if (!res.ok && res.status !== 304) {
@@ -132,10 +128,6 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
 // task is read instead.
 export async function patchTask(id, fields){
   return await api('/tasks/' + id, {method:'PATCH', body: fields}) || await api('/tasks/' + id);
-}
-async function tokenWorks(){
-  try { return (await fetch(app.server + '/api/v2/user', {headers: {Authorization: 'Bearer ' + app.token}})).ok; }
-  catch { return false; }
 }
 /* Every item of a paged list. Reads page 1, then the rest at once, asking for Vikunja's max_items_per_page per page
    (from /info, or Vikunja's default of 50 when it doesn't say). If any page fails, the whole read fails. */

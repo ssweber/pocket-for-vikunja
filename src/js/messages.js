@@ -16,10 +16,10 @@ export function moreDone(left, per){
 
 // A change Vikunja didn't save, and why, in a few words.
 export const notSaved = e => e instanceof NetError ? 'Not saved: no connection' : 'Not saved: ' + e.message;
-// A new place in the list that Vikunja refused. If an API token without the right permission caused it (api.js), the
-// message names the permission. It doesn't say "moved", which means moving to another project.
-export const notReordered = e => e?.code === 'token' ? 'Not reordered: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.'
-  : 'Not reordered: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
+// A new place in the list that Vikunja refused. It doesn't say "moved", which means moving to another project.
+export const notReordered = e => 'Not reordered: ' + (e instanceof NetError ? 'no connection' : e?.message || 'Vikunja refused it');
+// On the sign-in screen, when Vikunja offers neither a password nor single sign-on.
+export const NO_SIGN_IN = 'This server has password sign-in and single sign-on turned off. Ask its admin to turn one on.';
 
 /* Tells the user where tasks just added went. The add box shows this when the tasks aren't on the current screen (a
    task due next month added on Today, or a task for another project). `n` tasks were added to `project`, `subs` of

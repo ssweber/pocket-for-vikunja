@@ -28,19 +28,23 @@ function vikunja(user = ME){
 }
 // The component with the real auth and sending code. The methods boot calls on the rest of the app are stubs that
 // record which screens were shown and whether each used the saved copy.
-function app(mode = 'token'){
+function app(){
   const c = component(auth, sending);
   Object.assign(c, {
-    mode, user: null, info: null, perms: {}, seenBy: {}, runDrafts: {}, shown: [],
+    user: null, info: null, perms: {}, seenBy: {}, runDrafts: {}, shown: [],
     setProjects(list){ this.projects = list; }, refreshPending(){}, async loadProjects(){ this.shown.push('projects'); },
     async render({ kept = false } = {}){ this.shown.push(kept ? 'kept' : 'loaded'); return kept; },
   });
   c.flush = sending.flush;
   return c;
 }
-// This uses localStorage.clear() because saved.clear() walks the keys of the page's localStorage, and the stub in Node
-// has none.
-const keep = async (token, user = ME) => { localStorage.clear(); saved.set('user', user); saved.set('who', { id: user.id, hash: await tokenHash(token) }); };
+// Saves `user` as confirmed for `token`, and keeps the token Pocket opens with. This uses localStorage.clear() because
+// saved.clear() walks the keys of the page's localStorage, and the stub in Node has none.
+const keep = async (token, user = ME) => {
+  const t = sharedToken.get();
+  localStorage.clear(); sharedToken.set(t);
+  saved.set('user', user); saved.set('who', { id: user.id, hash: await tokenHash(token) });
+};
 const settle = () => new Promise(ok => setTimeout(ok, 10));
 // Waits until boot has asked Vikunja who the user is. By then boot has shown the saved screen, if there is one, and is
 // holding changes back. This polls instead of waiting a fixed time, because the token's hash is computed off the main
@@ -93,8 +97,8 @@ test('when Vikunja names a different user for the saved token, the saved lists a
   assert.ok(!v.requests.some(r => r.method === 'POST'));
 });
 
-test('in a shared session, the saved screen shows only for the token whose hash is saved, and the saved hash follows a renewal by Pocket', async () => {
-  const c = app('session');
+test('the saved screen shows only for the token whose hash is saved, and the saved hash follows a renewal by Pocket', async () => {
+  const c = app();
   vikunja();
   await keep('jwt-1');
   sharedToken.set('jwt-1');

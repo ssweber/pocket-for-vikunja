@@ -1,6 +1,6 @@
 // Parse add boxes, suggest people, labels and projects, check project access, and position the box under its target row.
 import {app, colorOf, esc, userCache} from '../util.js';
-import {api, ApiError, items, NetError, sharedToken} from '../api.js';
+import {api, items, NetError, sharedToken} from '../api.js';
 import {hasTemplateLabel, inBatches, readStepPhrase, STEP_IGNORE} from '../checklists.js';
 import {parentIds, saved} from '../lists.js';
 import {clearOf, listViewOf, placeAfter, placeFirst} from '../order.js';
@@ -176,7 +176,7 @@ export default {
   // What checkAccess looks up: the project and the @usernames. Empty when there's nothing to check.
   accessQuery(w){
     // The 'under' box has nothing to check while there is no cursor task.
-    if (!this.boxLines(w).length || this.accessBlocked || !this.prefixes || (w === 'under' && !this.cursorTask)) return '';
+    if (!this.boxLines(w).length || !this.prefixes || (w === 'under' && !this.cursorTask)) return '';
     const {target, names} = this.boxPeople(w);
     return names.length ? [target, ...names.map(n => n.toLowerCase())].join('|') : '';
   },
@@ -218,18 +218,16 @@ export default {
       }
     } catch {}                                                                  // offline: no hints, and sending still works
   },
-  // Whether @name can see a project: true or false, or null when Pocket isn't allowed to look. Remembered until sign-out.
+  // Whether @name can see a project: true or false, or null when Vikunja refused the search. Remembered until sign-out.
   async canSee(pid, name){
     const k = name.toLowerCase(), key = pid + ':' + k;
     if (key in this.access) return this.access[key];
-    if (this.accessBlocked) return null;
     try {
       const u = items(await api(`/projects/${pid}/users/search?q=` + encodeURIComponent(name))).find(x => x.username.toLowerCase() === k);
       if (u) { userCache.set(k, u); this.userKnown[k] = true; }
       return this.access[key] = !!u;
     } catch (e) {
       if (e instanceof NetError) throw e;
-      if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;  // the API token lacks permission for Projects → Users search
       return null;
     }
   },
@@ -294,22 +292,16 @@ export default {
   },
   /* Load each project's users in the background. Vikunja's search includes teams and inherited shares. The result
      checks assignees and decides which private projects show a claim slot. `seenBy` is saved on the phone. `force`
-     loads again even when people are already loaded. Nothing loads when the API token lacks Projects → Users
-     search. */
+     loads again even when people are already loaded. */
   async loadPeople(force = false){
-    if ((this.people && !force) || this.accessBlocked) return;
+    if (this.people && !force) return;
     if (peopleLoading) return peopleLoading;
     peopleLoading = (async () => {
       // Don't request once Vikunja's web app has signed out. A background request could renew the cookie session
       // before Pocket notices.
-      const gone = () => this.mode === 'session' && !sharedToken.get();
-      const projs = this.projects.filter(p => p.id > 0), get = p => gone() ? null : api(`/projects/${p.id}/users/search`).then(items).catch(e => {
-        if (e instanceof ApiError && e.status === 403) this.accessBlocked = true;
-        return null;
-      });
-      const first = projs.length ? await get(projs[0]) : [];                    // load one project first, so a token without permission stops here
-      if (this.accessBlocked) return;
-      const lists = [first, ...await inBatches(projs.slice(1), 4, get)], byName = new Map();
+      const gone = () => !sharedToken.get();
+      const projs = this.projects.filter(p => p.id > 0), get = p => gone() ? null : api(`/projects/${p.id}/users/search`).then(items).catch(() => null);
+      const lists = await inBatches(projs, 4, get), byName = new Map();
       // Drop the old access entries of every project that loaded, so a removed share doesn't stay allowed.
       const loaded = new Set(projs.filter((p, i) => lists[i]).map(p => p.id));
       for (const key of Object.keys(this.access)) if (loaded.has(+key.split(':')[0])) delete this.access[key];

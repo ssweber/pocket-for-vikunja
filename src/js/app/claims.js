@@ -32,8 +32,8 @@ export default {
     const slot = (t.assignees || []).length ? this.claimSlot(t, t.assignees, true) : null;
     return slot && {...slot, label: this.forText(t)};
   },
-  // Claims are hidden only when the project's access is known. A token that can't read access keeps the usual slots.
-  onlyYou(pid){ return !this.accessBlocked && this.seenBy?.[pid] === 0; },
+  // Claims are hidden only when the project's access is known.
+  onlyYou(pid){ return this.seenBy?.[pid] === 0; },
   /* Show who completed or skipped a step, marked with `badge`, before its other assignees. Returns null when no one
      is known. */
   doneSlot(by, people, badge){

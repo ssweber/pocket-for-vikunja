@@ -1,7 +1,7 @@
 // Offline: Pocket opening without a connection, and tasks added offline being sent later.
 //
 //   npm run test:local        (runs this against a local Vikunja with the plugin)
-//   VIKUNJA_URL=... VIKUNJA_TOKEN=tk_... node tests/offline.mjs
+//   VIKUNJA_URL=... VIKUNJA_USER=... VIKUNJA_PASSWORD=... VIKUNJA_TOKEN=tk_... node tests/offline.mjs
 //   (ASSIGNEE=<username> ASSIGNEE_PROJECT=<project shared with them> adds a lost reply for a task with @username)
 //
 // Opens Pocket online once so it is saved on the "phone", then goes offline with the browser's offline switch. Pocket
@@ -14,9 +14,9 @@ import { chromium, webkit } from 'playwright';   // BROWSER=webkit uses Safari's
 import { expect, hintSeen, placeSays, signIn, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
-const TOKEN = process.env.VIKUNJA_TOKEN;
+const TOKEN = process.env.VIKUNJA_TOKEN, USER = process.env.VIKUNJA_USER, PASSWORD = process.env.VIKUNJA_PASSWORD;
 const OUT = process.env.OUT || 'test-results';
-if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
+if (!SERVER || !TOKEN || !USER || !PASSWORD) { console.error('Set VIKUNJA_URL, VIKUNJA_TOKEN, VIKUNJA_USER and VIKUNJA_PASSWORD'); process.exit(2); }
 const POCKET = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 // Vikunja on SQLite sometimes answers 500 "database is locked" when a request arrives while it is still writing the
 // previous request's changes. The test retries its own requests, as Pocket does.
@@ -64,7 +64,7 @@ try {
   if (!seeded.ok) throw new Error('could not create the seed task: HTTP ' + seeded.status);
 
   await step('online-first-visit', async () => {
-    await signIn(page, POCKET, TOKEN);
+    await signIn(page, POCKET, USER, PASSWORD);
     await page.waitForSelector(`.row .title:has-text("${T("seed")}")`, { timeout: 15000 });
     await page.evaluate(() => navigator.serviceWorker.ready);                // Pocket is now saved for offline use
     await page.reload();                                                     // so the service worker serves this page
@@ -79,7 +79,7 @@ try {
     await hintSeen(ctx);
     const p = await ctx.newPage();
     try {
-      await signIn(p, POCKET, TOKEN);
+      await signIn(p, POCKET, USER, PASSWORD);
       await p.evaluate(() => navigator.serviceWorker.ready);
       await ctx.setOffline(true);
       await p.reload();

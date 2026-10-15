@@ -1,12 +1,12 @@
 // Checklists, end to end. The test makes a project for checklists and a template with steps. It then starts checklists,
 // works through them, finishes them and hands them over, online and offline.
 //
-//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... node tests/checklists.mjs
+//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_USER=... VIKUNJA_PASSWORD=... VIKUNJA_TOKEN=tk_... node tests/checklists.mjs
 //   npm run test:local        (starts a local Vikunja with the plugin and runs everything against it)
 //
 // Creates its own project ("Pocket checklists <stamp>") and deletes it at the end, with everything in it. Leaves a
-// "template" label behind, which later test runs reuse, because Task Management tokens can't delete labels. The token
-// needs Projects → Create and Update, and Reactions.
+// "template" label behind, which later test runs reuse. Pocket signs in as VIKUNJA_USER. The test's own requests use
+// VIKUNJA_TOKEN, an API token of the same user with every permission.
 // Optional: OTHER_USER and OTHER_PASSWORD, a second account. The test shares the project with that account, starts a
 // checklist for it, and checks its Today and Checklists tabs too.
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium), OUT=<dir> for screenshots.
@@ -16,10 +16,10 @@ import { shortTime } from '../src/js/dates.js';
 import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, signIn as signInAt, steady, swipeRow, synced, toast as toastOn, toastGone as toastGoneOn, uncovered } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
-const TOKEN = process.env.VIKUNJA_TOKEN;
+const TOKEN = process.env.VIKUNJA_TOKEN, USER = process.env.VIKUNJA_USER, PASSWORD = process.env.VIKUNJA_PASSWORD;
 const OUT = process.env.OUT || 'test-results';
 const OTHER = process.env.OTHER_USER, OTHER_PASSWORD = process.env.OTHER_PASSWORD;
-if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
+if (!SERVER || !TOKEN || !USER || !PASSWORD) { console.error('Set VIKUNJA_URL, VIKUNJA_TOKEN, VIKUNJA_USER and VIKUNJA_PASSWORD'); process.exit(2); }
 const APP = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 
 // Vikunja on SQLite sometimes answers 500 "database is locked" when a request arrives while the previous request is
@@ -71,7 +71,7 @@ async function step(name, fn){
     await context.setOffline(false); await page.unrouteAll();                // so one failure doesn't break the steps after it
   }
 }
-const signIn = (p, token) => signInAt(p, APP, token);
+const signIn = (p, user, password) => signInAt(p, APP, user, password);
 // The card on Today for a checklist with open steps, found by its name.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 // A checklist's name on its Today card and its Checklists row has no start date. "Line 4 · Oct 8 · #1" is shown as
@@ -132,7 +132,7 @@ try {
   }
   const checklistsBefore = (await api('/projects')).items.filter(p => /pocket:checklists/i.test(p.description || '')).length;
 
-  await step('sign-in', () => signIn(page, TOKEN));
+  await step('sign-in', () => signIn(page, USER, PASSWORD));
 
   // With no project for checklists, the Projects tab offers to set one up. That makes a project "Checklists" with an
   // example template, then opens the Checklists tab with a Getting started card. Skipped if the account has one already.
@@ -932,7 +932,7 @@ try {
     await api('/tasks/' + guards, { method: 'PATCH', body: JSON.stringify({ done: false }) });
     await call(otherToken, `/tasks/${guards}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
     try {
-      await signIn(p, otherToken);
+      await signIn(p, OTHER, OTHER_PASSWORD);
       await p.waitForSelector(cardOf(dayless(run.title)), { timeout: 15000 });
       const mine = (await api('/tasks/' + first.id)).title;
       await p.waitForSelector(`${cardOf(dayless(mine))} .step-line .title:has-text("Check the guards at 3pm")`, { timeout: 15000 }).catch(() => { throw new Error("the checklist with their claimed step is not on their Today, opened on that step"); });
@@ -964,7 +964,7 @@ try {
       await expect(p.locator('#d-title')).toHaveValue(TEMPLATE);
     };
     try {
-      await signIn(p, otherToken);
+      await signIn(p, OTHER, OTHER_PASSWORD);
       await open();
       await expect(note).toHaveText('Every checklist you start from this template copies these steps. Only the person who made this template or a project admin can change it.');
       await expect(p.locator('#d-start')).toBeVisible();

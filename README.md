@@ -65,7 +65,7 @@ Timers sound while Pocket is open. When it's closed, reminders arrive by Vikunja
 
 ## Documentation
 
-The [guide](docs/guide.md) covers the full quick-add syntax, behavior you might not expect, checklist templates, asks, step times, offline behavior, API tokens, and troubleshooting.
+The [guide](docs/guide.md) covers the full quick-add syntax, behavior you might not expect, checklist templates, asks, step times, offline behavior, and troubleshooting.
 
 ## Development
 

@@ -287,7 +287,7 @@ export default {
   async flush(){
     if (opening) return;                         // Pocket is still opening on the saved screen, and boot sends what's waiting once Vikunja says who is signed in
     // In a shared session, nothing is sent until Pocket knows the session still belongs to this user.
-    if (this.signedIn && this.user && this.mode === 'session' && sharedToken.get() !== seenToken) { this.sessionChanged(); return; }
+    if (this.signedIn && this.user && sharedToken.get() !== seenToken) { this.sessionChanged(); return; }
     if (this.flushing || !this.signedIn || !this.user || !sync.all(this.user.id).length) return;
     this.flushing = true;
     let sent = 0; const failed = [], other = [], tasks = [], problems = [];

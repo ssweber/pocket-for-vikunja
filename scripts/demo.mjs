@@ -109,9 +109,9 @@ async function phone({ scale = 2, height = 844 } = {}){
   await page.clock.setFixedTime(NOW);
   await page.goto(APP);
   await page.waitForSelector('#auth-step:not([hidden])');
-  if (await page.isVisible('.seg button[data-mode=token]')) await page.click('.seg button[data-mode=token]');
-  await page.fill('#in-token', alex.token);
-  await page.click('#f-token button[type=submit]');
+  await page.fill('#in-user', 'alex');
+  await page.fill('#in-pass', 'alex-password');
+  await page.click('#f-pass button[type=submit]');
   await page.waitForSelector('#view .loading', { state: 'detached' });
   await page.waitForTimeout(400);
   const cdp = await context.newCDPSession(page);

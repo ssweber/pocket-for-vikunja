@@ -197,8 +197,8 @@ export const LINE_STEPS = [
   {name: 'prepare', done: j => !!j.body, async run(j, {parsed, pid}){
     const to = parsed.project?.id || pid, body = {title: parsed.title}, assign = [];
     // A user who can see the project is assigned, and their @username is removed from the title, as in Vikunja. A user
-    // who can't see it stays in the title and is reported. If Pocket can't check (an API token without the Projects →
-    // Users search), it assigns the user anyway.
+    // who can't see it stays in the title and is reported. If Vikunja refuses the search, Pocket assigns the user
+    // anyway, and Vikunja decides.
     for (const name of parsed.assignees) {
       const seen = await app.canSee(to, name);
       if (seen === false) j.problems.push(await app.userExists(name).catch(() => true) ? `@${name} can't see ${app.projById.get(to)?.title || 'that project'}` : `no user @${name}`);

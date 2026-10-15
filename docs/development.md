@@ -159,10 +159,10 @@ node --test --test-name-pattern="Undo" "tests/unit/*.test.mjs"  # the tests whos
 npm run test:parse                 # quick add's phrases only
 npm run test:local                 # starts the local Vikunja and runs every test
 
-# against a real server with the plugin installed (use a test account)
-VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm test
-# add ASSIGNEE=<username> ASSIGNEE_PROJECT="Team" to test @assignee: a project shared with that user, and a token
-# with Other → Users
+# against a real server with the plugin installed (use a test account). Pocket signs in with the user and password.
+# The tests' own requests use the token, an API token of the same user with every permission.
+VIKUNJA_URL=https://tasks.example.com VIKUNJA_USER=... VIKUNJA_PASSWORD=... VIKUNJA_TOKEN=tk_... npm test
+# add ASSIGNEE=<username> ASSIGNEE_PROJECT="Team" to test @assignee: a project shared with that user
 ```
 
 `npm run test:local` prints how long each file and each end-to-end step took. CI runs `lint`, `test:unit` and
@@ -184,8 +184,7 @@ with a test in the file for its area:
 - `tests/steptimes.mjs`: the plugin's step times, through the API only.
 - `tests/relay.mjs`: the plugin's relay, through the API only. A write sent twice with one key is made once.
 
-The tests delete what they create, except the labels `pocket-smoke` and `template`, which a Task Management token
-cannot delete. The checklists test needs a token that can create and update projects and add reactions.
+The tests delete what they create, except the labels `pocket-smoke` and `template`.
 
 ### Writing an end-to-end test
 

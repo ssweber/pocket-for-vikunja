@@ -6,6 +6,7 @@ import {fromLocalInput, isSet, toLocalInput} from './dates.js';
 import {RICH, sanitize} from './html.js';
 import {addedText, commentShown, durText} from './checklists.js';
 import {runTitle} from './sync.js';
+import {NO_SIGN_IN} from './messages.js';
 import {rowGestures, RUN_ROW, SHEET_ROW} from './lists.js';
 import {quarterOn, QUARTERS} from './progress.js';
 import core from './app/core.js';
@@ -32,7 +33,7 @@ import throwing from './app/throw.js';
 
 
 // The markup's Alpine expressions use these by name, so main.js makes them globals.
-export const globals = {addedText, colorOf, commentShown, durText, fmtSize, fromLocalInput, grow, INSTALLED, isSet, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize, SHEET_ROW,
+export const globals = {addedText, colorOf, commentShown, durText, fmtSize, fromLocalInput, grow, INSTALLED, isSet, NO_SIGN_IN, PRIOS, quarterOn, QUARTERS, RICH, rowGestures, RUN_ROW, runTitle, sanitize, SHEET_ROW,
   toLocalInput, ZERO};
 
 // Pocket's own directives: x-style, x-grow and x-box.

@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { report } from './agg.mjs';
+import { signIn } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), OUT = join(HERE, '..', '..', 'test-results', 'perf');
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
@@ -29,12 +30,7 @@ await page.goto(APP + '#/today');
 await page.evaluate(async () => { for (const k of await caches.keys()) await caches.delete(k); for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); });
 await page.reload();
 await Promise.race([page.locator('#auth-step').waitFor(), page.locator('#app').waitFor()]);
-if (await page.locator('#auth-step').isVisible()) {
-  const tab = page.getByRole('button', { name: 'API token', exact: true });
-  if (await tab.isVisible()) await tab.click();
-  await page.getByLabel('API token').fill(state.token);
-  await page.getByRole('button', { name: 'Connect' }).click();
-}
+if (await page.locator('#auth-step').isVisible()) await signIn(page);
 await page.waitForTimeout(500); await fresh(); await page.waitForTimeout(3000);
 if (STEP === 'done') {
   await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);

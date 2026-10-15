@@ -33,7 +33,7 @@ export default {
     try {
       // Start offline from the cached template, then create the run when Pocket reaches Vikunja.
       const t = await api('/tasks/' + id).catch(e => { const k = e instanceof NetError && saved.get('templates')?.[id]; if (k) return k; throw e; });
-      // Offer people who can access the project. A token without user-search permission offers only you.
+      // Offer people who can access the project. If Vikunja refuses the search, only you are offered.
       let people = [];
       try {
         people = items(await api(`/projects/${t.project_id}/users/search`));
@@ -655,8 +655,6 @@ export default {
       }
       // A refused move is reverted on screen at once instead of being retried later.
       if (a.op === 'position') error.drop = true;
-      if (error.status === 403 && /mark/i.test(stages[a.stage] || '') && this.mode === 'token')
-        error.message = 'your API token can\'t record who did a step. Create a token with Reactions ticked. The guide lists the permissions';
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
       if (a.stage > 0 && ['done', 'undone'].includes(stages[0])) error.saved = stages[0] === 'done' ? 'it\'s marked done' : 'it\'s marked not done';
       if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);

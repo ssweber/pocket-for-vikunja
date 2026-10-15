@@ -20,13 +20,11 @@ export const blankSheet = kind => ({open: false, show: false, kind, loading: fal
 export default () => ({
   // session
   server: location.origin,                     // Pocket is served by Vikunja itself (the plugin), so this is the server
-  mode: 'session',                             // 'session' (shared with Vikunja's web app) | 'token' (API token)
-  token: '',                                   // the API token, in 'token' mode
   signedIn: false,
   ssoWindow: null,                             // the tab a single sign-on is happening in
   info: null, user: null,
   screen: '',                                  // 'login' | 'app'
-  login: {method: 'token', user: '', pass: '', totp: '', token: '', showTotp: false, err: '', busy: false, waiting: false},
+  login: {user: '', pass: '', totp: '', showTotp: false, err: '', busy: false, waiting: false},
   // data
   projects: [], projById: new Map(),
   checklistProjects: [], checklistIds: new Set(),  // the projects for checklists, and their ids (setProjects)
@@ -50,8 +48,8 @@ export default () => ({
   lit: {},                                     // id of the highlighted row -> true, so that row can read it (quickadd.js)
   shown: {at: '', groups: {}},                 // the screen's lists, with stable objects while this screen is open (shownGroups, sending.js)
   // access maps <project id>:<username> to whether that person can see the project. userKnown records whether the
-  // user exists. accessBlocked marks a token without Projects → Users search.
-  access: {}, userKnown: {}, accessBlocked: false,
+  // user exists.
+  access: {}, userKnown: {},
   people: null,                                // everyone you share a project with: [{user, pids}], loaded once signed in (loadPeople)
   // Cache how many other people can see each project, by project id, so private projects hide claim slots as soon
   // as Today opens. loadPeople refreshes these counts.
@@ -209,8 +207,7 @@ export default () => ({
         vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); kb();
       }
     });
-    if (store.get('mode') === 'token' && store.get('token')) { this.mode = 'token'; this.token = store.get('token'); }
-    if (this.mode === 'token' || sharedToken.get()) this.boot();
+    if (sharedToken.get()) this.boot();
     else { this.showLogin(''); this.probe(); }
   },
 });

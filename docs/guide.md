@@ -11,7 +11,6 @@ Pocket's syntax, the behaviour you might not expect, and the server setup. The [
 - [Step times](#step-times)
 - [Reminders](#reminders)
 - [Offline](#offline)
-- [API tokens](#api-tokens)
 - [Troubleshooting](#troubleshooting)
 - [Privacy and security](#privacy-and-security)
 
@@ -186,16 +185,6 @@ Pocket opens without a connection and shows lists as last loaded.
 - **Nothing is lost.** Queued text survives closing the app and the session expiring. If Vikunja rejects an item for good, the text returns to the input. Notes changed elsewhere while you were editing aren't overwritten. Both versions are shown.
 - **iPhones don't allow background sending.** Items go out the next time Pocket is opened.
 
-## API tokens
-
-Pocket accepts an API token instead of a password or single sign-on. In Vikunja, go to *Settings → API Tokens*, choose the **Task Management** preset, and add:
-
-- **User** and **Users** under *Other*, and **Users search** under *Projects*: to look up `@user` and check project access.
-- **Create**, **Update** and **Delete** under *Projects*: to create, rename, archive and delete projects, and mark them for checklists.
-- **Reactions**: to record who completed each checklist step.
-
-The preset already includes what reordering needs: **Position** under *Tasks*, and reading a project's views. A token without them shows each project's tasks in creation order and can't reorder them. Vikunja can't add permissions to an existing token, so create a new one.
-
 ## Troubleshooting
 
 - **Pocket's URL returns "not found".** Check Vikunja's log for `pocket` or `plugin`.
@@ -204,14 +193,12 @@ The preset already includes what reordering needs: **Position** under *Tasks*, a
   - Nothing: plugins aren't enabled, or Vikunja hasn't been restarted.
 - **The log shows the old version after updating.** Vikunja reads `main.go` at startup. Restart it.
 - **"Too many attempts from here".** 10 sign-in attempts per minute per address. Wait.
-- **"That token didn't work".** The token expired, or **User** under *Other* isn't enabled.
-- **"Your API token doesn't allow this".** A permission is missing. See [API tokens](#api-tokens).
 - **"@user can't see Inbox".** Share the project with them, or add a `+project` they can access.
 
 ## Privacy and security
 
 - Pocket has no server of its own and talks only to the Vikunja that serves it.
-- It uses Vikunja's own session, stored where the web app stores it. To revoke an API token, delete it in Vikunja.
+- It uses Vikunja's own session, stored where the web app stores it.
 - For offline use, Pocket stores the last-loaded lists, the send queue and in-progress text in the browser. Signing out clears them. Another account signing in on the same device never sees them. To recognize a returning session, Pocket stores a SHA-256 hash of the credential, never the credential.
 - Notes and comments are sanitized before display, and attachments other than images, PDFs and plain text are downloaded rather than opened inline. This stops a collaborator's content from running code in Pocket, which shares Vikunja's origin.
 - The plugin runs inside Vikunja. Review [`pocket/main.go`](../pocket/main.go) before installing. It serves `app/` and, with step times enabled, sets due dates on checklist steps. Nothing else.

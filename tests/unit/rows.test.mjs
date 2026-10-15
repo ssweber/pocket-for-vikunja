@@ -409,8 +409,7 @@ test('waiting claims and files are kept by task, and only that task\'s row is up
 
 /* "+ me" appears only where someone else could take the task. In a project nobody else can see (seenBy, loaded with
    who can see each project), there is no slot and no picture of the user. Someone else's assignment still shows, and
-   a slide claims nothing. Until seenBy is known, or for an API token that can't ask, the slot appears as it does
-   everywhere else. */
+   a slide claims nothing. Until seenBy is known, the slot appears as it does everywhere else. */
 test('in a project only you can see, there is no "+ me" or picture of you, and a slide claims nothing', async () => {
   const me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' }, acts = [];
   const app = component(claims);
@@ -426,8 +425,6 @@ test('in a project only you can see, there is no "+ me" or picture of you, and a
   assert.deepEqual(acts, [], 'a slide claims nothing');
   assert.equal(slot([], 7).can, true, 'a project not loaded yet shows "+ me", as on any other screen');
   assert.equal(slot([], 1).can, true, 'a project shared with someone shows "+ me"');
-  app.accessBlocked = true;
-  assert.equal(slot([], 4).can, true, 'a token that cannot ask who can see a project shows "+ me", as on any other screen');
 });
 
 test('a checklist step\'s box is square on every screen, and a subtask\'s box is round', () => {
@@ -624,7 +621,7 @@ test('setting progress in the sheet claims a task nobody has, after the save, an
 test('who can see each project is loaded, kept on the phone and loaded again later', async () => {
   const me = { id: 1, username: 'alex' }, bob = { id: 2, username: 'bob' }, seen = { 1: [me], 2: [me, bob] }, fail = new Set();
   const app = component(quickadd, claims);
-  Object.assign(app, { user: me, projects: [{ id: 1 }, { id: 2 }, { id: -1 }], access: {}, userKnown: {}, accessBlocked: false, people: null, seenBy: {} });
+  Object.assign(app, { user: me, projects: [{ id: 1 }, { id: 2 }, { id: -1 }], access: {}, userKnown: {}, people: null, seenBy: {} });
   globalThis.fetch = async url => {
     const pid = +new URL(url).pathname.match(/projects\/(\d+)\/users/)[1];
     return fail.has(pid) ? new Response('{}', { status: 500 }) : new Response(JSON.stringify({ items: seen[pid] }), { status: 200 });

@@ -323,6 +323,8 @@ Found with `grep -c "this.say(\`\|this.say('\|this.notify(\`\|this.notify('" src
 
 ## 6. Sign in with Vikunja's session only
 
+Built.
+
 Pocket also signs in with an API token. Nobody depends on that, and it costs code in many places: a second sign-in
 form, a second way to keep and renew the token, and handling for tokens that lack a permission. Delete it.
 

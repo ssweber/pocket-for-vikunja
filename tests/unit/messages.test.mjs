@@ -30,9 +30,7 @@ test('a message for a change that was not saved gives the reason in a few words'
   assert.equal(notSaved(new Error('Forbidden')), 'Not saved: Forbidden');
 });
 
-test('a rejected reorder gives the reason, and for an API token without permission, the permission it needs', () => {
-  assert.equal(notReordered(Object.assign(new Error('Your API token doesn\'t allow this.'), { status: 403, code: 'token' })),
-    'Not reordered: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.');
+test('a rejected reorder gives the reason', () => {
   assert.equal(notReordered(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not reordered: Forbidden');
   assert.equal(notReordered(new NetError('Failed to fetch')), 'Not reordered: no connection');
 });

@@ -204,7 +204,7 @@ test('cancelling a waiting line moves the lines under it to its parent, and a me
 const boxes = () => {
   const app = component(quickadd), cafe = { id: 5, title: 'Café' };
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, cap: newBox(), runInsert: newBox(), capPhotos: [], projects: [cafe], projById: new Map([[5, cafe]]),
-    labels: [], people: [], access: {}, userKnown: {}, accessBlocked: false, checklistIds: new Set(), remindersReach: false, defaultProjectId: () => 5, canWrite: () => true });
+    labels: [], people: [], access: {}, userKnown: {}, checklistIds: new Set(), remindersReach: false, defaultProjectId: () => 5, canWrite: () => true });
   app.sheet = { task: { id: 9, project_id: 5, title: 'Pack the van' }, sub: newBox() };
   return app;
 };
@@ -333,7 +333,7 @@ const underBox = t => {
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   const van = app.keep(v.task(9)), chairs = app.keep(v.task(8));
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
-    accessBlocked: false, checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 },
+    checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 },
     view: { groups: [{ key: 'open', tasks: [van, chairs] }], route: '', listView: 3 }, cursor: null, lit: {}, flash(){}, $nextTick(){} });
   app.aim(van);
   const add = text => { app.cap.text = text; return app.addSubtasks('under'); };

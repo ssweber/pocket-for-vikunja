@@ -1,14 +1,15 @@
 // End-to-end test of Pocket as served by the Vikunja plugin, against that Vikunja.
 //
-//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_TOKEN=tk_... npm run test:smoke
+//   VIKUNJA_URL=https://tasks.example.com VIKUNJA_USER=... VIKUNJA_PASSWORD=... VIKUNJA_TOKEN=tk_... npm run test:smoke
 //   npm run test:local        (starts a local Vikunja with the plugin and runs everything against it)
 //
-// Opens <VIKUNJA_URL>/api/v1/plugins/pocket/, signs in with the token, then creates, edits, completes and deletes
+// Opens <VIKUNJA_URL>/api/v1/plugins/pocket/, signs in as VIKUNJA_USER, then creates, edits, completes and deletes
 // throwaway tasks (including a pasted list with subtasks). It tags one with a "pocket-smoke" label, which it
-// creates on the first run and reuses after that.
+// creates on the first run and reuses after that. The test's own requests to Vikunja use VIKUNJA_TOKEN, an API token
+// of the same user with every permission.
 // Optional settings:
 // POCKET_URL if Pocket is served from somewhere else.
-// ASSIGNEE=<username> to test @assignee (the token needs Other -> Users).
+// ASSIGNEE=<username> to test @assignee.
 // ASSIGNEE_PROJECT=<name> of a project shared with that user.
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium).
 // OUT=<dir> for screenshots.
@@ -21,11 +22,11 @@ import { shortTime } from '../src/js/dates.js';
 import { expect, finger, hintSeen, laidUnder, loaded, noToast, placeLine, placeSays, rowLine, signIn, slideSeen, steady, still, swipeRow, synced, toastGone as toastGoneOn, uncovered, watchSlide } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
-const ASSIGNEE = process.env.ASSIGNEE;         // optional username to assign; the token needs Other -> Users
+const ASSIGNEE = process.env.ASSIGNEE;         // optional username to assign
 const ASSIGNEE_PROJECT = process.env.ASSIGNEE_PROJECT;   // a project shared with ASSIGNEE (default: the default project)
-const TOKEN = process.env.VIKUNJA_TOKEN;
+const TOKEN = process.env.VIKUNJA_TOKEN, USER = process.env.VIKUNJA_USER, PASSWORD = process.env.VIKUNJA_PASSWORD;
 const OUT = process.env.OUT || 'test-results';
-if (!SERVER || !TOKEN) { console.error('Set VIKUNJA_URL and VIKUNJA_TOKEN'); process.exit(2); }
+if (!SERVER || !TOKEN || !USER || !PASSWORD) { console.error('Set VIKUNJA_URL, VIKUNJA_TOKEN, VIKUNJA_USER and VIKUNJA_PASSWORD'); process.exit(2); }
 const APP = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 
 // Vikunja on SQLite sometimes answers 500 "database is locked" when a request arrives while the previous one is still
@@ -49,9 +50,9 @@ const errors = [];
 /* Moves the page's clock forward by `ms` at once. Timers that fall due run (a toast disappearing, Today's minute tick).
    Then the clock is reset to real time, which is what Vikunja's dates use. */
 const later = async ms => { await page.clock.fastForward(Math.max(0, Math.round(ms))); await page.clock.setSystemTime(Date.now()); };
-// A token without some permission gets 401s, which Pocket handles. The browser still logs them, so they are ignored
-// here, along with the connection reset that one test causes on purpose.
-page.on('console', m => m.type() === 'error' && !/status of 401|ERR_CONNECTION_RESET/.test(m.text()) && errors.push(m.text() + (m.location()?.url ? ' at ' + m.location().url : '')));
+// The browser logs the refused move and the connection reset that two tests cause on purpose, so they are ignored here.
+const meant = m => /ERR_CONNECTION_RESET/.test(m.text()) || (/status of 403/.test(m.text()) && /\/position$/.test(m.location()?.url || ''));
+page.on('console', m => m.type() === 'error' && !meant(m) && errors.push(m.text() + (m.location()?.url ? ' at ' + m.location().url : '')));
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
@@ -72,19 +73,26 @@ const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 const opener = t => `:is(.row > .body:has(.title:has-text("${t}")), ${cardOf(t)} > .card-head)`;
 
 try {
-  await step('token-connect-is-disabled-until-a-token-is-entered', async () => {
+  await step('a-server-with-no-sign-in-method-says-so', async () => {
+    const none = r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: 'v2.7.0', auth: { local: { enabled: false }, ldap: { enabled: false }, openid_connect: { enabled: false } } }) });
+    await page.route('**/api/v2/info', none);
+    await page.goto(APP);
+    await expect(page.locator('#auth-step')).toContainText('This server has password sign-in and single sign-on turned off. Ask its admin to turn one on.');
+    await expect(page.locator('#f-pass')).toBeHidden();
+    await page.unroute('**/api/v2/info', none);
+  });
+  await step('sign-in-is-disabled-until-a-username-and-password-are-entered', async () => {
     await page.goto(APP);
     await expect(page.locator('#auth-step')).toBeVisible();
-    const tab = page.getByRole('button', {name: 'API token', exact: true});
-    if (await tab.isVisible()) await tab.click();
-    const connect = page.getByRole('button', {name: 'Connect'});
-    await expect(connect).toBeDisabled();
-    await page.getByLabel('API token').fill('   ');
-    await expect(connect).toBeDisabled();
-    await page.getByLabel('API token').fill(TOKEN);
-    await expect(connect).toBeEnabled();
+    const go = page.getByRole('button', {name: 'Sign in', exact: true});
+    await expect(go).toBeDisabled();
+    await page.getByLabel('Username or email').fill('   ');
+    await page.getByLabel('Password', {exact: true}).fill(PASSWORD);
+    await expect(go).toBeDisabled();
+    await page.getByLabel('Username or email').fill(USER);
+    await expect(go).toBeEnabled();
   });
-  await step('sign-in-with-a-token', () => signIn(page, APP, TOKEN));
+  await step('sign-in-with-a-password', () => signIn(page, APP, USER, PASSWORD));
   await page.screenshot({ path: `${OUT}/today.png` });
 
   await step('quick-add', async () => {
@@ -528,11 +536,7 @@ try {
     const name = `PocketSmoke${stamp}`, t = `Pocket smoke new project task ${stamp}`;
     await page.fill('#in-capture', `${t} tomorrow +${name}`);
     await page.click('#cap-chips .chip[data-kind=new-project]');
-    const made = await Promise.race([
-      page.waitForSelector(`#cap-chips .chip[data-kind=project]:has-text("${name}")`, { timeout: 15000 }).then(() => true),
-      page.waitForSelector('#capture .place-line:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
-    ]);
-    if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
+    await page.waitForSelector(`#cap-chips .chip[data-kind=project]:has-text("${name}")`, { timeout: 15000 });
     const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     if (!project) throw new Error('project not found in Vikunja');
     createdProjects.push(project.id);
@@ -558,11 +562,7 @@ try {
     const name = `PocketList${stamp}`, line = x => `Pocket smoke list line ${x} ${stamp}`;
     await page.fill('#in-capture', `${line('A')} tomorrow\n${line('B')} tomorrow +${name}\nPocket smoke list line C +Other ${stamp}`);
     await page.click('#cap-chips .chip[data-kind=new-project]');
-    const made = await Promise.race([
-      page.waitForSelector(`#cap-chips .chip:not([data-kind]):has-text("${name}")`, { timeout: 15000 }).then(() => true),
-      page.waitForSelector('#capture .place-line:has-text("doesn\'t allow")', { timeout: 15000 }).then(() => false),
-    ]);
-    if (!made) { console.log('  (this token may not create projects: step skipped)'); await page.fill('#in-capture', ''); return; }
+    await page.waitForSelector(`#cap-chips .chip:not([data-kind]):has-text("${name}")`, { timeout: 15000 });
     const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     createdProjects.push(project.id);
     await page.click('#f-capture .go');
@@ -863,18 +863,15 @@ try {
   });
   if (ASSIGNEE) await step('assign-from-quick-add', async () => {
     const t = `Pocket smoke assign ${stamp}`;
-    // A token without Projects → Users search cannot check who can see a project, so Pocket assigns without checking.
-    const canLook = (await api('/projects/1/users/search?q=x')).status !== 401;
     await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE} @nobody-${stamp}` + (ASSIGNEE_PROJECT ? ` +"${ASSIGNEE_PROJECT}"` : ''));
     const chips = await page.textContent('#cap-chips');
     if (!chips.includes('@' + ASSIGNEE)) throw new Error('chips: ' + chips);
-    if (canLook) await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody-${stamp}")`, { timeout: 15000 });   // the warning appears before sending
+    await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody-${stamp}")`, { timeout: 15000 });   // the warning appears before sending
     await page.click('#f-capture .go');
     await placeSays(page, 'cap', `no user @nobody-${stamp}`);               // the add box reports what could not be done as asked
-    // When Pocket could check, the assigned person is removed from the title, as in Vikunja. The unknown name stays.
+    // The assigned person is removed from the title, as in Vikunja. The unknown name stays.
     const saved = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title.startsWith(t));
-    const want = canLook ? `${t} @nobody-${stamp}` : `${t} @${ASSIGNEE} @nobody-${stamp}`;
-    if (saved?.title !== want) throw new Error('title: ' + saved?.title);
+    if (saved?.title !== `${t} @nobody-${stamp}`) throw new Error('title: ' + saved?.title);
     await page.click(`.row .body:has-text("${t}")`);
     await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
     await page.click(`#d-assignees .label-chip:has-text("${ASSIGNEE}") .x`);
@@ -2574,7 +2571,7 @@ try {
       await loaded(p);
     };
     try {
-      await signIn(p, APP, TOKEN);
+      await signIn(p, APP, USER, PASSWORD);
       await open();
       await expect(hint).toHaveText('Swipe right to start working on it');
       if (await p.locator('.slide-hint').count() !== 1) throw new Error('more than one hint');
@@ -3349,11 +3346,11 @@ try {
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
   });
   await step('a-move-turned-down-goes-back-and-says-why', async () => {
-    // Vikunja rejects the move, as it does for an API token without Tasks → Position. The row goes back where it was and shows a message.
-    const T = order.tasks, refuse = r => r.request().method() === 'PUT' ? r.fulfill({ status: 401, contentType: 'application/json', body: '{"message":"missing permission"}' }) : r.fallback();
+    // Vikunja rejects the move. The row goes back where it was and shows Vikunja's reason.
+    const T = order.tasks, refuse = r => r.request().method() === 'PUT' ? r.fulfill({ status: 403, contentType: 'application/json', body: '{"detail":"Forbidden"}' }) : r.fallback();
     await page.route('**/api/v2/tasks/*/position', refuse);
     await dragTo(rowById(T.Charlie.id), rowById(T.Bravo.id), 'bottom');
-    await expect(rowLine(page, 'Not reordered: your API token doesn\'t allow reordering. Make one with Position ticked under Tasks.')).toBeVisible();
+    await expect(rowLine(page, 'Not reordered: Forbidden')).toBeVisible();
     await page.unroute('**/api/v2/tasks/*/position', refuse);
     await later(5000);                                                     // the message collapses and the row returns
     await expect.poll(openRows).toEqual(['Alpha', 'Subtask: sub one', 'Subtask: sub two', 'Subtask: sub three', 'Charlie', 'Bravo'].map(n => `${n} ${stamp}`));
@@ -4160,7 +4157,7 @@ ${footName('Hooks')}`);
       try {
         await hintSeen(other);
         p24.on('pageerror', e => errors.push(String(e)));
-        await signIn(p24, APP, TOKEN);
+        await signIn(p24, APP, USER, PASSWORD);
         await p24.evaluate(() => { location.hash = '#/today'; });
         const theirs = await clock(p24, 23);
         if (!/^23[:.]00$/.test(theirs)) throw new Error('a browser set to en-GB writes 11 PM as ' + theirs);

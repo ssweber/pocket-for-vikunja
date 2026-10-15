@@ -20,14 +20,13 @@ export async function synced(page, { timeout = 20000, settle = 250 } = {}){
   }
 }
 
-// Signs in with an API token on Pocket's sign-in screen at `url`, then waits for the first list to load.
-export async function signIn(page, url, token){
+// Signs in with a username and password on Pocket's sign-in screen at `url`, then waits for the first list to load.
+export async function signIn(page, url, user, password){
   await page.goto(url);
   await expect(page.locator('#auth-step')).toBeVisible();                  // no server address to enter, Pocket uses this Vikunja
-  const tab = page.getByRole('button', { name: 'API token', exact: true });
-  if (await tab.isVisible()) await tab.click();                            // missing when password sign-in is off
-  await page.getByLabel('API token').fill(token);
-  await page.getByRole('button', { name: 'Connect' }).click();
+  await page.getByLabel('Username or email').fill(user);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('#app')).toBeVisible();
   await loaded(page);
 }
