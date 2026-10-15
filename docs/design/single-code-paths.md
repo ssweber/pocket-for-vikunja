@@ -608,6 +608,21 @@ That is the bridge for phases 4 to 9: an op never changes `tasks` itself, and it
 Phase 10 makes rows read `withWaiting` through a `memo` per id, and `tasks`, `keep` and the bridge go. The memo is
 built then because it can only be measured once rows read it.
 
+**Found while building it:** `keep` replaces the row's task with the whole copy it is given, and deletes the fields
+that copy lacks. `cache` and `tasks` come from different reads (a sheet's read has no `comment_count`, a checklist's
+has `comments`), so even an op whose `apply` changes nothing would rewrite a row. So every op is in `SHOWN_OWN_WAY`
+for now. Before the first op goes on the bridge (phase 5's `due`), change the bridge to write only the fields the
+task's ops change: the fields where `withWaiting(id)` differs from `cache.get(id)`, and on an answer, those fields
+from the answer. This is the "by field" rule of part 7, used early.
+
+### Sending only when online
+
+A request that fails without an answer may have reached Vikunja, so an op is marked `sent` before its first request,
+and from then on can't be dropped or pruned. So that an op made offline stays unsent, Pocket doesn't try an op's
+first request while it knows it is offline (`app.offline`, or `navigator.onLine` false). It queues the op, and
+`flush` first sends a plain read. Once a read gets through, Pocket is online and sends what waits. Decided with the
+user on 2026-10-15.
+
 ### What phase 1 leaves alone
 
 Pruning (phase 6), Undo as an op (phase 5), the late-read rule (phase 5) and every direct write outside the acts.
