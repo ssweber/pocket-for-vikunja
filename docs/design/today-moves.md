@@ -130,7 +130,7 @@ After phase 5 of `single-code-paths.md`. That phase turns `reschedule`'s save an
 
 | Question | Where it is handled |
 |---|---|
-| Does the outbox prune a quick tick and untick? Are reschedules batched? | `single-code-paths.md` part 1: pruning, and `PUT /tasks/bulk` for Move all |
+| Does the outbox prune a quick tick and untick? Are reschedules batched? | `single-code-paths.md` part 1: pruning. Move all stays one op per task. |
 | Does adding a task with `x` add the ✅? | `single-code-paths.md` part 1: one tick op, used by quick add too |
 | Move all is unreliable | Part 1 of this file (the time), and `single-code-paths.md` part 1 (dates go through the outbox) |
 | The Undo shows at the destination | Part 2 of this file |
