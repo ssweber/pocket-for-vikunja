@@ -490,9 +490,7 @@ and `npm run test:local`. Each phase that moves an op adds a case to `tests/offl
 reload Pocket, reconnect, and check Vikunja's copy. It also sends each request of the op twice with its key, and
 checks that Vikunja changed once.
 
-0. **The spike.** Done on 2026-10-15, on the branch `single-code-paths`: `relay.go` and `tests/relay.mjs` came from
-   `spike/relay` as files, not by merging that branch, whose copies of `docs/design/` are older. Delete `spike/relay`
-   once this branch is merged.
+0. **The spike.** Done on 2026-10-15. `relay.go` and `tests/relay.mjs` came from the spike's branch, since deleted.
 1. **Ground.** Done, and checked on the user's phone and server on 2026-10-15. Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
    writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies and the
    waiting ops, with each op's answer written into the copies, and `withWaiting` put on the rows with `keep`. Only the
@@ -661,7 +659,6 @@ For whoever carries on. Read this, then phase 4.
   - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.
   - Part 2 of `today-moves.md`, the gap where a moved row was, is built after phase 6.
 - **For the user.** Two issue drafts to file upstream: `upstream-idempotency-key.md` and `upstream-task-updated.md`.
-  Delete the branch `spike/relay` once this work is on `dev`.
 
 ## Out of scope
 
