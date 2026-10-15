@@ -369,8 +369,8 @@ is localStorage, so the file isn't called store.js.
   the tasks inside the saved screens.
 - **The waiting ops** are the ops in the outbox that Vikunja hasn't answered yet (`pending`).
 - **A row shows Vikunja's copy with its task's waiting ops applied,** in order, through each op's `apply` (part 1).
-  This is a `memo` per task id, so a new op on one task redraws that task's rows only (rule 10). `tasks` becomes this
-  memo.
+  `show(id)` patches this into `tasks[id]` field by field, so a new op on one task reruns only the bindings that read
+  the fields it changed (rule 10). Nothing else writes `tasks`.
 - **A screen holds ids,** in Vikunja's order, with each waiting task's id where it will be. The saved copy of a screen
   is its ids. The sheet, a card and a checklist's screen read tasks from the store by id.
 - **A task is waiting when it has a waiting op.** Nothing else records it.
@@ -387,8 +387,8 @@ is localStorage, so the file isn't called store.js.
   before that leaves the task's copy as it is. `updated` can't decide this alone: ticking a subtask changes the
   parent's ring but not the parent's `updated`. This replaces `readTask` and `saving`.
 - **A ticked task stays done while it leaves.** `keep` does this today, for a repeating task whose answer has it open
-  at its next date. Once the `done` op stops waiting, the row would reopen. Keep the rule in the memo: a task marked
-  as leaving done shows done.
+  at its next date. Once the `done` op stops waiting, the row would reopen. So `show(id)` leaves a task as it is
+  while it is leaving done.
 
 ### Pruning Vikunja's copies
 
@@ -450,7 +450,7 @@ top. Check that holds for every op's `invert`.
 
 ### Traps
 
-- **Rule 10.** The memo must return the same object while neither the copy nor the waiting ops for that id changed.
+- **Rule 10.** `show(id)` must write only the fields that changed, and never replace `tasks[id]` with a new object.
   Run `npm run perf:rows -- counts` before and after.
 - **Where the copies are kept.** The saved screens are in localStorage, which a screen reads at once. The outbox is in
   IndexedDB, which is asynchronous. Measure the time to the first row before choosing. If IndexedDB delays it, keep
@@ -509,11 +509,11 @@ checks that Vikunja changed once.
 2. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
 3. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
-4. **The store's foundation.** Rows read Vikunja's copy with the waiting ops applied (`withWaiting`), through a `memo`
-   per task id, and `tasks` becomes that memo. Every read and every direct save writes into the copies by field, so
+4. **The store's foundation.** Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
+   `tasks[id]`, its only writer. Every read and every direct save writes into the copies by field, so
    today's `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by
    id, so `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The
-   bridge, `SHOWN_OWN_WAY` and `keep` go, and so does each of the 13 ops' own way of showing itself where the store
+   bridge's `SHOWN_OWN_WAY` and `keep`'s callers go, and so does each of the 13 ops' own way of showing itself where the store
    now shows it (`applyAct`, the acts `workOutRun` lays over a checklist's steps). Measure rule 10 before and after
    (`npm run perf:rows -- counts`). Turn on the store rule, except for `cache`, which phase 11 removes. This is the
    phase most likely to show a problem on the phone, so the user checks it there before phase 5.
@@ -609,8 +609,8 @@ on top, but rows still read `tasks`, so nothing on screen changes yet:
 - When the waiting ops of a task change, `refreshPending` puts `withWaiting(id)` on its rows with `keep`. When an op is
   answered, its answer goes into `cache` and the op leaves `opsOn` in the same call, followed by one `keep`.
 
-Phase 4 makes rows read `withWaiting` through a `memo` per id, and `tasks`, `keep` and the bridge go, before any op
-needs the bridge. That order was chosen on 2026-10-15, after building the bridge showed it was half a store.
+Phase 4 finishes the bridge: `show(id)` becomes the only writer of `tasks`, before any op needs the bridge. That
+order was chosen on 2026-10-15, after building the bridge showed it was half a store.
 
 **Found while building it:** `keep` replaces the row's task with the whole copy it is given, and deletes the fields
 that copy lacks. `cache` and `tasks` come from different reads (a sheet's read has no `comment_count`, a checklist's
@@ -629,12 +629,148 @@ user on 2026-10-15.
 
 Pruning (phase 7), Undo as an op (phase 6), the late-read rule (phase 4) and every direct write outside the acts.
 
+## Phase 4 in detail
+
+Agreed with the user on 2026-10-15, from a map of the code on `dev` after phase 2. `tasks` stays as a patched object,
+an edit in the sheet shows on its rows at once, the upgrade clears the saved screens, and the phone check comes once,
+after 4d.
+
+### What the code does today
+
+- `tasks[id]` is one object per task. Rows, `view.groups`, Undo's closures and the gestures hold that object itself.
+  About 40 places write its fields before a save answers, such as `t.done = true` in `toggleDone`. `keep` patches it
+  field by field, so a change reruns only the bindings that read that field.
+- `cache` is a plain `Map`. Most reads put their answer in it whole. So the sheet's read drops `comment_count`, and a
+  list read without `expand=reactions` sets `reactions` to `null`. The checklists' read doesn't write `cache` at all.
+- `sheet.task` is a shallow copy from `cache`, and `view.run` holds plain copies of a checklist and its steps. Neither
+  is the object a row holds.
+- `answered` writes an op's answer into `cache` only for the stages that patch a task. A claim, a comment, a ✅ and a
+  delete never update it.
+
+### `tasks` stays, with one writer
+
+Part 7 says rows read a `memo` per id and `tasks` goes. Instead, `tasks[id]` stays the object rows hold, and one
+function, `show(id)`, is the only code that writes it. `show(id)` works out how the task should look and patches
+`tasks[id]` field by field, as `keep` does now. The task is Vikunja's copy, then the waiting ops applied through each
+op's `apply`, then the direct saves still running (below).
+
+A memo returns a new object on each change. That reruns every binding on the row, about 30, instead of the changed
+field's. It also breaks `g.tasks.includes(t)` and `sameList`, and leaves every closure that holds a task with an old
+one until phase 11 makes screens hold ids. A patched object keeps all of those working, and the unit tests need no
+Alpine to check it. It is the bridge (`keyOps`), finished.
+
+`show(id)` runs whenever one of its inputs for that id changes. A copy is written, an op is added, answered or
+dropped, a direct save starts or ends, or a batch clears.
+
+### Writing Vikunja's copies
+
+- **One writer, `put(list, asked)`.** Every read and every reply goes through it, the checklists' read included.
+  `asked` names the fields the request can be trusted for. A field outside it is left as it is in the copy. A task's
+  own fields are trusted by default. `reactions`, `comment_count` and `comments` are trusted only when the request
+  expanded them. A PATCH reply is not trusted for `labels`, `assignees` or `reactions`. The build checks each
+  request against Vikunja 2.7 and writes its list beside the read.
+- A trusted `null` is taken as it is. A full read gives `labels: null` for a task with no labels, so "keep the old
+  value for a `null`" would never remove the last label.
+- **A copy holds only Vikunja's fields.** Pocket's own fields on a row (`pending`, `parent`, `was`, `place`) move to
+  maps by id beside the store.
+- `show` copies nested values into `tasks`, so writing a row never changes Vikunja's copy.
+- `cache` becomes `copies`, read through `copyOf(id)` outside tasks.js.
+
+### Direct saves, until their phase makes them ops
+
+Each remaining direct save goes through `edit(id, fields)`. It lays `fields` on top of the task, in memory only, and
+returns `ok(answer)` and `undo()`. `ok` writes the answer with `put` and removes the fields in one call to `show`.
+`undo` removes them, for a failed save. A failed save then puts back only its own fields. Today the sheet's `save`
+puts back all of `cache`, and loses the user's other unsaved edits.
+
+Every direct field write in the map becomes an `edit`, including those in actions.js, sending.js and on the sheet's
+subtask stubs. The store rule catches an assignment to a member of `this.tasks`. A write through a variable such as
+`t.done = …` it can't see, so the build finds those by grep and lists them in its report.
+
+### An op's answer
+
+When an op is answered, its task's copy becomes `apply(copy)`, takes the fields its reply is trusted for, and the op
+leaves `opsOn`, all in one call to `show`. Vikunja did what the op asked, so its copy now has it. This covers the ops
+whose reply is not a task, such as a claim, a comment or a ✅.
+
+### Each op shows itself through `apply`
+
+`apply` grows to show what each op's own way shows today, so `workOutRun`'s overlay, `applyAct` and `SHOWN_OWN_WAY`
+go.
+
+- `done`, `doneNote` and `skip` set done, `done_at` to the op's time, and add the user's ✅ or ⏭️ to `reactions`.
+- `undone` reopens the task and removes the user's ✅ and ⏭️.
+- `note`, `answer` and `doneNote` add their comment to `comments`, marked as waiting.
+- `claim` adds the user as `/user` gave them, name included.
+- `progress`, `finish` and `reopen` stay as they are.
+- `delete` and `position` keep their own way. A position belongs to a project's view, not to a task. A delete
+  removes rows, and doesn't change a task. Phases 9 and 11 decide them.
+
+`waiting.ticks`, `waiting.pcts` and `waiting.claims` go where a row can read the task instead. The waiting and slow
+marks stay, because they describe the outbox entry, not the task.
+
+### A late read
+
+The store records when the last answer for each task arrived, from an op or a direct save. A read started before that
+leaves the task's copy as it is. A read that lands while an op is still waiting needs nothing more. The op stays
+applied on top until it is answered, and its answer is written after the read. `readTask`, `saving` and
+`pendingSaves` go.
+
+### Leaving done
+
+While a task is leaving done, `show(id)` leaves `tasks[id]` as it is, as `keep` does today. All its fields stay, not
+only `done`. A repeating task's answer moves its due date, and the row would jump to another group as it leaves.
+Clearing the batch calls `show(id)`.
+
+### Saved screens
+
+A screen is saved from Vikunja's copies, not from its rows, so a saved task never carries a waiting op's effect. When
+Pocket opens, a saved copy goes into the store where it is newer by `updated` than the copy there, or there is none,
+as `keptRows` decides today. The old saved screens hold rows with waiting ops' effects in them, so the upgrade clears
+them, as phase 1 cleared the outbox.
+
+### The sheet and a checklist's screen, by id
+
+`sheet.task` becomes `sheet.id`, and the sheet reads `tasks[sheet.id]`. A task opened from search or a link is put in
+the store first. `view.run` keeps `at`, `last` and the steps' order, and holds the checklist's id and its steps' ids.
+A subtask stays nested in its parent's copy (`related_tasks`), as now. Phase 11 decides whether it gets its own copy.
+
+What the user sees change: an edit in the sheet shows on the row behind it at once, not when Vikunja answers.
+
+### Waiting creates
+
+`pendingTasks` keeps one object per waiting row, by entry, so a group with a waiting row compares as unchanged.
+Phase 5 makes creates ops.
+
+### Order of work
+
+Four commits, each leaving the app working and passing the full `test:local`, so a problem found on the phone can be
+bisected. The user checks the phone once, after 4d.
+
+- **4a. The copies.** `put` and each read's trusted fields, Pocket's own fields off the copies, `copies` for `cache`,
+  and screens saved from the copies. Nothing on screen changes.
+- **4b. One writer.** `show`, `edit`, every direct field write moved, and the late-read rule. `readTask`, `saving`,
+  `pendingSaves` and `keep`'s callers go. The store rule is on, except for `this.sheet.task`, `this.view.run` and
+  `cache`. Measure rule 10.
+- **4c. Ops through `apply`.** An op's answer, the grown `apply`s, and `workOutRun`'s overlay, `applyAct` and
+  `SHOWN_OWN_WAY` gone. This fixes the dropped tick that stays ticked. Measure rule 10.
+- **4d. By id.** The sheet and a checklist's screen. The store rule is on in full, except for `cache`, which phase 11
+  removes.
+
+### Tests
+
+- Unit: `put` leaves an untrusted field alone and takes a trusted `null`. `show` stacks the copy, the ops and the
+  edits in order. `tasks[id]` stays the same object across changes. `edit`'s `ok` and `undo`. A late read is
+  ignored. An op whose reply is not a task updates the copy. Each op's `apply`.
+- `tests/offline.mjs`: a tick dropped from Waiting to send shows unticked without a reload.
+- E2e: an edit in the sheet shows on its row before the answer. A failed sheet save puts back only its own field.
+
 ## State on 2026-10-15
 
 For whoever carries on. Read this, then phase 4.
 
-- **Where the work is.** Phases 0, 1 and 2 are on `dev`, which is ahead of `origin/dev` and not pushed. They were
-  built on a branch and fast-forwarded onto `dev`. The `pocket` folder at that point is installed on the user's server
+- **Where the work is.** Phases 0, 1 and 2 are on `dev` and pushed. They were built on a branch and
+  fast-forwarded onto `dev`. The `pocket` folder at that point is installed on the user's server
   (Cloudron, Postgres), and passed `scripts/relay-check.js` and a phone check online and offline.
 - **How it has been built.** One build agent at a time, each with a written brief: the parts of this plan it needs,
   `AGENTS.md`, `docs/development.md`, the exact scope, "nothing on screen changes" where that holds, the checks, and
@@ -643,15 +779,8 @@ For whoever carries on. Read this, then phase 4.
   code itself, not through a pipe. A change to `pocket/*.go` also runs `DB=sqlite` and `DB=mysql npm run test:local`.
   New words the user reads are proposed to the user before they ship. Discuss a phase's design with the user before
   building it, as was done for phase 1.
-- **Next: phase 3 (roles),** then **phase 4 (the store's foundation).** Phase 4 is the riskiest. Write "Phase 4 in
-  detail" first, as phase 1 has, and agree it with the user. Points it must answer:
-  - `keep`'s rule that a task marked as leaving done shows done moves into the memo.
-  - Reads differ in fields (a sheet's read has no `comment_count`, a checklist's has `comments`, a PATCH answer has
-    `reactions: null`), so every write into the copies takes only the fields its request asked for.
-    `answered` (tasks.js) already merges an answer and keeps the old value for a `null`.
-  - The saved screens still hold whole tasks until phase 11, so opening Pocket fills the copies from them.
-  - Rule 10: count bindings before and after (`npm run perf:rows -- counts`).
-  - The user checks it on the phone before phase 5.
+- **Next: phase 3 (roles),** then **phase 4 (the store's foundation),** built as "Phase 4 in detail" says, in four
+  commits. Phase 4 is the riskiest.
 - **Known, and fixed by a later phase.**
   - A checklist tick dropped from Waiting to send still shows as ticked until a reload (phase 4).
   - Every op is in `SHOWN_OWN_WAY` and the bridge carries none (phase 4 deletes both).
