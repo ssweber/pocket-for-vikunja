@@ -291,8 +291,8 @@ The rule that sorts a date into Overdue, Today, Next 7 days or nothing is writte
 (alerts.js), `pendingPlace` (sending.js), `placeOnToday` (actions.js), `beyond()` in `toggleDone` (actions.js) and in
 `arrivedDone` (sending.js), the query range in `readToday` (views.js), and `urgentFirst` (cards.js), which ranks a
 card's subtasks. A change to one would show a waiting row in one group and the same task, once sent, in another. Six
-agree today. `urgentFirst` finds tomorrow with `day + 864e5`, so on a day of 23 or 25 hours it ranks a task an hour
-off. The others use `addDays`.
+agree today. `urgentFirst` found tomorrow with `day + 864e5`, so on a day of 23 or 25 hours it ranked a task an hour
+off. No order on screen changed, because its ranks for dated tasks follow date order. The others used `addDays`.
 
 Found with `grep -n "addDays(startOfDay(), 8)\|addDays(t0, 8)\|addDays(t0, 1)\|t1 = \|864e5" src/js/app/*.js src/js/lists.js src/js/cards.js`.
 
@@ -476,6 +476,83 @@ checks that Vikunja changed once.
     this file.
 13. **When Vikunja supports `Idempotency-Key`.** Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add
     a migration that drops `pocket_relay`. Raise the minimum Vikunja version.
+
+## Phase 1 in detail
+
+Proposed on 2026-10-15, while the user was away. Nothing here is built yet. Each choice names what it replaces, so
+it can be argued with.
+
+### An entry and its keys
+
+- **An entry's `id` is a UUIDv7** (`uuid7()` in sync.js, beside `randomId`). It is the key the relay reads the time
+  from. A request's key is `<id>:<stage>:<part>`. No second field holds a key. Waiting rows keep their ids
+  (`pending-<id>-<index>`), only longer.
+- **The acts' entries keep `kind: 'act'` and `op`** in phase 1. Captures, starts and inserted steps keep their kinds
+  and senders until phases 4 and 9 make them ops. Once every kind is an op, `kind` goes.
+- **IndexedDB goes to version 3,** and the upgrade clears `outbox`, `files` and `claims`. `start()` loses the code that
+  moves entries from localStorage.
+
+### A stage, and the one sender
+
+An op's `stages` is a list of functions `(a, c) => Promise`. `sendOp` (app/acts.js) runs them from `a.stage`, saving
+the entry after each:
+
+- `c.send(path, opts)` is `api()` with the next key: the stage's part counter starts at 0 each time the stage runs. A
+  stage that sent two of its three requests before a lost reply runs again from the top. Its first two requests get
+  their stored answers back from the relay, and the third is sent. So a stage needs no record of its own parts.
+- `c.read(path)` is a plain `GET`, never keyed.
+- `c.once(name, build)` returns `a.fixed[name]`, or builds it, saves the entry, and returns it. A stage whose body
+  depends on a read builds the body in `once`. This is how "a request's body is fixed before it is first sent" is
+  kept.
+- A part number must always carry the same request. So a stage's requests, and their bodies, depend only on the
+  entry and `a.fixed`. A request that a later read decides on goes last in its stage, as `claim`'s undo of its own
+  assignment does. Otherwise the part counter could give one key two bodies, and the relay answers 422.
+
+`patiently` stays around each stage: a busy Vikunja is retried, and with keys a retry is safe.
+
+### What `api()` does with a key
+
+- With `key`, it sends to `/api/v1/plugins/pocket/v2<path>` with `Idempotency-Key: "<key>"`. Without, as now. A write
+  without a key is a lint error outside the allowlist (the keys rule, turned on in phase 9).
+- A refusal's reason is `detail`, then `message` (the relay's own refusals).
+- **409 without `Idempotency-Unknown`** (the first request is still running): wait `Retry-After` seconds, at most 3
+  times, then treat it as no connection (`passing`), so the entry waits.
+- **409 with `Idempotency-Unknown`**: the entry is marked failed, with a message saying Pocket can't tell whether
+  the change was made, and the outbox sheet offers Try again and Don't send it. Try again sends the stage with a new
+  key: it is the user's call that the change wasn't made.
+
+### The registry
+
+`src/js/ops/` holds one file per area, and `ops/index.js` exports `OPS`, the map from name to op. Phase 1 moves the
+ops `ACTS` has (`done`, `undone`, `skip`, `doneNote`, `note`, `answer`, `finish`, `reopen`, `progress`, `claim`,
+`unclaim`, `delete`, `position`), with their stages from `ACT_STEPS`, their words from `actText`, `dropText` and
+`actWhat`, and their `waiting` key from `keyWaiting`. `ACTS`, `ACT_STEPS`, `actText`, `dropText` and `actWhat` go.
+Each op's words come from `messages.js`.
+
+These helpers know nothing of the screen. A stage that needs the component (`figure` calls `writeFigure`) gets it as
+`c.app`, as `sync.js` reaches `app` today.
+
+The unit test in `tests/unit/ops.test.mjs` checks every op has every field, and that `apply` returns a new task and
+leaves its input alone.
+
+### The store's core, without changing what rows read
+
+`cache` already holds Vikunja's last copy of each task. Phase 1 makes it the store's copies and adds the waiting ops
+on top, but rows still read `tasks`, so nothing on screen changes yet:
+
+- `opsOn` (tasks.js): task id → the waiting entries for it, in order, rebuilt in `refreshPending` with `intoKeys`, as
+  `waiting` is.
+- `withWaiting(id)`: `cache.get(id)` with `opsOn[id]` applied through each op's `apply`.
+- When the waiting ops of a task change, `refreshPending` puts `withWaiting(id)` on its rows with `keep`. When an op is
+  answered, its answer goes into `cache` and the op leaves `opsOn` in the same call, followed by one `keep`.
+
+That is the bridge for phases 4 to 9: an op never changes `tasks` itself, and its row shows what `apply` returns.
+Phase 10 makes rows read `withWaiting` through a `memo` per id, and `tasks`, `keep` and the bridge go. The memo is
+built then because it can only be measured once rows read it.
+
+### What phase 1 leaves alone
+
+Pruning (phase 6), Undo as an op (phase 5), the late-read rule (phase 5) and every direct write outside the acts.
 
 ## Out of scope
 
