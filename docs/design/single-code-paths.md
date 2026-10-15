@@ -703,8 +703,12 @@ go.
 - `note`, `answer` and `doneNote` add their comment to `comments`, marked as waiting.
 - `claim` adds the user as `/user` gave them, name included.
 - `progress`, `finish` and `reopen` stay as they are.
-- `delete` and `position` keep their own way. A position belongs to a project's view, not to a task. A delete
-  removes rows, and doesn't change a task. Phases 9 and 11 decide them.
+- `delete` removes its tasks from the rows and from their parent's subtasks, so `deleting` goes. A delete's list of
+  tasks (`taskTree`) reads the store, so a subtask already being deleted is neither counted nor asked about. The
+  `figure` stage skips a parent with a waiting delete. Found on the phone on 2026-10-15. The user swiped a subtask on
+  Today, then its parent. Pocket asked to delete both, and the subtask's delete failed when it read the parent's
+  progress after the parent had gone.
+- `position` keeps its own way, because a position belongs to a project's view, not to a task.
 
 `waiting.ticks`, `waiting.pcts` and `waiting.claims` go where a row can read the task instead. The waiting and slow
 marks stay, because they describe the outbox entry, not the task.
@@ -753,7 +757,7 @@ bisected. The user checks the phone once, after 4d.
   `pendingSaves` and `keep`'s callers go. The store rule is on, except for `this.sheet.task`, `this.view.run` and
   `cache`. Measure rule 10.
 - **4c. Ops through `apply`.** An op's answer, the grown `apply`s, and `workOutRun`'s overlay, `applyAct` and
-  `SHOWN_OWN_WAY` gone. This fixes the dropped tick that stays ticked. Measure rule 10.
+  `SHOWN_OWN_WAY` gone, and deletes shown by the store. This fixes the dropped tick that stays ticked. Measure rule 10.
 - **4d. By id.** The sheet and a checklist's screen. The store rule is on in full, except for `cache`, which phase 11
   removes.
 
@@ -764,6 +768,7 @@ bisected. The user checks the phone once, after 4d.
   ignored. An op whose reply is not a task updates the copy. Each op's `apply`.
 - `tests/offline.mjs`: a tick dropped from Waiting to send shows unticked without a reload.
 - E2e: an edit in the sheet shows on its row before the answer. A failed sheet save puts back only its own field.
+  Deleting a subtask on Today, then its parent, asks no question and leaves nothing in Waiting to send.
 
 ## State on 2026-10-15
 
