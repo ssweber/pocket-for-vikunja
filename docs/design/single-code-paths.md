@@ -50,7 +50,7 @@ As the draft says:
 
 And beyond the draft:
 
-- **A 5xx or a failed forward isn't stored,** so the request can be sent again. Vikunja rolls back a request that fails
+- **A 5xx, a 408, a 429 or a failed forward isn't stored,** so the request can be sent again. Vikunja rolls back a request that fails
   that way.
 - **The forward doesn't use the request's context.** If the phone hangs up, the write still finishes and its answer
   is stored for the retry.
