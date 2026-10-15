@@ -46,7 +46,7 @@ didn't happen at all. A client then never has to guess.
 ### A working example
 
 [Pocket for Vikunja](https://github.com/ssweber/pocket-for-vikunja) is building this in its plugin, as a relay in front
-of `/api/v2`: [`pocket/relay.go`](https://github.com/ssweber/pocket-for-vikunja/blob/spike/relay/pocket/relay.go), not yet released. Pocket would
+of `/api/v2`: [`pocket/relay.go`](https://github.com/ssweber/pocket-for-vikunja/blob/dev/pocket/relay.go), not yet released. Pocket would
 delete the relay and send to `/api/v2` directly once Vikunja supports the header. Because the relay runs outside
 Vikunja's transaction, it has a small gap that native support wouldn't: if Vikunja stops between committing the write
 and storing the answer, a retry can't tell whether the write happened.
