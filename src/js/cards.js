@@ -2,8 +2,9 @@
    card is collapsed to the most urgent subtask, with "More" under it. This file calculates why a card is on Today,
    where it sits and which subtask is on top. It has no DOM code, so the unit tests can check it. app/cards.js draws
    the cards. */
-import {isLate, isSet, startOfDay} from './dates.js';
+import {isSet} from './dates.js';
 import {durText, hasTemplateLabel} from './checklists.js';
+import {dayGroup} from './lists.js';
 
 // A task's open subtasks, as listed in its own related_tasks.
 export const openSubs = t => (t?.related_tasks?.subtask || []).filter(s => !s.done);
@@ -70,9 +71,8 @@ export const cardGroup = (c, run) => c.when ? 'dated' : run ? 'runs' : 'nodate';
 /* A sort comparison that puts a card's most urgent subtask first. The order is overdue, then due today, then by date,
    then the rest in list order (`order`, from positionOrder in order.js). `now` is in ms. */
 export const urgentFirst = (now, order) => {
-  const day = +startOfDay(new Date(now)), next = day + 864e5;
-  const due = t => isSet(t.due_date) ? +new Date(t.due_date) : Infinity;
-  const rank = t => !isSet(t.due_date) ? 3 : isLate(t.due_date, new Date(now)) ? 0 : due(t) < next && due(t) >= day ? 1 : 2;
+  const due = t => isSet(t.due_date) ? +new Date(t.due_date) : Infinity, RANK = {overdue: 0, today: 1, week: 2, nodate: 3};
+  const rank = t => RANK[dayGroup(t.due_date, new Date(now))] ?? 2;
   return (a, b) => rank(a) - rank(b) || (due(a) < Infinity ? due(a) - due(b) : 0) || order(a, b);
 };
 /* A card's rows on Today. `sorted` is its open subtasks, most urgent first. `added` is the subtasks typed into the

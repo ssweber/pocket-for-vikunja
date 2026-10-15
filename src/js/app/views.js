@@ -6,7 +6,7 @@ import {addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay} from '.
 import {CHECKLIST_MARK, comesRound, DONE_MARK, hasTemplateLabel, templateName} from '../checklists.js';
 import {currentRoute} from '../routing.js';
 import {projectName} from '../quickadd.js';
-import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, todayGroups, viewKey} from '../lists.js';
+import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, keptGroups, nextBatch, OWN_META, parentIds, saved, soonestFirst, TODAY_DAYS, todayGroups, viewKey} from '../lists.js';
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText, moreDone} from '../messages.js';
 import {listViewOf} from '../order.js';
@@ -408,7 +408,7 @@ export default {
   },
   /* Load Today's tasks and cards with their open subtasks before assigning date groups. */
   async readToday(){
-    const end = addDays(startOfDay(), 8);
+    const end = addDays(startOfDay(), TODAY_DAYS);
     const t0 = startOfDay();
     const q = new URLSearchParams({filter: `done = false && due_date < '${end.toISOString()}'`, filter_timezone: TZ, sort_by: 'due_date', order_by: 'asc', expand: 'comment_count'});
     const qNew = new URLSearchParams({filter: `done = false && created >= '${t0.toISOString()}'`, filter_timezone: TZ, sort_by: 'created', order_by: 'desc', expand: 'comment_count'});

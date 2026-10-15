@@ -90,6 +90,15 @@ test('a card’s top row is the most urgent subtask: overdue, then due today, th
     'order is late (yesterday, then 9 this morning), today (no time, then 6 PM), later dates, then the rest in list order');
 });
 
+test('a card’s subtasks sort by the calendar day on a 23-hour day, so 12:30 AM tomorrow comes after today', () => {
+  const was = process.env.TZ; process.env.TZ = 'America/New_York';   // 8 March 2026 has 23 hours there
+  try {
+    const day = (d, h, m = 0) => new Date(2026, 2, d, h, m).toISOString(), s = (id, due = NONE) => ({ id, pos: id, due_date: due });
+    const list = [s(1), s(2, day(9, 0, 30)), s(3, day(8, 0)), s(4, day(8, 9))];
+    assert.deepEqual(list.sort(urgentFirst(+new Date(2026, 2, 8, 12), (a, b) => a.pos - b.pos)).map(x => x.id), [4, 3, 2, 1]);
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+});
+
 test('a checklist card’s top row stays on the ticked step until it leaves, then follows the checklist’s rule', () => {
   const steps = [{ id: 1 }, { id: 2 }, { id: 3 }], asked = [];
   const pick = from => { asked.push(from); return from === null ? 2 : 3; };

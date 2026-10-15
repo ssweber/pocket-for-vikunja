@@ -285,6 +285,8 @@ Found with `grep -on "hasTemplateLabel(\|isTemplate(\|isRun(\|isRunTask(\|isRunS
 
 ## 4. One rule for Today's groups
 
+Built.
+
 The rule that sorts a date into Overdue, Today, Next 7 days or nothing is written out seven times: `placeDated`
 (alerts.js), `pendingPlace` (sending.js), `placeOnToday` (actions.js), `beyond()` in `toggleDone` (actions.js) and in
 `arrivedDone` (sending.js), the query range in `readToday` (views.js), and `urgentFirst` (cards.js), which ranks a
@@ -450,7 +452,7 @@ checks that Vikunja changed once.
    Without it, each op in phases 4 to 9 would first change `tasks` itself, and be rewritten for part 7.
 2. **Roles.** Settle the decision in part 3 first. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
-3. **Today's groups.** Add `dayGroup`, move all six places, and turn on its rule.
+3. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
 4. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints. Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format and clear the old one.
 5. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`. A late fetch is ignored as part
    7 says, so delete `readTask` and `saving`.

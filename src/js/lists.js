@@ -1,6 +1,6 @@
 // How Pocket's lists are built, sorted and drawn, and the copies saved so Pocket can open without a connection.
 import {store} from './util.js';
-import {isSet} from './dates.js';
+import {addDays, isLate, isSet, startOfDay} from './dates.js';
 import {hasOwnOrder, stepsOf} from './checklists.js';
 
 // The lists Pocket last loaded, shown when it opens without a connection. Sign-out clears them.
@@ -161,6 +161,16 @@ export const todayOrder = (at = t => t) => {
     nodate: (a, b) => born(b) - born(a),
   };
 };
+/* Which of Today's groups a task due `due` goes in: 'overdue', 'today', 'week' (the next 7 days), null for 8 or more
+   days ahead, or 'nodate'. Every place that sorts a date into Today's groups asks here, so a waiting row and the same
+   task once sent land in the same group. addDays, not 24 hours, finds each midnight, so a 23- or 25-hour day is right. */
+export const TODAY_DAYS = 8;
+export function dayGroup(due, now = new Date()){
+  if (!isSet(due)) return 'nodate';
+  if (isLate(due, now)) return 'overdue';
+  const d = new Date(due), t0 = startOfDay(now);
+  return d < addDays(t0, 1) ? 'today' : d < addDays(t0, TODAY_DAYS) ? 'week' : null;
+}
 // The dates Today sorts a task by. A card uses the dates of the subtask that put it on Today (`cards` by task id, from
 // todayItems). Any other task uses its own.
 export const todayAt = (cards = {}) => t => cards[t.id] ? {due_date: cards[t.id].when, created: cards[t.id].made || t.created} : t;

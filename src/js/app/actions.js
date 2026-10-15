@@ -4,13 +4,13 @@
    in its notes instead. */
 import {cache} from '../util.js';
 import {api, NetError, patchTask} from '../api.js';
-import {addDays, dueInfo, isSet, movedDue, repeats, startOfDay} from '../dates.js';
+import {dueInfo, isSet, movedDue, repeats} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
 import {dayWord, doneText, movedText, movedTo, movedToProject, notReordered, notMovedBack, notSaved, sentLater} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {DONE_MARK, hasOwnOrder, hasTemplateLabel, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
-import {parentIds} from '../lists.js';
+import {dayGroup, parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync} from '../sync.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
@@ -145,7 +145,7 @@ export default {
         // Keep the completed row and its old date until the batch clears, then show its next date or remove it
         // from Today.
         Object.assign(t, shown, {done: true});
-        const beyond = () => this.route.name === 'today' && !(new Date(saved.due_date) < addDays(startOfDay(), 8));
+        const beyond = () => this.route.name === 'today' && dayGroup(saved.due_date) === null;
         this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: `Done: ${t.title}. It repeats${next ? ', ' + next : ''}`,
           gone: () => { Object.assign(t, saved); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
         return;
@@ -512,8 +512,7 @@ export default {
     const c = this.view.cards?.[t.id];
     if (c) c.when = when !== undefined ? when : [due, ...this.cardSubs(t, false).filter(s => !s.done).map(s => s.due_date)].filter(isSet)
       .reduce((a, b) => !a || Date.parse(b) < Date.parse(a) ? b : a, null);
-    const at = c ? c.when : due, dated = isSet(at), groups = this.view.groups;
-    const into = dated && new Date(at) >= addDays(startOfDay(), 8) ? null : groups.find(g => g.key === (dated ? 'today' : key));
+    const k = dayGroup(c ? c.when : due), groups = this.view.groups, into = k && groups.find(g => g.key === (k === 'nodate' ? key : k));
     for (const g of groups) g.tasks = g.tasks.filter(x => x.id !== t.id);
     into?.tasks.push(t);
     this.regroupToday();

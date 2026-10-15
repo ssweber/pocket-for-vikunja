@@ -2,7 +2,7 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { batchMs, doneParentIds, drawnOf, FIRST_ROWS, FRAME_MS, intoGroup, LATER_MS, NEAR_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
+import { batchMs, dayGroup, doneParentIds, drawnOf, FIRST_ROWS, FRAME_MS, intoGroup, LATER_MS, NEAR_ROWS, keptGroups, nestSubtasks, nextBatch, sameGroup, soonestFirst, TODAY_DAYS, todayAt, todayGroups, todayOrder, viewKey } from '../../src/js/lists.js';
 import { component } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import checklists from '../../src/js/app/checklists.js';
@@ -396,4 +396,29 @@ test('briefly highlighted rows are stored by id, so highlighting one row updates
   assert.deepEqual([lit(), asked], [{ fresh: ['2'], due: [], arrived: ['3', '4'] }, { 1: 3, 2: 2 }], 'highlighting a row again, and rows new to the screen, updates neither row');
   c.mock.timers.tick(2000); flush();
   assert.deepEqual([lit(), asked], [{ fresh: [], due: [], arrived: [] }, { 1: 3, 2: 3 }], 'after 2 seconds the highlights end');
+});
+
+// Runs `fn` with the local time zone set to `zone`, where a clock change makes a day of 23 or 25 hours.
+const inZone = (zone, fn) => { const was = process.env.TZ; process.env.TZ = zone; try { fn(); } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; } };
+const on = (y, mo, d, h = 0, m = 0) => new Date(y, mo, d, h, m), iso = (...a) => on(...a).toISOString();
+
+test('a task with no time due today is late once the day ends, and a timed task one minute after its time', () => {
+  assert.deepEqual([dayGroup(iso(2026, 9, 7), on(2026, 9, 7, 23, 59)), dayGroup(iso(2026, 9, 7), on(2026, 9, 8))], ['today', 'overdue']);
+  assert.deepEqual([dayGroup(iso(2026, 9, 7, 14), on(2026, 9, 7, 14)), dayGroup(iso(2026, 9, 7, 14), on(2026, 9, 7, 14, 1))], ['today', 'overdue']);
+});
+
+test('Today shows 7 days after today: the last minute of the 7th day is in Next 7 days, and the 8th day is off Today', () => {
+  const now = on(2026, 9, 7, 14);
+  assert.deepEqual([dayGroup(iso(2026, 9, 8), now), dayGroup(iso(2026, 9, 14, 23, 59), now), dayGroup(iso(2026, 9, 15), now)], ['week', 'week', null]);
+  assert.deepEqual([dayGroup('0001-01-01T00:00:00Z', now), dayGroup(null, now)], ['nodate', 'nodate'], 'an unset date has no date');
+  assert.equal(TODAY_DAYS, 8, 'readToday asks Vikunja for the same days');
+});
+
+test('on a day of 23 or 25 hours, Today and the 8th day start at midnight', () => {
+  inZone('America/New_York', () => {
+    const spring = on(2026, 2, 8, 12), fall = on(2026, 10, 1, 12);   // 8 March 2026 has 23 hours there, 1 November 25
+    assert.deepEqual([dayGroup(iso(2026, 2, 8, 23, 30), spring), dayGroup(iso(2026, 2, 9, 0, 30), spring)], ['today', 'week'], 'on a 23-hour day');
+    assert.deepEqual([dayGroup(iso(2026, 10, 1, 23, 30), fall), dayGroup(iso(2026, 10, 2), fall)], ['today', 'week'], 'on a 25-hour day');
+    assert.deepEqual([dayGroup(iso(2026, 2, 15, 23, 59), spring), dayGroup(iso(2026, 2, 16, 0, 30), spring)], ['week', null], 'the 8th day after a 23-hour day');
+  });
 });

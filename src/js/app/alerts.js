@@ -4,8 +4,8 @@
    the phone allows them. Reminders while Pocket is closed are Vikunja's emails. */
 import {store} from '../util.js';
 import {serverTime} from '../api.js';
-import {addDays, isLate, isSet, startOfDay} from '../dates.js';
-import {todayAt, todayOrder} from '../lists.js';
+import {isLate, isSet, startOfDay} from '../dates.js';
+import {dayGroup, todayAt, todayOrder} from '../lists.js';
 import {runShows} from '../checklists.js';
 
 let sound = null;                                // the AudioContext, made on a tap so the browser lets it play
@@ -53,10 +53,10 @@ export default {
      day is over), Today, or the next 7 days. A card goes by the earliest date among its task and its open subtasks
      (`cards`). The app icon shows the overdue count. */
   placeDated(groups, tasks, cards = this.view.cards || {}){
-    const [overdue, today, week] = ['overdue', 'today', 'week'].map(k => groups.find(g => g.key === k)), now = new Date(), t1 = +addDays(startOfDay(), 1);   // addDays handles a 23- or 25-hour day
+    const [overdue, today, week] = ['overdue', 'today', 'week'].map(k => groups.find(g => g.key === k)), now = new Date();
     const at = todayAt(cards), order = todayOrder(at);
     for (const g of [overdue, today, week]) g.tasks = [];
-    for (const t of tasks) { const due = at(t).due_date; (isLate(due, now) ? overdue : new Date(due) < t1 ? today : week).tasks.push(t); }
+    for (const t of tasks) ({overdue, today}[dayGroup(at(t).due_date, now)] || week).tasks.push(t);
     for (const g of [overdue, today, week]) g.tasks.sort(order[g.key]);
     this.groupedAt = +now;
     this.setBadge(overdue.tasks.length);

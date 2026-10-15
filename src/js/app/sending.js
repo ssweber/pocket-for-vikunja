@@ -1,12 +1,12 @@
 // Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
 import {cache, raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
-import {addDays, isLate, isSet, startOfDay} from '../dates.js';
+import {isSet, startOfDay} from '../dates.js';
 import {addedWhere, cancelName, doneText} from '../messages.js';
 import {patiently} from '../checklists.js';
 import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
-import {intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
+import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 
 let waitTimer;
@@ -263,7 +263,7 @@ export default {
     if (now.done) this.signTick(now);
     const said = doneText(0, 0, t.title), failed = e => this.say('Not undone: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}});
     if (!now.done) {
-      const was = t.due_date, beyond = () => this.route.name === 'today' && !(new Date(now.due_date) < addDays(startOfDay(), 8));
+      const was = t.due_date, beyond = () => this.route.name === 'today' && dayGroup(now.due_date) === null;
       const undo = async () => { try { Object.assign(t, await this.saveTask(t.id, {due_date: was})); } catch (e) { failed(e); } this.render(); };
       this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: said + '. It repeats',
         gone: () => { Object.assign(t, now); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
@@ -415,10 +415,7 @@ export default {
     if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
     if (r.name !== 'today') return null;
     // A subtask is never a separate row on Today. It waits on its task's card, where it was added (cardRows, cards.js).
-    if (t.child || t.parent) return null;
-    if (!isSet(t.due_date)) return 'nodate';
-    const d = new Date(t.due_date), t0 = startOfDay();
-    return d >= addDays(t0, 8) ? null : isLate(t.due_date) ? 'overdue' : d < addDays(t0, 1) ? 'today' : 'week';
+    return t.child || t.parent ? null : dayGroup(t.due_date);
   },
   /* The current list's groups, with waiting tasks added where they belong and subtasks nested under their parents. A
      project's open tasks are in List view order. Each group carries the gestures its rows allow on this screen
