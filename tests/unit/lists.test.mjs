@@ -225,7 +225,7 @@ test('a list recalculated with the same content is the same object, so its rows 
   assert.equal(sameGroup(undefined, g), false);
 
   const app = component(views, sending, lines);
-  Object.assign(app, { route: { name: 'search' }, pending: [], deleting: [], positions: {}, cardOf: () => null,
+  Object.assign(app, { route: { name: 'search' }, pending: [], positions: {}, cardOf: () => null,
     view: { groups: [{ key: 'open', tasks: [a, b] }, { key: 'done', tasks: [c] }] } });
   const [open, done] = app.listGroups;
   assert.deepEqual([open.before, done.before], [0, 2], 'the number of rows above each group');

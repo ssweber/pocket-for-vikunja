@@ -69,17 +69,15 @@ export default () => ({
   showingMore: null,                           // key of the done list whose next batch is loading (showMore, views.js)
   pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
   failed: [],                                  // outbox entries Vikunja refused, kept to retry or discard (outbox.js)
-  deleting: [],                                // ids of tasks being deleted (removeTask), hidden from the lists meanwhile
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)
   cardPage: {},                                // a checklist card's id -> its pinned top step (pinCard, cards.js)
   cardAdded: {},                               // task id -> subtasks added on Today this visit, as {id, after}, with null after for the top (cardRows)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // task id -> temporary claim during a progress gesture (claimOnSlide)
-  // Index the latest pending claim or release, tick, progress and the number of waiting files by task id, so rows
-  // read only their own state.
-  waiting: {claims: {}, files: {}, ticks: {}, pcts: {}},
-  opsOn: {},                                   // task id -> its ops waiting in the outbox, in the order they will be sent (keyOps, tasks.js)
+  // The number of waiting files by task id, so rows read only their own state.
+  waiting: {files: {}},
+  opsOn: {},                                   // task id -> the ops waiting in the outbox that change it, in the order they will be sent (keyOps, tasks.js)
   // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
   // hint.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},

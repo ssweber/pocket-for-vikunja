@@ -151,9 +151,11 @@ export default {
     }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
-  // Show task `t` in the sheet. The sheet reads its row, and a task opened from search, a link or a card gets one here.
+  // Show task `t` in the sheet. The sheet reads its row, and a task opened from search, a link or a card gets one here,
+  // as each of its subtasks does (subRows).
   showTask(t){
     const row = this.row(t);
+    this.subRows(row);
     this.sheet.id = t.id;
     this.keepTemplate(row);
     if (document.activeElement?.id !== 'd-title') this.sheet.title = this.rowTitle(row);
@@ -209,13 +211,13 @@ export default {
   },
   // The parent's title. For a template's step, the template's name without "TEMPLATE: ".
   get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },
-  /* The open task's subtasks, without those being deleted. A template's or checklist's steps are in the order of the
-     order line. Any other task's subtasks are in its project's List view order once that is read (loadSubOrder) or
-     after a move, and until then in the order they were made. */
+  /* The open task's subtasks as their own rows show them (subRow), without those being deleted. A template's or
+     checklist's steps are in the order of the order line. Any other task's subtasks are in its project's List view
+     order once that is read (loadSubOrder) or after a move, and until then in the order they were made. */
   get subtasks(){
     const t = this.sheetTask, hidden = this.hiddenRows;
     const subs = this.hasOwnOrder(t) ? stepsOf(t) : [...(t?.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
-    return subs.filter(s => !hidden.has(s.id));
+    return subs.filter(s => !hidden.has(s.id)).map(s => this.subRow(s));
   },
   /* Read the positions of the open task's subtasks in its project's List view. The request asks the view for the task
      and its subtasks together, because the view returns a task's subtasks, done ones included, only while the task

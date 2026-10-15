@@ -107,13 +107,14 @@ export function answerHtml(asks, values){
   const lines = asks.filter(a => values.has(a.key)).map(a => (a.label ? a.label + ': ' : '') + values.get(a.key));
   return lines.length ? [...lines, ANSWER_MARK].map(l => '<p>' + esc(l) + '</p>').join('') : '';
 }
-/* A step's asks and the answers that count, for a checklist's screen. `waiting` are the html of its answer comments
-   not yet sent, which count as the newest. Each answer is {text, num, off, author, mine, created, waiting}. */
-export function stepAnswers(s, waiting, me){
+/* A step's asks and the answers that count, for a checklist's screen. A comment an op added and not yet sent is
+   marked waiting (said, ops/shown.js), and counts as the newest. Each answer is {text, num, off, author, mine, created,
+   waiting}. */
+export function stepAnswers(s, me){
   const asks = s.pending ? [] : stepAsks(s.description).asks;
   if (!asks.length) return {asks, answers: {}};
-  const said = [...(s.comments || []).map(c => ({id: c.id, lines: textLines(c.comment), author: c.author?.name || c.author?.username || 'Someone', mine: c.author?.id === me?.id, created: c.created})),
-    ...waiting.map(w => ({id: Infinity, lines: textLines(w.html), author: me?.name || me?.username || 'You', mine: true, created: w.at, waiting: true}))];
+  const said = (s.comments || []).map(c => ({id: c.waiting ? Infinity : c.id, lines: textLines(c.comment), author: c.author?.name || c.author?.username || 'Someone',
+    mine: c.author?.id === me?.id, created: c.created, ...c.waiting && {waiting: true}}));
   return {asks, answers: Object.fromEntries(answersOf(asks, said))};
 }
 const TYPE_WORDS = {number: 'a number', 'yes-no': 'yes or no', choice: 'a choice', text: 'text'};

@@ -23,7 +23,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'cancelLabel'));
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], positions: {}, projects: [], canWrite: () => true });
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], positions: {}, projects: [], canWrite: () => true });
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   app.view = { groups: todayGroups(), route: '' };
   return app;
@@ -332,7 +332,7 @@ const underBox = t => {
   const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'flush'));
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   const van = app.row(v.task(9)), chairs = app.row(v.task(8));
-  Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
+  Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
     checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 },
     view: { groups: [{ key: 'open', tasks: [van, chairs] }], route: '', listView: 3 }, cursor: null, lit: {}, flash(){}, $nextTick(){} });
   app.aim(van);

@@ -43,7 +43,11 @@ export default {
      that returns them, and defaults to all `ids`. Tapping the tick or Restore calls `undo`. Clearing the batch
      calls `gone`. `said` is announced to screen readers. A new mark for a task replaces its old one. */
   markRow(id, {kind, ids = [id], out, undo = null, gone = null, said = ''}){
-    const {marks, batch, tops} = of(this), m = {id, kind, ids, out, undo, gone, going: false};
+    const {marks, batch, tops} = of(this);
+    // A row marked deleted keeps its mark, whose `gone` sends the held delete. Taken into another mark, the delete
+    // would wait until Pocket is hidden.
+    ids = ids.filter(x => marks.get(x)?.kind !== 'deleted');
+    const m = {id, kind, ids, out, undo, gone, going: false};
     for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); this.leaving[x] = kind; }
     if (said) this.said = said;
     batch.mark();

@@ -5,7 +5,7 @@ import {addDays, dueInfo, fmtTime, isSet, startOfDay} from '../dates.js';
 import {pctOf, tickFeel, workedOut} from '../progress.js';
 import {haptic} from '../haptics.js';
 import {htmlToText, textToHtml} from '../html.js';
-import {addedText, allComments, commentShown, comesRound, isAnswer, countText, DONE_MARK, durText, inBatches, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
+import {addedText, allComments, comesRound, isAnswer, countText, DONE_MARK, durText, inBatches, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {stepAnswers} from '../asks.js';
 import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
@@ -16,11 +16,11 @@ import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
 import {copyOf, dropCopy, put, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
-
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
    when another step or countdown changes. */
 const lastSteps = new Map();
+const TICKS = ['done', 'undone', 'skip', 'doneNote'];
 
 export default {
   async openStart(id){
@@ -311,8 +311,9 @@ export default {
     r.last = same ? {...last, held: r.last.held} : {...last, held: this.runView?.step?.id ?? null};
     this.saveRun();
   },
-  /* Apply pending changes to the visible run so ticks, skips and notes show immediately. Memoize once per input
-     change, read runNow only when time changes visible text, and reuse unchanged step objects. */
+  /* The checklist on its screen, from its steps as their rows show them, so a tick, a skip or a note waiting in the
+     outbox shows through its op. Memoize once per input change, read runNow only when time changes visible text, and
+     reuse unchanged step objects. */
   get runView(){ return (this.runMemo ||= memo(function(){ return this.workOutRun(); })).call(this); },
   // Keep one row-options object so selecting a card step changes only `at`. Read it through raw to avoid making
   // these writes trigger another computation.
@@ -327,36 +328,29 @@ export default {
   workOutRun(){
     const r = this.view.shownRun, run = this.runTask;
     if (!r || !run) return null;
-    const me = this.user, myName = me?.name || me?.username || 'You';
-    const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.id);
-    const waitingNote = a => ({id: a.id, comment: commentShown(a.html), author: myName, when: 'Waiting to send'});
+    const me = this.user;
     // Place pending inserted or repeated steps before their original successor, or after their predecessor if that
-    // successor is gone. Omit cancelled steps.
+    // successor is gone. Omit cancelled steps. A step being inserted has no row, so its ops are applied here.
     const base = r.steps.map(id => this.tasks[id]).filter(Boolean).map(plainStep);
     for (const e of this.pending) if (e.kind === 'step' && !e.cancelled && e.run === r.id && !base.some(s => s.id === e.taskId)) {
-      const k = base.findIndex(s => s.id === e.before), a = k < 0 ? base.findIndex(s => s.id === e.after) : -1;
-      base.splice(k >= 0 ? k : a >= 0 ? a + 1 : base.length, 0, {id: 'pending-' + e.id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
-        assignees: [], attachments: [], reactions: {}, comments: [], tpl: e.tpl ?? null, from: e.from, added: e.from || e.tpl != null ? 'Repeated' : 'Inserted', pending: e.id});
+      const k = base.findIndex(s => s.id === e.before), a = k < 0 ? base.findIndex(s => s.id === e.after) : -1, id = 'pending-' + e.id;
+      base.splice(k >= 0 ? k : a >= 0 ? a + 1 : base.length, 0, this.withOps(id, {id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
+        assignees: [], attachments: [], reactions: {}, comments: [], tpl: e.tpl ?? null, from: e.from, added: e.from || e.tpl != null ? 'Repeated' : 'Inserted', pending: e.id}));
     }
     const steps = base.map((s, i) => {
-      const skipper = skippedBy(s);
-      // waiting includes unsent ticks, skips and unticks. slow marks those that have waited long enough to look
-      // pending.
-      let done = s.done, skipped = !!skipper, waiting = false, slow = false, doneAt = s.done_at, pct = Math.round((s.percent_done || 0) * 100);
+      const skipper = skippedBy(s), done = s.done, skipped = !!skipper, pct = Math.round((s.percent_done || 0) * 100);
+      // The step waits while a tick, a skip or an untick of it is in the outbox. It looks waiting (slow) once the last
+      // of them has waited long enough.
+      const tick = (this.opsOn[s.id] || []).filter(a => TICKS.includes(a.op)).at(-1), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
+      let doneAt = s.done_at;
       const kept = keptTicks()[s.id];
       // Compare whole seconds because tick replies include nanoseconds but later task reads do not.
       if (done && kept && Math.floor(Date.parse(kept.there) / 1000) === Math.floor(Date.parse(s.done_at) / 1000)) doneAt = kept.here;
-      let by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
+      const by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
       const doers = () => by.map(u => u.name || u.username);
       const notes = (s.comments || []).map(noteOf);
-      for (const a of acts) if (this.actTask(a) === s.id) {
-        if (a.op === 'note' || a.op === 'skip' || a.op === 'doneNote' || a.op === 'answer') notes.push(waitingNote(a));
-        if (a.op === 'progress') { pct = a.pct; continue; }
-        if (a.op === 'note' || a.op === 'answer' || a.op === 'claim' || a.op === 'unclaim') continue;
-        waiting = true; slow = this.slow.includes(a.id); done = a.op !== 'undone'; skipped = a.op === 'skip'; doneAt = a.at; by = me ? [me] : [];
-      }
       // The step's row shows the latest comment's first line. Answers to its asks show on the row already.
-      const talk = [...(s.comments || []).filter(c => !isAnswer(c.comment)).map(noteOf), ...acts.filter(a => this.actTask(a) === s.id && ['note', 'skip', 'doneNote'].includes(a.op)).map(waitingNote)].at(-1);
+      const talk = (s.comments || []).filter(c => !isAnswer(c.comment)).map(noteOf).at(-1);
       const said = talk ? {who: talk.author, text: htmlToText(talk.comment || '').split('\n').map(l => l.trim()).find(Boolean) || ''} : null;
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
       const slot = done ? this.doneSlot(by, people, slow ? 'wait' : skipped ? 'skip' : 'done')
@@ -364,7 +358,7 @@ export default {
       // Show who completed or skipped the step, with their picture and reaction badge.
       const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))
         : new Date(doneAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'})) : '';
-      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), ...stepAnswers(s, acts.filter(a => a.op === 'answer' && this.actTask(a) === s.id), me), attachments: s.attachments, done, skipped, waiting, slow, notes, said, doneAt, slot, by, pct,
+      return {id: s.id, i, title: parseStep(s.title).title, description: notesOnly(s.description), ...stepAnswers(s, me), attachments: s.attachments, done, skipped, waiting, slow, notes, said, doneAt, slot, by, pct,
         added: s.added || '', pending: s.pending || null, slowAdd: !!s.pending && this.slow.includes(s.pending), from: s.from || null, tpl: s.tpl,
         whoText: !done ? '' : (skipped ? 'Skipped' : 'Done') + (slow ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at)};
     });
@@ -404,13 +398,13 @@ export default {
     const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length, didCount = doneCount - skippedN;
     // Show who started the run in its summary and menu. The top row's slot shows who the run is for.
     const started = startedText(this.runStarter(run), run.created, {now: new Date(now)});
-    const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (run.done ? 'finish' : '')) === 'finish';
+    const finished = !!run.done;
     // Show the finish card when the run is finished or every step is done. Tapping a listed step can still open
     // its card.
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
     return {steps, total, doneCount, didCount, skippedN, allDone, at, step, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [started, `${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
-      notes: [...(run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.id).map(waitingNote)],
+      notes: (run.comments || []).map(noteOf),
       ring: {...workedOut(steps.map(s => ({done: s.done, pct: s.pct}))), run: true}};
   },
   // Who started a checklist: "you" or their name. Null when Vikunja doesn't report it.
@@ -503,10 +497,6 @@ export default {
     const role = this.role(t);
     return role !== 'template' && (role !== 'run' || this.route.name === 'project');
   },
-  // A step as done or not, counting ticks still waiting to be sent (keyWaiting).
-  stepDone(id, done){ return this.waiting.ticks[id] ?? done; },
-  // A step's progress, counting progress still waiting to be sent (keyWaiting).
-  stepPct(s){ return this.waiting.pcts[s.id] ?? pctOf(s); },
   // Compute a parent's progress from its subtasks or run steps. Use stored progress for other tasks.
   shownPct(t){
     const r = this.ringOf(t);

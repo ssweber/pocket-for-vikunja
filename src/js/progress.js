@@ -7,8 +7,9 @@ import {repeats} from './dates.js';
    a task restores its earlier progress. A repeating task starts its next date at 0%. */
 export const pctOf = t => Math.round((t?.percent_done || 0) * 100);
 /* The open subtasks to mark done along with their parent, after asking (app/cards.js). A repeating parent has none,
-   and a repeating subtask is left out, because marking a repeating task done only moves it to its next date. */
-export const openSubtasks = t => repeats(t) ? [] : (t.related_tasks?.subtask || []).filter(s => !s.done && !repeats(s));
+   and a repeating subtask is left out, because marking a repeating task done only moves it to its next date. `row`
+   gives each subtask as its own row shows it (subRow, app/tasks.js). */
+export const openSubtasks = (t, row = s => s) => repeats(t) ? [] : (t.related_tasks?.subtask || []).map(row).filter(s => !s.done && !repeats(s));
 // Whether a patch is an Undo that restores progress. It shows no message.
 export const undoing = extra => 'percent_done' in extra && !extra.done;
 export const progressPatch = (t, pct) => pct >= 100 ? {done: true, ...repeats(t) && {percent_done: 0}} : {percent_done: pct / 100};

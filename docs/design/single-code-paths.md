@@ -511,7 +511,8 @@ checks that Vikunja changed once.
 2. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
 3. **Roles.** Done. Add the table test, `roleOf` and `this.role`, move every caller, and turn on the roles rule.
    `known` also holds the Checklists projects' ids. `isTemplateLabel` stays exported, because it asks about a label.
-4. **The store's foundation.** Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
+4. **The store's foundation.** Done on 2026-10-15, in four commits, and waits for the user's phone check before
+   phase 5. Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
    `tasks[id]`, its only writer. Every read and every direct save writes into the copies by field, so today's
    `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by id, so
    `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The bridge's
@@ -533,6 +534,13 @@ checks that Vikunja changed once.
    A subtask edited in its parent's sheet is an `edit(id, fields, parent)`, which also edits the parent's
    `related_tasks`. `applyAct` puts what a sent act did into Vikunja's copies. Templates are in the copies, and a saved
    checklist screen is its ids and Vikunja's copies. The store rule is on in full.
+   4d: every op shows itself through its `apply` (`ops/shown.js` holds what the ticks and comments share), and an
+   op's answer puts `apply` into Vikunja's copy (`answered`). `opsOn` holds each op under every task it changes (an
+   op's `on`), held deletes included. A task is being deleted when a waiting delete deletes it (`beingDeleted`), and
+   `hiddenRows` reads that. A subtask is read from its own row (below). `SHOWN_OWN_WAY`, `applyAct`, `until`,
+   `deleting`, `waiting.ticks`, `waiting.pcts`, `waiting.claims`, `withWaiting`, `subOf` and `edit`'s `under` are
+   gone. `keepTick`, `bases`, `claimSent` (for the sheet's subtask people) and `pendingComments` (the sheet's comments
+   are read apart from the store) stay.
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
    Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format. Old stored data is
    read as it is, or ignored if it can't be read. Pocket writes no upgrade code.
@@ -760,6 +768,14 @@ no upgrade code, since it is on only a few phones.
 the store first. `view.run` keeps `at`, `last` and the steps' order, and holds the checklist's id and its steps' ids.
 A subtask stays nested in its parent's copy (`related_tasks`), as now. Phase 11 decides whether it gets its own copy.
 
+### A subtask is read from its own row
+
+Decided on 2026-10-15, after the review of 4b and 4c. Code that reads a subtask's fields reads `tasks[s.id]`
+(`subRow`), and the copy nested in its parent only when the subtask has no row. The parent's nested list stays as
+Vikunja gave it, and says only which subtasks there are and in what order. A subtask's edit, and an op on it, change
+its own row only, never the parent's `related_tasks`. The sheet gives each of its task's subtasks a row as it opens
+(`subRows`), made from the nested copy until a read of the subtask comes. This settles phase 11's question for reads.
+
 What the user sees change: an edit in the sheet shows on the row behind it at once, not when Vikunja answers.
 
 ### Waiting creates
@@ -806,11 +822,9 @@ For whoever carries on. Read this, then phase 4.
   code itself, not through a pipe. A change to `pocket/*.go` also runs `DB=sqlite` and `DB=mysql npm run test:local`.
   New words the user reads are proposed to the user before they ship. Discuss a phase's design with the user before
   building it, as was done for phase 1.
-- **Next: phase 3 (roles),** then **phase 4 (the store's foundation),** built as "Phase 4 in detail" says, in four
-  commits. Phase 4 is the riskiest.
+- **Phases 3 and 4 are on `dev`.** Phase 4 was built in four commits, as "Phase 4 in detail" says. It waits for the
+  user's phone check, and phase 5 comes after it.
 - **Known, and fixed by a later phase.**
-  - A checklist tick dropped from Waiting to send still shows as ticked until a reload (phase 4).
-  - Every op is in `SHOWN_OWN_WAY` and the bridge carries none (phase 4 deletes both).
   - `docs/roadmap.md` line 83 still says a checklist's progress calls `api()` itself (phase 13).
   - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.
   - Part 2 of `today-moves.md`, the gap where a moved row was, is built after phase 6.

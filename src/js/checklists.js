@@ -411,9 +411,12 @@ export async function patiently(fn){
     catch (e) { if (!(e instanceof ApiError && e.status >= 500) || i >= 2) throw e; await new Promise(r => setTimeout(r, 400 * (i + 1))); }
   }
 }
-// A task with all its comments. Vikunja's expand=comments returns only the first 50.
+/* A task with all its comments. Vikunja's expand=comments returns only the first 50, and leaves `comments` out when
+   there are none. An empty list then says the comments were read, so a comment waiting to be sent has a list to join
+   (said, ops/shown.js). */
 export async function allComments(t){
   if ((t.comments || []).length >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
+  t.comments ||= [];
   return t;
 }
 // Map `fn` over `list`, `n` items at a time, and return the results in the list's order.
@@ -426,7 +429,8 @@ const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeSt
 // A comment as shown. An answer comment's last line, pocket:answer, is Pocket's and is left out.
 export const isAnswer = html => /pocket:answer/i.test(html || '');
 export const commentShown = html => isAnswer(html) ? notesOnly(html) : html;
-export const noteOf = c => ({id: c.id, comment: commentShown(c.comment), author: c.author?.name || c.author?.username || 'Someone', when: fmtWhen(c.created)});
+// A comment as a note. A comment an op added says it is waiting (said, ops/shown.js).
+export const noteOf = c => ({id: c.id, comment: commentShown(c.comment), author: c.author?.name || c.author?.username || 'Someone', when: c.waiting ? 'Waiting to send' : fmtWhen(c.created)});
 /* Split a run's title into {template, day, name, old}. Returns null for a title not in that shape. runTitle writes
    "Opening up · Oct 8 · #2", which is the template's name, the day, and then a number or the name typed.
 

@@ -2,6 +2,7 @@
 import {ApiError} from '../api.js';
 import {assignedJustNow, OP_WORDS} from '../messages.js';
 import {ALREADY} from '../sync.js';
+import {whoOf} from './shown.js';
 
 /* If another user claimed the task in the meantime, that user keeps it. This happens when two users tap at once, or
    when a claim waited offline. Pocket checks before and after assigning. When two users claim at the same moment, the
@@ -17,9 +18,8 @@ const claimIt = async (a, c) => {
   if (after.length) { await c.send(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(() => {}); throw taken(after); }
 };
 const letGo = (a, c) => c.send(`/tasks/${a.task}/assignees/${a.user}`, {method: 'DELETE'}).catch(e => { if (e.status !== 404) throw e; });
-const CLAIMS = {key: 'claims', value: a => a.op};
 
-export const claim = {apply: (t, a) => ({...t, assignees: [...(t.assignees || []).filter(u => u.id !== a.user), {id: a.user}]}), stages: [claimIt],
-  invert: null, merge: null, waiting: CLAIMS, ...OP_WORDS.claim};
+export const claim = {apply: (t, a) => ({...t, assignees: [...(t.assignees || []).filter(u => u.id !== a.user), whoOf(a)]}), stages: [claimIt],
+  invert: null, merge: null, ...OP_WORDS.claim};
 export const unclaim = {apply: (t, a) => ({...t, assignees: (t.assignees || []).filter(u => u.id !== a.user)}), stages: [letGo],
-  invert: null, merge: null, waiting: CLAIMS, ...OP_WORDS.unclaim};
+  invert: null, merge: null, ...OP_WORDS.unclaim};

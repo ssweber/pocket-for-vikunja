@@ -84,7 +84,7 @@ test('subtasks added right under a task go before its first subtask, each after 
    highlighted row by its id. */
 function projectList(){
   const app = component(tasks, quickadd, { reorder: actions.reorder });
-  Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
+  Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, pendingTasks: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
   const van = app.row({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
   const sub = (id, title) => app.row({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
   const chairs = sub(11, 'Load chairs'), tables = sub(12, 'Tables'), lights = app.row({ id: 20, title: 'Lights', project_id: 1, done: false });
@@ -221,15 +221,17 @@ test('a cursor row ticked done keeps the box until the batch clears, then its ta
   assert.equal(app.capW, 'cap', 'once the task is done, the box adds a task again');
 });
 
+// The waiting ops of a delete of `ids`, as keyOps (tasks.js) writes them.
+const deleting = ids => Object.fromEntries(ids.map(id => [id, [{ op: 'delete', ids }]]));
 test('the cursor never points at a row that has left the list', async () => {
   const { app, van, chairs, tables, lights } = projectList();
   // A deleted row leaves the lists while its Restore message shows, so the highlight moves to the task it was under. Restoring the row doesn't move the highlight back.
   app.aim(chairs);
-  app.deleting = [11];
+  app.opsOn = deleting([11]);
   assert.equal(app.capW, 'cap', 'until the cursor is checked, nothing is highlighted and the box adds a task');
   app.keepAim();
   assert.deepEqual([app.lit, app.capTarget], [{ 10: true }, { to: 'Pack the van', after: '' }]);
-  app.deleting = [];
+  app.opsOn = {};
   app.keepAim();
   assert.deepEqual(app.lit, { 10: true }, 'restoring the row does not highlight it again');
   // A task marked done somewhere other than its tick on this list (its sheet, or the web app) behaves the same way.
@@ -245,10 +247,10 @@ test('the cursor never points at a row that has left the list', async () => {
   assert.deepEqual([app.cursor, app.lit, app.capW], [null, {}, 'cap']);
   // If the parent task is deleted along with the row, there is no task to move the highlight to.
   app.aim(chairs);
-  app.deleting = [10, 11, 12];
+  app.opsOn = deleting([10, 11, 12]);
   app.keepAim();
   assert.deepEqual([app.cursor, app.lit], [null, {}]);
-  app.deleting = [];
+  app.opsOn = {};
   // A row moved up or down among its siblings has not left the list. It stays highlighted, and the next subtask goes
   // after it at its new position, here between it and Load chairs. A moved task stays highlighted as well.
   Object.assign(app, { act: async () => ({ status: 'sent' }), saveProject(){} });

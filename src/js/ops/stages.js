@@ -12,15 +12,15 @@ export const tick = async (a, c) => { const t = await patch(a, c, {done: true});
 export const untick = (a, c) => patch(a, c, {done: false});
 export const mark = value => (a, c) => c.send(`/tasks/${a.task}/reactions`, {method: 'POST', body: {value}});
 export const unmark = async (a, c) => { for (const value of [DONE_MARK, SKIP_MARK]) await c.send(`/tasks/${a.task}/reactions/delete`, {method: 'POST', body: {value}}); };
-// The comment Vikunja made goes on the step at once (applyAct), so the screen needn't wait for a reload.
+// The comment Vikunja made takes the place of the op's waiting comment in Vikunja's copy (answered, app/tasks.js).
 export const comment = async (a, c) => { const out = await c.send(`/tasks/${a.task}/comments`, {method: 'POST', body: {comment: a.html}}); if (out?.id) c.comment = out; };
 /* Write the parent's progress, calculated from its subtasks as Vikunja has them now, and only if it changed. The
    parent is the run after one of its steps (a.run), or the parent of a deleted subtask (a.up). The body is worked out
    once: after a lost reply Vikunja's copy already has the new progress, and a body read again would differ from the
-   one the relay holds for this key. */
+   one the relay holds for this key. A parent that a waiting delete deletes is left alone. */
 export const figure = async (a, c) => {
   const up = a.up ?? (a.run && a.task !== a.run ? a.run : null);
-  if (!up) return;
+  if (!up || c.app.beingDeleted(up)) return;
   // A parent deleted in the meantime, by Pocket or in the web app, is not an error.
   try {
     const body = await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });

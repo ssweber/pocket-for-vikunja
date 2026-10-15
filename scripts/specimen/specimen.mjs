@@ -395,10 +395,11 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     // task row too (g.run), each as the screen works it out (runView).
     const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, jamie], created_by: me, comments: [], description: '',
       related_tasks: {copiedfrom: [{id: 900}], subtask: s.steps.map(x => ({id: x.id, title: x.title}))}};
-    this.pending = [{kind: 'act', id: 'specimen-tick', run: run.id, task: s.steps.at(-1).id, op: 'done', at: new Date().toISOString(), items: []}];
+    this.pending = [{kind: 'act', id: 'specimen-tick', run: run.id, task: s.steps.at(-1).id, op: 'done', user: me.id, who: me, at: new Date().toISOString(), items: []}];
     this.slow = ['specimen-tick'];
-    // The screen holds ids and reads the checklist and its steps from tasks.
+    // The screen holds ids and reads the checklist and its steps from tasks. The tick shows on its step through its op.
     for (const t of [run, ...s.steps]) this.row(t);
+    this.keyOps();
     const screen = (steps, at) => { this.view.shownRun = {id: run.id, steps: steps.map(x => x.id), at, last: null}; return this.runView; };
     this.tasks[run.id].done = true;
     const finished = screen(s.steps, null).steps;

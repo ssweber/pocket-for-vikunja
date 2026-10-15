@@ -208,7 +208,7 @@ export default {
     if (repeats(t)) out.push({key: 'rep', text: '↻', label: 'Repeats'});
     // Show the count of done subtasks. A task with a ring (a checklist or an open parent) shows it in the ring (rowRing).
     const subs = t.related_tasks?.subtask || [];
-    if (subs.length && !this.isRunTask(t) && !this.rowRing(t, g || {})) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => s.done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
+    if (subs.length && !this.isRunTask(t) && !this.rowRing(t, g || {})) out.push({key: 'sub', icon: 'subtasks', cls: 'num', text: subs.filter(s => this.subRow(s).done).length + '/' + subs.length, label: 'Subtasks done', extra: true});
     if (t.comment_count) out.push({key: 'com', icon: 'comment', cls: 'num', text: String(t.comment_count), label: 'Comments', extra: true});
     // Include pending uploads in file counts immediately. Describe waiting files as work still to send instead of
     // a single total.
@@ -600,7 +600,6 @@ export default {
     if (res.status !== 200) return;
     const busy = this.sheet.open || this.cap.text.trim() || this.runInsert.text.trim() || this.capPhotos.length || this.cap.busy || this.searchQ || this.movingOverdue || this.starting
       || this.pending.length || savesRunning();
-
     if (!busy) location.reload();
   },
   async refresh(){

@@ -499,9 +499,10 @@ export default {
     rows.forEach((x, k) => { x.job = jobs[k]; });
     const under = this.sheet.subAt;
     try {
-      for (const {key, title} of d.renames) await patiently(() => patchTask(+key.slice(5), {title}));
+      // The sheet's step rows read each step's own copy, so each answer goes into the store.
+      for (const {key, title} of d.renames) put([await patiently(() => patchTask(+key.slice(5), {title}))], TASK);
       Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
-      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).catch(e => r.problems.push(e.message));
+      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).then(got => put([got], TASK), e => r.problems.push(e.message));
       // If the box is under a step, put the new steps after that step in the order line. Start from the order Vikunja
       // has now.
       if (under != null && r.ids.length) await patiently(() => this.saveTask(t.id, null, now => {
@@ -599,7 +600,7 @@ export default {
     // without them.
     const own = todo.find(x => x.s.id === e.id), p = own && this.stepParsed(own.title, e.ignore);
     if (own) own.title = p.title;
-    for (const x of todo) x.shown = this.edit(x.s.id, {title: x.title}, this.sheet.id);
+    for (const x of todo) x.shown = this.edit(x.s.id, {title: x.title});
     // Save the renamed steps in order, so a step this one counts from is named first.
     try {
       for (const x of todo) { x.shown.ok(await this.saveTask(x.s.id, {title: x.title})); x.saved = true; this.sheet.dirty = true; }
@@ -620,7 +621,6 @@ export default {
       }
       if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
         const full = await this.readCopy(this.sheet.id).catch(() => null);
-
         if (full && this.sheet.id === full.id) { this.showTask(full); this.loadSubPeople(full); }
       }
     } catch (err) {
@@ -643,7 +643,7 @@ export default {
     if (!tpl) return null;
     const steps = stepsOf(tpl), i = steps.findIndex(s => s.id === t?.id);
     if (i < 0) return null;
-    return {no: i + 1, of: steps.length, ...stepInfos(steps.map(s => s.id === t.id ? t.title : s.title))[i]};
+    return {no: i + 1, of: steps.length, ...stepInfos(steps.map(s => this.subRow(s).title))[i]};
   },
   // Delete a step from a template. Checklists already started keep their copy of it.
   async removeStep(i){

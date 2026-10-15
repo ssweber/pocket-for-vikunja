@@ -429,7 +429,7 @@ export default {
   canAim(t){
     const on = this.route.name;
     return !!t && (on === 'project' || on === 'today') && !t.pending && (!t.done || !!this.leaving[t.id]) && this.canWrite(t.project_id) && !this.isRunTask(t) && !this.stepRun(t)
-      && this.role(t) !== 'template' && !this.deleting.includes(t.id) && (this.onList(t) || (on === 'today' && !!this.listParent(t)));
+      && this.role(t) !== 'template' && !this.beingDeleted(t.id) && (this.onList(t) || (on === 'today' && !!this.listParent(t)));
   },
   // Whether the screen's list shows the task as a row or a card. On a project that means its open tasks, and on
   // Today any group.

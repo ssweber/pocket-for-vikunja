@@ -3,13 +3,14 @@
    the result into tasks[id] field by field, so a change shows on all the task's rows at once.
 
    `copies` holds Vikunja's last copy of each task, written field by field (put) and read through copyOf. Undo compares
-   against it, and the screens are saved from it. `opsOn` holds each task's ops waiting in the outbox, and withWaiting
-   is Vikunja's copy with them applied: the task as it will be. The sheet and a checklist's screen hold ids and read
-   their tasks here (sheetTask, runTask). A subtask in its parent's sheet is part of the parent's related_tasks. */
+   against it, and the screens are saved from it. `opsOn` holds the ops waiting in the outbox by each task they change,
+   and each op shows itself through its `apply`. The sheet and a checklist's screen hold ids and read their tasks here
+   (sheetTask, runTask). A subtask is read from its own row, never from the copy of it nested in its parent
+   (related_tasks), which says only which subtasks there are and in what order (subRow). */
 import {app, raw} from '../util.js';
 import {api} from '../api.js';
 import {intoKeys} from '../lists.js';
-import {actTaskId} from '../sync.js';
+import {actTaskId, sync} from '../sync.js';
 import {OPS} from '../ops/index.js';
 
 const forgotten = new Set();                     // tasks deleted this session, which copies kept on the phone may still hold
@@ -17,8 +18,6 @@ const forgotten = new Set();                     // tasks deleted this session, 
 const same = (a, b) => a === b || (!!a && !!b && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
 // A row gets its own lists and objects, so writing a row never changes Vikunja's copy or an answer.
 const own = v => v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v;
-// Ops still shown by their own code. Their rows don't get withWaiting, which would rewrite fields where the copy and the row differ.
-export const SHOWN_OWN_WAY = ['done', 'undone', 'skip', 'doneNote', 'note', 'answer', 'finish', 'reopen', 'progress', 'claim', 'unclaim', 'delete', 'position'];
 
 /* The fields of a task that each kind of request can be trusted for (put), as Vikunja 2.7 answers. A task read alone
    or in a list, and a PATCH reply, has every field in TASK, labels and people included. Reactions, comments and the
@@ -35,9 +34,11 @@ export const CREATED = TASK.filter(k => !['labels', 'assignees', 'related_tasks'
 export const SAVED = [...TASK_REACTIONS_COMMENTS, 'comment_count'];
 
 const copies = new Map();                        // task id -> Vikunja's last copy, holding only fields from those lists
-const edits = new Map();                         // task id -> its direct saves still running, oldest first: {fields, entry}
+const edits = new Map();                         // task id -> its direct saves still running, oldest first: {fields}
 const bases = new Map();                         // task id -> what a row was made from while Vikunja's copy of it is unknown
 const answers = new Map();                       // task id -> when its last answer arrived, on `clock`
+// Outbox entries that no row shows any more, though they may still be in the outbox: answered, or a held delete undone.
+const settled = new Set();
 // A counter, not the time, so a read and an answer in the same millisecond keep their order.
 let clock = 0;
 // When a read starts, for put. A read that started before a task's last answer is late for that task.
@@ -45,8 +46,10 @@ export const started = () => ++clock;
 // task id -> the fields of its edits ended since it was last shown. show removes such a field from the row when
 // Vikunja's copy doesn't have it either.
 const ended = new Map();
-// The parent's related_tasks with its subtask `id` changed by `fields`, as new lists and objects.
-const withSub = (p, id, fields) => ({...p.related_tasks, subtask: (p.related_tasks?.subtask || []).map(s => s.id === id ? {...s, ...fields} : s)});
+// The ids of the tasks an outbox entry changes (an op's `on`).
+const shownOn = a => OPS[a.op].on?.(a) || [actTaskId(a)];
+// A key of opsOn as the task id it stands for. A task not yet sent has a string id.
+const idOf = k => /^\d+$/.test(k) ? +k : k;
 const drop = (id, e) => {
   const rest = (edits.get(id) || []).filter(x => x !== e);
   if (rest.length) edits.set(id, rest); else edits.delete(id);
@@ -58,13 +61,15 @@ const drop = (id, e) => {
    time, because Undo holds the one it compared against. Nested lists and objects are shared with the answer.
 
    `at` is when the read started. A read leaves alone a task answered since then, because it may carry the task as it
-   was before the change. Without `at`, the list is an answer to a change, and its time is recorded. */
+   was before the change. A task with no copy has nothing to protect, so any read of it is taken. Without `at`, the
+   list is an answer to a change, and its time is recorded. A task deleted in this session is left out, so a read in
+   flight can't bring it back. */
 function write(list, asked, at){
   const ids = [];
   for (const t of list) {
-    if (!t?.id) continue;
+    if (!t?.id || forgotten.has(t.id)) continue;
     if (at === undefined) answers.set(t.id, ++clock);
-    else if ((answers.get(t.id) || 0) > at) continue;
+    else if (copies.has(t.id) && (answers.get(t.id) || 0) > at) continue;
     const c = {...copies.get(t.id)};
     for (const k of asked) if (k in t) c[k] = t[k];
     copies.set(t.id, c); ids.push(t.id);
@@ -73,13 +78,14 @@ function write(list, asked, at){
 }
 // write, then show each task on its rows.
 export function put(list, asked, at){ for (const id of write(list, asked, at)) app?.show(id); }
-// put, for a read's promise: allPages(path).then(putting(TASK)). The read starts as putting is called.
-export const putting = (asked, at = started()) => list => { put(list, asked, at); return list; };
+// put, for a read's promise: allPages(path).then(putting(TASK)). The read starts as putting is called. A task deleted
+// meanwhile is left out of the list, so the screen doesn't show it again.
+export const putting = (asked, at = started()) => list => { put(list, asked, at); return list.filter(t => !forgotten.has(t?.id)); };
 export const copyOf = id => copies.get(id);
 export const dropCopy = id => copies.delete(id);
-export const dropCopies = () => { for (const m of [copies, edits, bases, answers, ended]) m.clear(); };
-// Whether a direct save of task `id` is still running, or of any task without `id`. An edit kept for an op doesn't count.
-export const savesRunning = id => [...id === undefined ? edits.values() : [edits.get(id) || []]].some(list => list.some(e => !e.entry));
+export const dropCopies = () => { for (const m of [copies, edits, bases, answers, ended, settled, forgotten]) m.clear(); };
+// Whether a direct save of task `id` is still running, or of any task without `id`.
+export const savesRunning = id => [...id === undefined ? edits.values() : [edits.get(id) || []]].some(list => list.length);
 /* A screen is saved with Vikunja's copy of each task, never its row, so a saved screen holds no waiting op's effect
    and none of Pocket's own fields. A row with no copy is saved as it is. Only a done parent named by its subtask
    (readProject) has none. */
@@ -116,37 +122,33 @@ export default {
   shownAs(id){
     const base = copies.get(id) || bases.get(id);
     if (!base) return null;
-    const t = (this.opsOn[id] || []).filter(a => !SHOWN_OWN_WAY.includes(a.op)).reduce((x, a) => OPS[a.op].apply(x, a), base);
-    return (edits.get(id) || []).reduce((x, e) => ({...x, ...e.fields}), t);
+    return (edits.get(id) || []).reduce((x, e) => ({...x, ...e.fields}), this.withOps(id, base));
   },
+  // `t` with the ops waiting on task `id` applied in order. A step still being inserted gets its ops this way too.
+  withOps(id, t){ return (this.opsOn[id] || []).reduce((x, a) => OPS[a.op].apply(x, a), t); },
   // The row for task `t` as a read gave it: the row already on screen, or a new one.
   row(t){ return this.tasks[t.id] || this.show(t.id, t); },
   // Read a task into its copy, and return the copy. A read that started before the task's last answer is late (put).
   async readCopy(id){ const at = started(); put([await api('/tasks/' + id)], TASK, at); return copies.get(id) || null; },
 
   /* Lay `fields` over the task while a direct save runs, in memory only. `ok(answer)` writes Vikunja's answer into the
-     copy and takes the fields off in one show. `undo()` takes them off, for a failed save. `until(entry)` keeps them
-     until outbox entry `entry` is answered or leaves the outbox, for a change sent as an op.
-     `under` is the parent whose sheet lists the task as a subtask. The parent's row gets the fields on that subtask
-     too, as an edit of its related_tasks. On `ok`, Vikunja's copy of the parent takes the answer for that subtask, or
-     the subtask would show its old value until the parent is read again. */
-  edit(id, fields, under = null){
-    const e = {fields, entry: null}, up = under != null && this.subOf(under, id) ? this.edit(under, {related_tasks: withSub(raw(this.tasks[under]), id, fields)}) : null;
+     copy and takes the fields off in one show. `undo()` takes them off, for a failed save. A subtask's edit changes
+     its own row only. */
+  edit(id, fields){
+    const e = {fields};
     edits.set(id, [...edits.get(id) || [], e]);
     this.show(id);
     return {
-      ok: got => {
-        if (got) write([got], TASK); drop(id, e); this.show(id);
-        const c = up && copies.get(under);
-        if (c) copies.set(under, {...c, related_tasks: withSub(c, id, own({...fields, ...got}))});
-        up?.ok();
-      },
-      undo: () => { drop(id, e); this.show(id); up?.undo(); },
-      until: entry => { e.entry = entry; if (![...this.pending || [], ...this.failed || []].some(x => x.id === entry)) { drop(id, e); this.show(id); } up?.until(entry); },
+      ok: got => { if (got) write([got], TASK); drop(id, e); this.show(id); },
+      undo: () => { drop(id, e); this.show(id); },
     };
   },
-  // The subtask `id` as the row of its parent `parent` lists it, or null.
-  subOf(parent, id){ return (this.tasks[parent]?.related_tasks?.subtask || []).find(s => s.id === id) || null; },
+  /* Subtask `s` from its parent's list (related_tasks), as its own row shows it. The parent's copy of a subtask is as
+     old as the parent's last read and lacks its people and labels, so it is read only for a subtask with no row. */
+  subRow(s){ return this.tasks[s.id] || s; },
+  /* Give each subtask of `t` that has no row one, as the sheet opens, so the sheet's subtask rows are the subtasks' own
+     rows. Without Vikunja's copy, the row is made from the parent's list (bases), until a read of the subtask comes. */
+  subRows(t){ for (const s of t?.related_tasks?.subtask || []) this.row(s); },
   // The task the sheet shows, as its rows show it. Null while the sheet loads it.
   get sheetTask(){ return this.sheet.id == null ? null : this.tasks[this.sheet.id] || null; },
   // The checklist on its screen, as its rows show it.
@@ -160,40 +162,61 @@ export default {
       return this.row(t);
     });
   },
-  /* Write each task's waiting ops into opsOn, in the order they will be sent. A task whose ops are unchanged keeps its
-     list, so only the keys of tasks whose ops changed are written (rule 10). A task is shown again when an op not in
-     SHOWN_OWN_WAY joins or leaves it, or when an op that an edit waits for (until) leaves the outbox. */
+  /* Write the waiting ops into opsOn, under each task they change, in the order they will be sent, and show each task
+     whose ops changed. A task whose ops are unchanged keeps its list, so only the keys of tasks whose ops changed are
+     written (rule 10). A held delete is not in `pending`, but its rows hide at once. It shows only on the tasks it
+     deletes, so their gaps keep Restore until the batch clears, and their parent lists them until then. */
   keyOps(){
     const was = raw(this.opsOn), out = {}, rows = new Set(), ids = list => list.map(e => e.id).join();
-    for (const e of this.pending) if (e.kind === 'act' && OPS[e.op]) (out[actTaskId(e)] ||= []).push(e);
+    const held = this.user ? sync.all(this.user.id).filter(e => sync.held.has(e.id) && !e.failed) : [], all = [...this.pending, ...held];
+    const listed = new Set([...all, ...this.failed || []].map(e => e.id));
+    for (const id of settled) if (!listed.has(id)) settled.delete(id);
+    for (const e of all) if (e.kind === 'act' && OPS[e.op] && !settled.has(e.id))
+      for (const id of shownOn(e)) if (!sync.held.has(e.id) || e.ids.includes(id)) (out[id] ||= []).push(e);
     for (const k of new Set([...Object.keys(was), ...Object.keys(out)])) {
       const a = was[k] || [], b = out[k] || [];
       if (ids(a) === ids(b)) { if (b.length) out[k] = a; continue; }
-      const moved = [...a.filter(x => !b.some(y => y.id === x.id)), ...b.filter(y => !a.some(x => x.id === y.id))];
-      for (const e of moved) if (!SHOWN_OWN_WAY.includes(e.op)) rows.add(actTaskId(e));
+      rows.add(idOf(k));
     }
     intoKeys(this.opsOn, out, raw);
-    const live = new Set([...this.pending, ...this.failed || []].map(e => e.id));
-    for (const [id, list] of edits) for (const e of list) if (e.entry && !live.has(e.entry)) { drop(id, e); rows.add(id); }
     for (const id of rows) this.show(id);
   },
-  // Vikunja's copy of the task with its waiting ops applied in order: the task as it will be. Null without a copy.
-  withWaiting(id){ const t = copies.get(id); return t ? (this.opsOn[id] || []).reduce((x, a) => OPS[a.op].apply(x, a), t) : null; },
-  /* Write an op's answer into the copy, take the op off its task, and end the edits that waited for it, in one show.
-     If the op left first, a row would show the old value until the answer was written. The answer is a PATCH reply
-     or a read of the task. An op answered with something else still counts as an answer, for a late read. */
-  answered(a, got){
-    const id = actTaskId(a), ops = raw(this.opsOn)[id];
-    if (got?.id === id) write([got], TASK); else answers.set(id, ++clock);
-    if (ops?.some(e => e.id === a.id)) { const rest = ops.filter(e => e.id !== a.id); if (rest.length) this.opsOn[id] = rest; else delete this.opsOn[id]; }
-    for (const e of edits.get(id) || []) if (e.entry === a.id) drop(id, e);
-    this.show(id);
+  // Whether a waiting delete, held for Restore or not, deletes task `id`.
+  beingDeleted(id){ return (this.opsOn[id] || []).some(a => a.op === 'delete' && a.ids.includes(id)); },
+  /* Take outbox entry `a` off the tasks it changes, at once and for good, though it may still be in the outbox: once
+     Vikunja has answered it, or when Restore takes back a held delete. Returns the ids of those tasks. */
+  offTasks(a){
+    const ids = shownOn(a), was = raw(this.opsOn);
+    settled.add(a.id);
+    for (const id of ids) {
+      const rest = (was[id] || []).filter(e => e.id !== a.id);
+      if (rest.length === (was[id] || []).length) continue;
+      if (rest.length) this.opsOn[id] = rest; else delete this.opsOn[id];
+    }
+    return ids;
+  },
+  /* An op's answer. Each task the op changes takes the op's apply into Vikunja's copy, then the fields the reply is
+     trusted for, and the op stops waiting, in one show. Vikunja did what the op asked, so its copy has it now, also
+     when the reply is not a task, as for a claim, a comment or a ✅. The comment Vikunja made (`posted`) takes the
+     place of the op's waiting one. If the op stopped waiting first, a row would show the old value until the answer
+     was written. A deleted task is forgotten. */
+  answered(a, got, posted = null){
+    const op = OPS[a.op], ids = shownOn(a);
+    const real = t => !t.comments?.some(c => c.id === a.id) ? t : {...t, comments: t.comments.map(c => c.id !== a.id ? c : posted || {...c, waiting: false})};
+    for (const id of ids) {
+      const m = copies.has(id) ? copies : bases.has(id) ? bases : null;
+      if (m) m.set(id, real(op.apply(m.get(id), a)));
+      answers.set(id, ++clock);
+    }
+    if (got?.id === actTaskId(a)) write([got], TASK);
+    this.offTasks(a);
+    if (a.op === 'delete') this.forgetTree(a.ids); else for (const id of ids) this.show(id);
   },
   rowTask(id){ return this.tasks[id] || null; },
   removeRow(id){
     for (const g of this.view.groups) { const i = g.tasks.findIndex(t => t.id === id); if (i >= 0) g.tasks.splice(i, 1); }
   },
-  // Remove a deleted task from the list on screen, and remember it was deleted.
+  // Remove a deleted task from the list on screen, and remember it was deleted, so no read brings it back (write).
   forget(id){ for (const m of [copies, edits, bases, ended]) m.delete(id); delete this.tasks[id]; forgotten.add(id); this.removeRow(id); },
   // Forget deleted tasks, and remove them from the subtasks in Vikunja's copies, and so on screen and in the sheet.
   forgetTree(ids){

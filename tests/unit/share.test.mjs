@@ -15,6 +15,7 @@ import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import views from '../../src/js/app/views.js';
 import sending from '../../src/js/app/sending.js';
+import tasks from '../../src/js/app/tasks.js';
 import { todayGroups } from '../../src/js/lists.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
@@ -269,8 +270,8 @@ test('a parent shows its ring\'s percentage, and a bar with a segment per subtas
 // The text shared from a task's sheet and from a checklist's screen must match the ring the same task shows on screen.
 const NONE = '0001-01-01T00:00:00Z';
 const shared = () => {
-  const app = component(sharing, cards, runs, claims, checklists, views);
-  Object.assign(app, { user: { id: 1 }, pending: [], slow: [], perms: {}, positions: {}, projects: [], checklistIds: new Set(), hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), runNow: Date.now(), actTask: a => a.task });
+  const app = component(tasks, sharing, cards, runs, claims, checklists, views);
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], perms: {}, positions: {}, projects: [], checklistIds: new Set(), hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), runNow: Date.now(), actTask: a => a.task });
   return app;
 };
 test('the text shared from a task\'s sheet matches its ring, with a segment per subtask and each done one filled', () => {
@@ -296,10 +297,10 @@ test('the text shared from a checklist\'s screen matches its ring, counting a ti
   const steps = [step(51, 'Mop', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [{ id: 1 }] } }), step(52, 'Wipe', { percent_done: .5 }), step(53, 'Lock up'), step(54, 'Lights')];
   const run = { id: 50, title: 'Closing up', done: false, project_id: 5, assignees: [], created_by: { id: 1 }, comments: [], description: '', related_tasks: { subtask: steps } };
   app.isRunTask = t => t.id === 50;
-  for (const x of [run, ...steps]) app.tasks[x.id] = x;
+  for (const x of [run, ...steps]) app.row(x);
   app.view = { groups: [], shownRun: { id: 50, steps: steps.map(s => s.id), at: null, last: null } };
   app.pending = [{ kind: 'act', id: 9, run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // "Lock up" was ticked and the tick is not sent yet
-  sending.keyWaiting.call(app);
+  app.keyOps();
   const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');
   assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);

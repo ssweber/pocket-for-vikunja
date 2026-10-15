@@ -121,7 +121,7 @@ export function component(...parts){
   const c = {
     server: 'http://vikunja.test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { id: null }, route: { name: 'today' }, toasts: [], leaving: {},
-    waiting: { claims: {}, files: {}, ticks: {}, pcts: {} }, opsOn: {}, slideClaim: {}, dropping: [],
+    waiting: { files: {} }, opsOn: {}, slideClaim: {}, dropping: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; }, unsay(){},
@@ -129,7 +129,8 @@ export function component(...parts){
     render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };
   const byId = Object.getOwnPropertyDescriptors(tasks);
-  Object.defineProperties(c, { sheetTask: byId.sheetTask, runTask: byId.runTask });
+  // What every part reads from the store.
+  Object.defineProperties(c, { sheetTask: byId.sheetTask, runTask: byId.runTask, subRow: byId.subRow, withOps: byId.withOps, beingDeleted: byId.beingDeleted });
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   dropCopies();
   setApp(c);

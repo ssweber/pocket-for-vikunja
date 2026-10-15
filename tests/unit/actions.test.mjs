@@ -61,7 +61,7 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
   assert.deepEqual(app.toasts, [], 'no toast appears, because the row shows the change');
   assert.deepEqual(app.leaving, { 10: 'done', 11: 'done', 14: 'done' }, 'the parent and the closed subtasks stay in place, marked done, until the batch clears');
   assert.equal(v.task(13).done, false, 'a repeating subtask is left alone');
-  assert.deepEqual(t.related_tasks.subtask.map(s => s.done), [true, true, false, true], 'the ring counts them as done');
+  assert.deepEqual(t.related_tasks.subtask.map(s => app.subRow(s).done), [true, true, false, true], 'the ring counts them as done, from their own rows');
 
   v.requests.length = 0;
   await app.unmark(10);
@@ -71,7 +71,7 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
   assert.equal(v.task(12).done, true, 'the subtask that was done before stays done');
   assert.equal(t.done, false);
   assert.deepEqual([v.task(10).percent_done, v.task(14).percent_done], [0.38, 0.5], 'the parent\'s progress is calculated again, and the subtask\'s progress is unchanged');
-  assert.deepEqual(t.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
+  assert.deepEqual(t.related_tasks.subtask.map(s => app.subRow(s).done), [false, true, false, false]);
 });
 
 test('when the batch clears, a parent completed on Today leaves with the subtasks closed with it', async c => {
@@ -122,11 +122,11 @@ test('completing a parent from its sheet closes its subtasks, shows a message un
   await app.toggleDone(app.sheetTask, null, { sheet: true, close: true });
   assert.deepEqual(ticks(v), [[10, { done: true }], [11, { done: true }], [14, { done: true }]]);
   assert.deepEqual([app.toast.msg, app.toast.place], ['Closed Pack the van + 2 subtasks', 'sheet:subtasks']);
-  assert.deepEqual(app.sheetTask.related_tasks.subtask.map(s => s.done), [true, true, false, true], 'the sheet shows the subtasks as done');
+  assert.deepEqual(app.sheetTask.related_tasks.subtask.map(s => app.subRow(s).done), [true, true, false, true], 'the sheet shows the subtasks as done');
   assert.equal(app.sheet.dirty, true, 'the list is read again once the sheet closes');
   await app.toast.action.fn();
   assert.deepEqual([10, 11, 12, 14].map(id => v.task(id).done), [false, false, true, false]);
-  assert.deepEqual(app.sheetTask.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
+  assert.deepEqual(app.sheetTask.related_tasks.subtask.map(s => app.subRow(s).done), [false, true, false, false]);
   // A task with no subtasks shows no message, because the tick itself shows the change. Ticking it again opens it.
   const n = app.toasts.length;
   opened(app, v.task(12));
@@ -254,12 +254,14 @@ test('a full swipe marks the task done like a tick, in place and never as a gap,
   assert.deepEqual(app.leaving, { 1: 'done', 2: 'done' }, 'a swiped row and a ticked row are marked the same way');
   await app.clearBatch(true);
   assert.deepEqual([app.view.groups[0].tasks, app.leaving], [[], {}], 'both rows leave with the batch');
-  // A subtask in its parent's sheet is done where it is, with nothing marked.
+  // A subtask in its parent's sheet is done where it is, with nothing marked. The sheet's subtask rows are their own.
   v.tasks.set(3, { id: 3, title: 'Prime it', done: false });
   v.tasks.set(4, { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3 }] } });
   opened(app, { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3, title: 'Prime it', done: false }] } });
-  await app.setProgress(app.sheetTask.related_tasks.subtask[0], 100, null, { sub: true });
-  assert.deepEqual([app.leaving, app.sheetTask.related_tasks.subtask[0].done, v.task(3).done], [{}, true, true]);
+  app.subRows(app.sheetTask);
+  await app.setProgress(app.subRow(app.sheetTask.related_tasks.subtask[0]), 100, null, { sub: true });
+  assert.deepEqual([app.leaving, app.subRow(app.sheetTask.related_tasks.subtask[0]).done, app.sheetTask.related_tasks.subtask[0].done, v.task(3).done], [{}, true, false, true],
+    'the subtask\'s row is done, and the parent\'s list of its subtasks is left as Vikunja gave it');
 });
 
 /* A row shows as done in place from the moment the user ticks it or releases the swipe, not from when Vikunja answers
@@ -465,13 +467,15 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 const deleting = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'keyWaiting', 'markSlow', 'sendEntry'),
-    pick(acts, 'sendActs', 'sendAct', 'applyAct', 'wordsBack', 'giveBack'), pick(outbox, 'actTitle'), pick(runs, 'refreshRunTask'));
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], canWrite: () => true, flushing: false, cap: {}, sheet: { task: null, sub: {} } });
+    pick(acts, 'sendActs', 'sendAct', 'wordsBack', 'giveBack'), pick(outbox, 'actTitle'), pick(runs, 'refreshRunTask'));
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], canWrite: () => true, flushing: false, cap: {}, sheet: { id: null, sub: {} } });
   Object.defineProperty(app, 'syncState', Object.getOwnPropertyDescriptor(outbox, 'syncState'));
   globalThis.confirm = () => true;
   return app;
 };
 const deletes = v => v.requests.filter(r => r.method === 'DELETE').map(r => +r.path.split('/')[2]);
+// The tasks that a waiting delete deletes, so their rows are hidden.
+const going = (app, ids) => ids.filter(id => app.beingDeleted(id));
 
 test('deleting a subtask writes its parent\'s calculated progress in the same entry, once the deletion is sent', async t => {
   const v = fakeVikunja([{ id: 1, title: 'Pack the van', percent_done: 0.5, related_tasks: { subtask: [{ id: 2 }, { id: 3, done: true }] } },
@@ -509,7 +513,7 @@ test('deleting a task with subtasks asks first with the count, and answering no 
   assert.equal(await app.askDelete(app.tasks[1]), null, 'answering no returns nothing');
   assert.deepEqual(asked, ['Delete “Pack the van” and its 2 subtasks, 1 more under them?']);
   assert.equal(await app.holdDelete(app.tasks[1]), null);
-  assert.deepEqual([sync.all(1).length, app.deleting, deletes(v)], [0, [], []], 'nothing is queued to send and nothing leaves the list');
+  assert.deepEqual([sync.all(1).length, going(app, [1, 2, 3, 4]), deletes(v)], [0, [], []], 'nothing is queued to send and nothing leaves the list');
   yes = true; asked.length = 0;
   const tree = await app.askDelete(app.tasks[1]);
   assert.deepEqual([tree, asked.length], [[4, 2, 3, 1], 1], 'every level of subtasks is included, deepest first');
@@ -526,11 +530,11 @@ test('a deletion leaves the list at once and waits for its Undo, and Undo brings
   app.view.groups = [{ key: 'today', tasks: [app.row(v.task(1)), app.row(v.task(2))] }];
   const d = await app.holdDelete(app.tasks[1]);
   assert.equal(d.n, 1, 'the deletion includes the subtask');
-  assert.deepEqual(app.deleting.sort(), [1, 2], 'both tasks leave the list');
+  assert.deepEqual(going(app, [1, 2]), [1, 2], 'both tasks leave the list');
   assert.deepEqual(deletes(v), [], 'nothing is sent while Undo shows');
   assert.equal(app.pending.length, 0, 'the deletion is not shown as waiting to send');
   await app.undoDelete(d.id);
-  assert.deepEqual(app.deleting, [], 'both tasks are back on the list');
+  assert.deepEqual(going(app, [1, 2]), [], 'both tasks are back on the list');
   await app.sendHeld();                                                       // the app goes to the background, with nothing left to send
   assert.deepEqual(deletes(v), []);
   assert.equal(sync.all(1).length, 0);
@@ -544,7 +548,7 @@ test('a deletion is sent deepest first once its Undo has gone, and the rows are 
   await app.sendHeld(d.id);
   assert.deepEqual(deletes(v), [2, 1]);
   assert.deepEqual(app.view.groups[0].tasks, []);
-  assert.deepEqual(app.deleting, []);
+  assert.deepEqual(app.opsOn, {});
   assert.equal(sync.all(1).length, 0, 'nothing is left waiting');
   await app.undoDelete(d.id);                                                 // too late for Undo, so nothing happens
   assert.deepEqual(deletes(v), [2, 1]);
@@ -556,12 +560,12 @@ test('a deletion made offline waits in the outbox, off the list, and is sent onc
   await app.holdDelete(app.tasks[5]);
   v.trouble = r => r.method === 'DELETE' ? 'offline' : null;
   await app.sendHeld();                                                       // the app goes to the background while offline
-  assert.deepEqual(app.deleting, [5], 'the task is still off the list');
+  assert.deepEqual(going(app, [5]), [5], 'the task is still off the list');
   assert.equal(app.pending.length, 1, 'the deletion is shown as waiting to send');
   v.trouble = () => null;
   await app.sendActs(app.pending[0].id);
   assert.ok(!v.task(5), 'deleted in Vikunja');
-  assert.deepEqual(app.deleting, []);
+  assert.deepEqual(app.opsOn, {});
 });
 
 test('a deletion that Vikunja refuses brings the row back and keeps the deletion to try again', async t => {
@@ -570,7 +574,7 @@ test('a deletion that Vikunja refuses brings the row back and keeps the deletion
   const d = await app.holdDelete(app.tasks[6]);
   v.trouble = r => r.method === 'DELETE' ? 403 : null;
   await app.sendHeld(d.id);
-  assert.deepEqual(app.deleting, [], 'the row is back on the list');
+  assert.deepEqual(going(app, [6]), [], 'the row is back on the list');
   assert.equal(app.failed.length, 1);
   assert.match(app.toast.msg, /^Deleting “Order cups” couldn't be saved/);
   await sync.remove(app.failed[0].id);

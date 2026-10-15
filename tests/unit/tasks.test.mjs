@@ -3,7 +3,7 @@ import { component, fakeVikunja } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import tasks, { copyOf, put, SAVED, SHOWN_OWN_WAY, started, TASK, TASK_COUNT, TASK_COUNT_REACTIONS } from '../../src/js/app/tasks.js';
+import tasks, { copyOf, put, putting, SAVED, started, TASK, TASK_COUNT, TASK_COUNT_REACTIONS, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import acts from '../../src/js/app/acts.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -11,8 +11,11 @@ import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
 import views from '../../src/js/app/views.js';
+import sheetPart from '../../src/js/app/sheet.js';
+import lines from '../../src/js/app/lines.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { saved } from '../../src/js/lists.js';
+import { sync } from '../../src/js/sync.js';
 
 // A read as a screen's load makes it: started, answered, then put into Vikunja's copies.
 const read = (list, asked = TASK) => put(list, asked, started());
@@ -39,8 +42,7 @@ test('a task read again has only its changed fields written, so an unchanged row
 });
 
 /* show(id) stacks three layers: Vikunja's copy, the waiting ops applied through each op's `apply`, then the direct
-   saves still running (edit), oldest first. The test adds an op that renames a task to the registry, since the ops
-   Pocket has are still shown their own way (SHOWN_OWN_WAY). */
+   saves still running (edit), oldest first. The test adds an op that renames a task to the registry. */
 test('a row shows Vikunja\'s copy, then its waiting ops, then the saves still running, and stays one object', () => {
   const app = component(tasks);
   OPS.rename = { apply: (x, a) => ({ ...x, title: a.title }) };
@@ -105,23 +107,6 @@ test('the sheet reads its task\'s row by id, so a change made in a list shows in
   assert.equal(app.sheetTask.done, true, 'a tick in the list shows in the sheet');
   read([{ id: 1, title: 'Call Jo back' }]);
   assert.equal(app.sheetTask.title, 'Call Jo back', 'and so does a read');
-});
-
-/* A subtask in its parent's sheet is part of the parent's related_tasks. An edit of it is an edit of the parent's row,
-   which gets new lists and objects. Vikunja's copy of the parent changes only when the save answers. */
-test('a subtask edited in its parent\'s sheet changes the parent\'s row, and neither Vikunja\'s copy nor another object', () => {
-  const app = component(tasks), parent = { id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2, title: 'Load chairs', done: false }, { id: 3, title: 'Load tables', done: false }] } };
-  read([parent]);
-  const p = app.row(copyOf(1)), copy = copyOf(1), stubs = p.related_tasks.subtask, was = JSON.stringify(copy);
-  const ticked = app.edit(2, { done: true }, 1);
-  assert.deepEqual(p.related_tasks.subtask.map(s => s.done), [true, false], 'the sheet shows the subtask done at once');
-  assert.deepEqual([copyOf(1), JSON.stringify(copyOf(1))], [copy, was], 'Vikunja\'s copy of the parent is as it was');
-  assert.deepEqual([stubs[0].done, parent.related_tasks.subtask[0].done], [false, false], 'so are the subtask the row had before and the read');
-  ticked.ok({ id: 2, title: 'Load chairs', done: true });
-  assert.deepEqual([copyOf(1).related_tasks.subtask.map(s => s.done), p.related_tasks.subtask.map(s => s.done)], [[true, false], [true, false]], 'the answer goes into the parent\'s copy');
-  assert.equal(parent.related_tasks.subtask[0].done, false, 'as new objects, so the read is still as it was');
-  app.edit(3, { done: true }, 1).undo();
-  assert.deepEqual(p.related_tasks.subtask.map(s => s.done), [true, false], 'a failed save puts the subtask back');
 });
 
 /* Two saves of one task run one after another. The first answer carries the task before the second save. Its fields
@@ -239,11 +224,11 @@ test('a task as it will be is Vikunja\'s copy with its waiting ops applied in or
   app.pending = [act(2, 'progress', { pct: 30 }), act(3, 'done'), act(2, 'progress', { pct: 60 }), act(2, 'done')];
   app.keyOps();
   assert.deepEqual(app.opsOn[2].map(e => e.id), ['progress230', 'progress260', 'done2'], 'a task\'s ops in the order they will be sent');
-  assert.deepEqual(app.withWaiting(2), { id: 2, title: 'Mop the floor', done: true, percent_done: 0.6 }, 'the later progress wins');
+  assert.deepEqual(app.shownAs(2), { id: 2, title: 'Mop the floor', done: true, done_at: undefined, percent_done: 0.6 }, 'the later progress wins');
   assert.deepEqual(copyOf(2), { id: 2, title: 'Mop the floor', done: false, percent_done: 0 });
-  assert.equal(app.withWaiting(3), null, 'a task with no copy from Vikunja has nothing to apply its ops to');
+  assert.equal(app.shownAs(3), null, 'a task with no copy from Vikunja has nothing to apply its ops to');
   app.pending = []; app.keyOps();
-  assert.equal(app.withWaiting(2), copyOf(2), 'with nothing waiting, the task is Vikunja\'s copy');
+  assert.equal(app.shownAs(2), copyOf(2), 'with nothing waiting, the task is Vikunja\'s copy');
 });
 
 /* opsOn is kept by task, as `waiting` is (rule 10). A change to one task's ops rewrites only that task's key, so a row
@@ -267,11 +252,11 @@ test('an op\'s answer goes into Vikunja\'s copy as the op stops waiting, so the 
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 2, title: 'Mop the floor', done: false, percent_done: 0, reactions: null }]);
   const app = component(tasks, acts, sending, outbox, runs), seen = [];
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
     view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
   Object.defineProperty(app, 'toast', { value: {} });
   put([{ id: 2, title: 'Mop the floor', done: false, percent_done: 0, reactions: { '✅': [{ id: 3 }] }, comment_count: 2 }], TASK_COUNT_REACTIONS);
-  const look = () => seen.push(app.withWaiting(2).percent_done);
+  const look = () => seen.push(app.shownAs(2).percent_done);
   const ops = app.opsOn = new Proxy({}, { set(o, k, x){ o[k] = x; look(); return true; }, deleteProperty(o, k){ delete o[k]; look(); return true; } });
   assert.equal((await app.act({ op: 'progress', task: 2, pct: 40, run: null })).status, 'sent');
   assert.deepEqual(seen, [0.4, 0.4], 'the op joins, and when it leaves its answer is already written');
@@ -280,9 +265,9 @@ test('an op\'s answer goes into Vikunja\'s copy as the op stops waiting, so the 
     'Vikunja\'s answer replaces the fields it has. Reactions it wasn\'t asked for, and fields it left out, keep what the copy had');
 });
 
-/* A row shows an op through the store only for an op that is not in SHOWN_OWN_WAY. Those ops still change the screen
-   by their own code. The test adds an op that renames a task to the registry. */
-test('a task\'s rows show an op shown through the store as it joins or leaves, and an op\'s answer once it is answered', () => {
+/* Every op shows itself on its task's rows through its apply, as it joins the outbox, and leaves when it stops
+   waiting. A field the copy lacks stays on the row. */
+test('a task\'s rows show each waiting op through its apply as it joins or leaves, and an op\'s answer once it is answered', () => {
   const app = component(tasks);
   OPS.rename = { apply: (x, a) => ({ ...x, title: a.title }) };
   try {
@@ -290,29 +275,139 @@ test('a task\'s rows show an op shown through the store as it joins or leaves, a
     const rows = [app.tasks[1], app.tasks[2]];
     app.pending = [act(1, 'rename', { title: 'Renamed' }), act(2, 'done')];
     app.keyOps();
-    assert.deepEqual(rows.map(x => [x.title, x.done, x.comment_count]), [['Renamed', false, 2], ['Task 2', false, 2]],
-      'the renamed task is Vikunja\'s copy with the op applied, and keeps the field the copy lacks. The tick shows its own way');
+    assert.deepEqual(rows.map(x => [x.title, x.done, x.comment_count]), [['Renamed', false, 2], ['Task 2', true, 2]],
+      'each row is Vikunja\'s copy with its op applied, and keeps the field the copy lacks');
     assert.deepEqual([app.tasks[1], app.tasks[2]], rows, 'each task is still one object');
     app.pending = [act(2, 'done')]; app.keyOps();
     assert.equal(rows[0].title, 'Task 1', 'once the op stops waiting, the row is Vikunja\'s copy again');
     app.answered({ ...act(2, 'done') }, { id: 2, title: 'Task 2', done: true });
     assert.deepEqual([rows[1].done, copyOf(2).done, app.opsOn[2]], [true, true, undefined], 'an answered tick goes into Vikunja\'s copy and onto its rows');
-    assert.ok(SHOWN_OWN_WAY.every(op => op in OPS), 'every op in the list is an op');
   } finally { delete OPS.rename; }
 });
 
-/* A tick sent through the outbox shows on its row through an edit kept for its entry (until). Its answer takes the
-   edit off in the same show that writes the answer. An entry that leaves the outbox unanswered takes it off too. */
-test('a change sent as an op shows until the op is answered or leaves the outbox', () => {
+/* A tick sent through the outbox shows on its row through the op. Its answer goes into Vikunja's copy in the same show
+   that takes the op off, so the row doesn't change. A tick dropped from the outbox unticks the row. */
+test('a tick sent as an op shows until the op is answered or leaves the outbox', () => {
   const app = component(tasks);
   read([{ id: 1, title: 'Wipe the menus', done: false }, { id: 2, title: 'Mop the floor', done: false }]);
   const [one, two] = [1, 2].map(id => app.row(copyOf(id))), seen = [];
   app.pending = [act(1, 'done'), act(2, 'done')]; app.keyOps();
-  app.edit(1, { done: true }).until('done1'); app.edit(2, { done: true }).until('done2');
   app.tasks[1] = new Proxy(one, { set(o, k, v){ seen.push([k, v]); o[k] = v; return true; } });
   assert.deepEqual([one.done, two.done], [true, true]);
   app.answered(act(1, 'done'), { id: 1, title: 'Wipe the menus', done: true });
-  assert.deepEqual([one.done, seen], [true, []], 'the answer replaces the edit without the row changing');
+  assert.deepEqual([one.done, seen], [true, []], 'the answer replaces the op without the row changing');
   app.pending = []; app.keyOps();
-  assert.equal(two.done, false, 'dropped from the outbox, the tick is gone from its row');
+  assert.deepEqual([one.done, two.done], [true, false], 'dropped from the outbox, the tick is gone from its row');
+});
+
+/* An op whose reply is not a task still changes Vikunja's copy: the copy takes the op's apply when the op is answered.
+   A comment takes the place of the op's waiting one, as Vikunja made it. */
+test('an op answered with a reply that is not a task puts its change into Vikunja\'s copy', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 5, title: 'Unlock the door', comments: [] }, { id: 6, title: 'Order cups', assignees: [] }]);
+  const app = component(tasks, acts, sending, outbox, runs), me = { id: 1, username: 'alex', name: 'Alex' };
+  Object.assign(app, { user: me, pending: [], failed: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
+    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
+  Object.defineProperty(app, 'toast', { value: {} });
+  read([{ id: 5, title: 'Unlock the door', comments: [] }], TASK_REACTIONS_COMMENTS); read([{ id: 6, title: 'Order cups', assignees: [] }]);
+  const [door, cups] = [5, 6].map(id => app.row(copyOf(id)));
+  assert.equal((await app.act({ op: 'claim', task: 6, run: null })).status, 'sent');
+  assert.deepEqual([copyOf(6).assignees, cups.assignees], [[me], [me]], 'the claim, with the claimer\'s name');
+  assert.equal((await app.act({ op: 'note', task: 5, html: '<p>Key under the mat</p>', run: null })).status, 'sent');
+  assert.deepEqual(copyOf(5).comments.map(c => [c.id, c.comment, !!c.waiting]), [[v.task(5).comments[0].id, '<p>Key under the mat</p>', false]], 'the comment Vikunja made');
+  assert.equal(door.comments.length, 1);
+});
+
+/* A read can start before an op is answered and land after it, carrying the task as it was. The op's answer is in the
+   copy, so the late read leaves the task alone, also when the reply was not a task. */
+test('an op answered while a late read is in flight keeps its change', () => {
+  const app = component(tasks), me = { id: 1, username: 'alex' };
+  read([{ id: 1, title: 'Wipe the menus', done: false, assignees: [] }]);
+  const t = app.row(copyOf(1)), at = started(), claim = act(1, 'claim', { user: 1, who: me });
+  app.pending = [claim]; app.keyOps();
+  app.answered(claim, null);
+  put([{ id: 1, title: 'Wipe the menus', done: false, assignees: [] }], TASK, at);
+  assert.deepEqual([t.assignees, copyOf(1).assignees], [[me], [me]], 'the late read is ignored');
+});
+
+/* A waiting delete hides its tasks (beingDeleted) and takes them off their parent's list of subtasks. While Restore
+   shows, the delete is held and its rows keep their gaps, so the parent lists them until the batch clears. */
+test('a waiting delete takes its tasks out of their parent\'s subtasks, once it is no longer held for Restore', async () => {
+  const app = component(tasks);
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [] });
+  read([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, { id: 2, title: 'Load chairs' }, { id: 3, title: 'Load tables' }]);
+  const van = app.row(copyOf(1)), kids = () => van.related_tasks.subtask.map(s => s.id);
+  const del = { kind: 'act', op: 'delete', id: 'del2', user: 1, task: 2, ids: [2], up: 1, at: new Date().toISOString(), items: [] };
+  sync.held.add(del.id); await sync.add(del, []);
+  app.keyOps();
+  assert.deepEqual([app.beingDeleted(2), kids()], [true, [2, 3]], 'held for Restore, the row hides and the parent still lists it');
+  sync.held.delete(del.id); app.pending = [del]; app.keyOps();
+  assert.deepEqual([app.beingDeleted(2), kids(), copyOf(1).related_tasks.subtask.length], [true, [3], 2], 'once it is sent, the parent no longer lists it, and Vikunja\'s copy is as it was');
+  await sync.remove(del.id); app.pending = []; app.keyOps();
+  assert.deepEqual([app.beingDeleted(2), kids()], [false, [2, 3]], 'a delete that leaves the outbox unsent brings it back');
+});
+
+/* A subtask is read from its own row. Each edit of a subtask is on that row only, so one subtask's failed save never
+   leaves another's change shown, and the parent's list of its subtasks stays as Vikunja gave it. */
+test('a failed tick of one subtask puts it back while another subtask\'s edit is still running', () => {
+  const app = component(tasks), steps = [{ id: 2, title: 'Mop', done: false }, { id: 3, title: 'Sweep', done: false }];
+  read([{ id: 1, title: 'Closing up', related_tasks: { subtask: steps } }]);
+  const p = app.row(copyOf(1)), shown = () => p.related_tasks.subtask.map(s => [app.subRow(s).title, app.subRow(s).done]);
+  app.subRows(p);
+  const ticked = app.edit(2, { done: true }); app.edit(3, { title: 'Sweep up' });
+  assert.deepEqual(shown(), [['Mop', true], ['Sweep up', false]]);
+  ticked.undo();
+  assert.deepEqual(shown(), [['Mop', false], ['Sweep up', false]], 'the failed tick is gone, and the rename still shows');
+  assert.deepEqual(p.related_tasks.subtask, steps, 'the parent\'s list of its subtasks is as Vikunja gave it');
+});
+
+/* A step renamed in a template's sheet is answered by Vikunja. A read of the template that started before carries the
+   step's old title in its list of steps. The sheet reads the step's own row, so the old title doesn't come back. */
+test('a late read of a template leaves a step renamed since as it is', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'TEMPLATE: Closing up', related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } }]);
+  const tpl = app.row(copyOf(1));
+  app.subRows(tpl);
+  const at = started(), renamed = app.edit(2, { title: 'Mop the floor' });
+  renamed.ok({ id: 2, title: 'Mop the floor' });
+  put([{ id: 1, title: 'TEMPLATE: Closing up', related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } }, { id: 2, title: 'Mop' }], TASK, at);
+  assert.deepEqual([app.subRow(tpl.related_tasks.subtask[0]).title, copyOf(2).title], ['Mop the floor', 'Mop the floor']);
+});
+
+/* A read that started before a task was deleted can land after, with the task in it. The task stays deleted: it gets
+   no copy and no row, and the screen's list leaves it out. */
+test('a read in flight does not bring back a task deleted meanwhile', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'Call Jo' }, { id: 2, title: 'Buy milk' }]);
+  app.row(copyOf(1)); app.row(copyOf(2));
+  const landing = putting(TASK);
+  app.forgetTree([1]);
+  const list = landing([{ id: 1, title: 'Call Jo' }, { id: 2, title: 'Buy milk' }]);
+  assert.deepEqual([list.map(t => t.id), copyOf(1), app.rowTask(1)], [[2], undefined, null]);
+});
+
+/* A read can be late only for a task that has a copy to protect. A claim answered while the sheet reads a subtask with
+   no copy would otherwise leave the sheet blank. */
+test('a read of a task with no copy is taken, though an op on it was answered since the read started', () => {
+  const app = component(tasks), at = started();
+  app.answered(act(3, 'claim', { user: 1 }), null);
+  put([{ id: 3, title: 'Wipe the till', assignees: [{ id: 1 }] }], TASK, at);
+  assert.equal(copyOf(3)?.title, 'Wipe the till');
+});
+
+/* Rule 10 in a sheet. The sheet's subtask rows are the subtasks' own rows, so ticking one changes that row only. The
+   sheet's list of subtasks, and every other subtask's row, have nothing to redraw. The test uses Alpine's reactivity
+   (reactive.mjs), and counts each effect every time it runs again. */
+test('a subtask ticked in its parent\'s sheet redraws its own row only', c => {
+  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(tasks, sheetPart, lines));
+  Object.assign(app, { positions: {}, hasOwnOrder: () => false });
+  read([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [2, 3, 4].map(id => ({ id, title: 'Load ' + id, done: false })) } }]);
+  app.subRows(app.row(copyOf(1)));
+  app.sheet = { id: 1 };
+  const ran = { list: 0, 2: 0, 3: 0, 4: 0 };
+  Alpine.effect(() => { ran.list++; void app.subtasks; });
+  for (const id of [2, 3, 4]) Alpine.effect(() => { ran[id]++; const s = app.subtasks.find(x => x.id === id); void [s.done, s.title]; });
+  const ticked = app.edit(3, { done: true }); flush();
+  ticked.ok({ id: 3, title: 'Load 3', done: true }); flush();
+  assert.deepEqual(ran, { list: 1, 2: 1, 3: 2, 4: 1 }, 'the tick and its answer ran the ticked row once, and nothing else');
 });

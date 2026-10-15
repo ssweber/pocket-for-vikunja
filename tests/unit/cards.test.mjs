@@ -19,7 +19,6 @@ import runs from '../../src/js/app/runs.js';
 import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
-import sending from '../../src/js/app/sending.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import { countText, runShows, whereNext } from '../../src/js/checklists.js';
@@ -125,7 +124,7 @@ test('a checklist step’s countdown is shown to the minute, within a day', () =
 // 14 (done) first, then Chairs, Tables and Lights.
 const today = (...more) => {
   const app = component(cards, views, alerts, tasks, leaving, ...more);
-  Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, stepPct: s => Math.round((s.percent_done || 0) * 100), checklistIds: new Set(), waitingByTask: new Map() });
+  Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), checklistIds: new Set(), waitingByTask: new Map() });
   const parent = app.row(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
   for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.row(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
@@ -371,13 +370,15 @@ test('a done top step of a checklist card stays the top row while the outbox tak
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const { app, parent, g } = today(actions);
   let taken = null;
-  Object.assign(app, { isRunTask: t => t.id === 10, stepRun: t => t.id === 10 ? null : 10, act: () => new Promise(ok => { taken = ok; }) });
+  // As act does, the tick is in the outbox at once, and shows on the step's row through its op. Sending answers later.
+  const outbox = list => { app.pending = list; app.keyOps(); };
+  const act = f => { outbox([...app.pending, { kind: 'act', id: 'tick' + f.task, ...f }]); return new Promise(ok => { taken = ok; }); };
+  Object.assign(app, { isRunTask: t => t.id === 10, stepRun: t => t.id === 10 ? null : 10, act, pending: [], failed: [] });
   const top = () => app.cardOf(parent, g).step.title;                        // the checklist's steps in order: Lights, Chairs, Tables
   app.pinCard(app.cardOf(parent, g));
   const doing = app.toggleDone(app.tasks[11], ROW);                           // a tick, or a full swipe on its row
   assert.deepEqual([app.tasks[11].done, top(), app.leaving], [true, 'Lights', { 11: 'done' }], 'after release, the step is done and still on top');
-  app.pending = [{ id: 'tick' }];                                           // the outbox has the tick, waiting to send it
-  taken({ status: 'offline', entry: 'tick' });
+  taken({ status: 'offline', entry: 'tick11' });
   await doing;
   assert.deepEqual([top(), app.leaving], ['Lights', { 11: 'done' }]);
   await app.clearBatch(true);
@@ -386,6 +387,7 @@ test('a done top step of a checklist card stays the top row while the outbox tak
   app.pinCard(app.cardOf(parent, g));
   const failing = app.toggleDone(app.tasks[12], ROW);
   assert.deepEqual([top(), app.leaving[12]], ['Chairs', 'done']);
+  outbox(app.pending.filter(e => e.id !== 'tick12'));                      // Vikunja refused it, and it left the outbox
   taken({ status: 'error', error: {} });
   await failing;
   assert.deepEqual([top(), app.leaving, app.tasks[12].done], ['Chairs', {}, false]);
@@ -571,6 +573,7 @@ test('a checklist is calculated once while nothing changes, and a tick recalcula
   app.clock += 1000;                                                       // a second passes
   assert.deepEqual([app.runView, worked], [v, 1], 'a second later, nothing is recalculated');
   app.pending = [{ kind: 'act', id: 'a1', run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // C is ticked and waiting to be sent
+  app.keyOps();
   const w = app.runView;
   assert.notEqual(w, v, 'a tick recalculates the checklist at once');
   assert.equal(worked, 2);
@@ -819,20 +822,20 @@ test('the ring of a checklist with steps not done asks first and leaves them not
   assert.equal(v.task(11).done, false);
 });
 
-/* Keeps a change waiting to be sent from redrawing every row (rule 10, docs/development.md). A ring reads the ticks and
-   progress waiting for its own steps, by task id (keyWaiting), not by searching the outbox. */
+/* Keeps a change waiting to be sent from redrawing every row (rule 10, docs/development.md). A ring reads its steps'
+   own rows, and a tick waiting to be sent changes only its step's row (keyOps), so no ring searches the outbox. */
 test('a change waiting to be sent recalculates only the rings of the checklists whose steps it changes', c => {
-  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(runs, cards, checklists));
+  const { Alpine, flush } = watching(c), app = Alpine.reactive(component(tasks, runs, cards, checklists));
   Object.assign(app, { checklistIds: new Set([7]), pending: [] });
-  const finished = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, project_id: 7, title: 'Closing up', done: true, description: '',
+  const finished = Array.from({ length: 20 }, (_, i) => app.row({ id: i + 1, project_id: 7, title: 'Closing up', done: true, description: '',
     related_tasks: { copiedfrom: [{ id: 99 }], subtask: [{ id: 100 + i, done: false, description: '' }] } }));
+  for (let i = 0; i < 20; i++) app.row({ id: 100 + i, project_id: 7, title: 'Step', done: false, description: '', related_tasks: { parenttask: [{ id: i + 1 }] } });
   const worked = [];
   for (const t of finished) Alpine.effect(() => { app.rowRing(t, { depth: {} }); worked.push(t.id); });
   worked.length = 0;
-  app.pending.push({ kind: 'act', op: 'note', task: 999, run: 998 });
-  sending.keyWaiting.call(app); flush();
+  const outbox = list => { app.pending = list; app.keyOps(); flush(); };
+  outbox([{ kind: 'act', id: 'n', op: 'note', task: 999, run: 998 }]);
   assert.deepEqual(worked, [], 'a comment on another checklist recalculates no ring');
-  app.pending.push({ kind: 'act', op: 'done', task: 103, run: 4 });
-  sending.keyWaiting.call(app); flush();
+  outbox([{ kind: 'act', id: 'n', op: 'note', task: 999, run: 998 }, { kind: 'act', id: 'd', op: 'done', task: 103, run: 4 }]);
   assert.deepEqual([worked, app.ringOf(finished[3]).done], [[4], 1], 'a tick waiting to be sent recalculates its own checklist\'s ring');
 });

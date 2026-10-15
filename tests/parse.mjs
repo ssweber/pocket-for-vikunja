@@ -485,7 +485,8 @@ const asksRead = await page.evaluate(() => {
     withLinesOf('<p>New</p>', '<p>Read.</p><p>pocket:ask Where: choice see <a href="https://example.com">it</a> | <em>draft</em></p>'),
     (({answers}) => [answers.temp.text, answers.temp.off, answers.temp.waiting, answers.seal.text, answers.seal.author, answers.seal.mine])(stepAnswers(
       {description: '<p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal: yes-no</p>', comments: [{id: 1, comment: '<p>Temp: 7 °C</p><p>Seal: yes</p><p>pocket:answer</p>',
-        author: {id: 2, name: 'Jamie'}, created: '2026-10-14T09:00:00Z'}]}, [{html: '<p>Temp: 3 °C</p><p>pocket:answer</p>', at: '2026-10-14T09:05:00Z'}], {id: 1, name: 'Me'}))];
+        author: {id: 2, name: 'Jamie'}, created: '2026-10-14T09:00:00Z'}, {id: 'e1', comment: '<p>Temp: 3 °C</p><p>pocket:answer</p>', author: {id: 1, name: 'Me'}, created: '2026-10-14T09:05:00Z', waiting: true}]},
+      {id: 1, name: 'Me'}))];
 });
 // How a finished checklist went: its skipped steps, and its comments without the answers to asks. A step's comments
 // are read as HTML. An open step has only its count of comments.

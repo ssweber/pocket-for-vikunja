@@ -3,6 +3,7 @@
 import { component } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import sending from '../../src/js/app/sending.js';
+import tasks from '../../src/js/app/tasks.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';
@@ -384,17 +385,17 @@ test('sliding progress shows you on a task nobody has, and claims it only once t
   assert.equal(acts.length, 1, 'a task already yours sends nothing, and sliding back to 0% later keeps it');
 });
 
-/* Claims and files waiting in the outbox are kept by task (keyWaiting, sending.js). A row asks only about its own
-   claim and files, so a change in the outbox does not make the other rows ask again. The test uses Alpine's
-   reactivity (reactive.mjs). Each row's question is watched and counted every time it is asked again. */
+/* Claims and files waiting in the outbox are kept by task (keyOps, tasks.js, and keyWaiting, sending.js). A row asks
+   only about its own claim and files, so a change in the outbox does not make the other rows ask again. The test uses
+   Alpine's reactivity (reactive.mjs). Each row's question is watched and counted every time it is asked again. */
 test('waiting claims and files are kept by task, and only that task\'s row is updated', c => {
   const { Alpine, flush } = watching(c), me = { id: 1, username: 'alex' }, priya = { id: 2, username: 'priya' };
-  const app = Alpine.reactive(component(claims, sending));
-  Object.assign(app, { user: me, pending: [] });
+  const app = Alpine.reactive(component(tasks, claims, sending));
+  Object.assign(app, { user: me, pending: [], failed: [] });
   const asked = {}, seen = {};
   for (const id of [5, 6]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; seen[id] = [app.peopleOf(id, [priya]).map(u => u.username), app.waiting.files[id] || 0]; });
-  const act = (task, op) => ({ kind: 'act', id: op + task, task, op, items: [] });
-  const outbox = list => { app.pending = list; app.keyWaiting(); flush(); };
+  const act = (task, op) => ({ kind: 'act', id: op + task, task, op, user: me.id, who: me, items: [] });
+  const outbox = list => { app.pending = list; app.keyOps(); app.keyWaiting(); flush(); };
   outbox([act(5, 'claim')]);
   assert.deepEqual([seen[5], asked], [[['priya', 'alex'], 0], { 5: 2, 6: 1 }], 'a waiting claim shows you on the task, and the other row is not updated');
   outbox([act(5, 'claim'), act(5, 'unclaim'), { kind: 'task', id: 'e1', items: [{ taskId: 6 }], files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }]);
@@ -404,7 +405,7 @@ test('waiting claims and files are kept by task, and only that task\'s row is up
   app.dropping.push('c'); app.keyWaiting(); flush();
   assert.deepEqual([seen[6], asked], [[['priya'], 1], { 5: 3, 6: 3 }], 'a cancelled file no longer counts');
   outbox([]);
-  assert.deepEqual([seen, { ...Alpine.raw(app).waiting.claims }], [{ 5: [['priya'], 0], 6: [['priya'], 0] }, {}], 'when everything is sent, nothing is waiting');
+  assert.deepEqual([seen, { ...Alpine.raw(app).opsOn }], [{ 5: [['priya'], 0], 6: [['priya'], 0] }, {}], 'when everything is sent, nothing is waiting');
 });
 
 /* "+ me" appears only where someone else could take the task. In a project nobody else can see (seenBy, loaded with
@@ -558,7 +559,7 @@ test('a nudge highlights the row it starts on, and the phone vibrates when the h
   globalThis.innerHeight = 800;
   try {
     const van = { id: 10, title: 'Pack the van', project_id: 1, done: false }, chairs = { id: 11, title: 'Load chairs', project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } };
-    Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], lines: {}, checklistIds: new Set(), canWrite: () => true, $refs: {},
+    Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, pendingTasks: [], lines: {}, checklistIds: new Set(), canWrite: () => true, $refs: {},
       tasks: { 10: van, 11: chairs }, positions: { 10: 1000, 11: 100 }, view: { groups: [{ key: 'open', tasks: [van, chairs] }], listView: 5 } });
     app.initProgressDrag();
     // Touching a row, moving 30px down over 300ms and releasing is a slow scroll, which counts as a nudge.

@@ -1692,33 +1692,36 @@ try {
     }
   });
 
-  /* Deleting a subtask on Today and then its parent, both while Restore shows, deletes both. The parent's deletion
-     deletes the subtask too, and is sent first. The subtask's deletion then finds the subtask and its parent gone, and
-     that is not an error. */
+  /* Deleting a subtask on Today and then its parent, both while Restore shows, deletes both. The subtask's deletion is
+     already waiting, so the parent's deletion neither counts the subtask nor asks about it. Both are sent when the
+     batch clears, and nothing is left in Waiting to send. The subtask's deletion leaves its parent's progress alone,
+     because the parent is being deleted. */
   await step('a-subtask-and-then-its-parent-deleted-on-today-are-both-deleted', async () => {
     const p = await make(`Pocket smoke gone parent ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke gone kid ${stamp}`, { due_date: todayAt(23) });
     await api(`/tasks/${p.id}/relations`, { method: 'POST', headers: json, body: JSON.stringify({ other_task_id: k.id, relation_kind: 'subtask' }) });
-    const card = cardOf(p.title), K = `${card} > .card-rows > ${rowOf(k.title)}`, missing = [];
+    const card = cardOf(p.title), K = `${card} > .card-rows > ${rowOf(k.title)}`, missing = [], asked = [];
     const see = r => r.status() === 404 && missing.push(r.request().method() + ' ' + new URL(r.url()).pathname);
+    const ask = d => asked.push(d.message());                                 // the handler at the top answers it
     const failed = () => page.evaluate(() => Alpine.$data(document.body).failed.map(f => ({ task: f.task, op: f.op, stage: f.stage, message: f.failed.message })));
     goneOnPurpose.push(k.id, p.id);
-    page.on('response', see);
+    page.on('response', see); page.on('dialog', ask);
     try {
       await toastGone();
       await refreshToday();
       await page.waitForSelector(K, { timeout: 15000 });
       await swipeRow(page, K, 'delete');
       await expect(page.locator(K)).toHaveClass(/\bdeleted\b/);
-      await swipeRow(page, `${card} > .card-head`, 'delete');                  // the page accepts the question about the subtask
+      await swipeRow(page, `${card} > .card-head`, 'delete');
       await expect(page.locator(card)).toHaveClass(/\bdeleted\b/);
+      if (asked.length) throw new Error('asked: ' + asked.join(' | '));
       await later(3000);
       await expect(page.locator(card)).toHaveCount(0);
-      await expect.poll(async () => !!(await get(k.id) || await get(p.id))).toBe(false);
-      // The parent's mark took over the subtask's row, so the subtask's deletion is still held. Leaving Pocket sends it.
-      await page.evaluate(() => dispatchEvent(new Event('pagehide')));
       await synced(page).catch(async e => { throw new Error(`${e.message}. Refused: ${JSON.stringify(await failed())}. Answered 404: ${missing.join(', ')}`); });
+      await expect.poll(async () => !!(await get(k.id) || await get(p.id))).toBe(false);
+      const unsent = await page.evaluate(() => Alpine.$data(document.body).unsent);
+      if (unsent) throw new Error(`${unsent} left in Waiting to send. Refused: ${JSON.stringify(await failed())}`);
     } finally {
-      page.off('response', see);
+      page.off('response', see); page.off('dialog', ask);
       for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });

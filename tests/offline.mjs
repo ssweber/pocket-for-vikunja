@@ -563,7 +563,8 @@ try {
   });
 
   /* While Pocket is offline it doesn't try a tick's first request, so Waiting to send still offers Don't send it.
-     Tapping it leaves the step not done in Vikunja, also once Pocket is back online. */
+     Tapping it unticks the step on the checklist's screen at once, and leaves it not done in Vikunja, also once Pocket
+     is back online. */
   await step('a-tick-made-offline-can-be-dropped', async () => {
     const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
     const proj = await post('/projects', { title: T('dropped checklists'), description: '<p>pocket:checklists</p>' });
@@ -583,12 +584,59 @@ try {
       await page.click(`${row} .ob-drop`);                                   // the dialog is accepted by the handler at the top
       await page.waitForSelector(row, { state: 'detached' });
       await page.click('#btn-sheet-close');
+      await expect(page.locator('#run-steps').getByRole('button', { name: 'Mark done: ' + T('not sent') })).toBeVisible();
+      await expect(page.locator('#step-done')).toBeVisible();
       await context.setOffline(false);
       await online();
       await synced(page);
       const t = await (await api(`/tasks/${st.id}?expand=reactions`)).json();
       if (t.done || (t.reactions?.['✅'] || []).length) throw new Error('Vikunja has the tick: ' + JSON.stringify([t.done, t.reactions]));
     } finally {
+      await page.evaluate(() => { location.hash = '#/today'; });
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
+  /* A checklist's sheet lists its steps as their own rows. Two steps ticked there offline wait in the outbox. Back
+     online, Vikunja refuses the first tick. The sheet and the checklist's ring show that step open again, while the
+     second step is done. */
+  await step('a-refused-tick-in-a-checklist-sheet-shows-that-step-open', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('refused checklists'), description: '<p>pocket:checklists</p>' });
+    let refused = null;
+    const refuse = r => r.request().method() === 'PATCH' ? r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Forbidden' }) }) : r.fallback();
+    try {
+      const run = await post(`/projects/${proj.id}/tasks`, { title: T('refused run'), description: '<p>pocket:run</p>' });
+      const steps = [await post(`/projects/${proj.id}/tasks`, { title: T('refused one') }), await post(`/projects/${proj.id}/tasks`, { title: T('refused two') })];
+      for (const st of steps) await post(`/tasks/${run.id}/relations`, { other_task_id: st.id, relation_kind: 'subtask' });
+      await page.reload();                                                   // so Pocket knows the project is for checklists
+      await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+      await page.evaluate(id => Alpine.$data(document.body).openTask(id), run.id);
+      const row = st => page.locator(`#d-subtasks .row[data-id="${st.id}"]`);
+      for (const st of steps) await expect(row(st)).toBeVisible({ timeout: 15000 });
+      await context.setOffline(true);
+      for (const [st, name] of [[steps[0], 'refused one'], [steps[1], 'refused two']]) {
+        await row(st).getByRole('button', { name: 'Mark done: ' + T(name) }).click();
+        await expect(row(st)).toHaveClass(/\bdone\b/);
+      }
+      refused = `**/api/v1/plugins/pocket/v2/tasks/${steps[0].id}`;
+      await page.route(refused, refuse);
+      await context.setOffline(false);
+      await online();
+      await expect.poll(async () => (await (await api('/tasks/' + steps[1].id)).json()).done, { timeout: 20000 }).toBe(true);
+      await expect(row(steps[0])).not.toHaveClass(/\bdone\b/);
+      await expect(row(steps[1])).toHaveClass(/\bdone\b/);
+      await expect(page.locator('#sheet').getByRole('button', { name: `Finish “${T('refused run')}”, with 1 step not done` })).toBeVisible();
+      if ((await (await api('/tasks/' + steps[0].id)).json()).done) throw new Error('Vikunja has the refused tick');
+      await page.click('#btn-sheet-close');
+      await page.click('#btn-refresh');                                      // Don't send it, so nothing is left waiting
+      await page.click(`#outbox-rows .ob-row:has-text("Done: ${T('refused one')}") .ob-drop`);
+      await page.waitForSelector('#outbox-rows .ob-row', { state: 'detached' });
+      await page.click('#btn-sheet-close');
+    } finally {
+      if (refused) await page.unroute(refused, refuse);
+      await page.evaluate(async () => { const a = Alpine.$data(document.body); for (const e of [...a.failed]) await a.dropAct(e.id); });   // so a failure here leaves the next steps nothing waiting
+      await context.setOffline(false);
       await page.evaluate(() => { location.hash = '#/today'; });
       await api('/projects/' + proj.id, { method: 'DELETE' });
     }

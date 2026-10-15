@@ -122,7 +122,7 @@ const sameField = (a, b) => a === b || (Array.isArray(a) ? Array.isArray(b) && s
 const sameKeys = (a, b, same) => { const ks = Object.keys(a); return ks.length === Object.keys(b).length && ks.every(k => k in b && same(a[k], b[k])); };
 export const sameGroup = (a, b) => !!a && !!b && sameKeys(a, b, sameField);
 /* Copy `from` into `to`, a watched object, one entry at a time. A row that reads one entry by its id (g.depth[t.id],
-   waiting.claims[t.id]) is then redrawn only when that entry changes. Replacing the whole object would redraw every
+   opsOn[t.id]) is then redrawn only when that entry changes. Replacing the whole object would redraw every
    row on the screen. */
 export function intoKeys(to, from, raw = x => x){
   const was = raw(to);

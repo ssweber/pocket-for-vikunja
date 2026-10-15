@@ -3,8 +3,8 @@ import {allPages, api, ApiError, NetError} from '../api.js';
 import {comesRound, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
+import {OPS} from '../ops/index.js';
 import {copyOf, put, started} from './tasks.js';
-
 
 const loading = new Set();                       // usernames whose picture is being fetched
 const tried = new Map();                         // username -> when the last picture request failed
@@ -41,12 +41,12 @@ export default {
     const all = [...by.map(u => ({...u, badge})), ...people.filter(u => !by.some(d => d.id === u.id))];
     return all.length ? {users: all.slice(0, 2), more: Math.max(0, all.length - 2), can: false} : null;
   },
-  /* Apply the latest pending claim and the current progress gesture to Vikunja's assignees. Both are read by task
-     id, so a claim redraws only that task's rows. */
+  /* Lay the task's waiting claims and the current progress gesture over `base`. Both are read by task id, so a claim
+     redraws only that task's rows. A row's own assignees already have the claims. A sheet's subtask has its people
+     from loadSubPeople, apart from the store, and needs them laid over. Laying a claim twice changes nothing. */
   peopleOf(id, base){
-    let list = base || [];
-    const op = this.waiting.claims[id];
-    if (op) list = [...list.filter(u => u.id !== this.user?.id), ...op === 'claim' ? [this.user] : []];
+    const claims = (this.opsOn[id] || []).filter(a => a.op === 'claim' || a.op === 'unclaim');
+    let list = claims.reduce((t, a) => OPS[a.op].apply(t, a), {assignees: base || []}).assignees;
     if (this.slideClaim[id] && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
     return list;
   },
@@ -103,13 +103,11 @@ export default {
     for (const st of this.subtasks) out[st.id] = this.claimSlot(st, this.peopleOf(st.id, this.sheet.subPeople[st.id]), st.done, run);
     return out;
   },
-  // Apply a sent claim or release to Vikunja's copy, which the rows, the sheet and a checklist's screen read, and to the
-  // sheet's subtask people.
+  // Apply a sent claim or release to the sheet's subtask people, which are read apart from the store. Vikunja's copy has
+  // it already (answered, tasks.js).
   claimSent(a){
-    const was = this.sheet.subPeople?.[a.task] ?? null;
-    const set = list => [...(list || []).filter(u => u.id !== this.user?.id), ...a.op === 'claim' ? [this.user] : []];
-    if (was !== null) this.sheet.subPeople[a.task] = set(was);
-    const c = copyOf(a.task); if (c) put([{id: a.task, assignees: set(c.assignees)}], ['assignees']);
+    const was = this.sheet.subPeople?.[a.task];
+    if (was) this.sheet.subPeople[a.task] = OPS[a.op].apply({assignees: was}, a).assignees;
   },
 
   /* ---------- people's pictures ---------- */

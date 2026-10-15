@@ -8,7 +8,6 @@ import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
-import {OPS} from '../ops/index.js';
 import {CREATED, put, savedScreen, TASK} from './tasks.js';
 
 let waitTimer;
@@ -317,7 +316,6 @@ export default {
     if (open && tasks.some(t => t.parent === open)) this.readCopy(open).then(t => {
       if (t && this.sheet.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
     }).catch(() => {});
-
     // Text that couldn't be added goes back into the box it came from: quick add, or the subtask box if the task's
     // sheet is open. Subtasks of a task whose sheet isn't open are named in the message instead, so they aren't lost.
     const subs = failed.filter(f => f.parent), lost = subs.filter(f => this.sheet.id !== f.parent.id), back = failed.filter(f => !f.parent);
@@ -349,23 +347,17 @@ export default {
     const all = this.user ? sync.all(this.user.id) : [];
     this.pending = all.filter(e => !e.failed && !sync.held.has(e.id)); this.failed = all.filter(e => e.failed);
     this.unsent = this.user ? all.length : null;
-    // Tasks being deleted stay out of every list until the delete is sent, or until Restore or Undo brings them back.
-    // If Vikunja rejects the delete, they come back. leaving.js handles rows deleted in place.
-    this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
     this.keyWaiting();
     this.keyOps();
     this.markSlow();
   },
-  /* What is waiting for each task, by task id (`waiting`): what the last op waiting on it says it sets (its last claim
-     or unclaim, tick or untick, progress: each op's `waiting`), and how many photos and files wait to upload. Each key
-     is written separately (intoKeys) when the outbox changes, so a row that reads its own task's entry (peopleOf,
-     rowMeta) redraws only when that entry changes. Without this, every row searched the whole outbox whenever
-     anything in it changed, and adding a task to a long list made every row search it twice. */
+  /* How many photos and files wait to upload for each task, by task id (`waiting.files`). Each key is written
+     separately (intoKeys) when the outbox changes, so a row that reads its own task's entry (rowMeta) redraws only when
+     that entry changes. Without this, every row searched the whole outbox whenever anything in it changed, and adding
+     a task to a long list made every row search it twice. The ops waiting on a task are in opsOn (keyOps, tasks.js). */
   keyWaiting(){
-    const out = {claims: {}, files: {}, ticks: {}, pcts: {}};
+    const out = {files: {}};
     for (const e of this.pending) {
-      const w = e.kind === 'act' && OPS[e.op]?.waiting;
-      if (w) out[w.key][e.task] = w.value(e);
       const id = e.taskId || e.items?.[0]?.taskId;
       if (id) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) out.files[id] = (out.files[id] || 0) + 1;
     }

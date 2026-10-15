@@ -30,7 +30,7 @@ export default {
     seen.add(t.id);
     const full = t.related_tasks?.subtask ? t : this.tasks[t.id] || copyOf(t.id) || t;
     const subs = (this.hasOwnOrder(full) ? stepsOf(full) : [...(full.related_tasks?.subtask || [])].sort(positionOrder(this.positions)))
-      .filter(s => !seen.has(s.id) && !this.hiddenRows.has(s.id));
+      .filter(s => !seen.has(s.id) && !this.hiddenRows.has(s.id)).map(s => this.subRow(s));
     return {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, people || t.assignees || full.assignees || []),
       ...this.shareWords(t, full), ring: this.shareRing(full), items: subs.map(s => this.shareItem(s, seen))};
   },
@@ -65,7 +65,7 @@ export default {
       for (const t of g?.tasks || []) {
         const d = g.depth[t.id] || 0, subs = t.related_tasks?.subtask || [];
         const item = {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || []), ...this.shareWords(t), items: [], ring: this.shareRing(t),
-          subs: {done: subs.filter(s => this.stepDone(s.id, s.done)).length, total: subs.length}};
+          subs: {done: subs.filter(s => this.subRow(s).done).length, total: subs.length}};
         under.length = d;
         (d ? under[d - 1]?.items || items : items).push(item);
         under[d] = item;

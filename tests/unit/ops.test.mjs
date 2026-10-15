@@ -4,7 +4,7 @@ import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
-import acts from '../../src/js/app/acts.js';
+import acts, { stageContext } from '../../src/js/app/acts.js';
 import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
@@ -12,28 +12,64 @@ import runs from '../../src/js/app/runs.js';
 import { sync } from '../../src/js/sync.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { UNKNOWN } from '../../src/js/messages.js';
+import { figure } from '../../src/js/ops/stages.js';
 
-const FIELDS = ['apply', 'stages', 'invert', 'merge', 'waiting', 'text', 'refused', 'dropped'];
+const FIELDS = ['apply', 'stages', 'invert', 'merge', 'text', 'refused', 'dropped'];
 
-test('every op has every field, and only invert, merge and waiting may be empty', () => {
+test('every op has every field, and only invert and merge may be empty', () => {
   for (const [name, op] of Object.entries(OPS)) {
     for (const f of FIELDS) assert.ok(f in op, `${name} has ${f}`);
     for (const f of ['apply', 'text', 'refused', 'dropped']) assert.equal(typeof op[f], 'function', `${name}.${f}`);
     assert.ok(op.stages.length && op.stages.every(s => typeof s === 'function'), `${name} has its requests`);
-    assert.ok(op.waiting === null || (typeof op.waiting.key === 'string' && typeof op.waiting.value === 'function'), `${name}.waiting`);
+    assert.ok(!('on' in op) || typeof op.on === 'function', `${name}.on`);
   }
 });
 
 test('apply returns the task as a new object, and leaves the task and the op alone', () => {
-  const task = { id: 4, title: 'Unlock the door', done: false, percent_done: 0.25, assignees: [{ id: 2 }] }, was = structuredClone(task);
+  const task = { id: 4, title: 'Unlock the door', done: false, percent_done: 0.25, assignees: [{ id: 2 }], reactions: {}, comments: [] }, was = structuredClone(task);
   for (const [name, op] of Object.entries(OPS)) {
-    const a = { op: name, task: 4, user: 1, pct: 50, ids: [4] }, before = structuredClone(a), out = op.apply(task, a);
+    const a = { id: 'e1', op: name, task: 4, user: 1, pct: 50, ids: [4], at: '2026-10-15T09:00:00.000Z', html: '<p>Done</p>' }, before = structuredClone(a), out = op.apply(task, a);
     assert.notEqual(out, task, name);
     assert.deepEqual([task, a], [was, before], `${name} changed nothing it was given`);
   }
-  assert.deepEqual([OPS.done.apply(task).done, OPS.undone.apply({ ...task, done: true }).done, OPS.progress.apply(task, { pct: 50 }).percent_done], [true, false, 0.5]);
+  assert.deepEqual([OPS.done.apply(task, { user: 1 }).done, OPS.undone.apply({ ...task, done: true }, { user: 1 }).done, OPS.progress.apply(task, { pct: 50 }).percent_done], [true, false, 0.5]);
   assert.deepEqual(OPS.claim.apply(task, { user: 1 }).assignees.map(u => u.id), [2, 1]);
   assert.deepEqual(OPS.unclaim.apply(task, { user: 2 }).assignees, []);
+});
+
+/* Each op shows itself through its apply: the task as it will be once Vikunja has made the change. A row shows it while
+   the op waits, and Vikunja's copy takes it when the op is answered. */
+test('each op\'s apply shows its change: a tick with the user\'s ✅, a skip with ⏭️, a comment marked waiting, a claim with the claimer\'s name', () => {
+  const me = { id: 1, username: 'alex', name: 'Alex' }, priya = { id: 2, username: 'priya' }, at = '2026-10-15T09:00:00.000Z', NONE = '0001-01-01T00:00:00Z';
+  const step = { id: 4, title: 'Unlock the door', done: false, done_at: NONE, reactions: { '✅': [priya] }, comments: [{ id: 7, comment: '<p>Key under the mat</p>', author: priya }], assignees: [] };
+  const a = (op, more = {}) => ({ id: 'e-' + op, op, task: 4, user: 1, who: me, at, ...more });
+  const done = OPS.done.apply(step, a('done'));
+  assert.deepEqual([done.done, done.done_at, done.reactions['✅'], done.reactions['⏭️'], done.comments.length], [true, at, [priya, me], [], 1], 'done at the op\'s time, with a ✅');
+  const skipped = OPS.skip.apply(done, a('skip', { html: '<p>Skipped: no key</p>' }));
+  assert.deepEqual([skipped.reactions['✅'], skipped.reactions['⏭️'], skipped.comments.at(-1)], [[priya], [me], { id: 'e-skip', comment: '<p>Skipped: no key</p>', author: me, created: at, waiting: true }],
+    'a skip takes the user\'s ✅ off, puts a ⏭️ on and adds its comment, marked waiting');
+  const undone = OPS.undone.apply(skipped, a('undone'));
+  assert.deepEqual([undone.done, undone.done_at, undone.reactions['✅'], undone.reactions['⏭️']], [false, NONE, [priya], []], 'not done: only the user\'s own ✅ and ⏭️ go');
+  assert.deepEqual(OPS.doneNote.apply(step, a('doneNote', { html: '<p>Done early</p>' })).comments.map(c => [c.comment, !!c.waiting]), [['<p>Key under the mat</p>', false], ['<p>Done early</p>', true]]);
+  for (const op of ['note', 'answer']) assert.deepEqual(OPS[op].apply(step, a(op, { html: '<p>7 °C</p>' })).comments.at(-1).author, me, op);
+  const listed = { id: 4, title: 'Unlock the door', done: false };
+  assert.deepEqual(OPS.doneNote.apply(listed, a('doneNote', { html: '<p>Done early</p>' })), { ...listed, done: true, done_at: at },
+    'a task read without its reactions and comments gets neither, or one ✅ would read as the only one');
+  assert.deepEqual([OPS.claim.apply(step, a('claim')).assignees, OPS.claim.apply(step, { user: 1 }).assignees], [[me], [{ id: 1 }]],
+    'a claim adds the claimer with their name, or only their id for an entry queued before Pocket kept it');
+  assert.deepEqual([OPS.progress.apply(step, a('progress', { pct: 40 })).percent_done, OPS.finish.apply(step).done, OPS.reopen.apply(done).done], [0.4, true, false]);
+  const van = { id: 1, related_tasks: { subtask: [{ id: 4 }, { id: 5 }] } }, del = a('delete', { ids: [6, 4], up: 1 });
+  assert.deepEqual([OPS.delete.apply(van, del).related_tasks.subtask, OPS.delete.on(del)], [[{ id: 5 }], [6, 4, 1]], 'a delete takes its tasks off the parent that stays');
+});
+
+/* A deleted subtask's last stage writes its parent's progress. When a waiting delete deletes the parent too, the
+   stage leaves it alone. Swiping a subtask on Today and then its parent did this. */
+test('a deleted subtask\'s figure stage skips a parent that a waiting delete deletes', async () => {
+  const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 3 }] } }]), app = component(tasks);
+  app.opsOn = { 1: [{ op: 'delete', id: 'd1', task: 1, ids: [1] }] };
+  const a = { id: 'd2', op: 'delete', task: 2, ids: [2], up: 1, stage: 1 };
+  await figure(a, stageContext(a, app).start());
+  assert.deepEqual(v.requests, [], 'the parent is neither read nor written');
 });
 
 /* Each op's words, as the outbox said them before the ops had words of their own: its row in Waiting to send, what a
@@ -82,7 +118,7 @@ test('each op says what the outbox said before: its row, its refusal, and what d
 const sender = (t, list) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja(list), app = component(tasks, acts, sending, outbox, runs);
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
     view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
   Object.defineProperty(app, 'toast', { value: {} });
   return { v, app };

@@ -98,7 +98,7 @@ export default {
     if (!t || t.pending || this.role(t) === 'template') return null;
     const run = this.isRunTask(t), all = this.cardSubs(t, run);
     if (!all.length && !waiting) return null;
-    const w = workedOut([...all.map(s => ({done: this.subDone(s, run), pct: run ? this.stepPct(s) : pctOf(s)})), ...Array.from({length: waiting}, () => ({done: false, pct: 0}))]);
+    const w = workedOut([...all.map(s => ({done: this.subDone(s), pct: pctOf(s)})), ...Array.from({length: waiting}, () => ({done: false, pct: 0}))]);
     const open = w.total - w.done, what = run ? 'step' : 'subtask', n = (k, x) => `${k} ${x}${k === 1 ? '' : 's'}`, title = `“${t.title}”`;
     const label = t.done ? 'Mark not done: ' + t.title : !open ? `Close ${title}: all its ${what}s are done` : run ? `Finish ${title}, with ${n(open, 'step')} not done`
       : repeats(t) ? 'Mark done: ' + t.title : `Complete ${title} and its ${n(open, 'open subtask')}`;
@@ -177,14 +177,14 @@ export default {
       return all[whereNext(facts, now, from === null ? null : {id: from})]?.id ?? null;
     };
   },
-  // All of a card's subtasks in order: a checklist's by its order line, a task's by List view position. Each is the
-  // copy on screen where there is one.
+  // All of a card's subtasks in order: a checklist's by its order line, a task's by List view position. Each is its
+  // own row where there is one (subRow).
   cardSubs(t, run = this.isRunTask(t)){
     const subs = run ? stepsOf(t) : [...(t.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
-    return subs.map(s => this.tasks[s.id] || s);
+    return subs.map(s => this.subRow(s));
   },
-  // Whether a subtask is done. A checklist step counts as done when its tick is still waiting to be sent.
-  subDone(s, run){ return run ? this.stepDone(s.id, !!s.done) : !!s.done; },
+  // Whether a subtask is done. A checklist step's tick still waiting to be sent is on its row already.
+  subDone(s){ return !!s.done; },
   /* A card's heading, computed once per card (list-item.html). It holds the title (for a checklist, without the day it
      was started), small priority bars, a short due date and the project's colour dot. The due date is left out for a
      task due today with no time, under the Today heading. The dot shows on Today and in search, not on the project's
