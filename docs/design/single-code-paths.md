@@ -403,6 +403,49 @@ task Vikunja answers with 404 is removed once no op points to it. `forget`, `for
 The kept screens are Today, Lists, Checklists and the last 5 projects opened. They bound how many copies are kept, so
 nothing expires by age. A project opened rarely loads fresh, as one never opened does now.
 
+A done task stays only while a screen shows it, such as Done today or a checklist finished recently. Pocket can
+remove the others at any time, which keeps the list of ids short.
+
+### Keeping the store current
+
+When Pocket comes back to the screen, or the connection comes back, it updates the store with two requests to
+Vikunja's own API. No plugin route is needed.
+
+- **Changed tasks.** `GET /tasks?filter=updated > T&expand=reactions`, where T is the time of the last update.
+  Vikunja returns each changed task in full, with its `related_tasks`, and the store takes the fields each one has.
+  T is on Vikunja's clock (`serverTime`), and a second earlier than the last update started, because Vikunja keeps
+  times in whole seconds. A task returned twice does no harm.
+- **Removed tasks.** `GET /tasks?filter=id in <the store's ids>&per_page=1`. Vikunja leaves out a task that was
+  deleted, or that the user can no longer see. If `total` equals the number of ids, nothing was removed. If it is
+  lower, Pocket runs the same query in full and drops the tasks it doesn't return. A task with an op in the outbox
+  stays.
+- **Each screen's own load still decides which tasks are on that screen,** such as a task that became due today, or a
+  project's order. It also writes every task it returns into the store in full, because the changed-tasks query
+  misses most of what Pocket shows (below).
+- **A parent's ring** comes from the subtask counts in the parent's own copy. It is corrected the next time Pocket
+  reads the parent.
+
+Checked on Vikunja 2.7.0 on 2026-10-15:
+
+- **`updated` changes only when a task's own fields change, or a comment is added.** These leave it as it was:
+  linking or unlinking a subtask (on either task), ticking a subtask (on the parent), a ✅ or any reaction, labels,
+  assignees, a position, an attachment, and the step times Pocket's plugin writes (`main.go` says so). So the
+  changed-tasks query catches edits elsewhere to titles, dates, done, progress, notes and priority, and new comments.
+  A claim, a ✅, a label or a new subtask made elsewhere shows once a screen that has the task loads again.
+- **A field Vikunja wasn't asked for comes back as `null`.** `reactions` is `null` unless the request asks for
+  `expand=reactions`. Taking it as "the task has no reactions" would remove every ✅. So the store takes only the
+  fields its request asked for, and a list read without `expand=reactions` leaves `reactions` alone.
+- **`id in` with `per_page=1`** answers with the right `total`, counting only the tasks that still exist.
+
+**URL length.** The ids go in the URL, and some reverse proxies refuse URLs longer than about 8 KB. Split a long list
+of ids across several requests.
+
+**Before building this part,** read Replicache's design doc. Replicache keeps the server's state with pending
+mutations on top, and gives each mutation an id so the server applies it once, which is this plan's design. The doc
+covers traps this plan hasn't hit yet. One is a reply that arrives after its change was undone. Here, an Undo of an
+op already sent is a second op queued after it, so the reply goes into Vikunja's copy and the Undo still applies on
+top. Check that holds for every op's `invert`.
+
 ### Traps
 
 - **Rule 10.** The memo must return the same object while neither the copy nor the waiting ops for that id changed.
@@ -469,7 +512,8 @@ checks that Vikunja changed once.
    bookkeeping and `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last
    non-permanent files from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
    A checklist's screen reads its steps from the store, so delete `view.run`.
-10. **The store.** Screens hold ids, the saved screens become Vikunja's copies, and the sweep prunes them (part 7). Delete
+10. **The store.** Screens hold ids, the saved screens become Vikunja's copies, the sweep prunes them, and the two
+    requests in "Keeping the store current" update them (part 7). Delete
     `keep`, `keptRows`, `cache` and `forgotten`, and turn on the store rule.
 11. **Messages.** Move the remaining inline strings to `messages.js` and turn on its rule.
 12. **Clean up.** Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied,
