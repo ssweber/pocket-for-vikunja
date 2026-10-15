@@ -50,7 +50,7 @@ export default {
      with who did each step. */
   shareDoc(what){
     if (what === 'task') {
-      const t = this.sheet.task;
+      const t = this.sheetTask;
       if (!t) return null;
       const seen = new Set([t.id]), item = {title: this.shareTitle(t), done: !!t.done, pct: pctOf(t), due: t.due_date, people: this.peopleOf(t.id, t.assignees || []),
         ...this.shareWords(t), ring: this.shareRing(t), items: this.subtasks.map(s => this.shareItem(s, seen, this.sheet.subPeople[s.id]))};
@@ -73,13 +73,13 @@ export default {
       const done = this.view.groups.find(x => x.key === 'done');
       return {kind: 'project', title: p.title, items, open: (g?.tasks || []).filter(t => !t.done).length, doneCount: done?.count || 0};
     }
-    const r = this.view.run, v = this.runView;
+    const r = this.view.shownRun, run = this.runTask, v = this.runView;
     if (!r || !v) return null;
     // The ring's percentage is calculated from the steps as the screen shows them, the way ringOf calculates it from
     // the checklist's task. A skipped step counts as done, and so does a tick or progress waiting to be sent.
     const w = workedOut(v.steps.map(s => ({done: !!s.done, pct: s.pct})));
-    return {kind: 'run', title: r.run.title, ring: w && {pct: w.pct, done: w.done, total: w.total}, items: v.steps.map(s => ({title: s.title, done: s.done, skipped: s.skipped, by: s.by, pct: s.pct, items: [],
-      people: s.done ? [] : this.peopleOf(s.id, r.steps.find(x => x.id === s.id)?.assignees || [])}))};
+    return {kind: 'run', title: run.title, ring: w && {pct: w.pct, done: w.done, total: w.total}, items: v.steps.map(s => ({title: s.title, done: s.done, skipped: s.skipped, by: s.by, pct: s.pct, items: [],
+      people: s.done ? [] : this.peopleOf(s.id, (r.steps.includes(s.id) && this.tasks[s.id]?.assignees) || [])}))};
   },
   /* Share progress as text through the phone's share sheet, or copy it where there is no share sheet. A message about
      the result shows in the sheet it was shared from. The share sheet is requested directly in the tap, with no await
@@ -109,11 +109,11 @@ export default {
   copyMarkdown(what){ const doc = this.shareDoc(what); if (doc) return this.copyOut(markdownText(doc, {mode: this.quickAddMode, dueTime: this.dueTime}), 'sheet:top', COPIED.markdown); },
   // The address of a task or a project in Vikunja's web app. A checklist is a task.
   vikunjaUrl(what){
-    const id = what === 'task' ? this.sheet.task?.id : what === 'run' ? this.view.run?.run.id : this.sheet.project?.id;
+    const id = what === 'task' ? this.sheet.id : what === 'run' ? this.view.shownRun?.id : this.sheet.project?.id;
     return `${this.server}/${what === 'project' ? 'projects' : 'tasks'}/${id}`;
   },
   // Copy a task's notes, or a comment, as plain text.
-  copyNotes(){ return this.copyOut(this.notesText(this.sheet.task), 'sheet:notes', COPIED.notes); },
+  copyNotes(){ return this.copyOut(this.notesText(this.sheetTask), 'sheet:notes', COPIED.notes); },
   copyComment(c){ return this.copyOut(htmlToText(c.comment), 'sheet:comments', COPIED.comment); },
   async copyOut(text, place, said){
     const ok = await toClipboard(text);

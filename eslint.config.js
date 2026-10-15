@@ -11,7 +11,11 @@ import globals from 'globals';
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
 const STORE = 'Only show() in src/js/app/tasks.js writes a task\'s row. Lay a save over it with edit(), or put() what Vikunja answered.';
 // A write to a task's row: this.tasks[id] = …, this.tasks[id].done = …, delete or ++ on one, or Object.assign onto one.
-const ROW = "MemberExpression[object.type='ThisExpression'][property.name='tasks']";
+// The sheet's task and a checklist's are rows too (sheetTask, runTask).
+const ROW = "MemberExpression[object.type='ThisExpression'][property.name=/^(tasks|sheetTask|runTask)$/]";
+// this.sheet.task and this.view.run, where the sheet and a checklist's screen kept their own copies of tasks.
+const HELD = (a, b) => `MemberExpression[object.type='MemberExpression'][object.object.type='ThisExpression'][object.property.name='${a}'][property.name='${b}']`;
+const BY_ID = "The sheet and a checklist's screen hold ids. Read this.sheet.id or this.sheetTask, and this.view.shownRun or this.runTask (tasks.js).";
 // The files that still write to Vikunja directly, not through the outbox. Each phase removes the files it finishes.
 // The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
 // c.send, which no selector here matches yet.
@@ -26,6 +30,7 @@ const RESTRICTED = [
   { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name=/^(saveTask|saveEach)$/]", message: WRITE, allow: WRITERS },
   { selector: `:matches(AssignmentExpression > MemberExpression.left, UpdateExpression > MemberExpression.argument, UnaryExpression[operator='delete'] > MemberExpression.argument) ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
+  { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],

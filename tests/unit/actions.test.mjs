@@ -38,6 +38,8 @@ const ticks = v => patches(v).filter(([, b]) => !('percent_done' in b && Object.
 // A row in a list, for ticking from there. The test controls the batch's timer, so the batch doesn't clear by itself.
 const ROW = {};
 const listed = t => { t.mock.timers.enable({ apis: ['setTimeout'] }); return component(tasks, actions, leaving); };
+// Open task `t` in the sheet, as openTask does once it has Vikunja's copy. The sheet holds the id and reads the row.
+const opened = (app, t, more = {}) => { put([structuredClone(t)], TASK); app.row(structuredClone(t)); app.sheet = { ...more, id: t.id }; return app.sheetTask; };
 
 test('ticking a parent leaves its subtasks as they are', async c => {
   const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = listed(c);
@@ -103,31 +105,31 @@ test('a tick that fails in its own sheet shows a message with Try again at the t
   const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', done: false }]), app = component(tasks, actions, lines);
   document.querySelectorAll = () => [];
   c.after(() => { delete document.querySelectorAll; });
-  Object.assign(app, { lines: {}, sheet: { open: true, show: true, kind: 'task', lines: {}, task: structuredClone(v.task(1)) } });
+  app.lines = {}; opened(app, v.task(1), { open: true, show: true, kind: 'task', lines: {} });
   v.trouble = () => 'offline';
-  await app.toggleDone(app.sheet.task, null, { sheet: true });
-  assert.deepEqual([app.sheet.task.done, app.sheet.lines.top.text, app.sheet.lines.top.action.label], [false, 'Not saved: no connection', 'Try again']);
+  await app.toggleDone(app.sheetTask, null, { sheet: true });
+  assert.deepEqual([app.sheetTask.done, app.sheet.lines.top.text, app.sheet.lines.top.action.label], [false, 'Not saved: no connection', 'Try again']);
   c.mock.timers.tick(60000);
   assert.ok(app.sheet.lines.top, 'the message is still there a minute later, because the sheet has no row to give back');
   v.trouble = () => null;
-  await app.toggleDone(app.sheet.task, null, { sheet: true });
+  await app.toggleDone(app.sheetTask, null, { sheet: true });
   assert.deepEqual([v.task(1).done, app.sheet.lines.top], [true, undefined], 'ticking again and saving removes the message');
 });
 
 test('completing a parent from its sheet closes its subtasks, shows a message under them, and Undo opens them again', async () => {
   const { parent, subs } = family(), v = fakeVikunja([parent, ...subs]), app = component(tasks, actions);
-  app.sheet = { task: structuredClone(parent) };
-  await app.toggleDone(app.sheet.task, null, { sheet: true, close: true });
+  opened(app, parent);
+  await app.toggleDone(app.sheetTask, null, { sheet: true, close: true });
   assert.deepEqual(ticks(v), [[10, { done: true }], [11, { done: true }], [14, { done: true }]]);
   assert.deepEqual([app.toast.msg, app.toast.place], ['Closed Pack the van + 2 subtasks', 'sheet:subtasks']);
-  assert.deepEqual(app.sheet.task.related_tasks.subtask.map(s => s.done), [true, true, false, true], 'the sheet shows the subtasks as done');
+  assert.deepEqual(app.sheetTask.related_tasks.subtask.map(s => s.done), [true, true, false, true], 'the sheet shows the subtasks as done');
   assert.equal(app.sheet.dirty, true, 'the list is read again once the sheet closes');
   await app.toast.action.fn();
   assert.deepEqual([10, 11, 12, 14].map(id => v.task(id).done), [false, false, true, false]);
-  assert.deepEqual(app.sheet.task.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
+  assert.deepEqual(app.sheetTask.related_tasks.subtask.map(s => s.done), [false, true, false, false]);
   // A task with no subtasks shows no message, because the tick itself shows the change. Ticking it again opens it.
   const n = app.toasts.length;
-  app.sheet.task = structuredClone(v.task(12));
+  opened(app, v.task(12));
   await app.sheetDone();
   assert.equal(v.task(12).done, false);
   assert.equal(app.toasts.length, n);
@@ -229,8 +231,8 @@ test('setting progress to 100% marks the task done, and tapping its tick restore
   assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.4 }]);
   // The sheet (its row or its Progress line) behaves the same. The tick shows it, and ticking again restores the progress.
   const n = app.toasts.length;
-  app.sheet = { task: structuredClone(v.task(1)) };
-  await app.sheetProgress(app.sheet.task, 100);
+  opened(app, v.task(1));
+  await app.sheetProgress(app.sheetTask, 100);
   assert.deepEqual([v.task(1).done, v.task(1).percent_done, app.toasts.length], [true, 0.4, n]);
   await app.sheetDone();
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.4]);
@@ -254,9 +256,10 @@ test('a full swipe marks the task done like a tick, in place and never as a gap,
   assert.deepEqual([app.view.groups[0].tasks, app.leaving], [[], {}], 'both rows leave with the batch');
   // A subtask in its parent's sheet is done where it is, with nothing marked.
   v.tasks.set(3, { id: 3, title: 'Prime it', done: false });
-  const inSheet = { id: 3, title: 'Prime it', done: false };
-  await app.setProgress(inSheet, 100, null, { sub: true });
-  assert.deepEqual([app.leaving, inSheet.done, v.task(3).done], [{}, true, true]);
+  v.tasks.set(4, { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3 }] } });
+  opened(app, { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3, title: 'Prime it', done: false }] } });
+  await app.setProgress(app.sheetTask.related_tasks.subtask[0], 100, null, { sub: true });
+  assert.deepEqual([app.leaving, app.sheetTask.related_tasks.subtask[0].done, v.task(3).done], [{}, true, true]);
 });
 
 /* A row shows as done in place from the moment the user ticks it or releases the swipe, not from when Vikunja answers
@@ -339,8 +342,8 @@ test('swiping a done task down opens it again at that progress in one save', asy
   assert.deepEqual([t.done, v.task(1).done, v.task(1).percent_done], [false, false, 0.75]);
   await app.toggleDone(t, null);
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [true, 0.75], 'ticking again makes the task done and keeps its progress');
-  app.sheet = { task: structuredClone(v.task(1)) };
-  await app.sheetProgress(app.sheet.task, 50);
+  opened(app, v.task(1));
+  await app.sheetProgress(app.sheetTask, 50);
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.5], 'the sheet\'s progress bar behaves the same way');
 });
 
@@ -422,8 +425,8 @@ test('ticking a subtask or setting its progress writes its parent\'s calculated 
   assert.deepEqual(patches(v), [[3, { percent_done: 0 }]], 'an unchanged parent progress is not written');
   // In its parent's sheet, the subtask's copy names no parent, so the sheet's task is its parent.
   v.requests.length = 0;
-  app.sheet = { task: { id: 1, related_tasks: { subtask: [{ id: 4 }] } } };
-  await app.toggleDone({ id: 4, title: 'Step 4', done: false }, null, { sub: true });
+  opened(app, { id: 1, related_tasks: { subtask: [{ id: 4, title: 'Step 4', done: false }] } });
+  await app.toggleDone(app.sheetTask.related_tasks.subtask[0], null, { sub: true });
   await app.saveTask(1, null, () => null);
   assert.deepEqual(patches(v), [[4, { done: true }], [1, { percent_done: 0.5 }]]);
 });
@@ -435,8 +438,8 @@ test('setting a subtask\'s progress in its own sheet writes its parent\'s progre
   const v = fakeVikunja([{ id: 1, title: 'Open up', percent_done: 0, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, kid(2), kid(3)]);
   const app = component(tasks, actions, sheet);
   Object.assign(app, { keepTemplate(){}, rowTitle: t => t.title, unsay(){} });
-  app.sheet = { task: structuredClone(v.task(2)) };
-  await app.sheetProgress(app.sheet.task, 50);
+  opened(app, v.task(2));
+  await app.sheetProgress(app.sheetTask, 50);
   await app.saveTask(1, null, () => null);
   assert.deepEqual(patches(v), [[2, { percent_done: 0.5 }], [1, { percent_done: 0.25 }]]);
 });
@@ -799,11 +802,10 @@ test('turning a subtask into its own task moves it right after its parent, and U
   const v = fakeVikunja([parent, kid(11, { done: true }), kid(12)]), app = component(tasks, actions), moves = [];
   Object.defineProperties(app, Object.getOwnPropertyDescriptors({
     positions: { 10: 1000, 11: 100, 12: 200 }, projById: new Map([[5, { id: 5, views: [{ id: 7, view_kind: 'list', position: 1 }] }]]), cursor: null,
-    canEdit: true, checklistRole: null, get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
-    showTask(t){ Object.assign(this.sheet.task, t); }, linkSubtask: sending.linkSubtask,
+    canEdit: true, checklistRole: null, get parentTask(){ return this.sheetTask?.related_tasks?.parenttask?.[0] || null; },
+    showTask(){}, linkSubtask: sending.linkSubtask,
     act: async a => { moves.push([a.op, a.task, a.view, a.pos]); return { status: 'sent' }; } }));
-  app.row(v.task(10)); app.row(v.task(12));
-  app.sheet = { kind: 'task', task: structuredClone(v.task(12)) };
+  app.row(v.task(10)); opened(app, v.task(12), { kind: 'task' });
   app.checklistRole = 'step';
   assert.equal(app.canOwn, false, 'a checklist\'s step cannot become its own task');
   app.checklistRole = null;
@@ -811,7 +813,7 @@ test('turning a subtask into its own task moves it right after its parent, and U
   await app.ownTask();
   assert.deepEqual([v.task(12).related_tasks.parenttask, v.task(10).related_tasks.subtask.map(s => s.id)], [[], [11]], 'the subtask is removed from the parent, and the parent no longer lists it');
   assert.deepEqual(moves, [['position', 12, 7, 1000.01]], 'the task goes right after its old parent, a little after it, because the list is not on screen to give the next position');
-  assert.deepEqual([app.sheet.task.related_tasks.parenttask, app.tasks[12].related_tasks.parenttask, app.canOwn], [[], [], false], 'the sheet and the row both show it without a parent');
+  assert.deepEqual([app.sheetTask === app.tasks[12], app.tasks[12].related_tasks.parenttask, app.canOwn], [true, [], false], 'the sheet reads the row, which shows it without a parent');
   assert.deepEqual(patches(v).at(-1), [10, { percent_done: 1 }], 'the old parent\'s progress is calculated without the task');
   assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['No longer a subtask of “Pack the van”', 'sheet:top', 'Undo']);
   await app.toast.action.fn();
@@ -833,20 +835,20 @@ const twoProjects = c => {
   const v = fakeVikunja([t(10, 5, [[11, 5], [12, 6]]), t(11, 5, [[13, 5]]), t(12, 6), t(13, 5)]), app = component(tasks, actions);
   Object.defineProperties(app, Object.getOwnPropertyDescriptors({
     projById: new Map([[5, { id: 5, title: 'Inbox' }], [6, { id: 6, title: 'Errands' }]]), canEdit: true, checklistRole: null,
-    save: sheet.save, showTask(x){ Object.assign(this.sheet.task, x); } }));
-  app.sheet = { kind: 'task', task: structuredClone(v.task(10)) };
+    save: sheet.save, showTask(){} }));
+  opened(app, v.task(10), { kind: 'task' });
   return { v, app, where: () => [10, 11, 12, 13].map(id => v.task(id).project_id) };
 };
 test('moving a task to another project takes its subtasks at every level, and Undo puts each back', async c => {
   const { v, app, where } = twoProjects(c);
   await app.moveTask(6, 'sheet:top');
   assert.deepEqual(patches(v), [[10, { project_id: 6 }], [11, { project_id: 6 }], [13, { project_id: 6 }]], 'the subtask already there is not sent');
-  assert.deepEqual([app.sheet.task.project_id, where()], [6, [6, 6, 6, 6]]);
+  assert.deepEqual([app.sheetTask.project_id, where()], [6, [6, 6, 6, 6]]);
   assert.deepEqual([app.toast.msg, app.toast.place, app.toast.action.label], ['Moved to Errands, with its 2 subtasks', 'sheet:top', 'Undo']);
   v.requests.length = 0;
   await app.toast.action.fn();
   assert.deepEqual(patches(v), [[10, { project_id: 5 }], [11, { project_id: 5 }], [13, { project_id: 5 }]]);
-  assert.deepEqual([where(), app.sheet.task.project_id, app.said], [[5, 5, 6, 5], 5, 'Moved back to Inbox'], 'the subtask that was in the other project all along stays there');
+  assert.deepEqual([where(), app.sheetTask.project_id, app.said], [[5, 5, 6, 5], 5, 'Moved back to Inbox'], 'the subtask that was in the other project all along stays there');
 });
 
 test('a move that stops at a subtask says so, and Undo moves back only what moved', async c => {

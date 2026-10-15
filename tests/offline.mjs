@@ -489,6 +489,35 @@ try {
     if (JSON.stringify(await subs(T('H2'))) !== JSON.stringify([[T('H2a'), false]])) throw new Error('subtasks of the second heading: ' + JSON.stringify(await subs(T('H2'))));
   });
 
+  /* A checklist's screen is saved as its ids and Vikunja's copies of the checklist and its steps. Opened again offline,
+     it shows the checklist and its steps from them. */
+  await step('a-saved-checklist-screen-reopens-offline', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('saved checklists'), description: '<p>pocket:checklists</p>' });
+    try {
+      const run = await post(`/projects/${proj.id}/tasks`, { title: T('saved run'), description: '<p>pocket:run</p>' });
+      for (const title of [T('saved step 1'), T('saved step 2')]) {
+        const st = await post(`/projects/${proj.id}/tasks`, { title });
+        await post(`/tasks/${run.id}/relations`, { other_task_id: st.id, relation_kind: 'subtask' });
+      }
+      await page.reload();                                                   // so Pocket knows the project is for checklists
+      await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+      await page.evaluate(id => { location.hash = '#/run/' + id; }, run.id);
+      await page.waitForSelector(`#step-title:text-is("${T('saved step 1')}")`, { timeout: 15000 });
+      await context.setOffline(true);
+      await page.reload();
+      await expect(page.locator('#step-title')).toHaveText(T('saved step 1'), { timeout: 15000 });
+      await expect(page.locator('#run-steps > .row .title')).toContainText([T('saved step 1'), T('saved step 2')]);
+      await expect(page.locator('#run-own .title')).toContainText(T('saved run'));
+      await context.setOffline(false);
+      await online();
+    } finally {
+      await context.setOffline(false);
+      await page.evaluate(() => { location.hash = '#/today'; });
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
   /* A comment and a tick on a checklist's step wait offline, across a reload, and reach Vikunja once. Every request
      goes through the plugin's relay with a key. The test reads the keys from the outbox, then sends two of the requests
      again with their keys. The relay answers from what it kept, and Vikunja changes nothing. */

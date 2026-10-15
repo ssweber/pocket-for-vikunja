@@ -528,6 +528,11 @@ checks that Vikunja changed once.
    an op keeps its edit until its entry leaves the outbox (`until`), so a dropped tick already unticks a list's row. A
    task leaving done takes only edits until its batch clears. `readTask`, `saving`, `pendingSaves`, `keep`, `syncTask`
    and `putWaiting` are gone. The store rule is on for `this.tasks`.
+   4c: the sheet holds `sheet.id` and reads `sheetTask`, and a checklist's screen holds `view.shownRun` (its id, its
+   steps' ids, `at` and `last`) and reads `runTask` and its steps from `tasks`. A task opened in the sheet gets a row.
+   A subtask edited in its parent's sheet is an `edit(id, fields, parent)`, which also edits the parent's
+   `related_tasks`. `applyAct` puts what a sent act did into Vikunja's copies. Templates are in the copies, and a saved
+   checklist screen is its ids and Vikunja's copies. The store rule is on in full.
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
    Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format. Old stored data is
    read as it is, or ignored if it can't be read. Pocket writes no upgrade code.

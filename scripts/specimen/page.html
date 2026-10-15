@@ -50,7 +50,7 @@
            (task-row.html, SHEET_ROW) and the sheet's notes and files. Above the card is the sheet's path (a copy of its
            markup). Below it is the rest of the sheet, all stand-ins except the subtasks' rows, which are the real row.
            Each is the sheet of a separate task, and `sheet` here is that sheet, as in the app. -->
-      <template x-for="sheet in specimenSheets" :key="sheet.task.id"><div class="spec-task-sheet">
+      <template x-for="sheet in specimenSheets" :key="sheet.task.id"><div class="spec-task-sheet" x-data="{sheetTask: sheet.task}">
         <div class="sec" x-text="sheet.spec"></div>
         <div class="d-path">
           <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>

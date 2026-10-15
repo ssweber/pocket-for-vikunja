@@ -9,7 +9,7 @@ let rowKey = 0;                                  // keys the editor's rows, so a
 
 export default {
   // A finished checklist, or one shared to read only, shows its answers in fields that can't be changed.
-  get askLocked(){ return !!this.runView?.finished || !this.canWrite(this.view.run?.run.project_id); },
+  get askLocked(){ return !!this.runView?.finished || !this.canWrite(this.runTask?.project_id); },
   // A field with no draft shows the answer that counts: a number without its unit, or the text as saved.
   askDraft(s, a){
     const k = s.id + ':' + a.key, ans = s.answers?.[a.key];
@@ -64,7 +64,7 @@ export default {
   /* ---------- the asks editor on a template step's sheet ---------- */
   // The editor's rows start as the step's asks, and start again once they are saved or the sheet shows another step.
   initAskRows(){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (!t || this.sheet.asksEdit?.task === t.id) return;
     const rows = askRows(stepAsks(t.description).asks).map(r => ({...r, key: ++rowKey}));
     this.sheet.asksEdit = {task: t.id, rows, was: JSON.stringify(rows)};
@@ -72,17 +72,17 @@ export default {
   get askRowsMade(){ return askLines(this.sheet.asksEdit?.rows || []); },
   get asksChanged(){ const e = this.sheet.asksEdit; return !!e && JSON.stringify(e.rows) !== e.was; },
   // The step's ask lines Pocket can't read. Saving the editor's rows replaces them.
-  get askBad(){ return stepAsks(this.sheet.task?.description).bad; },
+  get askBad(){ return stepAsks(this.sheetTask?.description).bad; },
   addAskRow(){ this.sheet.asksEdit.rows.push({key: ++rowKey, label: '', type: 'number', unit: '', low: '', high: '', options: ''}); },
   dropAskRow(i){ this.sheet.asksEdit.rows.splice(i, 1); },
   resetAskRows(){ this.sheet.asksEdit = null; this.initAskRows(); },
   // Write the rows into the step's notes as ask lines, in place of the ones there, leaving the rest of the notes.
   async saveAskRows(){
-    const t = this.sheet.task, made = this.askRowsMade;
+    const t = this.sheetTask, made = this.askRowsMade;
     if (!t || made.some(m => m.problem)) return;
     try {
       const got = await this.saveTask(t.id, null, now => ({description: withAskLines(now.description, made.map(m => m.line))}));
-      if (this.sheet.task?.id !== t.id) return;
+      if (this.sheet.id !== t.id) return;
       this.showTask(got);
       this.sheet.asksEdit = null; this.initAskRows();
       this.say('Asks saved. Checklists started from now on ask them.', {place: 'sheet:asks'});

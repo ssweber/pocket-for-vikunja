@@ -73,12 +73,12 @@ export default {
   // Close the sheet without saving. With `keep`, drafts written in it are kept on the phone for when the same user
   // returns.
   dropSheet(keep = false){
-    const sh = this.sheet, t = sh.task;
+    const sh = this.sheet, t = this.sheetTask;
     if (keep && sh.open && sh.kind === 'task' && t) {
       if (sh.editingDesc) taskDrafts.set('desc:' + t.id, {text: sh.descDraft, base: sh.descBase});
       taskDrafts.set('comment:' + t.id, sh.commentDraft); taskDrafts.set('sub:' + t.id, sh.sub.text);
     }
-    Object.assign(this.sheet, {editingDesc: false, commentDraft: '', task: null, newTpl: null}); this.closeSheet(true);
+    Object.assign(this.sheet, {editingDesc: false, commentDraft: '', id: null, newTpl: null}); this.closeSheet(true);
   },
   forgetPeople(drafts = true){
     if (drafts) { this.runDrafts = {}; taskDrafts.clear(); store.del('drafts.user'); }

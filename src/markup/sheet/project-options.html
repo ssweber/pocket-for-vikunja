@@ -1,3 +1,3 @@
 <!-- The projects a task can move to, as a select's options, each indented under its parent project. A project the
      user can only read is dimmed. -->
-<template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheet.task.project_id" :disabled="!canWrite(r.p.id)" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>
+<template x-for="r in tree" :key="r.p.id"><option :value="r.p.id" :selected="r.p.id === sheetTask.project_id" :disabled="!canWrite(r.p.id)" x-text="'  '.repeat(r.depth) + r.p.title"></option></template>

@@ -602,7 +602,7 @@ export default {
      (swipeDeleteStep). A step from the template stops at 0%. */
   stepSlide(row, target){
     const v = this.runView, s = v?.steps.find(x => String(x.id) === row.dataset.id);
-    if (!s || s.pending || v.finished || !this.canWrite(this.view.run.run.project_id) || target.closest('.step-del')) return null;
+    if (!s || s.pending || v.finished || !this.canWrite(this.runTask.project_id) || target.closest('.step-del')) return null;
     return {el: row, start: s.done ? 100 : s.pct, width: row.clientWidth, swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row), s.title) : null,
       finish: pct => {
         if (pct === null) return;
@@ -630,7 +630,7 @@ export default {
      swipe right returns to rest, and a full swipe counts as a tap on its ring, from the sheet (ringSwipe). Off for a
      template and its steps (they have no row), for a read-only task, and while the title is being edited. */
   sheetRowGesture(row){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (!t || this.ofTemplate || !this.canEdit || this.sheet.titleEdit) return null;
     const swipe = this.canDelete(t) ? swipeOf(row, () => this.swipeDelete(t, false, row, true), t.title) : null;
     if (this.sheetRing) { const r = this.ringSwipe(t, row, row, true); return (r.finish || swipe) && {el: row, swipe, ...r}; }
@@ -647,17 +647,17 @@ export default {
   },
   // The ring of the sheet's task when it is a parent (a task with subtasks, or a checklist). A parent's progress comes
   // from its subtasks.
-  get sheetRing(){ return this.sheet.kind === 'task' && !this.ofTemplate ? this.ringOf(this.sheet.task) : null; },
+  get sheetRing(){ return this.sheet.kind === 'task' && !this.ofTemplate ? this.ringOf(this.sheetTask) : null; },
   // The assignee slot of the sheet's task, the same as its row has (claimSlot). Setting progress from the sheet, by a
   // swipe on its row or in Details, assigns an unassigned task to the user, as a row's swipe does. The Assigned row
   // then shows it (peopleOf).
-  get sheetSlot(){ const t = this.sheet.task; return t && this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t)); },
+  get sheetSlot(){ const t = this.sheetTask; return t && this.claimSlot(t, this.peopleOf(t.id, t.assignees), t.done, this.stepRun(t)); },
   /* Set the progress of the sheet's task, from a swipe on its row or a tap on a quarter in Details. 100% marks it done,
      and a done task reopens at the tapped quarter (sheetProgress). An unassigned task is assigned to the user. The
      claim is sent after the save, because the save's reply predates the claim and would otherwise overwrite it on
      screen. Does nothing for a parent, whose progress comes from its subtasks. */
   setSheetProgress(pct){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (!t || this.sheetRing || (!t.done && pct === pctOf(t))) return;
     const claimed = this.claimOnSlide(this.sheetSlot);
     return this.sheetProgress(t, pct).finally(() => claimed(true));

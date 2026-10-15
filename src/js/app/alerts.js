@@ -69,7 +69,7 @@ export default {
   // Runs every second. A countdown on the checklist on screen chimes once when it reaches zero. The screen stays on
   // while a countdown runs.
   tickRun(){
-    const v = this.route.name === 'run' && document.visibilityState === 'visible' && this.view.run ? this.runView : null;
+    const v = this.route.name === 'run' && document.visibilityState === 'visible' && this.view.shownRun ? this.runView : null;
     this.keepAwake(!!v && !v.finished && v.steps.some(s => s.counting));
     if (!v) return;
     const now = serverTime(Date.now());

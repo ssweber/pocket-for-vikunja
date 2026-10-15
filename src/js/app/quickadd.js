@@ -53,13 +53,13 @@ export default {
   },
   // These boxes add subtasks. 'under' adds them to the cursor's parent task, and 'sub' to the task in the open sheet.
   isSubBox(w){ return w === 'sub' || w === 'under'; },
-  boxParent(w){ return w === 'under' ? this.cursorParent : this.sheet.task; },
+  boxParent(w){ return w === 'under' ? this.cursorParent : this.sheetTask; },
   // The project a line goes to when it has no +project. It depends on the box, so a subtask goes to its parent's
   // project and a checklist step to the checklist's.
   boxHome(w){
-    if (w === 'sub' || w === 'edit' || w.startsWith('add:')) return this.sheet.task?.project_id;
+    if (w === 'sub' || w === 'edit' || w.startsWith('add:')) return this.sheetTask?.project_id;
     if (w === 'under') return this.cursorParent?.project_id;
-    if (w === 'ins') return this.view.run?.run.project_id;
+    if (w === 'ins') return this.runTask?.project_id;
     if (w === 'tname' || w.startsWith('new:')) return this.sheet.newTpl?.project.id;
     return this.defaultProjectId();
   },
@@ -694,10 +694,10 @@ export default {
   get boxHasFocus(){ const el = this.$refs?.capture; return !!el && document.activeElement === el; },
   /* Add a subtask here does by tap what a nudge does by gesture. The box is focused during the tap so the phone
      opens its keyboard. */
-  get canAddHere(){ return this.sheet.kind === 'task' && !!this.sheet.task && this.canAim(this.tasks[this.sheet.task.id]); },
+  get canAddHere(){ return this.sheet.kind === 'task' && !!this.sheetTask && this.canAim(this.sheetTask); },
   addSubtaskHere(){
     if (!this.canAddHere) return;
-    const t = this.tasks[this.sheet.task.id];
+    const t = this.sheetTask;
     this.closeSheet();
     this.aim(t);
     this.$refs.capture.focus({preventScroll: true});

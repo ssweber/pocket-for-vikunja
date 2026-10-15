@@ -82,8 +82,8 @@ test('each op says what the outbox said before: its row, its refusal, and what d
 const sender = (t, list) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja(list), app = component(tasks, acts, sending, outbox, runs);
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], flushing: false, cap: {}, sheet: { task: null, sub: {} },
-    view: { groups: [], run: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
+    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
   Object.defineProperty(app, 'toast', { value: {} });
   return { v, app };
 };

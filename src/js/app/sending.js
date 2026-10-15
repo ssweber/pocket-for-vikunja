@@ -169,13 +169,11 @@ export default {
       await sync.remove(entry.id);
       if (files.length) {
         this.refreshPending();
-        // Read the task again with its new attachments, for its row and its sheet.
+        // Read the task again with its new attachments, for its rows, its sheet and a checklist's screen.
         const t = await this.readCopy(target).catch(() => null);
         if (t) {
           for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
-          if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
-          const step = this.view.run?.steps.find(s => s.id === t.id);           // a photo added to a checklist step
-          if (step) step.attachments = t.attachments || [];
+          if (this.sheet.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
         }
       }
       return {status: 'sent', ids, tasks, problems: all(), uploaded, projectId: entry.parentProject};
@@ -315,14 +313,14 @@ export default {
     } finally { this.flushing = false; this.refreshPending(); }
     this.placeSent(tasks);
     // Subtasks that waited to be sent for the task whose sheet is open now show in that sheet.
-    const open = this.sheet.task?.id;
+    const open = this.sheet.id;
     if (open && tasks.some(t => t.parent === open)) this.readCopy(open).then(t => {
-      if (t && this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
+      if (t && this.sheet.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
     }).catch(() => {});
 
     // Text that couldn't be added goes back into the box it came from: quick add, or the subtask box if the task's
     // sheet is open. Subtasks of a task whose sheet isn't open are named in the message instead, so they aren't lost.
-    const subs = failed.filter(f => f.parent), lost = subs.filter(f => this.sheet.task?.id !== f.parent.id), back = failed.filter(f => !f.parent);
+    const subs = failed.filter(f => f.parent), lost = subs.filter(f => this.sheet.id !== f.parent.id), back = failed.filter(f => !f.parent);
     for (const f of subs) if (!lost.includes(f)) this.sheet.sub.text = [this.sheet.sub.text, ...f.unsent].filter(Boolean).join('\n');
     if (back.length) {
       this.cap.text = [this.cap.text, ...back.flatMap(f => f.unsent)].filter(Boolean).join('\n');
@@ -512,9 +510,9 @@ export default {
     this.refreshPending();
     if (!sent) this.aimCancelled(entryId, index);  // the add box's cursor adjusts to the cancelled line (aimCancelled, quickadd.js)
     // The message shows in the box the text went back to: quick add, or the subtask box in the parent's sheet.
-    const place = !parent ? 'cap' : this.sheet.task?.id === parent.id ? 'sheet:subtasks' : null;
+    const place = !parent ? 'cap' : this.sheet.id === parent.id ? 'sheet:subtasks' : null;
     if (sent) { this.say('It was sent before it could be cancelled.', {place}); this.render(); return; }
-    const box = parent ? (this.sheet.task?.id === parent.id ? this.sheet.sub : null) : this.cap;
+    const box = parent ? (this.sheet.id === parent.id ? this.sheet.sub : null) : this.cap;
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
     const lines = `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now `;
     this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'its own task' : 'their own tasks'}.`)].filter(Boolean).join(' '), {place});

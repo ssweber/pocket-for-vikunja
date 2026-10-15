@@ -52,7 +52,7 @@ Each file in `src/js/` starts with a comment saying what it is for. By what you 
 | Signing in, and opening offline | `api.js`, `app/auth.js`, `pocket/app/sw.js` |
 | Notes and comments from Vikunja, made safe | `html.js` |
 
-The code calls a checklist in progress a run (`app/runs.js`, `view.run`). The screen calls it a checklist.
+The code calls a checklist in progress a run (`app/runs.js`, `view.shownRun`). The screen calls it a checklist.
 
 ## How it is built
 

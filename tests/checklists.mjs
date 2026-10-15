@@ -256,6 +256,18 @@ try {
     const shown = await page.$$eval('#d-subtasks .row', els => els.map(e => e.querySelector('.title').textContent.trim() + '|' + (e.querySelector('.meta')?.textContent || '').trim()));
     if (JSON.stringify(shown) !== JSON.stringify([`Check the guards at 3pm|Named “check-the-guards”`, `Warm up the press|Due 30m after ${GUARDS}`, `First article check|Due 2h after ${GUARDS}`]))
       throw new Error('sheet shows ' + JSON.stringify(shown));
+    // Opened again, the sheet draws from Vikunja's copy of the template at once, then from its own read. Each step shows once.
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    const read = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/tasks/' + template.id) && r.request().method() === 'GET');
+    await page.click(`${tplRow} .body`);
+    await page.waitForSelector('#d-start');
+    const drawn = [];
+    for (let i = 0; i < 10; i++) { drawn.push(await page.locator('#d-subtasks > .row').count()); await page.waitForTimeout(100); }
+    await read;
+    await page.waitForTimeout(300);                                          // a frame or two for the read's rows
+    drawn.push(await page.locator('#d-subtasks > .row').count());
+    if (drawn.some(n => n !== STEPS.length)) throw new Error('the sheet drew this many steps as it opened: ' + drawn.join(', '));
     // Steps are numbered, as on the Start sheet. A square box would mean a step to tick in a checklist. The sheet shows
     // what a checklist copies from the template: notes, labels except "template", people and the repeat. It has no
     // Comments, because Vikunja's copy of a template does not copy comments.
@@ -911,6 +923,26 @@ try {
     await page.waitForSelector('#step-title:text-is("First article check")', { timeout: 15000 });
     await page.click('#btn-back');
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
+  });
+
+  // Today's card and the checklist's screen read the same step, so a tick on one shows on the other.
+  await step('a-tick-on-today-shows-on-the-checklists-screen-and-back', async () => {
+    const runCard = cardOf(`${TEMPLATE} · #`), stepRow = `${runCard} .step-line:has(> .body .title:has-text("First article check"))`;
+    const check = (await runStep(first.id, 2)).id, onScreen = page.locator('#run-steps > .row:has(.title:has-text("First article check"))');
+    await toastGone().catch(() => {});
+    await page.click(`${stepRow} > .check`, { timeout: 15000 });
+    await page.waitForSelector(`${stepRow}.done`);
+    await page.click(`${runCard} > .card-head .card-open`);
+    await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
+    await expect(onScreen).toHaveClass(/\bdone\b/, { timeout: 15000 });
+    await synced(page);
+    await onScreen.locator('> .check').click();
+    await expect(onScreen).not.toHaveClass(/\bdone\b/);
+    await synced(page);
+    await until('the untick never reached Vikunja', async () => !(await task(check)).done);
+    await page.click('#btn-back');
+    await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
+    await expect(page.locator(stepRow)).not.toHaveClass(/\bdone\b/, { timeout: 15000 });
   });
 
   let forOther;

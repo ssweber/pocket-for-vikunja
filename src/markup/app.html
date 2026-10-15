@@ -37,10 +37,10 @@
       </template></template></div></template>
       <template x-if="!runOwn"><div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div></template>
       <!-- Copies the progress text that Share as text in the ⋯ menu sends -->
-      <template x-if="(route.name === 'project' && view.project) || (route.name === 'run' && view.run)"><button id="btn-copy" class="icon-btn plain" aria-label="Copy progress" @click="route.name === 'run' ? copyProgress('run', 'run') : copyProgress('project', 'project')"><svg class="i"><use href="#i-copy"/></svg></button></template>
+      <template x-if="(route.name === 'project' && view.project) || (route.name === 'run' && view.shownRun)"><button id="btn-copy" class="icon-btn plain" aria-label="Copy progress" @click="route.name === 'run' ? copyProgress('run', 'run') : copyProgress('project', 'project')"><svg class="i"><use href="#i-copy"/></svg></button></template>
       <!-- Opens the project's sheet, where it is set up for checklists -->
       <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
-      <template x-if="route.name === 'run' && view.run"><button id="btn-run-more" class="icon-btn plain" aria-label="Checklist options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
+      <template x-if="route.name === 'run' && view.shownRun"><button id="btn-run-more" class="icon-btn plain" aria-label="Checklist options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
     </div></template>
     <template x-for="line in placeLines('project')" :key="line.n">
       <!-- include markup/place-line.html -->

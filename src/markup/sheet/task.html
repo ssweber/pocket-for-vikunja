@@ -1,11 +1,11 @@
     <template x-if="sheet.kind === 'task' && sheet.loading"><div class="loading">Loading…</div></template>
     <template x-if="sheet.kind === 'task' && sheet.error"><div class="err" x-html="sheet.error"></div></template>
 
-    <template x-if="sheet.kind === 'task' && sheet.task"><div>
+    <template x-if="sheet.kind === 'task' && sheetTask"><div>
       <div class="d-head">
         <!-- The task's project, and its parent task if it has one -->
         <div class="d-path" id="d-path">
-          <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheet.task.project_id)" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
+          <i class="dot" x-style="{background: colorOf(projById.get(sheetTask.project_id)?.hex_color)}"></i><button class="linkish" id="d-project-link" @click="goProject(sheetTask.project_id)" x-text="projById.get(sheetTask.project_id)?.title || 'Project'"></button>
           <template x-if="parentTask"><span class="d-parent"><span aria-hidden="true">›</span><button class="linkish" id="d-parent" @click="openTask(parentTask.id)" x-text="parentTitle"></button></span></template>
         </div>
         <!-- A template and its step have no row, because they are never ticked and have no progress. Their name is a
@@ -13,9 +13,9 @@
              edit, as for a task's title. A step's name is edited in the template. -->
         <template x-if="ofTemplate"><div class="d-title">
           <template x-if="checklistRole === 'template'"><textarea id="d-title" rows="1" aria-label="Title" enterkeyhint="done" :readonly="!canEdit" x-model="sheet.title" x-grow="sheet.title"
-                    @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(sheet.task); $el.blur()" @change="saveTitle()"></textarea></template>
+                    @keydown.enter.prevent="$el.blur()" @keydown.escape.stop="sheet.title = rowTitle(sheetTask); $el.blur()" @change="saveTitle()"></textarea></template>
           <!-- A template's step shows its name without its time. The time is changed in the template. -->
-          <template x-if="checklistRole === 'tplstep'"><h2 class="d-step-title" id="d-step-title" x-text="tplStep?.title || sheet.task.title"></h2></template>
+          <template x-if="checklistRole === 'tplstep'"><h2 class="d-step-title" id="d-step-title" x-text="tplStep?.title || sheetTask.title"></h2></template>
         </div></template>
         <template x-if="checklistRole === 'tplstep' && tplStep"><div class="meta d-step-when num" id="d-step-when">
           <span x-text="'Step ' + tplStep.no + ' of ' + tplStep.of"></span><template x-if="tplStep.problem || tplStep.text"><span :class="{'due overdue': tplStep.problem}" x-text="tplStep.problem || tplStep.text"></span></template>
@@ -29,13 +29,13 @@
       <template x-if="checklistRole && checklistRole !== 'candidate'"><div class="card cl-card" id="d-checklist">
         <template x-if="checklistRole === 'template'"><div>
           <p x-text="templateNote"></p>
-          <template x-if="canWrite(sheet.task.project_id)"><button class="btn block" id="d-start" @click="openStart(sheet.task.id)">Start a checklist</button></template>
+          <template x-if="canWrite(sheetTask.project_id)"><button class="btn block" id="d-start" @click="openStart(sheet.id)">Start a checklist</button></template>
         </div></template>
         <template x-if="checklistRole === 'tplstep'"><div>
           <p>This step belongs to a template. Change its name or due time there. Notes here are copied into every checklist.</p>
           <button class="btn ghost block" id="d-open-template" @click="openTask(parentTask.id)">Back to the template</button>
         </div></template>
-        <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="checklistRole === 'run' ? openRun(sheet.task.id) : openRun(parentTask.id, sheet.task.id)">Open the checklist</button></template>
+        <template x-if="checklistRole === 'run' || checklistRole === 'step'"><button class="btn ghost block" id="d-open-run" @click="checklistRole === 'run' ? openRun(sheet.id) : openRun(parentTask.id, sheet.id)">Open the checklist</button></template>
       </div></template>
 
       <!-- What a template step asks to record (app/asks.js). Each ask is a label, a type, and that type's fields, with
@@ -50,7 +50,7 @@
           <template x-for="b in askBad" :key="b.line"><p class="note ask-bad" x-text="'“' + b.line + '”: ' + b.why + '. Saving asks removes this line.'"></p></template>
           <template x-for="(r, i) in sheet.asksEdit?.rows || []" :key="r.key"><div class="ask-edit">
             <template x-if="canEdit"><button type="button" class="icon-btn plain ask-x" :aria-label="'Remove the ask ' + (r.label || i + 1)" @click="dropAskRow(i)"><svg class="i"><use href="#i-close"/></svg></button></template>
-            <label class="field ask-name"><span x-text="sheet.asksEdit.rows.length === 1 ? 'Label, optional for a step’s only ask' : 'Label'"></span><input x-model="r.label" :disabled="!canEdit" :placeholder="sheet.asksEdit.rows.length === 1 ? (tplStep?.title || sheet.task.title) : ''"></label>
+            <label class="field ask-name"><span x-text="sheet.asksEdit.rows.length === 1 ? 'Label, optional for a step’s only ask' : 'Label'"></span><input x-model="r.label" :disabled="!canEdit" :placeholder="sheet.asksEdit.rows.length === 1 ? (tplStep?.title || sheetTask.title) : ''"></label>
             <div class="seg" role="group" aria-label="What it records">
               <template x-for="ty in [['number', 'Number'], ['yes-no', 'Yes or no'], ['choice', 'Choice'], ['text', 'Text']]" :key="ty[0]"><button type="button" :disabled="!canEdit" :aria-pressed="String(r.type === ty[0])" @click="r.type = ty[0]" x-text="ty[1]"></button></template>
             </div>
@@ -93,14 +93,14 @@
         <!-- Vikunja sends reminders by email, counted back from the due date when there is one, or at a set time. A
              template shows them only while it has a due date, which a done template doesn't. -->
         <template x-if="checklistRole !== 'template' || isSet(dueShown)"><div class="prop" id="d-reminders" @click="propTap($event)"><span class="k">Reminders</span><span class="v">
-          <template x-for="(r, k) in sheet.task.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
+          <template x-for="(r, k) in sheetTask.reminders || []" :key="k + ':' + (r.relative_to ? r.relative_to + r.relative_period : r.reminder)"><span class="chip rem"><span x-text="'🔔 ' + reminderText(r)"></span>
             <template x-if="canEdit"><button class="chip-x" :aria-label="'Remove the reminder ' + reminderText(r)" @click="removeReminder(k)"><svg class="i"><use href="#i-close"/></svg></button></template></span></template>
           <template x-if="canEdit && !sheet.remindAt"><select id="d-remind-add" data-tap aria-label="Add a reminder" @change="addReminder($event.target.value); $event.target.value = ''">
             <option value="">Add a reminder</option><template x-for="o in reminderPresets" :key="o.value"><option :value="o.value" x-text="o.label"></option></template></select></template>
           <template x-if="sheet.remindAt"><span class="v"><input type="datetime-local" id="d-remind-at" data-tap aria-label="Remind me at" @change="addReminderAt($event.target.value)">
             <button class="icon-btn plain" aria-label="Don't add a reminder" @click="sheet.remindAt = false"><svg class="i"><use href="#i-close"/></svg></button></span></template>
         </span></div></template>
-        <template x-if="remindersNote && (sheet.task.reminders || []).length && (checklistRole !== 'template' || isSet(dueShown))"><p class="note prop-note" x-text="remindersNote"></p></template>
+        <template x-if="remindersNote && (sheetTask.reminders || []).length && (checklistRole !== 'template' || isSet(dueShown))"><p class="note prop-note" x-text="remindersNote"></p></template>
         <template x-for="line in placeLines('sheet:due')" :key="line.n">
           <!-- include markup/place-line.html -->
         </template>
@@ -144,12 +144,12 @@
           </select>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Labels</span><span class="v">
-          <template x-for="l in sheet.task.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
+          <template x-for="l in sheetTask.labels || []" :key="l.id"><span class="label-chip"><i class="dot" style="margin:0" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="l.title"></span><template x-if="!keepsLabel(l)"><button class="x" :aria-label="'Remove label ' + l.title" @click="removeLabel(l.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></template></span></template>
           <template x-if="checklistRole === 'template'"><span class="note" id="d-template-label" style="display:block;width:100%;margin:4px 0 0">Every checklist started from this template gets its labels, except “template”, which marks it as a template.</span></template>
           <template x-if="canEdit"><button class="add-label" id="d-add-label" data-tap @click="toggleLabelPicker()">Add</button></template>
         </span></div>
         <div class="prop" @click="propTap($event)"><span class="k">Assigned</span><span class="v" id="d-assignees">
-          <template x-for="u in peopleOf(sheet.task.id, sheet.task.assignees)" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
+          <template x-for="u in peopleOf(sheet.id, sheetTask.assignees)" :key="u.id"><span class="label-chip"><span x-text="u.name || u.username"></span><button class="x" :aria-label="'Unassign ' + (u.name || u.username)" @click="unassign(u.id)"><svg class="i" style="width:14px;height:14px"><use href="#i-close"/></svg></button></span></template>
           <template x-if="!sheet.assigning && canEdit"><button class="add-label" id="d-add-assignee" data-tap @click="sheet.assigning = true">Add</button></template>
           <template x-if="sheet.assigning"><div class="assign-pick">
             <form class="assign-form" @submit.prevent="assign()">
@@ -165,11 +165,11 @@
         <!-- Priority shows 1 to 5 bars and a label. The select lies over the whole row (.prop.sel), because Safari
              can't open a select from code. A template and its step have no priority. -->
         <template x-if="!ofTemplate"><div class="prop sel prio"><span class="k">Priority</span><span class="v">
-          <span class="bars" :class="'p' + (sheet.task.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-          <span x-text="PRIOS[sheet.task.priority || 0].label"></span>
+          <span class="bars" :class="'p' + (sheetTask.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          <span x-text="PRIOS[sheetTask.priority || 0].label"></span>
           <svg class="i prio-chev" aria-hidden="true"><use href="#i-chev"/></svg>
           <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
-            <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheet.task.priority || 0) === p.n" x-text="p.label"></option></template>
+            <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheetTask.priority || 0) === p.n" x-text="p.label"></option></template>
           </select>
         </span></div></template>
         <!-- Progress buttons, the tap version of the row's swipe. There is one for each quarter, and the task's current
@@ -178,7 +178,7 @@
              because its progress is calculated from its subtasks. Tapping a quarter claims the task, as a swipe does
              (setSheetProgress). -->
         <template x-if="!ofTemplate && !sheetRing && canEdit"><div class="prop"><span class="k">Progress</span><span class="v d-quarters" id="d-progress" role="group" aria-label="Progress">
-          <template x-for="q in QUARTERS" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(quarterOn(sheet.task) === q)" :aria-label="q + '% done'" @click="setSheetProgress(q)" x-text="q + '%'"></button></template>
+          <template x-for="q in QUARTERS" :key="q"><button type="button" class="chip toggle tap" :aria-pressed="String(quarterOn(sheetTask) === q)" :aria-label="q + '% done'" @click="setSheetProgress(q)" x-text="q + '%'"></button></template>
         </span></div></template>
         <!-- Not for a step, because the steps of a template and of a checklist are copied, not repeated. A template has
              its own Repeats row in the schedule above. -->

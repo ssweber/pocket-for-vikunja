@@ -2,7 +2,7 @@
 // row can be seen in every state. Nothing is sent anywhere, and the rows can't be tapped (inert).
 import {directives, globals, pocket} from '../../src/js/component.js';
 import {setApp} from '../../src/js/util.js';
-import {CHECKLIST_MARK} from '../../src/js/checklists.js';
+import {CHECKLIST_MARK, plainRun} from '../../src/js/checklists.js';
 import {blankSheet} from '../../src/js/app/core.js';
 import {listItems, nestSubtasks} from '../../src/js/lists.js';
 import {positionOrder} from '../../src/js/order.js';
@@ -295,14 +295,19 @@ function sections(){
   ]};
 }
 
-/* A checklist's steps as Vikunja returns them, with only the fields its screen keeps (plainStep). They cover: done by
-   you, done by Jamie, skipped by Sam, a step assigned to you with notes, a step inserted and a step repeated while the
-   checklist runs, progress, assigned people, and timed steps. The timed steps are one counting down from the step
-   before it, one late, and one waiting on a step that isn't done. */
+/* A checklist's steps as Vikunja returns them. They cover: done by you, done by Jamie, skipped by Sam, a step assigned to
+   you with notes, a step inserted and a step repeated while the checklist runs, progress, assigned people, and timed
+   steps. The timed steps are one counting down from the step before it, one late, and one waiting on a step that isn't
+   done. A step's title in the template (`tpl`) is the title of the template's step it was copied from. A step added
+   while the checklist runs is marked in its notes, and a repeated one names its template step there too (plainStep). */
 function runSteps(){
   const MIN = 6e4;
-  const step = f => ({id: ++n, title: 'A step', done: false, done_at: ZERO, due_date: ZERO, updated: at(-HOUR), percent_done: 0, description: '', assignees: [],
-    attachments: [], reactions: {}, comments: [], added: '', from: null, ...f, tpl: f.tpl === undefined ? f.title : f.tpl});
+  const step = ({tpl, added, ...f}) => {
+    const id = ++n, was = tpl === undefined ? f.title : tpl;
+    return {id, title: 'A step', done: false, done_at: ZERO, due_date: ZERO, updated: at(-HOUR), percent_done: 0, assignees: [], attachments: [], reactions: {}, comments: [], ...f,
+      description: (f.description || '') + (added ? '<p>pocket:added</p>' : '') + (added === 'Repeated' ? `<p>pocket:step ${was}</p>` : ''),
+      related_tasks: {copiedfrom: added ? [] : [{id: id + 5000, title: was}]}};
+  };
   const doneBy = (u, mins) => ({done: true, done_at: at(-mins * MIN), reactions: {'✅': [u]}});
   const note = (id, author, mins, text) => ({id, author, created: at(-mins * MIN), comment: `<p>${text}</p>`});
   const list = [
@@ -322,7 +327,7 @@ function runSteps(){
       comments: [note(3, me, 3, '-17 °C</p><p>pocket:answer')]}),
     step({title: 'Count the till', assignees: [jamie, sam]}),
   ];
-  list[6].from = list[2].id;
+  list[6].related_tasks = {copiedfrom: [{id: list[2].id, title: list[2].title}]};
   return list;
 }
 
@@ -384,21 +389,27 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       avatars: Object.fromEntries([me, jamie, sam].map(u => [u.username, {url: '', at: Date.now()}])), labelsLoaded: true});
     this.setProjects(projects);
     // A task's sheet open on a task with subtasks, so the subtask rows can show who is doing each.
-    this.sheet = {...blankSheet('task'), task: s.parent, subPeople: {801: [], 802: [me], 803: [jamie], 804: [jamie, sam]}};
+    this.row(s.parent);
+    this.sheet = {...blankSheet('task'), id: s.parent.id, subPeople: {801: [], 802: [me], 803: [jamie], 804: [jamie, sam]}};
     // A checklist's screen open on its fifth step, with a tick on the last step waiting to be sent. The steps use the
     // task row too (g.run), each as the screen works it out (runView).
-    const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, jamie], created_by: me, comments: [], from: 900, steps: s.steps.map(x => x.id)};
+    const run = {id: ++n, title: 'Opening up · Oct 7', done: false, project_id: 2, assignees: [me, jamie], created_by: me, comments: [], description: '',
+      related_tasks: {copiedfrom: [{id: 900}], subtask: s.steps.map(x => ({id: x.id, title: x.title}))}};
     this.pending = [{kind: 'act', id: 'specimen-tick', run: run.id, task: s.steps.at(-1).id, op: 'done', at: new Date().toISOString(), items: []}];
     this.slow = ['specimen-tick'];
-    this.view.run = {run: {...run, done: true}, steps: s.steps, at: null, last: null};
-    const finished = this.runView.steps;
+    // The screen holds ids and reads the checklist and its steps from tasks.
+    for (const t of [run, ...s.steps]) this.row(t);
+    const screen = (steps, at) => { this.view.shownRun = {id: run.id, steps: steps.map(x => x.id), at, last: null}; return this.runView; };
+    this.tasks[run.id].done = true;
+    const finished = screen(s.steps, null).steps;
+    this.tasks[run.id].done = false;
     // The step card for three steps: one of yours counting down, one Jamie is on that is half done, and one done by
     // Jamie (tapped in the list). Each is the runView value at that point, used to draw step-card.html.
     // Then a step that asks to record five things, two typed in and not yet sent, the temperature outside its range, and
     // a done step whose one answer was sent.
     const [cooler, freezer] = s.steps.filter(x => /^Check the (walk-in|freezer)/.test(x.title));
     Object.assign(this.runDrafts, {[cooler.id + ':temp']: '7.5', [cooler.id + ':seal intact']: 'Yes'});
-    this.specimenRunCards = [7, 1, 4, s.steps.indexOf(cooler), s.steps.indexOf(freezer)].map(at => { this.view.run = {run, steps: s.steps, at, last: null}; return this.runView; });
+    this.specimenRunCards = [7, 1, 4, s.steps.indexOf(cooler), s.steps.indexOf(freezer)].map(at => screen(s.steps, at));
     // A photo added to the first of those steps and still uploading. The card shows a line for it, with a × that cancels the upload.
     this.pending.push({id: 'specimen-photo', taskId: s.steps[7].id, at: new Date().toISOString(), items: [], files: [{key: 'specimen-photo-1', name: 'oven-dial.jpg', type: 'image/jpeg', size: 48213}]});
     const steps = this.runView.steps;
@@ -410,13 +421,14 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const inRow = [...s.steps.slice(0, 5), mk('Fill the water jug'), mk('Wipe the counter'), ...s.steps.slice(5)];
     this.pending.push({kind: 'step', id: 'specimen-step', run: run.id, title: 'Stack the trays', before: s.steps[5].id, after: inRow[6].id, at: new Date().toISOString(), tpl: null, from: null, items: [], files: []});
     this.slow.push('specimen-step');
-    this.view.run = {run, steps: inRow, at: 4, last: null};
+    for (const t of inRow) this.row(t);
+    screen(inRow, 4);
     // These run from the step before the card's step to the checklist's next steps. They get different ids, so the states above apply only to their own rows.
     this.specimenAdding = {steps: this.runView.steps.slice(3, 10).map(x => x.pending ? x : {...x, id: x.id + 2000}), at: 4};
     /* The top of a checklist's screen (app.html). The checklist's own row sits between Back and ⋯ (RUN_ROW). Its ring
        is the screen's ring (runRing, for the checklist above). The assignee slot shows who the checklist is for. The
        cases are: you, you and Jamie, and a project only you can see, which has no slot. */
-    const top = this.view.run.run;
+    const top = plainRun(this.runTask);
     this.specimenRunTops = [{spec: 'For you', run: {...top, id: ++n, assignees: [me]}},
       {spec: 'Swiped right part way, still held (it springs back, as a parent’s header does): what it uncovers stays between Back and ⋯', run: {...top, id: ++n, assignees: [me]}, reveal: .3},
       {spec: 'For you and Jamie, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Oct 7 · Front counter and the till'}},
@@ -446,7 +458,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       ask('Closing up', true, titles('Stack the chairs', 'Lock the door'))];
     // A task's sheet that starts with the task's row. Each sheet is separate, as the app's is for one task.
     for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.row(x);
-    this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.row(sh.task)}));
+    this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, id: sh.task.id, task: this.row(sh.task)}));
     // A task held on Today. Each still gets its rows as Today has them (screenRows('today')), including the held one.
     Object.assign(this.view.cards, Object.fromEntries(s.rings.filter(r => r.card).map(r => [r.held.id, {when: null, made: null, focus: null}])));
     this.specimenRings = s.rings.map((r, i) => ({...r, id: i, g: {key: 'today', cards: 'today', line: true, depth: {}, delete: true, reschedule: true, items: r.rows.map(t => this.row(t)), tasks: r.rows}}));
@@ -500,7 +512,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
         time: {problem: '', offset: 12e5, i: 4, lost: false, from: '', choices: tplSteps.slice(0, 3).map((x, i) => ({key: 'k' + i, title: x.title})), phrase: 'in 20 min', kept: false, name: ''}}),
       footBox('Under a step nudged', {g: stepList, before: tplSteps.slice(0, 2), after: tplSteps.slice(2), fb: {...stepFb, under: true, says: 'Step'}}),
       footBox('A step tapped: quick add’s box in its words’ place, and its notes’ link', {g: stepList, before: tplSteps, fb: stepFb, chips(){ return []; },
-        sheet: {...blankSheet('task'), task: s.parent, stepEdit: {id: tplSteps[1].id, text: tplSteps[1].title, caret: 0, focus: true, ignore: {}}}}),
+        sheet: {...blankSheet('task'), id: s.parent.id, stepEdit: {id: tplSteps[1].id, text: tplSteps[1].title, caret: 0, focus: true, ignore: {}}}}),
       footBox('A checklist’s steps on its screen: the box at their foot, with Repeat (the step above the box, again)', {g: runList, before: runSteps, fb: runFb}),
       footBox('Typed there', {g: runList, before: runSteps.slice(-3), fb: {...runFb, can: true}, box: {text: 'Sweep outside !2', focus: true}}),
       footBox('Under a step nudged, which Repeat then copies. The step on the card keeps its bold title', {g: runList, before: runSteps.slice(0, 3), after: runSteps.slice(3), fb: {...runFb, under: true, says: 'Step', repeat: {title: runSteps[2].title, can: true}}}),

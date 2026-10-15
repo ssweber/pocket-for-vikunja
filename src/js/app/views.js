@@ -86,7 +86,7 @@ export default {
     if (r.name === 'search') return {kicker: '', title: 'Search'};
     if (r.name === 'checklists') return {kicker: '', title: 'Checklists'};
     if (r.name === 'run') {
-      const run = this.view.run?.run;
+      const run = this.runTask;
       return {kicker: this.projById.get(run?.project_id)?.title || '', title: run?.title || 'Checklist'};
     }
     if (r.name === 'project') {
@@ -245,7 +245,7 @@ export default {
       const s = r.name === 'projects' ? this.projects.length && {} : this.savedView(r);
       if (kept && !s) return false;
       this.drawFrom(0);                                  // draw the first rows now and the rest in batches
-      Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null});
+      Object.assign(this.view, {loading: !s, groups: [], cards: {}, project: null, savedAt: null, checklists: [], shownRun: null, listView: null});
       if (s) this.showSaved(r, s);
       if (scrollY) scrollTo(0, 0);                       // a new screen starts at its top
       Object.assign(this.hint, {at: null, pick: true});  // show the hint, if not yet shown, on the first row (pickHint)
@@ -269,7 +269,7 @@ export default {
         // Keep visible rows after a failed load and show the offline banner. Regroup Today for the current date.
         if (!this.view.loading) { if (r.name === 'today') this.regroupToday(); return; }
         const s = saved.get(viewKey(r));                 // a checklist's saved copy is used only after a failed load
-        if (s) { this.showSaved(r, s); return; }
+        if (s && (r.name !== 'run' || s.shownRun)) { this.showSaved(r, s); return; }   // a checklist saved before it was saved by id is ignored
       }
       if (r.name === 'run' && e.runGone) { this.runGone(r.id); return; }
       // The project was deleted elsewhere. Go back to the Projects list.
@@ -323,13 +323,13 @@ export default {
   // Restore cached groups with current task objects when they are as new. Keep the project's current Done toggle,
   // and load Done tasks separately because the cache keeps only their count.
   showSaved(r, s){
-    this.keptRows(s.steps || []);
+    this.keptRows(s.steps || []); this.keptRows(s.tasks || []);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
     const groups = keptGroups(s.groups || []).map(g => ({...g, loading: false, tasks: this.keptRows(g.tasks), ...g.key === 'done' && {open}, ...g.key === 'donetoday' && {open: !!doneOpen.all().today}}));
     // A copy saved before finished checklists were whole tasks has them as summaries, which a row can't draw.
     const checklists = (s.checklists || []).map(cl => ({...cl, runs: this.keptRows(cl.runs || []), finished: this.keptRows((cl.finished || []).filter(t => t.related_tasks))}));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
-    Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, run: s.run || null, savedAt: s.at, listView: s.listView || null});
+    Object.assign(this.view, {loading: false, groups, cards: s.cards || {}, project: project || null, checklists, shownRun: s.shownRun || null, savedAt: s.at, listView: s.listView || null});
     // Restore the tasks' positions in the project's List view, unless this session has newer ones from a move.
     for (const [id, pos] of Object.entries(s.positions || {})) if (!(id in this.positions)) this.positions[id] = pos;
     if (r.name === 'today') this.regroupToday();

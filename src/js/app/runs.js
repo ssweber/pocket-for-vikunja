@@ -14,7 +14,7 @@ import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
-import {copyOf, dropCopy, put, putting, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, dropCopy, put, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
@@ -188,7 +188,7 @@ export default {
   /* Edit the run's optional name and assignees in its menu. runParts supports both the current name order and
      older runs with the day last. */
   async openRunOptions(){
-    const run = this.view.run?.run;
+    const run = this.runTask;
     if (!run) return;
     this.openSheet('runopts');
     const p = runParts(run.title, run.created, true), name = p ? p.name : run.title;
@@ -201,16 +201,16 @@ export default {
     } catch { edit.people = [this.user]; }
   },
   async saveRunName(){
-    const e = this.sheet.runEdit, run = this.view.run?.run, name = e?.name.trim();
+    const e = this.sheet.runEdit, run = this.runTask, name = e?.name.trim();
     if (!run || !name) { if (e) e.name = e.was; return; }
     const title = !e.prefix ? name : (e.old ? [e.prefix, name, e.day] : [e.prefix, e.day, name]).join(' · ');
     if (title === run.title) return;
-    try { const t = await this.saveTask(run.id, {title}); run.title = t.title; e.was = name; this.saveRun(); this.say('Renamed', {place: 'sheet:top'}); }
+    try { await this.saveTask(run.id, {title}); e.was = name; this.saveRun(); this.say('Renamed', {place: 'sheet:top'}); }
     catch (err) { this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   // Keep at least one assignee when changing who the run is for.
   async setRunFor(u){
-    const e = this.sheet.runEdit, run = this.view.run?.run;
+    const e = this.sheet.runEdit, run = this.runTask;
     if (!run) return;
     const was = e.forIds, on = was.includes(u.id);
     if (on && was.length === 1) { this.say('A checklist needs at least one person. Tap someone else first.', {place: 'sheet:top', cls: 'failed'}); return; }
@@ -218,16 +218,16 @@ export default {
     const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
       // Wait for an earlier save so changing assignees does not overwrite a new name.
-      const put = shared.saveChain.then(() => api(`/tasks/${run.id}/assignees/bulk`, {method: 'PUT', body: {assignees: e.forIds.map(id => ({id}))}}));
-      shared.saveChain = put.catch(() => {});
-      await put;
-      run.assignees = who; this.saveRun();
+      const saving = shared.saveChain.then(() => api(`/tasks/${run.id}/assignees/bulk`, {method: 'PUT', body: {assignees: e.forIds.map(id => ({id}))}}));
+      shared.saveChain = saving.catch(() => {});
+      await saving;
+      put([{id: run.id, assignees: who}], ['assignees']); this.saveRun();
       this.say(this.forText({assignees: who}).replace(/^For/, 'Now for'), {place: 'sheet:top'});
     } catch (err) { e.forIds = was; this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
   // Delete a checklist from its ⋯ menu or its sheet. Its steps are deleted too, so none is left as a separate task.
-  async confirmDeleteRun(run){
-    const n = run.steps.length;
+  async confirmDeleteRun(run, steps){
+    const n = steps.length;
     if (!confirm(`Delete “${run.title}” and its ${n} step${n === 1 ? '' : 's'} for everyone? Their comments and photos are deleted too. This can't be undone.`)) return;
     this.closeSheet(true);
     await this.deleteRun(run.id, {deleted: true});
@@ -240,7 +240,7 @@ export default {
         await patiently(() => api('/tasks/' + sid, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       await patiently(() => api('/tasks/' + id, {method: 'DELETE'}));
       this.forget(id);
-      if (this.sheet.task?.id === id) Object.assign(this.sheet, {editingDesc: false, commentDraft: ''});
+      if (this.sheet.id === id) Object.assign(this.sheet, {editingDesc: false, commentDraft: ''});
       if (!quiet) {
         const ids = new Set([id, ...(t.related_tasks?.subtask || []).map(s => s.id)]);
         await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && (e.run === id || ids.has(e.task))) await sync.remove(e.id); });
@@ -259,29 +259,31 @@ export default {
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a started checklist. Open it from its project instead.');
     /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
        push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
-    const kept = this.view.run?.run.id === id ? this.view.run : null;
+    const kept = this.view.shownRun?.id === id ? this.view.shownRun : null;
     const reading = kept?.last ? null : this.readLast(plainRun(run));
     const steps = await inBatches(stepsOf(run), 4, async s => allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`))).then(putting(TASK_REACTIONS_COMMENTS));
     const last = reading && await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))]);
     if (seq !== renderSeq) return;
-    const keep = this.view.run?.run.id === id ? this.view.run : null;      // reloading the open checklist keeps its step and drafts
+    const keep = this.view.shownRun?.id === id ? this.view.shownRun : null;   // reloading the open checklist keeps its step and drafts
     if (!keep) { this.runInsert = newBox(); this.runBoxAt = null; }
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step);   // index of the step opened from a list
-    const before = last === undefined ? saved.get('run.' + id)?.run?.last : null;
+    const before = last === undefined ? saved.get('run.' + id)?.shownRun?.last : null;
     this.runNow = Date.now();                                                // compute the newly opened run for the current time
-    this.view.run = {run: plainRun(run), steps: steps.map(plainStep), at: keep ? keep.at : asked >= 0 ? asked : null,
+    for (const t of [run, ...steps]) this.row(t);                            // the screen reads the checklist and its steps by id
+    this.view.shownRun = {id, steps: steps.map(s => s.id), at: keep ? keep.at : asked >= 0 ? asked : null,
       last: keep?.last || last || (before?.notes ? {...before, held: null} : null)};
     this.saveRun();
     if (last === undefined) reading.then(l => this.lateLast(id, l));
   },
-  // Save the open checklist so it opens offline. Pocket keeps the last 8 checklists opened.
+  // Save the open checklist so it opens offline: its ids, and Vikunja's copies of the checklist and its steps. Pocket
+  // keeps the last 8 checklists opened.
   saveRun(){
-    const r = this.view.run;
+    const r = this.view.shownRun;
     if (!r) return;
-    const ids = [r.run.id, ...(saved.get('runs.recent') || []).filter(id => id !== r.run.id)];
+    const ids = [r.id, ...(saved.get('runs.recent') || []).filter(id => id !== r.id)];
     for (const id of ids.slice(8)) store.del('saved.run.' + id);
     saved.set('runs.recent', ids.slice(0, 8));
-    saved.set('run.' + r.run.id, {run: r, at: new Date().toISOString()});
+    saved.set('run.' + r.id, savedScreen({shownRun: r, tasks: [r.id, ...r.steps].map(id => this.tasks[id]).filter(Boolean), at: new Date().toISOString()}));
   },
   /* Load notes from the last finished checklist of this template, including step notes. Return {id, title, notes},
      or null when there is no readable checklist. */
@@ -303,8 +305,8 @@ export default {
   /* Show late notes below the steps immediately, but hold card notes until another step is selected so the list
      stays still. */
   lateLast(id, last){
-    const r = this.view.run;
-    if (r?.run.id !== id || !last) return;
+    const r = this.view.shownRun;
+    if (r?.id !== id || !last) return;
     const same = r.last && JSON.stringify(r.last.notes.map(n => n.id)) === JSON.stringify(last.notes.map(n => n.id)) && r.last.id === last.id;
     r.last = same ? {...last, held: r.last.held} : {...last, held: this.runView?.step?.id ?? null};
     this.saveRun();
@@ -317,21 +319,21 @@ export default {
   get runRows(){
     const v = this.runView, g = raw(this.runG);
     if (!v) return this.runG;
-    const locked = v.finished || !this.canWrite(this.view.run.run.project_id);
+    const locked = v.finished || !this.canWrite(this.runTask.project_id);
     if (g.at !== v.at) this.runG.at = v.at;
     if (g.locked !== locked) this.runG.locked = locked;
     return this.runG;
   },
   workOutRun(){
-    const r = this.view.run;
-    if (!r) return null;
+    const r = this.view.shownRun, run = this.runTask;
+    if (!r || !run) return null;
     const me = this.user, myName = me?.name || me?.username || 'You';
-    const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.run.id);
+    const acts = this.pending.filter(e => e.kind === 'act' && e.run === r.id);
     const waitingNote = a => ({id: a.id, comment: commentShown(a.html), author: myName, when: 'Waiting to send'});
     // Place pending inserted or repeated steps before their original successor, or after their predecessor if that
     // successor is gone. Omit cancelled steps.
-    const base = [...r.steps];
-    for (const e of this.pending) if (e.kind === 'step' && !e.cancelled && e.run === r.run.id && !base.some(s => s.id === e.taskId)) {
+    const base = r.steps.map(id => this.tasks[id]).filter(Boolean).map(plainStep);
+    for (const e of this.pending) if (e.kind === 'step' && !e.cancelled && e.run === r.id && !base.some(s => s.id === e.taskId)) {
       const k = base.findIndex(s => s.id === e.before), a = k < 0 ? base.findIndex(s => s.id === e.after) : -1;
       base.splice(k >= 0 ? k : a >= 0 ? a + 1 : base.length, 0, {id: 'pending-' + e.id, title: e.title, done: false, done_at: null, due_date: ZERO, updated: e.at, description: '',
         assignees: [], attachments: [], reactions: {}, comments: [], tpl: e.tpl ?? null, from: e.from, added: e.from || e.tpl != null ? 'Repeated' : 'Inserted', pending: e.id});
@@ -358,7 +360,7 @@ export default {
       const said = talk ? {who: talk.author, text: htmlToText(talk.comment || '').split('\n').map(l => l.trim()).find(Boolean) || ''} : null;
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
       const slot = done ? this.doneSlot(by, people, slow ? 'wait' : skipped ? 'skip' : 'done')
-        : s.pending ? null : this.claimSlot({...s, project_id: r.run.project_id}, people, r.run.done, r.run.id);
+        : s.pending ? null : this.claimSlot({...s, project_id: run.project_id}, people, run.done, r.id);
       // Show who completed or skipped the step, with their picture and reaction badge.
       const at = doneAt && isSet(doneAt) ? ' at ' + (+startOfDay(new Date(doneAt)) === +startOfDay() ? fmtTime(new Date(doneAt))
         : new Date(doneAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'})) : '';
@@ -401,36 +403,37 @@ export default {
     // doneCount includes skipped steps, so a checklist with skips can finish. didCount leaves them out, for the summary.
     const skippedN = steps.filter(s => s.skipped).length, lateN = steps.filter(s => s.done && s.late).length, didCount = doneCount - skippedN;
     // Show who started the run in its summary and menu. The top row's slot shows who the run is for.
-    const started = startedText(this.runStarter(r.run), r.run.created, {now: new Date(now)});
-    const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (r.run.done ? 'finish' : '')) === 'finish';
+    const started = startedText(this.runStarter(run), run.created, {now: new Date(now)});
+    const finished = (acts.filter(a => a.op === 'finish' || a.op === 'reopen').pop()?.op ?? (run.done ? 'finish' : '')) === 'finish';
     // Show the finish card when the run is finished or every step is done. Tapping a listed step can still open
     // its card.
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
     return {steps, total, doneCount, didCount, skippedN, allDone, at, step, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [started, `${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
-      notes: [...(r.run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.run.id).map(waitingNote)],
+      notes: [...(run.comments || []).map(noteOf), ...acts.filter(a => a.op === 'note' && a.task === r.id).map(waitingNote)],
       ring: {...workedOut(steps.map(s => ({done: s.done, pct: s.pct}))), run: true}};
   },
   // Who started a checklist: "you" or their name. Null when Vikunja doesn't report it.
   runStarter(run){ const by = run?.created_by; return by ? (by.id === this.user?.id ? 'you' : by.name || by.username) : null; },
   // Show the starter and date at the top of the run's menu.
-  get runStarted(){ const run = this.view.run?.run; return run ? startedText(this.runStarter(run), run.created, {day: true}) : ''; },
+  get runStarted(){ const run = this.runTask; return run ? startedText(this.runStarter(run), run.created, {day: true}) : ''; },
   /* Build the run's top row with its name, assignees and ring, including pending ticks. Its ring or full right
      swipe finishes the run, asking first if steps remain open. A finished run reopens instead. */
-  // Include a pending finish in the top row's done state, once the screen has loaded.
+  // Include a pending finish in the top row's done state, once the screen has loaded. The row gets only the checklist's
+  // own fields (plainRun).
   get runOwn(){
-    const run = this.view.run?.run, v = this.route.name === 'run' && !this.view.loading && !this.view.error && this.runView;
-    return v && run ? {...run, done: v.finished} : null;
+    const run = this.runTask, v = this.route.name === 'run' && !this.view.loading && !this.view.error && this.runView;
+    return v && run ? {...plainRun(run), done: v.finished} : null;
   },
   get runRing(){
-    const v = this.runView, run = this.view.run?.run;
+    const v = this.runView, run = this.runTask;
     if (!v || !run || !v.total) return null;
     const open = v.total - v.ring.done, title = `“${run.title}”`, n = open === 1 ? '1 step' : open + ' steps';
     return {...v.ring, open, said: `${v.ring.done} of ${v.total} ${v.total === 1 ? 'step' : 'steps'} done, ${v.ring.pct}%`, tap: () => this.runRingTap(),
       label: v.finished ? 'Reopen ' + run.title : !open ? `Finish ${title}: all its steps are done` : `Finish ${title}, with ${n} not done`};
   },
   runRingTap(){
-    const run = this.view.run?.run, v = this.runView;
+    const run = this.runTask, v = this.runView;
     if (!run || !v || !this.canWrite(run.project_id)) return;
     if (v.finished) return this.reopenRun(run.id);
     if (v.allDone) return this.finishRun();
@@ -439,7 +442,7 @@ export default {
     this.sheet.complete = {id: run.id, task: run, run: true, screen: true, back: false, title, open, n: open.length, stay: 0, ask: completeAsk({title, run: true, names: open})};
   },
   // The notes made on this step in the last finished checklist of the same template.
-  lastNotes(s){ const l = this.view.run?.last; return s?.tpl && s.id !== l?.held ? (l?.notes || []).filter(n => n.tpl === s.tpl) : []; },
+  lastNotes(s){ const l = this.view.shownRun?.last; return s?.tpl && s.id !== l?.held ? (l?.notes || []).filter(n => n.tpl === s.tpl) : []; },
   /* Open a run on its own screen, selecting the requested step if given. Back returns to the screen that opened
      it. */
   openRun(id, step = null){
@@ -450,7 +453,7 @@ export default {
   // Leave a deleted run's screen and remove its offline copy.
   runGone(id){
     store.del('saved.run.' + id); saved.set('runs.recent', (saved.get('runs.recent') || []).filter(x => x !== id));
-    if (this.view.run?.run.id === id) this.view.run = null;
+    if (this.view.shownRun?.id === id) this.view.shownRun = null;
     this.leaveRun();
     this.notify('That checklist no longer exists.');
   },
@@ -466,13 +469,13 @@ export default {
   /* A template and its steps can be changed only by the person who made the template or a project admin. Vikunja
      lets anyone with write change them, so this guards against slips in Pocket only. */
   get canEdit(){
-    const t = this.sheet.task, role = this.checklistRole;
+    const t = this.sheetTask, role = this.checklistRole;
     if (!t || !this.canWrite(t.project_id)) return false;
     return !['template', 'tplstep'].includes(role) || this.ownsTemplate(role === 'tplstep' ? this.parentTask : t);
   },
   // The line in a template's checklist card: what starting does, and what the user can do with the template.
   get templateNote(){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (t && !this.canWrite(t.project_id)) return 'Read only. You can see this template, but not start a checklist from it. Ask the project\'s owner for write access.';
     return 'Every checklist you start from this template copies these steps. ' + (this.canEdit ? 'Tap to edit. Hold to reorder. Swipe left to delete.' : 'Only the person who made this template or a project admin can change it.');
   },
@@ -522,15 +525,16 @@ export default {
     this.openTask(t.id);
   },
   showStep(i, scroll){
-    if (!this.view.run) return;
-    this.view.run.at = i;
-    if (this.view.run.last) this.view.run.last.held = null;                // Last time's notes now show on the step's card
+    const r = this.view.shownRun;
+    if (!r) return;
+    r.at = i;
+    if (r.last) r.last.held = null;                                          // Last time's notes now show on the step's card
     if (scroll) scrollTo({top: 0, behavior: motion() ? 'smooth' : 'auto'});
   },
   // Complete, skip or reopen the step, then advance the card. Return false if confirmation was declined. Give tap
   // feedback unless a swipe already gave it.
   async tickStep(s, op, felt = false){
-    const r = this.view.run;
+    const r = this.view.shownRun;
     if (!r) return;
     const current = this.runView?.step?.id === s.id;
     let html = '';
@@ -563,7 +567,7 @@ export default {
     await this.act({op: 'note', task, html: textToHtml(text)});
   },
   async finishRun(){
-    const run = this.view.run?.run;
+    const run = this.runTask;
     if (!run) return;
     const r = await this.act({op: 'finish', task: run.id});
     if (r.status === 'error') return;
@@ -585,8 +589,8 @@ export default {
      predecessor and successor at the box's position. Above a box at the bottom is the last step. Hide the box on
      finished or read-only runs. */
   get runAim(){
-    const r = this.view.run, v = this.runView;
-    if (!v || v.finished || !v.steps.length || !this.canWrite(r.run.project_id)) return null;
+    const v = this.runView;
+    if (!v || v.finished || !v.steps.length || !this.canWrite(this.runTask.project_id)) return null;
     const same = x => String(this.actTask({task: x}));
     const above = (this.runBoxAt != null && v.steps.find(s => same(s.id) === same(this.runBoxAt))) || v.steps[v.total - 1];
     return {above, after: above.id, before: v.steps[above.i + 1]?.id ?? null};
@@ -638,12 +642,12 @@ export default {
     if (r.status !== 'error' && !undoing) this.said = `Progress of ${s.title} set to ${pct}%`;
   },
   async addStep(fields){
-    const r = this.view.run;
-    if (!r) return;
+    const r = this.view.shownRun, run = this.runTask;
+    if (!r || !run) return;
     // If the step to insert before is itself waiting to be sent, use the step that one goes before.
     if (typeof fields.before === 'string') fields.before = this.pending.find(e => 'pending-' + e.id === fields.before)?.before ?? null;
     const entry = {id: randomId(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: nextN(), items: [], files: [], fails: 0,
-      run: r.run.id, runTitle: r.run.title, project: r.run.project_id, from: null, tpl: null, ...fields};
+      run: r.id, runTitle: run.title, project: run.project_id, from: null, tpl: null, ...fields};
     const {kept, full} = await sync.add(entry, []);
     this.refreshPending();
     const res = await sync.lock(() => this.sendEntry(entry.id));
@@ -651,7 +655,7 @@ export default {
     // Show errors beside the box the step was added from.
     if (res.status === 'offline') { sync.keep(); if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, {place: ['cap', 'step'], cls: 'failed'}); }
     if (res.status === 'error') this.say(`${res.error.what} couldn't be done: ${res.error.message}.`, {place: ['cap', 'step'], cls: 'failed'});
-    if (res.status === 'sent' && this.view.run?.run.id === entry.run) this.render();
+    if (res.status === 'sent' && this.view.shownRun?.id === entry.run) this.render();
     return entry.id;
   },
   async sendStep(j){
@@ -683,7 +687,7 @@ export default {
   async deleteAddedStep(s, undo = false, asked = false){
     if (!s?.added || s.done || (!undo && !asked && !this.askDeleteStep(s))) return false;
     if (s.pending) { await this.dropStep(s.pending, undo); return true; }
-    const run = this.view.run?.run.id;
+    const run = this.view.shownRun?.id;
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       dropCopy(s.id);
@@ -734,10 +738,6 @@ export default {
     try {
       const at = started(), t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
       put([t], TASK_REACTIONS_COMMENTS, at);
-      const r = this.view.run;
-      if (!r) return;
-      if (r.run.id === id) Object.assign(r.run, plainRun(t));
-      else { const i = r.steps.findIndex(s => s.id === id); if (i >= 0) r.steps[i] = plainStep(t); }
       this.saveRun();
     } catch {}
   },

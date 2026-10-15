@@ -99,17 +99,16 @@ export default {
   // The open task's subtask slots, keyed by id, for each row to read.
   get subSlots(){
     const out = {};
-    const run = this.checklistRole === 'run' ? this.sheet.task.id : null;
+    const run = this.checklistRole === 'run' ? this.sheet.id : null;
     for (const st of this.subtasks) out[st.id] = this.claimSlot(st, this.peopleOf(st.id, this.sheet.subPeople[st.id]), st.done, run);
     return out;
   },
-  // Apply a sent claim or release to every copy on screen and to Vikunja's copy.
+  // Apply a sent claim or release to Vikunja's copy, which the rows, the sheet and a checklist's screen read, and to the
+  // sheet's subtask people.
   claimSent(a){
-    const was = this.sheet.subPeople?.[a.task] ?? null, step = this.view.run?.steps.find(s => s.id === a.task);
+    const was = this.sheet.subPeople?.[a.task] ?? null;
     const set = list => [...(list || []).filter(u => u.id !== this.user?.id), ...a.op === 'claim' ? [this.user] : []];
     if (was !== null) this.sheet.subPeople[a.task] = set(was);
-    if (this.sheet.task?.id === a.task) this.sheet.task.assignees = set(this.sheet.task.assignees);
-    if (step) step.assignees = set(step.assignees);
     const c = copyOf(a.task); if (c) put([{id: a.task, assignees: set(c.assignees)}], ['assignees']);
   },
 

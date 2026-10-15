@@ -4,8 +4,8 @@
 
    `copies` holds Vikunja's last copy of each task, written field by field (put) and read through copyOf. Undo compares
    against it, and the screens are saved from it. `opsOn` holds each task's ops waiting in the outbox, and withWaiting
-   is Vikunja's copy with them applied: the task as it will be. Not stored here: the sheet's own copy of its task
-   (sheet.task), the subtasks inside it, and a checklist's steps (view.run). */
+   is Vikunja's copy with them applied: the task as it will be. The sheet and a checklist's screen hold ids and read
+   their tasks here (sheetTask, runTask). A subtask in its parent's sheet is part of the parent's related_tasks. */
 import {app, raw} from '../util.js';
 import {api} from '../api.js';
 import {intoKeys} from '../lists.js';
@@ -45,6 +45,8 @@ export const started = () => ++clock;
 // task id -> the fields of its edits ended since it was last shown. show removes such a field from the row when
 // Vikunja's copy doesn't have it either.
 const ended = new Map();
+// The parent's related_tasks with its subtask `id` changed by `fields`, as new lists and objects.
+const withSub = (p, id, fields) => ({...p.related_tasks, subtask: (p.related_tasks?.subtask || []).map(s => s.id === id ? {...s, ...fields} : s)});
 const drop = (id, e) => {
   const rest = (edits.get(id) || []).filter(x => x !== e);
   if (rest.length) edits.set(id, rest); else edits.delete(id);
@@ -82,8 +84,9 @@ export const savesRunning = id => [...id === undefined ? edits.values() : [edits
    and none of Pocket's own fields. A row with no copy is saved as it is. Only a done parent named by its subtask
    (readProject) has none. */
 const savedCopies = list => (list || []).map(t => copies.get(t.id) || t);
-// A screen as it is saved on the phone: the tasks in its groups, its cards' steps and its checklists are copies.
-export const savedScreen = s => ({...s, ...s.groups && {groups: s.groups.map(g => ({...g, tasks: savedCopies(g.tasks)}))}, ...s.steps && {steps: savedCopies(s.steps)},
+// A screen as it is saved on the phone: the tasks in its groups, its cards' steps, its checklists and a checklist's
+// screen's tasks are copies.
+export const savedScreen = s => ({...s, ...s.groups && {groups: s.groups.map(g => ({...g, tasks: savedCopies(g.tasks)}))}, ...s.steps && {steps: savedCopies(s.steps)}, ...s.tasks && {tasks: savedCopies(s.tasks)},
   ...s.checklists && {checklists: s.checklists.map(cl => ({...cl, runs: savedCopies(cl.runs), finished: savedCopies(cl.finished)}))}});
 
 export default {
@@ -124,20 +127,30 @@ export default {
   /* Lay `fields` over the task while a direct save runs, in memory only. `ok(answer)` writes Vikunja's answer into the
      copy and takes the fields off in one show. `undo()` takes them off, for a failed save. `until(entry)` keeps them
      until outbox entry `entry` is answered or leaves the outbox, for a change sent as an op.
-     `mine` is the caller's own object for the task when it isn't the row, such as the sheet's copy or a checklist's
-     step on its screen. It gets the fields too, and the answer, and loses the fields on undo. */
-  edit(id, fields, mine = null){
-    if (mine && raw(mine) === raw(this.tasks[id])) mine = null;
-    const e = {fields, entry: null}, was = mine && Object.fromEntries(Object.keys(fields).map(k => [k, mine[k]]));
+     `under` is the parent whose sheet lists the task as a subtask. The parent's row gets the fields on that subtask
+     too, as an edit of its related_tasks. On `ok`, Vikunja's copy of the parent takes the answer for that subtask, or
+     the subtask would show its old value until the parent is read again. */
+  edit(id, fields, under = null){
+    const e = {fields, entry: null}, up = under != null && this.subOf(under, id) ? this.edit(under, {related_tasks: withSub(raw(this.tasks[under]), id, fields)}) : null;
     edits.set(id, [...edits.get(id) || [], e]);
-    if (mine) Object.assign(mine, fields);
     this.show(id);
     return {
-      ok: got => { if (got) write([got], TASK); drop(id, e); this.show(id); if (mine && got) Object.assign(mine, got); },
-      undo: () => { drop(id, e); this.show(id); if (mine) Object.assign(mine, was); },
-      until: entry => { e.entry = entry; if (![...this.pending || [], ...this.failed || []].some(x => x.id === entry)) { drop(id, e); this.show(id); } },
+      ok: got => {
+        if (got) write([got], TASK); drop(id, e); this.show(id);
+        const c = up && copies.get(under);
+        if (c) copies.set(under, {...c, related_tasks: withSub(c, id, own({...fields, ...got}))});
+        up?.ok();
+      },
+      undo: () => { drop(id, e); this.show(id); up?.undo(); },
+      until: entry => { e.entry = entry; if (![...this.pending || [], ...this.failed || []].some(x => x.id === entry)) { drop(id, e); this.show(id); } up?.until(entry); },
     };
   },
+  // The subtask `id` as the row of its parent `parent` lists it, or null.
+  subOf(parent, id){ return (this.tasks[parent]?.related_tasks?.subtask || []).find(s => s.id === id) || null; },
+  // The task the sheet shows, as its rows show it. Null while the sheet loads it.
+  get sheetTask(){ return this.sheet.id == null ? null : this.tasks[this.sheet.id] || null; },
+  // The checklist on its screen, as its rows show it.
+  get runTask(){ const r = this.view.shownRun; return r ? this.tasks[r.id] || null : null; },
   /* Rows from a screen saved on the phone, for a screen shown before it has loaded. A saved copy goes into the store
      where there is none, or where it is newer. Tasks deleted since are left out. */
   keptRows(list){
@@ -182,11 +195,10 @@ export default {
   },
   // Remove a deleted task from the list on screen, and remember it was deleted.
   forget(id){ for (const m of [copies, edits, bases, ended]) m.delete(id); delete this.tasks[id]; forgotten.add(id); this.removeRow(id); },
-  // Forget deleted tasks, and remove them from the subtasks in Vikunja's copies, and so on screen, and in the sheet.
+  // Forget deleted tasks, and remove them from the subtasks in Vikunja's copies, and so on screen and in the sheet.
   forgetTree(ids){
     for (const id of ids) this.forget(id);
     const has = t => t?.related_tasks?.subtask?.some(s => ids.includes(s.id)), left = t => ({...t, related_tasks: {...t.related_tasks, subtask: t.related_tasks.subtask.filter(s => !ids.includes(s.id))}});
     for (const m of [copies, bases]) for (const [id, t] of m) if (has(t)) { m.set(id, left(t)); this.show(id); }
-    if (has(this.sheet.task)) this.sheet.task.related_tasks = left(this.sheet.task).related_tasks;
   },
 };

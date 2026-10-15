@@ -73,7 +73,7 @@ export default {
      the sheet down or pressing the phone's Back does not take it, and on an iPhone tapping a button doesn't focus the
      button either. saveTitle saves once, whichever comes first. */
   leaveTask(){
-    const sh = this.sheet, t = sh.task;
+    const sh = this.sheet, t = this.sheetTask;
     if (!sh.open || !sh.show || sh.kind !== 'task' || !t) return;
     if (sh.titleEdit || document.activeElement?.id === 'd-title') { this.saveTitle(); sh.titleEdit = false; }
     if (sh.editingDesc && sh.descDraft.trim() !== this.notesText(t).trim()) {
@@ -127,7 +127,7 @@ export default {
     this.openTask(t.id, true);
   },
   async openTask(id, menu = false){
-    const from = this.sheet.open && this.sheet.kind === 'task' ? this.sheet.task?.id : null;
+    const from = this.sheet.open && this.sheet.kind === 'task' ? this.sheet.id : null;
     this.openSheet('task');
     this.sheet.menu = menu;
     this.sheet.from = from;
@@ -151,14 +151,16 @@ export default {
     }
     finally { if (this.sheet === mine) this.sheet.loading = false; }
   },
+  // Show task `t` in the sheet. The sheet reads its row, and a task opened from search, a link or a card gets one here.
   showTask(t){
-    if (this.sheet.task?.id === t.id) Object.assign(this.sheet.task, t); else this.sheet.task = {...t};
-    this.keepTemplate(this.sheet.task);
-    if (document.activeElement?.id !== 'd-title') this.sheet.title = this.rowTitle(t);
+    const row = this.row(t);
+    this.sheet.id = t.id;
+    this.keepTemplate(row);
+    if (document.activeElement?.id !== 'd-title') this.sheet.title = this.rowTitle(row);
   },
   /* Repeat settings as Vikunja stores them: repeat_mode 1 is monthly, otherwise repeat_after is an interval in seconds. */
   get repeatValue(){
-    const t = this.sheet.task; if (!t) return 'none';
+    const t = this.sheetTask; if (!t) return 'none';
     if (t.repeat_mode === 1) return 'month';
     return {0: 'none', 86400: 'day', 604800: 'week', 1209600: '2weeks'}[t.repeat_after || 0] || 'custom';
   },
@@ -166,7 +168,7 @@ export default {
     const opts = [{value: 'none', label: 'Doesn’t repeat'}, {value: 'day', label: 'Every day'}, {value: 'week', label: 'Every week'},
       {value: '2weeks', label: 'Every 2 weeks'}, {value: 'month', label: 'Every month'}];
     if (this.repeatValue === 'custom') {
-      const days = this.sheet.task.repeat_after / 86400;
+      const days = this.sheetTask.repeat_after / 86400;
       opts.push({value: 'custom', label: Number.isInteger(days) ? `Every ${days} days` : 'Custom (set in Vikunja)'});
     }
     return opts;
@@ -190,14 +192,14 @@ export default {
     this.save(patch);
   },
   // The due date the sheet shows. A template's due date is when it next repeats, so a done template has none.
-  get dueShown(){ const t = this.sheet.task; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
+  get dueShown(){ const t = this.sheetTask; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
   /* Set the due date from the sheet. A template's due date is when it repeats. Giving a template a date leaves it not
      done, and removing the date makes it done again.
      To remove the date, Pocket first removes the repeat, then saves the date and done, then puts the repeat back.
      Saved in one request with the repeat, Vikunja would move the template on to its next time and leave it not done.
      Putting the repeat back means a date given later repeats as before. */
   async setDue(v){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (this.checklistRole !== 'template') return this.save({due_date: v});
     if (isSet(v)) return this.save({due_date: v, ...t.done && {done: false}});
     const rep = repeats(t) && {repeat_after: t.repeat_after, repeat_mode: t.repeat_mode};
@@ -211,7 +213,7 @@ export default {
      order line. Any other task's subtasks are in its project's List view order once that is read (loadSubOrder) or
      after a move, and until then in the order they were made. */
   get subtasks(){
-    const t = this.sheet.task, hidden = this.hiddenRows;
+    const t = this.sheetTask, hidden = this.hiddenRows;
     const subs = this.hasOwnOrder(t) ? stepsOf(t) : [...(t?.related_tasks?.subtask || [])].sort(positionOrder(this.positions));
     return subs.filter(s => !hidden.has(s.id));
   },
@@ -224,7 +226,7 @@ export default {
     try {
       const filter = 'id in ' + [t.id, ...subs.map(s => s.id)].join(', ');
       const got = await allPages(`/projects/${t.project_id}/views/${lv.id}/tasks?` + new URLSearchParams({filter, expand: 'subtasks'}));
-      if (this.sheet.task?.id !== t.id) return;
+      if (this.sheet.id !== t.id) return;
       for (const x of got) this.positions[x.id] = x.position || 0;
       this.sheet.subView = lv.id;
     } catch {}                                                              // the subtasks stay in the order they were made
@@ -232,35 +234,33 @@ export default {
   // A template's steps as its sheet and the start sheet show them. Each shows when it is due, or what is wrong with it.
   get templateSteps(){ return stepInfos(this.subtasks.map(s => s.title)); },
   get startSteps(){ return stepInfos((this.sheet.start?.steps || []).map(s => s.title)); },
-  get parentTask(){ return this.sheet.task?.related_tasks?.parenttask?.[0] || null; },
+  get parentTask(){ return this.sheetTask?.related_tasks?.parenttask?.[0] || null; },
   // Subtasks of the open task still waiting to be sent, for its sheet.
-  get pendingSubtasks(){ return this.pendingTasks.filter(t => t.parent === this.sheet.task?.id); },
+  get pendingSubtasks(){ const id = this.sheet.id; return id == null ? [] : this.pendingTasks.filter(t => t.parent === id); },
   get descHtml(){
-    const d = notesOnly(this.sheet.task?.description).replace(/<p>\s*<\/p>/g,'').trim();
+    const d = notesOnly(this.sheetTask?.description).replace(/<p>\s*<\/p>/g,'').trim();
     return d ? sanitize(d) : '<span class="ph">Add notes</span>';
   },
 
-  /* Save a change to the open task. The sheet and the task's rows update right away (edit), and the sheet shows
-     Vikunja's answer once the sheet's last save is answered. If the save fails, its fields go back, the top of the
+  /* Save a change to the open task. The sheet and the task's rows update right away (edit), and Vikunja's answer
+     shows as it arrives. Only the sheet's last save says Saved. If the save fails, its fields go back, the top of the
      sheet shows a message with Try again, and the promise resolves to false. */
   save(patch, rebase){
-    const id = this.sheet.task?.id; if (!id) return;
+    const id = this.sheet.id; if (!id) return;
     const shown = this.edit(id, patch), mine = lastSave = {};
-    Object.assign(this.sheet.task, patch);
     this.sheet.savedMsg = 'Saving…';
     return this.saveTask(id, patch, rebase).then(saved => {
       shown.ok(saved);
-      if (mine !== lastSave || this.sheet.task?.id !== id) return;
+      if (mine !== lastSave || this.sheet.id !== id) return;
       const repeated = patch.done === true && !saved.done;
-      this.showTask(this.shownAs(id) || saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
+      this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
       this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
       setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
     }, e => {
       shown.undo();
-      if (this.sheet.task?.id === id) {
-        // Only this save's fields go back, to what the store shows now, so another edit made in the sheet stays.
-        const now = this.shownAs(id);
-        this.sheet.savedMsg = ''; if (now) this.showTask({...this.sheet.task, ...Object.fromEntries(Object.keys(patch).map(k => [k, now[k]]))});
+      if (this.sheet.id === id) {
+        // Only this save's fields go back (undo), so another edit made in the sheet stays.
+        this.sheet.savedMsg = ''; if (this.sheetTask) this.showTask(this.sheetTask);
         this.say(notSaved(e), {place: 'sheet:top', cls: 'failed', ms: null, action: {label: 'Try again', fn: () => this.save(patch, rebase)}});
       } else this.notify(notSaved(e));                                        // the sheet no longer shows this task
       return false;
@@ -268,11 +268,11 @@ export default {
   },
   // Tapping the title on the sheet's first row replaces it with a box to edit it (task-row.html, g.own). The title is
   // saved when the box loses focus (saveTitle). A read-only task can't be edited.
-  editTitle(){ if (this.canEdit) { this.sheet.title = this.rowTitle(this.sheet.task); this.sheet.titleEdit = true; } },
+  editTitle(){ if (this.canEdit) { this.sheet.title = this.rowTitle(this.sheetTask); this.sheet.titleEdit = true; } },
   // Save the title. A template's title keeps its "TEMPLATE: " prefix. If the title is unchanged or empty, the box shows
   // the task's title again. The box can lose focus just as the sheet closes, when there is no task left to save.
   saveTitle(){
-    const t = this.sheet.task, v = (this.sheet.title || '').trim();
+    const t = this.sheetTask, v = (this.sheet.title || '').trim();
     if (!t) return;
     if (v && v !== this.rowTitle(t)) this.save({title: this.role(t) === 'template' ? templateTitle(v) : v}); else this.sheet.title = this.rowTitle(t);
   },
@@ -284,11 +284,11 @@ export default {
   notesHtml(t, text){ return withLinesOf(text.trim() ? textToHtml(text) : '', t.description); },
   // Remember what the notes say when editing starts (descBase), so a save can tell if they changed elsewhere since.
   editDesc(){
-    Object.assign(this.sheet, {descDraft: this.notesText(this.sheet.task), descBase: this.notesText(this.sheet.task), descConflict: null, editingDesc: true});
+    Object.assign(this.sheet, {descDraft: this.notesText(this.sheetTask), descBase: this.notesText(this.sheetTask), descConflict: null, editingDesc: true});
   },
   cancelDesc(){
     Object.assign(this.sheet, {editingDesc: false, descUnsaved: false, descConflict: null});
-    taskDrafts.delete('desc:' + this.sheet.task.id);
+    taskDrafts.delete('desc:' + this.sheet.id);
   },
   /* Build the notes to save on Vikunja's copy of the task as it is when they are sent (`now`). If Vikunja's notes
      changed since editing began (`base`, where null means unknown, from an older Pocket), they are not overwritten
@@ -309,7 +309,7 @@ export default {
      later. If the notes were changed elsewhere meanwhile, Vikunja's version is shown under the user's. Saving again
      replaces Vikunja's version, because the user has now seen it. */
   async saveDesc(){
-    const sh = this.sheet, v = sh.descDraft, t = sh.task, base = sh.descConflict ?? sh.descBase, here = () => this.sheet.task?.id === t.id;
+    const sh = this.sheet, v = sh.descDraft, t = this.sheetTask, base = sh.descConflict ?? sh.descBase, here = () => this.sheet.id === t.id;
     Object.assign(sh, {editingDesc: false, savedMsg: 'Saving…'});
     try {
       const got = await this.saveTask(t.id, null, now => this.notesPatch(now, v, base));
@@ -345,7 +345,7 @@ export default {
     // A reminder at a set time shows its day and time, even at noon or midnight, and "(past)" if that time has gone by.
     if (!r.relative_to) { const d = new Date(r.reminder); return isSet(r.reminder) ? `${dueInfo(startOfDay(d).toISOString()).label} ${fmtTime(d)}${d < new Date() ? ' (past)' : ''}` : ''; }
     const s = Math.abs(r.relative_period || 0), from = {due_date: 'due', start_date: 'the start', end_date: 'the end'}[r.relative_to] || r.relative_to;
-    const unset = !isSet(this.sheet.task?.[r.relative_to]) ? ' (no date, so it won\'t be sent)' : '';
+    const unset = !isSet(this.sheetTask?.[r.relative_to]) ? ' (no date, so it won\'t be sent)' : '';
     if (!s) return (r.relative_to === 'due_date' ? 'At due' : 'At ' + from) + unset;
     const [n, unit] = [[86400, 'day'], [3600, 'hour'], [60, 'min']].find(([n]) => s % n === 0 && s >= n) || [1, 'sec'];
     const k = s / n;
@@ -354,7 +354,7 @@ export default {
   // The reminders that can be added. If the task has a due date, these are offsets before it, which move with the date.
   // There is also a set date and time.
   get reminderPresets(){
-    const t = this.sheet.task, have = new Set((t?.reminders || []).filter(r => r.relative_to === 'due_date').map(r => r.relative_period || 0));
+    const t = this.sheetTask, have = new Set((t?.reminders || []).filter(r => r.relative_to === 'due_date').map(r => r.relative_period || 0));
     const before = isSet(t?.due_date) ? [[0, 'At due'], [-900, '15 min before due'], [-3600, '1 hour before due'], [-86400, '1 day before due']] : [];
     return [...before.filter(([p]) => !have.has(p)).map(([p, label]) => ({value: String(p), label})), {value: 'at', label: 'At a set date and time…'}];
   },
@@ -376,13 +376,13 @@ export default {
     try { el.showPicker(); } catch {}
   },
   addReminderAt(v){ this.sheet.remindAt = false; if (v) this.changeReminders({reminder: new Date(v).toISOString()}, null); },
-  removeReminder(k){ const r = plainReminders(this.sheet.task)[k]; if (r) this.changeReminders(null, r); },
+  removeReminder(k){ const r = plainReminders(this.sheetTask)[k]; if (r) this.changeReminders(null, r); },
   // Add or remove a reminder in the list Vikunja has when the save is sent, so a reminder added or removed elsewhere
   // since the sheet opened stays as it is.
   changeReminders(add, drop){
     const skip = new Set([add, drop].filter(Boolean).map(reminderKey));
     const edit = t => [...plainReminders(t).filter(r => !skip.has(reminderKey(r))), ...add ? [add] : []];
-    return this.save({reminders: edit(this.sheet.task)}, now => ({reminders: edit(now)}));
+    return this.save({reminders: edit(this.sheetTask)}, now => ({reminders: edit(now)}));
   },
 
   /* ---------- labels ---------- */
@@ -401,7 +401,7 @@ export default {
     if (exact || m[0]) this.addLabel(exact || m[0]); else if (this.pickerCanCreate) this.addLabel(null);
   },
   get pickerMatches(){
-    const have = new Set((this.sheet.task?.labels || []).map(l => l.id)), ql = this.picker.q.trim().toLowerCase();
+    const have = new Set((this.sheetTask?.labels || []).map(l => l.id)), ql = this.picker.q.trim().toLowerCase();
     return this.labels.filter(l => !have.has(l.id) && (!ql || l.title.toLowerCase().includes(ql))).slice(0, 30);
   },
   get pickerCanCreate(){
@@ -411,7 +411,7 @@ export default {
   /* The people who can be assigned, as @ suggests them in quick add, filtered by what is typed. Only people who can see
      the task's project are listed, because Vikunja refuses anyone else. People already assigned are left out. */
   get assignSuggestions(){
-    const t = this.sheet.task, q = this.sheet.assignName.trim().replace(/^@/, '').toLowerCase(), have = new Set((t?.assignees || []).map(u => u.id));
+    const t = this.sheetTask, q = this.sheet.assignName.trim().replace(/^@/, '').toLowerCase(), have = new Set((t?.assignees || []).map(u => u.id));
     const score = u => Math.min(...[u.username, u.name].map(n => (n || '').toLowerCase()).map(n => !q || n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9));
     return (this.people || []).filter(x => !have.has(x.user.id) && x.pids.has(t?.project_id)).map(x => ({u: x.user, s: score(x.user)}))
       .filter(x => x.s < 9).sort((a, b) => a.s - b.s || (a.u.name || a.u.username).localeCompare(b.u.name || b.u.username))
@@ -420,7 +420,7 @@ export default {
   // Assign the person tapped in the suggestions. On Enter, assign the username typed, or the first suggestion. The box
   // stays open for the next person until the user taps Done.
   async assign(picked){
-    const typed = this.sheet.assignName.trim().replace(/^@/, ''), t = this.sheet.task;   // the task shown when this started
+    const typed = this.sheet.assignName.trim().replace(/^@/, ''), t = this.sheetTask;   // the task shown when this started
     const sg = this.assignSuggestions, exact = sg.find(u => u.username.toLowerCase() === typed.toLowerCase());
     const pick = picked || exact || (typed && sg[0]) || null, name = pick ? pick.username : typed;
     if (!name) { this.sheet.assigning = false; return; }
@@ -428,24 +428,24 @@ export default {
       const u = pick || await this.findUser(name);
       if (!u) { this.say(`No user @${name}`, {place: 'sheet:props', cls: 'failed'}); return; }
       await this.addAssignee(t, u);
-      if (this.sheet.task?.id === t.id) { this.sheet.assignName = ''; document.getElementById('d-assign-in')?.focus(); }
+      if (this.sheet.id === t.id) { this.sheet.assignName = ''; document.getElementById('d-assign-in')?.focus(); }
     } catch (e) { this.say('Not assigned: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async unassign(uid){
-    const t = this.sheet.task;                                                // the task shown when this started
+    const t = this.sheetTask;                                                // the task shown when this started
     try {
       await this.removeAssignee(t, uid);
     } catch (e) { this.say('Not unassigned: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async addLabel(l){
-    const t = this.sheet.task;                                                // the task shown when this started
+    const t = this.sheetTask;                                                // the task shown when this started
     try {
       await this.addLabelTo(t, l, this.picker.q.trim());
-      if (this.sheet.task?.id === t.id) this.picker.q = '';
+      if (this.sheet.id === t.id) this.picker.q = '';
     } catch (err) { this.say('Label not added: ' + err.message, {place: 'sheet:props', cls: 'failed'}); }
   },
   async removeLabel(lid){
-    const t = this.sheet.task;                                                // the task shown when this started
+    const t = this.sheetTask;                                                // the task shown when this started
     try {
       await this.removeLabelFrom(t, lid);
     } catch (e) { this.say('Label not removed: ' + e.message, {place: 'sheet:props', cls: 'failed'}); }
@@ -456,23 +456,23 @@ export default {
     if (this.info && this.info.task_comments_enabled === false) { this.sheet.commentsNote = 'Comments are turned off on this server.'; return; }
     try {
       const list = items(await api(`/tasks/${id}/comments`));
-      if (this.sheet.task?.id === id) { this.sheet.comments = list; this.sheet.commentsNote = ''; }
+      if (this.sheet.id === id) { this.sheet.comments = list; this.sheet.commentsNote = ''; }
     } catch (e) {
-      if (this.sheet.task?.id !== id) return;
+      if (this.sheet.id !== id) return;
       if (e instanceof NetError) { this.sheet.comments ||= []; this.sheet.commentsNote = 'Offline. Comments load when Pocket reaches Vikunja. A comment you write now is posted then.'; }
       else this.sheet.commentsNote = errText(e);
     }
   },
   // A comment goes through the outbox, as a note on a checklist does. Offline, it waits and is posted later.
   async postComment(){
-    const id = this.sheet.task.id, v = this.sheet.commentDraft.trim(); if (!v) return;
+    const id = this.sheet.id, v = this.sheet.commentDraft.trim(); if (!v) return;
     this.sheet.commentDraft = ''; taskDrafts.delete('comment:' + id);
     const r = await this.act({op: 'note', task: id, html: textToHtml(v), run: null});
     if (r.status === 'offline') this.say(r.reached ? 'Vikunja had a problem with the comment. Pocket tries again shortly.' : 'Saved offline. The comment is posted when you\'re back online.', {place: 'sheet:comments'});
-    if (r.status === 'error' && this.sheet.task?.id === id) this.sheet.commentDraft = v;
+    if (r.status === 'error' && this.sheet.id === id) this.sheet.commentDraft = v;
   },
   // Comments on the open task still waiting to be posted.
-  get pendingComments(){ return this.pending.filter(e => e.kind === 'act' && e.op === 'note' && e.task === this.sheet.task?.id && !e.run); },
+  get pendingComments(){ return this.pending.filter(e => e.kind === 'act' && e.op === 'note' && e.task === this.sheet.id && !e.run); },
   get attachmentsOn(){ return this.info?.task_attachments_enabled !== false; },
   // A message naming the files this Vikunja won't accept because they are too big, or '' when they all fit. Vikunja's
   // own error message gives the wrong limit.
@@ -482,7 +482,7 @@ export default {
   },
   // Handles the sheet's "Add a photo or file". The files go through the outbox, so without a connection they wait on
   // the phone, listed in the sheet, and upload once Pocket reaches Vikunja again.
-  async addFiles(list, t = this.sheet.task){
+  async addFiles(list, t = this.sheetTask){
     const files = [...list];
     if (!files.length || !t) return;
     const at = ['sheet:files', 'step'], big = this.tooBig(files);                // where messages go: a task's sheet, or a checklist step's card
@@ -504,7 +504,7 @@ export default {
   },
   // A blob: URL runs with this app's origin, so an HTML or SVG attachment opened that way could read the saved token.
   // Only types that can't run script open in a tab. Everything else is downloaded.
-  async openAttachment(a, taskId = this.sheet.task.id){
+  async openAttachment(a, taskId = this.sheet.id){
     const inline = INLINE_TYPES.test(mimeOf(a.file?.mime));
     const w = inline ? window.open('', '_blank') : null;   // opened synchronously so iOS doesn't block it
     try {

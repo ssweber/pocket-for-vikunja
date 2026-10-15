@@ -2,7 +2,7 @@
 // tasks.js) in Node. api() is Pocket's real one, so it signs, sends and reads replies as it does in the browser.
 import './browser.mjs';
 import { setApp } from '../../src/js/util.js';
-import { dropCopies } from '../../src/js/app/tasks.js';
+import tasks, { dropCopies } from '../../src/js/app/tasks.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
 import { uuid7 } from '../../src/js/sync.js';
@@ -114,12 +114,13 @@ export function fakeVikunja(tasks = []){
    The rest of the app is stubbed. Messages are recorded in `toasts`, with the `row` and `place` each was shown at.
    There is no screen, so these are just the values the caller asked for. No task has a role in Checklists. Rows marked
    done or deleted (leaving.js) are in `leaving`, when that part is passed in. The component is signed in with the
-   shared session's token, already confirmed as the user's, so a change is sent without asking Vikunja who it is. */
+   shared session's token, already confirmed as the user's, so a change is sent without asking Vikunja who it is. The
+   sheet and a checklist's screen read their tasks by id, as tasks.js does (sheetTask, runTask). */
 export function component(...parts){
   sharedToken.set('tk_test'); setSeenToken('tk_test');
   const c = {
     server: 'http://vikunja.test', signedIn: true, offline: false, writing: 0,
-    tasks: {}, view: { groups: [] }, sheet: { task: null }, route: { name: 'today' }, toasts: [], leaving: {},
+    tasks: {}, view: { groups: [] }, sheet: { id: null }, route: { name: 'today' }, toasts: [], leaving: {},
     waiting: { claims: {}, files: {}, ticks: {}, pcts: {} }, opsOn: {}, slideClaim: {}, dropping: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
@@ -127,6 +128,8 @@ export function component(...parts){
     get toast(){ return this.toasts.at(-1); },
     render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };
+  const byId = Object.getOwnPropertyDescriptors(tasks);
+  Object.defineProperties(c, { sheetTask: byId.sheetTask, runTask: byId.runTask });
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   dropCopies();
   setApp(c);

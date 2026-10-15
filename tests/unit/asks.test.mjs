@@ -190,7 +190,7 @@ test('Done sends the unsent answers as their own comment before the tick and the
   const { app, s } = cardStep(), sent = [];
   Object.defineProperties(app, Object.getOwnPropertyDescriptors(runs));
   Object.defineProperty(app, 'runView', { value: null });
-  Object.assign(app, { view: { run: { run: { id: 1 } } }, user: { id: 1 }, unlockSound(){}, act: async f => { sent.push(f); return { status: 'sent' }; } });
+  Object.assign(app, { view: { shownRun: { id: 1 } }, user: { id: 1 }, unlockSound(){}, act: async f => { sent.push(f); return { status: 'sent' }; } });
   app.runDrafts = { '7:temp': '7.5', 7: 'Door was open' };
   await app.tickStep(s, 'skip', true);
   assert.deepEqual(sent.map(f => f.op), ['skip']);

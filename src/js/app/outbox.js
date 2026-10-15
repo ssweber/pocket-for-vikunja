@@ -71,13 +71,13 @@ export default {
   // Whether a step was repeated during its checklist, as last loaded.
   isRepeat(id){
     if (typeof id === 'string') return !!this.pending.find(e => 'pending-' + e.id === id && (e.from || e.tpl != null));
-    const s = this.view.run?.steps.find(x => x.id === id) || copyOf(id);
+    const s = this.view.shownRun?.steps.includes(id) && this.tasks[id] || copyOf(id);
     return !!s && /repeated/i.test(addedText(s.description) || '');
   },
   actTitle(id){
-    const r = this.view.run;
+    const r = this.view.shownRun;
     if (typeof id === 'string') return this.pending.find(e => 'pending-' + e.id === id)?.title || '';   // a step still being inserted
-    return copyOf(id)?.title || r?.steps.find(x => x.id === id)?.title || (r?.run.id === id ? r.run.title : '') || '';
+    return copyOf(id)?.title || (r && (r.steps.includes(id) || r.id === id) && this.tasks[id]?.title) || '';
   },
   /* Retry a rejected action before sending the actions queued behind it. It goes with a new key, because the relay
      would answer the old one with the refusal it stored. After Idempotency-Unknown, tapping Try again is the user
@@ -107,7 +107,7 @@ export default {
     if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
     this.giveBack(a, said);
-    if (a.stage > 0 && this.view.run?.run.id === a.run) this.refreshRunTask(a.task);
+    if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
     this.say('Not sent.' + (said.back ? ' Its text is back where you wrote it.' : ''), {place: 'sheet:top'});
     this.flush();                                                           // sends the actions that waited behind it
   },

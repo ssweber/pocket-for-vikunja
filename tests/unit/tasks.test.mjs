@@ -93,6 +93,37 @@ test('a save shows on the row at once, its answer replaces it, and a failed save
   assert.deepEqual([t.title, t.due_date], ['Order cups', '2026-10-09T09:00:00Z'], 'a failed save puts back its own field only');
 });
 
+/* The sheet holds its task's id and reads the task's row, the object every list shows. So a change made anywhere shows
+   in the sheet at once. */
+test('the sheet reads its task\'s row by id, so a change made in a list shows in the sheet at once', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'Call Jo', done: false }]);
+  const t = app.row(copyOf(1));
+  app.sheet = { id: 1 };
+  assert.equal(app.sheetTask, t, 'the sheet and the list read one object');
+  app.edit(1, { done: true });
+  assert.equal(app.sheetTask.done, true, 'a tick in the list shows in the sheet');
+  read([{ id: 1, title: 'Call Jo back' }]);
+  assert.equal(app.sheetTask.title, 'Call Jo back', 'and so does a read');
+});
+
+/* A subtask in its parent's sheet is part of the parent's related_tasks. An edit of it is an edit of the parent's row,
+   which gets new lists and objects. Vikunja's copy of the parent changes only when the save answers. */
+test('a subtask edited in its parent\'s sheet changes the parent\'s row, and neither Vikunja\'s copy nor another object', () => {
+  const app = component(tasks), parent = { id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2, title: 'Load chairs', done: false }, { id: 3, title: 'Load tables', done: false }] } };
+  read([parent]);
+  const p = app.row(copyOf(1)), copy = copyOf(1), stubs = p.related_tasks.subtask, was = JSON.stringify(copy);
+  const ticked = app.edit(2, { done: true }, 1);
+  assert.deepEqual(p.related_tasks.subtask.map(s => s.done), [true, false], 'the sheet shows the subtask done at once');
+  assert.deepEqual([copyOf(1), JSON.stringify(copyOf(1))], [copy, was], 'Vikunja\'s copy of the parent is as it was');
+  assert.deepEqual([stubs[0].done, parent.related_tasks.subtask[0].done], [false, false], 'so are the subtask the row had before and the read');
+  ticked.ok({ id: 2, title: 'Load chairs', done: true });
+  assert.deepEqual([copyOf(1).related_tasks.subtask.map(s => s.done), p.related_tasks.subtask.map(s => s.done)], [[true, false], [true, false]], 'the answer goes into the parent\'s copy');
+  assert.equal(parent.related_tasks.subtask[0].done, false, 'as new objects, so the read is still as it was');
+  app.edit(3, { done: true }, 1).undo();
+  assert.deepEqual(p.related_tasks.subtask.map(s => s.done), [true, false], 'a failed save puts the subtask back');
+});
+
 /* Two saves of one task run one after another. The first answer carries the task before the second save. Its fields
    go into the copy, and the second save's field stays on top until its own answer. */
 test('two saves in flight on one task: the first answer does not flicker the second save\'s field back', async () => {
@@ -236,8 +267,8 @@ test('an op\'s answer goes into Vikunja\'s copy as the op stops waiting, so the 
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 2, title: 'Mop the floor', done: false, percent_done: 0, reactions: null }]);
   const app = component(tasks, acts, sending, outbox, runs), seen = [];
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], flushing: false, cap: {}, sheet: { task: null, sub: {} },
-    view: { groups: [], run: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], deleting: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} },
+    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, claimSent(){}, positionSent(){} });
   Object.defineProperty(app, 'toast', { value: {} });
   put([{ id: 2, title: 'Mop the floor', done: false, percent_done: 0, reactions: { '✅': [{ id: 3 }] }, comment_count: 2 }], TASK_COUNT_REACTIONS);
   const look = () => seen.push(app.withWaiting(2).percent_done);

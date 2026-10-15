@@ -39,7 +39,7 @@
     <template x-if="!askLocked && unsentAnswers(runView.step).size"><button class="btn ghost block asks-save" id="step-save-answers" @click="saveAnswers(runView.step)" x-text="saveLabel(runView.step)"></button></template>
   </div></template>
   <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.slow}" x-text="runView.step.whoText"></div></template>
-  <div class="step-acts" x-show="!runView.finished && canWrite(view.run.run.project_id)">
+  <div class="step-acts" x-show="!runView.finished && canWrite(runTask.project_id)">
     <!-- The buttons keep the same text while a comment is being written, so they don't change size under the user's
          thumb. A note under the comment says the comment is sent with them. -->
     <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" @click="tickStep(runView.step, 'done')"><svg class="i"><use href="#i-check"/></svg><span>Done</span></button></template>
@@ -63,7 +63,7 @@
     <template x-for="c in runView.step.notes" :key="c.id">
       <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
     </template>
-    <form class="comment-form" id="step-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(runView.step.id)">
+    <form class="comment-form" id="step-note-form" x-show="canWrite(runTask.project_id)" @submit.prevent="addNote(runView.step.id)">
       <textarea id="step-note" rows="1" placeholder="Comment on this step" aria-label="Comment on this step" x-model="runDrafts[runView.step.id]" x-grow="runDrafts[runView.step.id]"></textarea>
       <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="!(runDrafts[runView.step.id] || '').trim()" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
     </form>

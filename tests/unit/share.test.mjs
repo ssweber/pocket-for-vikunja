@@ -279,7 +279,7 @@ test('the text shared from a task\'s sheet matches its ring, with a segment per 
   const subs = [sub(2, { percent_done: .5 }), sub(3), sub(4, { done: true }), sub(5, { percent_done: .25 })];
   const t = { id: 1, title: 'Paint the back wall', done: false, percent_done: 0, due_date: NONE, project_id: 5, assignees: [], related_tasks: { subtask: subs } };
   for (const x of [t, ...subs]) app.tasks[x.id] = x;
-  Object.assign(app, { sheet: { task: t, subPeople: {} }, subtasks: subs, pendingSubtasks: [] });
+  Object.assign(app, { sheet: { id: 1, subPeople: {} }, subtasks: subs, pendingSubtasks: [] });
   const ring = app.ringOf(t), head = shareText(app.shareDoc('task'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [44, 1, 4], '(50 + 0 + 100 + 25) / 4');
   assert.equal(head, `Paint the back wall  ${'▰'.repeat(ring.done)}${'▱'.repeat(ring.total - ring.done)} ${ring.pct}%`);
@@ -297,7 +297,7 @@ test('the text shared from a checklist\'s screen matches its ring, counting a ti
   const run = { id: 50, title: 'Closing up', done: false, project_id: 5, assignees: [], created_by: { id: 1 }, comments: [], description: '', related_tasks: { subtask: steps } };
   app.isRunTask = t => t.id === 50;
   for (const x of [run, ...steps]) app.tasks[x.id] = x;
-  app.view = { groups: [], run: { run: { id: 50, title: 'Closing up', done: false, project_id: 5, assignees: [], created_by: { id: 1 }, comments: [] }, steps, at: null, last: null } };
+  app.view = { groups: [], shownRun: { id: 50, steps: steps.map(s => s.id), at: null, last: null } };
   app.pending = [{ kind: 'act', id: 9, run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // "Lock up" was ticked and the tick is not sent yet
   sending.keyWaiting.call(app);
   const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];

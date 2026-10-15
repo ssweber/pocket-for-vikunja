@@ -3,14 +3,14 @@ import {andList, memo, raw, store, taskDrafts, TZ} from '../util.js';
 import {allPages, api, NetError, patchTask, why} from '../api.js';
 import {fmtTime, isSet, repeats, startOfDay} from '../dates.js';
 import {htmlToText, parseFragment} from '../html.js';
-import {allComments, CHECKLIST_MARK, comesRound, draftSteps, endedOf, isChecklistDesc, isTemplateLabel, notesOnly, parseStep, patiently, problemText, roleOf, STEP_IGNORE, stepInfos, stepOrder, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
+import {allComments, CHECKLIST_MARK, comesRound, draftSteps, endedOf, isChecklistDesc, isTemplateLabel, notesOnly, parseStep, patiently, problemText, roleOf, STEP_IGNORE, stepInfos, stepProblems, stepsOf, stepWords, repeatWords, templateName, templateTitle, withOrder} from '../checklists.js';
 import {captureLines} from '../quickadd.js';
 import {ALREADY, randomId, sync} from '../sync.js';
 import {jobsFor} from './sending.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 import {newBox, newStepBox} from './core.js';
-import {copyOf, dropCopy, put, savedScreen, started, TASK_COUNT, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, dropCopy, put, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -68,7 +68,7 @@ export default {
   hasOwnOrder(t){ return ['template', 'run'].includes(this.role(t)); },
   // The role of the open task in the sheet. A template that isn't ready gets the sheet of a candidate, so Make template
   // can finish it.
-  get checklistRole(){ const t = this.sheet.task, role = this.role(t); return role === 'template' && !this.readyTemplate(t) ? 'candidate' : role; },
+  get checklistRole(){ const t = this.sheetTask, role = this.role(t); return role === 'template' && !this.readyTemplate(t) ? 'candidate' : role; },
   /* Remove from a list what belongs on Checklists: done templates and their steps. This is used for a project's Done
      and for search. An open template with a due date stays, because it is due. With `runSteps`, the steps of a
      checklist are removed too, because they show on the checklist's screen. A step's template can be in the same
@@ -202,13 +202,9 @@ export default {
   shareUrl(pid){ return `${this.server}/projects/${pid}/settings/share`; },
   async openTasks(pid){
     const at = started(), list = await allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'}));
-    this.putChecklists(list, TASK_COUNT, at);
+    put(list, TASK_COUNT, at);
     return list;
   },
-  /* Put a checklists project's tasks into Vikunja's copies, except its templates. Checklists doesn't show a template as
-     a row, and a template's sheet opened from a copy draws its steps twice: from the copy, then from its own read.
-     Today reads a due template with its other rows. `at` is when the read started (put). */
-  putChecklists(list, asked, at){ put(list.filter(t => this.role(t, list) !== 'template'), asked, at); },
   // Load each checklist project with its templates and open checklists.
   async loadChecklists(seq){
     const checklists = await this.readChecklists(t => this.row(t));
@@ -229,12 +225,12 @@ export default {
         // Other projects keep the access Pocket read once (loadPerms).
         api('/projects/' + p.id).then(full => { this.perms[p.id] = full.max_permission ?? 1; }).catch(() => {}),
         // Templates: done ones, and open ones with a due date.
-        labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `labels in ${labels.join(', ')}`})) : [],
+        labels.length ? allPages(`/projects/${p.id}/tasks?` + new URLSearchParams({filter: `labels in ${labels.join(', ')}`})).then(putting(TASK, at)) : [],
         this.openTasks(p.id),
         // Everything done in the last FINISHED_DAYS: the checklists finished then, and the steps that tell how each went.
         // A known gap: a step done before that, in a checklist finished since, is left out of its skips and comments.
         allPages(`/projects/${p.id}/tasks?` + new URLSearchParams([['filter', `done = true && done_at >= '${since}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'],
-          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']])).then(list => Promise.all(list.map(allComments))).then(list => { this.putChecklists(list, TASK_REACTIONS_COMMENTS, at); return list; })]);
+          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']])).then(list => Promise.all(list.map(allComments))).then(putting(TASK_REACTIONS_COMMENTS, at))]);
       // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there. That
       // includes its open steps, or a step done on this phone and undone elsewhere would still count as done.
       const finished = done.filter(t => this.isRunTask(t)), ids = new Set(finished.map(t => t.id));
@@ -259,7 +255,7 @@ export default {
   },
   // The note under a template's "When it's due" setting. It explains what the date and the repeat do.
   get comesRoundNote(){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (!t || this.checklistRole !== 'template') return '';
     if (t.done || !isSet(t.due_date)) return repeats(t) ? `This template repeats ${repeatWords(t)} once it has a date. Set a date to make it appear on Today. Until then, start it from Checklists.`
       : 'With no date, start this template from Checklists when you need it. Set a date to make it appear on Today.';
@@ -332,7 +328,7 @@ export default {
      Then mark the task itself done, or leave it open if it has a due date, so it stays due. The task comes last. If
      this is interrupted, the task is not yet a template, and the button can finish the job. */
   async makeTemplate(){
-    const t = this.sheet.task;
+    const t = this.sheetTask;
     if (!t || this.sheet.checklistBusy) return;
     const problems = stepProblems(this.subtasks.map(s => s.title));
     if (problems.length) { this.say('Template not created: ' + problemText(problems), {place: 'sheet:top', cls: 'failed'}); return; }
@@ -340,7 +336,7 @@ export default {
     try {
       await this.markTemplate(t, this.subtasks.filter(s => !s.done).map(s => s.id));
       const full = await this.readCopy(t.id);
-      if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
+      if (this.sheet.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
       this.say(!comesRound(full) ? 'Template created. Start it here or under Checklists.'
         : `Template created. ${this.scheduleText(full)}. Starting it on or after the due day `
           + (repeats(full) ? 'moves it to its next date.' : 'marks it done, because it doesn\'t repeat.'), {place: 'sheet:top'});
@@ -493,7 +489,7 @@ export default {
   // Add steps to a template: create them, mark them done like the template's other steps, and give a name to any step
   // they count from.
   async addTemplateSteps(){
-    const t = this.sheet.task, d = this.draft('add');
+    const t = this.sheetTask, d = this.draft('add');
     if (!t || !d.added.length || d.problem || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
     const r = {ids: [], problems: [], error: null};
@@ -519,22 +515,23 @@ export default {
     if (r.error && !(r.error instanceof NetError)) for (const x of rows) if (x.job?.taskId && !x.job.linked && !r.ids.includes(x.job.taskId)) {
       await api('/tasks/' + x.job.taskId, {method: 'DELETE'}).then(() => { x.job = null; }, () => {});
     }
-    if (this.sheet.task?.id === t.id) {
+    if (this.sheet.id === t.id) {
       this.sheet.subBusy = false;
       if (r.error) {
         // Lines that were not added go back in the box with their jobs, so the next try can continue from them.
         const left = this.sheet.addRows.filter(x => x.text.trim()).slice(r.ids.length), b = this.stepBox('add');
         b.text = [...left.map(x => x.text), b.text].filter(x => x?.trim()).join('\n'); b.jobs = left.map(x => ({text: x.text, job: x.job}));
         this.sheet.addRows = [];
-        const tt = this.sheet.task;
-        tt.related_tasks = {...tt.related_tasks, subtask: [...this.subtasks, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]};
+        // The steps added before it stopped are in Vikunja, so its copy of the template lists them.
+        const c = copyOf(t.id), had = (c?.related_tasks?.subtask || []).filter(s => !r.ids.includes(s.id));
+        put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: [...had, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]}}], ['related_tasks']);
       } else {
         // If the box was under a step, move it under the last added step.
         this.sheet.addRows = [];
         if (under != null && this.sheet.subAt === under && r.ids.length) this.sheet.subAt = r.ids.at(-1);
       }
       this.sheet.dirty = true;
-      try { const full = await this.readCopy(t.id); if (full && this.sheet.task?.id === full.id) this.showTask(full); } catch {}
+      try { const full = await this.readCopy(t.id); if (full && this.sheet.id === full.id) this.showTask(full); } catch {}
     }
     const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
     if (r.error) this.say(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`, {place: 'sheet:subtasks', cls: 'failed'});
@@ -602,14 +599,14 @@ export default {
     // without them.
     const own = todo.find(x => x.s.id === e.id), p = own && this.stepParsed(own.title, e.ignore);
     if (own) own.title = p.title;
-    for (const x of todo) x.s.title = x.title;
+    for (const x of todo) x.shown = this.edit(x.s.id, {title: x.title}, this.sheet.id);
     // Save the renamed steps in order, so a step this one counts from is named first.
     try {
-      for (const x of todo) { await this.saveTask(x.s.id, {title: x.title}); x.saved = true; this.sheet.dirty = true; }
+      for (const x of todo) { x.shown.ok(await this.saveTask(x.s.id, {title: x.title})); x.saved = true; this.sheet.dirty = true; }
       if (p && (p.assignees.length || p.labels.length || p.priority)) {
         // Apply them to the existing step, the way quick add sends a line. A person who can't see the project stays in
         // the title.
-        const job = {taskId: e.id, done: false}, t = await this.createTask(p, this.sheet.task?.project_id, {job});
+        const job = {taskId: e.id, done: false}, t = await this.createTask(p, this.sheetTask?.project_id, {job});
         if (job.body.title !== p.title || p.priority) await this.saveTask(e.id, {title: job.body.title, ...p.priority && {priority: p.priority}});
         if (t.problems.length) this.say('Changed, but ' + t.problems.join('; '), {place: 'sheet:subtasks', cls: 'failed'});
       }
@@ -622,12 +619,12 @@ export default {
         this.sheet.dirty = true;
       }
       if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
-        const full = await this.readCopy(this.sheet.task.id).catch(() => null);
+        const full = await this.readCopy(this.sheet.id).catch(() => null);
 
-        if (full && this.sheet.task?.id === full.id) { this.showTask(full); this.loadSubPeople(full); }
+        if (full && this.sheet.id === full.id) { this.showTask(full); this.loadSubPeople(full); }
       }
     } catch (err) {
-      for (const x of todo) if (!x.saved) x.s.title = x.was;
+      for (const x of todo) if (!x.saved) x.shown.undo();
       this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:subtasks', cls: 'failed'});
       if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = {...e};
     }
@@ -642,7 +639,7 @@ export default {
   // The data for a template step's own sheet: its number among the template's steps, and when it is due. Both are read
   // from the template's steps.
   get tplStep(){
-    const t = this.sheet.task, p = this.parentTask, tpl = p && (copyOf(p.id) || kept()[p.id]);
+    const t = this.sheetTask, p = this.parentTask, tpl = p && (copyOf(p.id) || kept()[p.id]);
     if (!tpl) return null;
     const steps = stepsOf(tpl), i = steps.findIndex(s => s.id === t?.id);
     if (i < 0) return null;
@@ -651,7 +648,7 @@ export default {
   // Delete a step from a template. Checklists already started keep their copy of it.
   async removeStep(i){
     if (this.sheet.kind === 'newtpl') return this.dropDraftRow('new', i);       // the step was never sent, so just remove the row
-    const t = this.sheet.task, st = this.subtasks[i];
+    const t = this.sheetTask, st = this.subtasks[i];
     if (!t || !st || this.sheet.checklistBusy) return;
     const rest = this.subtasks.filter((_, k) => k !== i).map(s => s.title), problems = stepProblems(rest);
     // Report problems using the step numbers on screen now, from before the removal.
@@ -664,7 +661,8 @@ export default {
         if (e.status !== 404 && (!(e instanceof NetError) || await api('/tasks/' + st.id).then(() => true, x => x.status !== 404))) throw e;
       });
       dropCopy(st.id);
-      t.related_tasks = {...t.related_tasks, subtask: this.subtasks.filter(s => s.id !== st.id)};
+      const c = copyOf(t.id);
+      put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id)}}], ['related_tasks']);
       this.keepTemplate(t);
       this.sheet.dirty = true;
       this.say('Step removed', {place: 'sheet:subtasks'});
@@ -678,7 +676,7 @@ export default {
      So notes and moves saved elsewhere since the sheet opened are kept. */
   async moveStep(i, dir, dragged = false){
     if (this.sheet.kind === 'newtpl') return this.placeDraftRow('new', i, i + dir);   // on the phone only, so just reorder the rows
-    const t = this.sheet.task, st = this.subtasks[i], to = i + dir, rest = this.subtasks.filter((_, k) => k !== i);
+    const t = this.sheetTask, st = this.subtasks[i], to = i + dir, rest = this.subtasks.filter((_, k) => k !== i);
     if (!t || !st || this.sheet.checklistBusy || to < 0 || to >= this.subtasks.length || !dir) return;
     const after = to > 0 ? rest[to - 1].id : null;
     // The steps in their new order, or null if nothing moves. Throws for a problem the move creates.
@@ -697,17 +695,18 @@ export default {
     let steps;
     try { steps = moved(this.subtasks); } catch (e) { this.say('Not moved: ' + e.message, {place: 'sheet:subtasks', cls: 'failed'}); return; }
     if (!steps) return;
-    const was = stepOrder(t.description), box = document.getElementById('step-edit-' + st.id);
-    t.description = withOrder(t.description, steps.map(s => s.id));          // shown in the new order straight away
+    const box = document.getElementById('step-edit-' + st.id);
+    const shown = this.edit(t.id, {description: withOrder(t.description, steps.map(s => s.id))});   // shown in the new order straight away
     // Moving the row takes the focus off its box. Give the focus back before the row's focusout handler runs, so the
     // step stays open and can move again.
     if (box && box === document.activeElement) setTimeout(() => box.isConnected && box.focus({preventScroll: true}));
     this.sheet.checklistBusy = true;
     try {
       const got = await patiently(() => this.saveTask(t.id, null, now => { const s = moved(stepsOf(now)); return s && {description: withOrder(now.description, s.map(x => x.id))}; }));
-      if (this.sheet.task?.id === t.id) { this.showTask(got); this.unsay('sheet:subtasks'); }   // clear the message from an earlier failed move
+      shown.ok();
+      if (this.sheet.id === t.id) { this.showTask(got); this.unsay('sheet:subtasks'); }   // clear the message from an earlier failed move
       this.sheet.dirty = true;
-    } catch (e) { if (this.sheet.task?.id === t.id) t.description = withOrder(t.description, was); this.say('Not moved: ' + why(e), {place: 'sheet:subtasks', cls: 'failed'}); }
+    } catch (e) { shown.undo(); this.say('Not moved: ' + why(e), {place: 'sheet:subtasks', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
 };

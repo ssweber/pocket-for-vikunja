@@ -115,7 +115,7 @@ test('a template that isn\'t ready to start has the sheet of a candidate', async
   const { component } = await import('./fake.mjs'), { default: checklists } = await import('../../src/js/app/checklists.js');
   const app = component(checklists), L = [{ title: 'template' }], DUE = '2026-10-20T09:00:00Z';
   app.checklistIds = new Set([7]);
-  const sheet = f => { app.sheet = { task: { id: 1, done: false, project_id: 7, labels: L, description: '', due_date: '0001-01-01T00:00:00Z', related_tasks: {}, ...f } }; return [app.role(app.sheet.task), app.checklistRole]; };
+  const sheet = f => { app.tasks = { 1: { id: 1, done: false, project_id: 7, labels: L, description: '', due_date: '0001-01-01T00:00:00Z', related_tasks: {}, ...f } }; app.sheet = { id: 1 }; return [app.role(app.sheetTask), app.checklistRole]; };
   assert.deepEqual(sheet({ done: true }), ['template', 'template']);
   assert.deepEqual(sheet({ due_date: DUE }), ['template', 'template'], 'a template that comes round');
   assert.deepEqual(sheet({}), ['template', 'candidate'], 'open with no date');
@@ -153,7 +153,8 @@ test('a checklist\'s screen keeps a step\'s title in the template, taken from th
 test('a template and its steps change only for the person who made it or a project admin, and read access can\'t start one', async () => {
   const { component } = await import('./fake.mjs'), { default: runs } = await import('../../src/js/app/runs.js');
   const app = component(runs), tpl = { id: 1, project_id: 7, created_by: { id: 1 } };
-  Object.assign(app, { user: { id: 2 }, perms: { 7: 1 }, sheet: { task: tpl }, checklistRole: 'template', parentTask: null });
+  const show = t => ({ tasks: { [t.id]: t }, sheet: { id: t.id } });
+  Object.assign(app, { user: { id: 2 }, perms: { 7: 1 }, ...show(tpl), checklistRole: 'template', parentTask: null });
   const say = () => [app.canEdit, app.templateNote.split('. ').slice(1).join('. ')];
   assert.deepEqual(say(), [false, 'Only the person who made this template or a project admin can change it.'], 'write access, someone else\'s template');
   app.user = { id: 1 };
@@ -162,11 +163,11 @@ test('a template and its steps change only for the person who made it or a proje
   assert.equal(app.canEdit, true, 'a project admin');
   Object.assign(app, { perms: {} });
   assert.equal(app.canEdit, true, 'access not loaded yet counts as admin, as it counts as write');
-  Object.assign(app, { perms: { 7: 1 }, sheet: { task: { id: 9, project_id: 7, created_by: { id: 2 } } }, checklistRole: 'tplstep', parentTask: tpl });
+  Object.assign(app, { perms: { 7: 1 }, ...show({ id: 9, project_id: 7, created_by: { id: 2 } }), checklistRole: 'tplstep', parentTask: tpl });
   assert.equal(app.canEdit, false, 'a template\'s step goes by its template\'s maker, not its own');
-  Object.assign(app, { sheet: { task: { id: 3, project_id: 7, created_by: { id: 1 } } }, checklistRole: 'run' });
+  Object.assign(app, { ...show({ id: 3, project_id: 7, created_by: { id: 1 } }), checklistRole: 'run' });
   assert.equal(app.canEdit, true, 'a checklist started from it stays open to everyone with write');
-  Object.assign(app, { perms: { 7: 0 }, sheet: { task: tpl }, checklistRole: 'template' });
+  Object.assign(app, { perms: { 7: 0 }, ...show(tpl), checklistRole: 'template' });
   assert.deepEqual([app.canEdit, app.templateNote], [false, 'Read only. You can see this template, but not start a checklist from it. Ask the project\'s owner for write access.']);
 });
 
@@ -204,7 +205,7 @@ test('a template\'s step being edited isn\'t saved when the user\'s access arriv
   const { component } = await import('./fake.mjs'), { default: runs } = await import('../../src/js/app/runs.js'), { default: checklists } = await import('../../src/js/app/checklists.js');
   const app = component(runs, checklists), step = { id: 2, title: 'Mop', done: true, project_id: 7 }, saves = [];
   const tpl = { id: 1, title: 'TEMPLATE: Closing up', done: true, project_id: 7, created_by: { id: 1 }, labels: [{ title: 'template' }], related_tasks: { subtask: [step] } };
-  Object.assign(app, { user: { id: 2 }, perms: {}, subtasks: [step], checklistIds: new Set([7]), sheet: { task: tpl, kind: 'task', stepEdit: null },
+  Object.assign(app, { user: { id: 2 }, perms: {}, subtasks: [step], checklistIds: new Set([7]), tasks: { 1: tpl }, sheet: { id: 1, kind: 'task', stepEdit: null },
     saveTask: async (id, patch) => { saves.push(id); return patch; } });
   app.sheet.stepEdit = { id: 2, text: 'Mop the floor', ignore: {} };
   app.perms[7] = 1;                                                        // write, and someone else made the template

@@ -121,7 +121,7 @@ test('tapping a tick makes the phone vibrate, but a step done by a swipe does no
   const felt = [], app = component(views, claims, leaving, runs, asks);
   navigator.vibrate = p => felt.push(p);
   try {
-    Object.assign(app, { toggleSubtask(){}, toggleDone(){}, sheetDone(){}, unlockSound(){}, runDrafts: {}, act: async () => ({}), view: { run: { at: 0 } }, markRow(){} });
+    Object.assign(app, { toggleSubtask(){}, toggleDone(){}, sheetDone(){}, unlockSound(){}, runDrafts: {}, act: async () => ({}), view: { shownRun: { at: 0 } }, markRow(){} });
     Object.defineProperty(app, 'runView', { get: () => null });
     app.tickRow({ id: 4, done: false }, { depth: {} }, 'row');
     app.tickRow({ id: 4, done: true }, { depth: {} }, 'row');
@@ -306,7 +306,7 @@ test('a touch that moves past the swipe threshold on a slant and then stops does
    stops at 0%. */
 test('a checklist step swipes for progress like a task, and only an inserted step swipes on to Delete', () => {
   const app = component(progress), steps = [step({ id: 1, pct: 50 }), step({ id: 2, added: 'Inserted' }), step({ id: 3, done: true, pct: 25 }), step({ id: 4, pending: true })];
-  Object.assign(app, { runView: { steps, finished: false }, view: { run: { run: { project_id: 1 } } }, canWrite: () => true });
+  Object.assign(app, { runView: { steps, finished: false }, tasks: { 9: { id: 9, project_id: 1 } }, view: { shownRun: { id: 9 } }, canWrite: () => true });
   const row = id => ({ dataset: { id: String(id) }, clientWidth: 360 }), target = { closest: () => null };
   const at = id => app.stepSlide(row(id), target);
   assert.deepEqual([at(1).start, at(1).swipe], [50, null], 'a step from the template has no Delete and stops at 0%');
@@ -483,7 +483,7 @@ test('the sheet\'s own row swipes for progress and springs back, and a parent\'s
   Object.defineProperty(app, 'sheetRing', { get: () => ring });
   Object.defineProperty(app, 'ofTemplate', { get: () => ['template', 'tplstep'].includes(role) });
   Object.defineProperty(app, 'canEdit', { get: () => edit });
-  Object.assign(app, { sheet: { task: t, titleEdit: false }, canDelete: () => true, canWrite: () => true, ringTap: (x, el, sheet) => taps.push([x.id, el, sheet]) });
+  Object.assign(app, { tasks: { 5: t }, sheet: { id: 5, titleEdit: false }, canDelete: () => true, canWrite: () => true, ringTap: (x, el, sheet) => taps.push([x.id, el, sheet]) });
   const row = { clientWidth: 360, classList: { add(){}, remove(){}, toggle(){} }, style: { setProperty(){}, removeProperty(){} } };
   const s = app.sheetRowGesture(row);
   assert.deepEqual([s.start, s.springs, !!s.swipe, s.reorder], [25, true, true, undefined], 'the swipe starts from 25%, springs back, has a Delete and cannot be held to move');
@@ -595,7 +595,7 @@ test('setting progress in the sheet claims a task nobody has, after the save, an
   const t = { id: 5, title: 'Wipe the menus', project_id: 1, percent_done: 0, assignees: [] };
   let ring = null;
   Object.defineProperty(app, 'sheetRing', { get: () => ring });
-  Object.assign(app, { user: me, pending: [], canWrite: () => true, sheet: { task: t }, stepRun: () => null,
+  Object.assign(app, { user: me, pending: [], canWrite: () => true, tasks: { 5: t }, sheet: { id: 5 }, stepRun: () => null,
     act: async a => { order.push(['claim', a.task]); }, sheetProgress: async (x, pct) => { order.push(['save', pct]); } });
   const setting = app.setSheetProgress(25);
   assert.deepEqual(app.peopleOf(5, t.assignees), [me], 'you appear in Assigned at once');

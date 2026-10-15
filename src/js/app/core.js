@@ -12,7 +12,7 @@ export const shared = {onClosedSheet: false, closedAt: '', saveChain: Promise.re
 export const newBox = () => ({text: '', focus: false, caret: 0, ignore: {}, nest: false, flat: false, remind: false, busy: false, adding: 0});
 // Give a template's add box the same row state as a step, with key '+'.
 export const newStepBox = () => ({...newBox(), key: '+', keep: false, from: null});
-export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', task: null, title: '', savedMsg: '', dirty: false,
+export const blankSheet = kind => ({open: false, show: false, kind, loading: false, error: '', id: null, title: '', savedMsg: '', dirty: false,
   titleEdit: false, menu: false, editingDesc: false, descDraft: '', descBase: null, descConflict: null, descUnsaved: false, comments: null, commentsNote: '', commentDraft: '', commentBusy: false, sub: newBox(), subBusy: false, assigning: false, assignName: '',
   project: null, start: null, subPeople: {}, subLabels: {}, subView: null, subAt: null, subAfter: null, subEnd: false, remindAt: false, checklistBusy: false, newTpl: null, addRows: [], addBox: newStepBox(), newProj: null, runEdit: null, stepEdit: null, asksEdit: null, from: null, projEdit: null, complete: null,
   lines: {}});                                 // a place in the sheet ("notes") -> its message (lines.js)
@@ -36,7 +36,7 @@ export default () => ({
   // cards maps Today's task ids to cards and what brought them onto Today. listView identifies the project view
   // whose order Pocket reads and writes. savedAt dates the cached screen. updating marks a background reload, and
   // behind shows when it takes over a second.
-  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], cards: {}, project: null, savedAt: null, checklists: [], run: null, listView: null, updating: false, behind: false},
+  view: {route: null, loading: true, error: '', bootFailed: false, groups: [], cards: {}, project: null, savedAt: null, checklists: [], shownRun: null, listView: null, updating: false, behind: false},
   // Draw long screens in batches, tracking the row limit and whether drawing is still in progress.
   drawTo: Infinity, drawing: false,
   refreshing: false,
@@ -165,13 +165,13 @@ export default () => ({
     // Save drafts as they change so closing Pocket keeps unfinished text.
     this.$watch('runDrafts', v => taskDrafts.set('run', Object.fromEntries(Object.entries(v).filter(([, x]) => x?.trim()))));
     for (const [k, get] of [['comment', () => this.sheet.commentDraft], ['sub', () => this.sheet.sub.text]])
-      this.$watch(get, v => { const t = this.sheet.task; if (this.sheet.kind === 'task' && t) taskDrafts.set(k + ':' + t.id, v); });
+      this.$watch(get, v => { const id = this.sheet.id; if (this.sheet.kind === 'task' && id != null) taskDrafts.set(k + ':' + id, v); });
     this.$watch(() => this.sheet.editingDesc ? this.sheet.descDraft : null, v => {
-      const t = this.sheet.task;
-      if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + t.id, v.trim() !== this.notesText(t).trim() ? {text: v, base: this.sheet.descBase} : null);
+      const t = this.sheetTask;
+      if (v !== null && t && this.sheet.kind === 'task') taskDrafts.set('desc:' + this.sheet.id, v.trim() !== this.notesText(t).trim() ? {text: v, base: this.sheet.descBase} : null);
     });
     this.$watch(() => this.sheet.kind === 'newtpl' && this.sheet.newTpl, nt => { if (nt && !nt.made) taskDrafts.set('newtpl:' + nt.project.id, {name: nt.box.text, rows: nt.rows.map(r => ({text: r.text, keep: r.keep, ignore: r.ignore})), add: nt.add.text}); });
-    this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addBox.text, text => { if (text !== false) taskDrafts.set('addsteps:' + this.sheet.task.id, text.trim() ? [{text}] : null); });
+    this.$watch(() => this.sheet.kind === 'task' && this.checklistRole === 'template' && this.sheet.addBox.text, text => { if (text !== false) taskDrafts.set('addsteps:' + this.sheet.id, text.trim() ? [{text}] : null); });
     // Search once typing pauses.
     let searchTimer;
     this.$watch('searchQ', () => { clearTimeout(searchTimer); if (this.route.name === 'search') searchTimer = setTimeout(() => this.render(), 250); });

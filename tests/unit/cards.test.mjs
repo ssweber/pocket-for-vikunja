@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, cardRows, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo, shortTime } from '../../src/js/dates.js';
-import { listItems, nestSubtasks, rowGestures, RUN_ROW } from '../../src/js/lists.js';
+import { listItems, nestSubtasks, rowGestures, RUN_ROW, saved } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
 import views from '../../src/js/app/views.js';
@@ -520,15 +520,32 @@ test('a checklist card on Today opens on the step its screen would, and follows 
 });
 
 // A checklist on its screen (runView, runs.js). A was done a minute ago. B is timed 30 minutes after A and is counting down. C and D have no time.
+// The screen holds ids (view.shownRun) and reads the checklist and its steps from tasks.
 const runScreen = () => {
-  const app = component(runs, claims, checklists, cards, views), now = Date.now(), NONE = '0001-01-01T00:00:00Z';
-  const step = (id, title, f = {}) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
-    assignees: [], attachments: [], reactions: {}, comments: [], tpl: title, added: '', from: null, ...f });
+  const app = component(tasks, runs, claims, checklists, cards, views), now = Date.now(), NONE = '0001-01-01T00:00:00Z';
+  // A step as Vikunja gives it. Its template step's title is the title of the task it was copied from.
+  const step = (id, title, f = {}, tpl = title) => ({ id, title, done: false, done_at: NONE, due_date: NONE, updated: new Date(now - 36e5).toISOString(), percent_done: 0, description: '',
+    assignees: [], attachments: [], reactions: {}, comments: [], related_tasks: { copiedfrom: [{ id: id - 40, title: tpl }] }, ...f });
+  for (const t of [{ id: 50, title: 'Opening up', done: false, project_id: 5, assignees: [me], created_by: me, comments: [] },
+    step(51, 'A', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [me] } }), step(52, 'B', {}, 'B T#30m'), step(53, 'C', { percent_done: .5 }), step(54, 'D')]) app.row(t);
   Object.assign(app, { user: me, pending: [], slow: [], perms: {}, clock: now, runNow: now, runMemo: null, runG: { depth: {}, run: true, at: null, locked: false }, actTask: a => a.task,
-    view: { run: { run: { id: 50, title: 'Opening up', done: false, project_id: 5, assignees: [me], created_by: me, comments: [] },
-      steps: [step(51, 'A', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [me] } }), step(52, 'B', { tpl: 'B T#30m' }), step(53, 'C', { percent_done: .5 }), step(54, 'D')], at: null, last: null } } });
+    view: { shownRun: { id: 50, steps: [51, 52, 53, 54], at: null, last: null } } });
   return app;
 };
+const stepsOn = app => app.view.shownRun.steps.map(id => app.tasks[id]);
+
+/* A checklist's screen holds ids and reads the checklist and its steps from tasks, the objects every list shows. So a
+   step ticked on Today shows on the screen at once, and the screen is saved as its ids and Vikunja's copies. */
+test('a checklist\'s screen reads its steps by id, so a step ticked in a list shows on it at once', () => {
+  const app = runScreen();
+  assert.deepEqual([Object.keys(app.view.shownRun), app.runTask], [['id', 'steps', 'at', 'last'], app.tasks[50]]);
+  app.saveRun();
+  const kept = saved.get('run.50');
+  assert.deepEqual([kept.shownRun.steps, kept.tasks.map(t => t.id)], [[51, 52, 53, 54], [50, 51, 52, 53, 54]], 'the saved screen is its ids and the tasks it reads');
+  assert.equal(app.runView.steps[2].done, false);
+  app.edit(53, { done: true });                                            // C ticked on Today's card
+  assert.equal(app.runView.steps[2].done, true);
+});
 
 test('a checklist screen opens on the next step in order, and ticking a step moves on to the next', () => {
   const app = runScreen(), v = app.runView;
@@ -585,7 +602,7 @@ test('time passing recalculates a checklist only when a countdown\'s text change
   assert.equal(app.runView.steps[1].countText, 'in 5s');
   c.mock.timers.setTime(t0 + 29 * 60000 - 4000); app.tickRun();
   assert.equal(app.runView.steps[1].countText, 'in 4s');
-  app.view.run.at = 2;                                                      // C is on the card
+  app.view.shownRun.at = 2;                                                 // C is on the card
   c.mock.timers.setTime(t0 + 29 * 60000 + 2000); app.tickRun();
   assert.deepEqual([app.runView.steps[1].late, app.runView.steps[1].countText], [true, '2s late']);
 });
@@ -616,7 +633,7 @@ test('the step card shows who is doing the step, as its row does, until the step
    the checklist is finished or every step is done, and in its ⋯ sheet. */
 test('a checklist’s own row asks to finish it from its ring, shows who it is for in its slot, and shows who started it in the summary', async () => {
   const app = runScreen(), made = new Date(Date.now() - 36e5).toISOString(), calls = [];
-  Object.assign(app.view.run.run, { created: made });
+  Object.assign(app.tasks[50], { created: made });
   Object.assign(app, { sheet: {}, route: { name: 'run' }, openSheet: k => { app.sheet = { kind: k }; }, closeSheet: () => calls.push('close'), finishRun: () => calls.push('finish'),
     reopenRun: id => calls.push('reopen ' + id) });
   const r = app.rowRing(app.runOwn, RUN_ROW);
@@ -628,12 +645,12 @@ test('a checklist’s own row asks to finish it from its ring, shows who it is f
   await app.confirmComplete();
   assert.deepEqual(calls, ['close', 'finish'], 'confirming finishes the checklist, as Finish checklist does');
   assert.match(app.runView.summary, /^Started by you at .+ · 1 of 4 done · 3 not done$/, 'the summary shows who started it');
-  for (const s of app.view.run.steps) s.done = true;
+  for (const s of stepsOn(app)) s.done = true;
   assert.match(app.runView.summary, /^Started by you at .+ · 4 of 4 done$/);
   app.rowRing(app.runOwn, RUN_ROW).tap();
   assert.equal(calls.at(-1), 'finish', 'with every step done, the ring finishes the checklist at once, with an Undo');
   assert.match(app.runStarted, /^Started by you, \w+ \d+, /);
-  app.view.run.run.created_by = { id: 9, username: 'priya', name: 'Priya' };
+  app.tasks[50].created_by = { id: 9, username: 'priya', name: 'Priya' };
   assert.match(app.runView.summary, /^Started by Priya at /);
 });
 
@@ -654,12 +671,12 @@ test('a checklist’s add box adds after the last step, or after the step it is 
 
 test('a checklist’s add box goes after the last step when every step is done, and is absent when finished or read-only', () => {
   const app = runScreen();
-  for (const s of app.view.run.steps) Object.assign(s, { done: true, done_at: new Date().toISOString() });
+  for (const s of stepsOn(app)) Object.assign(s, { done: true, done_at: new Date().toISOString() });
   assert.equal(app.runView.step, null, 'no step on the card');
   assert.deepEqual([app.runAim.above.title, app.runAim.before], ['D', null]);
   app.perms[5] = 0;
   assert.equal(app.runAim, null, 'a read-only checklist has no box');
-  app.perms[5] = 1; app.view.run.run.done = true;
+  app.perms[5] = 1; app.tasks[50].done = true;
   assert.equal(app.runAim, null, 'a finished checklist has no box');
 });
 
