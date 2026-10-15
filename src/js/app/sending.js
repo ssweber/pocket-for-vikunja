@@ -12,6 +12,8 @@ import {OPS} from '../ops/index.js';
 import {CREATED, put, savedScreen, TASK} from './tasks.js';
 
 let waitTimer;
+// Each waiting row's object, by its entry and index, kept while the row is unchanged (pendingTasks).
+const waitingRows = new Map();
 const lastGroups = new Map();                    // each group as listGroups last returned it, by key
 // The job for each line: the earlier try's job if the line is unchanged, else a new one.
 export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
@@ -168,9 +170,8 @@ export default {
       if (files.length) {
         this.refreshPending();
         // Read the task again with its new attachments, for its row and its sheet.
-        const t = await this.readTask(target).catch(() => null);
+        const t = await this.readCopy(target).catch(() => null);
         if (t) {
-          put([t], TASK); this.syncTask(t);
           for (const x of tasks) if (x.id === t.id) Object.assign(x, t);
           if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
           const step = this.view.run?.steps.find(s => s.id === t.id);           // a photo added to a checklist step
@@ -233,11 +234,8 @@ export default {
       if (t.parent && place > 0) this.positions[t.id] = t.position > 0 ? t.position : place;
       const key = this.pendingPlace({...t, child});
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
-      // A task marked done, or given a percentage, shows that on its row. A repeating task shows as done, as it was
-      // created, until the batch clears (arrivedDone).
-      const now = arrived?.now;
-      if (now) Object.assign(t, arrived.done && !now.done ? {done: true} : {done: now.done, done_at: now.done_at, percent_done: now.percent_done, updated: now.updated});
-      const g = this.view.groups.find(g => g.key === key);
+      // A task marked done, or given a percentage, shows that on its row, from Vikunja's copy (`arrived.now`).
+      const now = arrived?.now, g = this.view.groups.find(g => g.key === key);
       // On a project's list a new task goes first, where Vikunja puts it, until the list is read again. The exception
       // is a task sent with its own position (`place`, from a box moved out a level), which Vikunja keeps.
       if (g && this.route.name === 'project' && this.view.listView && !child && !t.parent && place > 0) this.positions[t.id] = place;
@@ -245,9 +243,10 @@ export default {
         this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
       // A subtask keeps the position it was sent with.
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
-      if (g) g.tasks.push(this.keep(t));
-      else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [this.keep(t)]});
-      if (arrived?.done) this.arrivedDone(this.tasks[t.id], now);
+      const row = this.show(t.id, t);
+      if (g) g.tasks.push(row);
+      else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [row]});
+      if (arrived?.done) this.arrivedDone(row, now, t);
       placed = true;
     }
     // Also update the copy kept for opening offline.
@@ -258,17 +257,19 @@ export default {
      the same as a task the user ticks there (toggleDone, actions.js). It leaves Today, or moves to Done in a
      project. Tapping its tick before then opens it again.
 
-     A repeating task is open again at its next date in `now`, Vikunja's copy. It shows as done, with the date it was
-     given, until the batch clears. Then it shows as open at its next date, or leaves Today if that date is 8 or more
-     days from today. Tapping its tick before then puts its date back. */
-  arrivedDone(t, now){
+     A repeating task is open again at its next date in `now`, Vikunja's copy. It shows as done, with the dates it was
+     created with (`made`), until the batch clears. Then it shows as open at its next date, or leaves Today if that
+     date is 8 or more days from today. Tapping its tick before then puts its date back. */
+  arrivedDone(t, now, made){
     if (now.done) this.signTick(now);
     const said = doneText(0, 0, t.title), failed = e => this.say('Not undone: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}});
     if (!now.done) {
-      const was = t.due_date, beyond = () => this.route.name === 'today' && dayGroup(now.due_date) === null;
-      const undo = async () => { try { Object.assign(t, await this.saveTask(t.id, {due_date: was})); } catch (e) { failed(e); } this.render(); };
+      const was = made.due_date, beyond = () => this.route.name === 'today' && dayGroup(now.due_date) === null;
+      const shown = this.edit(t.id, {done: true, due_date: made.due_date, start_date: made.start_date, end_date: made.end_date, reminders: made.reminders});
+      // The row stays done at its old date until the date is back.
+      const undo = async () => { try { await this.saveTask(t.id, {due_date: was}); } catch (e) { failed(e); } shown.undo(); this.render(); };
       this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: said + '. It repeats',
-        gone: () => { Object.assign(t, now); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
+        gone: () => { shown.undo(); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
       return;
     }
     const ids = [t.id], moves = () => !!this.searchGroups(t);
@@ -315,11 +316,10 @@ export default {
     this.placeSent(tasks);
     // Subtasks that waited to be sent for the task whose sheet is open now show in that sheet.
     const open = this.sheet.task?.id;
-    if (open && tasks.some(t => t.parent === open)) this.readTask(open).then(t => {
-      if (!t) return;
-      put([t], TASK);
-      if (this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
+    if (open && tasks.some(t => t.parent === open)) this.readCopy(open).then(t => {
+      if (t && this.sheet.task?.id === t.id) { this.showTask(t); this.sheet.dirty = true; }
     }).catch(() => {});
+
     // Text that couldn't be added goes back into the box it came from: quick add, or the subtask box if the task's
     // sheet is open. Subtasks of a task whose sheet isn't open are named in the message instead, so they aren't lost.
     const subs = failed.filter(f => f.parent), lost = subs.filter(f => this.sheet.task?.id !== f.parent.id), back = failed.filter(f => !f.parent);
@@ -388,9 +388,11 @@ export default {
     const e = this.pending.find(x => x.id === t.entry), up = e ? underOf(e, t.index) : null;
     return cancelName(t.title, e ? e.items.filter((x, i) => underOf(e, i) === t.index).length : 0, up !== null ? e.items[up].p.title : e?.parent?.title);
   },
-  // Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent.
+  /* Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent. A waiting
+     row is the same object while nothing in it changes, so a group with a waiting row compares as unchanged
+     (sameGroup, lists.js). */
   get pendingTasks(){
-    const out = [];
+    const out = [], seen = new Set();
     for (const e of this.pending) {
       const parentProject = e.parent?.project_id || e.items[0]?.p.project?.id || e.pid;
       e.items.forEach((x, i) => {
@@ -399,14 +401,19 @@ export default {
         // The parent is the line this line names. It is identified by that line's waiting-row id until that line is
         // sent, and by its task id after. If the line names none, the parent is the entry's parent task.
         const child = isChild(e, i), u = underOf(e, i), over = u === null ? e.parent?.id ?? null : e.items[u].taskId || `pending-${e.id}-${u}`;
-        out.push({id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: over, title: p.title, done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0,
+        const t = {id: `pending-${e.id}-${i}`, pending: true, waits: this.slow.includes(e.id), entry: e.id, index: i, child, parent: over, title: p.title, done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0,
           due_date: p.due || ZERO, project_id: p.project?.id || (child ? parentProject : e.pid),
           labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0,
-          waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0});
+          waiting: i === 0 ? (e.files || []).filter(f => !f.sent).length : 0};
+        const k = t.id, had = waitingRows.get(k);
+        seen.add(k);
+        if (had && JSON.stringify(had) === JSON.stringify(t)) out.push(had); else { waitingRows.set(k, t); out.push(t); }
       });
     }
+    for (const k of waitingRows.keys()) if (!seen.has(k)) waitingRows.delete(k);
     return out;
   },
+
   // Photos and files on their way to tasks already in Vikunja: task id -> [{entry, key, name, ...}].
   get waitingByTask(){
     const m = new Map();

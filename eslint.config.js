@@ -1,7 +1,7 @@
 // ESLint looks for mistakes only (a name that isn't defined, a variable never used, an import assigned to), not style,
 // and that only api.js talks to Vikunja, only util.js asks whether less motion is wanted, only lists.js decides how
-// many days Today shows, only checklists.js decides what kind of task a task is, and only the files in WRITERS write to
-// Vikunja directly: npm run lint, which also runs scripts/check.mjs. CI runs it too.
+// many days Today shows, only checklists.js decides what kind of task a task is, only tasks.js writes a task's row, and
+// only the files in WRITERS write to Vikunja directly: npm run lint, which also runs scripts/check.mjs. CI runs it too.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -9,6 +9,9 @@ import globals from 'globals';
 // for the rule replaces the first, and 'off' would turn off every selector in a file. restricted(file) leaves out the
 // selectors that file is allowed. An allowed path ending in /** allows every file under it.
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
+const STORE = 'Only show() in src/js/app/tasks.js writes a task\'s row. Lay a save over it with edit(), or put() what Vikunja answered.';
+// A write to a task's row: this.tasks[id] = …, this.tasks[id].done = …, delete or ++ on one, or Object.assign onto one.
+const ROW = "MemberExpression[object.type='ThisExpression'][property.name='tasks']";
 // The files that still write to Vikunja directly, not through the outbox. Each phase removes the files it finishes.
 // The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
 // c.send, which no selector here matches yet.
@@ -21,6 +24,8 @@ const RESTRICTED = [
   { selector: "CallExpression[callee.name='api'] > ObjectExpression > Property[key.name='method']", message: WRITE, allow: WRITERS },
   { selector: "CallExpression[callee.name='patchTask']", message: WRITE, allow: WRITERS },
   { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name=/^(saveTask|saveEach)$/]", message: WRITE, allow: WRITERS },
+  { selector: `:matches(AssignmentExpression > MemberExpression.left, UpdateExpression > MemberExpression.argument, UnaryExpression[operator='delete'] > MemberExpression.argument) ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
+  { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],

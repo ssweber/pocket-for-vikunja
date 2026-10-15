@@ -16,7 +16,8 @@ import {seats, seatUnder} from './seat.js';
 import {copyOf, put, TASK} from './tasks.js';
 import {haptic} from '../haptics.js';
 
-export let pendingSaves = 0;
+// The sheet's latest save. Saves run one after another, so its answer comes last, and only it says Saved.
+let lastSave = null;
 // Notes written but not saved yet, kept on the phone as {text, base}. `base` is what the notes said when editing began.
 // An older Pocket kept only the text.
 const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
@@ -139,10 +140,10 @@ export default {
     const mine = this.sheet, cached = copyOf(id);
     if (cached) this.showTask(cached); else this.sheet.loading = true;
     try {
-      // If the task was changed while this loaded, the save returns a newer copy, and the older one is not used.
-      const t = await this.readTask(id);
+      // If the task was changed while this loaded, Vikunja's copy keeps the newer answer (put).
+      const t = await this.readCopy(id);
       if (this.sheet !== mine) return;
-      if (t) { put([t], TASK); this.showTask(t); this.checkNotes(t); }
+      if (t) { this.showTask(t); this.checkNotes(t); }
       this.loadComments(id); this.loadSubPeople(t || cached || {id}); this.loadSubOrder(t || cached);
     } catch (e) {
       if (!cached && this.sheet === mine) this.sheet.error = errText(e);
@@ -239,24 +240,27 @@ export default {
     return d ? sanitize(d) : '<span class="ph">Add notes</span>';
   },
 
-  /* Save a change to the open task. The sheet updates right away, and the server's copy is applied once no other saves
-     are queued. If the save fails, the change is undone, the top of the sheet shows a message with Try again, and the
-     promise resolves to false. */
+  /* Save a change to the open task. The sheet and the task's rows update right away (edit), and the sheet shows
+     Vikunja's answer once the sheet's last save is answered. If the save fails, its fields go back, the top of the
+     sheet shows a message with Try again, and the promise resolves to false. */
   save(patch, rebase){
     const id = this.sheet.task?.id; if (!id) return;
+    const shown = this.edit(id, patch), mine = lastSave = {};
     Object.assign(this.sheet.task, patch);
     this.sheet.savedMsg = 'Saving…';
-    pendingSaves++;
     return this.saveTask(id, patch, rebase).then(saved => {
-      if (--pendingSaves || this.sheet.task?.id !== id) return;
+      shown.ok(saved);
+      if (mine !== lastSave || this.sheet.task?.id !== id) return;
       const repeated = patch.done === true && !saved.done;
-      this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
+      this.showTask(this.shownAs(id) || saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
       this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
       setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
     }, e => {
-      pendingSaves--;
+      shown.undo();
       if (this.sheet.task?.id === id) {
-        this.sheet.savedMsg = ''; if (copyOf(id)) this.showTask(copyOf(id));
+        // Only this save's fields go back, to what the store shows now, so another edit made in the sheet stays.
+        const now = this.shownAs(id);
+        this.sheet.savedMsg = ''; if (now) this.showTask({...this.sheet.task, ...Object.fromEntries(Object.keys(patch).map(k => [k, now[k]]))});
         this.say(notSaved(e), {place: 'sheet:top', cls: 'failed', ms: null, action: {label: 'Try again', fn: () => this.save(patch, rebase)}});
       } else this.notify(notSaved(e));                                        // the sheet no longer shows this task
       return false;

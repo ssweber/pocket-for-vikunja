@@ -3272,6 +3272,48 @@ try {
       await page.waitForSelector('#sheet', { state: 'hidden' });
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, refuse); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
+  /* An edit in a task's sheet shows on the task's row behind the sheet at once, before Vikunja answers. A save that
+     fails puts back only its own field, in the sheet and on the row. An edit still being saved stays. */
+  await step('a-sheet-edit-shows-on-its-row-at-once-and-a-failed-one-puts-back-only-its-own-field', async () => {
+    const r = await make(`Pocket smoke sheet row ${stamp}`, { due_date: todayAt(23) }), at = `**/api/v2/tasks/${r.id}`;
+    const gates = {}, gate = k => new Promise(ok => { gates[k] = ok; }), open = k => gates[k]?.();
+    const due = gate('due'), prio = gate('prio');
+    // Vikunja's answer to the date waits, then the connection drops. The priority, saved after it, waits too.
+    const hold = async x => {
+      if (x.request().method() !== 'PATCH') return x.fallback();
+      if ('due_date' in x.request().postDataJSON()) { await due; return x.abort('connectionreset'); }
+      await prio; return x.fallback();
+    };
+    const local = h => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(h)}:00`; };
+    const R = `#view ${rowOf(r.title)}`, rowDue = page.locator(`${R} .when .due`), bars = page.locator(`${R} .when .bars`);
+    try {
+      await toastGone();
+      await refreshToday();
+      const was = await rowDue.textContent();
+      await page.click(`${R} > .body`, { timeout: 15000 });
+      await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
+      await page.route(at, hold);
+      await page.fill('#d-due', local(22));
+      await expect(rowDue).not.toHaveText(was);
+      await page.selectOption('#d-prio', '3');
+      await expect(bars).toHaveClass(/\bp3\b/);
+      const kept = await get(r.id);
+      if (kept.priority || new Date(kept.due_date).getHours() !== 23) throw new Error('Vikunja had the changes before the rows were checked');
+      open('due');
+      await expect(placeLine(page, 'sheet:top')).toContainText('Not saved: no connection', { timeout: 20000 });
+      await expect(rowDue).toHaveText(was);
+      await expect(page.locator('#d-due')).toHaveValue(local(23));
+      await expect(page.locator('#d-prio')).toHaveValue('3');
+      await expect(bars).toHaveClass(/\bp3\b/);
+      open('prio');
+      await synced(page);
+      const now = await get(r.id);
+      if (now.priority !== 3 || new Date(now.due_date).getHours() !== 23) throw new Error(`Vikunja has priority ${now.priority}, due ${now.due_date}`);
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally { open('due'); open('prio'); await page.unroute(at, hold); await api('/tasks/' + r.id, { method: 'DELETE' }); }
+  });
+
 
   await step('a-task-moves-and-goes-with-its-subtasks', async () => {
     const other = projects2.find(p => p.id !== home2);

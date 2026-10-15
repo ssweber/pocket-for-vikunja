@@ -3,7 +3,8 @@ import {allPages, api, ApiError, NetError} from '../api.js';
 import {comesRound, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
-import {copyOf, put} from './tasks.js';
+import {copyOf, put, started} from './tasks.js';
+
 
 const loading = new Set();                       // usernames whose picture is being fetched
 const tried = new Map();                         // username -> when the last picture request failed
@@ -73,10 +74,10 @@ export default {
     const ids = (t.related_tasks?.subtask || []).map(s => s.id), mine = this.sheet;
     if (!ids.length) return;
     try {
-      const list = await allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`}));
+      const at = started(), list = await allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`}));
       if (this.sheet !== mine) return;
       for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; this.sheet.subLabels[s.id] = s.labels || []; }
-      put(list.filter(s => copyOf(s.id)), ['assignees']);
+      put(list.filter(s => copyOf(s.id)), ['assignees'], at);
     } catch (e) {
       if (!(e instanceof NetError) || this.sheet !== mine) return;
       for (const id of ids) if (copyOf(id)?.assignees) this.sheet.subPeople[id] ??= copyOf(id).assignees;
@@ -110,7 +111,6 @@ export default {
     if (this.sheet.task?.id === a.task) this.sheet.task.assignees = set(this.sheet.task.assignees);
     if (step) step.assignees = set(step.assignees);
     const c = copyOf(a.task); if (c) put([{id: a.task, assignees: set(c.assignees)}], ['assignees']);
-    if (this.tasks[a.task]) this.syncTask({id: a.task, assignees: set(this.tasks[a.task].assignees)});
   },
 
   /* ---------- people's pictures ---------- */

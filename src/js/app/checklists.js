@@ -10,7 +10,7 @@ import {jobsFor} from './sending.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 import {newBox, newStepBox} from './core.js';
-import {copyOf, dropCopy, put, savedScreen, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, dropCopy, put, savedScreen, started, TASK_COUNT, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -201,17 +201,17 @@ export default {
   // The share page for a project in Vikunja's web app. Sharing is done there.
   shareUrl(pid){ return `${this.server}/projects/${pid}/settings/share`; },
   async openTasks(pid){
-    const list = await allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'}));
-    this.putChecklists(list, TASK_COUNT);
+    const at = started(), list = await allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'}));
+    this.putChecklists(list, TASK_COUNT, at);
     return list;
   },
   /* Put a checklists project's tasks into Vikunja's copies, except its templates. Checklists doesn't show a template as
      a row, and a template's sheet opened from a copy draws its steps twice: from the copy, then from its own read.
-     Today reads a due template with its other rows. */
-  putChecklists(list, asked){ put(list.filter(t => this.role(t, list) !== 'template'), asked); },
+     Today reads a due template with its other rows. `at` is when the read started (put). */
+  putChecklists(list, asked, at){ put(list.filter(t => this.role(t, list) !== 'template'), asked, at); },
   // Load each checklist project with its templates and open checklists.
   async loadChecklists(seq){
-    const checklists = await this.readChecklists(t => this.keep(t));
+    const checklists = await this.readChecklists(t => this.row(t));
     if (seq !== renderSeq || !await this.settle(checklists.flatMap(cl => [...cl.runs, ...cl.finished].map(t => t.id)), seq)) return;
     this.view.checklists = checklists;
     saved.set('checklists', savedScreen({checklists, at: new Date().toISOString()}));
@@ -223,7 +223,7 @@ export default {
     const ws = this.checklistProjects;
     const labels = ws.length ? (await this.loadLabels(true)).filter(isTemplateLabel).map(l => l.id) : [];
     const checklists = await Promise.all(ws.map(async p => {
-      const since = new Date(Date.now() - FINISHED_DAYS * 864e5).toISOString();
+      const since = new Date(Date.now() - FINISHED_DAYS * 864e5).toISOString(), at = started();
       const [, templates, open, done] = await Promise.all([
         // The user's access, read again each time, since it decides who may start a checklist or change a template.
         // Other projects keep the access Pocket read once (loadPerms).
@@ -234,7 +234,7 @@ export default {
         // Everything done in the last FINISHED_DAYS: the checklists finished then, and the steps that tell how each went.
         // A known gap: a step done before that, in a checklist finished since, is left out of its skips and comments.
         allPages(`/projects/${p.id}/tasks?` + new URLSearchParams([['filter', `done = true && done_at >= '${since}'`], ['filter_timezone', TZ], ['sort_by', 'done_at'],
-          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']])).then(list => Promise.all(list.map(allComments))).then(list => { this.putChecklists(list, TASK_REACTIONS_COMMENTS); return list; })]);
+          ['order_by', 'desc'], ['expand', 'reactions'], ['expand', 'comments']])).then(list => Promise.all(list.map(allComments))).then(list => { this.putChecklists(list, TASK_REACTIONS_COMMENTS, at); return list; })]);
       // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there. That
       // includes its open steps, or a step done on this phone and undone elsewhere would still count as done.
       const finished = done.filter(t => this.isRunTask(t)), ids = new Set(finished.map(t => t.id));
@@ -339,8 +339,7 @@ export default {
     this.sheet.checklistBusy = true;
     try {
       await this.markTemplate(t, this.subtasks.filter(s => !s.done).map(s => s.id));
-      const full = await api('/tasks/' + t.id);
-      put([full], TASK);
+      const full = await this.readCopy(t.id);
       if (this.sheet.task?.id === t.id) { this.showTask(full); this.sheet.dirty = true; }
       this.say(!comesRound(full) ? 'Template created. Start it here or under Checklists.'
         : `Template created. ${this.scheduleText(full)}. Starting it on or after the due day `
@@ -535,7 +534,7 @@ export default {
         if (under != null && this.sheet.subAt === under && r.ids.length) this.sheet.subAt = r.ids.at(-1);
       }
       this.sheet.dirty = true;
-      try { const full = await this.readTask(t.id); if (full) { put([full], TASK); if (this.sheet.task?.id === full.id) this.showTask(full); } } catch {}
+      try { const full = await this.readCopy(t.id); if (full && this.sheet.task?.id === full.id) this.showTask(full); } catch {}
     }
     const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
     if (r.error) this.say(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`, {place: 'sheet:subtasks', cls: 'failed'});
@@ -623,7 +622,8 @@ export default {
         this.sheet.dirty = true;
       }
       if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
-        const full = await this.readTask(this.sheet.task.id).catch(() => null);
+        const full = await this.readCopy(this.sheet.task.id).catch(() => null);
+
         if (full && this.sheet.task?.id === full.id) { this.showTask(full); this.loadSubPeople(full); }
       }
     } catch (err) {

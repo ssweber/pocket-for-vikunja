@@ -331,7 +331,7 @@ const underBox = t => {
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
   const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'flush'));
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
-  const van = app.keep(v.task(9)), chairs = app.keep(v.task(8));
+  const van = app.row(v.task(9)), chairs = app.row(v.task(8));
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], deleting: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
     checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 },
     view: { groups: [{ key: 'open', tasks: [van, chairs] }], route: '', listView: 3 }, cursor: null, lit: {}, flash(){}, $nextTick(){} });
@@ -517,7 +517,7 @@ test('a list\'s add box under a row is labelled with what one line makes, and at
 /* The sheet's own box under a subtask (nudgedSub, app/sheet.js) decides where its lines go. */
 test('the sheet\'s box under a subtask puts new subtasks after it, each after the one before, and at the bottom puts them after the last', t => {
   const { app, chairs } = underBox(t);
-  const straps = app.keep({ id: 7, title: 'Straps', project_id: 5 });
+  const straps = app.row({ id: 7, title: 'Straps', project_id: 5 });
   Object.defineProperty(app, 'subtasks', { value: [chairs, straps], configurable: true });
   app.positions = { 8: 100, 7: 200 };
   app.sheet = { subView: 3, subAt: null, subAfter: null };

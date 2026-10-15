@@ -126,8 +126,8 @@ test('a checklist step’s countdown is shown to the minute, within a day', () =
 const today = (...more) => {
   const app = component(cards, views, alerts, tasks, leaving, ...more);
   Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {}, positions: { 11: 3, 12: 1, 13: 2, 14: 0.5 }, projById: new Map([[5, { id: 5, title: 'Café', hex_color: '' }]]), stepDone: (id, d) => d, stepPct: s => Math.round((s.percent_done || 0) * 100), checklistIds: new Set(), waitingByTask: new Map() });
-  const parent = app.keep(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
-  for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.keep(task(id, { title, related_tasks: under(10) }));
+  const parent = app.row(task(10, { title: 'Pack the van', related_tasks: subs([11], [12], [13], [14, true]) }));
+  for (const [id, title] of [[11, 'Lights'], [12, 'Chairs'], [13, 'Tables']]) app.row(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
   return { app, parent, g: { cards: 'today', line: true } };
 };
@@ -157,7 +157,7 @@ test('on Today, a subtask added from the box appears on its card at once, and st
   let c = app.cardOf(parent, g);
   assert.deepEqual([c.rows.map(s => s.title), c.rows[0].pending, c.n, c.more, c.peek.title], [['Rope', 'Chairs'], true, 4, 2, 'Tables'], 'the waiting row is on top, above the most urgent, and the card is one row taller');
   app.cardAdded[10][0].id = 15;
-  app.keep(task(15, { title: 'Rope', related_tasks: under(10) }));
+  app.row(task(15, { title: 'Rope', related_tasks: under(10) }));
   c = app.cardOf(parent, g);
   assert.deepEqual([c.rows.map(s => s.title), c.rows[0].pending, c.n], [['Rope', 'Chairs'], undefined, 4], 'once sent, its task takes the waiting row’s place');
   app.cardAdded[10].push({ id: 'pending-e-1', after: 15 });
@@ -239,7 +239,7 @@ test('a card’s header shows the project dot once, its rows leave the dot out, 
   const w = app.rowWhen(c.step, c.g);
   assert.deepEqual([w.color, /Café/.test(w.said)], [null, false], 'a card row in the card’s project shows no dot and does not announce the project, because the header does');
   assert.equal(app.rowWhen(c.step, { line: true, depth: {} }).color, '#1d6b52', 'the same task as a plain row shows the dot');
-  const far = app.keep(task(13, { title: 'Tables', project_id: 6, related_tasks: under(10) })), f = app.rowWhen(far, c.g);
+  const far = app.show(13, task(13, { title: 'Tables', project_id: 6, related_tasks: under(10) })), f = app.rowWhen(far, c.g);
   assert.deepEqual([f.color, f.said], ['#3d85c6', 'Upkeep'], 'a subtask in another project shows its own dot and announces its project');
   assert.deepEqual(app.rowMeta(far, c.g).map(m => m.text), ['Upkeep'], 'the row does not name the task above it, because the card does');
   // In search a card's rows keep their second line. It shows no project unless the subtask is in a different one. The header has the dot.
@@ -259,7 +259,7 @@ test('on a project’s list a card is always open, with its subtasks in List vie
   const { app, parent } = today();
   app.route = { name: 'project' };
   const rope = { id: 'pending-x-0', pending: true, parent: 10, position: 2.5, title: 'Rope', project_id: 5, related_tasks: {} };
-  const plain = app.keep(task(20)), deeper = app.keep(task(30, { related_tasks: under(12) }));
+  const plain = app.row(task(20)), deeper = app.row(task(30, { related_tasks: under(12) }));
   const n = nestSubtasks([plain, app.tasks[11], parent, app.tasks[13], rope, app.tasks[12], deeper], positionOrder(app.positions));
   const g = { cards: 'list', delete: true, reorder: true, heads: [], ...n }, c = app.cardOf(parent, g);
   assert.deepEqual(c.rows.map(s => s.title), ['Chairs', 'Tables', 'Rope', 'Lights'], 'the card lists the subtasks under it in the project, including one waiting to be sent');
@@ -349,7 +349,7 @@ test('a done top row stays the card’s top row from the tap or swipe until the 
 // ticked, though Vikunja's copy of the task is still open (keep).
 test('a row ticked on Today stays ticked in a list loaded before Vikunja has answered the tick', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
-  const { app } = today(actions), row = app.keep(task(20, { title: 'Call the plumber' })), v = fakeVikunja([row]), send = globalThis.fetch;
+  const { app } = today(actions), row = app.row(task(20, { title: 'Call the plumber' })), v = fakeVikunja([row]), send = globalThis.fetch;
   Object.assign(app, { lines: {}, pending: [], perms: {}, render(){} });
   app.view.groups = [{ key: 'today', tasks: [row] }];
   let held = [], done = false;
@@ -358,7 +358,7 @@ test('a row ticked on Today stays ticked in a list loaded before Vikunja has ans
     const doing = app.toggleDone(row, ROW).then(() => { done = true; });
     assert.deepEqual([row.done, v.task(20).done, app.leaving], [true, false, { 20: 'done' }], 'the row is held from the tap');
     assert.deepEqual(app.keepMarked([{ key: 'today', tasks: [] }])[0].tasks.map(t => t.id), [20], 'a list loaded meanwhile keeps the row');
-    assert.deepEqual([app.keep({ ...v.task(20) }) === row, row.done], [true, true], 'Vikunja\'s copy, still open until it answers, does not untick the row');
+    assert.deepEqual([app.row({ ...v.task(20) }) === row, row.done], [true, true], 'Vikunja\'s copy, still open until it answers, does not untick the row');
     while (!done) { held.splice(0).forEach(ok => ok()); await new Promise(ok => setImmediate(ok)); }
     await doing;
     assert.deepEqual(app.leaving, { 20: 'done' }, 'after Vikunja answers, the row is marked');
@@ -376,7 +376,8 @@ test('a done top step of a checklist card stays the top row while the outbox tak
   app.pinCard(app.cardOf(parent, g));
   const doing = app.toggleDone(app.tasks[11], ROW);                           // a tick, or a full swipe on its row
   assert.deepEqual([app.tasks[11].done, top(), app.leaving], [true, 'Lights', { 11: 'done' }], 'after release, the step is done and still on top');
-  taken({ status: 'ok' });
+  app.pending = [{ id: 'tick' }];                                           // the outbox has the tick, waiting to send it
+  taken({ status: 'offline', entry: 'tick' });
   await doing;
   assert.deepEqual([top(), app.leaving], ['Lights', { 11: 'done' }]);
   await app.clearBatch(true);
@@ -432,7 +433,7 @@ test('a row on Today shows a short due time and the project dot on one line, and
   const { app } = today();
   app.route = { name: 'today' };
   const due = new Date(); due.setHours(23, 30, 0, 0);
-  const t = app.keep(task(20, { title: 'Post the rota', due_date: due.toISOString(), priority: 3, project_id: 5, labels: [{ id: 1, title: 'Front' }], comment_count: 2 }));
+  const t = app.row(task(20, { title: 'Post the rota', due_date: due.toISOString(), priority: 3, project_id: 5, labels: [{ id: 1, title: 'Front' }], comment_count: 2 }));
   const w = app.rowWhen(t, { line: true, depth: {} });
   const full = due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   assert.equal(w.due.text, shortTime(full), 'the time is short, “11:30p” where the phone writes “11:30 PM”');
@@ -443,7 +444,7 @@ test('a row on Today shows a short due time and the project dot on one line, and
   assert.equal(app.rowWhen({ ...t, priority: 0 }, { line: true, depth: {} }).prio, 0, 'with no priority there are no bars');
   // A task due today with no time shows "Today" under the Overdue heading and in other groups. It shows nothing under the Today heading, which already says it.
   const day = new Date(); day.setHours(0, 0, 0, 0);
-  const u = app.keep(task(21, { title: 'Order the cups', due_date: day.toISOString(), project_id: 5 }));
+  const u = app.row(task(21, { title: 'Order the cups', due_date: day.toISOString(), project_id: 5 }));
   assert.equal(app.rowWhen(u, { line: true, depth: {}, key: 'overdue' }).due.text, 'Today');
   assert.equal(app.rowWhen(u, { line: true, depth: {}, key: 'today' }).due, null, 'under Today a task with no time shows nothing');
   assert.match(app.rowWhen(u, { line: true, depth: {}, key: 'today' }).said, /^Due Today/, 'a screen reader still hears the date');
@@ -454,7 +455,7 @@ test('a row on Today shows a short due time and the project dot on one line, and
   assert.match(app.rowWhen(t, { line: true, depth: {} }).said, /, Attachments, 1 waiting to upload$/);
   delete app.waiting.files[20];
   // A checklist step that is counting down shows its countdown at the right, as it does under its title elsewhere, and a screen reader hears it.
-  const soon = app.keep(task(22, { title: 'Proof the dough', due_date: new Date(Date.now() + 10 * 6e4 + 3e4).toISOString(), related_tasks: under(50) }));
+  const soon = app.row(task(22, { title: 'Proof the dough', due_date: new Date(Date.now() + 10 * 6e4 + 3e4).toISOString(), related_tasks: under(50) }));
   app.stepRun = x => x.id === 22 ? 50 : null;
   const s = app.rowWhen(soon, { line: true, depth: {}, key: 'today' });
   assert.deepEqual([s.due, s.said.split(', ')[0]], [{ text: 'in 11m', cls: 'today' }, 'Due in 11m']);
@@ -714,7 +715,7 @@ const ringed = (c, list) => {
   const v = fakeVikunja(list), app = component(cards, tasks, leaving, actions, runs);
   Object.assign(app, { cardPage: {}, cardOpen: {}, positions: {}, lines: {}, pending: [], perms: {}, checklistIds: new Set(),
     openSheet(kind){ this.sheet = { kind, open: true }; }, closeSheet(){ this.sheet = { kind: '', open: false }; } });
-  for (const t of list) app.keep(t);
+  for (const t of list) app.row(t);
   return { v, app };
 };
 const ROW = {}, parentOf = (...kids) => ({ id: 10, title: 'Pack the van', done: false, project_id: 5, related_tasks: { subtask: kids.map(k => ({ id: k.id, done: !!k.done })) } });
@@ -754,7 +755,7 @@ test('closing the question asked from a task’s sheet returns to that sheet, an
   const opened = [];
   Object.assign(app, { cardPage: {}, cardOpen: {}, positions: {}, lines: {}, pending: [], perms: {}, checklistIds: new Set(), $nextTick(){},
     openTask(id){ opened.push(id); this.openSheet('task'); this.sheet.show = true; } });
-  for (const t of [parentOf(...kids), ...kids]) app.keep(t);
+  for (const t of [parentOf(...kids), ...kids]) app.row(t);
   const ask = sheet => { app.openSheet('task'); app.sheet.show = true; app.askComplete(app.tasks[10], sheet); assert.equal(app.sheet.kind, 'complete'); };
   ask(true);
   app.closeSheet();                                                          // the ×, sliding down, tapping the dimmed background, or Escape

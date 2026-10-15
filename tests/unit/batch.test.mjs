@@ -85,8 +85,8 @@ test('leaving the screen ends the wait, and the caller clears the rows at once',
 // the batch clears.
 test('tapping a marked row removes its mark, and a subtask closed with its parent keeps only the parent\'s mark', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default;
-  const app = component(leaving), did = [];
+  const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default, tasks = (await import('../../src/js/app/tasks.js')).default;
+  const app = component(leaving, tasks), did = [];
   app.tasks = { 1: { id: 1, title: 'Load chairs' }, 2: { id: 2, title: 'Pack the van' } };
   app.markRow(1, { kind: 'deleted', undo: () => did.push('restored 1'), gone: () => did.push('sent 1'), said: 'Deleted: Load chairs. Restore is in its place' });
   app.markRow(2, { kind: 'done', ids: [2, 3, 4], undo: () => did.push('opened 2'), gone: () => did.push('gone 2') });
@@ -112,9 +112,9 @@ test('tapping a marked row removes its mark, and a subtask closed with its paren
    row, a parent closed together with its subtasks, and a deleted row wait for the batch. */
 test('the top row of a collapsed card leaves 1.5 seconds after it is marked done, and every other row waits for the batch', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default;
+  const { component } = await import('./fake.mjs'), leaving = (await import('../../src/js/app/leaving.js')).default, tasks = (await import('../../src/js/app/tasks.js')).default;
   const { TOP_MS } = await import('../../src/js/batch.js');
-  const app = component(leaving), did = [], was = { one: document.querySelector, all: document.querySelectorAll };
+  const app = component(leaving, tasks), did = [], was = { one: document.querySelector, all: document.querySelectorAll };
   // On the page, task 1 is the top row of a collapsed card and task 2 is a plain row. Task 4 is both a top row and a plain row elsewhere.
   const tops = [1, 4, 5, 6], plain = [2, 4];
   document.querySelector = sel => tops.some(id => sel.includes(`.step-line[data-id="${id}"]`)) ? {} : null;

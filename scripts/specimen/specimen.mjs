@@ -422,8 +422,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       {spec: 'For you and Jamie, with a name on two lines', run: {...top, id: ++n, title: 'Opening up · Oct 7 · Front counter and the till'}},
       {spec: 'On a project only you can see: no slot', run: {...top, id: ++n, project_id: 5, assignees: [me]}}];
     // Today's cards. Their subtasks are in the store. The van's card and the last card are open.
-    for (const x of s.cardSubs) this.keep(x);
-    this.specimenCards = s.cards.map(t => this.keep(t));
+    for (const x of s.cardSubs) this.row(x);
+    this.specimenCards = s.cards.map(t => this.row(t));
     this.view.cards = Object.fromEntries(s.cards.map(t => [t.id, {when: null, made: null, focus: null}]));
     this.cardOpen = {[s.cards[0].id]: true, [s.cards.at(-1).id]: true};
     // A screen's headings, each under the end of the list before it. The lists end with a collapsed card's tab, an
@@ -431,8 +431,8 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     const [van, , , opening, milk, , sign] = this.specimenCards;
     this.specimenEnds = [[milk, opening], [van], [sign], [milk], []];
     // The parents' rings on Today's cards, and the question the ring asks (sheet/complete.html), for a task and for a checklist.
-    for (const x of s.parentSubs) this.keep(x);
-    this.specimenParents = s.parents.map(t => this.keep(t));
+    for (const x of s.parentSubs) this.row(x);
+    this.specimenParents = s.parents.map(t => this.row(t));
     Object.assign(this.view.cards, Object.fromEntries(s.parents.map(t => [t.id, {when: null, made: null, focus: null}])));
     // Each question has its sentence (completeAsk). The first is a task with 3 open subtasks. The second is a task with 5,
     // one of them repeating, which stays open and isn't named. The third is a checklist with 2 steps not done.
@@ -445,14 +445,14 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
       ask(s.parents[0].title, false, titles('Sand it', 'Tape the edges', 'First coat', 'Second coat', {title: 'Water the plants', stays: true})),
       ask('Closing up', true, titles('Stack the chairs', 'Lock the door'))];
     // A task's sheet that starts with the task's row. Each sheet is separate, as the app's is for one task.
-    for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.keep(x);
-    this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.keep(sh.task)}));
+    for (const x of s.sheets.flatMap(sh => sh.task.related_tasks.subtask || [])) this.row(x);
+    this.specimenSheets = s.sheets.map(sh => ({...blankSheet('task'), ...sh, task: this.row(sh.task)}));
     // A task held on Today. Each still gets its rows as Today has them (screenRows('today')), including the held one.
     Object.assign(this.view.cards, Object.fromEntries(s.rings.filter(r => r.card).map(r => [r.held.id, {when: null, made: null, focus: null}])));
-    this.specimenRings = s.rings.map((r, i) => ({...r, id: i, g: {key: 'today', cards: 'today', line: true, depth: {}, delete: true, reschedule: true, items: r.rows.map(t => this.keep(t)), tasks: r.rows}}));
+    this.specimenRings = s.rings.map((r, i) => ({...r, id: i, g: {key: 'today', cards: 'today', line: true, depth: {}, delete: true, reschedule: true, items: r.rows.map(t => this.row(t)), tasks: r.rows}}));
     // A project's open list, as listGroups makes it, with each subtask under its parent.
     Object.assign(this.positions, s.project.positions);
-    const list = s.project.list.map(t => t.pending ? t : this.keep(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions), t => this.hasOwnOrder(t))};
+    const list = s.project.list.map(t => t.pending ? t : this.row(t)), g = {key: 'open', cards: 'list', delete: true, reorder: true, heads: s.project.heads, ...nestSubtasks(list, positionOrder(this.positions), t => this.hasOwnOrder(t))};
     this.specimenProject = {...g, items: listItems(g.tasks, g.depth, t => !!this.cardOf(t, g))};
     this.specimen = [...s.list, {title: 'In a task\'s sheet: its subtasks, with who\'s doing each', depth: {}, sheet: true, delete: true, reorder: true, tasks: subs},
       {title: 'A run\'s steps on its screen: done by you, by Jamie, skipped, the step on its card (counting down), inserted (swiped to its Delete), repeated, swiped right to 75%, late, waiting on another step, and a tick waiting to send',

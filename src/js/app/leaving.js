@@ -61,7 +61,7 @@ export default {
     s.early.set(id, new Promise(ok => { answered = ok; }));
     return () => {
       s.early.delete(id);
-      if (!s.marks.has(id)) delete this.leaving[id];
+      if (!s.marks.has(id)) { delete this.leaving[id]; this.show(id); }
       answered();
     };
   },
@@ -99,10 +99,11 @@ export default {
     for (const el of els) el.animate([{transform: `translateX(${-el.clientWidth}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'});
     return r;
   },
-  // Remove the mark from all its rows, or only from `only`. Stops the batch timer when no marks remain.
+  /* Remove the mark from all its rows, or only from `only`, and show each task as the store has it now: a row marked
+     done stays as it was while marked (show, tasks.js). Stops the batch timer when no marks remain. */
   dropMark(m, only){
     const {marks, batch} = of(this);
-    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; }
+    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; this.show(x); }
     if (only !== undefined) m.ids = m.ids.filter(x => x !== only);
     if (!marks.size) batch.stop();
   },

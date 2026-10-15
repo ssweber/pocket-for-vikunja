@@ -14,7 +14,8 @@ import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
-import {copyOf, dropCopy, put, putting, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, dropCopy, put, putting, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
+
 
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -253,8 +254,8 @@ export default {
   /* ---------- a run ---------- */
   // Load a checklist with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
-    const run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
-    put([run], TASK_COMMENTS);
+    const at = started(), run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
+    put([run], TASK_COMMENTS, at);
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a started checklist. Open it from its project instead.');
     /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
        push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
@@ -731,8 +732,8 @@ export default {
   },
   async refreshRunTask(id){
     try {
-      const t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
-      put([t], TASK_REACTIONS_COMMENTS);
+      const at = started(), t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
+      put([t], TASK_REACTIONS_COMMENTS, at);
       const r = this.view.run;
       if (!r) return;
       if (r.run.id === id) Object.assign(r.run, plainRun(t));

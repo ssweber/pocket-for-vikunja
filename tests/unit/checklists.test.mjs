@@ -188,8 +188,8 @@ const finishedRun = (subtask, more = {}) => ({ id: 1, project_id: 7, title: 'Clo
 test('a finished checklist\'s ring counts its steps as Vikunja has them, also a step done on this phone and undone elsewhere', async () => {
   const step = { id: 2, project_id: 7, title: 'Mop', done: false, description: '', related_tasks: { parenttask: [{ id: 1 }] } }, run = finishedRun([step]);
   const app = await loaded(run, [step]);
-  app.keep({ ...step, done: true });                                       // this phone last saw it done
-  const [cl] = await app.readChecklists(t => app.keep(t));
+  app.row({ ...step, done: true });                                       // this phone last saw it done
+  const [cl] = await app.readChecklists(t => app.row(t));
   assert.equal(app.ringOf(cl.finished[0]).done, 0);
 });
 

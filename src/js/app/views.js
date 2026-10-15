@@ -13,8 +13,7 @@ import {listViewOf} from '../order.js';
 import {haptic} from '../haptics.js';
 import {tickFeel} from '../progress.js';
 import {shared} from './core.js';
-import {pendingSaves} from './sheet.js';
-import {put, putting, savedScreen, TASK_COUNT, TASK_COUNT_REACTIONS} from './tasks.js';
+import {put, putting, savedScreen, savesRunning, started, TASK_COUNT, TASK_COUNT_REACTIONS} from './tasks.js';
 
 export let renderSeq = 0;
 let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
@@ -401,7 +400,7 @@ export default {
   async loadToday(seq){
     const got = await this.readToday();
     if (seq !== renderSeq) return;
-    const {groups, cards, steps, positions} = this.todayFrom(got, t => this.keep(t));
+    const {groups, cards, steps, positions} = this.todayFrom(got, t => this.row(t));
     if (!await this.settle(groups.flatMap(g => g.tasks.map(t => t.id)), seq)) return;
     this.todayDay = +startOfDay();
     Object.assign(this.positions, positions);
@@ -461,7 +460,7 @@ export default {
     // the latest DONE_PART.
     const d = await this.readProject(p, open && Math.max(DONE_PART, this.view.groups.find(g => g.key === 'done')?.tasks.length || 0));
     if (seq !== renderSeq) return;
-    const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.keep(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
+    const groups = [{key: 'open', cls: '', title: 'Open', tasks: d.list.map(t => this.row(t)), heads: d.heads}, this.doneGroup(d.finished, d.count, open)];
     // Animate Done rows as an opened section when replacing a count-only cache, rather than fading them in as new
     // tasks.
     const shown = this.view.groups.find(g => g.key === 'done'), quiet = g => g.key === 'done' && shown && !shown.loaded;
@@ -517,7 +516,7 @@ export default {
   },
   /* Build the Done section from a loaded part and total count, using own for row objects. Show the latest
      DONE_PART and offer another part at the end. */
-  doneGroup(part, count, open, own = t => this.keep(t)){
+  doneGroup(part, count, open, own = t => this.row(t)){
     return {key: 'done', cls: 'done-sec', title: 'Done', fold: true, open: !!open, loading: false, loaded: !!part, per: DONE_PART, skip: part?.skip || 0,
       count: part ? counted(part, part.skip, count) : count, tasks: (part?.tasks || []).map(own)};
   },
@@ -530,8 +529,8 @@ export default {
       const list = this.withoutTemplates(await allPages(path).then(putting(TASK_COUNT)), true);
       return {tasks: list.slice(from, from + n), total: list.length, skip: 0};
     }
-    const {items: list, total} = await partOf(path, from, n);
-    put(list, TASK_COUNT);
+    const at = started(), {items: list, total} = await partOf(path, from, n);
+    put(list, TASK_COUNT, at);
     const tasks = this.withoutTemplates(list, true);
     return {tasks, total, skip: list.length - tasks.length};
   },
@@ -553,7 +552,7 @@ export default {
       const part = await this.doneTasks(p);
       if (this.view.project?.id !== p.id) return;
       this.drawFrom(this.listGroups.find(x => x.key === 'done')?.before ?? 0);   // draw the first rows now and the rest in batches
-      Object.assign(g, {tasks: part.tasks.map(t => this.keep(t)), loaded: true, per: DONE_PART, skip: part.skip, count: counted(part, part.skip, g.count)});
+      Object.assign(g, {tasks: part.tasks.map(t => this.row(t)), loaded: true, per: DONE_PART, skip: part.skip, count: counted(part, part.skip, g.count)});
       this.saveProject();
     } catch (e) { g.open = false; this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'done', cls: 'failed'}); }
     finally { g.loading = false; }
@@ -577,7 +576,7 @@ export default {
       const have = new Set(g.tasks.map(t => t.id)), add = part.tasks.filter(t => !have.has(t.id));
       this.drawFrom((this.listGroups.find(x => x.key === key)?.before ?? 0) + g.tasks.length);
       g.skip += part.skip; g.count = counted(part, g.skip, g.count);
-      g.tasks.push(...add.map(t => this.keep(t)));
+      g.tasks.push(...add.map(t => this.row(t)));
       if (add.length && !this.moreOf(key)) this.$nextTick(() => document.querySelector(`#view .row[data-id="${add[0].id}"] > button.body`)?.focus({preventScroll: true}));
     } catch (e) { this.say('Couldn\'t load the done tasks: ' + why(e), {place: 'more', cls: 'failed'}); }
     finally { this.showingMore = null; }
@@ -600,7 +599,8 @@ export default {
     catch { return; }                                                          // offline, so there is nothing to check
     if (res.status !== 200) return;
     const busy = this.sheet.open || this.cap.text.trim() || this.runInsert.text.trim() || this.capPhotos.length || this.cap.busy || this.searchQ || this.movingOverdue || this.starting
-      || this.pending.length || pendingSaves;
+      || this.pending.length || savesRunning();
+
     if (!busy) location.reload();
   },
   async refresh(){
@@ -641,18 +641,18 @@ export default {
     const parents = opened.filter(t => openSubs(t).length && this.role(t) !== 'template');
     const read = parents.length ? await this.readCards(new Map(parents.map(t => [t.id, {project: t.project_id}])), [...opened, ...finished]) : {steps: [], positions: {}};
     if (seq !== renderSeq) return;
-    for (const t of read.steps) this.keep(t);
+    for (const t of read.steps) this.row(t);
     Object.assign(this.positions, read.positions);
     this.view.groups = this.keepMarked([
-      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.keep(t))},
-      {key: 'done', cls: '', title: 'Done', per: FOUND_PART, skip: found.skip, count: counted(found, found.skip, null), tasks: found.tasks.map(t => this.keep(t))},
+      {key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t))},
+      {key: 'done', cls: '', title: 'Done', per: FOUND_PART, skip: found.skip, count: counted(found, found.skip, null), tasks: found.tasks.map(t => this.row(t))},
     ]);
   },
 
   /* Load n completed search matches from index from, returning {tasks, list, total, skip} like doneTasks. */
   async foundDone(s, from, n = FOUND_PART){
-    const {items: list, total} = await partOf('/tasks?' + new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}), from, n);
-    put(list, TASK_COUNT);
+    const at = started(), {items: list, total} = await partOf('/tasks?' + new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}), from, n);
+    put(list, TASK_COUNT, at);
     const tasks = this.withoutTemplates(list);
     return {tasks, list, total, skip: list.length - tasks.length};
   },

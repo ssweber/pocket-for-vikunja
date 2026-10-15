@@ -39,7 +39,8 @@ export function stageContext(a, app){
 }
 
 export default {
-  /* Queue every run action behind earlier pending actions so Vikunja receives them in order. */
+  /* Queue every run action behind earlier pending actions so Vikunja receives them in order. Returns how sending went,
+     with the entry's id (`entry`). */
   async act(fields){
     const run = fields.run ?? this.view.run?.run.id;
     if (this.toast.show && this.toast.startOf && this.toast.startOf === run) this.toast.show = false;
@@ -48,7 +49,7 @@ export default {
     const entry = {id: uuid7(), kind: 'act', user: this.user?.id, at: new Date().toISOString(), n: nextN(), items: [], files: [], stage: 0, fails: 0,
       run: this.view.run?.run.id, label: this.actTitle(fields.task), ...fields};
     const {kept, full} = await sync.add(entry, []);
-    return this.sendActs(entry.id, kept, full);
+    return {...await this.sendActs(entry.id, kept, full), entry: entry.id};
   },
   // Send through action `id` in order. Keep deletions held while Restore is still available.
   async sendActs(id, kept = true, full = false){

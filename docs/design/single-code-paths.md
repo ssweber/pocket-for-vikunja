@@ -479,7 +479,8 @@ file is allowed, and give each file in "Off for" its own array.
 | Roles | `no-restricted-imports` with `importNames` for the predicates in `checklists.js` | `src/js/checklists.js` |
 | Today's groups | `no-restricted-syntax`: a call to `addDays` whose second argument is the literal `8` | `src/js/lists.js` |
 | Messages | `no-restricted-syntax`: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said` | `src/js/messages.js` |
-| Store | `no-restricted-syntax`: an assignment to a member of `this.tasks`, any use of `this.sheet.task` or `this.view.run`, and an import of `cache` | `src/js/app/tasks.js` |
+| Store | `no-restricted-syntax`: an assignment to a member of `this.tasks`, and any use of `this.sheet.task` or `this.view.run` | `src/js/app/tasks.js` |
+
 
 The writes allowlist starts as every file that writes today. Each phase removes the files it finishes. The other rules
 are turned on in the phase that finishes their part.
@@ -516,11 +517,17 @@ checks that Vikunja changed once.
    `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The bridge's
    `SHOWN_OWN_WAY` and `keep`'s callers go, and so does each of the 13 ops' own way of showing itself where the store
    now shows it (`applyAct`, the acts `workOutRun` lays over a checklist's steps). Measure rule 10 before and after
-   (`npm run perf:rows -- counts`). Turn on the store rule, except for `cache`, which phase 11 removes. This is the
-   phase most likely to show a problem on the phone, so the user checks it there before phase 5.
-   Built so far: 4a. `put(list, asked)` and `copyOf(id)` in tasks.js, with a trusted-field list for each kind of
-   request (`TASK`, `TASK_COUNT` and the others), checked against Vikunja 2.7. `copies` replaces `cache`. The screens
-   are saved from the copies (`savedScreen`).
+   (`npm run perf:rows -- counts`). Turn on the store rule. This is the phase most likely to show a problem on the
+   phone, so the user checks it there before phase 5.
+   Built so far: 4a and 4b. `put(list, asked)` and `copyOf(id)` in tasks.js, with a trusted-field list for each kind
+   of request (`TASK`, `TASK_COUNT` and the others), checked against Vikunja 2.7. `copies` holds Vikunja's copies. The
+   screens are saved from the copies (`savedScreen`). `show(id)` is the only code that writes `tasks[id]`. It stacks
+   the copy, the waiting ops outside `SHOWN_OWN_WAY` and the direct saves still running, and gives the row its own
+   nested values. `put` shows each task it writes. Each read passes when it started, and a read that started before a
+   task's last answer leaves that task's copy alone. Every direct field write is an `edit(id, fields)`. A tick sent as
+   an op keeps its edit until its entry leaves the outbox (`until`), so a dropped tick already unticks a list's row. A
+   task leaving done takes only edits until its batch clears. `readTask`, `saving`, `pendingSaves`, `keep`, `syncTask`
+   and `putWaiting` are gone. The store rule is on for `this.tasks`.
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
    Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format. Old stored data is
    read as it is, or ignored if it can't be read. Pocket writes no upgrade code.
@@ -645,12 +652,13 @@ it is, or ignored if it can't be read. Pocket writes no upgrade code, since it i
 - `tasks[id]` is one object per task. Rows, `view.groups`, Undo's closures and the gestures hold that object itself.
   About 40 places write its fields before a save answers, such as `t.done = true` in `toggleDone`. `keep` patches it
   field by field, so a change reruns only the bindings that read that field.
-- `cache` is a plain `Map`. Most reads put their answer in it whole. So the sheet's read drops `comment_count`, and a
-  list read without `expand=reactions` sets `reactions` to `null`. The checklists' read doesn't write `cache` at all.
-- `sheet.task` is a shallow copy from `cache`, and `view.run` holds plain copies of a checklist and its steps. Neither
-  is the object a row holds.
-- `answered` writes an op's answer into `cache` only for the stages that patch a task. A claim, a comment, a ✅ and a
-  delete never update it.
+- Vikunja's last copy of each task was a plain `Map`. Most reads put their answer in it whole. So the sheet's read
+  dropped `comment_count`, and a list read without `expand=reactions` set `reactions` to `null`. The checklists' read
+  didn't write it at all. `copies` replaces it.
+- `sheet.task` is a shallow copy from `copies`, and `view.run` holds plain copies of a checklist and its steps.
+  Neither is the object a row holds.
+- `answered` writes an op's answer into `copies` only for the stages that patch a task. A claim, a comment, a ✅ and
+  a delete never update it.
 
 ### `tasks` stays, with one writer
 
@@ -679,14 +687,14 @@ dropped, a direct save starts or ends, or a batch clears.
 - **A copy holds only Vikunja's fields.** Pocket's own fields on a row (`pending`, `parent`, `was`, `place`) move to
   maps by id beside the store.
 - `show` copies nested values into `tasks`, so writing a row never changes Vikunja's copy.
-- `cache` becomes `copies`, read through `copyOf(id)` outside tasks.js.
+- `copies` holds the copies, read through `copyOf(id)` outside tasks.js.
 
 ### Direct saves, until their phase makes them ops
 
 Each remaining direct save goes through `edit(id, fields)`. It lays `fields` on top of the task, in memory only, and
 returns `ok(answer)` and `undo()`. `ok` writes the answer with `put` and removes the fields in one call to `show`.
-`undo` removes them, for a failed save. A failed save then puts back only its own fields. Today the sheet's `save`
-puts back all of `cache`, and loses the user's other unsaved edits.
+`undo` removes them, for a failed save. A failed save then puts back only its own fields. The sheet's `save` used to
+put back all of Vikunja's copy, and lost the user's other unsaved edits.
 
 Every direct field write in the map becomes an `edit`, including those in actions.js, sending.js and on the sheet's
 subtask stubs. The store rule catches an assignment to a member of `this.tasks`. A write through a variable such as
@@ -759,15 +767,14 @@ Phase 5 makes creates ops.
 Four commits, each leaving the app working and passing the full `test:local`, so a problem found on the phone can be
 bisected. The user checks the phone once, after 4d.
 
-- **4a. The copies.** `put` and each read's trusted fields, Pocket's own fields off the copies, `copies` for `cache`,
-  and screens saved from the copies. Nothing on screen changes.
+- **4a. The copies.** `put` and each read's trusted fields, Pocket's own fields off the copies, `copies` for Vikunja's
+  copies, and screens saved from the copies. Nothing on screen changes.
 - **4b. One writer.** `show`, `edit`, every direct field write moved, and the late-read rule. `readTask`, `saving`,
-  `pendingSaves` and `keep`'s callers go. The store rule is on, except for `this.sheet.task`, `this.view.run` and
-  `cache`. Measure rule 10.
+  `pendingSaves` and `keep`'s callers go. The store rule is on, except for `this.sheet.task` and `this.view.run`.
+  Measure rule 10.
 - **4c. Ops through `apply`.** An op's answer, the grown `apply`s, and `workOutRun`'s overlay, `applyAct` and
   `SHOWN_OWN_WAY` gone, and deletes shown by the store. This fixes the dropped tick that stays ticked. Measure rule 10.
-- **4d. By id.** The sheet and a checklist's screen. The store rule is on in full, except for `cache`, which phase 11
-  removes.
+- **4d. By id.** The sheet and a checklist's screen. The store rule is on in full.
 
 ### Tests
 

@@ -26,6 +26,6 @@ export const figure = async (a, c) => {
     const body = await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
     if (!body) return;
     const t = await c.send('/tasks/' + up, {method: 'PATCH', body}) || await c.read('/tasks/' + up);
-    put([t], TASK); c.app.syncTask(t);
+    put([t], TASK);
   } catch (e) { if (e.status !== 404) throw e; }
 };

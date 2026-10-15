@@ -85,9 +85,9 @@ test('subtasks added right under a task go before its first subtask, each after 
 function projectList(){
   const app = component(tasks, quickadd, { reorder: actions.reorder });
   Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, deleting: [], pendingTasks: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
-  const van = app.keep({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
-  const sub = (id, title) => app.keep({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
-  const chairs = sub(11, 'Load chairs'), tables = sub(12, 'Tables'), lights = app.keep({ id: 20, title: 'Lights', project_id: 1, done: false });
+  const van = app.row({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
+  const sub = (id, title) => app.row({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
+  const chairs = sub(11, 'Load chairs'), tables = sub(12, 'Tables'), lights = app.row({ id: 20, title: 'Lights', project_id: 1, done: false });
   app.view = { groups: [{ key: 'open', tasks: [van, chairs, tables, lights] }, { key: 'done', tasks: [] }], listView: 5, project: { id: 1, title: 'Move' } };
   app.positions = { 10: 1000, 11: 100, 12: 200, 20: 2000 };
   return { app, van, chairs, tables, lights };
@@ -173,7 +173,7 @@ test('a subtask added from the box becomes the cursor, while it waits to be sent
   app.aimAdded(hooks, 0, van);
   assert.deepEqual(app.cursorPlaces(1), [175], 'between Hooks and Tables');
   // After the subtask is sent, Vikunja gives it an id, and its row is still the highlighted one.
-  const sent = app.keep({ id: 31, title: 'Hooks', project_id: 1, done: false, parent: 10 });
+  const sent = app.row({ id: 31, title: 'Hooks', project_id: 1, done: false, parent: 10 });
   app.view.groups[0].tasks.push(sent); app.positions[31] = 150; app.pendingTasks = waiting(rope, 10);
   app.aimSent([{ id: 31, was: 'pending-e2-0' }]);
   assert.deepEqual([app.lit, app.cursor, app.capTarget], [{ 31: true }, { id: 31, under: 10 }, { to: 'Pack the van', after: 'Hooks' }]);
@@ -303,7 +303,7 @@ test('the box adds a task again when the highlighted row scrolls out of sight', 
     app.aimAdded(added('e1', 'Rope', 150), 0, van); app.watchCursor(ropeRow); see([ropeRow, false]);
     assert.deepEqual([app.lit, app.capW], [{ 'pending-e1-0': true }, 'under']);
     // The task is sent and its new row is still out of sight. The new row is watched, and Load chairs still stands in for it.
-    app.view.groups[0].tasks.push(app.keep({ id: 31, title: 'Rope', project_id: 1, done: false, parent: 10 }));
+    app.view.groups[0].tasks.push(app.row({ id: 31, title: 'Rope', project_id: 1, done: false, parent: 10 }));
     app.aimSent([{ id: 31, was: 'pending-e1-0' }]);
     app.watchCursor(sentRow); see([ropeRow, false], [sentRow, false]);
     assert.deepEqual([app.lit, app.capW], [{ 31: true }, 'under']);
@@ -408,7 +408,7 @@ test('the box moved out a level adds a task after the cursor\'s task, and Tab an
   assert.deepEqual(app.outPlaces(1), [1750], 'after it and before Lights');
   assert.equal(key(false), false, 'Tab does nothing, because the task has no row to go under yet');
   // After the task is sent, the cursor is on its row and the box is still out a level. Pressing Tab then moves the box in, under the task.
-  const sent = app.keep({ id: 30, title: 'Strap it down', project_id: 1, done: false });
+  const sent = app.row({ id: 30, title: 'Strap it down', project_id: 1, done: false });
   app.view.groups[0].tasks.push(sent); app.positions[30] = 1500; app.pendingTasks = [];
   app.aimSent([{ id: 30, was: 'pending-e1-0' }]);
   assert.deepEqual(app.cursor, { id: 30, under: null, out: true });
