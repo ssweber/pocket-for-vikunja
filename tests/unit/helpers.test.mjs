@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
 import { andList, colorOf, esc, fmtSize, grow, motion, sizeLimit, taskDrafts } from '../../src/js/util.js';
-import { entryDone, heldTasks, isChild, itemDone, itemsOf, packParsed, sendState, slowness, underOf, unpackParsed, WAIT_MS } from '../../src/js/sync.js';
+import { entryDone, heldTasks, isChild, itemDone, itemsOf, packParsed, sendState, slowness, underOf, unpackParsed, uuid7, WAIT_MS } from '../../src/js/sync.js';
 
 test('the address names the screen to show', () => {
   assert.deepEqual(routeOf(''), { name: 'today' });
@@ -159,4 +159,12 @@ test('a change is shown as waiting only after it has waited a while, or at once 
   assert.deepEqual(slowness(entries, now, true), { slow: ['old', 'new', 'newer'], next: null }, 'offline, every change is shown as waiting at once');
   assert.deepEqual(slowness([], now, false), { slow: [], next: null });
   assert.ok(WAIT_MS >= 2000 && WAIT_MS <= 3000, 'a few seconds');
+});
+
+// The relay reads a key's age from the UUIDv7 it starts with, so the time must be right and the version and variant set.
+test('a UUIDv7 holds the time it was made, version 7 and variant 10, and two made together differ', () => {
+  const id = uuid7(), hex = id.replaceAll('-', '');
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.ok(Math.abs(parseInt(hex.slice(0, 12), 16) - Date.now()) < 1000, 'its first 48 bits are now, in milliseconds');
+  assert.notEqual(uuid7(), uuid7());
 });

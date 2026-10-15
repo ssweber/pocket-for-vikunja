@@ -1,9 +1,9 @@
-// Reading a whole list from Vikunja (allPages in src/js/api.js). It reads page 1, then requests the remaining pages at
-// the same time, using the largest page size Vikunja allows.
+// Requests to Vikunja (src/js/api.js). Reading a whole list (allPages) reads page 1, then requests the remaining pages
+// at the same time, using the largest page size Vikunja allows. A write with a key goes through the plugin's relay.
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allPages, partOf } from '../../src/js/api.js';
+import { allPages, api, partOf, passing } from '../../src/js/api.js';
 
 /* A fake Vikunja with a list of `n` items, paged the way Vikunja pages them (at most `max` per page). Each reply is
    delayed briefly so requests made together overlap. It records the requests (`asked`, as [page, per_page]) and the
@@ -82,4 +82,84 @@ test('a part of a list is read at once in as few pages as possible, together wit
   assert.deepEqual((await partOf('/tasks', 100, 100)).items.map(t => t.id), ids(130).slice(100), 'a part at the end of the list holds the items that remain');
   list(130);
   assert.deepEqual(await partOf('/tasks', 200, 100), { items: [], total: 130 }, 'a part past the end of the list holds no items');
+});
+
+/* A fake relay. It answers each request with the next of `answers`, as [status, body, headers], and the last one
+   again once they run out. It records each request's address, Idempotency-Key and time (`sent`). */
+function relay(...answers){
+  const sent = [];
+  globalThis.fetch = async (url, { method = 'GET', headers = {} } = {}) => {
+    sent.push({ url, method, key: headers['Idempotency-Key'], at: Date.now() });
+    const [status, body = {}, more = {}] = answers[Math.min(sent.length, answers.length) - 1];
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...more } });
+  };
+  return sent;
+}
+// Runs `p` on the test's clock, moving it on whenever nothing else is left to do, and returns how `p` settled.
+async function onClock(t, p){
+  let done = false;
+  const out = p.then(v => ({ v }), e => ({ e })).finally(() => { done = true; });
+  while (!done) { for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok)); if (!done) t.mock.timers.tick(500); }
+  return out;
+}
+const KEY = '019a0000-0000-7000-8000-000000000000:0:0';
+
+test('a write with a key goes through the relay with the key as an Idempotency-Key header, and a write without one goes to Vikunja as before', async () => {
+  component(); const sent = relay([201, { id: 5 }]);
+  assert.deepEqual(await api('/projects/2/tasks', { method: 'POST', body: { title: 'Rope' }, key: KEY }), { id: 5 });
+  await api('/tasks/5', { method: 'PATCH', body: { done: true } });
+  assert.deepEqual(sent.map(s => [s.url, s.key]), [
+    ['http://vikunja.test/api/v1/plugins/pocket/v2/projects/2/tasks', '"' + KEY + '"'],
+    ['http://vikunja.test/api/v2/tasks/5', undefined],
+  ]);
+});
+
+test('a write whose session has expired is sent again with the same key once the session is renewed', async () => {
+  component(); const sent = [];
+  globalThis.fetch = async (url, { headers = {} } = {}) => {
+    if (url.endsWith('/user/token/refresh')) return new Response(JSON.stringify({ token: 'tk_new' }), { status: 200 });
+    sent.push([url, headers['Idempotency-Key'], headers.Authorization]);
+    return new Response('{}', { status: sent.length === 1 ? 401 : 200 });
+  };
+  await api('/tasks/5', { method: 'POST', body: { done: true }, key: KEY });
+  assert.deepEqual(sent.map(([url, key]) => [url, key]), Array(2).fill(['http://vikunja.test/api/v1/plugins/pocket/v2/tasks/5', '"' + KEY + '"']));
+  assert.equal(sent[1][2], 'Bearer tk_new');
+});
+
+test('a refusal gives Vikunja\'s detail, or else the relay\'s message, or else the status', async () => {
+  component();
+  relay([400, { detail: 'Vikunja\'s reason', message: 'the relay\'s reason' }]);
+  await assert.rejects(api('/tasks/5', { method: 'POST', body: {}, key: KEY }), { status: 400, message: 'Vikunja\'s reason' });
+  relay([422, { message: 'this Idempotency-Key was used for a different request' }]);
+  await assert.rejects(api('/tasks/5', { method: 'POST', body: {}, key: KEY }), { status: 422, message: 'this Idempotency-Key was used for a different request' });
+  relay([500]);
+  await assert.rejects(api('/tasks/5'), { status: 500, message: 'HTTP 500' });
+});
+
+test('a 409 from the relay is sent again with the same key after Retry-After, and the answer that follows is returned', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  component(); const sent = relay([409, { message: 'still running' }, { 'Retry-After': '1' }], [201, { id: 5 }]);
+  const { v } = await onClock(t, api('/tasks/5', { method: 'POST', body: {}, key: KEY }));
+  assert.deepEqual(v, { id: 5 });
+  assert.deepEqual(sent.map(s => s.key), ['"' + KEY + '"', '"' + KEY + '"']);
+  assert.equal(sent[1].at - sent[0].at, 1000);
+});
+
+test('a 409 that lasts through three waits of 2 seconds leaves the change waiting to be sent later', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  component(); const sent = relay([409, { message: 'the first request with this Idempotency-Key is still running' }]);
+  const { e } = await onClock(t, api('/tasks/5', { method: 'POST', body: {}, key: KEY }));
+  assert.equal(sent.length, 4, 'sent once, then 3 times more');
+  assert.deepEqual(sent.slice(1).map((s, i) => s.at - sent[i].at), [2000, 2000, 2000], 'with no Retry-After, each wait is 2 seconds');
+  assert.equal(e.status, 409);
+  assert.ok(passing(e), 'the outbox tries again later, as it does after a 503');
+});
+
+test('a 409 with Idempotency-Unknown is not sent again, and is not a reason to try later', async () => {
+  component();
+  const sent = relay([409, { message: 'the first request with this Idempotency-Key never finished' }, { 'Idempotency-Unknown': 'true' }]);
+  const e = await api('/tasks/5', { method: 'POST', body: {}, key: KEY }).catch(e => e);
+  assert.equal(sent.length, 1);
+  assert.deepEqual([e.status, e.code, e.message], [409, 'unknown', 'the first request with this Idempotency-Key never finished']);
+  assert.ok(!passing(e));
 });

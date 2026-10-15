@@ -413,7 +413,7 @@ test('cancelling or refusing a waiting subtask moves the highlight to its task',
   // If Vikunja refuses, the text goes back in the box with the reason, and the task is highlighted.
   v.trouble = r => r.method === 'POST' ? 400 : null;
   await add('Straps');
-  assert.deepEqual([aimed(), app.cap.text, app.toast.msg], [[['9'], ''], 'Straps', 'Not added: HTTP 400']);
+  assert.deepEqual([aimed(), app.cap.text, app.toast.msg], [[['9'], ''], 'Straps', 'Not added: HTTP 400 from the fake']);
   assert.equal(sync.all(1).length, 0);
 });
 

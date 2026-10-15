@@ -6,7 +6,8 @@ export class NetError extends Error {}
 // Statuses worth retrying later: Vikunja, or a proxy in front of it, is busy or timed out. Any other answer is final,
 // a 500 included, so a request Vikunja can't handle doesn't sit in the outbox for ever.
 export const TRANSIENT = new Set([408, 429, 502, 503, 504]);
-export const passing = e => e instanceof NetError || (e instanceof ApiError && TRANSIENT.has(e.status));
+// A relay's 409 that lasts through every wait ('running') is passing too. The first request with that key still runs.
+export const passing = e => e instanceof NetError || (e instanceof ApiError && (TRANSIENT.has(e.status) || e.code === 'running'));
 /* Pocket signs in with Vikunja's own session (password or single sign-on), shared with Vikunja's web app on this
    device. The token lives where Vikunja keeps it (localStorage "token") and is renewed with Vikunja's refresh cookie. */
 export const sharedToken = {
@@ -77,7 +78,9 @@ export async function api(path, opts = {}){
   if (write) app.writing = (app.writing || 0) + 1;
   try { return await request(path, opts); } finally { if (write) app.writing--; }
 }
-async function request(path, {method='GET', body, raw=false, auth=true, retry=true} = {}){
+/* With `key`, a write goes through the plugin's relay with that Idempotency-Key, so sending it again never makes the
+   change twice. Once Vikunja reads the header itself, only the address changes. */
+async function request(path, {method='GET', body, raw=false, auth=true, retry=true, key, busy=0} = {}){
   // While Pocket opens on its saved screen, a write waits until Vikunja reports who is signed in. It is sent only if
   // that is still the person the screen belonged to.
   if (auth && method !== 'GET' && opening) {
@@ -94,10 +97,11 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
   if (auth && token) headers.Authorization = 'Bearer ' + token;
   const form = body instanceof FormData;                                       // for a file upload the browser sets the content type
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
+  if (key) headers['Idempotency-Key'] = '"' + key + '"';                     // a structured-field string, so quoted
   let res;
   try {
     // No answer in 20 seconds (2 minutes for a file) counts as no connection, so nothing waits for ever.
-    res = await fetch(app.server + '/api/v2' + path, {
+    res = await fetch(app.server + (key ? '/api/v1/plugins/pocket/v2' : '/api/v2') + path, {
       method, headers, body: body === undefined || form ? body : JSON.stringify(body),
       credentials: 'include', signal: timeoutSignal(form ? 120e3 : 20e3),
     });
@@ -109,14 +113,26 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
   if (res.status === 401 && auth && retry) {
     let renewed;
     try { renewed = await refreshSession(); } catch (e) { app.offline = true; throw e; }
-    if (renewed) return api(path, {method, body, raw, auth, retry:false});
+    if (renewed) return api(path, {method, body, raw, auth, retry:false, key});
   }
   if (res.status === 401 && auth) {
     app.signOut('Your session ended. Sign in again.', {tellServer: false}); throw new ApiError(401, 'Signed out');
   }
   if (!res.ok && res.status !== 304) {
+    // Vikunja's refusals give their reason in `detail`, the relay's own in `message`.
     let j = {}; try { j = await res.json() } catch {}
-    throw new ApiError(res.status, j.detail || res.statusText || ('HTTP ' + res.status), j.code);
+    const reason = j.detail || j.message || res.statusText || ('HTTP ' + res.status);
+    /* The relay answers 409 while the first request with this key still runs, so Pocket waits and asks again. A wait
+       is at most 10 seconds, whatever Retry-After says. With Idempotency-Unknown, that request never finished, and
+       only the user can tell whether the change was made. */
+    if (res.status === 409 && key) {
+      if (res.headers.get('idempotency-unknown') === 'true') throw new ApiError(409, reason, 'unknown');
+      if (busy >= 3) throw new ApiError(409, reason, 'running');
+      const s = parseFloat(res.headers.get('retry-after'));
+      await new Promise(ok => setTimeout(ok, Math.min(s >= 0 ? s : 2, 10) * 1000));
+      return request(path, {method, body, raw, auth, retry, key, busy: busy + 1});
+    }
+    throw new ApiError(res.status, reason, j.code);
   }
   if (raw) return res;
   if (res.status === 204 || res.status === 304) return null;              // 304: the change made no difference

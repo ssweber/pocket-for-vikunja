@@ -160,6 +160,14 @@ export const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString(
   labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind, done: !!p.done, pct: p.pct || 0});
 export const unpackParsed = p => ({...p, due: p.due ? new Date(p.due) : null});
 export const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
+// A UUIDv7. Its first 48 bits are the time in milliseconds, which the plugin's relay reads to tell how old a key is.
+export const uuid7 = () => {
+  const b = crypto.getRandomValues(new Uint8Array(16)), ms = Date.now();
+  for (let i = 0; i < 6; i++) b[i] = Math.floor(ms / 2 ** (8 * (5 - i))) % 256;
+  b[6] = (b[6] & 0x0f) | 0x70; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+};
 export const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
 // A line is done when all its steps are. A line saved by an older Pocket has no `done`. For that line, having a task
 // was all there was to do, and for a subtask also having its link.
