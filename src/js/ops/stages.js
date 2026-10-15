@@ -4,9 +4,9 @@ import {cache} from '../util.js';
 import {DONE_MARK, hasTemplateLabel, SKIP_MARK} from '../checklists.js';
 import {figurePatch} from '../progress.js';
 
-// Change some of the task's fields and return Vikunja's copy. When nothing changes Vikunja sends no body back, so the
-// task is read instead.
-export const patch = async (a, c, fields) => await c.send('/tasks/' + a.task, {method: 'PATCH', body: fields}) || c.read('/tasks/' + a.task);
+// Change some of the task's fields and return Vikunja's copy, which is also the op's answer (c.task). When nothing
+// changes Vikunja sends no body back, so the task is read instead.
+export const patch = async (a, c, fields) => c.task = await c.send('/tasks/' + a.task, {method: 'PATCH', body: fields}) || await c.read('/tasks/' + a.task);
 // Vikunja's time for the tick lets a countdown that waits on this step keep the time it was ticked here (keepTick).
 export const tick = async (a, c) => { const t = await patch(a, c, {done: true}); if (t?.done_at) c.app.keepTick(a, a.doneAt = t.done_at); };
 export const untick = (a, c) => patch(a, c, {done: false});

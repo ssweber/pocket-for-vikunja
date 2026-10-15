@@ -501,9 +501,12 @@ checks that Vikunja changed once.
    Built so far: part 6, `api()`'s `key` option with `uuid7()`, and the writes rule. The registry, with the 13 ops
    `ACTS` had, and `app/acts.js`, which sends every request of an act through the relay with its key. Try again after
    `Idempotency-Unknown` (or any refusal) sends with a new key. IndexedDB is at version 3. The unit tests' fake
-   Vikunja has the relay, and `offline.mjs` sends a checklist step's requests twice. Left: the store's core, as
-   "Phase 1 in detail" says. Before the first op ships, install `relay.go` on the user's own
-   Vikunja and check one relayed create there: that the relay reaches Vikunja, and which database it uses.
+   Vikunja has the relay, and `offline.mjs` sends a checklist step's requests twice. The store's core: `opsOn`,
+   `withWaiting`, `answered` (an op's answer goes into `cache` as the op leaves `opsOn`) and the bridge (`keyOps`).
+   All 13 ops are in `SHOWN_OWN_WAY` (tasks.js), because `cache` and `tasks` still differ in fields no op touches,
+   such as `comment_count`. Phases 4 to 9 take each op off that list as they move its display to the store. Before
+   the first op ships, install `relay.go` on the user's own Vikunja and check one relayed create there: that the
+   relay reaches Vikunja, and which database it uses.
 2. **Roles.** The decision in part 3 is settled. Write the table test, add `roleOf` and `this.role`, move every
    caller, and turn on the roles rule.
 3. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.

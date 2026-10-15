@@ -3,7 +3,7 @@ import {taskDrafts} from '../util.js';
 import {api, ApiError, passing, serverTime} from '../api.js';
 import {htmlToText} from '../html.js';
 import {DONE_MARK, parseStep, patiently, SKIP_MARK} from '../checklists.js';
-import {held, heldTasks, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
+import {actTaskId, held, heldTasks, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, UNKNOWN} from '../messages.js';
 import {OPS} from '../ops/index.js';
@@ -19,11 +19,12 @@ export const keptTicks = () => ticks ||= saved.get('ticks') || {};
 /* What a stage is given to make its requests. `send` is a write with the next key: the entry's key, the stage's index,
    and the part, counted from 0 each time the stage runs. So a stage sent again after a lost reply sends each request
    with the key it had, and the relay answers the ones already made from what it stored. `once` keeps a body built from
-   a read in the entry, so a retry sends the same body. `a.key` replaces the entry's id after Try again. */
+   a read in the entry, so a retry sends the same body. `a.key` replaces the entry's id after Try again. A stage puts
+   Vikunja's copy of the task in `task`, and a comment Vikunja made in `comment`. */
 export function stageContext(a, app){
   let part = 0;
   const save = () => sync.save(a);
-  return {app, save, comment: null,
+  return {app, save, comment: null, task: null,
     start(){ part = 0; return this; },
     async send(path, opts){
       if (!a.sent) { a.sent = true; await save(); }                         // from now on Don't send it can't stop it
@@ -92,6 +93,7 @@ export default {
         a.stage++;
         await c.save();
       }
+      this.answered(a, c.task);
       this.applyAct(a, c.comment);
       await sync.remove(a.id);
       if (!a.run && a.op === 'note' && this.sheet.task?.id === a.task) this.loadComments(a.task);   // a comment from a task's sheet
@@ -166,6 +168,5 @@ export default {
     }
     if (comment) { const on = s || r.run; on.comments = [...(on.comments || []), comment]; }
   },
-  // The task id an action is for. A step inserted offline is known only by its entry id until Vikunja creates it.
-  actTask(a){ return typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) ?? a.task : a.task; },
+  actTask(a){ return actTaskId(a); },
 };

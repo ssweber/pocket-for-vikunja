@@ -351,6 +351,7 @@ export default {
     // If Vikunja rejects the delete, they come back. leaving.js handles rows deleted in place.
     this.deleting = all.filter(e => e.op === 'delete' && !e.failed).flatMap(e => e.ids);
     this.keyWaiting();
+    this.keyOps();
     this.markSlow();
   },
   /* What is waiting for each task, by task id (`waiting`): what the last op waiting on it says it sets (its last claim

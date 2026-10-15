@@ -79,6 +79,7 @@ export default () => ({
   // Index the latest pending claim or release, tick, progress and the number of waiting files by task id, so rows
   // read only their own state.
   waiting: {claims: {}, files: {}, ticks: {}, pcts: {}},
+  opsOn: {},                                   // task id -> its ops waiting in the outbox, in the order they will be sent (keyOps, tasks.js)
   // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
   // hint.
   hint: {at: null, pick: false, done: store.get('hint.slide') === 'done'},
